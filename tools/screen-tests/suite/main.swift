@@ -101,6 +101,7 @@ spin(1)
 let runner = Runner()
 runner.built = builtMargin
 runner.wantFront = value("--front").flatMap { ["level", "order"].contains($0) ? $0 : nil }
+runner.members = args.contains("--members") // (MarginTiles NO: the members' route, measured beside the tiles')
 for s in part.scenarios {
   currentScenario = s.name
   log("SCENARIO \(s.name): \(s.title)")

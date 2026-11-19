@@ -289,6 +289,9 @@ img.fav.app { width: 20px; height: 20px; margin: -2px; border-radius: 0; object-
   transition: opacity .12s linear, visibility 0s linear .12s;
 }
 .lg:is([m-page-state="loading"], [m-starting][m-page-state="empty"]) .page-loader { opacity: 1; visibility: visible; pointer-events: auto; transition: none; }
+/* Its item in another Margin window (m-page-state="elsewhere"): the card, faded and still. */
+.lg[m-page-state="elsewhere"] .page-loader { opacity: .55; visibility: visible; pointer-events: none; transition: none; }
+.lg[m-page-state="elsewhere"] .opening-spin { animation: none; opacity: 0; }
 /* The capsule, plain: a translucent fill, a hairline, a soft shadow (the slot's own box while starting: it has no part then). */
 .opening, .lg[m-starting][m-page-state="empty"] .page-loader::before {
   content: "";

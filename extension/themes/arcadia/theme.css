@@ -158,6 +158,10 @@
   transition: opacity 120ms linear, visibility 0s linear 120ms;
 }
 .arcadia:is([m-page-state="loading"], [m-starting][m-page-state="empty"]) .page-loader { opacity: 1; visibility: visible; pointer-events: auto; transition: none; }
+/* Its item in another Margin window (m-page-state="elsewhere"): the card, faded and still, its words ("Click to show
+   … here"); in front again, the window takes the item back. */
+.arcadia[m-page-state="elsewhere"] .page-loader { opacity: .55; visibility: visible; pointer-events: none; transition: none; }
+.arcadia[m-page-state="elsewhere"] .opening-mark::after { animation: none; opacity: 0; }
 .opening { position: relative; justify-self: stretch; display: grid; place-items: center; }
 /* The tile, and the ring in it (the slot's own two boxes while starting: it has no part then). */
 .opening-mark, .arcadia[m-starting][m-page-state="empty"] .page-loader::before { content: ""; grid-area: 1 / 1; display: grid; place-items: center; width: 56px; height: 56px; border-radius: 16px; background: var(--load-tile); box-shadow: inset var(--load-edge); }

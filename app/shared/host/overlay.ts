@@ -641,6 +641,10 @@ function onMessage(msg: any) {
       if (msg.palette === true) openPaletteTimed({ newTab: !!host?.appWindow || !host?.launcher }, 'a new window');
       else if (msg.focus === true) runtime?.focusLauncher();
       return;
+    // Margin.app's own word about a hosted app (HostEngine stepDown): its notice, its name filled in.
+    case 'hostNote':
+      if (msg.kind === 'route-simpler') notices.say('route-simpler', { app: msg.app });
+      return;
     case 'push':
       switch (msg.msg?.type) {
         // A switch the copy makes in this window (a next/previous key), and its end: the

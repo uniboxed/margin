@@ -24,7 +24,37 @@ func usage(_ pids: [pid_t]) -> [pid_t: (cpu: Double, rss: Int)] {
   return out
 }
 
+// A process's own counts by the kernel (proc_pid_rusage): CPU time (ns), idle wakeups (the ones that woke a sleeping
+// core: a timer's cost), interrupt wakeups, its memory footprint (bytes).
+func rusage(_ pid: pid_t) -> (cpuNs: Double, idle: UInt64, interrupt: UInt64, footprint: UInt64)? {
+  var ru = rusage_info_v4()
+  let ok = withUnsafeMutablePointer(to: &ru) { p in p.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(pid, RUSAGE_INFO_V4, $0) } }
+  guard ok == 0 else { return nil }
+  var tb = mach_timebase_info_data_t(); _ = mach_timebase_info(&tb)
+  return (Double(ru.ri_user_time + ru.ri_system_time) * Double(tb.numer) / Double(tb.denom), ru.ri_pkg_idle_wkups, ru.ri_interrupt_wkups, ru.ri_phys_footprint)
+}
+
 extension Runner {
+  // idle-cost: nothing done for `seconds` (no hook, no event of the suite's); Margin's CPU, wakeups and footprint
+  // over it, said. The budget (docs/ARCHITECTURE-PLAN.md): under 0.5% CPU.
+  func idleCostStep(_ label: String, seconds: Double) {
+    guard let m = personsMargin() ?? allMargins().first else { return skip("idle-cost (\(label))", "Margin isn't running") }
+    let pid = m.processIdentifier
+    gate("idle cost")
+    guard let a = rusage(pid) else { return skip("idle-cost (\(label))", "its counts didn't read") }
+    let t0 = Date()
+    while Date().timeIntervalSince(t0) < seconds { gate("idle cost"); spin(1) }
+    guard let b = rusage(pid) else { return skip("idle-cost (\(label))", "its counts didn't read") }
+    let span = Date().timeIntervalSince(t0)
+    let cpu = (b.cpuNs - a.cpuNs) / 1e6
+    let pct = cpu / (span * 1000) * 100
+    let wakes = Double(b.idle - a.idle) / span, irq = Double(b.interrupt - a.interrupt) / span
+    let mb = Double(b.footprint) / 1_048_576
+    log("  IDLE \(label): \(String(format: "%.0f", cpu)) ms CPU in \(String(format: "%.0f", span)) s (\(String(format: "%.2f", pct))%), \(String(format: "%.1f", wakes)) idle wakeups/s, \(String(format: "%.1f", irq)) interrupt wakeups/s, footprint \(String(format: "%.0f", mb)) MB")
+    step("idle-cost (\(label)): Margin under 0.5% CPU with nothing happening for \(Int(seconds)) s", pct < 0.5,
+         "\(String(format: "%.0f", cpu)) ms CPU (\(String(format: "%.2f", pct))%), \(String(format: "%.1f", wakes)) idle wakeups/s, footprint \(String(format: "%.0f", mb)) MB")
+  }
+
   // The processes a measure reads: Margin, WindowServer, and the copies running.
   func measured() -> [(String, pid_t)] {
     var list: [(String, pid_t)] = []
@@ -115,8 +145,14 @@ extension Runner {
     // (one in flight), so this is the app's own redraw at the new size: Chameleon at 1244×933 takes 10-15 ms a resize, its
     // own log's `didResize` lines, 2026-11-17 23:52; the kit's simpler panes 7-8 ms.)
     let cpu = list.map { name, pid in "\(name) \(Int((u1[pid]?.cpu ?? 0) - (u0[pid]?.cpu ?? 0))) ms" }.joined(separator: ", ")
-    step("drag-live (\(t.text), \(dx > 0 ? "+" : "")\(dx) pt over \(steps) frames): the shown window follows each step (Margin's word: each change followed, 95% within 25 ms), never placed again or behind the loader, at the drag's last page area",
-         liveLine != nil && sent >= steps / 3 && (followed.flatMap { Int($0[0]) } ?? 0) >= sent * 9 / 10 && p95 <= 25 && distinct >= steps / 3 && refits == 0
+    // (A person's app takes what it takes, as the min-drag part holds it (MinSize.swift): Weather 49-56 ms a resize on
+    // the real Mac, 2026-11-18, every build; so for it the window only has to follow (more than one width seen on the
+    // way, Margin's writes coalesced while one is in flight) and end where it belongs. Chameleon: each step, 25 ms.)
+    var strict = false
+    if case .copy = t { strict = true }
+    let pace = strict ? sent >= steps / 3 && (followed.flatMap { Int($0[0]) } ?? 0) >= sent * 9 / 10 && p95 <= 25 && distinct >= steps / 3 : sent >= 1 && distinct >= 2
+    step("drag-live (\(t.text), \(dx > 0 ? "+" : "")\(dx) pt over \(steps) frames): the shown window follows \(strict ? "each step (Margin's word: each change followed, 95% within 25 ms)" : "at its own pace (more than one width on the way)"), never placed again or behind the loader, at the drag's last page area",
+         liveLine != nil && pace && refits == 0
            && final != nil && pageAfter != nil && (fills ? near(final!, pageAfter!, 1) : placedIn(final!, pageAfter!)) && !near(pageAfter!, pageBefore, 1),
          "Margin: \(liveLine.map { String($0.suffix(220)) } ?? "no live-resize line"); the suite: \(samples.count) bounds seen, \(distinct) widths of its left edge, page area \(rect(pageBefore)) → \(rect(pageAfter)), the window \(rect(final)); placed again or loading \(refits)×; CPU over the drag and 3 s after: \(cpu)")
     if !windows.isEmpty {

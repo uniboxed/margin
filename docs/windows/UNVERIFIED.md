@@ -211,3 +211,11 @@ Ported from Shell.swift and tested on the Mac with fake inputs; what only Window
   draft); a profile with no window says how to open one.
 - **One clock.** The shell runs on the wall clock (`time::now`, as the copies' `focusedAt` are); a clock change while
   it runs shifts its timers once. Check: change the time in Settings while linked: nothing sticks.
+- **Hosting apps (2026-11-18, `src/hosting.rs`).** margin-core's reconcile driver (`host::driver`) with Windows's own
+  calls: a hosted window kept at the page area with `SetWindowPos` and shown with `SW_SHOWNOACTIVATE`, parked with
+  `SW_HIDE` (no taskbar button; DWM's cloak is refused for another process's windows), a minimized one put back, one
+  whose window went closing its item. Only window mode exists here (no Spaces, no full screen of the Mac's kind).
+  Compile-checked for both Windows targets and unit-checked (what a window's facts mean as a situation); not wired into
+  the Windows shell's loop yet, never run on Windows. Check: an app hosted at the page area, parked and shown again,
+  minimized and put back, its window closed by the person, its taskbar button gone while parked; `SetWindowPos` on an
+  elevated app's window (refused: said, not retried).

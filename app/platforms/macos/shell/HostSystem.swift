@@ -28,6 +28,11 @@ protocol HostSystem: AnyObject {
     // application" off). Off, macOS's default, a quit discards its windows anyway: closing one first changes nothing
     // about its next launch.
     func keepsWindowsAtQuit(pid: pid_t) -> Bool
+    // Its app's version ("short (build)"; nil: unread): the hosting core's routes remember a step down per version.
+    func appVersion(pid: pid_t) -> String?
+    // One poll's reads (synchronous, nothing moved in between): the Space list read once for all of them. Outside one,
+    // every read is fresh (an operation reads before and after its own moves).
+    func batch(_ body: () -> Void)
     var onAppQuit: ((pid_t) -> Void)? { get set }
     // Whether it's hidden (nil: not running). An app started with no Dock icon is started hidden (LaunchServices' hide
     // option): a hidden app's windows aren't in Accessibility's list, and some apps make or expose their window only
@@ -148,10 +153,16 @@ protocol HostSystem: AnyObject {
     // lays the first two of its layout out again (a split's halves): their rects are set again after (the engine).
     func moveTile(_ tile: UInt64, to space: UInt64, index: Int) -> Bool
     func destroyTile(_ tile: UInt64) -> Bool // a tile left with no live window (its app gone: a placeholder) destroyed
+    // The anchors (docs/HOSTING-CORE.md "Anchors"): an empty tile made in `space`, at its layout's end (nil: not made, or
+    // its id not said: the caller reads the Space's tiles).
+    var anchorsAvailable: Bool { get }
+    func createTile(in space: UInt64) -> UInt64?
     func setLiveResizing(_ space: UInt64, _ on: Bool) -> Bool // a drag under way in that Space's layout (its windows' live resize)
 }
 
 extension HostSystem {
+    func batch(_ body: () -> Void) { body() }
+    func appVersion(pid: pid_t) -> String? { nil }
     // (A stand-in that doesn't play it: not sent.)
     func reopen(pid: pid_t) -> Bool { false }
     // (A stand-in that doesn't play it: not taken, front app unread.)
@@ -181,6 +192,8 @@ extension HostSystem {
     func setTileRect(_ tile: UInt64, _ rect: CGRect) -> Bool { false }
     func moveTile(_ tile: UInt64, to space: UInt64, index: Int) -> Bool { false }
     func destroyTile(_ tile: UInt64) -> Bool { false }
+    var anchorsAvailable: Bool { false }
+    func createTile(in space: UInt64) -> UInt64? { nil }
     func setLiveResizing(_ space: UInt64, _ on: Bool) -> Bool { false }
 }
 
@@ -466,12 +479,12 @@ final class RealHostSystem: HostSystem {
         NSRunningApplication.runningApplications(withBundleIdentifier: bundleId).compactMap(Self.hostApp)
     }
 
-    func app(pid: pid_t) -> HostApp? { NSRunningApplication(processIdentifier: pid).flatMap(Self.hostApp) }
+    func app(pid: pid_t) -> HostApp? { runningApp(pid).flatMap(Self.hostApp) }
     // (EPERM: it runs, as another user's; ESRCH: gone.)
     func processRuns(pid: pid_t) -> Bool { pid > 0 && (kill(pid, 0) == 0 || errno == EPERM) }
 
     func policy(pid: pid_t) -> HostPolicy? {
-        guard let a = NSRunningApplication(processIdentifier: pid), !a.isTerminated else { return nil }
+        guard let a = runningApp(pid) else { return nil }
         switch a.activationPolicy {
         case .regular: return .regular
         case .accessory: return .accessory
@@ -493,6 +506,38 @@ final class RealHostSystem: HostSystem {
         return a.terminate()
     }
 
+    private var batching = false
+    private var displaysMemo: [DisplaySpaces]??
+    // (One poll's: a running app read once (each a LaunchServices request), the session's state once.)
+    private var appMemo: [pid_t: NSRunningApplication?] = [:]
+    private var awayMemo: Bool?
+    func batch(_ body: () -> Void) {
+        if batching { return body() }
+        batching = true
+        displaysMemo = nil
+        defer { batching = false; displaysMemo = nil; appMemo = [:]; awayMemo = nil }
+        body()
+    }
+    private func runningApp(_ pid: pid_t) -> NSRunningApplication? {
+        guard batching else { return NSRunningApplication(processIdentifier: pid).flatMap { $0.isTerminated ? nil : $0 } }
+        if let memo = appMemo[pid] { return memo }
+        let a = NSRunningApplication(processIdentifier: pid).flatMap { $0.isTerminated ? nil : $0 }
+        appMemo[pid] = .some(a)
+        return a
+    }
+    // The managed Spaces, parsed (SLSCopyManagedDisplaySpaces): once per poll inside `batch`, else each time.
+    private func readDisplays() -> [DisplaySpaces]? {
+        guard batching else { return spacesRW.displays() }
+        if let memo = displaysMemo { return memo }
+        let read = spacesRW.displays()
+        displaysMemo = .some(read)
+        return read
+    }
+
+    func appVersion(pid: pid_t) -> String? {
+        guard let url = NSRunningApplication(processIdentifier: pid)?.bundleURL, let info = Bundle(url: url)?.infoDictionary else { return nil }
+        return "\(info["CFBundleShortVersionString"] as? String ?? "?") (\(info["CFBundleVersion"] as? String ?? "?"))"
+    }
     func keepsWindowsAtQuit(pid: pid_t) -> Bool {
         guard let bundle = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier else { return false }
         let key = "NSQuitAlwaysKeepsWindows"
@@ -505,7 +550,7 @@ final class RealHostSystem: HostSystem {
     func close(pid: pid_t, window: Int) async -> Bool { await ax.close(pid: pid, window: window) }
 
     func isHidden(pid: pid_t) -> Bool? {
-        guard let a = NSRunningApplication(processIdentifier: pid), !a.isTerminated else { return nil }
+        guard let a = runningApp(pid) else { return nil }
         return a.isHidden
     }
 
@@ -613,24 +658,30 @@ final class RealHostSystem: HostSystem {
         return ((w[kCGWindowIsOnscreen as String] as? NSNumber)?.boolValue ?? false, (w[kCGWindowAlpha as String] as? NSNumber)?.doubleValue ?? 1)
     }
     func screenAway() -> Bool {
+        if batching, let memo = awayMemo { return memo }
+        let away = readScreenAway()
+        if batching { awayMemo = away }
+        return away
+    }
+    private func readScreenAway() -> Bool {
         if CGDisplayIsAsleep(CGMainDisplayID()) != 0 { return true }
         guard let session = CGSessionCopyCurrentDictionary() as? [String: Any] else { return false }
         if session["CGSSessionScreenIsLocked"] as? Bool == true { return true }
         return session[kCGSessionOnConsoleKey as String] as? Bool == false
     }
     func currentSpaces() -> [String]? {
-        spacesRW.displays()?.map { d in "\(d.current.map { "\($0)" } ?? "none")\(d.current.map { c in d.spaces.contains { $0.id == c } } == false ? " (not listed)" : "")" }
+        readDisplays()?.map { d in "\(d.current.map { "\($0)" } ?? "none")\(d.current.map { c in d.spaces.contains { $0.id == c } } == false ? " (not listed)" : "")" }
     }
     func bounds(window: Int) -> CGRect? { sky.modelBounds(of: window) }
     func spaces(window: Int) -> [UInt64]? { spacesRW.spaces(of: window) }
     func spaceType(_ space: UInt64) -> Int? { calls.spaceType(space) }
 
     private func display(of space: UInt64) -> DisplaySpaces? {
-        spacesRW.displays()?.first { $0.spaces.contains { $0.id == space } }
+        readDisplays()?.first { $0.spaces.contains { $0.id == space } }
     }
 
     func spaceExists(_ space: UInt64) -> Bool? {
-        guard let displays = spacesRW.displays() else { return nil }
+        guard let displays = readDisplays() else { return nil }
         return displays.contains { $0.spaces.contains { $0.id == space } }
     }
 
@@ -657,7 +708,7 @@ final class RealHostSystem: HostSystem {
         return out
     }
 
-    func listedFullScreenSpaces() -> [UInt64]? { spacesRW.displays()?.flatMap(\.fullScreen) }
+    func listedFullScreenSpaces() -> [UInt64]? { readDisplays()?.flatMap(\.fullScreen) }
 
     func fullScreenSpaceOwners() -> [UInt64: pid_t]? {
         guard let raw = sky.managedDisplaySpaces() else { return nil }
@@ -729,6 +780,11 @@ final class RealHostSystem: HostSystem {
     }
     func moveTile(_ tile: UInt64, to space: UInt64, index: Int) -> Bool { calls.moveTile(tile, to: space, index: index) }
     func destroyTile(_ tile: UInt64) -> Bool { calls.hasTiles && calls.destroyFullScreenSpace(tile) }
+    var anchorsAvailable: Bool { calls.hasAnchors }
+    func createTile(in space: UInt64) -> UInt64? {
+        let (sent, tile) = calls.createTile(in: space)
+        return sent ? (tile ?? 0) : nil // (0: sent, its id not said)
+    }
     // (Set false at the end, never removed: a key taken away doesn't end the live resize, the kit's lead 4.)
     func setLiveResizing(_ space: UInt64, _ on: Bool) -> Bool { calls.setValues(space, ["LiveResizing": on]) }
 }

@@ -25,6 +25,12 @@ extension Shell {
                                     freezer: freezer, sidebarMenu: { [weak self] in self?.sidebarMenu })
         let engine = HostEngine(system: system, marker: hostMarkerURL, observation: RealHostObservation())
         engine.options.safariBundle = UserDefaults.standard.string(forKey: "MarginHostedSafari") ?? safariIdentifier
+        // (`defaults write com.unibox.margin MarginTiles -bool NO`: no tiles, every hosted window a plain member of Margin's
+        // Space, sized as it's shown: the screen suite's `--members` measures that route beside the tiles'.)
+        if UserDefaults.standard.object(forKey: "MarginTiles") as? Bool == false {
+            engine.options.tiles = false
+            Diagnostics.note("host: tiles off (MarginTiles is NO): hosted windows are plain members of Margin's Space")
+        }
         if hasMarker { Task { await engine.recover() } }
         engine.onEvent = { event in Diagnostics.note("host: event \(event)") }
         host = engine

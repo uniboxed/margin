@@ -5892,3 +5892,109 @@ Space"; the calls: `docs/PRIVATE-APIS.md` rows 22-23, 36-39 and the `tiles` part
 - **Still unproven:** an app whose tile says no minimum (the narrowest-held fallback), `tileBack` on the real Mac (no
   window left its tile with the fix), a first open while the page area is already narrower than its minimum, a
   translucent theme over the overflow.
+
+## The hosting core in Rust, the loop guard (2026-11-18)
+
+Tirth paused new features after a re-layout loop with Weather (13:30: 54 rounds in 18 s, seen as a line, a black page
+and an empty one) and approved docs/ARCHITECTURE-PLAN.md: the hosting brain in margin-core (Rust), shared by every OS,
+each OS keeping only its window calls. Work is on `refactor/host-core`, one step at a time, Margin usable after each.
+
+- **What moved (phase 1-2):** the window kinds, the window choice, the reconciler's step, the layout (plan, tile, fit,
+  home) and the strip test are margin-core's `host` module (app/shared/core/src/host), tested there, a row per case
+  the Swift tests had (ported). margin-ffi (app/shared/ffi) puts them behind a C interface: one JSON call for the
+  decisions, typed calls with no JSON for the layout (a drag asks every frame). Margin.app's Swift imports it as
+  `MarginCore`; the module map's `link` line links it, so the Xcode project needs only two search paths
+  (scripts/safari.sh; tools/app-tests/run.sh builds it for this Mac). The Swift types stay as the engine's values;
+  their rules are gone from Swift. Each HostEngine has its own core (its guard, causes, routes), so two engines never
+  share a count (the first test run did: hosts stopped by another test's rounds).
+- **A new window kind, helper:** a window its app makes at the size Margin just set, within 0.6 s of the resize, while
+  the hosted window is still in a Space (with it gone, a new window is its replacement). Weather's 1264×966 window was
+  one. Never shown, adopted, parked, let in front or reacted to.
+- **The loop guard:** only reactions count (a correction Margin makes because something changed that nobody asked
+  for); a person's operation (open, show, close, a page area's change, a park) is Margin's plan and starts the counts
+  again. The same reaction for the same host three times within 5 s: not applied, the host moved one rung down (tiles →
+  members → window mode), remembered for that version of its app in routes.json beside the marker (tried again after
+  an update). Twelve reactions a second across every host: all held a second. A re-layout of Margin's Space's tiles is
+  counted against the host whose window came or went just before (the causes: AX's destroyed note, at once, even for
+  a window never read), else Margin's own (stopped: the tiles off for the run, every tiled host a member).
+- **Seen in the stand-in (loop-guard-tests.swift):** with the guard off, TextEdit playing Weather loops for good (8+
+  rounds in 6 s); with it, two of its tile's rects sent in answer, the third stopped, it alone moved to members, still
+  shown at the page area, the other app still a tile, the next run a member from its first open; six page area changes
+  in a second are six resizes, nothing stopped. 1614 of 1614 Swift checks; 291 Rust tests.
+- **Weather loops only as the layout's second tile.** A re-layout wipes the first two tiles (Margin's own and the
+  first hosted one); the stand-in's loop ended by itself with Weather third. Weather was the first app opened that day.
+- **On the real screen (17:54-17:58):** `real-apps-loop` (new: Weather opened first, Maps beside it, a drag, switches,
+  40 s watched): no re-layout Margin didn't make, Weather at the page area; the loop didn't come, so the guard wasn't
+  exercised on the real Mac. Its two drag-follow misses are Weather's own 50 ms a resize, as at 10:57. `live-resize`
+  (Chameleon): 30 of 31, drags median and background sizing as before; the miss is the first switch to the layout's
+  second tile: re-laid out 54-63 ms after the ask, past the 30 ms frozen watch (shortened from 70 ms, unmeasured, at
+  01:41), set back 11 ms later by `onNarrowed`. Not new.
+- **Size:** Margin.app's binary 12.2 MB (was 10.3): the core 1.9 MB for both kinds of Mac, after turning dead-code
+  stripping on (the converter's project has it off: 18.1 MB without).
+- **The anchors (18:05-18:20):** two empty tiles of Margin's own at its Space's front instead of windows (no full-screen
+  entries: the bridge makes a windowless tile in 5 ms). The kit showed only they are laid out again by a tile change;
+  the engine makes them under the freeze, keeps them in the marker, destroys them at quit (docs/HOSTING-CORE.md
+  "Anchors"). Real screen: live-resize 31 of 31 (the first-switch miss gone), live-resize-crash 10 of 10, real-apps-loop
+  all but the drag-follow checks, which held Weather to Chameleon's 25 ms (now a person's app is held to its own pace,
+  as the min-drag part does). 1622 of 1622 Swift checks.
+- **Next:** the scheduler on events (the 4 Hz poll), then the operations.
+
+## The engine looks on events: the idle cost (2026-11-18)
+
+The plan's budget: Margin under 0.5% of a CPU at rest, nothing waking it when nothing changes. Measured with the new
+`idle-cost` screen part (the kernel's own counts, proc_pid_rusage: CPU time, idle and interrupt wakeups, footprint),
+three Chameleon copies hosted and left alone 60 s, and nothing hosted for 30 s.
+
+- **Before:** three hosted 4.02% (2448 ms in 61 s), 5 interrupt wakeups a second; nothing hosted 1.60%, 89.5 a second.
+  A sample (`sample`) showed the engine's poll (`Shell.track`, every 0.25 s whenever anything was hosted, and 20 more at
+  0.1 s after each show) most of the main thread's work, and the set-up window's checks every 2 s all the time.
+- **The schedule (margin-core host/schedule.rs):** every 0.1 s for 2 s after activity (an event, an operation's end, a
+  correction, a notification of a hosted app's), every 0.25 s while something is unconfirmed (a read to repeat, an exit
+  or a retry due, a drag, the late watch after a show), every 1.5 s at rest with apps hosted, every 2 s with only copies
+  linked, never with nothing. Events look at once: the workspace's (an app activated, a Space changed, already the
+  shell's), the observer's Accessibility notifications (new: `onHeard` → the shell's read now). The 20 polls after a
+  show are the schedule's fast window now. Timers have a 10% tolerance (coalesced with the system's).
+- **A poll's reads:** the Space list (SLSCopyManagedDisplaySpaces, parsed) once a poll instead of 4-6 times; each
+  running app (NSRunningApplication: a LaunchServices request each time) and the session's state once a poll; a quit
+  seen by the process alone (kill(pid, 0)); an app's windows classified again only when what the classification reads
+  changed (the observer's cost a poll in the stand-in: 604 → 181 µs). The set-up window's checks run only while it's
+  shown.
+- **After:** three hosted 0.45% (276 ms in 61 s), 1.6 interrupt wakeups a second: under the budget. Nothing hosted
+  1.44-1.50%, 89 interrupt wakeups a second: Margin's page is the launcher, its field focused (the dev hook's `say
+  field`: focused true, Margin active), its caret blinking; WebKit draws each blink (its display link started and
+  stopped, a thread each time). The page itself is quiet: no animation running, no frame asked, no message from
+  Margin, no DOM change in 2 s (the dev hook's new `say animations`). That's the cost of a field ready for typing.
+- **Memory at rest:** Margin 63-64 MB with nothing hosted, 100-104 MB with three hosted (its web view's processes not
+  counted).
+
+## Tiles against members, measured (2026-11-18)
+
+The plan's first step: both hosting routes on the same screen with the same parts. `MarginTiles NO` (a development
+setting, the screen suite's new `--members`) hosts every window as a plain member of Margin's Space.
+
+- **Plain switches:** the same (tiles 16-29 ms, members 17-29 ms).
+- **A switch after the sidebar's resize:** tiles at the new page area from the first frame (~20 ms); members first at
+  the old size (260 wide on a 380 page area), then out of full screen and in again to be placed (seen at 900×560 112 ms
+  in): the "takes a moment to show it resized" Tirth objected to.
+- **A drag:** tiles follow it live (median 4-5 ms, p95 16-19 ms); members don't follow (no live resize), the parked ones
+  not sized until shown.
+- **At rest:** the same (three hosted 0.42% either way; nothing hosted 1.5%, the launcher's caret).
+- **Decision (Tirth was away; the plan said he picks from the numbers):** tiles stay the default. Their one weakness was
+  the re-layout macOS makes of a Space's first two tiles, which the anchors now take; the loop guard is behind them.
+  Members stay the route an app steps down to when it won't settle in a tile, window mode below that.
+- **An item in another Margin window (same day):** one window hosts at a time; another window's item stays on it as a
+  card, faded and still ("Click to show Notes here.", every theme: the default loader, Arcadia, Pixel, Neubrutalism,
+  Liquid Glass, each checked by its theme test), and that window brought in front takes the item back. A web item's card
+  is the same card (no picture of the tab yet). Not checked on the real screen (the suite opens one Margin window).
+- **The start:** the default browser first, "Getting you started…", then the item shown last, held at most 15 s.
+
+## The soak on the person's own apps (2026-11-18 20:40)
+
+`real-apps-soak` (new): Maps, Phone, Messages, Mail, WhatsApp, Notes, Calculator and Weather hosted together through
+Margin's dev hook only (nothing clicked or typed into them; Safari left out: the suite never launches it), then switched
+through three times, each left alone 3 s and watched for a re-layout loop, a sidebar drag between rounds; Mission
+Control and memory after, every app given back at Margin's quit. First run 76 of 82: the six misses were the new
+`settled` step's, which held the fixed-size windows (Phone, Calculator: window mode, centred) to filling the page; it
+takes a window inside the page area now. Second run 82 of 82: 24 switches, each app where it belongs every time, no
+re-layout Margin didn't make, Mission Control Margin's Space only; Margin 100 MB, WindowServer 168 MB after. Every app's
+saved state recorded before and put back after (Mail 3 keys, WhatsApp, Notes, Calculator 1 each).

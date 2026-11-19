@@ -1,8 +1,9 @@
 // The hosting core's reconciler (docs/HOSTING-CORE.md, principle 4; stage 3): what each hosted app should be
 // (`HostDesired`), what Margin sees of it now (`HostSituation`, built by HostEngine from its own host and the observed
 // model, HostModel.swift), and the corrections from a fixed menu that bring the one to the other (`HostCorrection`),
-// most urgent first. Pure: `HostReconciler.step` is a function of the two, tested on its own (a table row per case the
-// baseline real-screen run and the real sessions showed: tests/host-reconciler-tests.swift). HostEngine applies the
+// most urgent first. Pure: `HostReconciler.step` is the hosting core's (margin-core, Rust:
+// app/shared/core/src/host/reconciler.rs, a table row per case the baseline real-screen run and the real sessions
+// showed); this file keeps the values and asks the core (HostCore.swift). HostEngine applies the
 // corrections one at a time, serialised, each through the primitives it already had (the early full screen under the
 // freeze, the edge reservation, the bridged moves, the private Spaces, Accessibility's framing, the quit and give-back),
 // with a budget per app per show, and logs one line per correction:
@@ -213,115 +214,92 @@ nonisolated struct HostSituation: Equatable, Sendable {
 }
 
 nonisolated enum HostReconciler {
-    // Each correction's budget per show (tries); `bringForward`'s rungs once each, then the fallback.
-    static let budget: [String: Int] = [
-        "launch": 1, "reopen": 2, "unhide": 2, "adopt": 20, "window mode": 2, "put back": 3, "park again": 3,
-        "leftover": 2, "strip": 3, "bring forward": 1, "close its item": 1, "place again": 1, "size its tile": 3,
-    ]
+    // Each correction's budget per show (tries), the core's; `bringForward`'s rungs once each, then the fallback.
     static func budget(of c: HostCorrection) -> Int {
+        let family: String
         switch c {
-        case .closeLeftover, .parkLeftover: return budget["leftover"]!
-        case .parkStrip: return budget["strip"]!
-        case .adopt: return budget["adopt"]!
-        case .bringForward: return budget["bring forward"]!
-        default: return budget[c.name] ?? 1
+        case .closeLeftover, .parkLeftover: family = "leftover"
+        case .parkStrip: family = "strip"
+        case .adopt: family = "adopt"
+        case .bringForward: family = "bring forward"
+        default: family = c.name
         }
+        return HostCore.shared.budget(family) ?? 1
     }
-    // Reads in a row a shown window has to be off screen before it's brought forward (one read can miss mid-transition).
-    static let offScreenAfter = 2
-    // How long a shown window that went is given for its app to show another main window (replacesWindow, Messages'
-    // twin: adopted) before its item is closed.
-    static let goneGrace = 1.0
+    // Reads in a row a shown window has to be off screen before it's brought forward.
+    static var offScreenAfter: Int { Int(HostCore.shared.constant("offScreenAfter") ?? 2) }
+    // How long a shown window that went is given for its app to show another main window before its item is closed.
+    static var goneGrace: Double { HostCore.shared.constant("goneGrace") ?? 1.0 }
     // Reads in a row a shown member has to be off the page area before it's placed again.
-    static let offPageAfter = 2
+    static var offPageAfter: Int { Int(HostCore.shared.constant("offPageAfter") ?? 2) }
 
     // The corrections that bring `s` to `d`, most urgent first (the engine applies the first, then looks again).
-    // Empty: settled. A correction whose budget is used up is skipped; the first open's path ends in `fallback`.
+    // Empty: settled (or the core refused the request, said in the log).
     static func step(_ s: HostSituation, _ d: HostDesired) -> [HostCorrection] {
-        var out: [HostCorrection] = []
-        func add(_ c: HostCorrection) { if s.tried(c) < budget(of: c) { out.append(c) } }
+        let desired: String
         switch d {
-        case .givenBack:
-            return [] // (HostEngine.closeNow: its own sequence of give-back steps)
-        case .parked:
-            // (Its window gone while it's parked: its next show reopens it, behind the loader, never now: a window its app
-            // opens would come up in the current Space, over what's shown.)
-            guard s.running, s.window != nil, !s.windowGone else { return [] }
-            // Replaced by its app meanwhile (one Margin started): the new one adopted (and parked with it). The person's
-            // app's new window while it's parked is theirs (they may be using the app outside Margin): never taken.
-            if let r = s.replacement, s.launchedByMargin { add(.adopt(r)); if !out.isEmpty { return out } }
-            // Nothing of it on any user Space: its window, its leftovers, its strips.
-            if s.place.placed, s.place != .parked, s.strayReads >= 2, !s.busy { add(.parkAgain) }
-            // Live resize: its tile at the page area before it can be shown (after the one shown's, one at a time).
-            if s.tile, s.tileStale, !s.busy, !s.dragging { add(.sizeTile) }
-            for l in s.leftovers where l.inUserSpace { add(.parkLeftover(l.number)) }
-            for st in s.strips where st.inUserSpace { add(.parkStrip(st.number)) }
-            return out
-        case .shown:
-            break
+        case .shown: desired = "shown"
+        case .parked: desired = "parked"
+        case .givenBack: desired = "givenBack"
         }
-        // 1. The app: running, unhidden, with a window.
-        if !s.running {
-            add(.launch)
-            return out.isEmpty ? [.fallback("it doesn't start")] : out
-        }
-        // Its window closed while shown (the person's ⌘W, its close button, or its app's own close): another main window
-        // of its app's within the grace adopted (replacesWindow, Messages' twin), else its item closed. Never reopened
-        // for it (Tirth, 2026-11-17).
-        if s.windowGone, s.phase == .shown {
-            if let r = s.replacement { add(.adopt(r)); if !out.isEmpty { return out } }
-            if (s.goneFor ?? 0) < goneGrace { return [.wait("its window went: another main window of its app's waited for")] }
-            return [.closeItem]
-        }
-        if s.window == nil || s.windowGone {
-            if let r = s.replacement { add(.adopt(r)); if !out.isEmpty { return out } }
-            if s.hidden == true { add(.unhide) }
-            add(.reopen)
-            return out.isEmpty ? [.fallback("no window to host")] : out
-        }
-        // 2. Replaced by its app: the new one hosted, never fought.
-        if let r = s.replacement { add(.adopt(r)); if !out.isEmpty { return out } }
-        // 3. The main window where it should be.
-        if s.busy { return [.wait("macOS's transition is still running")] }
-        switch s.phase {
-        case .none, .preparing:
-            // The first placement: from where it is.
-            out.append(firstPlacement(s))
-            return out
-        case .parked:
-            return out // (shown by HostEngine.bringIn: a switch)
-        case .shown:
-            if s.marginCurrent {
-                if s.place != .margin, s.place != .unread {
-                    add(.putBack)
-                } else if s.place == .margin, s.offScreenReads >= offScreenAfter {
-                    let rung = HostForward.allCases.first { s.tried(.bringForward($0)) < 1 }
-                    if let rung { out.append(.bringForward(rung)) } else { out.append(.fallback("its window stays off screen in Margin's Space")) }
-                    return out
-                } else if s.place == .margin, s.mode == .window, s.atPage == false {
-                    // (A window-mode window not where it was framed: an adoption's frame not taken, its app moved it.)
-                    add(.frameWindow)
-                } else if s.place == .margin, s.tile, s.tileStale, !s.dragging {
-                    // (Live resize: its tile's rect to the page area's; not taken three times: placed again the old way.)
-                    add(.sizeTile)
-                    if out.isEmpty { add(.placeAgain) }
-                } else if s.place == .margin, s.member, !s.tile, s.offPageReads >= offPageAfter {
-                    // (A member not at the page area: its app re-laid it out, restore-code's second full screen.)
-                    add(.placeAgain)
-                }
-            }
-        }
-        // 4. Nothing else of it in sight: leftovers closed or parked, strips parked.
-        for l in s.leftovers where l.inUserSpace { add(l.closable ? .closeLeftover(l.number) : .parkLeftover(l.number)) }
-        for st in s.strips where st.inUserSpace || st.onScreen == true { add(.parkStrip(st.number)) }
-        return out
+        let answer = HostCore.shared.call(["type": "step", "situation": s.coreJSON, "desired": desired])
+        return (answer["corrections"] as? [[String: Any]] ?? []).compactMap(HostCorrection.init(coreJSON:))
     }
+}
 
-    // How a window not placed yet is placed, from where it is (the first open, or after a placing again backed out).
-    static func firstPlacement(_ s: HostSituation) -> HostCorrection {
-        if let own = s.ownFullScreenSpace, s.fullScreen != false { return .placeFromOwnSpace(own) }
-        if s.mode == .window || s.canFullScreen == false { return .frameWindow }
-        if s.fullScreen == true, !s.member { return .outThenAsk }
-        return .askFullScreen
+nonisolated extension HostSituation {
+    var coreJSON: [String: Any] {
+        var d: [String: Any] = [
+            "running": running, "launchedByMargin": launchedByMargin, "phase": phase.rawValue, "mode": mode == .window ? "window" : "fullScreen",
+            "member": member, "windowGone": windowGone, "place": place.coreName, "offScreenReads": offScreenReads, "strayReads": strayReads,
+            "offPageReads": offPageReads, "tile": tile, "tileStale": tileStale, "dragging": dragging, "marginCurrent": marginCurrent, "busy": busy,
+            "leftovers": leftovers.map(\.coreJSON), "strips": strips.map(\.coreJSON), "tries": tries,
+        ]
+        if let hidden { d["hidden"] = hidden }
+        if let window { d["window"] = window }
+        if let goneFor { d["goneFor"] = goneFor }
+        if let onScreen { d["onScreen"] = onScreen }
+        if let atPage { d["atPage"] = atPage }
+        if let fullScreen { d["fullScreen"] = fullScreen }
+        if let canFullScreen { d["canFullScreen"] = canFullScreen }
+        if let own = ownFullScreenSpace { d["ownFullScreenSpace"] = own }
+        if let replacement { d["replacement"] = replacement }
+        return d
+    }
+}
+
+nonisolated extension HostOther {
+    var coreJSON: [String: Any] {
+        var d: [String: Any] = ["number": number, "place": place.coreName, "closable": closable]
+        if let onScreen { d["onScreen"] = onScreen }
+        return d
+    }
+}
+
+nonisolated extension HostCorrection {
+    init?(coreJSON d: [String: Any]) {
+        func n(_ k: String) -> Int? { (d[k] as? NSNumber)?.intValue }
+        switch d["type"] as? String {
+        case "launch": self = .launch
+        case "reopen": self = .reopen
+        case "unhide": self = .unhide
+        case "wait": self = .wait(d["why"] as? String ?? "")
+        case "placeFromOwnSpace": guard let sp = (d["space"] as? NSNumber)?.uint64Value else { return nil }; self = .placeFromOwnSpace(sp)
+        case "outThenAsk": self = .outThenAsk
+        case "askFullScreen": self = .askFullScreen
+        case "frameWindow": self = .frameWindow
+        case "putBack": self = .putBack
+        case "bringForward": guard let f = (d["rung"] as? String).flatMap(HostForward.init(rawValue:)) else { return nil }; self = .bringForward(f)
+        case "adopt": guard let w = n("window") else { return nil }; self = .adopt(w)
+        case "closeLeftover": guard let w = n("window") else { return nil }; self = .closeLeftover(w)
+        case "parkLeftover": guard let w = n("window") else { return nil }; self = .parkLeftover(w)
+        case "parkStrip": guard let w = n("window") else { return nil }; self = .parkStrip(w)
+        case "parkAgain": self = .parkAgain
+        case "closeItem": self = .closeItem
+        case "placeAgain": self = .placeAgain
+        case "sizeTile": self = .sizeTile
+        case "fallback": self = .fallback(d["why"] as? String ?? "")
+        default: return nil
+        }
     }
 }

@@ -38,6 +38,9 @@ final class FakeHostedWindow: HostedWindow {
     var showings: [String?] = [] // each setShowing, in order
     var slowShowings: [String] = [] // those said to take a while (the last item at launch: the loader at once)
     var showingApps: [String?] = [] // the app each setShowing named for the loader's icon, in order
+    var elsewhere: String? // its card's name (HostedSession `elsewhere`)
+    var elsewhereApp: String?
+    func setElsewhere(_ label: String?, app: String?) { elsewhere = label; elsewhereApp = app }
     func setShowing(_ label: String?, app: String?, slow: Bool) { guard label != showing else { return }; showing = label; showings.append(label); showingApps.append(app); if slow, let label { slowShowings.append(label) } }
     var moves = 0 // hostedMoved: the hosted window's bounds read again
     func hostedMoved() { moves += 1 }
@@ -838,6 +841,7 @@ func hostedResumeTests(script: URL) {
         let session = HostedSession(library: library, engine: engine, links: links)
         session.sleep = { _ in await Task.yield() }
         session.appName = { $0 == "com.apple.Notes" ? "Notes" : nil }
+        session.options.preparesBrowser = false // (the resume alone: the start's browser below, "the start")
         let window = FakeHostedWindow(id: 1, number: FakeHostWorld.marginWindow)
         session.window = { id in id == nil || id == 1 ? window : nil }
         // (A Safari Margin starts: its copy's newWindow makes a window on the Desktop, its setWindowState acts on it.)
@@ -982,6 +986,76 @@ func hostedResumeTests(script: URL) {
               page?.value["selected"] as? Bool == true && atOnce && w.calls.contains("launch com.apple.Safari") && engine.shown == safari && session.shown[1] == page?.id
               && shows.count == 1 && shows.first?.payload["itemId"] as? String == page?.id && window.showing == nil && window.hostings == [true] && session.resuming == nil,
               "at once \(atOnce) \(window.slowShowings) \(session.done.suffix(4)) \(window.hostings)")
+        run { await engine.quitAll() }
+    }
+
+    // ---- the start (Tirth, 2026-11-18): the default browser first, behind "Getting you started", then the item ----
+    let notes = library.items().first { $0.value["url"] as? String == "app://com.apple.Notes" }?.id ?? ""
+    if notes.isEmpty { check("start: Notes is an item", false) }
+    _ = library.perform("activateTab", ["windowId": 1, "tabId": notes])
+    do {
+        let (w, engine, session, window, run) = launch()
+        session.options.preparesBrowser = true
+        window.isFullScreen = true
+        session.resumeLast(window)
+        let first = window.slowShowings
+        let launchedEarly = w.calls.contains { $0.hasPrefix("launch com.apple.Notes") }
+        // (The browser's preparation over: ready, or not done.)
+        session.preparationOver()
+        run {}
+        check("start: \"Getting you started\" from the window's first frame while the default browser starts, nothing of the item launched yet; then the item's name, and the item shown",
+              first == [HostedSession.startupLabel] && !launchedEarly && window.slowShowings.prefix(2) == [HostedSession.startupLabel, "Notes"]
+              && engine.shown == HostTarget.app("com.apple.Notes").id && session.resuming == nil && window.showing == nil,
+              "first \(first) all \(window.slowShowings) shown \(String(describing: engine.shown))")
+        run { await engine.quitAll() }
+    }
+    do {
+        let (_, engine, session, window, run) = launch()
+        session.options.preparesBrowser = true
+        session.options.startupWait = 0.05
+        window.isFullScreen = true
+        session.resumeLast(window)
+        // (The preparation never says it's over: the item isn't held longer than `startupWait`.)
+        let until = Date().addingTimeInterval(3)
+        while engine.shown == nil, Date() < until { run {} ; RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
+        check("start: a browser that never gets ready holds the item no longer than its limit", engine.shown == HostTarget.app("com.apple.Notes").id && session.resuming == nil,
+              "\(String(describing: engine.shown)) \(window.slowShowings)")
+        run { await engine.quitAll() }
+    }
+    // ---- an item in another Margin window (Tirth, 2026-11-18): its card there, the item back when that window's in front ----
+    do {
+        let (w, engine, session, window, run) = launch()
+        window.isFullScreen = true
+        let second = FakeHostedWindow(id: 2, number: 77)
+        second.isFullScreen = true
+        w.wins[77] = FakeHostWorld.Win(pid: 1, spaces: [FakeHostWorld.marginSpace]) // (a second Margin window, in Margin's Space)
+        session.window = { id in id == nil || id == 1 ? window : id == 2 ? second : nil }
+        run { session.openApp("com.apple.Notes", windowId: 1) }
+        let notesShown = engine.shown == HostTarget.app("com.apple.Notes").id && session.hostingWindow == 1
+        run { session.openApp("com.apple.TextEdit", windowId: 2) }
+        check("elsewhere: an app opened in a second Margin window: hosted there, the first window's item kept as its card (faded: \"Click to show Notes here\"), not the launcher",
+              notesShown && engine.shown == HostTarget.app("com.apple.TextEdit").id && session.hostingWindow == 2 && window.elsewhere == "Notes" && window.elsewhereApp == "com.apple.Notes"
+              && !window.hosting && second.elsewhere == nil && session.elsewhere[1] != nil, "\(String(describing: engine.shown)) \(String(describing: window.elsewhere)) \(session.elsewhere)")
+        session.focused(1)
+        run {}
+        check("elsewhere: the first window brought in front: its item hosted there again (the app's one window follows the window in use), the second window's item its card now",
+              engine.shown == HostTarget.app("com.apple.Notes").id && session.hostingWindow == 1 && window.elsewhere == nil && second.elsewhere != nil && session.elsewhere[2] != nil && session.elsewhere[1] == nil,
+              "\(String(describing: engine.shown)) \(String(describing: second.elsewhere)) \(session.elsewhere)")
+        session.focused(1)
+        run {}
+        check("elsewhere: in front again with its item already there: nothing more", engine.shown == HostTarget.app("com.apple.Notes").id && session.hostingWindow == 1)
+        run { await engine.quitAll() }
+        _ = library.perform("activateTab", ["windowId": 1, "tabId": notes]) // (Notes the item shown last again, for the tests after)
+    }
+    do {
+        let (_, engine, session, window, run) = launch()
+        session.options.preparesBrowser = true
+        window.isFullScreen = true
+        session.preparationOver()
+        session.resumeLast(window)
+        run {}
+        check("start: the browser ready before the window: no \"Getting you started\", the item at once", window.slowShowings == ["Notes"] && engine.shown == HostTarget.app("com.apple.Notes").id,
+              "\(window.slowShowings)")
         run { await engine.quitAll() }
     }
 }

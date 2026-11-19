@@ -4,6 +4,7 @@
 // Off unless the host's private calls passed their check (HostCalls.swift). Off, nothing of it runs.
 
 import AppKit
+import MarginCore
 
 // What's hosted: an app by its bundle id, or a Safari window (a profile's; nil the default one).
 nonisolated enum HostTarget: Hashable, Sendable {
@@ -155,8 +156,9 @@ nonisolated struct HostMarker: Codable, Equatable, Sendable {
     // Live resize: Margin's own tile in `marginSpace`, and hosted tiles whose host went, not destroyed yet.
     var marginTile: UInt64? = nil
     var goneTiles: [UInt64]? = nil
+    var anchors: [UInt64]? = nil // Margin's own empty tiles at its Space's front (a killed Margin leaves them there)
 
-    var isEmpty: Bool { apps.isEmpty && windows.isEmpty && leftSpaces.isEmpty && (leftSafariWindows ?? []).isEmpty && marginSpace == nil && (goneTiles ?? []).isEmpty }
+    var isEmpty: Bool { apps.isEmpty && windows.isEmpty && leftSpaces.isEmpty && (leftSafariWindows ?? []).isEmpty && marginSpace == nil && (goneTiles ?? []).isEmpty && (anchors ?? []).isEmpty }
 
     static func read(_ url: URL) -> HostMarker? {
         guard let data = try? Data(contentsOf: url) else { return nil }
@@ -195,39 +197,38 @@ nonisolated struct HostPlacement: Equatable, Sendable {
 // read from bounds mid-transition counted a reservation twice and grew at every step), so the same placement always
 // gives the same reservation.
 nonisolated enum HostLayout {
-    // Nil: the page can't be reached that way (it passes the area, or leaves less than a point).
+    // The hosting core's (margin-core: app/shared/core/src/host/layout.rs), through its typed calls (no JSON: a drag
+    // asks every frame). Nil: the page can't be reached that way (it passes the area, or leaves less than a point).
     static func plan(_ p: HostPlacement) -> SlotEdges? {
-        let edges = SlotEdges(left: p.page.minX - p.area.minX, right: p.area.maxX - p.page.maxX, top: p.page.minY - p.area.minY, bottom: p.area.maxY - p.page.maxY).whole
-        guard edges.usable, p.page.width >= 1, p.page.height >= 1, p.area.width >= 1, p.area.height >= 1 else { return nil }
-        return edges
+        var pl = p.margin
+        var e = MarginEdges()
+        guard margin_layout_plan(&pl, &e) else { return nil }
+        return SlotEdges(left: e.left, right: e.right, top: e.top, bottom: e.bottom)
     }
 
-    // A hosted window's tile rect in Margin's Space that puts its full-screen window at the page area: `home`, Margin's own
-    // tile (the display's, from its top left: the menu bar's band included, which a full-screen window sits below), less
-    // the page's distances from the area's edges (the plan's, whole points). Measured in the kit (2026-11-17): home
-    // 0,0 1512×982, page 248,41 1256×933 in 0,33 1512×949 → tile 248,8 1256×966, the window at 248,41 1256×933.
+    // A hosted window's tile rect in Margin's Space that puts its full-screen window at the page area: `home` (Margin's
+    // own tile, the display's from its top left, the menu bar's band included) less the plan's edges. The kit
+    // (2026-11-17): home 0,0 1512×982, page 248,41 1256×933 in 0,33 1512×949 → tile 248,8 1256×966.
     static func tile(_ p: HostPlacement, home: CGRect) -> CGRect? {
-        guard let edges = plan(p), home.width >= p.area.width - 1, home.height >= p.area.height - 1 else { return nil }
-        let r = edges.inset(home)
-        return r.width >= 1 && r.height >= 1 ? r : nil
+        var pl = p.margin
+        var out = MarginRect()
+        guard margin_layout_tile(&pl, home.marginRect, &out) else { return nil }
+        return CGRect(out)
     }
-    // Where a window that can't be smaller than `min` (its app's own minimum, its tile's `SizeConstraints`) goes for a
-    // page area: the page area itself when it's at least that big; else that minimum (within the area), its right edge
-    // and top the page area's: what's wider than the page area lies under Margin's sidebar (Margin's window is in front
-    // of it). Never a size the window can't take: a tile narrower than its window's minimum makes the app leave it (the
-    // real Mac, 2026-11-18: Weather, minimum 1048 wide, into a full-screen Space of its own 24 ms after its tile was
-    // sent 1046 wide; Chameleon's AppKit window drew a second window at its minimum and left full screen at the next
-    // drag).
+
+    // Where a window that can't be smaller than `min` goes for a page area: the page area itself when it's at least
+    // that big; else that minimum (within the area), its right edge and top the page area's (what's wider lies under
+    // the sidebar). Never a size the window can't take (2026-11-18: Weather left its tile sent 2 pt under its minimum).
     static func fit(_ page: CGRect, min: CGSize?, in area: CGRect) -> CGRect {
-        guard let min, min.width > page.width + 0.5 || min.height > page.height + 0.5 else { return page }
-        let width = Swift.max(page.width, Swift.min(min.width.rounded(.up), area.width))
-        let height = Swift.max(page.height, Swift.min(min.height.rounded(.up), area.maxY - page.minY))
-        return CGRect(x: Swift.max(page.maxX - width, area.minX), y: page.minY, width: width, height: height)
+        CGRect(margin_layout_fit(page.marginRect, Double(min?.width ?? 0), Double(min?.height ?? 0), area.marginRect))
     }
 
     // Margin's own tile: the display's whole frame, from its top left (nil: the display isn't known).
     static func home(_ p: HostPlacement) -> CGRect? {
-        p.display.width >= 1 && p.display.height >= 1 ? CGRect(origin: .zero, size: p.display.size) : nil
+        var pl = p.margin
+        var out = MarginRect()
+        guard margin_layout_home(&pl, &out) else { return nil }
+        return CGRect(out)
     }
 
     static func near(_ a: CGRect, _ b: CGRect, within: CGFloat = 1) -> Bool {
@@ -256,39 +257,43 @@ nonisolated enum HostWindowChoice {
         case inSpace = "the one in a Space (the others in none: never ordered in)"
         case front = "the window server's front one (nothing else told them apart)"
         case only = "its only window by the window server"
+
+        init?(core: String) {
+            switch core {
+            case "main": self = .main
+            case "focused": self = .focused
+            case "onScreen": self = .onScreen
+            case "standard": self = .standard
+            case "inSpace": self = .inSpace
+            case "front": self = .front
+            case "only": self = .only
+            default: return nil
+            }
+        }
     }
 
     // An app's windows Margin could host, by the window server: layer 0, drawn, at least 100×100, not `excluded`
-    // (hosted already, or minimized), front first.
+    // (hosted already, or minimized), front first (the core's rule).
     static func candidates(_ server: [ServerWindow], pid: pid_t, excluded: (Int) -> Bool = { _ in false }) -> [ServerWindow] {
-        server.filter { $0.pid == pid && $0.layer == 0 && $0.alpha > 0 && $0.bounds.width >= 100 && $0.bounds.height >= 100 && !excluded($0.number) }
-            .sorted { $0.order < $1.order }
+        let mine = server.filter { $0.pid == pid }
+        guard !mine.isEmpty else { return [] }
+        let answer = HostCore.shared.call(["type": "candidates", "server": mine.map(\.coreJSON), "pid": Int(pid), "excluded": mine.map(\.number).filter(excluded)])
+        let numbers = (answer["candidates"] as? [NSNumber] ?? []).map(\.intValue)
+        let byNumber = Dictionary(mine.map { ($0.number, $0) }, uniquingKeysWith: { a, _ in a })
+        return numbers.compactMap { byNumber[$0] }
     }
 
-    // `candidates` (front first; empty: the window server's list didn't read), whether each is in a Space, Accessibility's
-    // main and focused windows, the windows it lists as hostable (`standard`). Nil: none chosen (yet).
+    // `candidates` (front first; empty: the window server's list didn't read), whether each is in a Space (asked only
+    // when the rule that needs it is reached), Accessibility's main and focused windows, the windows it lists as
+    // hostable (`standard`). Nil: none chosen (yet).
     static func choose(candidates: [ServerWindow], inSpace: (Int) -> Bool, main: Int?, focused: Int?, standard: [Int], serverAllowed: Bool) -> (number: Int, rule: Rule)? {
-        let onScreen = candidates.filter(\.onScreen)
-        let known = Set(candidates.map(\.number))
-        // (An off-screen window with an on-screen one of its size: a spare.)
-        func spare(_ n: Int) -> Bool {
-            guard let w = candidates.first(where: { $0.number == n }), !w.onScreen else { return false }
-            return onScreen.contains { $0.number != n && abs($0.bounds.width - w.bounds.width) < 1 && abs($0.bounds.height - w.bounds.height) < 1 }
-        }
-        // (One of the app's: by the window server's list, or by Accessibility's when that list didn't read.)
-        func usable(_ n: Int?) -> Int? {
-            guard let n, candidates.isEmpty ? standard.contains(n) : known.contains(n), !spare(n) else { return nil }
-            return n
-        }
-        if let n = usable(main) { return (n, .main) }
-        if let n = usable(focused) { return (n, .focused) }
-        if serverAllowed, let w = onScreen.first(where: { standard.contains($0.number) }) ?? onScreen.first { return (w.number, .onScreen) }
-        let onScreenNumbers = Set(onScreen.map(\.number))
-        if let n = standard.first(where: { usable($0) != nil && onScreenNumbers.contains($0) }) ?? standard.first(where: { usable($0) != nil }) { return (n, .standard) }
-        guard serverAllowed, let front = candidates.first else { return nil }
-        if candidates.count == 1 { return (front.number, .only) }
-        let placed = candidates.filter { inSpace($0.number) }
-        if let w = placed.first, placed.count < candidates.count { return (w.number, .inSpace) }
-        return (front.number, .front)
+        // (Which are in a Space: read only when the last rules can be reached, as the rules read it last.)
+        let spaces = serverAllowed && candidates.count > 1 ? candidates.map(\.number).filter(inSpace) : []
+        var request: [String: Any] = ["type": "choose", "server": candidates.map(\.coreJSON), "pid": Int(candidates.first?.pid ?? 0), "inSpace": spaces,
+                                      "standard": standard, "serverAllowed": serverAllowed, "main": coreOptional(main), "focused": coreOptional(focused)]
+        if candidates.isEmpty { request["pid"] = 0 }
+        let answer = HostCore.shared.call(request)
+        guard let c = answer["choice"] as? [String: Any], let n = (c["number"] as? NSNumber)?.intValue, let rule = (c["rule"] as? String).flatMap(Rule.init(core:)) else { return nil }
+        return (n, rule)
     }
 }

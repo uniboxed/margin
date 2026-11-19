@@ -145,7 +145,17 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     private(set) var showingApp: String?
     private var showingSlow = false // the session's show is known to take a while (the last item at launch): the loader at once
     // The page card's state as the page was told (`m-page-state` on the theme's root), and the loader's name.
-    enum PageState: String { case empty, loading, shown }
+    // `elsewhere`: not hosting, its item in another Margin window or parked (one window hosts at a time): its card, faded
+    // ("Click to show … here"); focused, the item comes back here (HostedSession `focused`).
+    enum PageState: String { case empty, loading, shown, elsewhere }
+    private var elsewhereLabel: String?
+    private var elsewhereApp: String?
+    func setElsewhere(_ label: String?, app: String?) {
+        guard label != elsewhereLabel || app != elsewhereApp else { return }
+        elsewhereLabel = label
+        elsewhereApp = label == nil ? nil : app
+        settlePage()
+    }
     private(set) var pageState = PageState.empty
     private(set) var loaderLabel: String?
     private(set) var loaderApp: String?
@@ -664,7 +674,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // (`setLoading`) is `loading` at once.
     private func settlePage() {
         let ready = hosting && hosted != nil && loadingLabel == nil && showingLabel == nil
-        let target: PageState = !hosting ? .empty : ready ? .shown : .loading
+        let target: PageState = !hosting ? (elsewhereLabel != nil ? .elsewhere : .empty) : ready ? .shown : .loading
         graceTimer?.invalidate()
         graceTimer = nil
         if target == .loading, pageState != .loading, loadingLabel == nil, !showingSlow, options.loaderGrace > 0 {
@@ -683,12 +693,12 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         graceTimer?.invalidate()
         graceTimer = nil
         let ready = hosting && hosted != nil && loadingLabel == nil && showingLabel == nil
-        applyPage(!hosting ? .empty : ready ? .shown : .loading)
+        applyPage(!hosting ? (elsewhereLabel != nil ? .elsewhere : .empty) : ready ? .shown : .loading)
     }
 
     private func applyPage(_ state: PageState) {
-        let label = state == .loading ? loadingLabel ?? showingLabel : nil
-        let app = state == .loading ? loadingLabel != nil ? loadingApp : showingApp : nil
+        let label = state == .loading ? loadingLabel ?? showingLabel : state == .elsewhere ? elsewhereLabel : nil
+        let app = state == .loading ? loadingLabel != nil ? loadingApp : showingApp : state == .elsewhere ? elsewhereApp : nil
         let changed = state != pageState || label != loaderLabel || app != loaderApp
         pageState = state
         loaderLabel = label
@@ -709,8 +719,10 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
 
     var pageStateJSON: String {
         #"{"type":"pageState","state":"\#(pageState.rawValue)","label":"# + (loaderLabel.flatMap { jsonString($0) } ?? "null")
-            + (loaderApp.flatMap { jsonString($0) }.map { #","bundleId":"# + $0 } ?? "") + "}"
+            + (loaderApp.flatMap { jsonString($0) }.map { #","bundleId":"# + $0 } ?? "") + (starting ? #","starting":true"# : "") + "}"
     }
+    // Margin's start (HostedSession `startup`): its loader says "Getting you started…", not "Opening …" (the page's words).
+    private var starting: Bool { pageState == .loading && loaderLabel == HostedSession.startupLabel }
 
     // The hosted window's bounds read from the window server (kept: a layout report, a pointer move never reads them).
     private func readHosted() {
@@ -1227,6 +1239,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         json += #","pageMinWidth":"# + (pageMinimum.map { String(Int($0)) } ?? "null")
         json += #","pageState":""# + pageState.rawValue + #"","pageOpening":"# + (loaderLabel.flatMap { jsonString($0) } ?? "null")
         json += #","pageOpeningBundleId":"# + (loaderApp.flatMap { jsonString($0) } ?? "null")
+        if starting { json += #","pageStarting":true"# }
         let theme = owner.theme()
         themeSent = theme
         json += #","theme":"# + (theme ?? "null") + "}"
@@ -1491,7 +1504,9 @@ final class MarginWindows {
         front?.menuItemRan()
     }
 
-    func becameKey(_ controller: MarginWindowController) { lastKey = controller }
+    func becameKey(_ controller: MarginWindowController) { lastKey = controller; onKey?(controller.id) }
+    // A Margin window brought in front (its item from another window comes back: HostedSession `focused`).
+    var onKey: ((Int) -> Void)?
 
     func closed(_ controller: MarginWindowController) {
         controllers.removeAll { $0 === controller }

@@ -42,7 +42,11 @@ done < ../../app/platforms/macos/swift-sources.txt
 FAKE_SAFARI=../../app/engines/webkit/safari/tests/fake-safari.swift
 # Chameleon's switches (tools/screen-tests/apps/Chameleon): the unit checks' stand-in world plays them (behaviour-world.swift).
 CHAMELEON_SWITCHES=../screen-tests/apps/Chameleon/Switches.swift
-FLAGS=(-swift-version 5 -default-isolation MainActor -enable-upcoming-feature InferIsolatedConformances -enable-upcoming-feature NonisolatedNonsendingByDefault)
+# The hosting core (app/shared/ffi, Rust: margin-core's host module) the shell links through `import MarginCore`:
+# built for this Mac (scripts/build-core.sh host), its module map's `link` line linking it.
+CORE_LIB=$(sh ../../scripts/build-core.sh host) || exit 1
+CORE=(-I ../../app/shared/ffi/include -L "$CORE_LIB")
+FLAGS=(-swift-version 5 -default-isolation MainActor -enable-upcoming-feature InferIsolatedConformances -enable-upcoming-feature NonisolatedNonsendingByDefault "${CORE[@]}")
 # Compiled on every core (batch mode): about 4x faster than one job.
 JOBS=(-j"$(sysctl -n hw.ncpu 2>/dev/null || echo 4)")
 NODE="${NODE:-$(command -v node || echo /opt/homebrew/bin/node)}"
@@ -51,6 +55,8 @@ WHAT="${1:-all}"
 build() { # name sources...
   local name="$1"; shift
   if [ ! -x "$BUILD/$name" ] || [ -n "$(find "$@" -newer "$BUILD/$name" 2>/dev/null)" ]; then
+    swiftc "${FLAGS[@]}" "${JOBS[@]}" "$@" -o "$BUILD/$name" || exit 1
+  elif [ "$CORE_LIB/libmargin_ffi.a" -nt "$BUILD/$name" ]; then
     swiftc "${FLAGS[@]}" "${JOBS[@]}" "$@" -o "$BUILD/$name" || exit 1
   fi
 }
@@ -61,7 +67,7 @@ build() { # name sources...
 XCODE_FLAGS=(-swift-version 5 -default-isolation MainActor
   -enable-upcoming-feature InferIsolatedConformances -enable-upcoming-feature NonisolatedNonsendingByDefault
   -enable-upcoming-feature DisableOutwardActorInference -enable-upcoming-feature GlobalActorIsolatedTypesUsability
-  -enable-upcoming-feature InferSendableFromCaptures -enable-upcoming-feature MemberImportVisibility)
+  -enable-upcoming-feature InferSendableFromCaptures -enable-upcoming-feature MemberImportVisibility "${CORE[@]}")
 warnings() { # label flags... -- sources...
   local label="$1"; shift
   local out

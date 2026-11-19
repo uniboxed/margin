@@ -208,4 +208,29 @@ extension Runner {
     step("overflow (\(t.text)): wider than the page area by its own minimum: held in Margin's Space at its minimum width, its right edge the page area's, \(Int(seconds)) s",
          bad.isEmpty && out.isEmpty, "page area \(rect(p)); its minimum \(sizeText(w.min)); its window \(rect(bounds(w.n))) \(spacesOf(w.n)); \(bad.count) reads off\(bad.first.map { " (first: \($0))" } ?? ""); Margin: \(out.first.map { String($0.suffix(150)) } ?? "never found it out of its Space")")
   }
+
+  // settled: `t` shown, nothing done for `seconds`: Margin's Space's tiles laid out again by a change Margin didn't make
+  // (its log's "laid out as a split's part by a tile change (" lines: its own say "by its own tile change") at most 3
+  // times, the loop guard's limit (Weather's loop, 2026-11-18 13:30: 54 in 18 s); `t`'s window at the page area in
+  // Margin's Space at the end (a tile, or a member after the guard moved it: said). Reads only.
+  func settledHeld(_ t: Target, seconds: Double) {
+    guard let a = app(t.id), let p = rectIn(front(), "page area") else { return skip("settled (\(t.text))", "not running, or no page area") }
+    let mark = LogMark()
+    let end = Date().addingTimeInterval(seconds)
+    while Date() < end { gate("watching for a loop"); spin(0.5) }
+    let all = mark.lines()
+    let relaid = all.filter { $0.contains("laid out as a split's part by a tile change (") }
+    let moved = all.filter { $0.contains("moved from tiles to members") || $0.contains("moved from members to window mode") || $0.contains("live resize off for this run") }
+    let wins = windowsOf(a.processIdentifier).filter { $0.layer == 0 && $0.r.width >= 200 }
+    // (At the page area, or a fixed-size window inside it: Phone and Calculator, window mode, centred; `desired` holds the
+    // ones that fill the page to filling it.)
+    let at = wins.first { w in
+      let r = w.r
+      let fills = abs(r.maxX - p.maxX) <= 2 && abs(r.minY - p.minY) <= 2 && r.width >= p.width - 2
+      return (fills || p.insetBy(dx: -2, dy: -2).contains(r)) && spacesOf(w.n) == [marginSpace]
+    }
+    step("settled (\(t.text)): left alone \(Int(seconds)) s, Margin's Space's tiles laid out again by a change Margin didn't make \(relaid.count) time\(relaid.count == 1 ? "" : "s") (at most 3), \(t.text) at the page area (a fixed size: inside it) in Margin's Space",
+         relaid.count <= 3 && at != nil,
+         "page area \(rect(p)); its windows \(wins.map { "#\($0.n) \(rect($0.r)) \(spacesOf($0.n))" }); re-layouts: \(relaid.map { String($0.suffix(110)) }.prefix(4)); the guard: \(moved.isEmpty ? "nothing moved" : moved.map { String($0.suffix(160)) }.joined(separator: " | "))")
+  }
 }

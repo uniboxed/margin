@@ -359,6 +359,7 @@ final class FakeHostWorld: HostSystem {
     var membersEarly: Set<Int> = [] // windows macOS brought into their own Space before its switch (`stageMember`)
     var moveLosesFrame = 0 // the next N moves of a pending window into Margin's Space leave it at the display's whole size
     func advance() {
+        advanceHelpers()
         for n in pending.keys.sorted() {
             guard var p = pending[n], var w = wins[n] else { pending[n] = nil; continue }
             let since = clock - p.asked + 1e-9
@@ -962,6 +963,35 @@ final class FakeHostWorld: HostSystem {
     var relayPending = false
     var onReveal: (() -> Void)?
     var emptyTiles: [UInt64: pid_t] = [:]
+    // An app that answers each sizing of its tile with a window of its own at the tile's rect, `helperAfter` later, closed
+    // `helperLife` after that; the close lays the first two of the Space out again, Margin's window told it narrowed
+    // (`onRelaid`: MarginWindowController's windowDidResize). Weather on the real Mac, 2026-11-18 13:30: 54 rounds in 18 s.
+    var answersResize: Set<String> = []
+    var helperAfter = 0.15, helperLife = 0.2
+    var helpers: [(open: Double, close: Double, pid: pid_t, space: UInt64, rect: CGRect, number: Int?)] = []
+    var helpersMade = 0
+    var onRelaid: (() -> Void)?
+    func advanceHelpers() {
+        for i in helpers.indices {
+            if helpers[i].number == nil, clock + 1e-9 >= helpers[i].open {
+                let n = nextWindow
+                nextWindow += 1
+                wins[n] = Win(pid: helpers[i].pid, spaces: [helpers[i].space], frame: helpers[i].rect)
+                apps[helpers[i].pid]?.windows.append(n)
+                helpers[i].number = n
+                helpersMade += 1
+            }
+            if let n = helpers[i].number, clock + 1e-9 >= helpers[i].close {
+                wins[n] = nil
+                apps[helpers[i].pid]?.windows.removeAll { $0 == n }
+                onDestroyed?(helpers[i].pid, n)
+                relayFirstTwo(helpers[i].space)
+                onRelaid?()
+                helpers[i].open = .infinity
+            }
+        }
+        helpers.removeAll { $0.open == .infinity }
+    }
     static let tileDisplay = CGRect(x: 0, y: 0, width: 1512, height: 982), band: CGFloat = 33
     func tileOf(_ window: Int) -> UInt64? { tileWindow.first { e in e.value == window && tiles.values.contains { $0.contains(e.key) } }?.key }
     func tileBounds(_ t: UInt64) -> CGRect {
@@ -1002,6 +1032,10 @@ final class FakeHostWorld: HostSystem {
         calls.append("tileRect \(tile) \(Int(rect.minX)),\(Int(rect.minY)) \(Int(rect.width))×\(Int(rect.height))")
         guard tilesOn else { return false }
         if !rectsIgnored { tileRects[tile] = rect }
+        if let n = tileWindow[tile], let pid = wins[n]?.pid, let bundle = apps[pid]?.bundle, answersResize.contains(bundle),
+           let space = tiles.first(where: { $0.value.contains(tile) })?.key {
+            helpers.append((clock + helperAfter, clock + helperAfter + helperLife, pid, space, rect, nil))
+        }
         if !rectsIgnored, ejectsBelowMinimum, let n = tileWindow[tile], let pid = wins[n]?.pid, let bundle = apps[pid]?.bundle, let m = minSize[bundle],
            rect.width < m.width - 0.5, let space = tiles.first(where: { $0.value.contains(tile) })?.key, owner[space] != pid {
             belowMinimum += 1
@@ -1039,6 +1073,13 @@ final class FakeHostWorld: HostSystem {
     func moveTile(_ tile: UInt64, to space: UInt64, index: Int) -> Bool {
         calls.append("moveTile \(tile) \(space) \(index)")
         guard tilesOn else { return false }
+        if anchorsOn, !moveRefused, var same = tiles[space], let at = same.firstIndex(of: tile) {
+            same.remove(at: at)
+            same.insert(tile, at: min(index, same.count))
+            tiles[space] = same
+            relayFirstTwo(space)
+            return true
+        }
         guard !moveRefused, let from = tiles.first(where: { $0.value.contains(tile) })?.key, from != space, var list = tiles[space], list.count + 1 <= maxTileConfig[space] ?? 2 else { return true }
         tiles[from] = tiles[from]?.filter { $0 != tile }
         list.insert(tile, at: min(index, list.count))
@@ -1071,6 +1112,24 @@ final class FakeHostWorld: HostSystem {
         tileRects[tile] = nil
         placeholders.remove(tile)
         return true
+    }
+    // The anchors (the real Mac, 2026-11-18, /tmp/margin-toolbar-test/live-resize/opt5 a2): an empty tile made through the
+    // bridge comes at its Space's layout's end with no window (the first two laid out again), drawing nothing; a tile
+    // moved within its own Space goes to that index (the first two laid out again). `anchorsOn` false: not available.
+    var anchorsOn = false
+    var anchorsAvailable: Bool { tilesOn && anchorsOn }
+    var createRefused = false // sent, nothing made
+    func createTile(in space: UInt64) -> UInt64? {
+        calls.append("createTile \(space)")
+        guard tilesOn, anchorsOn, var list = tiles[space] else { return nil }
+        if createRefused { return 0 }
+        guard list.count + 1 <= maxTileConfig[space] ?? 2 else { return 0 }
+        let t = nextId
+        nextId += 1
+        list.append(t)
+        tiles[space] = list
+        relayFirstTwo(space)
+        return t
     }
     func setLiveResizing(_ space: UInt64, _ on: Bool) -> Bool {
         calls.append("liveResizing \(space) \(on)")
@@ -1240,9 +1299,9 @@ final class HostFakeResolver: PrivateResolver, @unchecked Sendable {
     var build: String? = "26B131"
     var frameworks = Set(PrivateFramework.allCases)
     var functions = Set(HostCalls.skyFunctions + HostCalls.launchFunctions + HostCalls.launchKeys + HostCalls.noteFunctions + HostCalls.tileFunctions)
-    var encodings = Dictionary(uniqueKeysWithValues: (HostCalls.selectors + HostCalls.tileSelectors).map { ($0.label, $0.encoding) })
+    var encodings = Dictionary(uniqueKeysWithValues: (HostCalls.selectors + HostCalls.tileSelectors + HostCalls.anchorSelectors).map { ($0.label, $0.encoding) })
     var hasClass = true
-    var tileClasses = Set(HostCalls.tileClasses)
+    var tileClasses = Set(HostCalls.tileClasses + [HostCalls.createTileClass])
     func open(_ framework: PrivateFramework) -> Bool { frameworks.contains(framework) }
     func function(_ name: String, in framework: PrivateFramework) -> UnsafeRawPointer? {
         guard frameworks.contains(framework), functions.contains(name) else { return nil }
@@ -3605,7 +3664,18 @@ func hostCallsTests() {
     let all = HostCalls.evaluate(HostFakeResolver(), base: base)
     check("host calls: all there: the host and outside opens on", all.host && all.opens && all.missing.isEmpty && all.mismatched.isEmpty, "\(all)")
     check("host calls: the counts", all.functionsFound == 12 && all.functionsTotal == 12 && all.selectorsFound == 2 && all.selectorsTotal == 2, "\(all)")
-    check("host calls: the launch line", all.line(build: "26B131") == "private calls (host) on 26B131: host ok (12/12 functions and keys, 2/2 selectors, encodings ok); outside opens ok; tiles ok", all.line(build: "26B131"))
+    check("host calls: the launch line", all.line(build: "26B131") == "private calls (host) on 26B131: host ok (12/12 functions and keys, 2/2 selectors, encodings ok); outside opens ok; tiles ok; anchors ok", all.line(build: "26B131"))
+    // The anchors are a part of their own: the create-tile class missing or its encoding changed turns them off, never the tiles.
+    do {
+        let r = HostFakeResolver()
+        r.tileClasses.remove(HostCalls.createTileClass)
+        let a = HostCalls.evaluate(r, base: base)
+        check("host calls: no create-tile class: the tiles on, the anchors off", a.tiles && !a.anchors && (a.reasons["anchors"] ?? "").contains("missing"), "\(a)")
+        let r2 = HostFakeResolver()
+        r2.encodings[HostCalls.anchorSelectors[1].label] = "v16@0:8"
+        let a2 = HostCalls.evaluate(r2, base: base)
+        check("host calls: the create-tile perform's encoding changed (no answer): the tiles on, the anchors off", a2.tiles && !a2.anchors && (a2.reasons["anchors"] ?? "").contains("encoding changed"), "\(a2)")
+    }
     check("host calls: the tiles on (live resize)", all.tiles && all.reasons["tiles"] == nil, "\(all)")
     // The tiles are a part of their own: anything of theirs missing or changed turns them off, never the host.
     for name in HostCalls.tileFunctions {

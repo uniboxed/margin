@@ -251,6 +251,15 @@ export async function pageLoaderChecks(t: TestContext, browser: Browser, o: Load
     at = await shot();
     assert.deepEqual(inside.filter((p) => px(at, p)[3] < 250), [], 'loading again: the page card opaque again');
 
+    // ---- elsewhere: its item in another Margin window: the card faded and still, its words, the pointer let through ----
+    const away = await ev(() => T.rtPageState('elsewhere', 'Notes'));
+    assert.equal(away.attr, 'elsewhere');
+    assert.equal(away.loader?.text.trim(), 'Click to show Notes here.', 'elsewhere: Margin\'s words for the card');
+    const card = (await ev(() => T.rtLoader()))!;
+    assert.ok(card.visibility === 'visible' && card.opacity > 0.3 && card.opacity < 0.8 && card.pointer === 'none', `elsewhere: the card seen, faded, the pointer let through (${JSON.stringify([card.visibility, card.opacity, card.pointer])})`);
+    const still = (await ev(() => T.rtAnimations())).filter((a) => a.loader && a.running && !a.name.startsWith('transition:'));
+    assert.deepEqual(still.map((a) => a.name), [], `elsewhere: nothing of the loader's moving (${JSON.stringify(still)})`);
+
     // ---- empty: the launcher; the loader gone, nothing of it running ----
     const empty = await ev(() => T.rtPageState('empty'));
     assert.deepEqual([empty.attr, empty.loader], ['empty', { own: true, text: '' }]);

@@ -118,7 +118,7 @@ final class DevHooks {
                 return say("dev hook: host drag \(parts[0]),\(parts[1]) \(asked)")
             }
             if fields["say"] == "front" { return say("dev hook: front: \(world.devFront()) \(asked)") }
-            if let what = fields["say"], what == "field" || what == "spot" {
+            if let what = fields["say"], what == "field" || what == "spot" || what == "animations" {
                 world.devPage(what) { [weak self] line in self?.say("dev hook: \(what): \(line) \(asked)") }
                 return say("dev hook: host say \(what) \(asked)")
             }
@@ -230,7 +230,23 @@ extension Shell: DevHookWorld {
     // The page's own answer (one script): its focused field's length only; a sidebar point no control is under.
     func devPage(_ what: String, done: @escaping (String) -> Void) {
         guard let w = marginWindows?.front else { return done("no Margin window") }
-        let script = what == "field" ? """
+        // (animations: what the page keeps redrawing for: its running animations and transitions, where, whether they
+        // can be seen; and its own requestAnimationFrame calls counted for a second. The idle-cost part's diagnosis.)
+        let script = what == "animations" ? """
+            const shown = (t) => { if (!t) return '?'; const c = getComputedStyle(t); let hidden = c.visibility !== 'visible' || +c.opacity === 0; for (let p = t.parentElement; p && !hidden; p = p.parentElement) { const s = getComputedStyle(p); hidden = +s.opacity === 0 || s.visibility !== 'visible'; } return hidden ? 'not seen' : 'seen'; };
+            const name = (t) => !t ? '?' : t.tagName.toLowerCase() + (typeof t.className === 'string' && t.className.trim() ? '.' + t.className.trim().split(/\\s+/).slice(0, 2).join('.') : '') + [...t.attributes].filter((a) => a.name.startsWith('m-')).slice(0, 2).map((a) => '[' + a.name + ']').join('');
+            const list = document.getAnimations().map((a) => (a.animationName || a.transitionProperty || 'script') + ' on ' + name(a.effect && a.effect.target) + ' (' + shown(a.effect && a.effect.target) + ')');
+            let frames = 0; const raf = window.requestAnimationFrame;
+            window.requestAnimationFrame = function (f) { frames++; return raf.call(window, f); };
+            const got = {}; const app = window.marginApp; const receive = app && app.receive;
+            if (receive) app.receive = function (m) { const t = (m && m.type) || '?'; got[t] = (got[t] || 0) + 1; return receive.apply(this, arguments); };
+            let mutations = 0; const watch = new MutationObserver((l) => { mutations += l.length; }); watch.observe(document.documentElement, { subtree: true, childList: true, attributes: true, characterData: true });
+            await new Promise((r) => setTimeout(r, 2000));
+            watch.disconnect();
+            window.requestAnimationFrame = raf;
+            if (receive) app.receive = receive;
+            return list.length + ' running: ' + list.slice(0, 14).join('; ') + '; in 2 s the page asked ' + frames + ' frames, got ' + JSON.stringify(got) + ' from Margin, ' + mutations + ' DOM changes';
+            """ : what == "field" ? """
             const a = document.activeElement, field = !!a && (a.matches('input, textarea') || a.isContentEditable);
             return 'focused ' + field + ', length ' + (field ? String((a.value ?? a.textContent ?? '').length) : '-1') + ', palette ' + (!!document.querySelector('[m-input="palette"]'));
             """ : """

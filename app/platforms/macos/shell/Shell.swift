@@ -335,10 +335,23 @@ final class Shell: ExtensionLinkDelegate {
         host?.poll()
         hosted?.sweepRestoredSafariWindows()
         for entry in links.values { tellDrawn(entry) }
-        guard host?.hasHosts == true || host?.hasLeftSafariWindows == true || !links.isEmpty else { return }
-        pollTimer = Timer.scheduledTimer(withTimeInterval: options.restPoll, repeats: false) { [weak self] _ in
+        // (When to look again: the hosting core's schedule (schedule.rs): fast just after activity, every 0.25 s while
+        // something is unconfirmed, every 1.5 s at rest with apps hosted, every 2 s with only copies linked, never with
+        // nothing. Events (an app activated, a Space changed, a notification of a hosted app's, an engine event) look at
+        // once. It was every 0.25 s whenever anything was hosted: 3.4% of a CPU at rest with three, 2026-11-18.)
+        let after: Double?
+        if let host {
+            after = host.nextPoll(links: !links.isEmpty)
+        } else {
+            after = links.isEmpty ? nil : options.restPoll
+        }
+        guard let after else { return }
+        let timer = Timer(timeInterval: options.harness ? min(after, options.restPoll) : after, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated { self?.track() }
         }
+        timer.tolerance = after * 0.1 // (coalesced with the system's other timers: fewer wakeups)
+        RunLoop.main.add(timer, forMode: .common)
+        pollTimer = timer
     }
 
     // `isRepeat`: a held key's repeat (AppShortcuts), not a press.

@@ -57,7 +57,24 @@ export const NOTICES: Readonly<Record<string, NoticeWords>> = Object.freeze({
     tab: false,
     local: true,
   },
+  // Margin.app's own (HostEngine stepDown, docs/ARCHITECTURE-PLAN.md "On failure"): a hosted app kept fighting the
+  // way Margin showed it (the loop guard stopped it, its full screen failed), so it's shown a safer way now, for that
+  // version of it. `{app}`: its name as Margin's app list has it (fillNotice), never a page's words.
+  'route-simpler': {
+    text: '{app} didn’t settle in Margin, so it’s shown a simpler way now. It may take a moment to resize. Margin tries again when {app} updates.',
+    actions: [{ id: 'ok', label: 'OK' }],
+    ms: 12000,
+    tab: false,
+    local: true,
+  },
 });
+
+// A notice's words with its values filled in (`{app}`: an installed app's name, at most 60 characters, plain text;
+// anything else left out). Words without a value are as they are.
+export function fillNotice(text: string, values: Record<string, unknown> = {}): string {
+  const app = typeof values.app === 'string' ? values.app.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 60) : '';
+  return text.replace(/\{app\}/g, app || 'An app');
+}
 
 /** Whether `kind` is one of Margin's notices. */
 export const isNotice = (kind: unknown) => typeof kind === 'string' && Object.prototype.hasOwnProperty.call(NOTICES, kind);

@@ -11,6 +11,8 @@
 pub mod args;
 pub mod bridge;
 pub mod host;
+// Hosting on Windows: margin-core's reconcile driver with Windows's own calls (compile- and unit-checked only).
+pub mod hosting;
 pub mod instance;
 pub mod keys;
 pub mod log;

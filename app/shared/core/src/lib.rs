@@ -32,3 +32,7 @@ pub mod switch;
 
 // The shell that joins them (Shell.swift), sans IO.
 pub mod shell;
+
+// The hosting core (HostEngine.swift's decisions: layout, window kinds, the reconciler, the loop guard, the causes,
+// the routes), sans IO: docs/ARCHITECTURE-PLAN.md.
+pub mod host;
