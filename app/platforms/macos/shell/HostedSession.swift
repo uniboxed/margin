@@ -70,6 +70,8 @@ protocol HostedEngine: AnyObject {
     var shownWindow: Int? { get } // the window of the host shown in Margin's Space (Margin's window in front of it)
     func activateShown(at point: CGPoint?) async // that app in front (a press in Margin's page area around its window; top-left)
     func fullScreenSpace(ofWindow number: Int) -> UInt64?
+    // The window that owns Margin's Space (the helper's with a stage, else Margin's own): its tiles' owner.
+    func spaceOwner(_ window: Int)
     func target(ofWindow number: Int) -> HostTarget?
     func launchedPid(bundleId: String) -> pid_t?
     // The person's default browser at Margin's launch: started with no Dock icon if it isn't running (the person's
@@ -106,6 +108,7 @@ extension HostedEngine {
     func appRuns(bundleId: String) -> Bool? { nil }
     func dragging(_ on: Bool) -> Bool { false }
     func follow(_ placement: HostPlacement) {}
+    func spaceOwner(_ window: Int) {}
     var shownFillsPage: Bool { false }
     var preparesOutOfSight: Bool { false }
     func start(bundleId: String) async -> HostApp? { nil }
@@ -133,6 +136,7 @@ enum DefaultBrowser {
 protocol HostedWindow: AnyObject {
     var id: Int { get }
     var number: Int { get } // the window server's
+    var spaceOwnerNumber: Int { get } // the window that owns its Space (its stage's, else its own)
     var isFullScreen: Bool { get }
     var hostedPlacement: HostPlacement? { get } // the page area and the display's area while hosting; nil until measured
     // The page area as its page draws it now, not hosting (the launcher's), in full screen, measured at its size; nil
@@ -185,6 +189,7 @@ extension HostedWindow {
     func setElsewhere(_ label: String?, app: String?, picture: String?) {}
     func setElsewhere(_ label: String?, app: String?) { setElsewhere(label, app: app, picture: nil) }
     func setStartupStuck(_ why: String?) {}
+    var spaceOwnerNumber: Int { number } // (a stand-in owns its own Space)
 }
 
 // The app whose icon a host's loader shows: an app's own, a Safari window's Safari.
@@ -441,6 +446,7 @@ final class HostedSession: LibraryDelegate {
         guard let (placement, space) = await prepare(w, for: target) else { settleHosting(); return false }
         // (Hosted already, or not: opened or shown again with Margin's window's placement and Space as they are now,
         // which change when its window left full screen and came back.)
+        engine.spaceOwner(w.spaceOwnerNumber)
         let result = await engine.open(app: target, in: placement, marginWindow: w.number, marginSpace: space)
         switch result {
         case .shown(let id, let placed):
@@ -995,6 +1001,7 @@ final class HostedSession: LibraryDelegate {
             self.preparingWindow = mw.id
             self.preparingProfile = p
             let t0 = self.now()
+            self.engine.spaceOwner(mw.spaceOwnerNumber)
             let result = await self.engine.prepare(target, in: placement, marginWindow: mw.number, marginSpace: marginSpace)
             self.preparingWindow = nil
             self.preparingProfile = nil

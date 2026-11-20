@@ -147,6 +147,17 @@ for arch in arm64 x86_64; do
 done
 lipo -create "$DERIVED/helper/margin-helper-arm64" "$DERIVED/helper/margin-helper-x86_64" -output "$HELPERS/margin-helper"
 cp app/platforms/macos/helper/com.unibox.margin.helper.plist "$BUILT/Contents/Library/LaunchAgents/"
+# Margin Space.app (app/platforms/macos/stage/): the owner of Margin's full-screen Spaces, an app with no Dock icon,
+# for both kinds of Mac, the app's version in its Info.plist (Margin starts it as a child: MarginStage.swift).
+SPACE_APP="$HELPERS/Margin Space.app"
+APP_SHORT=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$BUILT/Contents/Info.plist")
+rm -rf "$SPACE_APP" && mkdir -p "$SPACE_APP/Contents/MacOS" "$DERIVED/stage"
+for arch in arm64 x86_64; do
+  swiftc -O -swift-version 5 -target "$arch-apple-macos14.0" app/platforms/macos/stage/main.swift -o "$DERIVED/stage/margin-space-$arch"
+done
+lipo -create "$DERIVED/stage/margin-space-arm64" "$DERIVED/stage/margin-space-x86_64" -output "$SPACE_APP/Contents/MacOS/margin-space"
+sed -e "s/MARGIN_VERSION/$APP_SHORT/" -e "s/MARGIN_BUILD/$APP_VERSION/" app/platforms/macos/stage/Info.plist > "$SPACE_APP/Contents/Info.plist"
+printf 'APPL????' > "$SPACE_APP/Contents/PkgInfo"
 if [ "$UNSIGNED" = true ]; then
   IDENTITY=-
 else
@@ -159,6 +170,7 @@ else
 fi
 codesign --force --sign "$IDENTITY" --options runtime "$TIMESTAMP" --identifier com.unibox.margin.connector "$HELPERS/margin-connector"
 codesign --force --sign "$IDENTITY" --options runtime "$TIMESTAMP" --identifier com.unibox.margin.helper "$HELPERS/margin-helper"
+codesign --force --sign "$IDENTITY" --options runtime "$TIMESTAMP" "$SPACE_APP"
 codesign --force --sign "$IDENTITY" --options runtime "$TIMESTAMP" --preserve-metadata=identifier,entitlements,requirements,flags "$BUILT"
 codesign --verify --strict "$BUILT"
 if [ "$INSTALL" = false ]; then

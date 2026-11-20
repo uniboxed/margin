@@ -6104,3 +6104,42 @@ took the ended instance for the person's own: NSWorkspace still listed it (its t
 worked. An open (and the browser's start) now uses only instances whose process still runs (`HostEngine.liveInstances`).
 Margin's own keys are now said in its log as they're pressed (the command and the front app, never a held key's
 repeats), so a key that didn't reach Margin can be told from one Margin ignored.
+
+
+## Margin's Space owned by a helper with no Dock icon (2026-11-19, evening)
+
+Asked (Tirth): the menu bar only on hover, with a native title strip, the hosted app never losing the keyboard (also
+for Wi-Fi, Bluetooth and the battery), macOS's real menus, no Dock icons for hosted apps.
+
+- **Why it never held before.** SkyLight's `PKGTransactionSetMenuBars` makes a full-screen Space's front connection the
+  active app whenever the menu bar comes down there fully, and only an app with a Dock icon (LaunchServices type
+  Foreground) can be that connection (`_PKGManagedSpaceAcceptsFrontConnection`). Margin owned its Space (AppKit's full
+  screen), so every reveal made Margin active; the hosted apps (no Dock icon) can never be owners. Status items always
+  need the real reveal. Empty tiles (Margin's anchors) have no window, so no owner (read from the server's own code).
+- **What Margin does now.** Each Margin window's Space is started by an invisible window of **Margin Space.app**
+  (`app/platforms/macos/stage/`, `LSUIElement`, Margin's child process, about 12 MB, no CPU while idle), put in full
+  screen by AppKit's own accessibility setter (no Accessibility permission). Margin's window, panel and backdrop join it
+  as plain members (`SLSAddWindowsToSpaces`, docs/PRIVATE-APIS.md rows 40-45): nobody owns the Space, so nobody is made
+  active. Margin's window there is at the display's full-screen area, its buttons hidden, never into AppKit's full
+  screen (`refusesToggle`). The engine's tiles take the helper's window as the Space's first tile (`ownerWindow`).
+- **The menu bar there** (`MarginMenuBar.swift`): macOS shows none in a Space nobody owns, so a 1-point strip at the top
+  edge (it wakes only on that hover) shows the real bar (`SLSSetMenuBarVisibilityOverrideOnDisplay`); Margin draws the
+  Apple logo and its menus' titles on its empty left in the bar's font and colour; a press opens a real menu (a fresh
+  copy of macOS's own Apple menu: its actions are macOS's; Margin's app menu as a copy, its others as they are), moving
+  across switches menus; the open title's capsule is the real bar's (flat, white 15 % on the dark bar, 23.5 pt; measured
+  from Tirth's screenshot); a strip of AppKit's own window buttons slides down over the page area (close = Close Tab,
+  minimize and zoom nothing: decided by Tirth). It goes up 0.35 s after the pointer leaves the top 96 points, never with a
+  menu or Control Center panel open. Every menu window Margin opens (its UI's pop-ups too) and any window of Margin's made
+  key is added to the stage's Space as it appears (AppKit puts them on Margin's Desktop otherwise) and a menu's taken out
+  once it closes (left in, they took the titles' clicks).
+- **Fallbacks.** No helper in the bundle, a call off at launch, `MarginOwnerlessSpace` NO, the helper not starting, a
+  stage not in full screen within 6 s, or the helper ending three times: AppKit's full screen, Margin owning its Space
+  and macOS's own bar, as before. A stage lost (Mission Control, the helper ending) parks what's shown, hides Margin's
+  window and asks for a stage again; it shows as it is after 10 s if none comes.
+- **Proven first in the kit** (`/tmp/margin-toolbar-test/mbx/mbh.swift`, his hand checks): Wi-Fi, Bluetooth and the
+  menus with the hosted app kept active; Margin taking the keyboard there with no Space jump (both a key panel and
+  `NSApp.activate`); every click on the titles reaching them (`ignoresMouseEvents = false`: transparent pixels let
+  clicks through).
+- **Known limits.** The titles are Margin's drawing: ⌃F2 and VoiceOver don't reach them. The Apple menu's items are all
+  enabled in the copy (its own check misreads it; macOS still enforces management blocks underneath). An NSOpenPanel
+  (the theme picker) is out of process and may open on Margin's Desktop. Two displays: untested.

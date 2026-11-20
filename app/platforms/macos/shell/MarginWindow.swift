@@ -41,6 +41,8 @@ final class MarginWindow: NSWindow {
     // Always full screen (MarginWindowController.Options.alwaysFullScreen): AppKit's toggle (the green button, a menu
     // item anywhere) refused while it's in full screen; into it always taken.
     var locksFullScreen = false
+    // In its stage's Space (MarginWindowController `joinStage`): never into AppKit's full screen (it would own a Space).
+    var refusesToggle = false
     private(set) var refusedToggles = 0
 
     init(frame topLeft: CGRect, harness: Bool) {
@@ -66,7 +68,7 @@ final class MarginWindow: NSWindow {
     var onADisplay: Bool { NSScreen.screens.contains { $0.frame.intersects(frame) } }
 
     override func toggleFullScreen(_ sender: Any?) {
-        if locksFullScreen, styleMask.contains(.fullScreen) {
+        if refusesToggle || (locksFullScreen && styleMask.contains(.fullScreen)) {
             refusedToggles += 1
             return Diagnostics.note("Margin's window: leaving full screen refused (Margin is always full screen)")
         }

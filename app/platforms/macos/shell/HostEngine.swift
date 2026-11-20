@@ -430,7 +430,17 @@ final class HostEngine {
     private var tilesFor: UInt64 = 0 // the Margin Space the check was made for (0: none yet)
     private var tilesOK = false // ...passed
     private(set) var tilesOff: String? // why the tiles are off for the run
-    private(set) var marginTile: UInt64? // Margin's own tile in its Space
+    private(set) var marginTile: UInt64? // Margin's own tile in its Space (its owner's: the helper's window's, with a stage)
+    // The window that owns Margin's Space (its first tile): Margin Space.app's with a stage (MarginStage.swift), else
+    // Margin's own (0: Margin's). Its width tells a tile change laid the Space out again; Margin's window, a plain
+    // member then, never changes size.
+    private(set) var spaceOwnerWindow = 0
+    var ownerWindow: Int { spaceOwnerWindow > 0 ? spaceOwnerWindow : marginWindow }
+    func spaceOwner(_ window: Int) {
+        guard window != spaceOwnerWindow else { return }
+        spaceOwnerWindow = window == marginWindow ? 0 : window
+        Diagnostics.note("host: Margin's Space is owned by \(spaceOwnerWindow > 0 ? "Margin Space.app's window \(spaceOwnerWindow)" : "Margin's window")")
+    }
     private var tileHome: CGRect? // ...its rect: the display's whole tile, from its top left
     private var tileCount = 0 // the tiles Margin's Space had at the last look (another count: every rect set again)
     private var tilesSettled = true // no tile came into or left Margin's Space since the last switch (its first one is watched)
@@ -2400,7 +2410,7 @@ final class HostEngine {
             let page = frame(host), area = placement.area
             var relaid = false
             _ = await wait(options.tileSettleWatch, every: options.tileEvery) {
-                let marginOff = self.sys.bounds(window: self.marginWindow).map { $0.width < area.width - 1 } ?? false
+                let marginOff = self.sys.bounds(window: self.ownerWindow).map { $0.width < area.width - 1 } ?? false
                 let hostOff = host.tile != nil && (self.sys.bounds(window: host.window).map { !HostLayout.near($0, page, within: self.options.tolerance) } ?? false)
                 if marginOff || hostOff { relaid = true; return true }
                 return false
@@ -3412,7 +3422,7 @@ final class HostEngine {
         tilesFor = marginSpace
         tilesOK = false
         let t0 = sys.now()
-        guard let list = sys.tiles(of: marginSpace), let mine = list.first(where: { sys.tileWindow($0) == marginWindow }) else {
+        guard let list = sys.tiles(of: marginSpace), let mine = list.first(where: { sys.tileWindow($0) == ownerWindow }) else {
             return turnOffTiles("Margin's own tile wasn't found in its Space \(marginSpace)")
         }
         let read = sys.tileRect(mine)
@@ -3671,7 +3681,7 @@ final class HostEngine {
         let leadFrame = lead.map { frame($0) }
         let ok = await wait(options.tileWait, every: options.tileEvery) {
             each()
-            let marginBack = self.sys.bounds(window: self.marginWindow).map { $0.width >= area.width - 1 } ?? true
+            let marginBack = self.sys.bounds(window: self.ownerWindow).map { $0.width >= area.width - 1 } ?? true
             let leadThere = lead.map { h in self.sys.bounds(window: h.window).map { HostLayout.near($0, leadFrame ?? page, within: self.options.tolerance) } ?? false } ?? true
             return marginBack && leadThere
         }

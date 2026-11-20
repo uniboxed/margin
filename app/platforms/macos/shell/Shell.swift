@@ -201,6 +201,7 @@ final class Shell: ExtensionLinkDelegate {
         devHooks = nil // DEV-HOOK
         appsStop()
         marginWindows?.closeAll()
+        marginWindows?.stage?.stop() // (its Spaces closed; it quits as Margin's end of its pipe closes)
         link.stop(why: "Margin.app quit", then: then)
     }
 

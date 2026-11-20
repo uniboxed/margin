@@ -173,6 +173,11 @@ extension Shell {
         if !o.harness, windowOptions == nil, UserDefaults.standard.string(forKey: FrontMechanism.key) == FrontMechanism.order.rawValue { o.front = .order }
         let source = makeHostedSource()
         let windows = MarginWindows(pages: pages, source: source, options: o)
+        // (Its Spaces owned by Margin Space.app, with no Dock icon: the app Margin hosts keeps the keyboard when the menu
+        // bar comes down. Off, or not usable: Margin's window owns its Space, as before. Never in a test.)
+        if !o.harness, let resolver = options.privateResolver {
+            windows.stage = MarginStage(calls: StageCalls(resolver: resolver, availability: StageCalls.check(resolver: resolver)))
+        }
         windows.theme = { [weak self] in self?.hostedTheme() }
         windows.themes = { [weak self] in self?.themesListJSON ?? "[]" }
         windows.browser = options.lastBrowser()

@@ -88,6 +88,7 @@ final class LateHostEngine: HostedEngine {
     func activateShown(at point: CGPoint?) async { await engine.activateShown(at: point) }
     func fullScreenSpace(ofWindow number: Int) -> UInt64? { engine.fullScreenSpace(ofWindow: number) }
     func target(ofWindow number: Int) -> HostTarget? { engine.target(ofWindow: number) }
+    func spaceOwner(_ window: Int) { resolve()?.spaceOwner(window) }
     func launchedPid(bundleId: String) -> pid_t? { resolve()?.launchedPid(bundleId: bundleId) }
     var preparesOutOfSight: Bool { resolve()?.preparesOutOfSight ?? false }
     func start(bundleId: String) async -> HostApp? { await resolve()?.start(bundleId: bundleId) }

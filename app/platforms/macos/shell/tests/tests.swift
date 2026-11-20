@@ -78,6 +78,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     oneMargin()
     idleQuit()
     privateCallsTests() // private-calls-tests.swift
+    stageCallsTests() // stage-calls-tests.swift: the ownerless Space's calls, its helper's switch, the menu bar's menu copies
     hostTests() // host-tests.swift: the host engine against a stand-in window manager, and its calls' check
     hostModelTests() // host-model-tests.swift: the hosting core's window kinds, its observed model and its observer
     hostedTests() // hosted-tests.swift: the library, the host engine and the Safari copies joined 

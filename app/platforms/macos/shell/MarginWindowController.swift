@@ -111,6 +111,14 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     private(set) var isShown = false
     private var asked = false // its page asked for its hello: pushes reach it
     private(set) var isFullScreen = false
+    // Its stage (MarginStage.swift): the full-screen Space Margin Space.app's window started, which this window, its
+    // panel and its backdrop join as plain members (`isFullScreen` true while they're in it). Nil: not joined (or Margin
+    // owns its Space: AppKit's full screen, the fallback).
+    private(set) var stageSpace: UInt64?
+    private var stageOpening = false
+    private(set) var stageFell = false // this window fell back to AppKit's full screen for the rest of its life
+    private(set) var menuBar: MarginMenuBar?
+    private var stageHidden = false // out of sight while its stage is lost, until it's in one again
     private(set) var layout: PageLayout?
     private(set) var hits: [CGRect] = []
     private(set) var captureAll = false
@@ -422,6 +430,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             backdropOff = "its layer \(layer) (\(why))"
             Diagnostics.warn("Margin's window \(id): its backdrop read at layer \(layer), not below the apps' (\(why)): taken out for good")
         }
+        keepInStage(why)
     }
 
     private(set) var isClosed = false
@@ -432,6 +441,10 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         graceTimer?.invalidate()
         retryTimer?.invalidate()
         isClosed = true
+        stopMenuBar()
+        if stageSpace != nil || stageOpening { owner?.stage?.close(id: id) }
+        stageSpace = nil
+        stageOpening = false
         pages.bridge.unregister(webView)
         webView.navigationDelegate = nil
         webView.stopLoading()
@@ -1073,6 +1086,10 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             retry.entered()
             waitingSaid = nil
             attachPanel("in full screen")
+            if stageHidden {
+                stageHidden = false
+                setAlpha(1)
+            }
             if enteringFirst {
                 enteringFirst = false
                 setAlpha(1)
@@ -1100,21 +1117,171 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     private func enterFullScreen() -> Bool {
         guard !isFullScreen, !isClosed, !window.styleMask.contains(.fullScreen) else { return false }
         if let at = willEnterAt, Date().timeIntervalSince(at) < 2 { return false }
-        fullScreenAsks += 1
         if options.harness {
+            fullScreenAsks += 1
             if options.harnessEnters?() ?? true { fullScreenChanged(true) }
             return true
         }
+        if let stage { return openStage(stage) }
+        fullScreenAsks += 1
+        setButtonsHidden(false) // (hidden while it was in a stage)
         window.toggleFullScreen(nil)
         return true
     }
 
     // Whether macOS would take the toggle now: Margin the active app, its window on screen in the current Space. (Opened
     // while another app's full-screen Space is current, the window is on a Desktop macOS hasn't switched to yet: asked
-    // then, it's refused, `windowDidFailToEnterFullScreen`.) A test's window: its stand-in's answer.
+    // then, it's refused, `windowDidFailToEnterFullScreen`.) A test's window: its stage-to-be's answer. With a stage
+    // (the helper's window goes full screen, not this one): the window only needs to be ordered in.
     var canAskFullScreen: Bool {
         if options.harness { return options.harnessReady?() ?? true }
+        if stage != nil { return window.isVisible && !stageOpening }
         return NSApp.isActive && window.isVisible && window.isOnActiveSpace
+    }
+
+    // ---- its stage (MarginStage.swift; DECISIONS.md "Margin's Space owned by a helper with no Dock icon") ----
+
+    // The helper's stages, while they're usable and this window hasn't fallen back (never a test's window).
+    var stage: MarginStage? {
+        guard !options.harness, !stageFell, let s = owner?.stage, s.usable else { return nil }
+        return s
+    }
+
+    // The window that owns this window's Space: its stage's (the helper's), else this window (AppKit's full screen).
+    var spaceOwnerNumber: Int { stageSpace != nil ? (owner?.stage?.stageWindow(for: id) ?? number) : number }
+
+    // Its stage asked for (once at a time): the helper's window for it into full screen on this window's display; this
+    // window joins that Space when it's there (`joinStage`). Not asked: AppKit's full screen instead.
+    private func openStage(_ stage: MarginStage) -> Bool {
+        guard !stageOpening else { return false }
+        let display = (window.screen ?? NSScreen.main).flatMap { ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value } ?? CGMainDisplayID()
+        stageOpening = true
+        fullScreenAsks += 1
+        let asked = stage.open(id: id, display: display) { [weak self] event in self?.stageEvent(event) }
+        guard asked else {
+            stageOpening = false
+            return fallBack("its stage couldn't be asked for")
+        }
+        Diagnostics.note("Margin's window \(id): its stage asked for (Margin Space.app's window into full screen)")
+        return true
+    }
+
+    private func stageEvent(_ event: MarginStage.Event) {
+        guard !isClosed else { return }
+        switch event {
+        case .window:
+            break
+        case .full:
+            guard stageOpening, let stage = owner?.stage, let n = stage.stageWindow(for: id) else { return }
+            // (Its Space can take a moment to read after the window says it's in.)
+            var tries = 0
+            func look() {
+                guard !self.isClosed, self.stageOpening else { return }
+                if let space = stage.fullScreenSpace(of: n) { return self.joinStage(space) }
+                tries += 1
+                guard tries < 20 else { stageOpening = false; _ = fallBack("its stage's Space didn't read"); return }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { look() }
+            }
+            look()
+        case .left:
+            lostStage("macOS took its stage out of full screen")
+        case .gone:
+            stageOpening = false
+            lostStage("Margin Space.app ended")
+        case .failed(let why):
+            stageOpening = false
+            owner?.stage?.giveUp(why)
+            _ = fallBack(why)
+        case .resized(let size):
+            // (Its stage laid out as a split's part by a tile change Margin didn't make: as the window's own resize was.)
+            if hosting, stageSpace != nil, let d = hostDisplay, size.width < d.width - 1 { owner?.onNarrowed?(self) }
+        }
+    }
+
+    // In its stage's Space: this window at the display's full-screen area (what AppKit gives a full-screen window: below
+    // a notch), its buttons hidden (no title bar: the menu bar's strip is MarginMenuBar's), it and its panel members of
+    // that Space (its backdrop too, once made), then in full screen as far as everything else is concerned.
+    private func joinStage(_ space: UInt64) {
+        guard let stage = owner?.stage else { return }
+        if let screen = window.screen ?? NSScreen.main {
+            let area = ScreenGeometry.appKitRect(MarginWindowGeometry.fullScreenArea(screen))
+            if window.frame != area { window.setFrame(area, display: false) }
+        }
+        setButtonsHidden(true)
+        attachPanel("joining its stage")
+        guard stage.join([window.windowNumber, panel.windowNumber], space: space) else {
+            stageOpening = false
+            stage.close(id: id)
+            stage.giveUp("Margin's window didn't join its stage's Space")
+            setButtonsHidden(false)
+            _ = fallBack("it didn't join its stage's Space")
+            return
+        }
+        stageOpening = false
+        stageSpace = space
+        window.refusesToggle = true
+        Diagnostics.note("Margin's window \(id): in its stage's Space \(space) (owned by Margin Space.app: nobody makes Margin active there)")
+        fullScreenChanged(true)
+        keepInStage("joined")
+        startMenuBar()
+    }
+
+    // Its stage's Space left or gone (macOS took the helper's window out of full screen, Mission Control closed it, the
+    // helper ended): out of full screen as far as everything is concerned (the session parks what it showed), out of
+    // sight, and into a stage again by the always-full-screen ask (`fullScreenChanged`).
+    private func lostStage(_ why: String) {
+        guard stageSpace != nil else { return }
+        Diagnostics.warn("Margin's window \(id): its stage's Space is gone (\(why)): into a stage again")
+        if hosting { owner?.onLeavingFullScreen?(self) }
+        stopMenuBar()
+        stageSpace = nil
+        window.refusesToggle = false
+        stageHidden = true
+        setAlpha(0)
+        fullScreenChanged(false)
+        // (Never left unseen: shown as it is if no stage comes back.)
+        DispatchQueue.main.asyncAfter(deadline: .now() + options.fullScreenWithin) { [weak self] in
+            guard let self, !self.isClosed, self.stageHidden else { return }
+            self.stageHidden = false
+            self.setButtonsHidden(false)
+            self.setAlpha(1)
+        }
+    }
+
+    // No stage for this window from now: AppKit's full screen, Margin owning its Space (as before the stage).
+    private func fallBack(_ why: String) -> Bool {
+        guard !stageFell else { return false }
+        stageFell = true
+        owner?.stage?.close(id: id)
+        setButtonsHidden(false)
+        Diagnostics.warn("Margin's window \(id): no stage (\(why)): AppKit's full screen, Margin owns its Space")
+        DispatchQueue.main.async { [weak self] in self?.tryFullScreen("its stage didn't come") }
+        return true
+    }
+
+    // Its panel and backdrop kept in its stage's Space with it (each made its child again by AppKit after a Space or
+    // level change: a child doesn't follow its parent into a Space another app owns).
+    private func keepInStage(_ why: String) {
+        guard let space = stageSpace, let stage = owner?.stage else { return }
+        var numbers = [panel.windowNumber]
+        if let b = backdrop, b.isVisible { numbers.append(b.windowNumber) }
+        let out = numbers.filter { stage.calls.spaces(of: $0)?.contains(space) == false }
+        if !out.isEmpty, stage.join(out, space: space) { Diagnostics.note("Margin's window \(id): its panel or backdrop brought into its stage's Space (\(why))") }
+    }
+
+    private func setButtonsHidden(_ hidden: Bool) {
+        for kind in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] { window.standardWindowButton(kind)?.isHidden = hidden }
+    }
+
+    private func startMenuBar() {
+        guard menuBar == nil, let stage = owner?.stage, let space = stageSpace, let screen = window.screen ?? NSScreen.main else { return }
+        menuBar = MarginMenuBar(calls: stage.calls, screen: screen, space: space, pageArea: { [weak self] in self?.window.pageRect },
+                                closeTab: { [weak self] in self?.owner?.perform(.closeTab) })
+    }
+
+    private func stopMenuBar() {
+        menuBar?.stop()
+        menuBar = nil
     }
 
     // Always full screen and not in: asked now if macOS would take it, at every event that can make it so and at a look
@@ -1193,6 +1360,9 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     func appBecameActive() { tryFullScreen("Margin active") }
     func spaceChanged() {
         spaceChangedAt = now()
+        if let space = stageSpace, let stage = owner?.stage, stage.calls.spaces(of: window.windowNumber).map({ !$0.contains(space) }) == true {
+            lostStage("it's no longer in its stage's Space")
+        }
         tryFullScreen("the Space changed")
         if isFullScreen, !options.harness, window.isOnActiveSpace { attachPanel("the Space changed") }
     }
@@ -1452,6 +1622,14 @@ final class MarginWindows {
     var onSidebarResizing: ((MarginWindowController, Bool) -> Void)? // a change of its sidebar's width began (a drag), or is over
     var onNarrowed: ((MarginWindowController) -> Void)? // in full screen while hosting and narrower than its screen (a tile change in its Space)
     var browser = "safari" // the engine hosted pages are in (Settings offers its features)
+    // The owner of the windows' full-screen Spaces (MarginStage.swift); nil, or not usable: each window owns its own
+    // (AppKit's full screen). Set by the shell before the first window opens.
+    var stage: MarginStage? {
+        didSet {
+            stage?.currentSpace = { [weak self] in self?.controllers.first { $0.stageSpace != nil && $0.window.isOnActiveSpace }?.stageSpace }
+            stage?.watchOwnWindows()
+        }
+    }
     private(set) var controllers: [MarginWindowController] = []
     private var lastKey: MarginWindowController?
     private var nextId = 1
