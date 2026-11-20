@@ -146,10 +146,22 @@ test('two-value actions: exactly their fields, each checked against the state', 
   assert.equal(ok('folder.setName', { folder: 'f1', name: 'x'.repeat(41) }), false, 'at most 40 characters');
   assert.equal(ok('folder.setName', { folder: 'f1', name: 'a\u0000b' }), false, 'no control characters');
   assert.equal(ok('space.setName', { space: 'work', name: 'Deeper Work' }), true);
-  assert.equal(ok('space.update', { space: 'work', name: 'W', emoji: '🧠', color: '#00b894' }), true);
-  assert.equal(ok('space.update', { space: 'work', name: 'W', emoji: '🧠', color: null }), true, 'no color: the space keeps its own');
-  assert.equal(ok('space.update', { space: 'work', name: 'W', emoji: '🧠', color: 'url(x)' }), false, 'a color is #rgb or #rrggbb');
-  assert.equal(ok('space.update', { space: 'work', name: 'W', emoji: '🧠'.repeat(9), color: '#000' }), false);
+  assert.equal(ok('space.update', { space: 'work', name: 'W', emoji: '🧠', color: '#00b894', theme: null }), true);
+  assert.equal(ok('space.update', { space: 'work', name: 'W', emoji: '🧠', color: null, theme: null }), true, 'no color: the space keeps its own');
+  assert.equal(ok('space.update', { space: 'work', name: 'W', emoji: '🧠', color: 'url(x)', theme: null }), false, 'a color is #rgb or #rrggbb');
+  assert.equal(ok('space.update', { space: 'work', name: 'W', emoji: '🧠'.repeat(9), color: '#000', theme: null }), false);
+  assert.equal(ok('space.update', { space: 'work', name: 'W', emoji: '🧠', color: '#000' }), false, 'its theme too, null for none');
+  // A space's theme (2026-11-20): one Margin has (built in or imported), or null (none: the profile's).
+  const themed = contextFromState(state, [], { themeIds: ['arcadia', 'pixel', 'my-theme'] });
+  assert.equal(checkAction('space.update', { space: 'work', name: 'W', emoji: '🧠', color: null, theme: 'pixel' }, themed).ok, true);
+  assert.equal(checkAction('space.update', { space: 'work', name: 'W', emoji: '🧠', color: null, theme: 'gone' }, themed).ok, false, 'not a theme Margin has');
+  assert.equal(checkAction('space.setTheme', { space: 'work', theme: 'my-theme' }, themed).ok, true, 'an imported one');
+  assert.equal(checkAction('space.setTheme', { space: 'work', theme: null }, themed).ok, true, 'none: the profile\'s');
+  assert.equal(checkAction('space.setTheme', { space: 'nope', theme: 'pixel' }, themed).ok, false, 'a space there');
+  assert.equal(checkAction('space.setTheme', { space: 'work', theme: 'Pixel!' }, themed).ok, false);
+  assert.equal(checkAction('editor.theme', 'pixel', themed).ok, true);
+  assert.equal(checkAction('editor.theme', 'gone', themed).ok, false);
+  assert.equal(checkAction('editor.theme', 'pixel', contextFromState(state)).ok, false, 'no themes said: none');
   assert.equal(ok('tab.moveToSpace', Object.assign(Object.create({ evil: 1 }), { tab: 14, space: 'work' })), false, 'a plain object only');
   assert.equal(ok('tab.move', [14, 12, 'before']), false);
 });
@@ -168,7 +180,7 @@ test('menu items, swatches and menus a button opens are checked too', () => {
 });
 
 test('only behaviors and menus run two-value actions and space.delete; a theme\'s click never does', () => {
-  assert.deepEqual([...BEHAVIOR_ONLY].sort(), ['folder.move', 'folder.setName', 'pin.move', 'space.delete', 'space.setName', 'space.update', 'tab.move', 'tab.moveToSpace', 'tab.pinAt']);
+  assert.deepEqual([...BEHAVIOR_ONLY].sort(), ['folder.move', 'folder.setName', 'pin.move', 'space.delete', 'space.setName', 'space.setTheme', 'space.update', 'tab.move', 'tab.moveToSpace', 'tab.pinAt']);
   const ran: [string, unknown][] = [];
   const log: { name: string, arg: unknown, reason: string }[] = [];
   const dispatch = createDispatcher({ context: () => ctx, run: (n, a) => ran.push([n, a]), log: (e) => log.push(e) });
@@ -191,9 +203,11 @@ test('the mapping: the behaviors\' and menus\' actions become the requests today
   assert.deepEqual(req('folder.setName', { folder: 'f1', name: 'Later' }), send('renameFolder', { folderId: 'f1', name: 'Later' }));
   assert.deepEqual(req('folder.delete', 'f1'), send('deleteFolder', { folderId: 'f1' }));
   assert.deepEqual(req('space.setName', { space: 'work', name: 'Deeper' }), send('renameSpace', { spaceId: 'work', name: 'Deeper' }));
-  assert.deepEqual(req('space.update', { space: 'work', name: 'W', emoji: '🧠', color: '#00b894' }), send('renameSpace', { spaceId: 'work', name: 'W', emoji: '🧠', color: '#00b894' }));
+  assert.deepEqual(req('space.update', { space: 'work', name: 'W', emoji: '🧠', color: '#00b894', theme: 'pixel' }), send('renameSpace', { spaceId: 'work', name: 'W', emoji: '🧠', color: '#00b894', theme: 'pixel' }));
+  assert.deepEqual(req('space.update', { space: 'work', name: 'W', emoji: '🧠', color: '#00b894', theme: null }), send('renameSpace', { spaceId: 'work', name: 'W', emoji: '🧠', color: '#00b894', theme: null }), 'none: the profile\'s');
+  assert.deepEqual(req('space.setTheme', { space: 'work', theme: 'pixel' }), send('setSpaceTheme', { spaceId: 'work', theme: 'pixel' }));
   assert.deepEqual(req('space.delete', 'side'), send('deleteSpace', { spaceId: 'side' }));
-  for (const name of ['folder.rename', 'space.rename', 'menu.run', 'editor.color']) assert.equal(req(name, 'x').kind, 'local', name);
+  for (const name of ['folder.rename', 'space.rename', 'menu.run', 'editor.color', 'editor.theme']) assert.equal(req(name, 'x').kind, 'local', name);
   for (const name of ['menu.close', 'editor.save', 'editor.cancel', 'editor.delete']) assert.deepEqual(req(name), { kind: 'local', name });
 });
 

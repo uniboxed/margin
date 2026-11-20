@@ -14,7 +14,11 @@ export type Send = <K extends MessageType>(type: K, payload?: Request<K>) => Pro
 
 // ---- stored state (storage.local; state/model.ts) ---------------------------
 
-export interface Space { id: string; name: string; emoji: string; color: string }
+export interface Space {
+  id: string; name: string; emoji: string; color: string;
+  /** its theme's id (state/model.ts spaceTheme); none: the profile's settings.theme (spaces from before 2026-11-20) */
+  theme?: string;
+}
 export interface Pin {
   id: string; spaceId: string; url: string; title: string;
   /** a folder of its space (state/model.ts); none or unknown: at the top level */

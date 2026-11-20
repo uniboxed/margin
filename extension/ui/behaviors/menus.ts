@@ -109,7 +109,7 @@ export function installMenus(rt: Rt) {
     run(itemId: string) {
       const menu = rt.ui.menu;
       if (!menu) return false;
-      const item = menuItems(menu, { state: rt.viewState(), space: rt.vm?.space }).find((i) => i.id === itemId && !i.separator);
+      const item = menuItems(menu, { state: rt.viewState(), space: rt.vm?.space, features: (rt.host.platform as any)?.features ?? null }).find((i) => i.id === itemId && !i.separator);
       if (!item) return false;
       if (item.confirm && menu.confirming !== item.id) {
         rt.setUi({ menu: { ...menu, confirming: item.id } });

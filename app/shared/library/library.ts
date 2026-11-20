@@ -85,7 +85,7 @@ const sorted = (list: Record<string, any>) => Object.entries(isObject(list) ? li
 export function stateOf(values: Values): LibState {
   const base = M.defaultState();
   const spaces = sorted(values?.spaces).sort((a, b) => finite(a[1].order) - finite(b[1].order) || a[0].localeCompare(b[0]))
-    .map(([id, s]) => ({ id, name: str(s.name, 200), emoji: str(s.emoji, 16), color: str(s.color, 32), browser: BROWSERS.has(s.browser) ? s.browser : 'safari', profile: typeof s.profile === 'string' && s.profile ? s.profile : null }));
+    .map(([id, s]) => ({ id, name: str(s.name, 200), emoji: str(s.emoji, 16), color: str(s.color, 32), browser: BROWSERS.has(s.browser) ? s.browser : 'safari', profile: typeof s.profile === 'string' && s.profile ? s.profile : null, ...(M.themeIdOk(s.theme) ? { theme: s.theme } : {}) }));
   const pins = sorted(values?.pins).filter(([, p]) => typeof p.spaceId === 'string' && typeof p.url === 'string')
     .map(([id, p]) => ({ id, spaceId: p.spaceId, url: p.url, title: str(p.title), ...(typeof p.folderId === 'string' && p.folderId ? { folderId: p.folderId } : {}), pos: finite(p.pos), target: targetOf(p.target) ?? webTarget('safari', null) }));
   const folders = sorted(values?.folders).filter(([, f]) => typeof f.spaceId === 'string')
@@ -110,7 +110,7 @@ export function stateOf(values: Values): LibState {
 
 export function valuesOf(state: LibState, imports: Record<string, any> = {}): Values {
   const out: Values = { spaces: {}, pins: {}, folders: {}, tabs: {}, archive: {}, windows: {}, imports: { ...imports } };
-  state.spaces.forEach((s, i) => { out.spaces[s.id] = { name: s.name ?? '', emoji: s.emoji ?? '', color: s.color ?? '', order: i, browser: s.browser ?? 'safari', profile: s.profile ?? null }; });
+  state.spaces.forEach((s, i) => { out.spaces[s.id] = { name: s.name ?? '', emoji: s.emoji ?? '', color: s.color ?? '', order: i, browser: s.browser ?? 'safari', profile: s.profile ?? null, ...(M.themeIdOk(s.theme) ? { theme: s.theme } : {}) }; });
   state.pins.forEach((p: any, i) => { out.pins[p.id] = { spaceId: p.spaceId, url: p.url, title: p.title ?? '', folderId: p.folderId ?? null, pos: finite(p.pos, i), target: targetOf(p.target) ?? webTarget('safari', null) }; });
   (state.folders ?? []).forEach((f, i) => { out.folders[f.id] = { spaceId: f.spaceId, name: f.name ?? '', open: f.open !== false, pos: finite(f.pos, i) }; });
   for (const k of Object.values(state.keptTabs ?? {}) as any[]) {
@@ -212,20 +212,28 @@ const ACTIONS: Record<string, Handler> = {
   createSpace({ s, p, ids }) {
     const id = ids.other('sp');
     const w = win(p);
-    // Its browser and profile: as asked, else those of the space the window shows.
+    // Its browser and profile: as asked, else those of the space the window shows. Its theme: as asked, else that
+    // space's (none there: none, the profile's, as that space).
     const from = spaceOf(s, windowSpace(s, w) ?? '');
     const browser = BROWSERS.has(p?.browser) ? p.browser : from?.browser ?? 'safari';
     const profile = own(p, 'profile') ? (typeof p.profile === 'string' && p.profile ? p.profile : null) : from?.profile ?? null;
-    let next = M.createSpace(s, { id, name: p?.name, emoji: p?.emoji, color: p?.color }) as LibState;
+    const theme = M.themeIdOk(p?.theme) ? p.theme : from?.theme ?? null;
+    let next = M.createSpace(s, { id, name: p?.name, emoji: p?.emoji, color: p?.color, theme }) as LibState;
     next = { ...next, spaces: next.spaces.map((sp) => (sp.id === id ? { ...sp, browser, profile } : sp)) };
     if (w != null) next = M.setActiveSpace(next, w as any, id) as LibState;
     return { s: next, result: { spaceId: id } };
   },
   renameSpace({ s, p }) {
     if (!hasSpace(s, p?.spaceId)) return fail(s, 'no such space');
-    let next = M.updateSpace(s, p.spaceId, { name: p.name, emoji: p.emoji, color: p.color }) as LibState;
+    let next = M.updateSpace(s, p.spaceId, { name: p.name, emoji: p.emoji, color: p.color, ...(own(p, 'theme') ? { theme: p.theme } : {}) }) as LibState;
     if (own(p, 'profile')) next = ACTIONS.setSpaceProfile({ s: next, p, now: 0, ids: null as any, requests: [] }).s;
     return { s: next };
+  },
+  // A space's theme: a theme's id, or null (none: the profile's settings.theme).
+  setSpaceTheme({ s, p }) {
+    if (!hasSpace(s, p?.spaceId)) return fail(s, 'no such space');
+    if (p.theme !== null && !M.themeIdOk(p.theme)) return fail(s, 'not a theme id');
+    return { s: M.updateSpace(s, p.spaceId, { theme: p.theme }) as LibState };
   },
   // A space's browser profile (null: the browser's default), for its new web items.
   setSpaceProfile({ s, p }) {

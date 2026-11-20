@@ -1411,4 +1411,34 @@ func glueResumeScenario() async {
   check("the sidebar highlights it, the theme's root says shown, no launcher", lit)
   check("the dev hook's front line says what the engine reads of the one shown (its Spaces, on screen or not, the polls so far) and what the window would show by itself at the next launch: the app's bundle id only",
         shell.devFront().hasSuffix(", last app:com.apple.Notes") && shell.devFront().contains("; engine: polls ") && shell.devFront().contains("app:com.apple.Notes window \(win) in [\(GlueHostWorld.marginSpace)]"), String(shell.devFront().suffix(260)))
+
+  // ---- a theme per space (2026-11-20): each window draws the theme of the space it shows ----
+  do {
+    // (One theme's root drawn, that one: the theme before gone.)
+    let rootIs = { (cls: String) in "return !!document.querySelector('.\(cls)') && document.querySelectorAll('.arcadia, .pixel, .m3').length === 1" }
+    let before = library.snapshot()
+    let firstSpace = ((before["openTabs"] as? JSONObject)?["activeSpaceByWindow"] as? JSONObject)?[String(c.id)] as? String ?? ""
+    check("a theme per space: the window draws Arcadia to start with", await waitJS(c.webView, rootIs("arcadia")))
+    let made = library.perform("createSpace", ["windowId": c.id, "name": "Pix", "theme": "pixel"])
+    let pix = (made.result as? JSONObject)?["spaceId"] as? String ?? ""
+    let drewPixel = await waitJS(c.webView, rootIs("pixel"))
+    check("a theme per space: a space made with Pixel and shown: the window draws Pixel (its package from the app's built-ins)", !pix.isEmpty && drewPixel)
+    _ = library.perform("setSpace", ["windowId": c.id, "spaceId": firstSpace])
+    check("a theme per space: back to the first space: Arcadia again", await waitJS(c.webView, rootIs("arcadia")))
+    _ = library.perform("setSpaceTheme", ["spaceId": firstSpace, "theme": "material"])
+    check("a theme per space: the space shown given Material (its menu, Settings): drawn at once", await waitJS(c.webView, rootIs("m3")))
+    _ = library.perform("setSpaceTheme", ["spaceId": firstSpace, "theme": NSNull()])
+    check("a theme per space: none again: the profile's (Arcadia)", await waitJS(c.webView, rootIs("arcadia")))
+    // Mid-swipe (the sidebar `m-swiping`, as ui/behaviors/swipe.ts marks it): another theme waits for it to land.
+    let marked = await js(c.webView, "const el = document.querySelector('.margin-sidebar'); el?.classList.add('m-swiping'); return !!el") as? Bool == true
+    _ = library.perform("setSpaceTheme", ["spaceId": firstSpace, "theme": "pixel"])
+    try? await Task.sleep(nanoseconds: 400_000_000)
+    let waited = await js(c.webView, "return !!document.querySelector('.arcadia') && !document.querySelector('.pixel')") as? Bool == true
+    _ = await js(c.webView, "document.querySelector('.margin-sidebar')?.classList.remove('m-swiping'); return true")
+    let landed = await waitJS(c.webView, rootIs("pixel"))
+    check("a theme per space: a theme come mid-swipe waits for it to land, then drawn", marked && waited && landed, "marked \(marked) waited \(waited) landed \(landed)")
+    _ = library.perform("setSpaceTheme", ["spaceId": firstSpace, "theme": NSNull()])
+    check("a theme per space: and back", await waitJS(c.webView, rootIs("arcadia")))
+    _ = library.perform("deleteSpace", ["spaceId": pix])
+  }
 }

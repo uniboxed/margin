@@ -657,6 +657,10 @@
 .margin-sidebar .swatches { display: flex; gap: 6px; flex-wrap: wrap; }
 .margin-sidebar .swatch { width: 20px; height: 20px; padding: 0; border-radius: 50%; background: var(--chip-color); }
 .margin-sidebar .swatch[aria-checked="true"] { box-shadow: 0 0 0 2px var(--frame), 0 0 0 4px var(--chip-color); }
+.margin-sidebar .theme-choices { display: flex; gap: 6px; flex-wrap: wrap; }
+.margin-sidebar .theme-choice { height: 28px; padding: 0 12px; border-radius: 8px; font-size: 12px; font-weight: 500; color: var(--muted); background: var(--hover); }
+.margin-sidebar .theme-choice:hover { color: var(--fg); background: var(--field-hover); }
+.margin-sidebar .theme-choice[aria-checked="true"] { color: #fff; background: var(--space-color); }
 .margin-sidebar .editor .actions button { height: 26px; padding: 0 10px; border-radius: 7px; color: var(--muted); }
 .margin-sidebar .editor .actions button:hover { background: var(--hover); color: var(--fg); }
 .margin-sidebar .editor .actions .primary { background: var(--space-color); color: #fff; }

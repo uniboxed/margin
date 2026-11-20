@@ -426,6 +426,13 @@
             <button class="btn swatch" role="radio" m-attr:aria-checked="{{c.selected}}" m-class:on="{{c.selected}}" m-style:--swatch="{{c.color}}" m-action="editor.color" m-arg="{{c.id}}"></button>
           </m-for>
         </div>
+        <m-if test="editor.hasThemes">
+          <div class="theme-choices" role="radiogroup" m-attr:aria-label="{{editor.labels.theme}}">
+            <m-for each="editor.themes" as="t">
+              <button class="btn theme-choice" role="radio" m-attr:aria-checked="{{t.selected}}" m-class:on="{{t.selected}}" m-action="editor.theme" m-arg="{{t.id}}">{{t.name}}</button>
+            </m-for>
+          </div>
+        </m-if>
         <div class="editor-row actions">
           <button class="btn press small danger" title="{{editor.deleteTitle}}" m-attr:disabled="{{editor.cannotDelete}}" m-class:confirming="{{editor.confirmDelete}}" m-action="editor.delete">{{editor.deleteLabel}}</button>
           <div class="grow"></div>

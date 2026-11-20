@@ -1042,12 +1042,18 @@ function recentTabOfSpace(state: State, windowId: number, spaceId: string | null
     .sort((a, b) => (b.lastActive ?? 0) - (a.lastActive ?? 0))[0] ?? null;
 }
 
-function createSpace(state: State, { id, name, emoji, color }: { id: string; name?: string; emoji?: string; color?: string; }) {
-  const space = {
+// A space's theme (2026-11-20, Tirth: a theme per space, chosen as it's made, the one it was made from by default):
+// a theme's id (built in or imported: ui/space-theme.ts says which are there), or none, the profile's settings.theme.
+export const THEME_ID = /^[a-z0-9][a-z0-9-]{0,40}$/;
+export const themeIdOk = (v: unknown): v is string => typeof v === 'string' && THEME_ID.test(v);
+
+function createSpace(state: State, { id, name, emoji, color, theme }: { id: string; name?: string; emoji?: string; color?: string; theme?: string | null; }) {
+  const space: State['spaces'][number] = {
     id,
     name: name?.trim() || 'New space',
     emoji: emoji || '✨',
     color: color || '#00b894',
+    ...(themeIdOk(theme) ? { theme } : {}),
   };
   return { ...state, spaces: [...state.spaces, space] };
 }
@@ -1061,14 +1067,25 @@ function orderSpaces(state: State, ids: string[]) {
   return spaces.every((sp, i) => sp === state.spaces[i]) ? state : { ...state, spaces };
 }
 
-// Rename, re-emoji or recolor.
-function updateSpace(state: State, spaceId: string, patch: { name?: string; emoji?: string; color?: string; }) {
+// Rename, re-emoji, recolor, or another theme (`theme`: an id; null: none, the profile's; left out or not an id:
+// unchanged).
+function updateSpace(state: State, spaceId: string, patch: { name?: string; emoji?: string; color?: string; theme?: string | null; }) {
   const allowed: Record<string, string> = {};
   for (const key of ['name', 'emoji', 'color'] as const) {
     const value = typeof patch[key] === 'string' ? patch[key].trim() : '';
     if (value) allowed[key] = value;
   }
-  return { ...state, spaces: state.spaces.map((s) => (s.id === spaceId ? { ...s, ...allowed } : s)) };
+  const theme = themeIdOk(patch.theme) ? patch.theme : patch.theme === null ? null : undefined;
+  return {
+    ...state,
+    spaces: state.spaces.map((s) => {
+      if (s.id !== spaceId) return s;
+      const next = { ...s, ...allowed };
+      if (theme === null) delete next.theme;
+      else if (theme !== undefined) next.theme = theme;
+      return next;
+    }),
+  };
 }
 
 // ---- pins -----------------------------------------------------------------

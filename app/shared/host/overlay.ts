@@ -510,6 +510,35 @@ async function mount(pkg: any, { fallback = false, preview: previewing = false }
   return true;
 }
 
+// Another theme from the app while one is drawn (2026-11-20, Tirth: a theme per space; Settings' Theme, a space's menu
+// or editor): drawn once a space swipe has landed (the space is asked for at the lift, its settle still sliding in the
+// theme it started in), then cross-faded from the theme before (the document's view transition: the old picture fades
+// into the new as one; 180 ms, overlay.html), not cut. The first theme, the same theme again, reduced motion, or a
+// WebKit without view transitions: drawn as before, at once.
+const SWIPE_WAIT_MS = 4000;
+function swipeLanded(): Promise<void> {
+  const busy = () => { const root = runtime?.view.rootElement(); return !!root && (root.matches('.m-swiping, .m-settling') || !!root.querySelector('.m-swiping, .m-settling')); };
+  if (!busy()) return Promise.resolve();
+  const from = performance.now();
+  return new Promise((resolve) => {
+    // (Timers, not frames: an overlay off screen gets none.)
+    const check = () => (!busy() || performance.now() - from > SWIPE_WAIT_MS ? resolve() : void setTimeout(check, 30));
+    setTimeout(check, 30);
+  });
+}
+async function swapTheme(pkg: any) {
+  if (runtime && drawn && drawn.pkg?.id !== pkg?.id) await swipeLanded();
+  const fade = !!runtime && !!drawn && drawn.pkg?.id !== pkg?.id && typeof (document as any).startViewTransition === 'function'
+    && !matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!fade) return mount(pkg);
+  let result: unknown = false;
+  const from = performance.now();
+  const transition = (document as any).startViewTransition(async () => { result = await mount(pkg); });
+  await transition.updateCallbackDone.catch(() => {});
+  log('note', `theme ${JSON.stringify(String(pkg?.id ?? '').slice(0, 64))} drawn in ${Math.round(performance.now() - from)} ms, cross-faded from the one before`);
+  return result;
+}
+
 // The palette opened: drawn how long after the word came (work, then frames until it's on screen), one line each time.
 function openPaletteTimed(options: { newTab: boolean }, by: string) {
   if (!runtime) return;
@@ -668,7 +697,7 @@ function onMessage(msg: any) {
         if (ok) importStatus('Saved. This profile uses it now; choose it in other profiles’ Settings.');
       }
       pendingTheme = msg.theme;
-      if (host?.getState()) mounting = mounting.then(() => mount(msg.theme));
+      if (host?.getState()) mounting = mounting.then(() => swapTheme(msg.theme));
       return;
     case 'command':
       // The app's keys (app/platforms/macos/shell/Shortcuts.swift, following the Settings shortcuts). None while the

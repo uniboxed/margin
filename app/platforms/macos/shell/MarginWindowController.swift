@@ -1478,15 +1478,29 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         }
     }
 
-    // The source's state changed: drawn again; its theme too, if that changed.
+    // The source's state changed: drawn again; its theme too, if that changed (another theme chosen, or this window
+    // showing a space with another theme).
     func stateChanged() {
         guard asked, let owner else { return }
-        let state = jsonString(owner.source.snapshot()) ?? "null"
+        let snapshot = owner.source.snapshot()
+        let state = jsonString(snapshot) ?? "null"
         push(#"{"type":"state","state":"# + state + #","windows":"# + windowsJSON + "}")
-        if let theme = owner.theme(), theme != themeSent {
+        if let theme = owner.theme(id, snapshot), theme != themeSent {
             themeSent = theme
             push(#"{"type":"theme","theme":"# + theme + "}")
         }
+    }
+
+    // The theme of the space window `window` shows in `state` (the library's snapshot: its spaces, `openTabs`'
+    // activeSpaceByWindow; a profile's set: activeSpaceByWindow at the top), nil: none of its own. A window with no space
+    // of its own (or one gone) shows the first (state/model.ts activeSpaceId).
+    static func spaceTheme(window: Int, state: JSONObject) -> String? {
+        guard let spaces = state["spaces"] as? [JSONObject], !spaces.isEmpty else { return nil }
+        let by = ((state["openTabs"] as? JSONObject)?["activeSpaceByWindow"] ?? state["activeSpaceByWindow"]) as? JSONObject
+        let id = by?[String(window)] as? String
+        let space = spaces.first { $0["id"] as? String == id } ?? spaces[0]
+        guard let theme = space["theme"] as? String, !theme.isEmpty, theme.count <= 41 else { return nil }
+        return theme
     }
 
     @discardableResult func ask(_ type: String, _ payload: JSONObject) -> JSONObject? {
@@ -1500,10 +1514,11 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         asked = true
         sidebarResizing(false) // (a page loaded again mid-drag never says it's over)
         guard let owner else { return "null" }
+        let snapshot = owner.source.snapshot()
         let head: JSONObject = [
             "windowId": id, "profile": "", "browser": owner.browser, "mode": mode, "host": "app-window",
             "platform": ["browser": owner.browser, "os": "mac", "app": true],
-            "state": owner.source.snapshot(),
+            "state": snapshot,
         ]
         var json = String((jsonString(head) ?? "{}").dropLast())
         json += #","windows":"# + windowsJSON
@@ -1517,7 +1532,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         if starting { json += #","pageStarting":true"# }
         if starting, let why = startupStuck.flatMap({ jsonString($0) }) { json += #","pageStuck":"# + why }
         if pageState == .elsewhere, let picture = elsewherePicture, let data = jsonString(picture) { json += #","pagePicture":"# + data }
-        let theme = owner.theme()
+        let theme = owner.theme(id, snapshot)
         themeSent = theme
         json += #","theme":"# + (theme ?? "null") + "}"
         return json
@@ -1665,8 +1680,9 @@ final class MarginWindows {
     let pages: OverlayPages
     let source: MarginWindowSource
     let options: Options
-    // The theme package the windows draw (JSON), nil for Arcadia; the imported themes' index (JSON).
-    var theme: () -> String? = { nil }
+    // The theme package a window draws (JSON; its id and the state it draws given), nil for Arcadia; the imported themes'
+    // index (JSON).
+    var theme: (Int, JSONObject) -> String? = { _, _ in nil }
     var themes: () -> String = { "[]" }
     var apps: () -> String = { "null" } // the installed apps (ShellApps.swift), null with none read
     // A window's page area changed (MarginWindow.pageRect: hosting's own, or the hole's); its page drawn.

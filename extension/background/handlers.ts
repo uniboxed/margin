@@ -526,16 +526,22 @@ export const handlers = {
     const result = await showSpace(win, spaceId, { bringTab, deadline });
     return { shown: result?.tab?.id ?? null };
   },
-  async createSpace({ windowId, name, emoji, color }: { windowId?: number, name?: string, emoji?: string, color?: string }) {
+  async createSpace({ windowId, name, emoji, color, theme }: { windowId?: number, name?: string, emoji?: string, color?: string, theme?: string | null }) {
     const id = newId();
     await mutate((s) => {
-      const next = M.createSpace(s, { id, name, emoji, color });
+      // (Its theme: as asked, else that of the space the window shows: the library's rule, app/shared/library.)
+      const from = windowId == null ? null : s.spaces.find((sp) => sp.id === s.activeSpaceByWindow?.[windowId]);
+      const next = M.createSpace(s, { id, name, emoji, color, theme: M.themeIdOk(theme) ? theme : from?.theme ?? null });
       return windowId == null ? next : M.setActiveSpace(next, windowId, id);
     });
     return { spaceId: id };
   },
-  async renameSpace({ spaceId, name, emoji, color }: { spaceId: string, name?: string, emoji?: string, color?: string }) {
-    await mutate((s) => M.updateSpace(s, spaceId, { name, emoji, color }));
+  async renameSpace({ spaceId, name, emoji, color, theme }: { spaceId: string, name?: string, emoji?: string, color?: string, theme?: string | null }) {
+    await mutate((s) => M.updateSpace(s, spaceId, { name, emoji, color, ...(theme !== undefined ? { theme } : {}) }));
+  },
+  async setSpaceTheme({ spaceId, theme }: { spaceId: string, theme: string | null }) {
+    if (theme !== null && !M.themeIdOk(theme)) throw new Error('not a theme id');
+    await mutate((s) => M.updateSpace(s, spaceId, { theme }));
   },
   async deleteSpace({ spaceId }: { spaceId: string }) {
     await mutate((s) => M.deleteSpace(s, spaceId));

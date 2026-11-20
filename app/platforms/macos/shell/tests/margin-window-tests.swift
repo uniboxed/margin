@@ -243,6 +243,24 @@ func marginWindowTests() {
     sync.onChange?(DataProfile(browser: "safari", profile: "P"), ["spaces"])
     check("hosted source: the shell still hears the data set's changes (the source's comes after)", shellHeard == 1)
 
+    // ---- a theme per space (2026-11-20): the theme of the space a window shows ----
+    do {
+        let spaces: [JSONObject] = [["id": "a", "theme": "pixel"], ["id": "b"], ["id": "c", "theme": "material"]]
+        let lib: JSONObject = ["spaces": spaces, "openTabs": ["activeSpaceByWindow": ["1": "c", "2": "b", "3": "gone"]] as JSONObject]
+        check("space theme: the library's snapshot: the window's space's own", MarginWindowController.spaceTheme(window: 1, state: lib) == "material")
+        check("space theme: a space with none: none (the profile's)", MarginWindowController.spaceTheme(window: 2, state: lib) == nil)
+        check("space theme: a window with no space of its own, or one gone: the first space's (the one it shows)",
+              MarginWindowController.spaceTheme(window: 9, state: lib) == "pixel" && MarginWindowController.spaceTheme(window: 3, state: lib) == "pixel")
+        let set: JSONObject = ["spaces": spaces, "activeSpaceByWindow": ["1": "a"] as JSONObject]
+        check("space theme: a profile's set (its windows at the top)", MarginWindowController.spaceTheme(window: 1, state: set) == "pixel")
+        check("space theme: no spaces, or an odd value: none", MarginWindowController.spaceTheme(window: 1, state: [:]) == nil
+              && MarginWindowController.spaceTheme(window: 1, state: ["spaces": [["id": "a", "theme": String(repeating: "x", count: 60)]]]) == nil
+              && MarginWindowController.spaceTheme(window: 1, state: ["spaces": [["id": "a", "theme": 3]]]) == nil)
+        let drawn = DataSetWindowSource.state(values: { $0 == "spaces" ? ["a": ["name": "A", "order": 0, "theme": "pixel"], "b": ["name": "B", "order": 1]] : [:] }, active: [:])
+        check("space theme: a profile's set as Margin's window draws it keeps each space's theme",
+              ((drawn["spaces"] as? [JSONObject])?.map { $0["theme"] as? String ?? "-" }) == ["pixel", "-"])
+    }
+
     // ---- a theme's settings changed in Margin's window (the sidebar's width, dragged) last across launches ----
     do {
         var stored: [String: JSONObject] = ["arcadia": ["sidebarWidth": 300]]

@@ -51,7 +51,9 @@ test('the app host: the state from the hello, in the pages\' shape, drawable', (
   const { features, ...platform } = host.platform;
   assert.deepEqual(platform, { browser: 'safari', os: 'mac', app: true });
   // What Settings offers: the build's profile (Safari's in dist/app), as the new-tab page gave it.
-  assert.deepEqual(Object.keys(features).sort(), ['blockGestures', 'importThemes', 'marginFullscreen', 'newTabHint', 'search', 'sleepTabs', 'userThemes']);
+  assert.deepEqual(Object.keys(features).sort(), ['blockGestures', 'importThemes', 'marginFullscreen', 'newTabHint', 'search', 'sleepTabs', 'spaceThemes', 'userThemes']);
+  assert.equal(features.spaceThemes, false, 'a browser\'s overlay draws its profile\'s theme');
+  assert.equal((createAppHost({ hello: hello({ host: 'app-window' }), post: b.post }).platform.features as any).spaceThemes, true, 'Margin.app\'s own window draws each space\'s');
   assert.equal(features.importThemes, true, 'Margin.app imports themes');
   assert.deepEqual(features.userThemes, [], 'none imported in this hello');
   assert.equal(state.tabs[13].title, 'Docs');

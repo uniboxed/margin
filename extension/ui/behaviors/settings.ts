@@ -8,6 +8,7 @@
 // field records the next key combination pressed in it (Escape cancels;
 // a combination another shortcut has is refused with a word saying which),
 // and Margin's own shortcuts wait meanwhile (`ui.recording`).
+import { spaceThemesOn } from '../space-theme.ts';
 import type { Rt } from '../runtime.ts';
 import { saveField, saveThemeField, runField, removePrompt, shortcutTaken, wokeText, SHORTCUT_HELP } from '../settings-form.ts';
 import * as shortcuts from '../../shared/shortcuts.ts';
@@ -79,6 +80,14 @@ export function installSettings(rt: Rt) {
 
   function save(el: Element, value: string | boolean) {
     const f = fieldOf(el);
+    // Theme, with a space shown: that space's theme (each space has its own, 2026-11-20; ui/space-theme.ts), checked as
+    // any action against the themes Margin has. Without one: the profile's, as before.
+    const spaceId = rt.vm?.space?.id;
+    if (f?.id === 'theme' && !f.fromTheme && spaceThemesOn((rt.host.platform as any)?.features) && typeof spaceId === 'string' && spaceId && rt.state?.spaces?.some((sp) => sp.id === spaceId)) {
+      const ok = rt.dispatch('space.setTheme', { space: spaceId, theme: String(value) }, 'behavior') !== false;
+      if (!ok) sync();
+      return ok;
+    }
     // The active theme's own settings (fields Margin made from its theme.json) save only updateThemeSettings for it.
     const request = f?.fromTheme ? saveThemeField(f, value, rt.themeInfo ?? null) : saveField(f, value, rt.state?.settings);
     if (!request) { sync(); return false; } // back to what's saved

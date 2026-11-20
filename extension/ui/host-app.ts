@@ -352,6 +352,9 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   // Themes: Margin.app imports them (its file picker), and keeps the index (`themes`: docs/PROTOCOL.md "User themes").
    (platform.features as any).importThemes = true;
    (platform.features as any).userThemes = Array.isArray(hello?.themes) ? hello.themes : [];
+  // A theme per space (2026-11-20): Margin.app's own window draws each space's (its app picks the package by the space
+  // the window shows); a browser's overlay draws its profile's, so it doesn't offer them (ui/space-theme.ts).
+  (platform.features as any).spaceThemes = appWindow;
   // The window's tabs loading, as the copy last said (`push` `loading`).
   let loading: Set<number> = new Set();
   let failure: { type: string, error: string, at: number } | null = null;

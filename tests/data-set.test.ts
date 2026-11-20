@@ -105,6 +105,15 @@ test('the data set\'s items: spaces in order, pins by address, folders, Margin\'
   assert.deepEqual(COLLECTIONS, [...Object.keys(SOURCES), 'userThemes']);
 });
 
+test('the data set: a space\'s theme goes with it and comes back; none written for a space with none', () => {
+  const state = M.updateSpace(M.createSpace(M.defaultState(), { id: 'work', name: 'Work' }), 'work', { theme: 'pixel' });
+  const spaces = collectionFrom(state, 'spaces');
+  assert.equal(spaces.work.theme, 'pixel');
+  assert.equal('theme' in spaces[state.spaces[0].id], false, 'a space with none: no field (its value as before)');
+  const back = stateFromDataSet(M.defaultState(), dataSetFrom(state, { now: 1 }));
+  assert.deepEqual(back.spaces.map((sp) => sp.theme ?? null), [null, 'pixel']);
+});
+
 test('the converter (first link): today\'s extension storage as a data set, user themes too, times from the queue\'s meta where it has them', () => {
   const s = sampleState();
   const raw = {

@@ -137,10 +137,24 @@ test('menus: a folder\'s, a pin\'s, a tab\'s, as today\'s right-click menu', () 
 
 test('menus: a space\'s, the "+" menu, and nothing for what isn\'t there', () => {
   const s = menuItems({ kind: 'space', id: 'work' }, { state, space });
-  assert.deepEqual(labels(s), ['Edit Space…', 'Rename Space', '—', 'New Space', '—', 'Delete Space']);
+  assert.deepEqual(labels(s), ['Edit Space…', 'Rename Space', '—', 'New Space', '—', 'Delete Space'], 'where each space\'s theme isn\'t drawn: no themes');
   assert.deepEqual(s.at(-1), { id: 'i3', label: 'Delete Space', separator: false, danger: true, confirm: true, action: 'space.delete', arg: 'work' }, 'deleting asks first');
   const one = { ...state, spaces: state.spaces.slice(0, 1) };
   assert.deepEqual(labels(menuItems({ kind: 'space', id: 'home' }, { state: one, space })), ['Edit Space…', 'Rename Space', '—', 'New Space'], 'the last space can\'t be deleted');
+  // Its theme (2026-11-20, a theme per space; Margin.app's window: `spaceThemes`): every built-in one, the one it's
+  // drawn with checked (none of its own: the profile's, Arcadia here).
+  const on = { spaceThemes: true };
+  const themes = ['Theme: Arcadia ✓', 'Theme: Neubrutalism', 'Theme: Pixel', 'Theme: Liquid Glass', 'Theme: Material'];
+  const t = menuItems({ kind: 'space', id: 'work' }, { state, space, features: on });
+  assert.deepEqual(labels(t), ['Edit Space…', 'Rename Space', '—', ...themes, '—', 'New Space', '—', 'Delete Space']);
+  assert.deepEqual(t.find((i) => i.label === 'Theme: Pixel'), { id: 'i4', label: 'Theme: Pixel', separator: false, danger: false, confirm: false, action: 'space.setTheme', arg: { space: 'work', theme: 'pixel' } });
+  assert.equal(t.at(-1)!.id, 'i8');
+  // Its own theme checked; an imported one (Margin.app's) offered too; one removed since: drawn with the profile's.
+  const themed = { ...state, spaces: state.spaces.map((sp) => (sp.id === 'work' ? { ...sp, theme: 'my-theme' } : sp)), settings: { ...state.settings, theme: 'pixel' } };
+  const features = { ...on, userThemes: [{ id: 'my-theme', name: 'Mine' }] };
+  assert.deepEqual(labels(menuItems({ kind: 'space', id: 'work' }, { state: themed, space, features })).filter((l) => l.startsWith('Theme:')),
+    ['Theme: Arcadia', 'Theme: Neubrutalism', 'Theme: Pixel', 'Theme: Liquid Glass', 'Theme: Material', 'Theme: Mine ✓']);
+  assert.deepEqual(labels(menuItems({ kind: 'space', id: 'work' }, { state: themed, space, features: on })).filter((l) => l.endsWith('✓')), ['Theme: Pixel ✓'], 'its theme gone: the profile\'s');
   assert.deepEqual(run(menuItems({ kind: 'add' }, { state, space })), [['folder.new', undefined], ['space.new', undefined]]);
   for (const target of [{ kind: 'tab', id: 99 }, { kind: 'tab', id: '14' }, { kind: 'pin', id: 'zz' }, { kind: 'folder', id: 'f9' }, { kind: 'space', id: 'nope' }, { kind: 'eval', id: 1 }, null]) {
     assert.deepEqual(menuItems((target as any), { state, space }), [], JSON.stringify(target));
@@ -161,6 +175,8 @@ test('view model: a menu shows its labels, not what they run; a confirming item 
   assert.deepEqual([m.kind, m.id, m.x, m.y, m.hasItems], ['space', 'work', 30, 40, true]);
   const asked = vm({ menu: { kind: 'space', id: 'work', x: 30, y: 40, confirming: 'i3' } }).menu!;
   assert.deepEqual(asked.items.at(-1), { id: 'i3', label: CONFIRM_LABEL, separator: false, danger: true, confirming: true });
+  const themed = buildViewModel({ state, ui: { windowId: W, menu: { kind: 'space', id: 'work', x: 30, y: 40 } }, platform: { features: { spaceThemes: true } } }).menu!;
+  assert.deepEqual(themed.items.map((i) => i.label).filter((l) => l.startsWith('Theme:')).length, 5, 'Margin.app\'s window: its themes');
   assert.equal(vm({ menu: { kind: 'tab', id: 99 } }).menu, null, 'its tab is gone: no menu');
 });
 
@@ -173,4 +189,22 @@ test('view model: the space editor, its swatches and its delete rule', () => {
   assert.equal(vm({ editor: { spaceId: 'gone', name: '', emoji: '', color: '' } }).editor, null);
   const only = buildViewModel({ state: { ...state, spaces: state.spaces.slice(0, 1) }, ui: { windowId: W, editor: { spaceId: 'home', name: 'Home', emoji: '', color: '' } } }).editor!;
   assert.deepEqual([only.canDelete, only.cannotDelete, only.deleteTitle], [false, true, 'The last space can’t be deleted']);
+});
+
+test('view model: the space editor\'s themes: the space\'s own, else the profile\'s; the one picked; imported ones too', () => {
+  const at = (theme?: string, extra: any = {}, settings: any = {}) => buildViewModel({
+    state: { ...state, settings: { ...state.settings, ...settings }, spaces: state.spaces.map((sp) => (sp.id === 'work' ? { ...sp, ...(theme ? { theme } : {}) } : sp)) },
+    ui: { windowId: W, editor: { spaceId: 'work', name: 'W', emoji: '', color: '', ...extra } },
+    platform: { features: { spaceThemes: true, userThemes: [{ id: 'my-theme', name: 'Mine' }] } },
+  }).editor!;
+  const picked = (e: any) => e.themes.filter((t: any) => t.selected).map((t: any) => t.id);
+  assert.deepEqual(at('pixel').themes.map((t: any) => [t.id, t.name]), [['arcadia', 'Arcadia'], ['neubrutalism', 'Neubrutalism'], ['pixel', 'Pixel'], ['liquid-glass', 'Liquid Glass'], ['material', 'Material'], ['my-theme', 'Mine']]);
+  assert.deepEqual([picked(at('pixel')), at('pixel').theme], [['pixel'], 'pixel'], 'its own');
+  assert.deepEqual(picked(at(undefined, {}, { theme: 'material' })), ['material'], 'none of its own: the profile\'s');
+  assert.deepEqual(picked(at('gone', {}, { theme: 'material' })), ['material'], 'its own removed since: the profile\'s');
+  assert.deepEqual(picked(at('pixel', { theme: 'my-theme' })), ['my-theme'], 'picked in the editor');
+  assert.deepEqual(picked(at('pixel', { theme: 'gone' })), ['pixel'], 'a pick that isn\'t there: its own');
+  assert.equal(at('pixel').hasThemes, true);
+  const elsewhere = buildViewModel({ state, ui: { windowId: W, editor: { spaceId: 'work', name: 'W', emoji: '', color: '' } } }).editor!;
+  assert.deepEqual([elsewhere.themes, elsewhere.hasThemes], [[], false], 'where each space\'s theme isn\'t drawn: none offered');
 });
