@@ -1174,6 +1174,22 @@ func glueScenario() async {
     _ = await waitJS(c.webView, "return true")
     check("hover: over the hosted app again: nothing of Margin's marked, the row's own fill again, and nothing more said to the page there",
           cleared && back == before && c.hoverPushes == pushesOver, "cleared \(cleared) fill \(String(describing: back)) pushes \(c.hoverPushes - pushesOver)")
+    // The row shown (the active one) under the pointer: its own fill kept, as with WebKit's :hover (2026-11-20: the
+    // rewritten selector outweighed the theme's `.active` rule, so the active row took the hover fill).
+    let activeSelector = ".margin-sidebar :is(.tab, .pin).active"
+    if let active = await centre(activeSelector) {
+      let activeFill = "return getComputedStyle(document.querySelector('\(activeSelector)')).backgroundColor"
+      let plainActive = await js(c.webView, activeFill) as? String
+      c.pointerMoved(CGPoint(x: display.minX + active.x, y: display.minY + active.y), buttonsDown: false)
+      let markedActive = await waitJS(c.webView, "return document.querySelector('\(activeSelector)')?.hasAttribute('m-hover') === true")
+      try? await Task.sleep(for: .milliseconds(400)) // (past any fill transition)
+      let hoveredActive = await js(c.webView, activeFill) as? String
+      check("hover: the row shown, under the pointer (Margin's mark on it): its own active fill kept, never the hover fill",
+            markedActive && plainActive != nil && hoveredActive == plainActive && plainActive != after,
+            "marked \(markedActive) fill \(String(describing: plainActive)) → \(String(describing: hoveredActive)) hover \(String(describing: after))")
+      c.pointerMoved(CGPoint(x: display.maxX - 200, y: display.midY), buttonsDown: false)
+      _ = await waitJS(c.webView, "return !document.querySelector('[m-hover]')")
+    } else { check("the row shown, to hover", false) }
     // A run of moves 2 ms apart for 200 ms over the sidebar: said to the page once a frame at most, the last place in the end.
     if let rows = await js(c.webView, "return [...document.querySelectorAll('\(rowSelector)')].slice(0, 2).map(e => { const r = e.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })") as? [[Double]], rows.count == 2 {
       let burstStart = c.hoverPushes, t0 = Date()
