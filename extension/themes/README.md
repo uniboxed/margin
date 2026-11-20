@@ -440,10 +440,12 @@ Classes and variables Margin sets for you to style:
 - `m-resizing` (the handle, and the root);
 - `m-swiping`, `m-settling` and `--m-swipe-offset` (the `m-swipe` element). By default
   the offset jumps to its end under `m-settling`, for your own transition. Set
-  `--m-swipe-feel: arc` on the `m-swipe` element for Arc's own feel instead (the
-  sidebar at half the fingers' distance, Arc's choice of space at the lift, its rubber
-  band, a haptic tick in Margin.app): Margin then moves `--m-swipe-offset` frame by
-  frame with Arc's spring while `m-settling`, so don't transition it (Arcadia does this);
+  `--m-swipe-feel: arc` or `dia` on the `m-swipe` element for Arc's or Dia's own feel
+  instead (the sidebar at half the fingers' distance, their choice of space at the
+  lift, their rubber band; Arc's spring 0.4 s, Dia's 0.25 s and a haptic tick in
+  Margin.app past halfway): under `m-settling` Margin then gives the settle as
+  `--m-swipe-transition` (the spring sampled into a `linear()` easing), so use it on the
+  moving part: `transition: var(--m-swipe-transition, none)` (Arcadia does this);
 - `--m-menu-x`, `--m-menu-y` (`<m-menu>`), `--m-reveal-zone` (`m-peek`),
   `--m-<setting>` (your settings).
 
