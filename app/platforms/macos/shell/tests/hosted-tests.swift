@@ -1678,8 +1678,9 @@ func hostedShellTests(script: URL) {
 
 
 // Another item picked while an app's first open waits for its window (Tirth, 2026-11-20): that one starts at once, the
-// first one's open given up (its app left running out of sight, hidden again, its loading bar gone), Margin's window
-// hosting all along (no launcher between them); the first app picked again later: no second launch.
+// first one's open given up (an app it started asked to quit, not waited for: no memory held for an app passed over; its
+// loading bar gone), Margin's window hosting all along (no launcher between them). Picked by the tab keys, an app not
+// running yet is held a moment first: one only passed over is never started.
 func hostedSupersedeTests(script: URL) {
     let root = tempFolder("hosted-supersede")
     defer { try? FileManager.default.removeItem(at: root) }
@@ -1690,7 +1691,7 @@ func hostedSupersedeTests(script: URL) {
     let links = FakeHostedLinks()
     let session = HostedSession(library: library, engine: engine, links: links)
     session.sleep = { _ in await Task.yield() }
-    session.appName = { ["com.apple.Notes": "Notes", "com.apple.TextEdit": "TextEdit"][$0] }
+    session.appName = { ["com.apple.Notes": "Notes", "com.apple.TextEdit": "TextEdit", "com.apple.FaceTime": "FaceTime", "com.apple.calculator": "Calculator"][$0] }
     session.options.preparesBrowser = false
     let window = FakeHostedWindow(id: 1, number: FakeHostWorld.marginWindow)
     session.window = { id in id == nil || id == 1 ? window : nil }
@@ -1699,9 +1700,10 @@ func hostedSupersedeTests(script: URL) {
     engine.hostedWindow = { session.hosted($0) }
     library.delegate = session
     func run(_ body: @escaping () async -> Void = {}) { hostRun { await body(); await session.idle() } }
+    let launches = { (bundle: String) in w.calls.filter { $0 == "launch \(bundle)" }.count }
     _ = library.perform("createSpace", ["windowId": 1, "name": "Home", "emoji": "🏠"])
 
-    // Notes starts with no window (not hidden) and makes none: its open waits; at its reopen (1.5 s in), TextEdit is picked.
+    // Notes starts with no window and makes none: its open waits; at its reopen (1.5 s in), TextEdit is clicked.
     w.launchWindows = 0
     var notesPid: pid_t?
     var picked = 0
@@ -1715,6 +1717,7 @@ func hostedSupersedeTests(script: URL) {
     }
     let start = w.clock
     run { session.openApp("com.apple.Notes", windowId: 1) }
+    w.onReopen = nil
     let notesItem = library.items().first { $0.value["url"] as? String == "app://com.apple.Notes" }?.id ?? ""
     let editItem = library.items().first { $0.value["url"] as? String == "app://com.apple.TextEdit" }?.id ?? ""
     let edit = HostTarget.app("com.apple.TextEdit").id, notes = HostTarget.app("com.apple.Notes").id
@@ -1722,38 +1725,52 @@ func hostedSupersedeTests(script: URL) {
           picked == 1 && engine.shown == edit && session.shown[1] == editItem && !engine.isHosted(notes) && session.done.contains { $0.contains("its open given up") },
           "\(String(describing: engine.shown)) \(session.done.suffix(4))")
     check("supersede: …at once, not after Notes' whole wait for a window (12 s)", w.clock - start < 6, "\(w.clock - start) s")
-    check("supersede: …Notes left running, still Margin's, hidden again (out of sight)", notesPid.map { w.apps[$0] != nil && w.hidden.contains($0) && w.calls.contains("hide \($0)") } == true
-          && engine.launchedPid(bundleId: "com.apple.Notes") == notesPid)
+    check("supersede: …Notes, started for that open, asked to quit (no memory held for an app passed over), no longer Margin's to keep",
+          notesPid.map { w.calls.contains("terminate \($0)") } == true && engine.launchedPid(bundleId: "com.apple.Notes") == nil, "\(w.calls.suffix(6))")
     check("supersede: …Margin's window hosting all along (no launcher between them), the loader gone, no loading bar left on Notes' row",
-          window.hostings == [true] && window.showing == nil && window.loadingTabs.isEmpty && !library.items().isEmpty && !notesItem.isEmpty,
+          window.hostings == [true] && window.showing == nil && window.loadingTabs.isEmpty && !notesItem.isEmpty,
           "\(window.hostings) \(String(describing: window.showing)) \(window.loadingTabs)")
-
-    // Notes picked again: the running one used (no second launch); its window comes as it's unhidden.
-    w.windowOnlyUnhidden.insert("com.apple.Notes")
-    let launches = w.calls.filter { $0 == "launch com.apple.Notes" }.count
+    // Notes picked again: started anew (its last instance's exit waited for, never hosted), shown.
+    let before = launches("com.apple.Notes")
     run { _ = library.perform("activateTab", ["windowId": 1, "tabId": notesItem]) }
-    check("supersede: Notes picked again: its running app used (no second launch), shown", engine.shown == notes && session.shown[1] == notesItem
-          && w.calls.filter { $0 == "launch com.apple.Notes" }.count == launches, "\(String(describing: engine.shown)) \(session.done.suffix(3))")
+    check("supersede: Notes picked again: started anew and shown", engine.shown == notes && session.shown[1] == notesItem && launches("com.apple.Notes") == before + 1,
+          "\(String(describing: engine.shown)) \(session.done.suffix(3))")
+
+    // ---- the tab keys: FaceTime passed over (never started), Calculator, where they stop, started ----
+    let faceItem = (library.perform("addItem", ["windowId": 1, "target": ItemTarget.app(bundleId: "com.apple.FaceTime", name: "FaceTime").json]).result as? JSONObject)?["tabId"] as? String ?? ""
+    let calcItem = (library.perform("addItem", ["windowId": 1, "target": ItemTarget.app(bundleId: "com.apple.calculator", name: "Calculator").json]).result as? JSONObject)?["tabId"] as? String ?? ""
+    var next: String? = calcItem
+    session.sleep = { _ in
+        // (The next press comes while FaceTime is held: the keys move on to Calculator.)
+        if let item = next, session.requested[1] == faceItem { next = nil; session.cycled(windowId: 1); _ = library.perform("activateTab", ["windowId": 1, "tabId": item]) }
+        await Task.yield()
+    }
+    let faceLaunches = launches("com.apple.FaceTime")
+    run { session.cycled(windowId: 1); _ = library.perform("activateTab", ["windowId": 1, "tabId": faceItem]) }
+    check("supersede: the tab keys passing over FaceTime (not running): never started, nothing on its row; Calculator, where they stopped, started and shown",
+          next == nil && launches("com.apple.FaceTime") == faceLaunches && engine.shown == HostTarget.app("com.apple.calculator").id && session.shown[1] == calcItem
+          && window.loadingTabs.isEmpty && session.done.contains { $0.contains("passed over by the tab keys") }, "\(String(describing: engine.shown)) \(session.done.suffix(4))")
+    // A hosted app the keys come to: shown at once (never held).
+    session.sleep = { _ in await Task.yield() }
+    let mark = session.done.count
+    run { session.cycled(windowId: 1); _ = library.perform("activateTab", ["windowId": 1, "tabId": editItem]) }
+    check("supersede: the tab keys on a hosted app: shown at once", engine.shown == edit && !session.done.dropFirst(mark).contains { $0.contains("passed over") },
+          "\(String(describing: engine.shown)) \(session.done.dropFirst(mark))")
     run { await engine.quitAll() }
 
-    // An app Margin started that its open left running, still with no window when it's picked again: quit, as a first
-    // open's own launch is when no window comes.
+    // The person's own app (running already, not Margin's): its open given up leaves it as it is.
     let w2 = FakeHostWorld()
     let e2 = HostEngine(system: w2, marker: nil, pid: 1)
     e2.options.privateRetire = 0
-    e2.options.windowWait = 2
-    w2.launchWindows = 0
+    e2.options.personWindowWait = 3
+    let mine = w2.start("com.apple.Notes", policy: .regular, windows: 0)
     var wanted = true
-    let page = HostPlacement(page: CGRect(x: 260, y: 8, width: 1244, height: 933), area: FakeHostWorld.display)
     w2.onReopen = { _ in wanted = false; return nil }
-    let first = hostRun { await e2.open(app: .app("com.apple.Notes"), in: page, marginWindow: FakeHostWorld.marginWindow, marginSpace: FakeHostWorld.marginSpace, wanted: { wanted }) }
-    let pid = e2.launchedPid(bundleId: "com.apple.Notes")
-    w2.onReopen = nil
-    let again = hostRun { await e2.open(app: .app("com.apple.Notes"), in: page, marginWindow: FakeHostWorld.marginWindow, marginSpace: FakeHostWorld.marginSpace, wanted: nil) }
-    if case .failed(.superseded, _)? = first, case .failed(.window, _)? = again, let pid {
-        check("supersede: an app its given-up open left running, picked again with still no window: quit (no app of Margin's left behind)", w2.apps[pid] == nil && e2.launchedPid(bundleId: "com.apple.Notes") == nil,
-              "\(w2.calls.suffix(4))")
+    let page = HostPlacement(page: CGRect(x: 260, y: 8, width: 1244, height: 933), area: FakeHostWorld.display)
+    let r = hostRun { await e2.open(app: .app("com.apple.Notes"), in: page, marginWindow: FakeHostWorld.marginWindow, marginSpace: FakeHostWorld.marginSpace, wanted: { wanted }) }
+    if case .failed(.superseded, _)? = r {
+        check("supersede: the person's own app, its open given up: left running, never asked to quit", w2.apps[mine] != nil && !w2.calls.contains("terminate \(mine)"), "\(w2.calls.suffix(4))")
     } else {
-        check("supersede: given up, then failed for no window", false, "\(String(describing: first)) \(String(describing: again)) \(String(describing: pid))")
+        check("supersede: the person's own app given up (wanted false at its reopen)", wanted && false, "\(String(describing: r)) \(w2.calls.suffix(4))")
     }
 }

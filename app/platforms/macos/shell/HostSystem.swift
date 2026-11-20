@@ -43,9 +43,6 @@ protocol HostSystem: AnyObject {
     func isHidden(pid: pid_t) -> Bool?
     // Unhidden (NSRunningApplication.unhide: never activated). True: asked.
     func unhide(pid: pid_t) -> Bool
-    // Hidden again (NSRunningApplication.hide): an app whose first open was given up (another item picked meanwhile) kept
-    // out of sight, its windows ordered out. True: asked.
-    func hide(pid: pid_t) -> Bool
     // A Dock-icon click on a running app (kAEReopenApplication, an Apple event straight to its process, never through
     // LaunchServices: an open there promotes an app Margin started with no Dock icon to a Dock app, 2026-11-15): the app
     // orders its main window in, or makes a new one (Maps running with no window, 2026-11-17 15:19). True: sent.
@@ -169,7 +166,6 @@ protocol HostSystem: AnyObject {
 }
 
 extension HostSystem {
-    func hide(pid: pid_t) -> Bool { false } // (a stand-in that doesn't play it)
     func batch(_ body: () -> Void) { body() }
     func appVersion(pid: pid_t) -> String? { nil }
     func launching(pid: pid_t, for seconds: Double) {}
@@ -587,11 +583,6 @@ final class RealHostSystem: HostSystem {
     func unhide(pid: pid_t) -> Bool {
         guard !PrivateCalls.inTests, let a = NSRunningApplication(processIdentifier: pid), !a.isTerminated else { return false }
         return a.unhide()
-    }
-
-    func hide(pid: pid_t) -> Bool {
-        guard !PrivateCalls.inTests, let a = NSRunningApplication(processIdentifier: pid), !a.isTerminated else { return false }
-        return a.hide()
     }
 
     // Sent off the main thread, its answer waited for (at most `reopenAnswerWait`), never interacting, and what came of
