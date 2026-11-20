@@ -941,13 +941,17 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // (WebFrame::handleMouseEvent: with no button down and the page not active, the move goes to the scrollbars alone;
     // active is its window key, PageClientImpl::isViewWindowActive), and Margin's panel is key only while a field or
     // menu of Margin's has the keys. So Margin's page does it itself: where the pointer is, said to the page
-    // (`hoverAt`, in its CSS pixels), at most once per run of the loop (the last place wins), which marks the element
+    // (`hoverAt`, in its CSS pixels), at most once per frame of its display (the last place wins: the first move after
+    // a pause at once, the moves after it one frame apart at most, so it's never more than a frame late), which marks the element
     // there and its ancestors `m-hover` (app/shared/host/overlay.ts), and every theme's :hover also matches [m-hover].
     // Cleared as the pointer leaves for the hosted app or the window, a button goes down, or the panel becomes key
     // (WebKit's own hover from then on). Nothing private, nothing per move but a point kept.
     private var hoverLit = false
     private var hoverPending: CGPoint?
     private var hoverQueued = false
+    private var hoverSaidAt = -Double.infinity
+    // One frame of the display the window is on (its highest rate, a ProMotion display's 120 Hz).
+    private var hoverFrame: TimeInterval { 1.0 / Double(max(30, panel.screen?.maximumFramesPerSecond ?? 60)) }
     private func hover(_ at: CGPoint, inside: Bool, buttonsDown: Bool) {
         let wanted = inside && !ignoring && !buttonsDown && !isClosed && !panel.isKeyWindow && (options.harness || window.isVisible)
         if wanted {
@@ -959,11 +963,13 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         }
         guard !hoverQueued else { return }
         hoverQueued = true
-        DispatchQueue.main.async { [weak self] in self?.flushHover() }
+        let wait = hoverSaidAt + hoverFrame - ProcessInfo.processInfo.systemUptime
+        if wait <= 0 { DispatchQueue.main.async { [weak self] in self?.flushHover() } } else { DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in self?.flushHover() } }
     }
     private func flushHover() {
         hoverQueued = false
         guard !isClosed else { return }
+        hoverSaidAt = ProcessInfo.processInfo.systemUptime
         if let p = hoverPending {
             hoverLit = true
             hoverPushes += 1

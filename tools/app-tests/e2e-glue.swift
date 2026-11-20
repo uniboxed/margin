@@ -1096,6 +1096,23 @@ func glueScenario() async {
     _ = await waitJS(c.webView, "return true")
     check("hover: over the hosted app again: nothing of Margin's marked, the row's own fill again, and nothing more said to the page there",
           cleared && back == before && c.hoverPushes == pushesOver, "cleared \(cleared) fill \(String(describing: back)) pushes \(c.hoverPushes - pushesOver)")
+    // A run of moves 2 ms apart for 200 ms over the sidebar: said to the page once a frame at most, the last place in the end.
+    if let rows = await js(c.webView, "return [...document.querySelectorAll('\(rowSelector)')].slice(0, 2).map(e => { const r = e.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })") as? [[Double]], rows.count == 2 {
+      let burstStart = c.hoverPushes, t0 = Date()
+      for i in 0..<100 {
+        let r = rows[i < 99 ? 0 : 1]
+        c.pointerMoved(CGPoint(x: display.minX + r[0] + Double(i % 3), y: display.minY + r[1]), buttonsDown: false)
+        try? await Task.sleep(nanoseconds: 2_000_000)
+      }
+      let took = Date().timeIntervalSince(t0)
+      let last = await waitJS(c.webView, "return document.querySelectorAll('\(rowSelector)')[1]?.hasAttribute('m-hover') === true")
+      let said = c.hoverPushes - burstStart
+      let frames = Int((took * 120).rounded(.up)) + 2
+      check("hover: a run of moves (100 in \(Int(took * 1000)) ms) said to the page once a frame at most (\(said), at most \(frames) at 120 Hz), the last place marked in the end",
+            said >= 2 && said <= frames && last, "said \(said) frames \(frames) last \(last)")
+      c.pointerMoved(CGPoint(x: display.maxX - 200, y: display.midY), buttonsDown: false)
+      _ = await waitJS(c.webView, "return !document.querySelector('[m-hover]')")
+    } else { check("two sidebar rows to hover", false) }
     let rewritten = await js(c.webView, "let n = 0, m = 0; const walk = (rules) => { for (const r of rules) { if (r.selectorText) { if (/:hover/.test(r.selectorText)) n++; if (/:hover/.test(r.selectorText) && r.selectorText.includes('[m-hover]')) m++; } if (r.cssRules) walk(r.cssRules); } }; for (const s of document.adoptedStyleSheets) walk(s.cssRules); return [n, m]") as? [Int]
     check("hover: every :hover rule of the theme's and Margin's own also says [m-hover]", (rewritten?.first ?? 0) > 0 && rewritten?.first == rewritten?.last, "\(String(describing: rewritten))")
 

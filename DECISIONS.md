@@ -6260,7 +6260,9 @@ split second and went. Both while keeping the hosted app in focus.
   or the panel becomes key), the page marks the element there and its ancestors `m-hover`, and every style rule's
   :hover in the sheets it draws with (the theme's, Margin's own) also matches [m-hover] (rewritten in place as the
   theme is drawn: `withHoverAttr`, app/shared/host/overlay.ts). Nothing private; the marks change only when the element
-  under the pointer does, and the page's change watcher ignores them.
+  under the pointer does, and the page's change watcher ignores them. Said at most once per frame of the display Margin's
+  window is on (the first move after a pause at once, then a frame apart at most, the last place each time): a run of
+  100 moves in 312 ms was 19 messages, 100 before (the glue e2e).
 - **Margin's menus.** After a press in Margin's UI the keys go back to the hosted app (`afterPress` → `keysBack`), which
   took the focus from the page, and the menus close when it loses its focus (`blur`). A menu or prompt of Margin's open
   now takes the keys as a field does (the page's `focus`: `popupOpen` in app/shared/host/overlay.ts): no hand-back at
