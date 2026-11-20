@@ -1236,21 +1236,25 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             _ = fallBack("its stage's Space wasn't showing")
             return
         }
-        guard placeGroup(space, stage: stage) else {
-            stageOpening = false
-            restoreGroup()
-            stage.close(id: id)
-            stage.giveUp("Margin's windows didn't join its stage's Space")
-            window.refusesToggle = false
-            setButtonsHidden(false)
-            _ = fallBack("its windows didn't join its stage's Space")
-            return
+        _ = placeGroup(space, stage: stage)
+        groupJoined(space, stage: stage) { [weak self] joined in
+            guard let self, !self.isClosed else { return }
+            guard joined else {
+                self.stageOpening = false
+                self.restoreGroup()
+                stage.close(id: self.id)
+                stage.giveUp("Margin's windows didn't join its stage's Space")
+                self.window.refusesToggle = false
+                self.setButtonsHidden(false)
+                _ = self.fallBack("its windows didn't join its stage's Space")
+                return
+            }
+            self.stageOpening = false
+            self.stageSpace = space
+            Diagnostics.note("Margin's window \(self.id): in its stage's Space \(space) (owned by Margin Space.app: nobody makes Margin active there)")
+            self.fullScreenChanged(true)
+            self.startMenuBar()
         }
-        stageOpening = false
-        stageSpace = space
-        Diagnostics.note("Margin's window \(id): in its stage's Space \(space) (owned by Margin Space.app: nobody makes Margin active there)")
-        fullScreenChanged(true)
-        startMenuBar()
     }
 
     // Margin's windows into its stage's Space by macOS's own rules only (DECISIONS.md "The window server's crash and the
@@ -1279,10 +1283,25 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         panel.addChildWindow(window, ordered: .below)
         panel.collectionBehavior = MarginPanel.stageBehavior
         placeBackdrop(b)
-        let read = [panel, window, b].map { stage.calls.spaces(of: $0.windowNumber) }
-        let joined = read.allSatisfy { $0 == [space] }
-        Diagnostics.note("Margin's window \(id): its panel, window and backdrop \(joined ? "in" : "NOT in") its stage's Space by macOS's own placement (\(read.map { $0.map { "\($0)" } ?? "unread" }.joined(separator: ", ")))")
-        return joined
+        return true
+    }
+
+    // Where macOS put them, read until it says (a window just ordered in can read in no Space for a moment): the panel and
+    // this window in the stage is joined (the backdrop is shown again by `syncBackdrop` if it isn't there yet).
+    private func groupJoined(_ space: UInt64, stage: MarginStage, then: @escaping (Bool) -> Void) {
+        var tries = 0
+        func look() {
+            guard !isClosed else { return then(false) }
+            let read = [panel, window, backdrop].map { $0.flatMap { stage.calls.spaces(of: $0.windowNumber) } }
+            let joined = read[0] == [space] && read[1] == [space]
+            tries += 1
+            if joined || tries >= 10 {
+                Diagnostics.note("Margin's window \(id): its panel, window and backdrop \(joined ? "in" : "NOT in") its stage's Space by macOS's own placement after \(tries) look\(tries == 1 ? "" : "s") (\(read.map { $0.map { "\($0)" } ?? "unread" }.joined(separator: ", ")))")
+                return then(joined)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { look() }
+        }
+        look()
     }
 
     // The backdrop on its own in the stage (a panel, not a child: below every app's window at its own level), shown with

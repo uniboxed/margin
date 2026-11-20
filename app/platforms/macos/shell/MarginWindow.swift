@@ -353,7 +353,9 @@ final class MarginBackdrop: NSPanel {
 
     // `frame`: AppKit's (bottom left), its parent's.
     init(frame: NSRect) {
-        super.init(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+        // (Not deferred: its window exists at once, so where macOS placed it reads right away: deferred, its Spaces read
+        // empty just after it was ordered in, and the stage was judged not joined, 2026-11-19 22:18.)
+        super.init(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         isReleasedWhenClosed = false
         isOpaque = true
         backgroundColor = .windowBackgroundColor
