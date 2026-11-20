@@ -412,16 +412,21 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             if let b = backdrop { b.parent?.removeChildWindow(b); if b.isVisible { b.orderOut(nil) } }
             return
         }
-        let parent: NSWindow = stageSpace != nil ? panel : window // (the group's parent: the panel in a stage)
         let frame = MarginBackdrop.frame(window: window.frame, screen: window.screen?.frame)
         let b = backdrop ?? MarginBackdrop(frame: frame)
         backdrop = b
         if b.frame != frame { b.setFrame(frame, display: false) }
         if b.level != MarginBackdrop.level { b.level = MarginBackdrop.level }
-        if b.parent !== parent {
+        // (In a stage it's on its own: a panel placed by macOS's rule, never a child. Ordered in again only while the
+        // stage is the Space showing.)
+        if stageSpace != nil {
+            if b.parent != nil { b.parent?.removeChildWindow(b) }
+            if !b.isVisible, window.isOnActiveSpace || panel.isOnActiveSpace { placeBackdrop(b); Diagnostics.warn("Margin's window \(id): its backdrop wasn't on screen (\(why)): shown again") }
+        } else if b.parent !== window {
             let lost = b.isVisible // (taken out on purpose when this window left full screen: not on screen then)
             b.parent?.removeChildWindow(b)
-            parent.addChildWindow(b, ordered: .below)
+            b.collectionBehavior = MarginBackdrop.behavior
+            window.addChildWindow(b, ordered: .below)
             backdropAttached += 1
             if b.level != MarginBackdrop.level { b.level = MarginBackdrop.level }
             if lost { Diagnostics.warn("Margin's window \(id): its backdrop wasn't its child any more (\(why)): made its child again") }
@@ -1259,7 +1264,6 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         backdrop = b
         b.parent?.removeChildWindow(b)
         b.setFrame(MarginBackdrop.frame(window: window.frame, screen: window.screen?.frame), display: false)
-        b.collectionBehavior = MarginBackdrop.stageBehavior
         window.collectionBehavior = MarginWindow.stageBehavior
         panel.setFrame(window.frame, display: false)
         panel.level = window.level
@@ -1267,13 +1271,21 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         panel.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary, .ignoresCycle]
         panel.orderFrontRegardless()
         panel.addChildWindow(window, ordered: .below)
-        panel.addChildWindow(b, ordered: .below)
-        b.level = MarginBackdrop.level
         panel.collectionBehavior = MarginPanel.stageBehavior
+        placeBackdrop(b)
         let read = [panel, window, b].map { stage.calls.spaces(of: $0.windowNumber) }
         let joined = read.allSatisfy { $0 == [space] }
         Diagnostics.note("Margin's window \(id): its panel, window and backdrop \(joined ? "in" : "NOT in") its stage's Space by macOS's own placement (\(read.map { $0.map { "\($0)" } ?? "unread" }.joined(separator: ", ")))")
         return joined
+    }
+
+    // The backdrop on its own in the stage (a panel, not a child: below every app's window at its own level), shown with
+    // "move to the active Space", then joining full-screen Spaces. Only while the stage is the Space showing.
+    private func placeBackdrop(_ b: MarginBackdrop) {
+        b.level = MarginBackdrop.level
+        b.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary, .ignoresCycle]
+        b.orderFrontRegardless()
+        b.collectionBehavior = MarginBackdrop.stageBehavior
     }
 
     // Margin's order of things again (out of a stage): this window the parent, the panel above it, the backdrop below,
@@ -1415,6 +1427,8 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         spaceChangedAt = now()
         if let space = stageSpace, let stage = owner?.stage, stage.calls.spaces(of: window.windowNumber).map({ !$0.contains(space) }) == true {
             lostStage("it's no longer in its stage's Space")
+        } else if stageSpace != nil, window.isOnActiveSpace {
+            menuBar?.stageShowing()
         }
         tryFullScreen("the Space changed")
         if isFullScreen, !options.harness, window.isOnActiveSpace { attachPanel("the Space changed") }

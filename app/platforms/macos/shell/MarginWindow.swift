@@ -344,14 +344,16 @@ enum MarginMenu {
 // the Mac is), at the display's frame, below every normal window and above that backdrop. Margin's window's child, as
 // its panel is, so it's in Margin's Space with it and moves with it; it takes no mouse, never the keys, isn't in the
 // window cycle or the Window menu, and draws nothing of its own.
-final class MarginBackdrop: NSWindow {
+// (An NSPanel: in a stage it joins the Space showing on its own with "move to the active Space", which only a panel does:
+// a child of the panel instead read at layer 0, above the apps, 2026-11-19.)
+final class MarginBackdrop: NSPanel {
     // Above the backdrop macOS draws (WindowManager's, at about -2^31) and the desktop's icons' level, below every
     // normal window (a hosted app's are at 0).
     static let level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopIconWindow)) + 1)
 
     // `frame`: AppKit's (bottom left), its parent's.
     init(frame: NSRect) {
-        super.init(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: true)
+        super.init(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
         isReleasedWhenClosed = false
         isOpaque = true
         backgroundColor = .windowBackgroundColor

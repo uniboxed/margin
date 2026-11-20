@@ -69,7 +69,8 @@ final class MarginMenuBar {
         strip.contentView = StripView(close: { [weak self] in self?.closeTab() })
         edge.onEnter = { [weak self] in self?.show() }
         titlesView.onPress = { [weak self] i in DispatchQueue.main.async { self?.press(i) } }
-        place(edge)
+        placeEdge()
+        Diagnostics.note("Margin's menu bar: on in its stage's Space \(space) (the top edge \(edge.isVisible ? "watched" : "not watched yet: its Space isn't showing"))")
     }
 
     // Gone with its window's stage (its Space left or closed, Margin quitting): the bar left to macOS.
@@ -99,10 +100,11 @@ final class MarginMenuBar {
     // ---- down and up ----
 
     private func show() {
-        guard !shown else { return }
+        guard !shown, calls.activeSpace() == space else { return }
         shown = true
         reveals += 1
         calls.showMenuBar(true, display: display)
+        edge.orderOut(nil)
         layoutTitles()
         place(titles)
         showStrip()
@@ -120,7 +122,18 @@ final class MarginMenuBar {
         calls.showMenuBar(false, display: display)
         titles.orderOut(nil)
         hideStrip()
+        placeEdge()
     }
+
+    // The top-edge strip in the stage, only while the stage is the Space showing ("move to the active Space" would put it
+    // in whichever Space shows); else when it shows again (`stageShowing`).
+    private func placeEdge() {
+        guard !shown, !edge.isVisible, calls.activeSpace() == space else { return }
+        place(edge)
+    }
+
+    // Its stage's Space showing again (MarginWindowController `spaceChanged`): the top-edge strip there if it isn't.
+    func stageShowing() { placeEdge() }
 
     private func look() {
         let m = NSEvent.mouseLocation
@@ -249,7 +262,9 @@ private final class EdgePanel: NSPanel {
         hidesOnDeactivate = false
         isReleasedWhenClosed = false
         ignoresMouseEvents = false
-        level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.mainMenuWindow)) - 1)
+        // (Above the menu bar's own window: macOS keeps it over a full-screen Space's top edge, hidden, and it took the
+        // hover, 2026-11-19. Out of the way while the real bar is down: MarginMenuBar takes it out and puts it back.)
+        level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.mainMenuWindow)) + 2)
         collectionBehavior = MarginMenuBar.placedBehavior
         let v = EdgeView(frame: NSRect(origin: .zero, size: contentRect.size))
         v.autoresizingMask = [.width, .height]
