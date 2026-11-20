@@ -229,7 +229,11 @@ function withHoverAttr(rules: CSSRuleList) {
   for (const rule of Array.from(rules)) {
     if (rule instanceof CSSStyleRule && HOVER_PSEUDO.test(rule.selectorText) && !rule.selectorText.includes(`[${HOVER_ATTR}]`)) {
       HOVER_PSEUDO.lastIndex = 0;
-      rule.selectorText = rule.selectorText.replace(HOVER_PSEUDO, `:is(:hover:not([${HOVER_OFF}]),[${HOVER_ATTR}])`);
+      // ((hover or marked) and (not marked off, or marked)): hovered not marked off, or marked. Its specificity is a plain
+      // :hover's (:is() counts its weightiest part, one pseudo-class or attribute; :where() counts nothing), so the theme's
+      // own order decides as it does with WebKit's :hover: the row shown keeps its fill under the pointer (2026-11-20:
+      // ":is(:hover:not([m-hover-off]),[m-hover])" weighed two and outweighed the theme's `.active` rule).
+      rule.selectorText = rule.selectorText.replace(HOVER_PSEUDO, `:is(:hover,[${HOVER_ATTR}]):where(:not([${HOVER_OFF}]),[${HOVER_ATTR}])`);
     }
     HOVER_PSEUDO.lastIndex = 0;
     const inner = (rule as CSSRule & { cssRules?: CSSRuleList }).cssRules;

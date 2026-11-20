@@ -6341,3 +6341,13 @@ open waited for that exit (heard at .268 by its process, `kill(pid, 0)`), then t
 instance, and its list names an app for a moment after its process ended (the engine's own `liveInstances` already
 ignored such an instance since 2026-11-19, Journal). Now only an instance whose process runs stops a launch
 (`blocksLaunch`). If LaunchServices itself ever refuses in that moment, the open's `launchWait` and its message say so.
+
+## The row shown keeps its fill under the pointer (2026-11-20)
+
+Tirth: hovering the active tab, already highlighted, drew the hover fill over it. Only in Margin.app with a hosted app
+holding the keys: Margin's page draws hover itself then, and every :hover in the sheets was rewritten as
+`:is(:hover:not([m-hover-off]),[m-hover])`, whose specificity is two pseudo-classes/attributes where :hover is one. The
+themes' hover rules then outweighed their own `.active` rules of equal weight that come after them (Arcadia, Material,
+Neubrutalism, Pixel; Liquid Glass says `.on:hover` itself). Now `:is(:hover,[m-hover]):where(:not([m-hover-off]),[m-hover])`:
+the same match (hovered and not marked off, or marked), a plain :hover's weight, so the theme's own order decides as
+with WebKit's hover. Checked in the glue e2e (the active row marked keeps its fill; failed with the old rewrite).
