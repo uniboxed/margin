@@ -243,7 +243,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   onMessage?: (msg: any) => void,
   onNotice?: (arg: { id?: string, action?: string }) => void,
   warn?: (...args: any[]) => void,
-}): Host & { readonly platform: Host['platform'] & { app: boolean, features: Record<string, any> }, readonly appWindow: boolean, readonly pageOutside: boolean, readonly pageHosted: boolean, readonly pageMinWidth: number, readonly pageStuck: string | null, readonly sidebarDocked: boolean, perform(name: string, arg?: any): boolean | undefined, staysOnScreen: boolean, receive(msg: any): void, readonly windows: any[], readonly layout: Geometry | null, readonly settingsAsked: boolean, readonly pageTabId: number | null, readonly frontTabId: number | null, readonly loading: number[], readonly userThemes: any[], takeFailure(): { type: string, error: string } | null, destroy(): void } {
+}): Host & { readonly platform: Host['platform'] & { app: boolean, features: Record<string, any> }, readonly appWindow: boolean, readonly pageOutside: boolean, readonly pageHosted: boolean, readonly marginPage: 'settings' | null, readonly pageMinWidth: number, readonly pageStuck: string | null, readonly sidebarDocked: boolean, perform(name: string, arg?: any): boolean | undefined, staysOnScreen: boolean, receive(msg: any): void, readonly windows: any[], readonly layout: Geometry | null, readonly settingsAsked: boolean, readonly pageTabId: number | null, readonly frontTabId: number | null, readonly loading: number[], readonly userThemes: any[], takeFailure(): { type: string, error: string } | null, destroy(): void } {
   const windowId = Number.isInteger(hello?.windowId) ? hello.windowId : null;
   let raw: Record<string, any> | null = hello?.state && typeof hello.state === 'object' ? hello.state : null;
   let state: any = null;
@@ -255,6 +255,10 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   let pageOutside = appWindow && hello?.pageOutside === true;
   // A hosted app's window in the page area: no launcher there.
   let pageHosted = appWindow && hello?.pageHosted === true;
+  // One of Margin's own pages in the page area while nothing's hosted there (Settings: its tab, margin://settings,
+  // HostedSession.swift ItemTarget.margin), null: the launcher.
+  const marginPageOf = (v: unknown) => (appWindow && v === 'settings' ? v : null);
+  let marginPage: 'settings' | null = marginPageOf(hello?.marginPage);
   // The hosted window's own minimum width (Margin's points; 0: none): a drag of the sidebar's edge stops there.
   const minOf = (v: unknown) => (appWindow && typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.ceil(v) : 0);
   let pageMinWidth = minOf(hello?.pageMinWidth);
@@ -353,6 +357,8 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
     get pageOutside() { return pageOutside; },
     /** The page area is a hosted app's window, under Margin's: no launcher there. */
     get pageHosted() { return pageHosted; },
+    /** Margin's own page in the page area (Settings), null: the launcher. Hosting covers it, as it covers the launcher. */
+    get marginPage() { return marginPage; },
     /** The hosted window's own minimum width (0: none): the page area is never dragged narrower (behaviors/resize.ts). */
     get pageMinWidth() { return pageMinWidth; },
     /** The page card's state (Margin's own window; undefined over a browser: its page is always there). */
@@ -374,8 +380,9 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
     get inNewTab() { const p = frontPage(); return !!p && !/#(launcher|settings)\b/.test(p.url); },
     // Margin's own window with nothing hosted beside it: its page area is the launcher (never a see-through hole).
     get launcher() { return appWindow ? !pageOutside && !pageHosted : !!frontPage(); },
-    // Its Settings asked for (the new-tab page's #settings: a Settings button elsewhere).
-    get settingsAsked() { return !!frontPage()?.url.includes('#settings'); },
+    // Its Settings asked for: Margin's window's Settings tab (margin://settings) in its page area; over a browser, the
+    // new-tab page's #settings (a Settings button elsewhere).
+    get settingsAsked() { return appWindow ? marginPage === 'settings' && !pageOutside && !pageHosted : !!frontPage()?.url.includes('#settings'); },
     get pageTabId() { return frontPage()?.id ?? null; },
     // The window's tab in front, Margin's new-tab page or not.
     get frontTabId() {
@@ -491,6 +498,12 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           const next = appWindow && msg.on === true;
           if (next === pageHosted) return;
           pageHosted = next;
+          return emit();
+        }
+        case 'marginPage': {
+          const next = marginPageOf(msg.page);
+          if (next === marginPage) return;
+          marginPage = next;
           return emit();
         }
         case 'pageMin':

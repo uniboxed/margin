@@ -13,6 +13,7 @@ import * as shortcuts from '../shared/shortcuts.ts';
 import { siteList } from '../shared/sleep.ts';
 import { PACKAGE_THEMES, PACKAGE_THEME_NAMES, USER_THEME_ID } from '../themes/packages.ts';
 import { settingValueOk } from './theme-schema.ts';
+import { SETTINGS_CATEGORY_IDS } from './actions.ts';
 
 /**
  * A field of the form. `kind` and one `is…` flag (a theme's m-if tests
@@ -124,6 +125,42 @@ export function settingsFields(settings: any, features: any = {}, ui: { recordin
   }
   list.push(field({ id: 'resetShortcuts', kind: 'button', label: 'Reset shortcuts', status: status.shortcuts?.text ?? SHORTCUT_HELP, error: !!status.shortcuts?.error }));
   return list;
+}
+
+// ---- the Settings tab's categories (Margin.app's margin://settings, the new-tab page's #settings) ----------
+
+/**
+ * Settings as its own page, as macOS's System Settings: a sidebar of categories, the chosen one's fields beside it
+ * (decided by Tirth, 2026-11-20). Every field is in one; a theme that draws the categories (it reads `settingsTab`)
+ * gets the chosen one's fields only, any other theme the whole form.
+ */
+export const SETTINGS_CATEGORIES = Object.freeze([
+  { id: 'appearance', label: 'Appearance', help: 'The theme Margin is drawn with, and its own settings.' },
+  { id: 'tabs', label: 'Tabs', help: 'When tabs are archived or put to sleep.' },
+  { id: 'browsing', label: 'Browsing', help: 'Searches, gestures and pages.' },
+  { id: 'keyboard', label: 'Keyboard', help: 'Shortcuts for Margin’s sidebar, tabs and spaces.' },
+] as const);
+export type SettingsCategory = typeof SETTINGS_CATEGORIES[number]['id'];
+export { SETTINGS_CATEGORY_IDS } from './actions.ts'; // (the same ids, in this order: tests/settings-form.test.ts)
+export const DEFAULT_CATEGORY: SettingsCategory = 'appearance';
+const TABS_FIELDS = new Set(['archiveAfterHours', 'sleepAfterHours', 'neverSleepSites', 'wakeAll']);
+const BROWSING_FIELDS = new Set(['engine', 'blockGestures', 'swipeNavigation', 'pullToRefresh', 'marginFullscreenAuto', 'fullscreenOnly', 'frameWhenHidden', 'newTabHint']);
+const KEYBOARD_FIELDS = new Set(['shortcuts', ...Object.keys(SHORTCUT_FIELDS), 'resetShortcuts']);
+
+/** The category a field is in (one of SETTINGS_CATEGORIES'): Appearance for the themes' fields and any field not listed. */
+export function categoryOf(id: string): SettingsCategory {
+  if (TABS_FIELDS.has(id)) return 'tabs';
+  if (BROWSING_FIELDS.has(id)) return 'browsing';
+  if (KEYBOARD_FIELDS.has(id)) return 'keyboard';
+  return 'appearance';
+}
+
+/** A category asked for (the UI's `settingsCategory`), else the first. */
+export const categoryNamed = (id: unknown): SettingsCategory => (typeof id === 'string' && SETTINGS_CATEGORY_IDS.includes(id) ? id as SettingsCategory : DEFAULT_CATEGORY);
+
+/** One category's fields, in the form's order. Keyboard's own heading ("Keyboard shortcuts") goes: the page's title says it. */
+export function fieldsIn(fields: SettingsField[], category: SettingsCategory): SettingsField[] {
+  return fields.filter((f) => categoryOf(f.id) === category && !(category === 'keyboard' && f.id === 'shortcuts'));
 }
 
 // ---- themes: imported ones, and the active theme's own settings ---------------

@@ -26,7 +26,7 @@ import { appIcon, appOfItem, isBundleId } from '../shared/apps.ts';
 import type { InstalledApp } from '../shared/apps.ts';
 import { CONFIRM_LABEL, SPACE_COLORS, menuItems } from './behaviors/menu-items.ts';
 import type { MenuTarget } from './behaviors/menu-items.ts';
-import { settingsFields } from './settings-form.ts';
+import { SETTINGS_CATEGORIES, categoryNamed, fieldsIn, settingsFields } from './settings-form.ts';
 
 /** The view model's version: a theme reads what this version documents. */
 export const VM_VERSION = 1;
@@ -51,6 +51,12 @@ export type UiState = {
   launcher?: { allArchived?: boolean } | null,
   settingsOpen?: boolean,
   settingsPage?: boolean,
+  /** Margin.app's own window (ui/host-app.ts): its Settings is a tab of its own (margin://settings), not in the launcher. */
+  appWindow?: boolean,
+  /** The theme draws the Settings page's categories (it reads `settingsTab`): one category's fields at a time. */
+  settingsNav?: boolean,
+  /** The Settings page's category shown (ui/settings-form.ts SETTINGS_CATEGORIES); none: the first. */
+  settingsCategory?: string | null,
   recording?: string | null,
   settingsStatus?: Record<string, { text: string, error?: boolean } | undefined>,
   switchingTo?: number | string | null,
@@ -138,8 +144,17 @@ export type GestureView = { pull: boolean, swipe: boolean, back: boolean, forwar
 export type LauncherView = {
   pins: PinRow[], hasPins: boolean, archive: ArchiveRow[], hasArchive: boolean, emptyArchive: boolean,
   more: boolean, moreLabel: string, settingsOpen: boolean, settingsPage: boolean, canSearch: boolean,
+  /** Settings under the search field (its button): not in Margin.app's window, where Settings is its own tab. */
+  hasSettings: boolean,
 };
 export type SettingsFormView = { fields: import('./settings-form.ts').SettingsField[], hasFields: boolean };
+/**
+ * Settings as its own page (Margin.app's Settings tab, the new-tab page's #settings), as macOS's System Settings: its
+ * categories for a sidebar (`is…`: which one, for a theme's icon), the one shown (`current`) beside them, its fields
+ * in `settingsForm`. Every word is Margin's.
+ */
+export type SettingsCategoryView = { id: string, label: string, help: string, selected: boolean, isAppearance: boolean, isTabs: boolean, isBrowsing: boolean, isKeyboard: boolean };
+export type SettingsTabView = { title: string, categories: SettingsCategoryView[], current: SettingsCategoryView };
 export type ViewModel = {
   version: number,
   ready: boolean,
@@ -163,6 +178,7 @@ export type ViewModel = {
   /** The page card's loader (the `page-loader` part), while an item opens in the page area: Margin's words for it. */
   pageLoader: { name: string, label: string, icon: string | null } | null,
   settingsForm: SettingsFormView | null,
+  settingsTab: SettingsTabView | null,
   settings: Record<string, string | number | boolean>,
   platform: { browser: string, os: string },
 };
@@ -306,7 +322,7 @@ function fresh(input: ViewModelInput): ViewModel {
       space: { id: '', name: '', emoji: '', color: '', abbr: '', index: 0, number: 1, active: true, tabCount: 0, label: '', pinned: [], folders: [], pins: [], today: [], hasToday: false, hasPinned: false, newTab: { active: false } },
       spaces: [], tab: null, archive: [], hasArchive: false,
       palette: { open: !!paletteUi.open, query: paletteUi.query ?? '', newTab: !!paletteUi.newTab, rows: [], hasRows: false, selected: null },
-      menu: null, editing, editor: null, notice, prompt, gesture, launcher: null, pageLoader, settingsForm: null, settings, platform,
+      menu: null, editing, editor: null, notice, prompt, gesture, launcher: null, pageLoader, settingsForm: null, settingsTab: null, settings, platform,
     };
   }
 
@@ -486,12 +502,25 @@ function fresh(input: ViewModelInput): ViewModel {
       moreLabel: all ? 'Show fewer' : `Show all ${archive.length}`,
       settingsOpen: !!ui.settingsOpen || !!ui.settingsPage,
       settingsPage: !!ui.settingsPage, canSearch: !ui.settingsPage,
+      hasSettings: !ui.appWindow,
     };
   }
-  // Its Settings form, open (ui/settings-form.ts).
+  // Settings as its own page: its categories, the one shown.
+  let settingsTab: ViewModel['settingsTab'] = null;
+  const category = categoryNamed(ui.settingsCategory);
+  if (launcher && ui.settingsPage) {
+    const categories = SETTINGS_CATEGORIES.map((c) => ({
+      id: c.id, label: c.label, help: c.help, selected: c.id === category,
+      isAppearance: c.id === 'appearance', isTabs: c.id === 'tabs', isBrowsing: c.id === 'browsing', isKeyboard: c.id === 'keyboard',
+    }));
+    settingsTab = { title: 'Settings', categories, current: categories.find((c) => c.selected)! };
+  }
+  // Its Settings form, open (ui/settings-form.ts): on the Settings page of a theme that draws its categories, the
+  // category shown's fields only.
   let settingsForm: ViewModel['settingsForm'] = null;
   if (launcher && (ui.settingsOpen || ui.settingsPage)) {
-    const fields = settingsFields(state.settings, input.platform?.features ?? {}, { recording: ui.recording ?? null, status: ui.settingsStatus ?? {}, theme: ui.theme ?? null });
+    const all = settingsFields(state.settings, input.platform?.features ?? {}, { recording: ui.recording ?? null, status: ui.settingsStatus ?? {}, theme: ui.theme ?? null });
+    const fields = ui.settingsPage && ui.settingsNav ? fieldsIn(all, category) : all;
     settingsForm = { fields, hasFields: fields.length > 0 };
   }
 
@@ -514,6 +543,7 @@ function fresh(input: ViewModelInput): ViewModel {
     launcher,
     pageLoader,
     settingsForm,
+    settingsTab,
     settings,
     platform,
   };

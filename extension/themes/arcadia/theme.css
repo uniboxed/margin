@@ -925,3 +925,64 @@
 .settings-form .actions .help { margin: 0; }
 
 @media print { .page, .card-edge { box-shadow: none !important; } }
+
+/* ---- Settings as its own page (Margin.app's Settings tab, margin://settings) ---- */
+
+/* As macOS's System Settings: the categories in a sidebar, each with a
+   coloured tile and a white glyph, the chosen one lit in the space's colour;
+   beside it the category's settings in one rounded group, a hairline
+   between rows. Light or dark, as the system is (the launcher's colours). */
+.settings-page {
+  height: 100%;
+  display: grid;
+  grid-template-columns: clamp(160px, 30%, 228px) minmax(0, 1fr);
+  background: var(--bg);
+}
+.settings-nav {
+  overflow-y: auto;
+  overscroll-behavior: none;
+  padding: 22px 10px;
+  border-right: 1px solid var(--border);
+  background: color-mix(in srgb, var(--fg) 3%, var(--bg));
+}
+.settings-title { margin: 0 8px 14px; font-size: 20px; font-weight: 700; letter-spacing: -0.2px; }
+.settings-categories { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.settings-category {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--fg);
+  text-align: left;
+  cursor: default;
+}
+.settings-category:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); }
+/* (A tint of the space's colour, the text as it is: a light space colour stays readable.) */
+.settings-category.selected { background: color-mix(in srgb, var(--space-color) 24%, transparent); font-weight: 600; }
+.category-icon { flex: none; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; color: #fff; background: #8e8e93; }
+.category-icon svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.settings-category[data-category="appearance"] .category-icon { background: #5e5ce6; }
+.settings-category[data-category="tabs"] .category-icon { background: #0a84ff; }
+.settings-category[data-category="browsing"] .category-icon { background: #30b0c7; }
+.settings-category[data-category="keyboard"] .category-icon { background: #8e8e93; }
+.category-label { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.settings-pane { overflow-y: auto; overscroll-behavior: none; padding: 24px 32px 48px; }
+.settings-pane > * { max-width: 640px; margin-inline: auto; }
+.pane-title { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.2px; }
+.pane-help { margin: 4px 0 18px; font-size: 13px; color: var(--muted); }
+.settings-page .settings-form { padding: 2px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); font-size: 13px; color: var(--fg); }
+.settings-page .settings-form label.setting { margin-top: 0; padding: 10px 0; min-height: 26px; }
+.settings-page .settings-form label.setting.stacked { gap: 8px; }
+.settings-page .settings-form .actions { margin-top: 0; padding: 10px 0; flex-wrap: wrap; }
+.settings-page .settings-form :is(label.setting, .actions, .setting-group):not(:first-child) { border-top: 1px solid var(--border); }
+.settings-page .settings-form > .help { margin: -4px 0 10px; color: var(--muted); }
+.settings-page .settings-form > .help:first-child { margin: 10px 0; }
+.settings-page .settings-form .actions .help { color: var(--muted); }
+.settings-page .settings-form .setting-group { margin-top: 0; padding: 16px 0 6px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.settings-page .settings-form .actions button:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 5%, transparent); }

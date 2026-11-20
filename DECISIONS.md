@@ -6123,3 +6123,30 @@ item opened the palette), nothing is shown, or after 2 minutes (`MarginWindowCon
   the menu bar's own over the status items, third-party items, Notification Center), and one early version stopped the
   window server. Tirth chose this branch's simpler way: everything at the top stays macOS's own (every status item, the
   native strip, Margin's real menus), and only the moment the bar is down belongs to Margin.
+
+
+## Settings as its own tab, and the theme picked in it drawn (2026-11-20)
+
+Tirth asked for Settings as a tab of its own, built for each theme, shown as `margin://settings`, gone from under the
+search field in Margin's window, laid out as macOS's System Settings, and for the theme dropdown to work.
+
+- **The theme dropdown.** The choice was kept in memory only, read from another store than the one written, and Margin.app
+  had no package for a built-in theme other than Arcadia. Now Margin's window keeps its settings (`SettingsKeeper`, the
+  app's defaults, never the themes' own values), `hostedTheme` reads the setting it writes, and the build ships each
+  built-in theme's package (`dist/app/theme.<id>.json`, `BuiltinThemes`).
+- **A tab: a library item of Margin's own.** `margin://settings` is an item with the target `{ kind: 'margin', page:
+  'settings' }` (library.ts `MARGIN_PAGES`, Library.swift `ItemTarget.margin`): in the sidebar, the palette and the
+  launch's "last item" as any other, a gear for its icon, never archived (its address isn't a web page's), never changed
+  by a browser's report. Settings asked for (the palette's Settings, a theme's `settings.open`, typing
+  `margin://settings`) shows the space's Settings item again, or makes one (`openMarginPage`): one per space, as a tab.
+- **Drawn by Margin's window, nothing hosted.** The session shows it by parking what the window hosted and telling the
+  window (`setMarginPage`, the page's `marginPage`); its page draws the Settings page where the launcher would be.
+  Hosting covers it, as it covers the launcher; another item shown, Archive, or a switch to an empty space takes it
+  away, and a show that fails leaves it there (the item still the one shown). Shown at a launch at once from the window's
+  first frame (no loader, no app opened), or after the start screen.
+- **The page, per theme.** Each built-in theme draws `settingsTab` in its launcher part: the categories in a sidebar
+  (Appearance: the theme, imports and the theme's own settings; Tabs: archive, sleep, never-sleep sites, Wake all;
+  Browsing: the search engine, gestures, full screen, the frame, the hint; Keyboard: the shortcuts), the chosen one's
+  settings beside them, in its own look. A theme that doesn't read `settingsTab` (an imported one made before) gets the
+  whole form on the same page, as the new-tab page's Settings were drawn. The new-tab page's `#settings` over a browser
+  is the same page; Settings under its search field stays there (it has no tab to go to).

@@ -80,6 +80,9 @@ final class FakeHostedWindow: HostedWindow {
         return HostPlacement(page: page, area: FakeHostWorld.display)
     }
     func push(_ json: String) { pushed.append(json) }
+    var marginPage: String? // Margin's own page in its page area (setMarginPage)
+    var marginPages: [String?] = [] // each setMarginPage, in order
+    func setMarginPage(_ page: String?) { guard page != marginPage else { return }; marginPage = page; marginPages.append(page) }
 }
 
 final class FakeHostedLinks: HostedLinks {
@@ -736,17 +739,47 @@ func hostedTests() {
           engine.shown == HostTarget.app("com.apple.TextEdit").id && engine.hosts[safari]?.phase == .parked && w.wins[safariWindow]?.fullScreen == true
           && links.types().filter { $0 == "setWindowState" }.count == setStates && window.loadings.count == loadingsBefore && window.hosted == editWindow, "\(window.loadings)")
 
-    // ---- the palette's Settings while an app is shown (2026-11-19: refused, nothing happened) ----
+    // ---- Settings: its own tab, margin://settings (Tirth, 2026-11-20), drawn by Margin's window ----
+    let textEditHost = HostTarget.app("com.apple.TextEdit").id
+    // The UI's open tabs (live): each one's address and whether it's in front.
+    func liveTabs() -> [(url: String, active: Bool)] {
+        let tabs = ((session.live(library.snapshot())["openTabs"] as? JSONObject)?["tabs"] as? JSONObject ?? [:]).values.compactMap { $0 as? JSONObject }
+        return tabs.map { ($0["url"] as? String ?? "", $0["active"] as? Bool == true) }
+    }
+    let itemsBefore = library.items().count
     let pushesBefore = window.pushed.count
     let asked = source.perform("openLauncher", ["windowId": 1, "settings": true])
     run {}
-    check("hosted: the palette's Settings while an app is shown: taken, the app parked, the launcher in the page area, Settings opened in it",
-          asked?["ok"] as? Bool != false && engine.shown == nil && engine.hosts[HostTarget.app("com.apple.TextEdit").id]?.phase == .parked && !window.hosting && session.shown[1] == nil
-          && window.pushed.dropFirst(pushesBefore).contains(#"{"type":"command","name":"settings"}"#), "\(window.pushed.suffix(3)) \(String(describing: engine.shown))")
+    let settingsItem = library.items().first { $0.value["url"] as? String == "margin://settings" }?.id ?? ""
+    check("hosted: Settings asked for (the palette's, a theme's button) while an app is shown: a Settings item made in the space, shown in Margin's window: its page, the app parked, nothing hosted",
+          asked?["ok"] as? Bool != false && library.items().count == itemsBefore + 1 && !settingsItem.isEmpty && session.shown[1] == settingsItem
+          && session.marginPages[1] == "settings" && window.marginPage == "settings" && engine.shown == nil && engine.hosts[textEditHost]?.phase == .parked && !window.hosting
+          && library.items().first { $0.id == settingsItem }?.value["title"] as? String == "Settings"
+          && (library.target(ofItem: settingsItem)).map { $0 == .margin(page: "settings") } == true,
+          "\(String(describing: session.shown[1])) \(String(describing: window.marginPage)) \(String(describing: engine.shown))")
+    check("hosted: …no command to open the launcher's Settings pushed (Settings isn't under the search field any more)", !window.pushed.dropFirst(pushesBefore).contains { $0.contains("\"command\"") })
+    check("hosted: …its row: an open tab, in front", liveTabs().contains { $0.url == "margin://settings" && $0.active })
+    _ = source.perform("openLauncher", ["windowId": 1, "settings": true])
+    run {}
+    check("hosted: Settings asked for again: the same item shown, no second one", library.items().count == itemsBefore + 1 && session.shown[1] == settingsItem && window.marginPage == "settings")
+    run { _ = library.perform("activateTab", ["windowId": 1, "tabId": editItem]) }
+    check("hosted: the app's row with Settings shown: the app shown again, Margin's page gone", engine.shown == textEditHost && window.hosted == editWindow && window.hosting
+          && window.marginPage == nil && session.marginPages[1] == nil && session.shown[1] == editItem)
+    check("hosted: …Settings still an open tab, not in front", liveTabs().contains { $0.url == "margin://settings" && !$0.active })
+    run { _ = library.perform("activateTab", ["windowId": 1, "tabId": settingsItem]) }
+    check("hosted: Settings' row again: its page shown again, the app parked", window.marginPage == "settings" && session.shown[1] == settingsItem && engine.shown == nil && !window.hosting
+          && engine.hosts[textEditHost]?.phase == .parked)
     let pushesArchive = window.pushed.count
     _ = source.perform("openLauncher", ["windowId": 1])
     run {}
-    check("hosted: the palette's Archive: the launcher, Settings not opened", engine.shown == nil && !window.pushed.dropFirst(pushesArchive).contains { $0.contains("\"settings\"") })
+    check("hosted: the palette's Archive with Settings shown: the launcher, nothing shown, Settings not opened", engine.shown == nil && window.marginPage == nil && session.shown[1] == nil
+          && !window.pushed.dropFirst(pushesArchive).contains { $0.contains("\"settings\"") })
+    run { _ = library.perform("activateTab", ["windowId": 1, "tabId": settingsItem]) }
+    let archived = library.snapshot()["archive"] as? [JSONObject] ?? []
+    run { _ = library.perform("closeTab", ["windowId": 1, "tabId": settingsItem]) }
+    check("hosted: Settings closed (its ×, ⌘W): forgotten, not archived; its page gone; no longer an open tab", !library.items().contains { $0.id == settingsItem }
+          && (library.snapshot()["archive"] as? [JSONObject] ?? []).count == archived.count && window.marginPage == nil && session.marginPages[1] == nil
+          && !liveTabs().contains { $0.url == "margin://settings" }, "\(String(describing: window.marginPage)) \(liveTabs())")
     run { _ = library.perform("activateTab", ["windowId": 1, "tabId": editItem]) }
     check("hosted: …its row again: the app shown again at once", engine.shown == HostTarget.app("com.apple.TextEdit").id && window.hosted == editWindow)
 
@@ -1083,6 +1116,41 @@ func hostedResumeTests(script: URL) {
               "at once \(atOnce) \(window.slowShowings) \(session.done.suffix(4)) \(window.hostings)")
         run { await engine.quitAll() }
     }
+
+    // ---- Settings last (its own tab, margin://settings): drawn again from the window's first frame, nothing hosted ----
+    do {
+        let (_, engine, session, window, run) = launch()
+        run { _ = library.perform("openMarginPage", ["windowId": 1, "page": "settings"]) }
+        check("resume: (Settings opened: its item selected in the space, its page in Margin's window)", window.marginPage == "settings" && engine.shown == nil)
+        run { await engine.quitAll() }
+    }
+    let settingsLast = library.items().first { $0.value["url"] as? String == "margin://settings" }?.id ?? ""
+    do {
+        let (w, engine, session, window, run) = launch()
+        window.isFullScreen = false // (just made)
+        session.resumeLast(window)
+        check("resume: Settings last: its page at once as the window is made, the one shown, no hosting, no loader, nothing launched",
+              !settingsLast.isEmpty && window.marginPage == "settings" && session.shown[1] == settingsLast && !window.hosting && window.showings.isEmpty
+              && session.hostingWindow == nil && session.resuming == nil && w.calls.isEmpty, "\(String(describing: window.marginPage)) \(window.showings) \(session.done.suffix(3))")
+        run {}
+        check("resume: …and its row an open tab in front", (session.live(library.snapshot())["openTabs"] as? JSONObject).flatMap { ($0["tabs"] as? JSONObject)?.values.compactMap { $0 as? JSONObject } }?
+              .contains { $0["url"] as? String == "margin://settings" && $0["active"] as? Bool == true } == true)
+        run { await engine.quitAll() }
+    }
+    do {
+        let (w, engine, session, window, run) = launch()
+        session.options.preparesBrowser = true
+        session.resumeLast(window)
+        let first = window.slowShowings
+        session.preparationOver()
+        run {}
+        check("start: Settings last: \"Getting you started\" first, then Settings' page (no app's icon for it), nothing launched, hosting over",
+              first == [HostedSession.startupLabel] && window.marginPage == "settings" && session.shown[1] == settingsLast && !window.hosting && engine.shown == nil
+              && session.resuming == nil && window.showing == nil && !w.calls.contains { $0.hasPrefix("launch") } && window.showingApps.dropFirst().allSatisfy { $0 == nil },
+              "\(window.slowShowings) \(window.showingApps) \(String(describing: window.marginPage)) \(session.done.suffix(4))")
+        run { await engine.quitAll() }
+    }
+    _ = library.perform("removeItem", ["tabId": settingsLast])
 
     // ---- the start (Tirth, 2026-11-18): the default browser first, behind "Getting you started", then the item ----
     let notes = library.items().first { $0.value["url"] as? String == "app://com.apple.Notes" }?.id ?? ""

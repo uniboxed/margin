@@ -83,6 +83,8 @@ export const ACTIONS = Object.freeze({
   'prompt.close': 'none',
   'launcher.more': 'none',
   'settings.run': 'setting-item',
+  // The Settings page's sidebar: one of its categories shown (ui/settings-form.ts SETTINGS_CATEGORIES).
+  'settings.category': 'settings-category',
 });
 
 export const ACTION_NAMES = Object.freeze(Object.keys(ACTIONS));
@@ -100,6 +102,8 @@ export const BEHAVIOR_ONLY = Object.freeze(new Set([
 
 // The menus a button can open (`menu.open`): "add" is New Folder and New Space.
 export const MENUS = Object.freeze(['add']);
+// The Settings page's categories (`settings.category`), as ui/settings-form.ts SETTINGS_CATEGORIES lists them.
+export const SETTINGS_CATEGORY_IDS: readonly string[] = Object.freeze(['appearance', 'tabs', 'browsing', 'keyboard']);
 
 // An id as the state holds it: a tab id is a safe integer (the browser's),
 // other ids are short strings of letters, digits, '-', '_' and ':'.
@@ -173,6 +177,8 @@ export function checkAction(name: string, arg: any, ctx: ActionContext): { ok: t
       return isId(arg) && ctx.hasSpace(arg) ? { ok: true } : { ok: false, reason: `${name}: not a space` };
     case 'menu':
       return MENUS.includes(arg) ? { ok: true } : { ok: false, reason: `${name}: no such menu` };
+    case 'settings-category':
+      return SETTINGS_CATEGORY_IDS.includes(arg) ? { ok: true } : { ok: false, reason: `${name}: no such category` };
     default:
       if (!isId(arg)) return { ok: false, reason: `${name}: bad ${kind} id` };
       return has[kind](arg) ? { ok: true } : { ok: false, reason: `${name}: no ${kind} ${JSON.stringify(arg)}` };
@@ -360,10 +366,11 @@ export const ACTION_MAP = Object.freeze({
   'prompt.close': 'local',
   'launcher.more': 'local',
   'settings.run': 'local',
+  'settings.category': 'local',
 });
 
 const LOCAL = new Set(['space.edit', 'space.rename', 'folder.rename', 'palette.open', 'palette.close', 'menu.open', 'menu.run', 'menu.close', 'editor.save', 'editor.cancel', 'editor.delete', 'editor.color',
-  'notice.run', 'notice.close', 'prompt.run', 'prompt.close', 'launcher.more', 'settings.run']);
+  'notice.run', 'notice.close', 'prompt.run', 'prompt.close', 'launcher.more', 'settings.run', 'settings.category']);
 const NAV = { 'nav.back': 'goBack', 'nav.forward': 'goForward', 'nav.reload': 'reload' };
 
 /**

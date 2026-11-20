@@ -172,6 +172,9 @@ protocol HostedWindow: AnyObject {
     func cover(_ number: Int?) // a window of the engine's in its Space not shown yet (a new app's, read), nil: no more
     func yield(to number: Int?) // another app's window opened in its Space: let in front until it's gone (nil)
     func frontRead(_ read: HostEngine.FrontRead) // the poll's read at rest of it and the hosted window: in front, kept so
+    // One of Margin's own pages (ItemTarget.margin: "settings") in its page area while nothing's hosted there, nil: the
+    // launcher. Its page draws it (ui/host-app.ts `marginPage`); hosting covers it, as it covers the launcher.
+    func setMarginPage(_ page: String?)
     func push(_ json: String)
 }
 
@@ -185,6 +188,7 @@ extension HostedWindow {
     func setElsewhere(_ label: String?, app: String?, picture: String?) {}
     func setElsewhere(_ label: String?, app: String?) { setElsewhere(label, app: app, picture: nil) }
     func setStartupStuck(_ why: String?) {}
+    func setMarginPage(_ page: String?) {}
 }
 
 // The app whose icon a host's loader shows: an app's own, a Safari window's Safari.
@@ -275,6 +279,10 @@ final class HostedSession: LibraryDelegate {
     private(set) var open: [String: OpenItem] = [:]
     private(set) var safariWindows: [String: Int] = [:]
     private(set) var hostingWindow: Int?
+    // Each Margin window's own page shown (ItemTarget.margin's page: Settings), drawn by the window itself, and the items
+    // of Margin's pages shown this session (open tabs in the UI, as items with a page are: `live`).
+    private(set) var marginPages: [Int: String] = [:]
+    private(set) var marginOpen: Set<String> = []
     // Each Margin window's item shown when macOS took the window out of full screen: hosted again once it's back in.
     private(set) var resume: [Int: String] = [:]
     // What the loading animation names for a host (the app's name; Safari).
@@ -351,7 +359,11 @@ final class HostedSession: LibraryDelegate {
         defer { settleHosting() }
         switch r.type {
         case "activateTab", "newTab", "restoreArchive", "setSpace":
-            guard let item = r.item else { return } // (a space with no items: nothing to show)
+            guard let item = r.item else {
+                // (A space with no items: nothing to show. Margin's own page of the space left goes: the launcher.)
+                if r.type == "setSpace", let w = window(r.windowId) { leaveMarginPage(w) }
+                return
+            }
             if overtaken(item, windowId: r.windowId) { return }
             await show(item, url: r.url, target: r.target, windowId: r.windowId)
         case "openPin":
@@ -429,6 +441,21 @@ final class HostedSession: LibraryDelegate {
             if let tab = int(result["tabId"]) { safariTabs[item] = tab }
             if comes, there { guard await host(.safariWindow(p), in: w) else { return } }
             note("\(item): shown in Safari window \(windowId)")
+        case .margin(let page):
+            // One of Margin's own pages (Settings): drawn by Margin's window itself in its page area, nothing hosted for
+            // it. What this window hosted is parked (its row shows it again), as for the launcher asked for; the
+            // hosting's settling after this step (`settleHosting`) keeps this item as the one shown.
+            marginPages[w.id] = page
+            marginOpen.insert(item)
+            w.setMarginPage(page)
+            if elsewhere[w.id] != nil { elsewhere[w.id] = nil; w.setElsewhere(nil, app: nil) }
+            if engine.shown != nil, hostingWindow == w.id { await engine.parkShown(why: "Margin's \(page) page shown in Margin's window") }
+            note("\(item): Margin's \(page) page shown in Margin's window \(w.id)")
+        }
+        // (Another item shown: Margin's own page this window showed goes. Only now: a show that failed leaves it there.)
+        if case .margin = target {} else if marginPages[w.id] != nil {
+            marginPages[w.id] = nil
+            w.setMarginPage(nil)
         }
         shown[w.id] = item
         if requested[w.id] == item { requested[w.id] = nil }
@@ -809,6 +836,17 @@ final class HostedSession: LibraryDelegate {
         case .web(let browser, _):
             guard browser == "safari" else { return nil }
             return (last.id, target, (last.value["title"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "Safari")
+        case .margin:
+            return (last.id, target, (last.value["title"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "Margin")
+        }
+    }
+
+    // The app whose icon the loader shows for an item: an app's own, Safari for a web item, none for Margin's own page.
+    static func loaderApp(_ target: ItemTarget) -> String? {
+        switch target {
+        case .app(let bundle, _): return bundle
+        case .web: return safariIdentifier
+        case .margin: return nil
         }
     }
 
@@ -818,6 +856,17 @@ final class HostedSession: LibraryDelegate {
         // (MarginResumeLast NO: no item shown again, the start screen still: nothing's usable before the browser is.)
         let last = options.resumesLast ? lastItem(ofWindow: w.id) : nil
         let gate = options.preparesBrowser && startup != .done
+        if let last, case .margin(let page) = last.target, !gate {
+            // Margin's own page (Settings) shown last: drawn by the window itself from its page's first frame (its
+            // hello says it), nothing hosted, nothing to wait for.
+            marginPages[w.id] = page
+            marginOpen.insert(last.item)
+            shown[w.id] = last.item
+            w.setMarginPage(page)
+            note("Margin's window \(w.id): the item it showed last (\(last.item)), Margin's \(page) page, shown again")
+            onChange?()
+            return
+        }
         guard last != nil || gate else { return }
         resuming = w.id
         hostingWindow = w.id
@@ -829,7 +878,7 @@ final class HostedSession: LibraryDelegate {
             w.setShowing(Self.startupLabel, app: safariIdentifier, slow: true)
             note("Margin's window \(w.id): \"\(Self.startupLabel)\" while the default browser starts\(last.map { ", then the item it showed last (\($0.item))" } ?? "")")
         } else if let (item, target, name) = last {
-            if case .app(let bundle, _) = target { w.setShowing(name, app: bundle, slow: true) } else { w.setShowing(name, app: safariIdentifier, slow: true) }
+            w.setShowing(name, app: Self.loaderApp(target), slow: true)
             note("Margin's window \(w.id): the item it showed last (\(item)) shown again, behind the loader from its first frame")
         }
         onChange?()
@@ -847,9 +896,7 @@ final class HostedSession: LibraryDelegate {
                 if last == nil { self.settleHosting() } else { w.setShowing(nil) }
                 return
             }
-            if gate {
-                if case .app(let bundle, _) = target { w.setShowing(name, app: bundle, slow: true) } else { w.setShowing(name, app: safariIdentifier, slow: true) }
-            }
+            if gate { w.setShowing(name, app: Self.loaderApp(target), slow: true) }
             self.resumeShow(w, item: item, target: target)
         }
     }
@@ -863,7 +910,9 @@ final class HostedSession: LibraryDelegate {
                 if self.requested[w.id] == nil || self.requested[w.id] == item { self.requested[w.id] = nil; self.settleHosting() }
             }
             // (Something else asked for meanwhile ends the wait: its own show is next in line, not held up by this one.)
-            let ready = await self.wait(self.options.prepareWindowWait) { (w.isFullScreen && w.hostedPlacement != nil) || self.requested[w.id] != item }
+            // (Margin's own page needs no page area to host into: drawn at once.)
+            let own: Bool = { if case .margin = target { return true }; return false }()
+            let ready = own ? true : await self.wait(self.options.prepareWindowWait) { (w.isFullScreen && w.hostedPlacement != nil) || self.requested[w.id] != item }
             if self.overtaken(item, windowId: w.id) { return }
             guard self.requested[w.id] == item else { return }
             guard ready else {
@@ -882,7 +931,7 @@ final class HostedSession: LibraryDelegate {
     private func settleHosting() {
         guard engine.shown == nil, let id = hostingWindow, resuming != id else { return }
         hostingWindow = nil
-        shown[id] = nil
+        if marginPages[id] == nil { shown[id] = nil } // (Margin's own page shown there: still the one shown)
         window(id)?.setHosted(nil)
         window(id)?.cover(nil)
         // (Hosting off before the loader's words go: words cleared on a card still loading draw "Opening…" for a frame.)
@@ -895,17 +944,31 @@ final class HostedSession: LibraryDelegate {
 
     // ---- the launcher asked for ----
 
-    // The palette's Settings or Archive in Margin's window while it hosts (the UI's openLauncher; with nothing hosted
-    // the page opens its launcher's Settings itself, ui/runtime.ts): the launcher in its page area, the item shown there
-    // parked (its row shows it again), then Settings open in it. Until 2026-11-19 refused, and nothing happened.
+    // The palette's Settings or Archive in Margin's window (the UI's openLauncher). Settings (Tirth, 2026-11-20): its
+    // own tab, `margin://settings`, the space's one shown again or a new one (library.ts openMarginPage), drawn by
+    // Margin's window in its page area (`show`, ItemTarget.margin). Archive: the launcher in the page area, the item
+    // shown there parked (its row shows it again). Until 2026-11-19 refused while hosting, and nothing happened.
     func openLauncher(windowId: Int?, settings: Bool) {
         guard let id = window(windowId)?.id else { return note("the launcher asked for: no Margin window") }
+        if settings {
+            let out = library.perform("openMarginPage", ["windowId": id, "page": "settings"])
+            return note("Margin's window \(id): Settings asked for\(out.ok ? "" : ", refused (\(out.error ?? "?"))")")
+        }
         enqueue {
             if self.engine.shown != nil, self.hostingWindow == id { await self.engine.parkShown(why: "the launcher asked for in Margin's window") }
             self.settleHosting()
-            self.note("Margin's window \(id): its launcher in the page area\(settings ? ", Settings open" : "")")
-            if settings { self.window(id)?.push(#"{"type":"command","name":"settings"}"#) }
+            if let w = self.window(id) { self.leaveMarginPage(w) }
+            self.note("Margin's window \(id): its launcher in the page area")
         }
+    }
+
+    // Margin's own page a window shows, gone: its launcher in the page area (nothing shown there now).
+    private func leaveMarginPage(_ w: HostedWindow) {
+        guard marginPages[w.id] != nil else { return }
+        marginPages[w.id] = nil
+        w.setMarginPage(nil)
+        if hostingWindow != w.id { shown[w.id] = nil }
+        onChange?()
     }
 
     // ---- closing ----
@@ -915,7 +978,8 @@ final class HostedSession: LibraryDelegate {
         let target = target ?? library.target(ofItem: item)
         let had = open.removeValue(forKey: item)
         safariTabs[item] = nil
-        for (w, i) in shown where i == item { shown[w] = nil }
+        let showing = shown.filter { $0.value == item }.map(\.key)
+        for w in showing { shown[w] = nil }
         defer { refreshLoading() }
         switch target {
         case .app(let bundle, _)?:
@@ -924,9 +988,16 @@ final class HostedSession: LibraryDelegate {
         case .web(_, let profile)?:
             let p = had?.profile ?? resolve(profile)
             if had != nil { _ = await links.request(profile: p, "hostClose", ["itemId": item]) }
+        case .margin?:
+            // (Its windows' page goes with it: the next item shown there, else the launcher.)
+            for w in showing where marginPages[w] != nil {
+                marginPages[w] = nil
+                window(w)?.setMarginPage(nil)
+            }
         case nil:
             break
         }
+        marginOpen.remove(item)
         note("\(item): closed")
         onChange?()
     }
@@ -1450,7 +1521,7 @@ final class HostedSession: LibraryDelegate {
         let windowId = hostingWindow ?? shown.keys.min() ?? requested.keys.min() ?? 1
         // In front: the item asked for (not shown yet), else the one shown.
         let front = requested[windowId] ?? shown[windowId]
-        let listed = Set(open.keys).union(front.map { [$0] } ?? [])
+        let listed = Set(open.keys).union(marginOpen).union(front.map { [$0] } ?? [])
         guard var openTabs = snapshot["openTabs"] as? JSONObject, !listed.isEmpty else { return snapshot }
         var kept = openTabs["keptTabs"] as? JSONObject ?? [:]
         var tabs: JSONObject = [:], tabSpace: JSONObject = [:]

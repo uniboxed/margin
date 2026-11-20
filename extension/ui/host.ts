@@ -70,6 +70,8 @@ export type Host = {
   readonly inNewTab?: boolean,
   readonly settingsAsked?: boolean,
   readonly launcher?: boolean,
+  /** Drawn in Margin.app's own window (ui/host-app.ts): Settings is a tab of its own there (margin://settings). */
+  readonly appWindow?: boolean,
   /**
    * Margin.app's own window (ui/host-app.ts): the page card's state, on the theme's root as `m-page-state`.
    * `shown`: a hosted window shows through the page's place; `loading`: an item is being opened there

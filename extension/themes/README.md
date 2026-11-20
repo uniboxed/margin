@@ -238,6 +238,38 @@ at 40 characters, with no characters that reorder or hide text), so mark
 them (`m-class:theme-own="{{f.fromTheme}}"`). They only ever save that
 theme's settings.
 
+**Settings as its own page.** In Margin.app, Settings is a tab of its own
+(`margin://settings`: the palette's Settings, a `settings.open` button, its
+row in the sidebar), drawn in your `launcher` part with `settingsTab` set;
+the new-tab page's `#settings` is the same page. Draw it as macOS's System
+Settings: `settingsTab.title`, its `categories[]` in a sidebar (`id`,
+`label`, `help`, `selected`, and `isAppearance`, `isTabs`, `isBrowsing`,
+`isKeyboard` for an icon of your own), each a button with
+`m-action="settings.category"` and `m-arg="{{c.id}}"`, and beside them
+`settingsTab.current` (`label`, `help`) over your `<m-settings>`. A theme
+that reads `settingsTab` gets only the chosen category's fields in
+`settingsForm`; one that doesn't gets the whole form with
+`launcher.settingsPage` (a heading of its own and the form, as before).
+Under the search field, show Settings only while `launcher.hasSettings`
+(false in Margin.app's window, where it's its own tab).
+
+```html
+<template m-part="launcher">
+  <m-if test="settingsTab">
+    <main class="settings-page">
+      <nav>
+        <h1>{{settingsTab.title}}</h1>
+        <m-for each="settingsTab.categories" as="c">
+          <button m-class:selected="{{c.selected}}" m-action="settings.category" m-arg="{{c.id}}">{{c.label}}</button>
+        </m-for>
+      </nav>
+      <section><h2>{{settingsTab.current.label}}</h2><m-settings></m-settings></section>
+    </main>
+    <m-else><main class="launcher">…<m-if test="launcher.hasSettings">…<m-settings></m-settings></m-if></main></m-else>
+  </m-if>
+</template>
+```
+
 ```html
 <m-for each="settingsForm.fields" as="f">
   <m-if test="f.isToggle"><label>{{f.label}}<input m-input="setting-toggle"></label></m-if>
@@ -316,7 +348,9 @@ host. Immutable: rows that didn't change are the same objects.
   `title`, `name`, `emoji`, `colors`, `save`, `cancel`), `notice` and
   `prompt` (`text`, `title`, `actions[]`: `id`, `label`, `primary`,
   `danger`), `launcher` (`pins`, `archive`, `hasPins`, `hasArchive`, `more`,
-  `moreLabel`, `settingsOpen`), `settings`, `platform`.
+  `moreLabel`, `settingsOpen`, `settingsPage`, `hasSettings`), `settingsTab`
+  (`title`, `categories[]`, `current`: Settings as its own page, above),
+  `settings`, `platform`.
 - `notice`: Margin's notices come from Margin's code only, never a theme or
   a message's words: a switch that didn't happen ("That tab is no longer
   open."), a page Margin isn't responding on (Reload, Not now), Margin
@@ -366,7 +400,9 @@ else is ignored and logged.
 - The rest: `sidebar.toggle`, `nav.back`, `nav.forward`, `nav.reload`,
   `archive.open`, `archive.restore` (an archived entry), `settings.open`
   (opens or closes the launcher's Settings; on a web page, Margin's start
-  page with them open), `settings.run` (a button of Settings),
+  page with them open; in Margin.app, its Settings tab), `settings.run` (a
+  button of Settings), `settings.category` (one of the Settings page's
+  categories, `settingsTab.categories[].id`),
   `launcher.more`, `window.close`, `window.minimise`, `window.fullscreen`.
 - Only Margin's behaviors and menus run `tab.move`, `tab.pinAt`,
   `tab.moveToSpace`, `pin.move`, `folder.move`, `folder.setName`,

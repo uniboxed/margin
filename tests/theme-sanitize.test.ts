@@ -336,7 +336,9 @@ test('the action list is PLAN.md §3\'s, plus palette.run and the behaviors\' an
   const step2 = ['tab.move', 'tab.pinAt', 'pin.move', 'folder.newWithTab', 'folder.newWithPin', 'folder.rename', 'folder.setName', 'folder.move', 'folder.delete', 'space.rename', 'space.setName', 'space.update', 'space.delete', 'menu.open', 'menu.run', 'menu.close', 'editor.save', 'editor.cancel', 'editor.delete', 'editor.color'];
   const step3 = ['notice.run', 'notice.close', 'prompt.run', 'prompt.close', 'launcher.more'];
   const step4 = ['settings.run'];
-  assert.deepEqual(Object.keys(ACTIONS).sort(), [...plan, 'palette.run', ...step2, ...step3, ...step4].sort());
+  // Margin.app's Settings tab (2026-11-20): its categories' sidebar.
+  const settingsTab = ['settings.category'];
+  assert.deepEqual(Object.keys(ACTIONS).sort(), [...plan, 'palette.run', ...step2, ...step3, ...step4, ...settingsTab].sort());
   assert.ok(isAction('tab.activate'));
   assert.equal(isAction('toString'), false);
   assert.equal(isAction('__proto__'), false);

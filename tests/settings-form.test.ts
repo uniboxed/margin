@@ -4,7 +4,7 @@
 // the sanitizer allows for it; the view model and the action that run it.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { settingsFields, saveField, runField, shortcutTaken, wokeText, SHORTCUT_HELP, type SettingsField } from '../extension/ui/settings-form.ts';
+import { settingsFields, saveField, runField, shortcutTaken, wokeText, SHORTCUT_HELP, SETTINGS_CATEGORIES, SETTINGS_CATEGORY_IDS, categoryOf, categoryNamed, fieldsIn, type SettingsField } from '../extension/ui/settings-form.ts';
 import type { CleanElement, CleanNode } from '../extension/ui/sanitize.ts';
 import type { UiState } from '../extension/ui/view-model.ts';
 import { sanitizeTemplate } from '../extension/ui/sanitize.ts';
@@ -122,4 +122,49 @@ test('Settings in the view model: on Margin\'s own pages, while open; its button
   assert.equal(checkAction('settings.run', 'theme', ctx).ok, false, 'not a button');
   assert.equal(checkAction('settings.run', 'wakeAll', contextFromState(state)).ok, false, 'not while the form is closed');
   assert.deepEqual(requestFor('settings.open', undefined, { state, ui: { windowId: 7 } }), { kind: 'send', type: 'openLauncher', payload: { windowId: 7, settings: true } });
+});
+
+test('the Settings page\'s categories (Tirth, 2026-11-20): Appearance, Tabs, Browsing, Keyboard; every field in one, in the form\'s order', () => {
+  assert.deepEqual(SETTINGS_CATEGORIES.map((c) => c.id), [...SETTINGS_CATEGORY_IDS], 'the action\'s ids (ui/actions.ts) are the categories\'');
+  assert.deepEqual(SETTINGS_CATEGORIES.map((c) => c.label), ['Appearance', 'Tabs', 'Browsing', 'Keyboard']);
+  const theme = { id: 'arcadia', name: 'Arcadia', settings: { sidebarWidth: { type: 'number', label: 'Sidebar width', default: 260, min: 160, max: 500 } } };
+  const all = settingsFields({ theme: 'arcadia' }, { ...DISCARDS, marginFullscreen: true, importThemes: true, userThemes: [{ id: 'mine', name: 'Mine', version: '1.0.0' }] }, { theme });
+  const ids = (category: Parameters<typeof fieldsIn>[1]) => fieldsIn(all, category).map((f) => f.id);
+  assert.deepEqual(ids('appearance'), ['theme', 'themeImport', 'userTheme:mine', 'removeTheme:mine', 'themeSettings', 'themeSetting:sidebarWidth']);
+  assert.deepEqual(ids('tabs'), ['archiveAfterHours', 'sleepAfterHours', 'neverSleepSites', 'wakeAll']);
+  assert.deepEqual(ids('browsing'), ['engine', 'blockGestures', 'swipeNavigation', 'pullToRefresh', 'marginFullscreenAuto', 'fullscreenOnly', 'frameWhenHidden', 'newTabHint']);
+  assert.deepEqual(ids('keyboard'), ['sidebarShortcut', 'nextTab', 'prevTab', 'nextSpace', 'prevSpace', 'resetShortcuts'], 'its own heading goes: the page says Keyboard');
+  const shown = new Set(SETTINGS_CATEGORY_IDS.flatMap((c) => fieldsIn(all, c as any).map((f) => f.id)));
+  assert.deepEqual(all.map((f) => f.id).filter((id) => !shown.has(id)), ['shortcuts'], 'no field lost');
+  assert.equal(categoryOf('anything-new'), 'appearance', 'a field not listed still shows');
+  assert.equal(categoryNamed('keyboard'), 'keyboard');
+  assert.equal(categoryNamed('__proto__'), 'appearance');
+  assert.equal(categoryNamed(null), 'appearance');
+});
+
+test('the Settings page in the view model: its categories and the one shown; the fields of that one for a theme that draws them, all for one that doesn\'t', () => {
+  const state = { ...smallState(), settings: { ...smallState().settings, theme: 'arcadia' } };
+  const vm = (ui: UiState) => buildViewModel({ state, ui: { windowId: W, ...ui }, platform: { browser: 'safari', os: 'mac', features: SAFARI } });
+  assert.equal(vm({ launcherPage: true }).settingsTab, null, 'the launcher: no Settings page');
+  assert.equal(vm({ settingsPage: true }).settingsTab, null, 'not on a web page');
+  const page = vm({ launcherPage: true, settingsPage: true, settingsNav: true });
+  assert.equal(page.settingsTab!.title, 'Settings');
+  assert.deepEqual(page.settingsTab!.categories.map((c) => [c.id, c.selected]), [['appearance', true], ['tabs', false], ['browsing', false], ['keyboard', false]]);
+  assert.equal(page.settingsTab!.current.id, 'appearance');
+  assert.deepEqual(page.settingsForm!.fields.map((f) => f.id), ['theme']);
+  const keys = vm({ launcherPage: true, settingsPage: true, settingsNav: true, settingsCategory: 'keyboard' });
+  assert.equal(keys.settingsTab!.current.label, 'Keyboard');
+  assert.ok(keys.settingsTab!.categories.find((c) => c.id === 'keyboard')!.isKeyboard);
+  assert.ok(keys.settingsForm!.fields.every((f) => f.isShortcut || f.id === 'resetShortcuts'));
+  const plain = vm({ launcherPage: true, settingsPage: true, settingsCategory: 'keyboard' });
+  assert.ok(plain.settingsForm!.fields.some((f) => f.id === 'theme') && plain.settingsForm!.fields.some((f) => f.id === 'nextTab'), 'a theme with no categories: the whole form');
+  // Settings under the search field: not in Margin.app's window (its own tab there).
+  assert.equal(vm({ launcherPage: true }).launcher!.hasSettings, true);
+  assert.equal(vm({ launcherPage: true, appWindow: true }).launcher!.hasSettings, false);
+  // The category asked for: only one of the list.
+  const ctx = contextFromState(state);
+  assert.deepEqual(checkAction('settings.category', 'tabs', ctx), { ok: true });
+  assert.equal(checkAction('settings.category', 'evil', ctx).ok, false);
+  assert.equal(checkAction('settings.category', undefined, ctx).ok, false);
+  assert.deepEqual(requestFor('settings.category', 'tabs', { state, ui: { windowId: 7 } }), { kind: 'local', name: 'settings.category', arg: 'tabs' });
 });
