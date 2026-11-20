@@ -8,7 +8,9 @@ default: the window in the space's colour), `neubrutalism/` (uses every binding,
 and part), `pixel/` (an 8-bit game, dark only; every part, with pixel
 svg icons where Margin's words are guarded) and `liquid-glass/` (macOS's
 own glass where Margin.app has it, plain fills elsewhere: "The system's
-materials" below). Read them next to this guide. The plan behind it is `PLAN.md`
+materials" below) and `material/` (Material 3 on Arcadia's template: every
+colour role worked out from the space's colour, at Material's tones with
+relative `oklch()` colours). Read them next to this guide. The plan behind it is `PLAN.md`
 §3 and §4.
 
 ## The files
@@ -207,7 +209,8 @@ Arcadia a soft tile in the space's colour with a thin ring turning in it,
 Neubrutalism Margin's words in its heavy type over a chunky bar with a
 striped block running along it, Pixel an hourglass and a meter that fills
 cell by cell (`steps()`), Liquid Glass one glass capsule on a card lit in
-the space's colour. How they're built, to copy: the `<m-page-loader>` itself
+the space's colour, Material a many-lobed shape turning and breathing in a
+round container (Material 3 Expressive's loading indicator, by transform alone). How they're built, to copy: the `<m-page-loader>` itself
 is the opaque card (the page's place exactly, the card's inner radius),
 see-through with `pointer-events: none` outside `loading` so that it fades
 over the window that's shown (120 ms; the part in it goes at once); only

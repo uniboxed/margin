@@ -10,6 +10,7 @@ export const NEO = fileURLToPath(new URL('../../extension/themes/neubrutalism/',
 export const ARCADIA = fileURLToPath(new URL('../../extension/themes/arcadia/', import.meta.url));
 export const PIXEL = fileURLToPath(new URL('../../extension/themes/pixel/', import.meta.url));
 export const GLASS = fileURLToPath(new URL('../../extension/themes/liquid-glass/', import.meta.url));
+export const MATERIAL = fileURLToPath(new URL('../../extension/themes/material/', import.meta.url));
 
 // The reference theme: the one the theme-agnostic browser tests run in when CI scopes them to one.
 export const REFERENCE_THEME = 'arcadia';

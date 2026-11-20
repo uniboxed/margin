@@ -259,7 +259,7 @@ func marginWindowTests() {
 
         // The built-in packages Margin carries (dist/app, as the app's Resources/app has them).
         let builtins = BuiltinThemes(root: URL(fileURLWithPath: "../../dist/app"))
-        for id in ["arcadia", "neubrutalism", "pixel", "liquid-glass"] {
+        for id in ["arcadia", "neubrutalism", "pixel", "liquid-glass", "material"] {
             let json = builtins.message(id)
             let o = json.flatMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? JSONObject }
             check("built-in themes: \(id)'s package, in the theme message's shape", o?["id"] as? String == id && o?["html"] is String && o?["css"] is String && o?["manifest"] is String)

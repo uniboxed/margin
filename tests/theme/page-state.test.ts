@@ -16,14 +16,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium, webkit } from 'playwright';
-import { harnessScript, themeForPage, ARCADIA, NEO, PIXEL, GLASS, themesInScope } from './package.ts';
+import { harnessScript, themeForPage, ARCADIA, NEO, PIXEL, GLASS, MATERIAL, themesInScope } from './package.ts';
 import { decodePng, cardPoints, px, W, H, APPS, ICONS } from './page-card.ts';
 import type { Harness } from './harness.ts';
 
 declare const T: Harness;
 
 const ENGINES = [['webkit', webkit], ['chromium', chromium]] as const;
-const THEMES = themesInScope([['arcadia', ARCADIA], ['neubrutalism', NEO], ['pixel', PIXEL], ['liquid-glass', GLASS]] as const);
+const THEMES = themesInScope([['arcadia', ARCADIA], ['neubrutalism', NEO], ['pixel', PIXEL], ['liquid-glass', GLASS], ['material', MATERIAL]] as const);
 const script = harnessScript();
 
 // A built-in theme without its own loader: its `page-loader` part and its `<m-page-loader>` taken out (Margin's default then).

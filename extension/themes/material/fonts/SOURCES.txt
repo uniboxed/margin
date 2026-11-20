@@ -1,0 +1,12 @@
+Bundled fonts, fetched once from Google Fonts on 2026-11-20 (the CSS API
+with a Safari user agent, which serves woff2 per subset). Margin never fetches
+them at run time: the runtime makes FontFace objects from these bytes.
+
+CSS: https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@100..1000&display=swap
+
+google-sans-flex-latin.woff2       https://fonts.gstatic.com/s/googlesansflex/v26/t5svIQcYNIWbFgDgAAzZ34auoVyXkJCOvoOmPWNbN5hF8Ju1x5Vwd0N3l9sIcwowNJwGpVd4AZzz0v6lJ4qFXNZhGjLvDSkV4W6GGn9Q3I8i.woff2
+google-sans-flex-latin-ext.woff2   https://fonts.gstatic.com/s/googlesansflex/v26/t5svIQcYNIWbFgDgAAzZ34auoVyXkJCOvoOmPWNbN5hF8Ju1x5Vwd0N3l9sIcwowNJwGpVd4AZzz0v6lJ4qFXNZhGjLvDSkV4W6IGn9Q3I8ipFY.woff2
+(Variable: one file covers weights 100 to 1000; only the weight axis is served.)
+
+Licence (SIL Open Font License 1.1), from the google/fonts repository:
+OFL-GoogleSansFlex.txt   https://raw.githubusercontent.com/google/fonts/main/ofl/googlesansflex/OFL.txt
