@@ -174,6 +174,41 @@ try {
 const decode = (text: string) => { const bin = atob(text); const out = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i); return out; };
 const nextFrame = () => new Promise<any>((resolve) => { const t = setTimeout(resolve, 100); requestAnimationFrame(() => requestAnimationFrame(() => { clearTimeout(t); resolve(undefined); })); });
 
+// ---- the page's own hover, while a hosted app has the keys (Tirth, 2026-11-20) --------------------------------
+// WebKit hit-tests a pointer's move for :hover only in a page whose window is active (its window key), and Margin's
+// panel isn't key while the app it hosts has the keys: its sidebar lit nothing under the pointer. Margin.app says where
+// the pointer is over its UI then (`hoverAt`, CSS pixels; none: it left, a button went down, or the panel became key);
+// the element there and each of its ancestors carry `m-hover`, and every rule of the theme's (and Margin's own) that
+// says :hover also says [m-hover] (`withHoverAttr`, as the theme is drawn). Changed only where the element under the
+// pointer changes. With the panel key, WebKit's own :hover does it, and the marks are cleared.
+const HOVER_ATTR = 'm-hover';
+let hoverChain: Element[] = [];
+function hoverAt(x: unknown, y: unknown) {
+  const at = typeof x === 'number' && typeof y === 'number' && Number.isFinite(x) && Number.isFinite(y) ? document.elementFromPoint(x, y) : null;
+  if (at === (hoverChain[0] ?? null)) return;
+  const chain: Element[] = [];
+  for (let el: Element | null = at; el; el = el.parentElement) chain.push(el);
+  const next = new Set(chain);
+  for (const el of hoverChain) if (!next.has(el)) el.removeAttribute(HOVER_ATTR);
+  const had = new Set(hoverChain);
+  for (const el of chain) if (!had.has(el) || !el.hasAttribute(HOVER_ATTR)) el.setAttribute(HOVER_ATTR, '');
+  hoverChain = chain;
+}
+// Every style rule's :hover also matches [m-hover], in place, in the sheets the page draws with (nested rules, @media,
+// @supports and @layer blocks included). Once per sheet: a rule that already says [m-hover] is left as it is.
+const HOVER_PSEUDO = /:hover(?![\w-])/g;
+function withHoverAttr(rules: CSSRuleList) {
+  for (const rule of Array.from(rules)) {
+    if (rule instanceof CSSStyleRule && HOVER_PSEUDO.test(rule.selectorText) && !rule.selectorText.includes(`[${HOVER_ATTR}]`)) {
+      HOVER_PSEUDO.lastIndex = 0;
+      rule.selectorText = rule.selectorText.replace(HOVER_PSEUDO, `:is(:hover,[${HOVER_ATTR}])`);
+    }
+    HOVER_PSEUDO.lastIndex = 0;
+    const inner = (rule as CSSRule & { cssRules?: CSSRuleList }).cssRules;
+    if (inner) withHoverAttr(inner);
+  }
+}
+
 // ---- what the theme draws over the page slot ------------------------------------------
 
 let hitsQueued = false;
@@ -272,7 +307,11 @@ function reportSpace() {
   spaceTold = told;
   void post('shownSpace', { windowId: host?.windowId ?? null, space: vm.space.id ?? null }).catch(() => {});
 }
-const watcher = new MutationObserver(() => { hitsSoon(); hitsAfter(400); queueMicrotask(measureNow); queueMicrotask(reportWant); queueMicrotask(reportSpace); queueMicrotask(followPopup); });
+const watcher = new MutationObserver((records) => {
+  // (The page's own hover marks change nothing measured: m-hover alone, nothing to do.)
+  if (records.every((r) => r.type === 'attributes' && r.attributeName === HOVER_ATTR)) return;
+  hitsSoon(); hitsAfter(400); queueMicrotask(measureNow); queueMicrotask(reportWant); queueMicrotask(reportSpace); queueMicrotask(followPopup);
+});
 // A menu or prompt of Margin's opened or closed: the keys taken or given back with it (`popupOpen`, as a field's).
 function followPopup() { const want = stillHasKeys(); if (want !== hasKeys) setKeys(want); }
 addEventListener('resize', () => { measureNow(); hitsSoon(); });
@@ -412,6 +451,9 @@ async function mount(pkg: any, { fallback = false, preview: previewing = false }
     // whether the highlight ever went back (it must not). A lone switch that landed says nothing.
     onSwitchRun: (run) => { const line = describeSwitchRun(run); if (line) log('note', line); },
   });
+  // (The page's own hover: the theme's sheets and Margin's own, every :hover also [m-hover]; the marks start again.)
+  for (const sheet of runtime.view.sheets ?? []) { try { withHoverAttr(sheet.cssRules); } catch { /* a sheet not readable: its :hover only */ } }
+  hoverChain = [];
   const root = runtime.view.rootElement();
   // The pointer over the page slot is the page's (the app lets it through); what the theme draws there keeps it.
   root?.setAttribute('m-passthrough', '');
@@ -731,6 +773,9 @@ document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) s
     let msg;
     try { msg = JSON.parse(json); } catch { return; }
     if (!host) return;
+    // Where the pointer is over Margin's UI while a hosted app has the keys (the app's, MarginWindowController.hover):
+    // the page's own hover, before anything else (it's many a second, and nothing else needs it).
+    if (msg?.type === 'hoverAt') { hoverAt(msg.x, msg.y); return; }
     if (msg?.type === 'pointer') stats.pointers++;
     const cause = () => (msg?.type === 'changes' ? `changes to ${Object.keys(msg.changes ?? {}).join(', ') || 'site icons'}` : msg?.type === 'push' ? `the copy's ${msg.msg?.type}` : String(msg?.type));
     timed('taking the app\'s word', cause, () => {

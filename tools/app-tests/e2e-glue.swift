@@ -1076,18 +1076,28 @@ func glueScenario() async {
       guard let r = await js(c.webView, "const r = document.querySelector('\(selector)')?.getBoundingClientRect(); return r ? [r.left + r.width / 2, r.top + r.height / 2] : null") as? [Double], r.count == 2 else { return nil }
       return CGPoint(x: r[0], y: r[1])
     }
-    let rowSelector = ".margin-sidebar .tab"
+    // (A row that isn't the one shown: the shown one's own fill wins over hover in the theme.)
+    let rowSelector = ".margin-sidebar .tab:not(.active)"
     guard let row = await centre(rowSelector) else { return check("a sidebar row to hover", false) }
-    let movesBefore = c.hoverMoves
+    let fill = "return getComputedStyle(document.querySelector('\(rowSelector)')).backgroundColor"
+    let before = await js(c.webView, fill) as? String
+    let pushesBefore = c.hoverPushes
     c.pointerMoved(CGPoint(x: display.minX + row.x, y: display.minY + row.y), buttonsDown: false)
-    let lit = await waitJS(c.webView, "return !!document.querySelector('\(rowSelector):hover')")
-    check("hover: the hosted app with the keys (Margin's panel not key), the pointer over a sidebar row: the row lit (its :hover), the move handed to the page",
-          !c.panel.isKeyWindow && lit && c.hoverMoves > movesBefore && c.pageState == .shown, "lit \(lit) moves \(c.hoverMoves - movesBefore) key \(c.panel.isKeyWindow)")
+    let marked = await waitJS(c.webView, "return document.querySelector('\(rowSelector)')?.hasAttribute('m-hover') === true")
+    let after = await js(c.webView, fill) as? String
+    check("hover: the hosted app with the keys (Margin's panel not key, so WebKit's own :hover can't), the pointer over a sidebar row: the row marked by Margin's page and drawn with the theme's hover fill",
+          !c.panel.isKeyWindow && marked && before != nil && after != nil && before != after && c.hoverPushes > pushesBefore && c.pageState == .shown,
+          "marked \(marked) fill \(String(describing: before)) → \(String(describing: after)) pushes \(c.hoverPushes - pushesBefore) key \(c.panel.isKeyWindow)")
     c.pointerMoved(CGPoint(x: display.maxX - 200, y: display.midY), buttonsDown: false)
-    let unlit = await waitJS(c.webView, "return !document.querySelector('\(rowSelector):hover')")
-    let movesOver = c.hoverMoves
+    let cleared = await waitJS(c.webView, "return !document.querySelector('[m-hover]')")
+    let back = await js(c.webView, fill) as? String
+    let pushesOver = c.hoverPushes
     c.pointerMoved(CGPoint(x: display.maxX - 180, y: display.midY), buttonsDown: false)
-    check("hover: over the hosted app again: nothing of Margin's lit, and no more moves handed to the page there", unlit && c.hoverMoves == movesOver, "unlit \(unlit) moves \(c.hoverMoves - movesOver)")
+    _ = await waitJS(c.webView, "return true")
+    check("hover: over the hosted app again: nothing of Margin's marked, the row's own fill again, and nothing more said to the page there",
+          cleared && back == before && c.hoverPushes == pushesOver, "cleared \(cleared) fill \(String(describing: back)) pushes \(c.hoverPushes - pushesOver)")
+    let rewritten = await js(c.webView, "let n = 0, m = 0; const walk = (rules) => { for (const r of rules) { if (r.selectorText) { if (/:hover/.test(r.selectorText)) n++; if (/:hover/.test(r.selectorText) && r.selectorText.includes('[m-hover]')) m++; } if (r.cssRules) walk(r.cssRules); } }; for (const s of document.adoptedStyleSheets) walk(s.cssRules); return [n, m]") as? [Int]
+    check("hover: every :hover rule of the theme's and Margin's own also says [m-hover]", (rewritten?.first ?? 0) > 0 && rewritten?.first == rewritten?.last, "\(String(describing: rewritten))")
 
     // The "+" pressed (a real press, the web view's own): its menu up, and still up after the press's hand-back.
     guard let plus = await centre(".margin-sidebar .add") else { return check("the sidebar's + button", false) }
