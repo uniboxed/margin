@@ -789,7 +789,43 @@ final class HostEngine {
             Task { await serial { await self.closeLeftSafariWindows() } }
         }
         observe()
+        traceToolbars()
         reconcile()
+    }
+
+    // Diagnostics (2026-11-20, Tirth: now and then, back in Margin from another app with a Safari tab shown, Safari's
+    // full-screen toolbar showed half covered, in the menu bar's place or over the page's top; cause unknown, Margin's log
+    // had nothing of it): the shown host's own full-screen toolbar windows (in its window's Spaces, at its top edge),
+    // said whenever one changes (its bounds, alpha, layer, on screen or not) with what's around it then: the front app,
+    // the pointer, its window's bounds. Read from the model this poll already fed: nothing more read but the pointer.
+    private var toolbarSaid: [Int: String] = [:]
+    private func traceToolbars() {
+        guard let id = shown, let host = hosts[id], host.phase == .shown, host.mode == .fullScreen, let app = observer.model.apps[host.pid],
+              let mine = app.windows[host.window], let spaces = mine.spaces, !spaces.isEmpty else { toolbarSaid = [:]; return }
+        let f = mine.bounds
+        var seen: [Int: String] = [:]
+        for w in app.windows.values where w.kind == .strip && w.spaces == spaces && Self.toolbarOf(w.bounds, window: f) {
+            seen[w.number] = Self.toolbarState(w.bounds, alpha: w.alpha, layer: w.layer, onScreen: w.onScreen, window: f)
+        }
+        for (n, state) in seen.sorted(by: { $0.key < $1.key }) where toolbarSaid[n] != state {
+            let front = sys.frontApp().map { $0 == host.pid ? "its app" : $0 == ownPid ? "Margin" : "pid \($0)" } ?? "unread"
+            let at = sys.pointer().map { "\(Int($0.x)),\(Int($0.y))" } ?? "unread"
+            Diagnostics.note("host: \(host.id): its full-screen toolbar \(n)\(toolbarSaid[n] == nil ? " (first seen)" : ""): \(state); its window \(Int(f.minX)),\(Int(f.minY)) \(Int(f.width))×\(Int(f.height)); front: \(front); pointer \(at)")
+        }
+        toolbarSaid = seen
+    }
+
+    // A strip at a full-screen window's top edge: its left edge and width the window's, from just above its top to inside it.
+    static func toolbarOf(_ b: CGRect, window f: CGRect) -> Bool {
+        f.width > 0 && abs(b.minX - f.minX) <= 2 && abs(b.width - f.width) <= 2 && b.maxY >= f.minY - 2 && b.minY <= f.minY + 2 + 150
+    }
+
+    // How a toolbar sits: resting (its bottom at its window's top or above: hidden), or out over its window by so many
+    // points (its bottom below the window's top); its alpha, layer, on screen.
+    static func toolbarState(_ b: CGRect, alpha: Double, layer: Int, onScreen: Bool?, window f: CGRect) -> String {
+        let over = Int((b.maxY - f.minY).rounded())
+        let place = over <= 2 ? "resting above its window" : "OUT over its window by \(over) pt"
+        return "\(place) (at \(Int(b.minX)),\(Int(b.minY)) \(Int(b.width))×\(Int(b.height)), alpha \(String(format: "%.2f", alpha)), layer \(layer), \(onScreen == true ? "on screen" : onScreen == false ? "off screen" : "on screen unread"))"
     }
 
     // ---- the reconciler (HostReconciler.swift, docs/HOSTING-CORE.md stage 3) ----
