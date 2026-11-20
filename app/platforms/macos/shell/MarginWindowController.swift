@@ -362,6 +362,12 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         if panel.frame != frame { panel.setFrame(frame, display: false) }
         if panel.level != window.level { panel.level = window.level }
         if panel.alphaValue != window.alphaValue { panel.alphaValue = window.alphaValue }
+        // In its stage's Space the panel is the group's parent (`placeGroup`): this window its child, below it.
+        if stageSpace != nil {
+            if !panel.isVisible { panel.orderFrontRegardless(); Diagnostics.warn("Margin's window \(id): its panel wasn't on screen (\(why)): ordered in again") }
+            if window.parent !== panel { panel.addChildWindow(window, ordered: .below); Diagnostics.warn("Margin's window \(id): it wasn't its panel's child any more (\(why)): made it again") }
+            return
+        }
         if panel.parent !== window {
             window.addChildWindow(panel, ordered: .above)
             panelAttached += 1
@@ -403,21 +409,23 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     func syncBackdrop(_ why: String) {
         guard backdropOff == nil else { return }
         guard !isClosed, isFullScreen, window.isVisible || options.harness else {
-            if let b = backdrop { if b.parent != nil { window.removeChildWindow(b) }; if b.isVisible { b.orderOut(nil) } }
+            if let b = backdrop { b.parent?.removeChildWindow(b); if b.isVisible { b.orderOut(nil) } }
             return
         }
+        let parent: NSWindow = stageSpace != nil ? panel : window // (the group's parent: the panel in a stage)
         let frame = MarginBackdrop.frame(window: window.frame, screen: window.screen?.frame)
         let b = backdrop ?? MarginBackdrop(frame: frame)
         backdrop = b
         if b.frame != frame { b.setFrame(frame, display: false) }
         if b.level != MarginBackdrop.level { b.level = MarginBackdrop.level }
-        if b.parent !== window {
+        if b.parent !== parent {
             let lost = b.isVisible // (taken out on purpose when this window left full screen: not on screen then)
-            window.addChildWindow(b, ordered: .below)
+            b.parent?.removeChildWindow(b)
+            parent.addChildWindow(b, ordered: .below)
             backdropAttached += 1
             if b.level != MarginBackdrop.level { b.level = MarginBackdrop.level }
             if lost { Diagnostics.warn("Margin's window \(id): its backdrop wasn't its child any more (\(why)): made its child again") }
-        } else if !options.harness, window.isOnActiveSpace, !b.isOnActiveSpace {
+        } else if !options.harness, stageSpace == nil, window.isOnActiveSpace, !b.isOnActiveSpace {
             window.removeChildWindow(b)
             b.orderOut(nil)
             window.addChildWindow(b, ordered: .below)
@@ -425,12 +433,11 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         }
         // Below every normal window, as the window server has it, or never used again by this window.
         if let layer = b.serverLayer, layer >= 0 {
-            window.removeChildWindow(b)
+            b.parent?.removeChildWindow(b)
             b.orderOut(nil)
             backdropOff = "its layer \(layer) (\(why))"
             Diagnostics.warn("Margin's window \(id): its backdrop read at layer \(layer), not below the apps' (\(why)): taken out for good")
         }
-        keepInStage(why)
     }
 
     private(set) var isClosed = false
@@ -449,9 +456,10 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         webView.navigationDelegate = nil
         webView.stopLoading()
         window.delegate = nil
-        if panel.parent != nil { window.removeChildWindow(panel) }
+        panel.parent?.removeChildWindow(panel)
+        window.parent?.removeChildWindow(window)
         panel.orderOut(nil)
-        if let b = backdrop { if b.parent != nil { window.removeChildWindow(b) }; b.orderOut(nil) }
+        if let b = backdrop { b.parent?.removeChildWindow(b); b.orderOut(nil) }
     }
 
     func close() {
@@ -621,7 +629,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         }
         if up { reorder = false }
         if let other = yieldingTo {
-            window.order(.below, relativeTo: other)
+            if stageSpace != nil { panel.order(.below, relativeTo: other) } else { window.order(.below, relativeTo: other) }
             panelOnTop()
             yieldOrders += 1
             changedAt = now()
@@ -633,11 +641,13 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         window.level = level
         if panel.level != level { panel.level = level }
         // (Its backdrop never follows it up: below every normal window whatever this one's level.)
-        if let b = backdrop, b.parent === window, b.level != MarginBackdrop.level { b.level = MarginBackdrop.level }
+        if let b = backdrop, b.parent != nil, b.level != MarginBackdrop.level { b.level = MarginBackdrop.level }
     }
 
     // Ordered right above a window, its panel right above it (AppKit keeps a child above its parent; said again).
     private func orderAbove(_ number: Int) {
+        // (In a stage the panel is the group's parent: it's ordered, this window comes with it, below it.)
+        if stageSpace != nil { return panel.order(.above, relativeTo: number) }
         window.order(.above, relativeTo: number)
         panelOnTop()
     }
@@ -1177,7 +1187,8 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             var tries = 0
             func look() {
                 guard !self.isClosed, self.stageOpening else { return }
-                if let space = stage.fullScreenSpace(of: n) { return self.joinStage(space) }
+                // (Its Space read, and the one showing: macOS switches to a new full-screen Space as it's made.)
+                if let space = stage.fullScreenSpace(of: n), stage.calls.activeSpace() == space { return self.joinStage(space) }
                 tries += 1
                 guard tries < 20 else { stageOpening = false; _ = fallBack("its stage's Space didn't read"); return }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { look() }
@@ -1203,27 +1214,76 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // that Space (its backdrop too, once made), then in full screen as far as everything else is concerned.
     private func joinStage(_ space: UInt64) {
         guard let stage = owner?.stage else { return }
+        window.refusesToggle = true // (first: its frame isn't constrained from here)
         if let screen = window.screen ?? NSScreen.main {
             let area = ScreenGeometry.appKitRect(MarginWindowGeometry.fullScreenArea(screen))
             if window.frame != area { window.setFrame(area, display: false) }
         }
         setButtonsHidden(true)
-        attachPanel("joining its stage")
-        guard stage.join([window.windowNumber, panel.windowNumber], space: space) else {
+        // (Placed only while its stage is the Space showing: "move to the active Space" puts the panel in the Space showing.)
+        guard stage.calls.activeSpace() == space else {
             stageOpening = false
             stage.close(id: id)
-            stage.giveUp("Margin's window didn't join its stage's Space")
+            stage.giveUp("its stage's Space wasn't the one showing when it was ready")
+            window.refusesToggle = false
             setButtonsHidden(false)
-            _ = fallBack("it didn't join its stage's Space")
+            _ = fallBack("its stage's Space wasn't showing")
+            return
+        }
+        guard placeGroup(space, stage: stage) else {
+            stageOpening = false
+            restoreGroup()
+            stage.close(id: id)
+            stage.giveUp("Margin's windows didn't join its stage's Space")
+            window.refusesToggle = false
+            setButtonsHidden(false)
+            _ = fallBack("its windows didn't join its stage's Space")
             return
         }
         stageOpening = false
         stageSpace = space
-        window.refusesToggle = true
         Diagnostics.note("Margin's window \(id): in its stage's Space \(space) (owned by Margin Space.app: nobody makes Margin active there)")
         fullScreenChanged(true)
-        keepInStage("joined")
         startMenuBar()
+    }
+
+    // Margin's windows into its stage's Space by macOS's own rules only (DECISIONS.md "The window server's crash and the
+    // official placement", 2026-11-19: a direct Space call left macOS's count of a window's current Spaces wrong, and a
+    // later Space switch stopped the window server). The panel, an NSPanel, shown with "move to the active Space" while
+    // the stage is the Space showing: macOS puts it there. This window and the backdrop then the panel's children: a child
+    // joins its parent's Space, macOS moves them itself. The panel's behaviour then back to joining full-screen Spaces,
+    // so no later order moves the group. Each window's Spaces read back: true, all three in the stage.
+    private func placeGroup(_ space: UInt64, stage: MarginStage) -> Bool {
+        panel.parent?.removeChildWindow(panel)
+        let b = backdrop ?? MarginBackdrop(frame: MarginBackdrop.frame(window: window.frame, screen: window.screen?.frame))
+        backdrop = b
+        b.parent?.removeChildWindow(b)
+        b.setFrame(MarginBackdrop.frame(window: window.frame, screen: window.screen?.frame), display: false)
+        b.collectionBehavior = MarginBackdrop.stageBehavior
+        window.collectionBehavior = MarginWindow.stageBehavior
+        panel.setFrame(window.frame, display: false)
+        panel.level = window.level
+        panel.alphaValue = window.alphaValue
+        panel.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary, .ignoresCycle]
+        panel.orderFrontRegardless()
+        panel.addChildWindow(window, ordered: .below)
+        panel.addChildWindow(b, ordered: .below)
+        b.level = MarginBackdrop.level
+        panel.collectionBehavior = MarginPanel.stageBehavior
+        let read = [panel, window, b].map { stage.calls.spaces(of: $0.windowNumber) }
+        let joined = read.allSatisfy { $0 == [space] }
+        Diagnostics.note("Margin's window \(id): its panel, window and backdrop \(joined ? "in" : "NOT in") its stage's Space by macOS's own placement (\(read.map { $0.map { "\($0)" } ?? "unread" }.joined(separator: ", ")))")
+        return joined
+    }
+
+    // Margin's order of things again (out of a stage): this window the parent, the panel above it, the backdrop below,
+    // their usual behaviours.
+    private func restoreGroup() {
+        window.parent?.removeChildWindow(window)
+        panel.collectionBehavior = MarginPanel.behavior
+        window.collectionBehavior = MarginWindow.behavior
+        if let b = backdrop { b.parent?.removeChildWindow(b); b.collectionBehavior = MarginBackdrop.behavior }
+        if panel.parent !== window { window.addChildWindow(panel, ordered: .above) }
     }
 
     // Its stage's Space left or gone (macOS took the helper's window out of full screen, Mission Control closed it, the
@@ -1238,6 +1298,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         window.refusesToggle = false
         stageHidden = true
         setAlpha(0)
+        restoreGroup()
         fullScreenChanged(false)
         // (Never left unseen: shown as it is if no stage comes back.)
         DispatchQueue.main.asyncAfter(deadline: .now() + options.fullScreenWithin) { [weak self] in
@@ -1253,20 +1314,11 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         guard !stageFell else { return false }
         stageFell = true
         owner?.stage?.close(id: id)
+        restoreGroup()
         setButtonsHidden(false)
         Diagnostics.warn("Margin's window \(id): no stage (\(why)): AppKit's full screen, Margin owns its Space")
         DispatchQueue.main.async { [weak self] in self?.tryFullScreen("its stage didn't come") }
         return true
-    }
-
-    // Its panel and backdrop kept in its stage's Space with it (each made its child again by AppKit after a Space or
-    // level change: a child doesn't follow its parent into a Space another app owns).
-    private func keepInStage(_ why: String) {
-        guard let space = stageSpace, let stage = owner?.stage else { return }
-        var numbers = [panel.windowNumber]
-        if let b = backdrop, b.isVisible { numbers.append(b.windowNumber) }
-        let out = numbers.filter { stage.calls.spaces(of: $0)?.contains(space) == false }
-        if !out.isEmpty, stage.join(out, space: space) { Diagnostics.note("Margin's window \(id): its panel or backdrop brought into its stage's Space (\(why))") }
     }
 
     private func setButtonsHidden(_ hidden: Bool) {
@@ -1291,6 +1343,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // its first ask, nor while it's on its way in.
     func tryFullScreen(_ why: String) {
         guard options.alwaysFullScreen, firstAsked, !isFullScreen, !isClosed else { return }
+        if stageOpening { return } // (its stage on its way: it says when it's there or fails)
         let entering = window.styleMask.contains(.fullScreen) || willEnterAt.map { Date().timeIntervalSince($0) < 2 } == true
         let ready = canAskFullScreen
         let since = lastAskAt.map { Date().timeIntervalSince($0) } ?? .infinity

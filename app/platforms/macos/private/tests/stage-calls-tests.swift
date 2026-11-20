@@ -28,7 +28,7 @@ final class FakeAppleMenu: NSObject {
 func stageCallsTests() {
     let all = StageCalls.evaluate(FakeStageResolver())
     check("stage calls: all there: the Space, the menu bar and the Apple menu on", all.space && all.menuBar && all.appleMenu && all.reasons.isEmpty, "\(all)")
-    for name in ["SLSAddWindowsToSpaces", "SLSRemoveWindowsFromSpaces", "SLSCopySpacesForWindows", "SLSSpaceGetType"] {
+    for name in ["SLSCopySpacesForWindows", "SLSSpaceGetType", "SLSGetActiveSpace"] {
         let r = FakeStageResolver()
         r.functions.remove(name)
         let a = StageCalls.evaluate(r)
@@ -66,8 +66,13 @@ func stageCallsTests() {
     }
     // The wrappers refuse in the tests, whatever the check said.
     let calls = StageCalls(resolver: FakeStageResolver(), availability: all)
-    check("stage calls: refused in the tests (reads nil, writes false, no Apple menu)",
-          calls.spaces(of: 5) == nil && calls.spaceType(7) == nil && !calls.add([5], to: 7) && !calls.remove([5], from: [7]) && calls.showMenuBar(true, display: 1) == nil && calls.appleMenu() == nil)
+    check("stage calls: refused in the tests (reads nil, no menu bar, no Apple menu)",
+          calls.spaces(of: 5) == nil && calls.spaceType(7) == nil && calls.activeSpace() == nil && calls.showMenuBar(true, display: 1) == nil && calls.appleMenu() == nil)
+    check("stage calls: no call moves a window between Spaces (the direct add/remove broke the window server, 2026-11-19)",
+          !(StageCalls.spaceFunctions + StageCalls.menuBarFunctions).contains { $0.contains("AddWindows") || $0.contains("RemoveWindows") || $0.contains("MoveWindows") })
+    check("stage: menus and the bar's panels join the Space showing by macOS's own rule, then never move",
+          MarginStage.menuBehavior.contains(.moveToActiveSpace) && MarginMenuBar.placedBehavior.contains(.canJoinAllApplications) && !MarginMenuBar.placedBehavior.contains(.moveToActiveSpace)
+          && MarginPanel.stageBehavior.contains(.canJoinAllApplications) && MarginWindow.stageBehavior.contains(.canJoinAllApplications) && MarginBackdrop.stageBehavior.contains(.canJoinAllApplications))
 
     // The helper's switch: never usable without its calls or its bundle, never a dead end.
     let off = MarginStage(calls: StageCalls(resolver: FakeStageResolver(), availability: .off), executable: URL(fileURLWithPath: "/bin/sh"))

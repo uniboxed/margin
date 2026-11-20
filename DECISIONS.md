@@ -6119,8 +6119,7 @@ for Wi-Fi, Bluetooth and the battery), macOS's real menus, no Dock icons for hos
 - **What Margin does now.** Each Margin window's Space is started by an invisible window of **Margin Space.app**
   (`app/platforms/macos/stage/`, `LSUIElement`, Margin's child process, about 12 MB, no CPU while idle), put in full
   screen by AppKit's own accessibility setter (no Accessibility permission). Margin's window, panel and backdrop join it
-  as plain members (`SLSAddWindowsToSpaces`, docs/PRIVATE-APIS.md rows 40-45): nobody owns the Space, so nobody is made
-  active. Margin's window there is at the display's full-screen area, its buttons hidden, never into AppKit's full
+  as plain members (by macOS's own placement: see the next entry): nobody owns the Space, so nobody is made active. Margin's window there is at the display's full-screen area, its buttons hidden, never into AppKit's full
   screen (`refusesToggle`). The engine's tiles take the helper's window as the Space's first tile (`ownerWindow`).
 - **The menu bar there** (`MarginMenuBar.swift`): macOS shows none in a Space nobody owns, so a 1-point strip at the top
   edge (it wakes only on that hover) shows the real bar (`SLSSetMenuBarVisibilityOverrideOnDisplay`); Margin draws the
@@ -6129,9 +6128,8 @@ for Wi-Fi, Bluetooth and the battery), macOS's real menus, no Dock icons for hos
   across switches menus; the open title's capsule is the real bar's (flat, white 15 % on the dark bar, 23.5 pt; measured
   from Tirth's screenshot); a strip of AppKit's own window buttons slides down over the page area (close = Close Tab,
   minimize and zoom nothing: decided by Tirth). It goes up 0.35 s after the pointer leaves the top 96 points, never with a
-  menu or Control Center panel open. Every menu window Margin opens (its UI's pop-ups too) and any window of Margin's made
-  key is added to the stage's Space as it appears (AppKit puts them on Margin's Desktop otherwise) and a menu's taken out
-  once it closes (left in, they took the titles' clicks).
+  menu or Control Center panel open. Every menu window Margin opens (its UI's pop-ups too) is shown with "move to the
+  active Space" as it appears (AppKit puts them on Margin's Desktop otherwise).
 - **Fallbacks.** No helper in the bundle, a call off at launch, `MarginOwnerlessSpace` NO, the helper not starting, a
   stage not in full screen within 6 s, or the helper ending three times: AppKit's full screen, Margin owning its Space
   and macOS's own bar, as before. A stage lost (Mission Control, the helper ending) parks what's shown, hides Margin's
@@ -6143,3 +6141,30 @@ for Wi-Fi, Bluetooth and the battery), macOS's real menus, no Dock icons for hos
 - **Known limits.** The titles are Margin's drawing: ⌃F2 and VoiceOver don't reach them. The Apple menu's items are all
   enabled in the copy (its own check misreads it; macOS still enforces management blocks underneath). An NSOpenPanel
   (the theme picker) is out of process and may open on Margin's Desktop. Two displays: untested.
+
+
+## The window server's crash and the official placement (2026-11-19, night)
+
+The first install of the ownerless Space stopped the window server (Tirth's Mac locked and logged out, "unexpected
+errors in WindowServer"). Its report: an assertion, `window_data->current_space_count >= 0` in
+`PKGWindowPartedCurrentSpace`, reached from `managed_display_set_current_space` (the engine's
+`SLSManagedDisplaySetCurrentSpace`) → `pkg_window_repair_group_ordering` → `window_preferred_spaces_changed_NotWM` →
+`window_move_to_spaces`. Margin had moved its window group (window, child panel, child backdrop) into the helper's Space
+with the direct `SLSAddWindowsToSpaces` / `SLSRemoveWindowsFromSpaces`: the window server's own record of where each
+window belongs (its preferred Spaces, its count of current Spaces) wasn't updated, and the next Space switch, repairing
+the group's order, counted a window out of a Space it wasn't counted into.
+
+- **The fix: no direct Space call for Margin's windows, ever.** They join by macOS's own rules
+  (`MarginWindowController.placeGroup`): while the stage's Space is the one showing, the panel (an NSPanel) is shown
+  with "move to the active Space" (macOS puts it there), the window and the backdrop become the panel's children (a
+  child joins its parent's Space: macOS moves them itself), then the panel's behaviour is "join full-screen Spaces"
+  (`canJoinAllApplications`), so no later order moves the group. In a stage the panel is the group's parent (the window
+  under it, the backdrop below): Margin's own order of things comes back as it leaves one (`restoreGroup`). Menus and
+  the menu bar's panels join the same way. A test fails if a window-moving call comes back.
+- **Proven before Margin was touched** (the window-group kit, /tmp/margin-toolbar-test/group, `group7`-`group9`, Tirth's
+  OK, everything saved first): the group in the stage, then the crash's own pattern (the current Space set away and back
+  five times, the group reordered in the stage and away from it, a menu opened): no crash, every window's Spaces the
+  stage's throughout. Ways that didn't place it (and so never reached a switch: each run stopped first): ordering in
+  with `canJoinAllApplications`, the window manager's bridge (options 7, or 0 with its remove), activating while the
+  stage showed, the window itself with "move to the active Space" (only an NSPanel goes), the base as the parent again
+  (the group follows it home), a menu window made the panel's child (the menu broke).

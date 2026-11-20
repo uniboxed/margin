@@ -31,6 +31,9 @@ import AppKit
 
 final class MarginWindow: NSWindow {
     static let style: NSWindow.StyleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
+    static let behavior: NSWindow.CollectionBehavior = [.fullScreenPrimary, .managed]
+    // In its stage's Space (MarginWindowController `placeGroup`): a member of a full-screen Space another app owns.
+    static let stageBehavior: NSWindow.CollectionBehavior = [.canJoinAllApplications, .fullScreenAuxiliary]
     static let minimum = NSSize(width: 640, height: 420)
 
     var harness = false
@@ -41,7 +44,9 @@ final class MarginWindow: NSWindow {
     // Always full screen (MarginWindowController.Options.alwaysFullScreen): AppKit's toggle (the green button, a menu
     // item anywhere) refused while it's in full screen; into it always taken.
     var locksFullScreen = false
-    // In its stage's Space (MarginWindowController `joinStage`): never into AppKit's full screen (it would own a Space).
+    // In its stage's Space (MarginWindowController `joinStage`): never into AppKit's full screen (it would own a Space),
+    // and its frame the display's full-screen area as set (AppKit keeps a titled window inside the area the menu bar
+    // and the Dock leave: 884 points tall instead of 949, the page area wrong for every hosted window, 2026-11-19).
     var refusesToggle = false
     private(set) var refusedToggles = 0
 
@@ -58,7 +63,7 @@ final class MarginWindow: NSWindow {
         isReleasedWhenClosed = false
         isMovableByWindowBackground = false
         tabbingMode = .disallowed // ⌘T is Margin's (a new tab in its UI), never AppKit's window tabs
-        collectionBehavior = [.fullScreenPrimary, .managed]
+        collectionBehavior = Self.behavior
         minSize = Self.minimum
         animationBehavior = harness ? .none : .documentWindow
         // (Made, AppKit put it on the main display: back off every display before anything orders it in.)
@@ -92,7 +97,7 @@ final class MarginWindow: NSWindow {
 
     // A test's window stays where it was put (AppKit keeps a titled window's title bar on a display).
     override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
-        harness ? frameRect : super.constrainFrameRect(frameRect, to: screen)
+        harness || refusesToggle ? frameRect : super.constrainFrameRect(frameRect, to: screen)
     }
 
     override func setFrame(_ frameRect: NSRect, display flag: Bool) {
@@ -110,6 +115,7 @@ final class MarginWindow: NSWindow {
 // nothing else): a non-activating panel can be key while another app is active (Spotlight's way). Never main.
 final class MarginPanel: NSPanel {
     static let behavior: NSWindow.CollectionBehavior = [.fullScreenAuxiliary, .ignoresCycle]
+    static let stageBehavior: NSWindow.CollectionBehavior = [.canJoinAllApplications, .fullScreenAuxiliary, .ignoresCycle]
     var harness = false
     var allowKey = false
     weak var base: MarginWindow?
@@ -353,9 +359,11 @@ final class MarginBackdrop: NSWindow {
         ignoresMouseEvents = true
         isExcludedFromWindowsMenu = true
         animationBehavior = .none
-        collectionBehavior = [.fullScreenAuxiliary, .ignoresCycle]
+        collectionBehavior = Self.behavior
         level = Self.level
     }
+    static let behavior: NSWindow.CollectionBehavior = [.fullScreenAuxiliary, .ignoresCycle]
+    static let stageBehavior: NSWindow.CollectionBehavior = [.canJoinAllApplications, .fullScreenAuxiliary, .ignoresCycle]
 
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }

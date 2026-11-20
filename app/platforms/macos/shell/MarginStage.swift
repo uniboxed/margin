@@ -4,8 +4,9 @@
 // Bluetooth, battery), and only an app with a Dock icon can be an owner. Margin has one: owning its Space, it took the
 // keyboard from the app it hosts at every hover of the top edge. So each Margin window's Space is started by an
 // invisible window of Margin Space.app (app/platforms/macos/stage/, LSUIElement: no Dock icon), and Margin's window,
-// panel and backdrop join it as plain members (StageCalls.add): nobody owns the Space, the hosted app keeps the
-// keyboard, and Margin shows the real menu bar itself (MarginMenuBar.swift).
+// panel and backdrop join it as plain members: nobody owns the Space, the hosted app keeps the
+// keyboard, and Margin shows the real menu bar itself (MarginMenuBar.swift). They join it by macOS's own rules only
+// (MarginWindowController `placeGroup`): never a direct Space call (one broke the window server, 2026-11-19).
 //
 // - The helper is Margin's child process, started once, the first time a window asks; its standard input and output
 //   carry one line per message (stage/main.swift lists them). If Margin dies, its end of the pipe closes and the helper
@@ -95,18 +96,6 @@ final class MarginStage {
         handlers[id] = nil
         windows[id] = nil
         if process?.isRunning == true { send("close \(id)") }
-    }
-
-    // Margin's own windows into the stage's Space, and out of every other Space they're in. True: asked, and the first
-    // window reads in it.
-    func join(_ numbers: [Int], space: UInt64) -> Bool {
-        let list = numbers.filter { $0 > 0 }
-        guard !list.isEmpty, calls.add(list, to: space) else { return false }
-        for n in list {
-            let others = (calls.spaces(of: n) ?? []).filter { $0 != space }
-            if !others.isEmpty { calls.remove([n], from: others) }
-        }
-        return calls.spaces(of: list[0])?.contains(space) == true
     }
 
     // The full-screen Space a window is in (its stage's), nil: none.
@@ -204,19 +193,16 @@ final class MarginStage {
         for h in gone.values { h(.gone) }
     }
 
-    // ---- Margin's other windows while a Margin window is in its stage's Space ----
+    // ---- Margin's menus while a Margin window is in its stage's Space ----
 
-    // AppKit puts any window Margin opens on Margin's own Desktop, out of sight from a Space Margin doesn't own: a menu's
-    // windows (the menu bar's, its UI's pop-ups and context menus: one per menu and submenu, made as it opens, often
-    // placed again after) and a window made key (the quit prompt, the About panel). Each is added to the stage's Space
-    // of the Margin window on the current Space as it appears (a menu's every 10 ms while it tracks: an in-process list,
-    // no reads of the window server), and a menu's taken out again once it's closed (left in the Space, an ordered-out
-    // menu window kept the pointer from what was under it: the kit, 2026-11-19).
+    // AppKit puts the windows of a menu Margin opens (the menu bar's, its UI's pop-ups and context menus) on Margin's own
+    // Desktop, out of sight from a Space Margin doesn't own. Each one, as it appears, is shown with "move to the active
+    // Space" (macOS's own rule: it goes to the Space showing, the stage's; measured in the kit, 2026-11-19), its
+    // windows looked at every 5 ms while the menu opens (an in-process list). No direct Space call: those broke the
+    // window server (DECISIONS.md, 2026-11-19). The quit prompt already has that behaviour of its own.
     var currentSpace: () -> UInt64? = { nil } // the stage Space of the Margin window on the current Space (MarginWindows)
     private var watching: [NSObjectProtocol] = []
     private var menuTimer: Timer?
-    private var menuWindows = Set<Int>()
-    private var menuSpace: UInt64 = 0
     private var tracking = 0
 
     func watchOwnWindows() {
@@ -225,24 +211,27 @@ final class MarginStage {
         watching = [
             c.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main) { [weak self] _ in MainActor.assumeIsolated { self?.menuBegan() } },
             c.addObserver(forName: NSMenu.didEndTrackingNotification, object: nil, queue: .main) { [weak self] _ in MainActor.assumeIsolated { self?.menuEnded() } },
-            c.addObserver(forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main) { [weak self] note in
-                MainActor.assumeIsolated { if let w = note.object as? NSWindow { self?.adopt(w) } }
-            },
         ]
     }
 
+    private static let menuLevel = Int(CGWindowLevelForKey(.popUpMenuWindow))
+    static let menuBehavior: NSWindow.CollectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary, .ignoresCycle]
+
     private func menuBegan() {
         tracking += 1
-        guard tracking == 1, let space = currentSpace() else { return }
-        menuSpace = space
-        let before = Set(NSApp.windows.filter { $0.level.rawValue >= Self.menuLevel && !$0.isVisible }.map(\.windowNumber))
-        let t = Timer(timeInterval: 0.01, repeats: true) { [weak self] _ in
+        guard tracking == 1, currentSpace() != nil else { return }
+        let before = Set(NSApp.windows.filter { $0.level.rawValue >= Self.menuLevel && $0.isVisible }.map(\.windowNumber))
+        var done = Set<Int>()
+        let started = Date()
+        let t = Timer(timeInterval: 0.005, repeats: true) { [weak self] t in
             MainActor.assumeIsolated {
-                guard let self else { return }
-                let now = NSApp.windows.filter { $0.level.rawValue >= Self.menuLevel && $0.windowNumber > 0 && (!before.contains($0.windowNumber) || $0.isVisible) }.map(\.windowNumber)
-                guard !now.isEmpty else { return }
-                self.calls.add(now, to: space) // (idempotent: AppKit may place a menu window again after it opened)
-                self.menuWindows.formUnion(now)
+                for w in NSApp.windows where w.level.rawValue >= Self.menuLevel && w.windowNumber > 0 && !before.contains(w.windowNumber) && !done.contains(w.windowNumber) {
+                    done.insert(w.windowNumber)
+                    w.collectionBehavior = Self.menuBehavior
+                    w.orderFrontRegardless()
+                }
+                // (Submenus open later: looked at for as long as the menu tracks, at a slower pace after the first second.)
+                if Date().timeIntervalSince(started) > 1, t.timeInterval < 0.05 { t.invalidate(); self?.slowWatch(before: before.union(done)) }
             }
         }
         RunLoop.main.add(t, forMode: .common)
@@ -250,28 +239,27 @@ final class MarginStage {
         t.fire()
     }
 
+    private func slowWatch(before: Set<Int>) {
+        guard tracking > 0 else { return }
+        var done = before
+        let t = Timer(timeInterval: 0.05, repeats: true) { _ in
+            MainActor.assumeIsolated {
+                for w in NSApp.windows where w.level.rawValue >= Self.menuLevel && w.windowNumber > 0 && w.isVisible && !done.contains(w.windowNumber) {
+                    done.insert(w.windowNumber)
+                    w.collectionBehavior = Self.menuBehavior
+                    w.orderFrontRegardless()
+                }
+            }
+        }
+        RunLoop.main.add(t, forMode: .common)
+        menuTimer = t
+    }
+
     private func menuEnded() {
         tracking = max(0, tracking - 1)
         guard tracking == 0 else { return }
         menuTimer?.invalidate()
         menuTimer = nil
-        let space = menuSpace
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-            MainActor.assumeIsolated {
-                guard let self, self.tracking == 0 else { return }
-                let gone = self.menuWindows.filter { n in !NSApp.windows.contains { $0.windowNumber == n && $0.isVisible } }
-                self.menuWindows.subtract(gone)
-                if !gone.isEmpty, space > 0 { self.calls.remove(Array(gone), from: [space]) }
-            }
-        }
-    }
-
-    private static let menuLevel = Int(CGWindowLevelForKey(.popUpMenuWindow))
-
-    private func adopt(_ w: NSWindow) {
-        guard w.level.rawValue < Self.menuLevel, w.windowNumber > 0, let space = currentSpace(),
-              NSApp.windows.contains(where: { $0 === w }), calls.spaces(of: w.windowNumber)?.contains(space) == false else { return }
-        if join([w.windowNumber], space: space) { Diagnostics.note("ownerless Space: a window of Margin's made key brought into Margin's Space") }
     }
 
     // Margin quitting: the helper told to close everything (it quits as Margin's end of the pipe closes anyway).

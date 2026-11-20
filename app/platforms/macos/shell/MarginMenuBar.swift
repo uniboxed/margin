@@ -18,7 +18,8 @@
 //   (Margin is always full screen) (decided by Tirth, 2026-11-19).
 // - It goes up 0.35 s after the pointer leaves the top 96 points, never while a menu or a Control Center panel is open.
 // - Every window AppKit opens for a menu of Margin's (this bar's, and its UI's pop-ups) lands on Margin's own Desktop,
-//   out of sight: it's added to the stage's Space as it appears and taken out once the menu closes (MarginStage).
+//   out of sight: it's shown with "move to the active Space" as it appears (MarginStage). This bar's own panels join
+//   the stage the same way (`place`). No direct Space call anywhere (one broke the window server, 2026-11-19).
 // - Costs: three small windows; a 30 Hz look at the pointer only while the bar is down. Nothing while it's up.
 
 import AppKit
@@ -68,9 +69,7 @@ final class MarginMenuBar {
         strip.contentView = StripView(close: { [weak self] in self?.closeTab() })
         edge.onEnter = { [weak self] in self?.show() }
         titlesView.onPress = { [weak self] i in DispatchQueue.main.async { self?.press(i) } }
-        edge.orderFrontRegardless()
-        calls.add([edge.windowNumber], to: space)
-        removeElsewhere(edge.windowNumber)
+        place(edge)
     }
 
     // Gone with its window's stage (its Space left or closed, Margin quitting): the bar left to macOS.
@@ -85,10 +84,15 @@ final class MarginMenuBar {
         strip.orderOut(nil)
     }
 
-    private func removeElsewhere(_ n: Int) {
-        let others = (calls.spaces(of: n) ?? []).filter { $0 != space }
-        if !others.isEmpty { calls.remove([n], from: others) }
+    // Shown in the stage's Space by macOS's own rule (only ever while it's the Space showing: the bar is made as its
+    // window joins it, and comes down from a hover there): "move to the active Space" as it's ordered in, then back to
+    // joining full-screen Spaces so no later order moves it. Never a direct Space call (DECISIONS.md, 2026-11-19).
+    private func place(_ p: NSPanel) {
+        p.collectionBehavior = MarginStage.menuBehavior
+        p.orderFrontRegardless()
+        p.collectionBehavior = Self.placedBehavior
     }
+    static let placedBehavior: NSWindow.CollectionBehavior = [.canJoinAllApplications, .fullScreenAuxiliary, .ignoresCycle, .stationary]
 
     private var barHeight: CGFloat { max(NSStatusBar.system.thickness, screen.safeAreaInsets.top) }
 
@@ -100,9 +104,7 @@ final class MarginMenuBar {
         reveals += 1
         calls.showMenuBar(true, display: display)
         layoutTitles()
-        titles.orderFrontRegardless()
-        calls.add([titles.windowNumber], to: space)
-        removeElsewhere(titles.windowNumber)
+        place(titles)
         showStrip()
         leftAt = nil
         let t = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in MainActor.assumeIsolated { self?.look() } }
@@ -223,9 +225,7 @@ final class MarginMenuBar {
     private func showStrip() {
         guard let up = stripFrame(down: false), let down = stripFrame(down: true) else { return }
         strip.setFrame(up, display: false)
-        strip.orderFrontRegardless()
-        calls.add([strip.windowNumber], to: space)
-        removeElsewhere(strip.windowNumber)
+        place(strip)
         NSAnimationContext.runAnimationGroup { c in c.duration = 0.25; strip.animator().setFrame(down, display: true) }
     }
 
@@ -250,7 +250,7 @@ private final class EdgePanel: NSPanel {
         isReleasedWhenClosed = false
         ignoresMouseEvents = false
         level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.mainMenuWindow)) - 1)
-        collectionBehavior = [.fullScreenAuxiliary, .ignoresCycle, .stationary]
+        collectionBehavior = MarginMenuBar.placedBehavior
         let v = EdgeView(frame: NSRect(origin: .zero, size: contentRect.size))
         v.autoresizingMask = [.width, .height]
         v.onEnter = { [weak self] in self?.onEnter?() }
@@ -284,7 +284,7 @@ private final class BarPanel: NSPanel {
         hidesOnDeactivate = false
         isReleasedWhenClosed = false
         ignoresMouseEvents = false // (said: the default lets a press through the transparent pixels between the letters)
-        collectionBehavior = [.fullScreenAuxiliary, .ignoresCycle, .stationary]
+        collectionBehavior = MarginMenuBar.placedBehavior
         animationBehavior = .none
     }
 }
