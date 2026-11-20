@@ -206,6 +206,7 @@ extension MarginWindowController: HostedWindow {
         guard let layout else { return "no layout from its page" }
         if !isFullScreen { return "not in full screen" }
         if layout.mode != "fullscreen" { return "its last layout is a \(layout.mode) one" }
+        if !layout.hosted && !layout.outside { return "its page hasn't measured its layout for hosting yet (its last one is the launcher's)" }
         let content = contentFrame, view = webView.frame.size
         func size(_ s: CGSize) -> String { "\(Int(s.width))×\(Int(s.height))" }
         return "no layout at its size yet (its page measured at \(Int(layout.width))×\(Int(layout.height)), its content \(size(content.size)), its web view \(size(view)))"

@@ -6221,3 +6221,23 @@ raise), when it redrew as the active one. Every app did it; Mail's sidebar shows
   say it ("it came in behind the one before", or IN FRONT); never every switch (a window list read is a cost).
 - Window mode (apps that can't go full screen) still parks the old one first and makes the new one active after; not
   changed here.
+
+
+## The sidebar hidden while an app is hosted (2026-11-20)
+
+Tirth: the sidebar's button (Keep open off: hidden, out from the left edge) did nothing with an app shown. Since
+2026-11-15 the app host kept the sidebar docked whatever the setting while an app's window was in the page area
+(`sidebarDocked` = `pageOutside || pageHosted`): the hosted window sat above Margin's window then, and a hidden sidebar's
+wider page area put FaceTime where the sidebar is, with nothing able to come out over it. Margin's window has been in
+front of what it hosts since 2026-11-17, so that reason is gone.
+
+- **As the person keeps it.** `sidebarDocked` is `pageOutside` alone (Margin's window as the sidebar beside another
+  app's window). With an app in the page area, Keep open off hides the sidebar: the page area is the frame's (8 pt in
+  Arcadia; the whole window with the frame off), the app placed there (the same path as a drag of the sidebar's width:
+  `pageRectChanged`); the left edge brings the sidebar out over the app with nothing placed again (the page's
+  `pointerWant` and `hits`, as over Safari before: Margin takes the pointer on the sidebar, the app everywhere else).
+- **Placed once, never by the launcher's layout.** The launcher always shows the sidebar beside it, so as hosting
+  began the app was first placed by the launcher's docked page area, then again by the hidden one. Each layout now
+  says whether its page measured it hosting (`pageHosted`, as `pageOutside`); Margin's window offers a hosted placement
+  only from one that was (`hostedPlacement`), and the session's wait for the page area (asking the page to measure)
+  takes that one.

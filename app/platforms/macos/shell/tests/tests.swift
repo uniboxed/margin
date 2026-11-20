@@ -289,6 +289,9 @@ final class FakeRegistrar: HotKeyRegistrar {
     let g: JSONObject = ["insets": ["left": 260.3, "top": 8, "right": 8, "bottom": 8.26], "radius": 6.25, "radii": [6.25, 6.25, 6.25, 6.25], "container": ["width": 1280, "height": 800], "mode": "fullscreen", "outer": [:]]
     guard let l = PageLayout(geometry: g) else { return check("a layout report", false) }
     check("a layout report", l.left == 260.3 && l.bottom == 8.26 && l.width == 1280 && l.radius == 6.25 && l.mode == "fullscreen")
+    var hostedGeometry = g
+    hostedGeometry["pageHosted"] = true
+    check("a layout report: measured hosting (pageHosted), or not (the launcher's)", !l.hosted && PageLayout(geometry: hostedGeometry)?.hosted == true)
     check("not a report: no insets", PageLayout(geometry: ["container": ["width": 1, "height": 1]]) == nil)
     check("not a report: no size", PageLayout(geometry: ["insets": ["left": 0, "top": 0, "right": 0, "bottom": 0], "container": ["width": 0, "height": 10]]) == nil)
     check("not a report: a number that's a boolean", PageLayout(geometry: ["insets": ["left": true, "top": 0, "right": 0, "bottom": 0], "container": ["width": 10, "height": 10]]) == nil)

@@ -37,6 +37,9 @@ struct PageLayout: Equatable {
     var mode: String
     // Measured with no page area of its own (Margin's own window hosting beside it: the sidebar alone, `pageOutside`).
     var outside = false
+    // Measured while hosting in its page area (`pageHosted`): the sidebar as the person keeps it (hidden: the frame's
+    // page area), not the launcher's, whose sidebar is always docked. A hosted window is placed only by such a layout.
+    var hosted = false
     // What the theme draws around the page area's rounded corners (Margin's own window only: host-app.ts cornerFill):
     // each corner's colour outside the card (CSS colours, top left clockwise; empty: not said). The ground under the
     // page area is the colour most of them have (MarginWindowController `pageGround`).
@@ -54,6 +57,7 @@ struct PageLayout: Equatable {
                   radii: radii.count == 4 ? radii : [radius, radius, radius, radius], width: w, height: h,
                   mode: g["mode"] as? String ?? "fullscreen")
         outside = g["pageOutside"] as? Bool == true
+        hosted = g["pageHosted"] as? Bool == true
         let said = (g["fills"] as? [Any])?.prefix(4).map { ($0 as? String).flatMap { $0.count <= 80 ? $0 : nil } ?? "" } ?? []
         fills = said.count == 4 ? said : []
     }
