@@ -221,8 +221,8 @@
 }
 .m3 > m-startup > [m-startup-spin] { display: none; }
 .m3 > m-startup [m-startup-action] { padding: 7px 16px; border: 0; border-radius: 10px; background: var(--load-tile); box-shadow: inset var(--load-edge); color: var(--load-ring); font-weight: 600; }
-/* Its item in another Margin window (m-page-state="elsewhere"): the card, faded and still, its words ("Click to show
-   … here"); in front again, the window takes the item back. */
+/* Its item in another Margin window (m-page-state="elsewhere"): the card, faded and still, its words ("… is in
+   another window. Click to show it here."); in front again, or clicked, the window takes the item back. */
 .m3[m-page-state="elsewhere"] .page-loader { opacity: .55; visibility: visible; pointer-events: none; transition: none; }
 .m3[m-page-state="elsewhere"] .opening-mark::after { animation: none; opacity: 0; }
 /* A web item's picture over it (m-page-picture, Margin's): the page faded into the frame, the words on a chip. */

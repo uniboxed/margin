@@ -92,6 +92,8 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         // An item not known to be slow keeps what's drawn this long before the loader shows (a switch between prepared
         // windows is tens of ms: no loader flash).
         var loaderGrace: TimeInterval = 0.12
+        // Closed while it hosts: held at most this long for the one shown to be parked first (`windowShouldClose`).
+        var closeWait: TimeInterval = 1.5
         var front = FrontMechanism.level // how it's kept in front of what it hosts (MarginWindows reads `MarginFront`)
     }
 
@@ -146,7 +148,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     private var showingSlow = false // the session's show is known to take a while (the last item at launch): the loader at once
     // The page card's state as the page was told (`m-page-state` on the theme's root), and the loader's name.
     // `elsewhere`: not hosting, its item in another Margin window or parked (one window hosts at a time): its card, faded
-    // ("Click to show … here"); focused, the item comes back here (HostedSession `focused`).
+    // ("… is in another window. Click to show it here."); focused, the item comes back here (HostedSession `focused`).
     enum PageState: String { case empty, loading, shown, elsewhere }
     // One of Margin's own pages in the page area while nothing's hosted there (HostedSession: ItemTarget.margin), nil:
     // the launcher. The page draws it (ui/host-app.ts `marginPage`); hosting covers it as it covers the launcher.
@@ -263,7 +265,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         base.layer?.backgroundColor = .clear
         window.contentView = base
         panel.base = window
-        panel.pressEnded = { [weak self] in self?.pressEnded() }
+        panel.pressEnded = { [weak self] at in self?.pressEnded(at: at) }
         webView.takesEditKeys = { [weak self] in self.map { $0.hasKeys && $0.pageWantsKeyboard && !$0.appActive() } ?? false }
         let content = NSView(frame: NSRect(origin: .zero, size: frame.size))
         content.wantsLayer = true
@@ -742,13 +744,15 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // the page card opaque with the theme's loader, the pointer Margin's; whatever the engine does meanwhile is behind
     // it. `empty`: nothing to show: the theme's launcher. From `shown` or `empty` to something not known to be slow (the
     // session's show of a prepared item: tens of ms), what's drawn stays for `loaderGrace`; the engine's own slow step
-    // (`setLoading`) is `loading` at once.
+    // (`setLoading`) is `loading` at once. From `elsewhere` (its card, the theme's loader faded and still), the loader
+    // at once: the card brightens and turns as its item comes back (Tirth, 2026-11-20: the launcher was drawn for the
+    // grace in between).
     private func settlePage() {
         let ready = hosting && hosted != nil && loadingLabel == nil && showingLabel == nil
         let target: PageState = !hosting ? (elsewhereLabel != nil ? .elsewhere : .empty) : ready ? .shown : .loading
         graceTimer?.invalidate()
         graceTimer = nil
-        if target == .loading, pageState != .loading, loadingLabel == nil, !showingSlow, options.loaderGrace > 0 {
+        if target == .loading, pageState != .loading, pageState != .elsewhere, loadingLabel == nil, !showingSlow, options.loaderGrace > 0 {
             graceTimer = Timer.scheduledTimer(withTimeInterval: options.loaderGrace, repeats: false) { [weak self] _ in
                 MainActor.assumeIsolated { self?.graceOver() }
             }
@@ -1093,8 +1097,13 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // to Margin without making it the front app: a key after a click in the sidebar went to Margin, check10 k1,
     // 2026-11-17, and 2026-11-08 before). Nothing hosted, nothing opening (its launcher): Margin is made the front app,
     // as a press in its own window always made it (there's no app whose look it could take away).
+    // `at`: where, top left in the panel's content. A press on its card (`elsewhere`: its item in another Margin window)
+    // takes the item back here, as this window brought in front does: on another display the window can be the one in
+    // use without ever becoming key (its panel never does for a press), and the card says "Click to show it here".
     static let pressSettle: TimeInterval = 0.08
-    func pressEnded() {
+    func pressEnded(at p: CGPoint) {
+        let at = CGPoint(x: contentFrame.minX + p.x, y: contentFrame.minY + p.y)
+        if !isClosed, pageState == .elsewhere, let page = window.pageRect, page.contains(at) { owner?.cardPressed(self) }
         guard !options.harness else { return afterPress() } // (a test's clock: at once)
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.pressSettle) { [weak self] in self?.afterPress() }
     }
@@ -1391,6 +1400,27 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     func windowDidResignKey(_ notification: Notification) { placeButtons() }
     func windowWillClose(_ notification: Notification) { owner?.closed(self) }
 
+    // Closed by its close button (or Close Window) while it hosts: only this window goes, Margin keeps running, the
+    // apps and pages it showed stay open (tabs of their spaces, not of a window). The one shown is parked first, while
+    // this window's Space is still there (never left on a Desktop or in a Space macOS takes down), then the window
+    // closes; held `closeWait` at most (closed anyway then: the session parks it once it can).
+    private(set) var closeHeld = false
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        guard hosting, let hold = owner?.onClosing else { return true }
+        if closeHeld { return false } // (pressed again while held: it closes once that's done)
+        closeHeld = true
+        var done = false
+        let finish: () -> Void = { [weak self] in
+            guard !done, let self, !self.isClosed else { return }
+            done = true
+            self.window.close()
+        }
+        Diagnostics.note("Margin's window \(id): closing while it hosts: what it shows parked first")
+        hold(self, finish)
+        DispatchQueue.main.asyncAfter(deadline: .now() + options.closeWait) { finish() }
+        return false
+    }
+
     // ---- the menu's actions ----
 
     func run(_ action: MarginMenuAction) {
@@ -1586,6 +1616,9 @@ final class MarginWindows {
     var onLeftFullScreen: ((MarginWindowController) -> Void)? // left full screen while hosting
     var onEnteredFullScreen: ((MarginWindowController) -> Void)? // in full screen (again)
     var onPagePress: ((MarginWindowController, CGPoint) -> Void)? // a press in its page area around a window-mode host's window
+    // A window closing while it hosts: what it shows parked, then the closure called (it closes then).
+    var onClosing: ((MarginWindowController, @escaping () -> Void) -> Void)?
+    var onClosed: ((Int) -> Void)? // a window closed (its id): gone from `controllers`
     // The keys back to the hosted app shown (a field of Margin's let go of them, a press in Margin's UI ended, a menu
     // item of Margin's ran): that app activated again, which it already is (it never stopped being the active app).
     var onFieldClosed: ((MarginWindowController) -> Void)?
@@ -1737,13 +1770,19 @@ final class MarginWindows {
     func becameKey(_ controller: MarginWindowController) { lastKey = controller; onKey?(controller.id) }
     // A Margin window brought in front (its item from another window comes back: HostedSession `focused`).
     var onKey: ((Int) -> Void)?
+    // A press on a window's card (its item in another Margin window): the item back there, as when it's brought in front.
+    func cardPressed(_ controller: MarginWindowController) {
+        Diagnostics.note("Margin's window \(controller.id): its card pressed: its item back here")
+        onKey?(controller.id)
+    }
 
     func closed(_ controller: MarginWindowController) {
         controllers.removeAll { $0 === controller }
         if lastKey === controller { lastKey = nil }
         controller.teardown() // (closing already)
         if controllers.isEmpty { pointer.stop() }
-        Diagnostics.note("Margin's window \(controller.id) closed (\(controllers.count) open)")
+        Diagnostics.note("Margin's window \(controller.id) closed (\(controllers.count) open; Margin keeps running)")
+        onClosed?(controller.id)
     }
 
     func closeAll() {

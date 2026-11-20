@@ -6275,3 +6275,30 @@ split second and went. Both while keeping the hosted app in focus.
   now takes the keys as a field does (the page's `focus`: `popupOpen` in app/shared/host/overlay.ts): no hand-back at
   the press, its ↑/↓, Return and Escape work, and the keys go back to the hosted app as soon as it closes. The hosted app
   stays the front app throughout (the non-activating panel takes the keys without making Margin active).
+
+## Back to another Margin window, and closing one (2026-11-20)
+
+Tirth: opening a second window (⌘N), picking a tab there and going back to the first window showed the launcher (the
+search page) instead of the tab that window was on; with the same tab in both, a message was expected. He also asked
+whether a window's close button closes that window or the whole app.
+
+- **Back to the first window.** It did take its item back (`focused`), but its card was cleared before it was hosting
+  again (`prepare`), and a window that neither hosts nor has a card draws its launcher, which then stayed for the
+  loader's grace (0.12 s) while macOS slid to its Space (the log: `page empty` at 10:08:31.722, `page loading` .843,
+  Maps shown 32.106). Now the card stays until the window hosts again, and from the card the loader comes at once (the
+  card is the theme's loader faded: it brightens and turns as its item comes back). A show that fails before it hosts
+  keeps the card.
+- **The same tab in both.** One app window can be in one place only: the window in use shows it, the other keeps its
+  card. The card now says where it is: "Notes is in another window. Click to show it here." (it said "Click to show
+  Notes here."); its words fit on one line in every built-in theme (page-card checks). A press on the card's page area
+  takes the item back as the window brought in front does: on another display the window can be the one in use
+  without ever becoming key (its non-activating panel never does for a press), so "Click" did nothing there.
+- **Closing a window** closes that window only: Margin keeps running (as before, `applicationShouldTerminateAfterLastWindowClosed`
+  is false), and its tabs stay open (they belong to spaces, not windows). Until now the session was never told a window
+  closed: its card and its item stayed in the session's books, and if it hosted, the app shown was left in its Space
+  as macOS took that Space down. Now a window that hosts holds its close until what it shows is parked (1.5 s at most;
+  a second press while held does nothing), the session forgets the window (`windowClosed`) and parks then if the park
+  didn't get there, and an app opening into a window that closes meanwhile is given up or parked once shown. The window
+  left takes its own item back once it's in front. The hosted tiles stay in the closed window's Space until the next
+  window hosts and adopts them (`adoptTiles`), as when Margin's window leaves full screen. Checked by the hosted
+  session tests and the glue e2e; on the real screen still to be seen (two windows, each close).
