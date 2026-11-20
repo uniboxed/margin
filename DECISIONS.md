@@ -6263,6 +6263,13 @@ split second and went. Both while keeping the hosted app in focus.
   under the pointer does, and the page's change watcher ignores them. Said at most once per frame of the display Margin's
   window is on (the first move after a pause at once, then a frame apart at most, the last place each time): a run of
   100 moves in 312 ms was 19 messages, 100 before (the glue e2e).
+- **A row left lit** (Tirth's recording, the same day): WebKit's own :hover stays where it last was once the panel isn't
+  key, so the row the pointer was over as a hosted app took the keys back stayed lit beside the one Margin marked (the
+  rewrite was ":hover or [m-hover]"). Now, while Margin's marks are in charge, each element WebKit still has as :hover
+  carries `m-hover-off` (read again whenever the element under the pointer changes: a press moves WebKit's :hover even
+  then), and the rules say ":hover not marked off, or [m-hover]"; every mark goes once WebKit dispatches a move again
+  (the panel key). A flag on the root (":hover under a root without it") was tried first and dropped: WebKit didn't
+  always restyle the row when only the root's attribute changed (the glue e2e failed one run in two).
 - **Margin's menus.** After a press in Margin's UI the keys go back to the hosted app (`afterPress` → `keysBack`), which
   took the focus from the page, and the menus close when it loses its focus (`blur`). A menu or prompt of Margin's open
   now takes the keys as a field does (the page's `focus`: `popupOpen` in app/shared/host/overlay.ts): no hand-back at

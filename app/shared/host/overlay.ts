@@ -181,11 +181,38 @@ const nextFrame = () => new Promise<any>((resolve) => { const t = setTimeout(res
 // the element there and each of its ancestors carry `m-hover`, and every rule of the theme's (and Margin's own) that
 // says :hover also says [m-hover] (`withHoverAttr`, as the theme is drawn). Changed only where the element under the
 // pointer changes. With the panel key, WebKit's own :hover does it, and the marks are cleared.
+// WebKit's own :hover stays where it last was once the panel isn't key (it follows no move then): the row the pointer
+// was over as a hosted app took the keys back stayed lit beside the one under the pointer (Tirth's recording,
+// 2026-11-20). So while Margin's marks are in charge, each element WebKit still has as :hover carries `m-hover-off`
+// (read again whenever the element under the pointer changes: a press updates WebKit's :hover even then), and the rules
+// take WebKit's :hover only where it isn't marked off. A mark on the element itself, never a condition on an ancestor:
+// WebKit restyles an element for a change of its own attributes at once, and was seen not to for a flag on the root.
+// In charge from Margin's first `hoverAt`, until WebKit itself dispatches a move to the page again (the panel key: its
+// :hover is current from that move on), when every mark goes.
 const HOVER_ATTR = 'm-hover';
+const HOVER_OFF = 'm-hover-off';
 let hoverChain: Element[] = [];
+let hoverOff: Element[] = [];
+let hoverOwn = false;
+function stillWebKits() {
+  const now = Array.from(document.querySelectorAll(':hover'));
+  const keep = new Set(now);
+  for (const el of hoverOff) if (!keep.has(el)) el.removeAttribute(HOVER_OFF);
+  for (const el of now) if (!el.hasAttribute(HOVER_OFF)) el.setAttribute(HOVER_OFF, '');
+  hoverOff = now;
+}
+document.addEventListener('pointermove', (e) => {
+  if (!e.isTrusted || !hoverOwn) return;
+  hoverOwn = false;
+  hoverAt(null, null);
+  for (const el of hoverOff) el.removeAttribute(HOVER_OFF);
+  hoverOff = [];
+}, { capture: true, passive: true });
 function hoverAt(x: unknown, y: unknown) {
   const at = typeof x === 'number' && typeof y === 'number' && Number.isFinite(x) && Number.isFinite(y) ? document.elementFromPoint(x, y) : null;
+  if (at && !hoverOwn) { hoverOwn = true; stillWebKits(); }
   if (at === (hoverChain[0] ?? null)) return;
+  if (hoverOwn) stillWebKits();
   const chain: Element[] = [];
   for (let el: Element | null = at; el; el = el.parentElement) chain.push(el);
   const next = new Set(chain);
@@ -194,14 +221,15 @@ function hoverAt(x: unknown, y: unknown) {
   for (const el of chain) if (!had.has(el) || !el.hasAttribute(HOVER_ATTR)) el.setAttribute(HOVER_ATTR, '');
   hoverChain = chain;
 }
-// Every style rule's :hover also matches [m-hover], in place, in the sheets the page draws with (nested rules, @media,
-// @supports and @layer blocks included). Once per sheet: a rule that already says [m-hover] is left as it is.
+// Every style rule's :hover becomes "WebKit's :hover where it isn't marked off, or [m-hover]", in place, in
+// the sheets the page draws with (nested rules, @media, @supports and @layer blocks included). Once per sheet: a rule
+// that already says [m-hover] is left as it is.
 const HOVER_PSEUDO = /:hover(?![\w-])/g;
 function withHoverAttr(rules: CSSRuleList) {
   for (const rule of Array.from(rules)) {
     if (rule instanceof CSSStyleRule && HOVER_PSEUDO.test(rule.selectorText) && !rule.selectorText.includes(`[${HOVER_ATTR}]`)) {
       HOVER_PSEUDO.lastIndex = 0;
-      rule.selectorText = rule.selectorText.replace(HOVER_PSEUDO, `:is(:hover,[${HOVER_ATTR}])`);
+      rule.selectorText = rule.selectorText.replace(HOVER_PSEUDO, `:is(:hover:not([${HOVER_OFF}]),[${HOVER_ATTR}])`);
     }
     HOVER_PSEUDO.lastIndex = 0;
     const inner = (rule as CSSRule & { cssRules?: CSSRuleList }).cssRules;
@@ -309,7 +337,7 @@ function reportSpace() {
 }
 const watcher = new MutationObserver((records) => {
   // (The page's own hover marks change nothing measured: m-hover alone, nothing to do.)
-  if (records.every((r) => r.type === 'attributes' && r.attributeName === HOVER_ATTR)) return;
+  if (records.every((r) => r.type === 'attributes' && (r.attributeName === HOVER_ATTR || r.attributeName === HOVER_OFF))) return;
   hitsSoon(); hitsAfter(400); queueMicrotask(measureNow); queueMicrotask(reportWant); queueMicrotask(reportSpace); queueMicrotask(followPopup);
 });
 // A menu or prompt of Margin's opened or closed: the keys taken or given back with it (`popupOpen`, as a field's).
