@@ -7,7 +7,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { applyChanges, chromeRects, cornerFill, createAppHost, hitRects, modeOf, sidebarFixed, splitShadows } from '../extension/ui/host-app.ts';
+import { applyChanges, chromeRects, cornerFill, createAppHost, hitRects, modeOf, sidebarFixed, splitShadows, type HitStyle } from '../extension/ui/host-app.ts';
 import { toStorage } from '../extension/shared/stored.ts';
 import { buildViewModel } from '../extension/ui/view-model.ts';
 import { APP_FILES, BUILTIN_THEMES, buildApp, builtinThemeFile } from '../scripts/build.ts';
@@ -549,8 +549,8 @@ test('applyChanges leaves the old values alone', () => {
 
 test('hitRects: what takes the pointer over the slot, boxes inside others left out', () => {
   // A stand-in for the overlay's elements: what hitRects reads of them.
-  type FakeEl = { localName: string, children: FakeEl[], getBoundingClientRect: () => { left: number, top: number, right: number, bottom: number, width: number, height: number }, style: { pointerEvents: string, visibility: string } };
-  const el = (name: string, r: number[], style: Partial<FakeEl['style']> = {}, children: FakeEl[] = []): FakeEl => ({
+  type FakeEl = { localName: string, children: FakeEl[], getBoundingClientRect: () => { left: number, top: number, right: number, bottom: number, width: number, height: number }, style: HitStyle };
+  const el = (name: string, r: number[], style: Partial<HitStyle> = {}, children: FakeEl[] = []): FakeEl => ({
     localName: name, children,
     getBoundingClientRect: () => ({ left: r[0], top: r[1], right: r[0] + r[2], bottom: r[1] + r[3], width: r[2], height: r[3] }),
     style: { pointerEvents: 'auto', visibility: 'visible', ...style },
@@ -576,6 +576,50 @@ test('hitRects: what takes the pointer over the slot, boxes inside others left o
   assert.deepEqual(hitRects((withLayer as unknown as Element), slot, { getStyle }), { rects: [], all: false });
   const many = el('div', [0, 0, 1280, 800], {}, Array.from({ length: 70 }, (_, i) => el('b', [300 + i * 10, 100, 5, 5])));
   assert.deepEqual(hitRects((many as unknown as Element), slot, { getStyle }), { rects: [], all: true });
+});
+
+test('hitRects: a box counts only as far as the ancestors that clip it show it, as CSS clips', () => {
+  type FakeEl = { localName: string, children: FakeEl[], getBoundingClientRect: () => { left: number, top: number, right: number, bottom: number, width: number, height: number }, style: HitStyle };
+  const el = (name: string, r: number[], style: Partial<HitStyle> = {}, children: FakeEl[] = []): FakeEl => ({
+    localName: name, children,
+    getBoundingClientRect: () => ({ left: r[0], top: r[1], right: r[0] + r[2], bottom: r[1] + r[3], width: r[2], height: r[3] }),
+    style: { pointerEvents: 'auto', visibility: 'visible', ...style },
+  });
+  const getStyle = (e: Element) => (e as unknown as FakeEl).style;
+  const slot = { left: 260, top: 8, right: 1272, bottom: 792 };
+  const hits = (children: FakeEl[]) => hitRects((el('div', [0, 0, 1280, 800], {}, [el('m-page', [260, 8, 1012, 784]), ...children]) as unknown as Element), slot, { getStyle });
+  // A space swipe: the sidebar clips, its list slid 200 px to the right, under the page (2026-11-20: its 80 rows
+  // made `all`, and Margin.app covered the page for the whole swipe).
+  const rows = Array.from({ length: 80 }, (_, i) => el('div', [208, 40 + i * 9, 252, 8]));
+  const slid = (overflow: Partial<HitStyle>) => [el('aside', [0, 0, 260, 800], overflow, [el('div', [200, 0, 260, 800], { transform: 'matrix(1, 0, 0, 1, 200, 0)', pointerEvents: 'none' }, rows)])];
+  assert.deepEqual(hits(slid({ overflowX: 'clip', overflowY: 'clip' })), { rects: [], all: false });
+  assert.deepEqual(hits(slid({ overflowX: 'hidden', overflowY: 'auto' })), { rects: [], all: false });
+  assert.deepEqual(hits(slid({ contain: 'paint' })), { rects: [], all: false });
+  assert.deepEqual(hits(slid({})), { rects: [], all: true }, 'nothing clips: every row over the page counts');
+  // Boxes are reported as far as they're shown (not cut to the slot); a clipping box over the slot that passes the
+  // pointer through, as the sidebars around the page do not, so only what's inside it shows here.
+  const through: Partial<HitStyle> = { pointerEvents: 'none' };
+  // Only along the axis that clips: overflow-x clipped, y visible, a box spilling right and down is cut at the sidebar's right edge only.
+  assert.deepEqual(hits([el('aside', [0, 0, 300, 400], { overflowX: 'clip', ...through }, [el('div', [100, 300, 400, 200])])]), { rects: [[100, 300, 200, 200]], all: false });
+  // Part of it shown: only that part.
+  assert.deepEqual(hits([el('aside', [0, 0, 300, 800], { overflowX: 'hidden', overflowY: 'hidden', ...through }, [el('div', [200, 100, 200, 50])])]), { rects: [[200, 100, 100, 50]], all: false });
+  // Through two clipping ancestors: both cut it.
+  assert.deepEqual(hits([el('div', [0, 0, 320, 800], { overflowX: 'clip', overflowY: 'clip', ...through }, [el('div', [0, 0, 1000, 200], { overflowX: 'clip', overflowY: 'clip', ...through }, [el('b', [100, 100, 600, 400])])])]), { rects: [[100, 100, 220, 100]], all: false });
+  // A menu positioned `absolute` whose containing block is above the clipping sidebar escapes its clip, whole.
+  const menu = el('div', [200, 100, 300, 200], { position: 'absolute' });
+  assert.deepEqual(hits([el('aside', [0, 0, 260, 800], { overflowX: 'clip', overflowY: 'clip' }, [el('div', [0, 0, 260, 800], {}, [menu])])]), { rects: [[200, 100, 300, 200]], all: false });
+  // ...but not when the sidebar (or a box between) is its containing block.
+  assert.deepEqual(hits([el('aside', [0, 0, 300, 800], { overflowX: 'clip', overflowY: 'clip', position: 'relative', ...through }, [menu])]), { rects: [[200, 100, 100, 200]], all: false });
+  assert.deepEqual(hits([el('aside', [0, 0, 300, 800], { overflowX: 'clip', overflowY: 'clip', ...through }, [el('div', [0, 0, 300, 800], { position: 'relative', ...through }, [menu])])]), { rects: [[200, 100, 100, 200]], all: false });
+  // A clip below the containing block: still escaped (the menu's containing block, the sidebar, doesn't clip).
+  assert.deepEqual(hits([el('aside', [0, 0, 260, 800], { position: 'relative' }, [el('div', [0, 0, 260, 800], { overflowX: 'hidden', overflowY: 'hidden' }, [menu])])]), { rects: [[200, 100, 300, 200]], all: false });
+  // `fixed`: escapes every clip, a positioned one too, unless a transform (or filter, containment...) holds it.
+  const pop = el('div', [200, 100, 300, 200], { position: 'fixed' });
+  assert.deepEqual(hits([el('aside', [0, 0, 300, 800], { overflowX: 'clip', overflowY: 'clip', position: 'relative', ...through }, [pop])]), { rects: [[200, 100, 300, 200]], all: false });
+  assert.deepEqual(hits([el('aside', [0, 0, 300, 800], { overflowX: 'clip', overflowY: 'clip', transform: 'matrix(1, 0, 0, 1, 0, 0)', ...through }, [pop])]), { rects: [[200, 100, 100, 200]], all: false });
+  assert.deepEqual(hits([el('aside', [0, 0, 300, 800], { overflowX: 'clip', overflowY: 'clip', willChange: 'transform', ...through }, [pop])]), { rects: [[200, 100, 100, 200]], all: false });
+  // An in-flow child of an escaped menu: clipped as the menu is (not at all), and inside it, so left out.
+  assert.deepEqual(hits([el('aside', [0, 0, 260, 800], { overflowX: 'clip', overflowY: 'clip' }, [el('div', [200, 100, 300, 200], { position: 'absolute' }, [el('a', [210, 110, 280, 30])])])]), { rects: [[200, 100, 300, 200]], all: false });
 });
 
 test('dist/app is up to date with app/shared/host and extension/ (run `npm run build`)', () => {

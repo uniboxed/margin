@@ -154,6 +154,8 @@ final class PointerWatch {
 
 // The region that isn't the page's (PassThrough.swift CatchRegion), filled at alpha 0.01 so the window
 // server never passes the pointer through it; the rest left fully transparent. Top-left coordinates.
+// Each point once, at 0.01 however many boxes cover it (copied, not laid over: before 2026-11-20 each `hits` box
+// was drawn over the others, and a space swipe's overlapping boxes showed over the page as a grey band).
 final class CatchView: NSView {
     var region = CatchRegion(all: true, hole: nil) { didSet { if region != oldValue { needsDisplay = true } } }
     override var isFlipped: Bool { true }
@@ -164,6 +166,7 @@ final class CatchView: NSView {
         bounds.fill(using: .copy)
         let fill = NSColor(calibratedWhite: 0, alpha: 0.01)
         fill.setFill()
+        NSGraphicsContext.current?.compositingOperation = .copy
         let path = NSBezierPath(rect: bounds)
         if !region.all, let hole = region.hole {
             path.append(NSBezierPath(roundedRect: hole, xRadius: region.radius, yRadius: region.radius))

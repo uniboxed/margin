@@ -99,12 +99,26 @@ export const modeOf = (w: any) => (w?.state === 'fullscreen' ? 'fullscreen' : 'w
 // A page's picture for the card (`pagePicture`) at most this long: the copy's is ~0.2–0.6 MB (1600 px wide, JPEG).
 const PICTURE_MAX = 8 * 1024 * 1024;
 
+/** The computed style `hitRects` reads (only the first two are needed: a missing one is its initial value). */
+export type HitStyle = {
+  pointerEvents: string, visibility: string, position?: string, overflowX?: string, overflowY?: string, contain?: string,
+  transform?: string, translate?: string, rotate?: string, scale?: string, perspective?: string, filter?: string,
+  backdropFilter?: string, containerType?: string, willChange?: string,
+};
+
 /**
  * What the theme draws over the page slot that takes the pointer: the boxes
  * of its elements (not the root, not `<m-page>`) that overlap the slot and
  * whose `pointer-events` isn't `none`, with the root passing the pointer
  * through as the in-page host's does (`m-passthrough`: its children keep
- * theirs). Boxes inside another are left out. `all`: more than `limit`
+ * theirs). Each box only as far as its ancestors show it (an ancestor whose
+ * `overflow` or paint containment clips, each axis apart, as CSS has it: a
+ * box positioned `absolute` or `fixed` escapes the ancestors inside its
+ * containing block, so a menu spilling out of the sidebar still counts): a space's list slid sideways by a
+ * swipe under the page area, clipped by the sidebar, is nothing there
+ * (2026-11-20: its rows counted, over 64 of them, and Margin.app covered the
+ * hosted page with its own card and the sidebar's shadow for the whole
+ * swipe). Boxes inside another are left out. `all`: more than `limit`
  * (the app then takes the whole window, never letting the page miss one).
  * `keepEqual`: of nested boxes with the same bounds (Arcadia's palette layer and its backdrop, over the whole
  * window) the first is kept, and what's inside it goes (Margin's own window: its palette takes the pointer).
@@ -114,22 +128,63 @@ const PICTURE_MAX = 8 * 1024 * 1024;
  * @param slot in the container's pixels
  * [x, y, width, height] each
  */
-export function hitRects(root: Element, slot: { left: number, top: number, right: number, bottom: number }, { limit = 64, keepEqual = false, getStyle = (el) => (el.ownerDocument.defaultView as any).getComputedStyle(el) }: { limit?: number, keepEqual?: boolean, getStyle?: (el: Element) => { pointerEvents: string, visibility: string } } = {}): { rects: number[][], all: boolean } {
-  const found: DOMRect[] = [];
-  const walk = (el: Element) => {
-    for (const child of (el.children as any)) {
+export function hitRects(root: Element, slot: { left: number, top: number, right: number, bottom: number }, { limit = 64, keepEqual = false, getStyle = (el) => (el.ownerDocument.defaultView as any).getComputedStyle(el) }: { limit?: number, keepEqual?: boolean, getStyle?: (el: Element) => HitStyle } = {}): { rects: number[][], all: boolean } {
+  type Box = { left: number, top: number, right: number, bottom: number, width: number, height: number };
+  type Clip = Box | null; // null: nothing clips
+  // The clips that apply to an element's children: in flow, positioned `absolute` (its containing block's), `fixed`.
+  type Clips = { flow: () => Clip, abs: () => Clip, fixed: () => Clip };
+  const box = (left: number, top: number, right: number, bottom: number): Box => ({ left, top, right, bottom, width: Math.max(0, right - left), height: Math.max(0, bottom - top) });
+  const meet = (a: Clip, b: Clip): Clip => !a ? b : !b ? a : box(Math.max(a.left, b.left), Math.max(a.top, b.top), Math.min(a.right, b.right), Math.min(a.bottom, b.bottom));
+  const once = <T,>(f: () => T): (() => T) => { let done = false, v: T; return () => (done ? v : (done = true, v = f())); };
+  const clipsAxis = (v?: string) => v === 'hidden' || v === 'clip' || v === 'scroll' || v === 'auto';
+  const set = (v?: string) => !!v && v !== 'none' && v !== 'normal' && v !== 'auto';
+  // A containing block for fixed (and absolute) descendants: a transform, filter, perspective, layout or paint containment.
+  const holdsFixed = (st: HitStyle) => set(st.transform) || set(st.translate) || set(st.rotate) || set(st.scale) || set(st.perspective)
+    || set(st.filter) || set(st.backdropFilter) || /layout|paint|strict|content/.test(st.contain || '')
+    || set(st.containerType) || /transform|perspective|filter|translate|rotate|scale/.test(st.willChange || '');
+  const ownClip = (el: Element, st: HitStyle): Clip => {
+    const paint = /paint|strict|content/.test(st.contain || '');
+    const x = paint || clipsAxis(st.overflowX), y = paint || clipsAxis(st.overflowY);
+    if (!x && !y) return null;
+    const r = el.getBoundingClientRect();
+    return box(x ? r.left : -Infinity, y ? r.top : -Infinity, x ? r.right : Infinity, y ? r.bottom : Infinity);
+  };
+  const none: Clips = { flow: () => null, abs: () => null, fixed: () => null };
+  // Everything worked out only when a box overlaps the slot, each element's style read once.
+  const clipsOf = (el: Element, st: () => HitStyle, up: Clips): { mine: () => Clip, inner: Clips } => {
+    const mine = once(() => { const p = st().position; return p === 'absolute' ? up.abs() : p === 'fixed' ? up.fixed() : up.flow(); });
+    const flow = once(() => meet(mine(), ownClip(el, st())));
+    const fixedHere = once(() => holdsFixed(st()));
+    return {
+      mine,
+      inner: {
+        flow,
+        abs: once(() => (fixedHere() || (!!st().position && st().position !== 'static') ? flow() : up.abs())),
+        fixed: once(() => (fixedHere() ? flow() : up.fixed())),
+      },
+    };
+  };
+  const found: Box[] = [];
+  const walk = (el: Element, up: Clips) => {
+    for (const child of (el.children as any) as Element[]) {
       if (child.localName === 'm-page' || child.localName === 'template') continue;
-      const r = child.getBoundingClientRect();
-      if (r.width > 0 && r.height > 0 && r.left < slot.right && r.right > slot.left && r.top < slot.bottom && r.bottom > slot.top) {
-        const style = getStyle(child);
-        if (style.pointerEvents !== 'none' && style.visibility !== 'hidden') found.push(r);
+      const st = once(() => getStyle(child));
+      const c = clipsOf(child, st, up);
+      const b = child.getBoundingClientRect();
+      if (b.width > 0 && b.height > 0 && b.left < slot.right && b.right > slot.left && b.top < slot.bottom && b.bottom > slot.top) {
+        const cut = c.mine();
+        const r = cut ? meet(b, cut)! : b;
+        if (r.width > 0 && r.height > 0 && r.left < slot.right && r.right > slot.left && r.top < slot.bottom && r.bottom > slot.top) {
+          const style = st();
+          if (style.pointerEvents !== 'none' && style.visibility !== 'hidden') found.push(r);
+        }
       }
-      walk(child);
+      walk(child, c.inner);
     }
   };
-  walk(root);
-  const inside = (a: DOMRect, b: DOMRect) => a !== b && a.left >= b.left && a.right <= b.right && a.top >= b.top && a.bottom <= b.bottom;
-  const same = (a: DOMRect, b: DOMRect) => a.left === b.left && a.top === b.top && a.right === b.right && a.bottom === b.bottom;
+  walk(root, none);
+  const inside = (a: Box, b: Box) => a !== b && a.left >= b.left && a.right <= b.right && a.top >= b.top && a.bottom <= b.bottom;
+  const same = (a: Box, b: Box) => a.left === b.left && a.top === b.top && a.right === b.right && a.bottom === b.bottom;
   const kept = keepEqual
     ? found.filter((r, i) => !found.some((o, j) => j !== i && (same(r, o) ? j < i : inside(r, o))))
     : found.filter((r, i) => !found.some((o, j) => inside(r, o) || (j < i && same(o, r))));
