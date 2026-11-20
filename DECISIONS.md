@@ -6332,3 +6332,12 @@ active app, the keys go back to that app (`lookBack`: looked at 0.15 s and 0.5 s
 Never while a field or menu of Margin's wants them, another window of Margin's has them (the quit prompt, a file
 picker), a sheet is up, or the menu bar's own watch runs. Not on every activation of Margin: a file picker
 (`NSApp.activate()` before its panel) would lose its focus. Checked by the window tests (the decision) and the glue e2e.
+
+## An app's launch right after its last instance quit (2026-11-20)
+
+Tirth's log, 12:16:39–42: Weather's first open given up (another pick), Weather asked to quit; picked again, the new
+open waited for that exit (heard at .268 by its process, `kill(pid, 0)`), then the launch was refused 2 ms later,
+"couldn't be started with no Dock icon". `RealHostSystem.launchDockless` refused while NSWorkspace still listed any
+instance, and its list names an app for a moment after its process ended (the engine's own `liveInstances` already
+ignored such an instance since 2026-11-19, Journal). Now only an instance whose process runs stops a launch
+(`blocksLaunch`). If LaunchServices itself ever refuses in that moment, the open's `launchWait` and its message say so.
