@@ -1214,7 +1214,19 @@ final class HostedSession: LibraryDelegate {
         if links.safariProfiles().contains(p) { return true }
         let wanted = wanted ?? { self.linkWanted(p) }
         let started = now()
-        let ranAtStart = engine.appRuns(bundleId: safariIdentifier) == true
+        var ranAtStart = engine.appRuns(bundleId: safariIdentifier) == true
+        // Safari not running at all: no copy of its own links and its menu can't be pressed. Started now (no Dock icon, as
+        // Margin's start does it), then waited for as usual; one that doesn't start, not waited for. (2026-11-20 13:45:
+        // Margin had quit the Safari it started after a failed preparation; the show after it waited 30 s, pressing the
+        // menu of a Safari that wasn't there.)
+        if engine.appRuns(bundleId: safariIdentifier) == false {
+            guard await engine.start(bundleId: safariIdentifier) != nil else {
+                note("a Safari profile not linked: Safari isn't running and didn't start: not waited for")
+                return false
+            }
+            note("a Safari profile not linked: Safari wasn't running: started (no Dock icon)")
+            ranAtStart = true
+        }
         let seenBefore = engine.wokenWindows(bundleId: safariIdentifier)
         var presses = 0, pressedAt = started, saidAt = started
         // (Its own copies first: a Safari just started has no menus and no copies for a while, ~4–12 s to the first link,

@@ -1873,7 +1873,12 @@ final class HostEngine {
         }
         if let near {
             let at = fresh.filter { HostLayout.near($0.bounds, near, within: 4) }
-            if at.count == 1 { return (at[0].number, fresh.count) }
+            if at.count == 1 {
+                // (Told apart from others by the copy's bounds: said, with them. 2026-11-20 13:45: a window chosen so at a
+                // launch was gone a moment later, likely one Safari had restored and Margin was closing.)
+                if fresh.count > 1 { Diagnostics.note("host: Safari's new window \(at[0].number) told apart by the copy's bounds from \(fresh.filter { $0.number != at[0].number }.map { "\($0.number) \(r($0.bounds))" }.joined(separator: ", "))") }
+                return (at[0].number, fresh.count)
+            }
         }
         return (fresh.count == 1 ? fresh[0].number : nil, fresh.count)
     }
@@ -3253,7 +3258,7 @@ final class HostEngine {
             // full screen, isn't placed until its Space is reserved: a window-mode window parked at that frame, 2026-11-17.)
             if there(), sys.reserved(space: own) == edges { return true }
             let reserved = sys.reserved(space: own) ?? .zero
-            Diagnostics.note("host: place \(host.id) attempt \(attempt): its window \(sys.bounds(window: host.window).map(r) ?? "?"), its Space reserving \(reserved.text), \(placement.text) → reserving \(edges.text)")
+            Diagnostics.note("host: place \(host.id) attempt \(attempt): its window \(sys.bounds(window: host.window).map(r) ?? "\(host.window) not listed by the window server (gone?)"), its Space reserving \(reserved.text), \(placement.text) → reserving \(edges.text)")
             if reserved != edges || attempt == 2 { _ = sys.reserve(edges, space: own) }
             // (At the page area and held there `placeSettle`: mid-way in, a window's bounds can still be the frame it had
             // as a window, which may be the page area's.)
