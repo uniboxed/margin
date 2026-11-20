@@ -146,6 +146,35 @@ for (const [name, engine] of ENGINES) {
         await page.evaluate(() => T.unmountRuntime());
       });
 
+      // Arc's own feel for the space swipe (Tirth, 2026-11-20: "not as smooth as Arc's"; shared/space-swipe.ts ARC, from
+      // Arc's code): half the fingers' distance; with the trackpad's phases (Margin.app), held while the fingers rest and
+      // let go at the lift, never by a pause; Arc's spring moved frame by frame (no transition of the theme's); a haptic
+      // tick as the nearer space changes; the next space shown as it lands.
+      await t.test('space swipe, Arc\'s feel: half the distance, held while the fingers rest, let go at the lift, Arc\'s spring frame by frame, a tick past halfway', async () => {
+        await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, replies: { setSpace: { shown: null } } }));
+        assert.equal((await page.evaluate(() => T.rtComputed('.margin-sidebar', '--m-swipe-feel')))?.trim(), 'arc', 'Arcadia asks for Arc\'s feel');
+        const width = (await page.evaluate(() => T.rtRect('.margin-sidebar')))!.width;
+        await page.evaluate(() => T.rtWheelPhase('began'));
+        await page.evaluate(() => T.rtTrackpadRun('.space-title .title', [20, 20, 20, 20, 20, 20]));
+        const held = await page.evaluate(() => T.rtSwipeTrace('.margin-sidebar', 400)); // the fingers resting, still down
+        assert.ok(held.length > 5 && held.every((f) => f.swiping && !f.settling && f.offset === -60), `half of 120 px, held while they rest: ${JSON.stringify(held.slice(-2))}`);
+        assert.deepEqual(await page.evaluate(() => T.rtPerformed().filter((n) => n === 'haptic.alignment')), [], 'no tick short of halfway');
+        // On past halfway, still moving as they lift: the next space.
+        const more = Math.ceil(width / 20) + 2;
+        await page.evaluate((n) => T.rtTrackpadRun('.space-title .title', Array(n).fill(20)), more);
+        assert.deepEqual(await page.evaluate(() => T.rtPerformed().filter((n) => n === 'haptic.alignment')), ['haptic.alignment'], 'one tick past halfway');
+        await page.evaluate(() => T.rtWheelPhase('ended'));
+        const settle = await page.evaluate(() => T.rtSwipeTrace('.margin-sidebar', 900));
+        const moving = settle.filter((f) => f.settling && f.offset != null).map((f) => f.offset!);
+        assert.ok(moving.length > 10, `moved frame by frame (${moving.length} frames)`);
+        assert.ok(moving.every((x, i) => i === 0 || x <= moving[i - 1] + 0.05) && moving.at(-1)! >= -width - 0.5, `toward the next space, never past it: ${moving.slice(0, 4)} … ${moving.slice(-2)}`);
+        assert.ok(Math.abs(moving.at(-1)! + width) <= 2, `at rest a whole width over by its last frame (${moving.at(-1)} of ${-width})`);
+        assert.equal(await page.evaluate(() => T.rtSent().filter(([k]) => k === 'setSpace').at(-1)?.[1].spaceId), 'work', 'the next space asked for at the lift');
+        await page.waitForFunction(() => T.rtVmFull().spaceName === 'Work', null, { timeout: 2000 });
+        assert.equal(await page.evaluate(() => T.rtComputed('.space-pane', 'transition-duration')), '0s', 'no transition of the theme\'s on the moving part');
+        await page.evaluate(() => T.unmountRuntime());
+      });
+
       await t.test('the launcher in Margin.app\'s overlay: not focused as it first draws, focused at the app\'s word or when it comes later', async () => {
         // (Its overlay isn't on screen as it first draws: Margin.app starting, a link back, a page reloaded.)
         await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, mode: 'fullscreen', inNewTab: true, focusLauncherAtMount: false }));

@@ -10,18 +10,37 @@
 // Not with a mouse wheel (or Shift), over something that scrolls sideways,
 // with one space, while the sidebar is hidden or something is under way
 // (renaming, a menu, a drag).
+//
+// A theme may ask for Arc's own feel (`--m-swipe-feel: arc` on the swiping
+// part; shared/space-swipe.ts ARC, from Arc's code): the sidebar at half the
+// fingers' distance, Arc's choice at the lift (the speed over the last 100 ms,
+// else the nearest space), Arc's rubber band, a haptic tick in Margin.app as
+// the nearer space changes, and the settle a spring this behavior moves frame
+// by frame (`--m-swipe-offset` each frame under `m-settling`: the theme
+// mustn't transition it). In Margin.app the trackpad's own phases say when
+// the fingers touch and lift (`m-wheel-phase`, app/shared/host/overlay.ts):
+// let go at the lift, the momentum after it never moves the space, and fingers
+// resting mid-swipe keep it held, as in Arc.
 import type { Rt } from '../runtime.ts';
 import type { ViewModel } from '../view-model.ts';
 import { canScrollX } from '../../shared/gestures.ts';
-import { createSpaceSwipe, settle, rubberBand, DEFAULTS as SWIPE } from '../../shared/space-swipe.ts';
+import { createSpaceSwipe, settle, rubberBand, settleArc, rubberBandArc, springArc, ARC, DEFAULTS as SWIPE } from '../../shared/space-swipe.ts';
 import { View } from '../render.ts';
 
 export const SETTLE_MS = 220;
+// The trackpad's phases known: a swipe whose fingers are down is let go anyway after this long with no event (its
+// lift lost: never held for good).
+const HELD_MAX_MS = 2000;
 
 export function installSwipe(rt: Rt) {
   const { view, doc, container } = rt;
   const tracker = createSpaceSwipe();
-  let swiping: { el: HTMLElement, neighbours: Record<string, string | undefined>, width: number, base: { offset: number, events: number }, settling: boolean, frame: number, offset: number, panes: HTMLElement[], bases: { left: number, top: number, width: number, height: number }[], ghosts: Record<string, HTMLElement[] | null>, position: string, overflow: string, target: string | null, dispatched: boolean } | null = null;
+  // `arc`: the theme's feel is Arc's (`scale` its distance); `shown`: the offset drawn now; `detent`: the space nearest
+  // it (-1, 0, 1), its change a haptic tick; `settle`: Arc's spring, under way (its frame and length).
+  let swiping: { el: HTMLElement, neighbours: Record<string, string | undefined>, width: number, base: { offset: number, events: number }, settling: boolean, frame: number, offset: number, panes: HTMLElement[], bases: { left: number, top: number, width: number, height: number }[], ghosts: Record<string, HTMLElement[] | null>, position: string, overflow: string, target: string | null, dispatched: boolean, arc: boolean, scale: number, shown: number, detent: number, springFrame: number } | null = null;
+  // The trackpad's phases (Margin.app tells them: `m-wheel-phase`): known at all, the fingers down, the momentum after a
+  // lift under way, and a touch since the last wheel event (the next one starts a new gesture).
+  const phases = { known: false, fingers: false, momentum: false, touched: false };
 
   // The neighbouring spaces drawn beside the one shown, as Arc does (requested 2026-11-07): the theme's own sidebar
   // rendered off screen with that space shown (rt.spaceView), its moving part (`data-swipe-pane`, else
@@ -79,15 +98,28 @@ export function installSwipe(rt: Rt) {
     return false;
   };
 
+  function draw(s: NonNullable<typeof swiping>, shown: number) {
+    s.shown = shown;
+    s.el.style.setProperty('--m-swipe-offset', `${Math.round(shown * 10) / 10}px`);
+    // How far toward the neighbour (0 to 1), for a theme that blends the two spaces' colours.
+    s.el.style.setProperty('--m-swipe-progress', `${Math.round(Math.min(1, Math.abs(shown) / s.width) * 1000) / 1000}`);
+  }
   function place(offset: number) {
     const s = swiping;
     if (!s) return;
     const toward = offset > 0 ? -1 : 1;
-    const shown = s.neighbours[toward] ? Math.max(-s.width, Math.min(s.width, offset)) : rubberBand(offset, s.width * 0.2);
+    const shown = s.neighbours[toward] ? Math.max(-s.width, Math.min(s.width, offset)) : s.arc ? rubberBandArc(offset) : rubberBand(offset, s.width * 0.2);
     if (s.neighbours[toward]) ghost(s, String(toward));
-    s.el.style.setProperty('--m-swipe-offset', `${Math.round(shown * 10) / 10}px`);
-    // How far toward the neighbour (0 to 1), for a theme that blends the two spaces' colours.
-    s.el.style.setProperty('--m-swipe-progress', `${Math.round(Math.min(1, Math.abs(shown) / s.width) * 1000) / 1000}`);
+    draw(s, shown);
+    // Arc's detent: the space nearest the offset changed (past half its width): the trackpad's alignment tick.
+    if (s.arc) {
+      const near = Math.round(-shown / s.width);
+      const detent = near && s.neighbours[near > 0 ? 1 : -1] ? Math.sign(near) : 0;
+      if (detent !== s.detent) {
+        s.detent = detent;
+        rt.host.perform?.('haptic.alignment');
+      }
+    }
   }
   function begin(el: HTMLElement) {
     const spaces = rt.vm?.spaces ?? [];
@@ -102,8 +134,9 @@ export function installSwipe(rt: Rt) {
       const r = p.getBoundingClientRect();
       return { left: r.left - er.left - el.clientLeft + el.scrollLeft, top: r.top - er.top - el.clientTop + el.scrollTop, width: p.offsetWidth, height: p.offsetHeight };
     });
+    const arc = getComputedStyle(el).getPropertyValue('--m-swipe-feel').trim() === 'arc';
     swiping = { el, neighbours: { [-1]: spaces[at - 1]?.id, [1]: spaces[at + 1]?.id }, width: er.width || 1, base: { offset: 0, events: 0 }, settling: false, frame: 0, offset: 0,
-      panes, bases, ghosts: {}, overflow: el.style.overflow, position, target: null, dispatched: false };
+      panes, bases, ghosts: {}, overflow: el.style.overflow, position, target: null, dispatched: false, arc, scale: arc ? ARC.SCALE : 1, shown: 0, detent: 0, springFrame: 0 };
     el.style.overflow = 'clip'; // the neighbours sit outside it until they slide in
     el.classList.add('m-swiping');
   }
@@ -116,6 +149,7 @@ export function installSwipe(rt: Rt) {
     swiping = null;
     if (s.dispatched) holdUntil = Date.now() + SETTLE_MS;
     cancelAnimationFrame(s.frame);
+    cancelAnimationFrame(s.springFrame);
     s.el.classList.remove('m-swiping', 'm-settling');
     s.el.style.removeProperty('--m-swipe-offset');
     s.el.style.removeProperty('--m-swipe-progress');
@@ -123,42 +157,109 @@ export function installSwipe(rt: Rt) {
     s.el.style.position = s.position;
     for (const list of Object.values(s.ghosts)) for (const g of list ?? []) g.remove();
   }
-  function release({ offset, speed, events }: { offset: number, speed: number, events: number }) {
+  // `time`: when it was let go (a lift's, from the trackpad's phases or by its momentum's first event: `lifted`), for
+  // Arc's speed; `overrun`: the offset momentum added before it was told apart (Arc's feel takes it back out);
+  // `cancelled`: the trackpad cancelled the gesture.
+  function release({ offset, speed, events, time, lifted, overrun = 0, cancelled = false }: { offset: number, speed: number, events: number, time?: number, lifted?: number, overrun?: number, cancelled?: boolean }) {
     const s = swiping;
     if (!s || s.settling) return;
     cancelAnimationFrame(s.frame);
-    const dir = settle({ offset: offset - s.base.offset, speed, events: events - s.base.events, width: s.width, has: (d) => !!s.neighbours[d] });
-    s.settling = true;
-    s.el.classList.add('m-settling');
-    s.el.style.setProperty('--m-swipe-offset', `${dir ? -dir * s.width : 0}px`);
-    s.el.style.setProperty('--m-swipe-progress', dir ? '1' : '0');
+    let dir: -1 | 0 | 1;
+    let duration = SETTLE_MS;
+    if (s.arc) {
+      const at = lifted ?? time ?? performance.now();
+      const raw = (offset - overrun - s.base.offset) * s.scale;
+      const velocity = tracker.velocity(at, ARC.VELOCITY_MS) * 1000 * s.scale; // px/s of the sidebar
+      dir = settleArc({ offset: raw, velocity, width: s.width, events: events - s.base.events, cancelled, has: (d) => !!s.neighbours[d] }) as -1 | 0 | 1;
+      // From where it's drawn (rubber band and all), at the lift's speed only when that heads where it goes (Arc).
+      const to = dir ? -dir * s.width : 0;
+      const v0 = Math.sign(velocity) === Math.sign(to - s.shown) ? velocity : 0;
+      const reduced = !!doc.defaultView?.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      const spring = springArc(s.shown, v0, to);
+      duration = reduced ? 0 : Math.round(spring.duration * 1000);
+      s.settling = true;
+      s.el.classList.add('m-settling');
+      const started = performance.now();
+      const step = () => {
+        if (swiping !== s) return;
+        const t = (performance.now() - started) / 1000;
+        if (t * 1000 >= duration) { draw(s, to); s.el.style.setProperty('--m-swipe-progress', dir ? '1' : '0'); return; }
+        draw(s, spring.at(t).x);
+        s.springFrame = requestAnimationFrame(step);
+      };
+      if (duration > 0) s.springFrame = requestAnimationFrame(step); else step();
+    } else {
+      dir = settle({ offset: offset - s.base.offset, speed, events: events - s.base.events, width: s.width, has: (d) => !!s.neighbours[d] }) as -1 | 0 | 1;
+      s.settling = true;
+      s.el.classList.add('m-settling');
+      s.el.style.setProperty('--m-swipe-offset', `${dir ? -dir * s.width : 0}px`);
+      s.el.style.setProperty('--m-swipe-progress', dir ? '1' : '0');
+    }
     s.target = dir ? s.neighbours[dir] ?? null : null;
     // Asked for as it settles, not once the slide is in (reported 2026-11-07: "it takes a while for me to see that space
     // is switching"): its tab asked of the copy now, Safari bringing it while the slide comes in; drawn here as before,
     // in the frame the slide ends (the space left kept shown till then, holdSpace), so nothing jumps.
     if (s.target && typeof rt.vm?.space?.id === 'string') {
-      rt.holdSpace(rt.vm.space.id, SETTLE_MS + 100);
+      rt.holdSpace(rt.vm.space.id, duration + 100);
       void Promise.resolve(rt.send('setSpace', { windowId: rt.windowId(), spaceId: s.target })).catch(() => {});
     }
     // The neighbour slides fully in first; then the space is switched to, and the copy goes in the same frame the
     // real sidebar shows it (afterRender), so nothing jumps.
     rt.later(() => {
       if (swiping !== s) return;
+      // (Arc's spring: at its end exactly, whichever of its frame and this comes first.)
+      if (s.arc) { cancelAnimationFrame(s.springFrame); draw(s, dir ? -dir * s.width : 0); }
       if (!s.target) return finish();
       s.dispatched = true;
       rt.dispatch('space.switch', s.target, 'behavior');
       if (swiping === s && rt.vm?.space?.id === s.target) finish();
       rt.later(() => { if (swiping === s) finish(); }, 1500);
-    }, SETTLE_MS);
+    }, duration);
   }
+
+  // The trackpad's phases, from Margin.app (app/shared/host/overlay.ts): the fingers touched (`mayBegin`, `began`),
+  // lifted (`ended`) or the gesture was cancelled; its momentum began or ended.
+  rt.listen(doc, 'm-wheel-phase', (e: CustomEvent) => {
+    const phase = e.detail?.phase;
+    phases.known = true;
+    if (phase === 'mayBegin' || phase === 'began') {
+      phases.fingers = true;
+      phases.momentum = false;
+      // (A touch that comes after the gesture's first events, which were already tracked: the same gesture.)
+      phases.touched = !tracker.tracking(performance.now());
+    } else if (phase === 'momentum') {
+      phases.momentum = true;
+    } else if (phase === 'momentumEnd') {
+      phases.momentum = false;
+    } else if (phase === 'ended' || phase === 'cancelled') {
+      phases.fingers = false;
+      const at = performance.now();
+      // (The lift can be told before the last of its moves is drawn here: let go a frame later, as of the lift.)
+      requestAnimationFrame(() => {
+        if (!swiping || swiping.settling) return;
+        const r = tracker.lift(at);
+        if (r.phase !== 'release') return;
+        clearTimeout(endTimer);
+        release({ ...r, cancelled: phase === 'cancelled' });
+      });
+    }
+  });
 
   rt.listen(container, 'wheel', (e: WheelEvent) => {
     const hit = view.behaviorAt(e.target, 'm-swipe', 'spaces');
     const el = ((hit?.el ?? swiping?.el ?? null) as HTMLElement | null);
     if (!el) return;
     const vm = rt.vm;
+    // The momentum after a lift (the trackpad's phases): never a swipe's input; a swipe's keeps the list still.
+    if (phases.known && phases.momentum && !phases.fingers) {
+      if (tracker.isSwipe() && e.cancelable) e.preventDefault(); // (its whole momentum: it isn't fed to the tracker)
+      return;
+    }
     const usable = !!vm?.ready && vm.spaces.length > 1 && vm.window.sidebar !== 'hidden' && !rt.busy(api) && !!hit && !scrollsSideways(e, el);
-    const result = tracker.wheel({ deltaX: e.deltaX, deltaY: e.deltaY, deltaMode: e.deltaMode, ctrlKey: e.ctrlKey, shiftKey: e.shiftKey, mouse: mouseWheel(e), time: e.timeStamp, usable });
+    // (Phases known: a touch starts a new gesture, fingers still down continue it however long they rested.)
+    const fresh = phases.known ? (phases.touched ? true : phases.fingers ? false : undefined) : undefined;
+    phases.touched = false;
+    const result = tracker.wheel({ deltaX: e.deltaX, deltaY: e.deltaY, deltaMode: e.deltaMode, ctrlKey: e.ctrlKey, shiftKey: e.shiftKey, mouse: mouseWheel(e), time: e.timeStamp, usable, fresh, decay: !phases.known });
     if (tracker.swiping(e.timeStamp) && e.cancelable) e.preventDefault(); // not the list, not the browser's back/forward
     if (swiping?.settling) return; // its momentum is still that gesture
     if (result.phase === 'tracking') {
@@ -169,13 +270,15 @@ export function installSwipe(rt: Rt) {
         // (begin set it.)
         swiping!.base = result.counted ? { offset: result.offset + e.deltaX, events: result.events - 1 } : { offset: result.offset, events: result.events };
       }
-      swiping!.offset = result.offset - swiping!.base.offset;
+      swiping!.offset = (result.offset - swiping!.base.offset) * swiping!.scale;
       if (!swiping!.frame) swiping!.frame = requestAnimationFrame(() => { if (!swiping) return; swiping.frame = 0; place(swiping.offset); });
+      // No events for the gap: the fingers stopped (let go now: no speed at the lift). Phases known, only a lift lets
+      // go (fingers resting mid-swipe keep it held, as in Arc); a lift never told, after HELD_MAX_MS.
       endTimer = setTimeout(() => {
-        const end = tracker.end();
+        const end = tracker.end(performance.now());
         if (end.phase === 'release') release(end);
         else if (swiping && !swiping.settling) release({ offset: swiping.base.offset, speed: 0, events: swiping.base.events });
-      }, SWIPE.GAP_MS + 20);
+      }, phases.known ? HELD_MAX_MS : SWIPE.GAP_MS + 20);
     } else if (result.phase === 'release') {
       clearTimeout(endTimer);
       release(result);

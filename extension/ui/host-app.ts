@@ -467,6 +467,11 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           if (!appWindow || typeof arg?.on !== 'boolean') return false;
           void post('perform', { name, arg: { on: arg.on } }).catch(() => {});
           return true;
+        // A space swipe's detent (behaviors/swipe.ts, Arc's feel): the trackpad's alignment tick, as Arc gives it.
+        case 'haptic.alignment':
+          if (!appWindow) return false;
+          void post('perform', { name }).catch(() => {});
+          return true;
         case 'prompt': {
           // The runtime closes it. Settings' Remove asked first (ui/settings-form.ts removePrompt): removed only on Remove.
           const m = /^remove-theme:([a-z0-9][a-z0-9-]{0,40})$/.exec(String(arg?.id ?? ''));

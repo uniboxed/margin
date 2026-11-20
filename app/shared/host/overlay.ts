@@ -808,6 +808,13 @@ document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) s
     // Where the pointer is over Margin's UI while a hosted app has the keys (the app's, MarginWindowController.hover):
     // the page's own hover, before anything else (it's many a second, and nothing else needs it).
     if (msg?.type === 'hoverAt') { hoverAt(msg.x, msg.y); return; }
+    // The trackpad's phases over Margin's UI (MarginWindowController.wheelPhase): for the space swipe (ui/behaviors/
+    // swipe.ts), which web pages' wheel events don't tell.
+    if (msg?.type === 'wheelPhase') {
+      const phase = ['mayBegin', 'began', 'ended', 'cancelled', 'momentum', 'momentumEnd'].includes(msg.phase) ? msg.phase : null;
+      if (phase) document.dispatchEvent(new CustomEvent('m-wheel-phase', { detail: { phase } }));
+      return;
+    }
     if (msg?.type === 'pointer') stats.pointers++;
     const cause = () => (msg?.type === 'changes' ? `changes to ${Object.keys(msg.changes ?? {}).join(', ') || 'site icons'}` : msg?.type === 'push' ? `the copy's ${msg.msg?.type}` : String(msg?.type));
     timed('taking the app\'s word', cause, () => {

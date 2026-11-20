@@ -370,6 +370,19 @@ func glueScenario() async {
   check("asked to leave full screen (⌃⌘F, the page's own ask): refused, still full screen", c.isFullScreen && c.refusedExits == 1)
   check("its menu has no Enter/Exit Full Screen item", !made.menu.items.flatMap { $0.submenu?.items ?? [] }.contains { $0.action == #selector(NSWindow.toggleFullScreen(_:)) })
 
+  // ---- the space swipe as Arc's (2026-11-20): the trackpad's phases reach the page; its detent's tick reaches the app ----
+  _ = await js(c.webView, "window.__phases = []; document.addEventListener('m-wheel-phase', (e) => window.__phases.push(e.detail.phase)); return true")
+  c.wheelPhase("began")
+  c.wheelPhase("ended")
+  c.wheelPhase("momentum")
+  let phasesSeen = await waitJS(c.webView, "return JSON.stringify(window.__phases) === JSON.stringify(['began', 'ended', 'momentum'])")
+  let phasesThere = await js(c.webView, "return JSON.stringify(window.__phases)") as? String ?? "?"
+  check("the trackpad's phases told to the page, in order, as the swipe hears them (m-wheel-phase)", phasesSeen && c.wheelPhasesSaid.suffix(3) == ["began", "ended", "momentum"], phasesThere)
+  let hapticsBefore = c.haptics
+  _ = await js(c.webView, "window.webkit.messageHandlers.margin.postMessage({ op: 'perform', name: 'haptic.alignment' }); return true")
+  let ticked = await until(2) { c.haptics == hapticsBefore + 1 }
+  check("a swipe's detent: the trackpad's alignment tick asked of Margin.app", ticked, "\(c.haptics - hapticsBefore)")
+
   // ---- its card (its item in another Margin window) and the item coming back (bug of 2026-11-20: the launcher was
   // drawn for the loader's grace between the card and the loader) ----
   c.setElsewhere("Notes", app: "com.apple.Notes", picture: nil)

@@ -655,6 +655,31 @@ const withRuntime = Object.assign(T, {
   rtState() { return rt.mock.state; },
   // A trackpad's sideways scroll over an element: `count` wheel events of
   // `dx` px, 16 ms apart (Playwright's own wheel is a mouse's).
+  // A trackpad's phase as Margin.app tells it (app/shared/host/overlay.ts `m-wheel-phase`).
+  rtWheelPhase(phase: string) { document.dispatchEvent(new CustomEvent('m-wheel-phase', { detail: { phase } })); },
+  // Wheel events of these deltas over `selector`, `gap` ms apart.
+  async rtTrackpadRun(selector: string, deltas: number[], gap = 16) {
+    const el = rt.target.querySelector(selector)!;
+    for (const dx of deltas) {
+      el.dispatchEvent(new WheelEvent('wheel', { deltaX: dx, deltaY: 0, deltaMode: 0, bubbles: true, cancelable: true, composed: true }));
+      await new Promise((r) => setTimeout(r, gap));
+    }
+  },
+  // The swipe's part each frame for `ms`: its offset (px) and whether it's settling, and the moving part's transition.
+  async rtSwipeTrace(selector: string, ms: number) {
+    const el = rt.target.querySelector(selector) as HTMLElement;
+    const out: { t: number, offset: number | null, settling: boolean, swiping: boolean }[] = [];
+    const t0 = performance.now();
+    await new Promise<void>((done) => {
+      const frame = () => {
+        const v = el.style.getPropertyValue('--m-swipe-offset');
+        out.push({ t: performance.now() - t0, offset: v ? parseFloat(v) : null, settling: el.classList.contains('m-settling'), swiping: el.classList.contains('m-swiping') });
+        if (performance.now() - t0 < ms) requestAnimationFrame(frame); else done();
+      };
+      requestAnimationFrame(frame);
+    });
+    return out;
+  },
   async rtTrackpad(selector: string, dx: number, count: number) {
     const el = rt.target.querySelector(selector)!;
     for (let i = 0; i < count; i++) {
