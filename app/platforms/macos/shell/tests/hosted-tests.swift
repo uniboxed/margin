@@ -165,7 +165,7 @@ final class StubLaunchEngine: HostedEngine {
     func hideWoken(bundleId: String) { presses += 1 }
     func wokenWindows(bundleId: String) -> Int { presses * windowsPerPress }
     func appRuns(bundleId: String) -> Bool? { runs }
-    func open(app target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64) async -> HostResult { .failed(.margin, "stub") }
+    func open(app target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64, wanted: (@MainActor () -> Bool)?) async -> HostResult { .failed(.margin, "stub") }
     func show(_ id: HostID) async -> HostResult { .failed(.margin, "stub") }
     func close(_ id: HostID) async {}
     func pageRectChanged(_ placement: HostPlacement) async -> Bool { false }
@@ -951,6 +951,7 @@ func hostedTests() {
     liveSidebarResizeTests(script: script)
     hostedFrontTests(script: script)
     hostedResumeTests(script: script)
+    hostedSupersedeTests(script: script)
 }
 
 // At launch, the item the window showed last (HostedSession.resumeLast): the library, with an item selected in the
@@ -1672,5 +1673,87 @@ func hostedShellTests(script: URL) {
         check("hosted shell: an app hosted and no copy linked: the shell's reads started by the engine's events, armed again while it's hosted", engine.hasHosts && shell.pollTimer != nil, "hosts \(engine.hasHosts) timer \(shell.pollTimer != nil)")
         shell.track()
         check("hosted shell: and each read polls the host", engine.polls > before && shell.pollTimer != nil, "\(before) → \(engine.polls)")
+    }
+}
+
+
+// Another item picked while an app's first open waits for its window (Tirth, 2026-11-20): that one starts at once, the
+// first one's open given up (its app left running out of sight, hidden again, its loading bar gone), Margin's window
+// hosting all along (no launcher between them); the first app picked again later: no second launch.
+func hostedSupersedeTests(script: URL) {
+    let root = tempFolder("hosted-supersede")
+    defer { try? FileManager.default.removeItem(at: root) }
+    guard let library = Library.open(dataRoot: root, script: script, background: false) else { return check("supersede: the library opens", false) }
+    let w = FakeHostWorld()
+    let engine = HostEngine(system: w, marker: nil, pid: 1)
+    engine.options.privateRetire = 0
+    let links = FakeHostedLinks()
+    let session = HostedSession(library: library, engine: engine, links: links)
+    session.sleep = { _ in await Task.yield() }
+    session.appName = { ["com.apple.Notes": "Notes", "com.apple.TextEdit": "TextEdit"][$0] }
+    session.options.preparesBrowser = false
+    let window = FakeHostedWindow(id: 1, number: FakeHostWorld.marginWindow)
+    session.window = { id in id == nil || id == 1 ? window : nil }
+    engine.onEvent = { session.hostEvent($0) }
+    engine.loading = { session.loading($0) }
+    engine.hostedWindow = { session.hosted($0) }
+    library.delegate = session
+    func run(_ body: @escaping () async -> Void = {}) { hostRun { await body(); await session.idle() } }
+    _ = library.perform("createSpace", ["windowId": 1, "name": "Home", "emoji": "🏠"])
+
+    // Notes starts with no window (not hidden) and makes none: its open waits; at its reopen (1.5 s in), TextEdit is picked.
+    w.launchWindows = 0
+    var notesPid: pid_t?
+    var picked = 0
+    w.onReopen = { pid in
+        guard w.apps[pid]?.bundle == "com.apple.Notes", picked == 0 else { return nil }
+        picked += 1
+        notesPid = pid
+        w.launchWindows = 1
+        session.openApp("com.apple.TextEdit", windowId: 1)
+        return nil
+    }
+    let start = w.clock
+    run { session.openApp("com.apple.Notes", windowId: 1) }
+    let notesItem = library.items().first { $0.value["url"] as? String == "app://com.apple.Notes" }?.id ?? ""
+    let editItem = library.items().first { $0.value["url"] as? String == "app://com.apple.TextEdit" }?.id ?? ""
+    let edit = HostTarget.app("com.apple.TextEdit").id, notes = HostTarget.app("com.apple.Notes").id
+    check("supersede: TextEdit picked while Notes' first open waited for its window: TextEdit shown, Notes' open given up (nothing hosted for it)",
+          picked == 1 && engine.shown == edit && session.shown[1] == editItem && !engine.isHosted(notes) && session.done.contains { $0.contains("its open given up") },
+          "\(String(describing: engine.shown)) \(session.done.suffix(4))")
+    check("supersede: …at once, not after Notes' whole wait for a window (12 s)", w.clock - start < 6, "\(w.clock - start) s")
+    check("supersede: …Notes left running, still Margin's, hidden again (out of sight)", notesPid.map { w.apps[$0] != nil && w.hidden.contains($0) && w.calls.contains("hide \($0)") } == true
+          && engine.launchedPid(bundleId: "com.apple.Notes") == notesPid)
+    check("supersede: …Margin's window hosting all along (no launcher between them), the loader gone, no loading bar left on Notes' row",
+          window.hostings == [true] && window.showing == nil && window.loadingTabs.isEmpty && !library.items().isEmpty && !notesItem.isEmpty,
+          "\(window.hostings) \(String(describing: window.showing)) \(window.loadingTabs)")
+
+    // Notes picked again: the running one used (no second launch); its window comes as it's unhidden.
+    w.windowOnlyUnhidden.insert("com.apple.Notes")
+    let launches = w.calls.filter { $0 == "launch com.apple.Notes" }.count
+    run { _ = library.perform("activateTab", ["windowId": 1, "tabId": notesItem]) }
+    check("supersede: Notes picked again: its running app used (no second launch), shown", engine.shown == notes && session.shown[1] == notesItem
+          && w.calls.filter { $0 == "launch com.apple.Notes" }.count == launches, "\(String(describing: engine.shown)) \(session.done.suffix(3))")
+    run { await engine.quitAll() }
+
+    // An app Margin started that its open left running, still with no window when it's picked again: quit, as a first
+    // open's own launch is when no window comes.
+    let w2 = FakeHostWorld()
+    let e2 = HostEngine(system: w2, marker: nil, pid: 1)
+    e2.options.privateRetire = 0
+    e2.options.windowWait = 2
+    w2.launchWindows = 0
+    var wanted = true
+    let page = HostPlacement(page: CGRect(x: 260, y: 8, width: 1244, height: 933), area: FakeHostWorld.display)
+    w2.onReopen = { _ in wanted = false; return nil }
+    let first = hostRun { await e2.open(app: .app("com.apple.Notes"), in: page, marginWindow: FakeHostWorld.marginWindow, marginSpace: FakeHostWorld.marginSpace, wanted: { wanted }) }
+    let pid = e2.launchedPid(bundleId: "com.apple.Notes")
+    w2.onReopen = nil
+    let again = hostRun { await e2.open(app: .app("com.apple.Notes"), in: page, marginWindow: FakeHostWorld.marginWindow, marginSpace: FakeHostWorld.marginSpace, wanted: nil) }
+    if case .failed(.superseded, _)? = first, case .failed(.window, _)? = again, let pid {
+        check("supersede: an app its given-up open left running, picked again with still no window: quit (no app of Margin's left behind)", w2.apps[pid] == nil && e2.launchedPid(bundleId: "com.apple.Notes") == nil,
+              "\(w2.calls.suffix(4))")
+    } else {
+        check("supersede: given up, then failed for no window", false, "\(String(describing: first)) \(String(describing: again)) \(String(describing: pid))")
     }
 }

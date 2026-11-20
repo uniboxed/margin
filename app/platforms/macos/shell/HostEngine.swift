@@ -395,6 +395,7 @@ final class HostEngine {
     private var loadingSaid: HostID?
     private var freezeHolds = 0 // steps holding the freeze now (Margin's quit gives every host back at once)
     private var preparing = false // a window made ready out of sight (`prepare`): parked once it's placed, never shown
+    private var openWanted: (@MainActor () -> Bool)? // the open under way still wanted (`open`'s `wanted`; nil: always)
 
     private var tail: Task<Void, Never>?
     private var jumps = 0
@@ -470,12 +471,17 @@ final class HostEngine {
 
     // ---- the API ----
 
-    // Opens `target` (shows it again if it's hosted already) under Margin's window, at `placement`.
-    func open(app target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64) async -> HostResult {
+    // Opens `target` (shows it again if it's hosted already) under Margin's window, at `placement`. `wanted`: whether it's
+    // still the item asked for (Tirth, 2026-11-20: picking another while an app's first open waits for its window starts
+    // that one at once): asked while a new app's window is awaited; false there, the open is given up (`superseded`), its
+    // app left running out of sight (hidden), so its next open finds it with its window ready.
+    func open(app target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64, wanted: (@MainActor () -> Bool)? = nil) async -> HostResult {
         await serial(planned: true) {
             self.placement = placement
             self.marginWindow = marginWindow
             self.marginSpace = marginSpace
+            self.openWanted = wanted
+            defer { self.openWanted = nil }
             let r = await self.openNow(target)
             self.checkListed("after \(target.id)'s open")
             return r
@@ -1599,7 +1605,8 @@ final class HostEngine {
             previous = was
         }
         let result = await openNew(target)
-        if case .failed = result, let previous, previous.phase == .parked, shown == nil, hosts[previous.id] != nil {
+        // (Given up for another item: that one's open is next, so the one before isn't shown again in between.)
+        if case .failed(let step, _) = result, step != .superseded, let previous, previous.phase == .parked, shown == nil, hosts[previous.id] != nil {
             Diagnostics.note("host: \(previous.id) shown again after \(id)'s open failed")
             _ = await bringIn(previous, isNew: false, retrying: true)
         }
@@ -1720,8 +1727,12 @@ final class HostEngine {
         // (When the window server first listed a window of it, and Accessibility first did: said with its window's time.)
         var serverSeenAt: Double?, axSeenAt: Double?
         var reopened = 0
+        // (Given up for another item picked meanwhile: an app's own open only, never while made ready out of sight.)
+        var givenUp = false
+        let wanted = isApp && !preparing ? openWanted : nil
         func lookForWindow(_ seconds: Double) async -> Bool {
             await wait(seconds) {
+                if let wanted, !wanted() { givenUp = true; return true }
                 // (An app Margin started: Accessibility asked only once the window server lists a window of it. A launching
                 // app can't answer Accessibility yet, and each read waits up to 1 s for it: Mail took 1.7 s to its window
                 // through Margin and 1.1 s opened normally, Maps up to 2.1 s against 0.85-1.2 s (step 0, 2026-11-18).)
@@ -1791,7 +1802,7 @@ final class HostEngine {
         _ = await lookForWindow(personal ? options.personWindowWait : options.windowWait)
         // Running with no window Margin can host (the person's app with none, its Dock icon there: Maps, 2026-11-17 15:19;
         // one of Margin's that made none): reopened as a Dock-icon click would, then looked at again, within the budget.
-        while number == nil, isApp, !minimizedOnly, sys.processRuns(pid: app.pid), reopened < HostReconciler.budget(of: .reopen) {
+        while number == nil, !givenUp, isApp, !minimizedOnly, sys.processRuns(pid: app.pid), reopened < HostReconciler.budget(of: .reopen) {
             var s = HostSituation()
             s.hidden = sys.isHidden(pid: app.pid)
             s.launchedByMargin = !personal
@@ -1804,8 +1815,18 @@ final class HostEngine {
             looking = sys.now() - options.serverAfter // (the window server's word at once from here: it was asked)
             if await lookForWindow(options.reopenWait) { break }
         }
+        // Another item picked while its window was awaited (or just as it was found): given up, nothing hosted. An app
+        // Margin started is left running out of sight (hidden again if its open had unhidden it): its window comes in
+        // the background, and its next open finds it there (no second launch); it's quit with Margin, as any it started.
+        if givenUp || (wanted.map { !$0() } ?? false) {
+            let hidden = launchedByMargin && sys.isHidden(pid: app.pid) == false && sys.hide(pid: app.pid)
+            Diagnostics.note("host: \(id): its open given up \(ms(since: started)) ms in: another item was picked\(launchedByMargin ? " (pid \(app.pid) left running out of sight\(hidden ? ", hidden again" : ""); its next open finds it there)" : "")")
+            return .failed(.superseded, "another item was picked")
+        }
         guard let window = number else {
-            if startedNow { await quitApp(app.pid, bundle: bundle) }
+            // (An app Margin started that has no host: quit, as a first open's own launch is; one left running by an open
+            // given up included.)
+            if startedNow || (launchedByMargin && isApp && !hosts.values.contains(where: { $0.pid == app.pid })) { await quitApp(app.pid, bundle: bundle) }
             if personal { return fail(id, .window, minimizedOnly ? "\(bundle) has only minimized windows: left as they are" : "\(bundle) is open with no window Margin can host") }
             return fail(id, .window, "no window within \(Int(options.windowWait)) s")
         }

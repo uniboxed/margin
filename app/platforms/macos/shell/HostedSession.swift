@@ -58,7 +58,9 @@ import AppKit
 // What the session asks of the host engine (HostEngine.swift; a test's stand-in).
 protocol HostedEngine: AnyObject {
     // Opens it, or shows it again if it's hosted (always with Margin's window's placement and Space as they are now).
-    func open(app target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64) async -> HostResult
+    // `wanted`: still the item asked for (asked while a new app's window is awaited; false: the open is given up,
+    // `.failed(.superseded, …)`, for the item picked since).
+    func open(app target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64, wanted: (@MainActor () -> Bool)?) async -> HostResult
     func show(_ id: HostID) async -> HostResult
     func close(_ id: HostID) async
     func pageRectChanged(_ placement: HostPlacement) async -> Bool
@@ -411,8 +413,9 @@ final class HostedSession: LibraryDelegate {
             showing[HostTarget.app(bundle).id] = item
             defer { showing[HostTarget.app(bundle).id] = nil; refreshLoading() }
             if engine.shown != HostTarget.app(bundle).id || hostingWindow != w.id { w.setShowing(labels[HostTarget.app(bundle).id], app: bundle) }
-            defer { w.setShowing(nil) }
-            guard await host(.app(bundle), in: w) else { return }
+            // (Another item asked for meanwhile: the loader stays for it, never a frame without it in between.)
+            defer { if !supersededBy(w, item) { w.setShowing(nil) } }
+            guard await host(.app(bundle), in: w, for: item) else { return }
             open[item] = OpenItem(host: HostTarget.app(bundle).id, profile: nil)
         case .web(let browser, let profile):
             guard browser == "safari" else { return note("\(item): \(browser) isn't hosted yet") }
@@ -432,14 +435,14 @@ final class HostedSession: LibraryDelegate {
             if comes {
                 let title = (library.items().first { $0.id == item }?.value["title"] as? String).flatMap { $0.isEmpty ? nil : $0 }
                 w.setShowing(title ?? "Safari", app: safariIdentifier)
-                if !there { guard await host(.safariWindow(p), in: w) else { return } }
+                if !there { guard await host(.safariWindow(p), in: w, for: item) else { return } }
             }
             guard let windowId = safariWindows[p] else { return note("\(item): no Safari window of its profile") }
             let (result, error) = await links.request(profile: p, "hostShow", ["windowId": windowId, "itemId": item, "url": address.isEmpty ? "about:blank" : address])
             guard let result else { return note("\(item): its tab wasn't shown (\(error ?? "no answer"))") }
             open[item] = OpenItem(host: id, profile: p)
             if let tab = int(result["tabId"]) { safariTabs[item] = tab }
-            if comes, there { guard await host(.safariWindow(p), in: w) else { return } }
+            if comes, there { guard await host(.safariWindow(p), in: w, for: item) else { return } }
             note("\(item): shown in Safari window \(windowId)")
         case .margin(let page):
             // One of Margin's own pages (Settings): drawn by Margin's window itself in its page area, nothing hosted for
@@ -463,16 +466,30 @@ final class HostedSession: LibraryDelegate {
         onChange?()
     }
 
-    // The engine's open (the first time) or show, into `w`'s page area; Margin's window made ready first. False: not shown.
-    private func host(_ target: HostTarget, in w: HostedWindow) async -> Bool {
+    // Another item asked for in `w` since `item`'s show began (a pick while it was on its way).
+    private func supersededBy(_ w: HostedWindow, _ item: String) -> Bool {
+        guard let next = requested[w.id] else { return false }
+        return next != item
+    }
+
+    // The engine's open (the first time) or show, into `w`'s page area, for `item`; Margin's window made ready first.
+    // False: not shown.
+    private func host(_ target: HostTarget, in w: HostedWindow, for item: String) async -> Bool {
         guard let (placement, space) = await prepare(w, for: target) else { settleHosting(); return false }
         // (Hosted already, or not: opened or shown again with Margin's window's placement and Space as they are now,
-        // which change when its window left full screen and came back.)
-        let result = await engine.open(app: target, in: placement, marginWindow: w.number, marginSpace: space)
+        // which change when its window left full screen and came back. A new app's open that's waiting for its window is
+        // given up as soon as another item is picked in this window (Tirth, 2026-11-20): that one starts at once.)
+        let result = await engine.open(app: target, in: placement, marginWindow: w.number, marginSpace: space, wanted: { [weak self] in
+            self.map { !$0.supersededBy(w, item) } ?? false
+        })
         switch result {
         case .shown(let id, let placed):
             note("\(id): shown\(placed ? "" : " (not fitted to the page area)")")
             return true
+        case .failed(.superseded, _):
+            // (Its loading bar goes with its show; Margin's window keeps hosting and its loader for the item picked since.)
+            note("\(target.id): its open given up for the item picked since (\(requested[w.id] ?? "?"))")
+            return false
         case .failed(let step, let why):
             note("\(target.id): \(step.rawValue) failed: \(why)")
             settleHosting()
@@ -930,6 +947,8 @@ final class HostedSession: LibraryDelegate {
     // item is still on its way at launch (`resuming`).
     private func settleHosting() {
         guard engine.shown == nil, let id = hostingWindow, resuming != id else { return }
+        // (Another item asked for and not shown yet: its show is next and decides; no launcher for a frame in between.)
+        if let next = requested[id], next != shown[id] { return }
         hostingWindow = nil
         if marginPages[id] == nil { shown[id] = nil } // (Margin's own page shown there: still the one shown)
         window(id)?.setHosted(nil)

@@ -6169,3 +6169,23 @@ breathing: the loader animates transform and opacity only).
   77 KB for Latin and Latin Extended). The name "Material" names the design language; there's no logo or Google mark.
 - **Tests.** Its own file (tests/theme/material.test.ts) and the loops over every theme, except behaviours, which drive
   the three board themes' markup (Arcadia's own file covers the template Material shares).
+
+
+## Another item picked while an app opens (2026-11-20)
+
+Picking B, then C, while app A's first open was still under way kept loading A to the end (its wait for a first window,
+1.3–3.4 s in the real logs, then its placing), and only then started C: the engine does one thing at a time. Tirth asked
+for the item picked to start loading at once, and A's loading bar to go.
+
+- **Given up at the window wait.** The engine's `open` takes `wanted` (the session's: no other item asked for in that
+  Margin window since); an app's own first open asks it while its window is awaited, and gives up as soon as it's false
+  (`HostStep.superseded`): nothing hosted, no event, the one shown before not brought back in between. The launch itself
+  (about 50 ms) and the placing once the window is found aren't interrupted; a Safari window's open, and the browser made
+  ready out of sight, never are.
+- **The app given up stays running, out of sight.** Quitting it would hold the queue up to the quit's limit (Maps takes
+  5 s). It stays Margin's (quit with Margin, in the marker), hidden again if its open had unhidden it (`HostSystem.hide`),
+  so its window never sits on a Desktop or in Mission Control; the reconciler acts only on hosts, so it leaves it alone.
+  Picked again, its open finds it running with its window ready: no second launch. Still no window then: quit, as a first
+  open's own launch is.
+- **No launcher between the two.** While another item is asked for and not shown yet, the hosting isn't settled and the
+  loader stays (its show decides); A's loading bar goes as its show returns.

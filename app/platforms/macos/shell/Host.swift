@@ -39,6 +39,7 @@ nonisolated enum HostStep: String, Sendable, Codable {
     case exitFullScreen = "exit full screen"
     case quit
     case windowMode = "window mode" // its window into Margin's Space as a window (one that can't go full screen)
+    case superseded // its first open given up while its window was awaited: another item was picked in the meantime
 }
 
 // How a host is shown, Margin's window its whole width below it either way. `fullScreen`: its window full screen in a

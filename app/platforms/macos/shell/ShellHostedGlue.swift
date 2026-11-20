@@ -50,7 +50,7 @@ final class ShellHostedLinks: HostedLinks {
 
 // No engine (its private calls didn't pass): every show fails, said once by the session's log.
 final class NoHostEngine: HostedEngine {
-    func open(app target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64) async -> HostResult { .failed(.margin, "the host engine is off (its calls didn't pass their check)") }
+    func open(app target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64, wanted: (@MainActor () -> Bool)?) async -> HostResult { .failed(.margin, "the host engine is off (its calls didn't pass their check)") }
     func show(_ id: HostID) async -> HostResult { .failed(.margin, "the host engine is off") }
     func close(_ id: HostID) async {}
     func pageRectChanged(_ placement: HostPlacement) async -> Bool { false }
@@ -73,8 +73,8 @@ final class LateHostEngine: HostedEngine {
     private let none = NoHostEngine()
     init(_ resolve: @escaping () -> HostEngine?) { self.resolve = resolve }
     private var engine: HostedEngine { resolve() ?? none }
-    func open(app target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64) async -> HostResult {
-        await engine.open(app: target, in: placement, marginWindow: marginWindow, marginSpace: marginSpace)
+    func open(app target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64, wanted: (@MainActor () -> Bool)?) async -> HostResult {
+        await engine.open(app: target, in: placement, marginWindow: marginWindow, marginSpace: marginSpace, wanted: wanted)
     }
     func show(_ id: HostID) async -> HostResult { await engine.show(id) }
     func close(_ id: HostID) async { await engine.close(id) }
