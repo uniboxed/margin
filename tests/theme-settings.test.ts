@@ -23,7 +23,7 @@ const byId = (fields: SettingsField[]) => Object.fromEntries(fields.map((f) => [
 
 test('the theme choice lists the built-ins, then the imported themes by name (only valid ids, never a built-in\'s twice)', () => {
   const f = byId(settingsFields({ theme: 'mine' }, { userThemes: LIST }));
-  assert.deepEqual(f.theme.options.map((o) => o.id), ['arcadia', 'neubrutalism', 'pixel', 'liquid-glass', 'mine', 'rtl'].filter((id) => id !== 'pixel' || f.theme.options.some((o) => o.id === 'pixel')));
+  assert.deepEqual(f.theme.options.map((o) => o.id), ['arcadia', 'neubrutalism', 'pixel', 'liquid-glass', 'material', 'mine', 'rtl'].filter((id) => id !== 'pixel' || f.theme.options.some((o) => o.id === 'pixel')));
   assert.equal(f.theme.value, 'mine');
   assert.equal(f.theme.options.find((o) => o.id === 'rtl')!.label, 'Safetxt.exe', 'bidi controls out');
   assert.equal(byId(settingsFields({ theme: 'gone' }, { userThemes: LIST })).theme.value, 'arcadia', 'an id no longer listed: Arcadia');

@@ -6,13 +6,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium, webkit } from 'playwright';
-import { harnessScript, themeForPage, themesInScope, ARCADIA, GLASS, NEO, PIXEL } from './package.ts';
+import { harnessScript, themeForPage, themesInScope, ARCADIA, GLASS, NEO, PIXEL, MATERIAL } from './package.ts';
 import type { Harness } from './harness.ts';
 
 declare const T: Harness;
 
 const ENGINES = [['webkit', webkit], ['chromium', chromium]] as const;
-const THEMES = [['arcadia', ARCADIA], ['liquid-glass', GLASS], ['neubrutalism', NEO], ['pixel', PIXEL]] as const;
+const THEMES = [['arcadia', ARCADIA], ['liquid-glass', GLASS], ['neubrutalism', NEO], ['pixel', PIXEL], ['material', MATERIAL]] as const;
 const script = harnessScript();
 
 for (const [name, engine] of ENGINES) {

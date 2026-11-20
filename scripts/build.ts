@@ -138,7 +138,7 @@ export const LIBRARY_FILE = 'library.js';
 // Every built-in theme's package, for Margin.app to hand its window when that theme is chosen (ShellThemes.swift
 // BuiltinThemes): the window's page has only Arcadia of its own (FALLBACK_FILE), and the others came only from a
 // browser's copy, so choosing one in Margin's own Settings changed nothing (2026-11-19).
-export const BUILTIN_THEMES = ['arcadia', 'neubrutalism', 'pixel', 'liquid-glass'];
+export const BUILTIN_THEMES = ['arcadia', 'neubrutalism', 'pixel', 'liquid-glass', 'material'];
 export const builtinThemeFile = (id: string) => `theme.${id}.json`;
 export const APP_FILES = ['overlay.html', 'overlay.js', 'arcadia.js', LIBRARY_FILE, ...BUILTIN_THEMES.map(builtinThemeFile)];
 export function buildApp(outDir: string | URL, { profile = 'safari' }: { profile?: Target } = {}) {

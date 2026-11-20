@@ -29,7 +29,7 @@ test('Settings covers today\'s form: theme, search engine, archive, sleep, never
     'shortcuts:group', 'sidebarShortcut:shortcut', 'nextTab:shortcut', 'prevTab:shortcut', 'nextSpace:shortcut', 'prevSpace:shortcut', 'resetShortcuts:button',
   ]);
   const f = byId(fields);
-  assert.deepEqual(f.theme.options.map((o) => [o.id, o.label, o.selected]), [['arcadia', 'Arcadia', true], ['neubrutalism', 'Neubrutalism', false], ['pixel', 'Pixel', false], ['liquid-glass', 'Liquid Glass', false]]);
+  assert.deepEqual(f.theme.options.map((o) => [o.id, o.label, o.selected]), [['arcadia', 'Arcadia', true], ['neubrutalism', 'Neubrutalism', false], ['pixel', 'Pixel', false], ['liquid-glass', 'Liquid Glass', false], ['material', 'Material', false]]);
   assert.equal(f.neverSleepSites.value, 'mail.example.com');
   assert.equal(f.archiveAfterHours.value, '12');
   assert.match(f.engine.label, /Safari’s default search engine/);

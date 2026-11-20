@@ -6150,3 +6150,22 @@ search field in Margin's window, laid out as macOS's System Settings, and for th
   settings beside them, in its own look. A theme that doesn't read `settingsTab` (an imported one made before) gets the
   whole form on the same page, as the new-tab page's Settings were drawn. The new-tab page's `#settings` over a browser
   is the same page; Settings under its search field stays there (it has no tab to go to).
+
+
+## Material, a fifth built-in theme (2026-11-20)
+
+Tirth asked for a Material 3 theme, the look of recent Pixel phones. `extension/themes/material/` is Arcadia's template
+(every part, its behaviours and layout rules) with Material's own parts on top: a navigation drawer with full-pill rows
+and the secondary container as the active indicator, the address as a search bar, "New Tab" as an extended FAB, round
+icon buttons, the spaces as the rail's destinations, a search view for the command bar, menus, 28 px dialogs, snackbars,
+M3 switches, Settings as a drawer of categories, and Material 3 Expressive's loading indicator (a lobed shape turning and
+breathing: the loader animates transform and opacity only).
+
+- **Dynamic colour.** The space's colour is the seed. The tonal surfaces are sRGB mixes of it (Margin.app reads the
+  ground's colour for the page card's corners, and parses sRGB only). The accent roles sit at Material's own tones
+  wherever relative colours exist (`oklch(from var(--space-color) 0.45 min(c, 0.17) h)`: primary at tone 40 light, 80
+  dark, and so on), so a light seed such as yellow still gives a dark, readable primary; elsewhere, sRGB mixes.
+- **Google Sans Flex**, the Pixel's own typeface, bundled (SIL Open Font License, from Google Fonts; weight axis only,
+  77 KB for Latin and Latin Extended). The name "Material" names the design language; there's no logo or Google mark.
+- **Tests.** Its own file (tests/theme/material.test.ts) and the loops over every theme, except behaviours, which drive
+  the three board themes' markup (Arcadia's own file covers the template Material shares).

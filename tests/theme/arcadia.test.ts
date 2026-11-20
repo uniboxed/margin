@@ -201,7 +201,7 @@ for (const [name, engine] of ENGINES) {
           };
         });
         const f = await form();
-        assert.deepEqual(f.select, [['arcadia', ['Arcadia', 'Neubrutalism', 'Pixel', 'Liquid Glass']]]);
+        assert.deepEqual(f.select, [['arcadia', ['Arcadia', 'Neubrutalism', 'Pixel', 'Liquid Glass', 'Material']]]);
         assert.equal(f.numbers.length, 3, 'two of Margin\'s, and Arcadia\'s own sidebar width (Settings of “Arcadia”)');
         assert.equal(f.toggles.length, 5);
         assert.equal(f.lists, 1);
