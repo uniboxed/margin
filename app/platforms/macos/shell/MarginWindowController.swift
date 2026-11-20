@@ -636,7 +636,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         }
         if up { reorder = false }
         if let other = yieldingTo {
-            if stageSpace != nil { panel.order(.below, relativeTo: other) } else { window.order(.below, relativeTo: other) }
+            if stageSpace != nil { if inStageSpace(other) { panel.order(.below, relativeTo: other) } } else { window.order(.below, relativeTo: other) }
             panelOnTop()
             yieldOrders += 1
             changedAt = now()
@@ -653,8 +653,14 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
 
     // Ordered right above a window, its panel right above it (AppKit keeps a child above its parent; said again).
     private func orderAbove(_ number: Int) {
-        // (In a stage the panel is the group's parent: it's ordered, this window comes with it, below it.)
-        if stageSpace != nil { return panel.order(.above, relativeTo: number) }
+        // (In a stage the panel is the group's parent: it's ordered, this window comes with it, below it. Only above a
+        // window in the stage's Space: ordered relative to a window in another Space, macOS MOVES the ordered window into
+        // that Space (the hosted app's own full-screen Space while it's placed, its Desktop while it's asked again: Margin's
+        // windows left the stage, 2026-11-19 22:30). Its raised level keeps it in front meanwhile.)
+        if stageSpace != nil {
+            guard inStageSpace(number) else { return }
+            return panel.order(.above, relativeTo: number)
+        }
         window.order(.above, relativeTo: number)
         panelOnTop()
     }
@@ -1404,6 +1410,33 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         }
     }
 
+    // Whether a window is in this window's stage's Space now (a window read in no Space, or unread: not).
+    private func inStageSpace(_ number: Int) -> Bool {
+        guard let space = stageSpace, let stage = owner?.stage else { return false }
+        return stage.calls.spaces(of: number)?.contains(space) == true
+    }
+
+    // Its windows out of its stage's Space while that Space and its stage window are still there: said with what's where,
+    // and placed back by macOS's own rule once the stage is the Space showing (now, or at the next Space change). Only a
+    // stage that's really gone (`lostStage`) makes a new one.
+    private var replaceWanted = false
+    private func wandered(_ space: UInt64, stage: MarginStage) {
+        let read = [panel, window].map { stage.calls.spaces(of: $0.windowNumber).map { "\($0)" } ?? "unread" }
+        let showing = stage.calls.activeSpace()
+        if !replaceWanted {
+            Diagnostics.warn("Margin's window \(id): its windows out of its stage's Space \(space) (panel \(read[0]), window \(read[1]); showing \(showing.map(String.init) ?? "unread"), front \(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "none")): placed back \(showing == space ? "now" : "when it shows again")")
+        }
+        replaceWanted = true
+        guard showing == space else { return }
+        _ = placeGroup(space, stage: stage)
+        groupJoined(space, stage: stage) { [weak self] joined in
+            guard let self, !self.isClosed, self.stageSpace == space else { return }
+            self.replaceWanted = !joined
+            if joined { self.attachPanel("placed back in its stage"); self.keepFront() }
+            else { Diagnostics.warn("Margin's window \(self.id): not placed back in its stage's Space: tried again at the next Space change") }
+        }
+    }
+
     // No stage for this window from now: AppKit's full screen, Margin owning its Space (as before the stage).
     private func fallBack(_ why: String) -> Bool {
         guard !stageFell else { return false }
@@ -1426,7 +1459,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
 
     private func startMenuBar() {
         guard menuBar == nil, let stage = owner?.stage, let space = stageSpace, let screen = window.screen ?? NSScreen.main else { return }
-        menuBar = MarginMenuBar(calls: stage.calls, screen: screen, space: space, pageArea: { [weak self] in self?.window.pageRect },
+        menuBar = MarginMenuBar(calls: stage.calls, screen: screen, space: space,
                                 closeTab: { [weak self] in self?.owner?.perform(.closeTab) })
     }
 
@@ -1512,10 +1545,16 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     func appBecameActive() { tryFullScreen("Margin active") }
     func spaceChanged() {
         spaceChangedAt = now()
-        if let space = stageSpace, let stage = owner?.stage, stage.calls.spaces(of: window.windowNumber).map({ !$0.contains(space) }) == true {
-            lostStage("it's no longer in its stage's Space")
-        } else if stageSpace != nil, window.isOnActiveSpace {
-            menuBar?.stageShowing()
+        if let space = stageSpace, let stage = owner?.stage {
+            let mine = stage.calls.spaces(of: window.windowNumber)
+            let stageThere = stage.stageWindow(for: id).flatMap { stage.calls.spaces(of: $0) }?.contains(space) == true
+            if !stageThere, stage.calls.spaceType(space) != ManagedSpace.fullScreenType {
+                lostStage("its stage's Space is gone")
+            } else if mine.map({ !$0.contains(space) }) == true || replaceWanted {
+                wandered(space, stage: stage)
+            } else if window.isOnActiveSpace {
+                menuBar?.stageShowing()
+            }
         }
         tryFullScreen("the Space changed")
         if isFullScreen, !options.harness, window.isOnActiveSpace { attachPanel("the Space changed") }

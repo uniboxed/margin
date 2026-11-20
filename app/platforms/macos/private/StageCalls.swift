@@ -7,6 +7,9 @@
 //   Spaces wrong: a Space switch then stopped the window server (2026-11-19 21:35, DECISIONS.md). Never again.
 // - SLSSetMenuBarVisibilityOverrideOnDisplay: the real menu bar shown (or not) on a display, by Margin, as the pointer
 //   reaches the top edge: in a Space nobody owns macOS never brings it down by itself.
+// - +[NSMenu _dispatchAgentRevealChangedForSpaceID:menuBarRevealTarget:toolbarRevealTarget:duration:]: the menu bar's
+//   process told the bar came down (or went up) in that Space: without it, the bar shows but its status items (Wi-Fi,
+//   Bluetooth, battery) take no click (2026-11-19 22:30; the kit called it and they worked).
 // - +[_NSAppleMenu sharedMenu] and its -_addAppleMenuItems, -_userNameChanged: macOS's own Apple menu, built in every
 //   app, for the Apple logo Margin draws on that menu bar (its items and their actions are macOS's).
 // - SLSCopySpacesForWindows, SLSSpaceGetType, SLSGetActiveSpace: which Space a window is in, that it's a full-screen
@@ -22,6 +25,7 @@ import AppKit
 nonisolated struct StageCalls: @unchecked Sendable {
     nonisolated static let spaceFunctions = ["SLSMainConnectionID", "SLSCopySpacesForWindows", "SLSSpaceGetType", "SLSGetActiveSpace"]
     nonisolated static let menuBarFunctions = ["SLSMainConnectionID", "SLSSetMenuBarVisibilityOverrideOnDisplay"]
+    nonisolated static let revealSelector = "_dispatchAgentRevealChangedForSpaceID:menuBarRevealTarget:toolbarRevealTarget:duration:" // NSMenu, a class method
     nonisolated static let appleMenuClass = "_NSAppleMenu"
     nonisolated static let appleMenuShared = "sharedMenu" // a class method
     nonisolated static let appleMenuFill = ["_addAppleMenuItems", "_userNameChanged"] // instance methods
@@ -42,7 +46,9 @@ nonisolated struct StageCalls: @unchecked Sendable {
         var a = Availability()
         let sky = resolver.open(.skyLight)
         func problems(_ names: [String]) -> [String] { sky ? names.filter { resolver.function($0, in: .skyLight) == nil }.map { "\($0) missing" } : ["SkyLight.framework didn't open"] }
-        let s = problems(spaceFunctions), m = problems(menuBarFunctions)
+        let s = problems(spaceFunctions)
+        var m = problems(menuBarFunctions)
+        if !(NSMenu.self as AnyObject).responds(to: NSSelectorFromString(revealSelector)) { m.append("+[NSMenu \(revealSelector)] missing") }
         a.space = s.isEmpty
         a.menuBar = m.isEmpty
         if !s.isEmpty { a.reasons["space"] = s.prefix(2).joined(separator: ", ") }
@@ -69,6 +75,7 @@ nonisolated struct StageCalls: @unchecked Sendable {
     private typealias SpacesFor = @convention(c) (Int32, Int32, CFArray) -> Unmanaged<CFArray>?
     private typealias SpaceType = @convention(c) (Int32, UInt64) -> Int32
     private typealias Override = @convention(c) (Int32, UInt32, Bool) -> Int32
+    private typealias Reveal = @convention(c) (AnyClass, Selector, Int64, Double, Double, Double) -> Void
 
     let availability: Availability
     private let refuses: Bool
@@ -77,6 +84,7 @@ nonisolated struct StageCalls: @unchecked Sendable {
     private let spacesFn: SpacesFor?
     private let typeFn: SpaceType?
     private let overrideFn: Override?
+    private let revealFn: Reveal?
 
     init(resolver: PrivateResolver, availability: Availability, refusing: Bool = PrivateCalls.inTests) {
         self.availability = availability
@@ -90,6 +98,7 @@ nonisolated struct StageCalls: @unchecked Sendable {
         spacesFn = fn("SLSCopySpacesForWindows", availability.space, SpacesFor.self)
         typeFn = fn("SLSSpaceGetType", availability.space, SpaceType.self)
         overrideFn = fn("SLSSetMenuBarVisibilityOverrideOnDisplay", availability.menuBar, Override.self)
+        revealFn = availability.menuBar && !refusing ? class_getClassMethod(NSMenu.self, NSSelectorFromString(Self.revealSelector)).map { unsafeBitCast(method_getImplementation($0), to: Reveal.self) } : nil
     }
 
     private var cid: Int32? { mainConnection.map { $0() }.flatMap { $0 == 0 ? nil : $0 } }
@@ -116,6 +125,12 @@ nonisolated struct StageCalls: @unchecked Sendable {
     @discardableResult func showMenuBar(_ on: Bool, display: UInt32) -> Int32? {
         guard !refuses, let cid, let overrideFn else { return nil }
         return overrideFn(cid, display, on)
+    }
+
+    // The menu bar's process told the bar came down (true) or went up in `space` (with AppKit's own 0.25 s).
+    func revealChanged(space: UInt64, shown: Bool) {
+        guard !refuses, space > 0, let revealFn else { return }
+        revealFn(NSMenu.self, NSSelectorFromString(Self.revealSelector), Int64(space), shown ? 1 : 0, shown ? 1 : 0, 0.25)
     }
 
     // macOS's own Apple menu (its items filled in once), nil: off.

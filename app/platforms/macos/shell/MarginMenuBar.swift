@@ -37,7 +37,6 @@ final class MarginMenuBar {
     private let display: CGDirectDisplayID
     private let screen: NSScreen
     private let space: UInt64
-    private let pageArea: () -> CGRect? // the page area (top left), where the strip goes
     private let closeTab: () -> Void
 
     private let edge: EdgePanel
@@ -51,12 +50,11 @@ final class MarginMenuBar {
     private var pending: Int?
     private(set) var reveals = 0
 
-    init(calls: StageCalls, screen: NSScreen, space: UInt64, pageArea: @escaping () -> CGRect?, closeTab: @escaping () -> Void) {
+    init(calls: StageCalls, screen: NSScreen, space: UInt64, closeTab: @escaping () -> Void) {
         self.calls = calls
         self.screen = screen
         self.space = space
         self.display = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value ?? CGMainDisplayID()
-        self.pageArea = pageArea
         self.closeTab = closeTab
         let f = screen.frame
         edge = EdgePanel(contentRect: NSRect(x: f.minX, y: f.maxY - 1, width: f.width, height: 1))
@@ -78,7 +76,7 @@ final class MarginMenuBar {
         timer?.invalidate()
         timer = nil
         openMenu?.cancelTrackingWithoutAnimation()
-        if shown { calls.showMenuBar(false, display: display) }
+        if shown { calls.showMenuBar(false, display: display); calls.revealChanged(space: space, shown: false) }
         shown = false
         edge.orderOut(nil)
         titles.orderOut(nil)
@@ -104,6 +102,7 @@ final class MarginMenuBar {
         shown = true
         reveals += 1
         calls.showMenuBar(true, display: display)
+        calls.revealChanged(space: space, shown: true) // (the menu bar's process told: its status items take clicks then)
         edge.orderOut(nil)
         layoutTitles()
         place(titles)
@@ -120,6 +119,7 @@ final class MarginMenuBar {
         timer?.invalidate()
         timer = nil
         calls.showMenuBar(false, display: display)
+        calls.revealChanged(space: space, shown: false)
         titles.orderOut(nil)
         hideStrip()
         placeEdge()
@@ -228,11 +228,10 @@ final class MarginMenuBar {
     // ---- the strip ----
 
     private func stripFrame(down: Bool) -> NSRect? {
-        // (Top-left and AppKit coordinates share x: only the height is AppKit's here.)
-        guard let page = pageArea(), page.width > 0 else { return nil }
+        // (The display's whole width, as macOS's own strip over a full-screen window: Tirth, 2026-11-19.)
         let h = StripView.height
         let top = screen.frame.maxY - barHeight
-        return NSRect(x: page.minX, y: down ? top - h : top, width: page.width, height: h)
+        return NSRect(x: screen.frame.minX, y: down ? top - h : top, width: screen.frame.width, height: h)
     }
 
     private func showStrip() {
