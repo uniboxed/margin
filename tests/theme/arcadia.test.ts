@@ -163,6 +163,12 @@ for (const [name, engine] of ENGINES) {
         const more = Math.ceil(width / 20) + 2;
         await page.evaluate((n) => T.rtTrackpadRun('.space-title .title', Array(n).fill(20)), more);
         assert.deepEqual(await page.evaluate(() => T.rtPerformed().filter((n) => n === 'haptic.alignment')), ['haptic.alignment'], 'one tick past halfway');
+        // (Dia checks its detent at each of the trackpad's events: back across halfway, the tick in that event's own task,
+        // never a frame later.)
+        const back = await page.evaluate((n) => T.rtTrackpadNow('.space-title .title', Array(n).fill(-20)), Math.ceil(width / 20) + 4);
+        assert.equal(back.ticks, 2, `back across halfway: its tick at that event, before any frame (${JSON.stringify(back)})`);
+        await page.evaluate((n) => T.rtTrackpadRun('.space-title .title', Array(n).fill(20)), Math.ceil(width / 20) + 4);
+        assert.equal(await page.evaluate(() => T.rtPerformed().filter((n) => n === 'haptic.alignment').length), 3, 'and forward again: one more');
         await page.evaluate(() => T.rtWheelPhase('ended'));
         const settle = await page.evaluate(() => T.rtSwipeTrace('.margin-sidebar', 700));
         const during = settle.filter((f) => f.settling);
