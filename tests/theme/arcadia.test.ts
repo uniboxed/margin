@@ -15,6 +15,7 @@ import { harnessScript, themeForPage, ARCADIA } from './package.ts';
 import { pageLoaderChecks, rgba, near } from './page-card.ts';
 import { settingsPageChecks } from './settings-page.ts';
 import type { Harness, HarnessRt } from './harness.ts';
+import { hitRects } from '../../extension/ui/host-app.ts';
 
 // What the harness puts on the page's window (harness.ts), as the page functions below read it.
 declare const T: Harness;
@@ -246,6 +247,48 @@ for (const [name, engine] of ENGINES) {
         await page.evaluate(() => T.rtWheelPhase('ended'));
         await page.waitForFunction(() => T.rtCount('.m-swiping') === 0, null, { timeout: 3000 });
         assert.equal(await spaceOf(), touched.after.space, 'settled again at the space it was nearest');
+        await page.evaluate(() => T.unmountRuntime());
+      });
+
+      // What takes the pointer over the page, measured mid-swipe as Margin.app's overlay does (host-app.ts hitRects):
+      // the list slid sideways under the page area, clipped by the sidebar, is nothing there (2026-11-20, his recording:
+      // swiping back, its rows counted, and Margin.app's pointer catcher, alpha 0.01 a box, drew a sidebar-shaped grey
+      // band over the page and took its clicks).
+      await t.test('space swipe: nothing more takes the pointer over the page than at rest, held and settling', async () => {
+        await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, replies: { setSpace: { shown: null } } }));
+        await page.evaluate(() => T.rtSettings({ sidebarPinnedOpen: true }));
+        await page.waitForFunction(() => __rt.runtime.vm.window.sidebar === 'open', null, { timeout: 2000 });
+        const l = (await layout())!;
+        assert.ok(l.left > 0, 'the page beside the sidebar');
+        const slot = { left: l.left, top: l.top, right: l.width - l.right, bottom: l.height - l.bottom };
+        const measure = () => page.evaluate(([src, slot]) => {
+          const hits = new Function(`return (${src})`)() as typeof hitRects;
+          return hits(__rt.runtime.view.rootElement()!, slot as { left: number, top: number, right: number, bottom: number });
+        }, [hitRects.toString(), slot] as const);
+        const rest = await measure();
+        assert.equal(rest.all, false);
+        // (No more than at rest: the resize edge over the page's edge goes while the sidebar clips, not drawn there.)
+        const within = (now: { rects: number[][], all: boolean }) => !now.all && now.rects.every(([x, y, w, h]) =>
+          rest.rects.some(([X, Y, W, H]) => x >= X && y >= Y && x + w <= X + W && y + h <= Y + H));
+        const width = (await page.evaluate(() => T.rtRect('.margin-sidebar')))!.width;
+        // Both ways: back (the list sliding right, toward the page: his recording) and on (away from it, the next
+        // space's list coming in under the page area).
+        for (const dx of [-20, 20]) {
+          await page.evaluate(() => T.rtWheelPhase('began'));
+          for (const steps of [6, Math.ceil(width / 40), Math.ceil(width / 20)]) {
+            await page.evaluate(([n, d]) => T.rtTrackpadRun('.space-title .title', Array(n).fill(d)), [steps, dx] as const);
+            assert.ok(await page.evaluate(() => T.rtCount('.m-swiping')) > 0);
+            const now = await measure();
+            assert.ok(within(now), `${dx < 0 ? 'back' : 'on'}, held ${steps} steps in: nothing more over the page (${JSON.stringify(now)} vs ${JSON.stringify(rest)})`);
+          }
+          await page.evaluate(() => T.rtWheelPhase('ended'));
+          for (let i = 0; i < 4; i++) {
+            await page.evaluate(() => T.rtFrames(2));
+            const now = await measure();
+            assert.ok(within(now), `${dx < 0 ? 'back' : 'on'}, settling: nothing more over the page (${JSON.stringify(now)})`);
+          }
+          await page.waitForFunction(() => T.rtCount('.m-swiping, .m-settling') === 0, null, { timeout: 3000 });
+        }
         await page.evaluate(() => T.unmountRuntime());
       });
 

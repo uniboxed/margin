@@ -6473,3 +6473,24 @@ removes its folder when it passes (kept when a check failed, to look at). The sc
 Chameleon N", reused across runs) are built into `tools/screen-tests/build/apps.noindex` instead of `build/apps`:
 Spotlight skips a `.noindex` folder, and the suite still copies them into ~/Applications only for a run. Spotlight now
 lists the installed Margin alone (and an experiment of the person's outside the repo, left as it is).
+
+## No grey band over the page during a space swipe (2026-11-20)
+
+Tirth's recording: swiping between spaces (back, the list sliding right), a sidebar-shaped grey band grew over the left
+of the hosted page and stayed until the swipe ended. Read from the frames: a faint strip where the space's title row is
+(white 255 → 252) and the rest down to the bottom bar at 249, both exactly as wide as the list had moved past the
+sidebar's edge. The cause, two faults:
+- What takes the pointer over the page (`ui/host-app.ts hitRects`) measured each element's box without its ancestors'
+  clips. During the swipe Arcadia clips the sidebar (`overflow: clip`) and slides the list; sliding toward the page, its
+  rows and sections (they take the pointer) were reported over the page. Margin.app's catcher fills every reported box
+  at alpha 0.01 so the window server sends the pointer to Margin there: the band, and clicks on that part of the page
+  went to Margin. Now each box counts only as far as its ancestors show it, as CSS clips: `overflow` other than visible
+  on each axis apart, and paint containment; a box positioned `absolute` escapes the clipping ancestors inside its
+  containing block (the nearest positioned, transformed, filtered or contained ancestor), `fixed` all of them unless a
+  transform, filter or containment holds it, so a menu spilling out of a sidebar still counts. Styles and ancestor
+  boxes are read only for boxes that overlap the page, once each.
+- The catcher drew each box over the others, so overlapping boxes came out darker (three, 9/255 instead of 3/255): now
+  copied, every point it covers at 0.01 once. (Windows only hit-tests the region; nothing drawn there.)
+- Tests: the clipping rules on stand-ins (`tests/ui-host-app.test.ts`), Arcadia in WebKit and Chromium swiping back and
+  on, held and settling, nothing more over the page than at rest (it failed, swiping back, without the change), and the
+  catcher drawn into a bitmap (it failed without the copy).

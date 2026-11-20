@@ -329,6 +329,19 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("caught: the palette drawn over the page too", paletteRegion.contains(local(CGPoint(x: 600, y: 200)), in: frame.size) && !paletteRegion.contains(local(CGPoint(x: 1200, y: 600)), in: frame.size))
     check("caught: everything before the page says where the slot is, or when it asks for the whole window", CatchRegion.of(frame: frame, slot: nil).all && CatchRegion.of(frame: frame, slot: all).all)
     check("caught: nothing outside the overlay", !region.contains(CGPoint(x: -1, y: 10), in: frame.size))
+    // Drawn: each point once at alpha 0.01, where boxes overlap (a box over the page within another, partly over the
+    // frame) as where one is (2026-11-20: laid over each other, a space swipe's boxes made a grey band over the page).
+    let view = CatchView(frame: CGRect(x: 0, y: 0, width: 200, height: 100))
+    view.region = CatchRegion(all: false, hole: CGRect(x: 50, y: 0, width: 150, height: 100), radius: 0,
+                              hits: [CGRect(x: 40, y: 10, width: 60, height: 60), CGRect(x: 45, y: 20, width: 40, height: 20), CGRect(x: 60, y: 30, width: 80, height: 30)])
+    let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds)!
+    view.cacheDisplay(in: view.bounds, to: rep)
+    let alpha = { (x: Int, y: Int) in Int((rep.colorAt(x: x * rep.pixelsWide / 200, y: y * rep.pixelsHigh / 100)?.alphaComponent ?? -1) * 255 + 0.5) }
+    let once = alpha(20, 50)
+    check("caught, drawn: the frame at alpha 0.01 (\(once)/255)", once >= 2 && once <= 3)
+    check("caught, drawn: one box over the page, two, three, and over the frame: the same alpha", [alpha(90, 15), alpha(70, 35), alpha(65, 35), alpha(47, 25), alpha(120, 45)].allSatisfy { $0 == once },
+          "\([alpha(90, 15), alpha(70, 35), alpha(65, 35), alpha(47, 25), alpha(120, 45)])")
+    check("caught, drawn: the page left clear", alpha(170, 80) == 0 && alpha(120, 80) == 0)
   }
 
   static func shortcuts() {
