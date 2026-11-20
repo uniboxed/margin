@@ -310,6 +310,41 @@ enum OverlayFrameRate {
 // (app/shared/host/overlay.ts mount, `appearance`). Each step is checked, and anything missing leaves the switch
 // off: the theme then draws its plain fills (`@supports (-apple-visual-effect: …)` is false).
 // `defaults write com.unibox.margin MarginSystemAppearance -bool NO` keeps it off for every theme.
+// The pointer's moves over Margin's UI given to WebKit while Margin's panel isn't key (the app it hosts has the keys,
+// Tirth 2026-11-20: "hovering the sidebar highlights nothing"). They reach the web view (its own tracking area is active
+// always), but WebKit drops a plain mouseMoved in a window that isn't active (measured in the glue e2e: :hover stayed on
+// what the last press hit, and only another press or release moved it), so the theme's :hover never followed the
+// pointer there. `-[WKWebView _simulateMouseMove:]` (private, WebKit's own for its tests) takes the same move as an
+// active window's. Looked up once, with its type encoding; `MarginOverlayHover` NO turns it off (the plain move then,
+// which WebKit drops: hover as before).
+enum OverlayHover {
+    static let selector = "_simulateMouseMove:"
+    nonisolated static var allowed: Bool { UserDefaults.standard.object(forKey: "MarginOverlayHover") as? Bool ?? true }
+    typealias Move = @convention(c) (AnyObject, Selector, NSEvent) -> Void
+    @MainActor private static var looked = false
+    @MainActor private static var move: Move?
+    @MainActor static var available: Bool { lookUp(); return move != nil }
+
+    /// The move given to WebKit as an active window's. False: not possible here (the caller sends the plain move).
+    @MainActor static func move(_ webView: WKWebView, _ event: NSEvent) -> Bool {
+        lookUp()
+        guard allowed, let move else { return false }
+        move(webView, NSSelectorFromString(selector), event)
+        return true
+    }
+
+    @MainActor private static func lookUp() {
+        guard !looked else { return }
+        looked = true
+        let sel = NSSelectorFromString(selector)
+        guard let m = class_getInstanceMethod(WKWebView.self, sel), let types = method_getTypeEncoding(m).map({ String(cString: $0) }), types == "v24@0:8@16" else {
+            return Diagnostics.note("overlay hover: WebKit has no \(selector) here (or not as known): the sidebar's hover doesn't follow the pointer while a hosted app has the keys")
+        }
+        move = unsafeBitCast(method_getImplementation(m), to: Move.self)
+        if !allowed { Diagnostics.note("overlay hover: MarginOverlayHover is NO: the sidebar's hover doesn't follow the pointer while a hosted app has the keys") }
+    }
+}
+
 enum OverlaySystemAppearance {
     static let setter = "_setUseSystemAppearance:"
     static let getter = "_useSystemAppearance"

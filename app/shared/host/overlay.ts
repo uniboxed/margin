@@ -272,7 +272,9 @@ function reportSpace() {
   spaceTold = told;
   void post('shownSpace', { windowId: host?.windowId ?? null, space: vm.space.id ?? null }).catch(() => {});
 }
-const watcher = new MutationObserver(() => { hitsSoon(); hitsAfter(400); queueMicrotask(measureNow); queueMicrotask(reportWant); queueMicrotask(reportSpace); });
+const watcher = new MutationObserver(() => { hitsSoon(); hitsAfter(400); queueMicrotask(measureNow); queueMicrotask(reportWant); queueMicrotask(reportSpace); queueMicrotask(followPopup); });
+// A menu or prompt of Margin's opened or closed: the keys taken or given back with it (`popupOpen`, as a field's).
+function followPopup() { const want = stillHasKeys(); if (want !== hasKeys) setKeys(want); }
 addEventListener('resize', () => { measureNow(); hitsSoon(); });
 
 // Margin's own window as a tile beside a hosted one (host-app.ts sidebarFixed: the older pageOutside): the sidebar's
@@ -695,7 +697,12 @@ let hasKeys = false;
 // when it's gone (one check per turn, only then).
 let keysWatch: MutationObserver | null = null;
 let keysCheck = false;
-const stillHasKeys = () => editable(document.activeElement) || preview.bar.shown;
+// (A menu or prompt of Margin's open takes the keys too, as a field does (Tirth, 2026-11-20): its ↑/↓, Return and Escape
+// are Margin's while it's up, and the app doesn't hand them back to the hosted app at the press that opened it, which
+// made the page lose its focus and the menu close as it came. The hosted app stays the front app throughout: Margin's
+// panel takes the keys without making Margin active. Closed: the keys back to the app.)
+const popupOpen = () => !!(runtime?.vm?.menu || runtime?.vm?.prompt);
+const stillHasKeys = () => editable(document.activeElement) || preview.bar.shown || popupOpen();
 const setKeys = (on: boolean) => {
   if (on === hasKeys) return;
   hasKeys = on;

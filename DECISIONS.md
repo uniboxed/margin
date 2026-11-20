@@ -6241,3 +6241,21 @@ front of what it hosts since 2026-11-17, so that reason is gone.
   says whether its page measured it hosting (`pageHosted`, as `pageOutside`); Margin's window offers a hosted placement
   only from one that was (`hostedPlacement`), and the session's wait for the page area (asking the page to measure)
   takes that one.
+
+
+## Hover and Margin's menus while a hosted app has the keys (2026-11-20)
+
+Tirth: with a hosted app in focus, the sidebar highlighted nothing under the pointer, and the "+" menu showed for a
+split second and went. Both while keeping the hosted app in focus.
+
+- **Hover.** The pointer's moves reach Margin's web view while its panel isn't key (its own tracking area is active
+  always), but WebKit drops a plain mouseMoved in a window that isn't active: measured in the glue e2e, `:hover` stayed on
+  whatever the last press hit and only another press or release moved it. Margin's window now gives each move over its
+  UI, while its panel isn't key, to WebKit as an active window's (`-[WKWebView _simulateMouseMove:]`, private:
+  `OverlayHover`, docs/PRIVATE-APIS.md), and one more at the page's empty slot as the pointer leaves for the hosted app,
+  so what was lit goes. The panel stays non-key: the hosted app keeps its keys and its active look.
+- **Margin's menus.** After a press in Margin's UI the keys go back to the hosted app (`afterPress` → `keysBack`), which
+  took the focus from the page, and the menus close when it loses its focus (`blur`). A menu or prompt of Margin's open
+  now takes the keys as a field does (the page's `focus`: `popupOpen` in app/shared/host/overlay.ts): no hand-back at
+  the press, its ↑/↓, Return and Escape work, and the keys go back to the hosted app as soon as it closes. The hosted app
+  stays the front app throughout (the non-activating panel takes the keys without making Margin active).

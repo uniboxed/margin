@@ -1068,6 +1068,49 @@ func glueScenario() async {
     }
   }
 
+  // ---- the hosted app keeping its keys: the sidebar's hover lit by the pointer's moves, Margin's menus staying up
+  // (Tirth, 2026-11-20: nothing highlighted under the pointer, the "+" menu gone as it came) ----
+  do {
+    // (A point of the page in the window server's coordinates, and in the web view's window's.)
+    func centre(_ selector: String) async -> CGPoint? {
+      guard let r = await js(c.webView, "const r = document.querySelector('\(selector)')?.getBoundingClientRect(); return r ? [r.left + r.width / 2, r.top + r.height / 2] : null") as? [Double], r.count == 2 else { return nil }
+      return CGPoint(x: r[0], y: r[1])
+    }
+    let rowSelector = ".margin-sidebar .tab"
+    guard let row = await centre(rowSelector) else { return check("a sidebar row to hover", false) }
+    let movesBefore = c.hoverMoves
+    c.pointerMoved(CGPoint(x: display.minX + row.x, y: display.minY + row.y), buttonsDown: false)
+    let lit = await waitJS(c.webView, "return !!document.querySelector('\(rowSelector):hover')")
+    check("hover: the hosted app with the keys (Margin's panel not key), the pointer over a sidebar row: the row lit (its :hover), the move handed to the page",
+          !c.panel.isKeyWindow && lit && c.hoverMoves > movesBefore && c.pageState == .shown, "lit \(lit) moves \(c.hoverMoves - movesBefore) key \(c.panel.isKeyWindow)")
+    c.pointerMoved(CGPoint(x: display.maxX - 200, y: display.midY), buttonsDown: false)
+    let unlit = await waitJS(c.webView, "return !document.querySelector('\(rowSelector):hover')")
+    let movesOver = c.hoverMoves
+    c.pointerMoved(CGPoint(x: display.maxX - 180, y: display.midY), buttonsDown: false)
+    check("hover: over the hosted app again: nothing of Margin's lit, and no more moves handed to the page there", unlit && c.hoverMoves == movesOver, "unlit \(unlit) moves \(c.hoverMoves - movesOver)")
+
+    // The "+" pressed (a real press, the web view's own): its menu up, and still up after the press's hand-back.
+    guard let plus = await centre(".margin-sidebar .add") else { return check("the sidebar's + button", false) }
+    let inWindow = c.webView.convert(NSPoint(x: plus.x, y: plus.y), to: nil)
+    let handBacks = c.handBacks.count
+    for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+      if let e = NSEvent.mouseEvent(with: type, location: inWindow, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: c.panel.windowNumber,
+                                    context: nil, eventNumber: 0, clickCount: 1, pressure: type == .leftMouseDown ? 1 : 0) {
+        if type == .leftMouseDown { c.webView.mouseDown(with: e) } else { c.webView.mouseUp(with: e) }
+      }
+    }
+    let menuUp = await waitJS(c.webView, "return !!document.querySelector('m-menu .tab-menu')")
+    let wants = await until(2, { c.pageWantsKeyboard })
+    c.afterPress()
+    let stillUp = await waitJS(c.webView, "return !!document.querySelector('m-menu .tab-menu')")
+    check("the + menu: up at the press, the keys taken for it as a field takes them (its arrows, Return, Escape), so the press's hand-back gives nothing back; still up",
+          menuUp && wants && stillUp && c.handBacks.count == handBacks, "up \(menuUp) wants \(wants) still \(stillUp) handBacks \(c.handBacks.count - handBacks)")
+    _ = await js(c.webView, "const m = document.querySelector('m-menu .tab-menu'); (m?.querySelector('[m-action]') ?? m)?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return true")
+    let closed = await waitJS(c.webView, "return !document.querySelector('m-menu .tab-menu')")
+    let given = await until(2, { !c.pageWantsKeyboard && c.handBacks.count == handBacks + 1 })
+    check("the + menu closed (Escape): the keys back to the hosted app at once", closed && given, "closed \(closed) wants \(c.pageWantsKeyboard) handBacks \(c.handBacks.count - handBacks)")
+  }
+
   // ---- ⌘Q with an app Margin hosts in front: Margin's own prompt ----
   // (The app shown now, in front: one Margin hosts.)
   let hostedPid = engine.shown.flatMap { engine.hosts[$0]?.pid } ?? 0
