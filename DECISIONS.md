@@ -6427,3 +6427,27 @@ selector stubs, `objdump` with the annotator; a generic class's vtable now read 
   at first); Arcadia's swipe in WebKit and Chromium (the offset at its end at once, one `linear()` transition, the pane
   drawn on its way frame by frame by the browser and never past the next space, the tick past halfway, the next space
   shown as it lands). On the real trackpad: to be felt.
+
+## A settling space caught by the fingers (2026-11-20)
+
+Tirth: add what Arc and Dia both do, the fingers touching the trackpad while a space settles catching it where it is.
+In Margin.app (the trackpad's phases), with Arc's or Dia's feel (`ui/behaviors/swipe.ts` `catchSettle`):
+
+- At the touch (`mayBegin` or `began`) mid-settle, the moving part is read once where it's drawn (its transform this
+  instant; unread, the spring's own position), its transition cancelled there (the offset pinned with the transition
+  `none` and the style worked out at once: WebKit otherwise kept the transition running to its end, the glue of
+  Arcadia's test showed it), so it holds still under the fingers.
+- The space nearest that place is the one swiped from, as Arc's `pageAtSwipeBegin`. Nearer the space it headed for (or
+  past it): that space is shown at once (switched, the swipe begun again from it with its own neighbours, the offset
+  carried over: the same pixels, in the same task), so two quick swipes reach a third space. Nearer the space it set out
+  from: the swipe goes on from there, that space kept drawn (`holdSpace`) while the fingers decide; ended back there
+  after the next one was already asked of the copy at the lift, that space is asked back at once (`space.switch`).
+- A touch with no swipe after it (a lift, a vertical scroll, nothing for 2 s): settled again from where it's held, to the
+  nearest space. Past the first or last space, the held place is taken back through the rubber band's inverse
+  (`rubberBandArcInverse`, as Arc does) so the band isn't applied twice. A caught gesture has no notch rule (it was a
+  swipe already). Each settle has a token: a caught one's end never switches anything.
+- Cost: one style read at the touch; nothing per frame, nothing new kept. Other themes (their own settle) are unchanged:
+  a swipe during their settle is still ignored until it's over.
+- Checked in Arcadia's tests, WebKit and Chromium: caught mid-settle with no jump (the same pixels before and after the
+  touch, read in one task), on to a third space in two quick swipes, back where it set out from with that space asked
+  back, a touch alone settled again; run four times. On the real trackpad: to be felt.

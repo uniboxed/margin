@@ -233,6 +233,13 @@ function rubberBandArc(overflow: number) {
   return Math.sign(overflow) * (1 - 1 / x) * ARC.RUBBER_DIMENSION;
 }
 
+// Its inverse (Arc's, as it takes over a settle at its presentation's position): the overflow `shown` (px past the last
+// space, drawn) stands for. Never past the band's own limit.
+function rubberBandArcInverse(shown: number) {
+  const d = Math.min(Math.abs(shown), ARC.RUBBER_DIMENSION - 1e-6);
+  return Math.sign(shown) * (d * ARC.RUBBER_DIMENSION) / ((ARC.RUBBER_DIMENSION - d) * ARC.RUBBER_COEFFICIENT);
+}
+
 // Arc's settle: a critically damped spring (damping ratio 1; Motion's SpringFunction: stiffness (2π/response)²) from
 // `from` at `velocity` (px/s) to `to`. `at(t)` (seconds): where it is and how fast; `duration`: when it's at rest
 // (within REST_PX, under REST_SPEED; at most SETTLE_MAX_S), found by stepping 1/240 s as Arc samples it.
@@ -265,4 +272,4 @@ function springKeyframes(spring: ReturnType<typeof springArc>, from: number, to:
   return points;
 }
 
-export { createSpaceSwipe, settle, rubberBand, settleArc, rubberBandArc, springArc, springKeyframes, ARC, FEELS, DEFAULTS };
+export { createSpaceSwipe, settle, rubberBand, settleArc, rubberBandArc, rubberBandArcInverse, springArc, springKeyframes, ARC, FEELS, DEFAULTS };
