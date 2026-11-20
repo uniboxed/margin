@@ -26,6 +26,16 @@
 // read over the last 100 ms (ARCUI.VelocityTracker); at the lift, moving at 5 px/s or more its direction decides, slower
 // the nearest space; past the first or last space Motion's rubber band (coefficient 0.15 over 255 pt); the settle a
 // critically damped spring (response 0.4 s, damping ratio 1) from the lift's speed when that heads the same way.
+// Dia 1.58.0 (The Browser Company's next browser, the same ARCUI.PageSwipeController, 2026-11-20) differs in two
+// things only, both set by its sidebar and its tab strip (TabSidebar.PagingContainerViewController,
+// TabStrip.TabStripSpacePagingController): the detent haptic on (`performsPageDetentHaptics`: Arc never turns it on), and
+// a settling handler, so the spring's response is 0.25 s and it's played as keyframes sampled at 240 Hz by Core
+// Animation (Arc's sidebar has none: 0.4 s, moved frame by frame). A theme names the one it wants (`--m-swipe-feel`).
+const FEELS: Record<string, { response: number, haptics: boolean }> = {
+  arc: { response: 0.4, haptics: false },
+  dia: { response: 0.25, haptics: true },
+};
+
 const ARC = {
   SCALE: 0.5,
   VELOCITY_MS: 100,
@@ -242,4 +252,17 @@ function springArc(from: number, velocity: number, to: number, response = ARC.RE
   return { at, duration };
 }
 
-export { createSpaceSwipe, settle, rubberBand, settleArc, rubberBandArc, springArc, ARC, DEFAULTS };
+// The spring as Dia plays it: its position sampled every 1/240 s to its rest (its `positions` and `keyTimes`), as the
+// progress from `from` to `to` (0 to 1, past 1 where it overshoots), for a CSS `linear()` easing over `duration` (the
+// browser then moves it, as Core Animation does Dia's). Nothing to move: none.
+function springKeyframes(spring: ReturnType<typeof springArc>, from: number, to: number) {
+  if (from === to || spring.duration <= 0) return null;
+  const n = Math.round(spring.duration * 240);
+  const points: number[] = [];
+  for (let i = 0; i <= n; i++) points.push(Math.round(((spring.at(i / 240).x - from) / (to - from)) * 10000) / 10000);
+  points[0] = 0;
+  points[n] = 1;
+  return points;
+}
+
+export { createSpaceSwipe, settle, rubberBand, settleArc, rubberBandArc, springArc, springKeyframes, ARC, FEELS, DEFAULTS };

@@ -377,14 +377,14 @@
 .margin-sidebar .space-title .emoji { flex: none; width: 16px; font-size: 14px; line-height: 16px; text-align: center; color: initial; }
 
 /* The space's part (name, editor, list), which a sideways swipe drags
-   (Margin's m-swipe), with Arc's own feel (`--m-swipe-feel: arc`: half the
-   fingers' distance, Arc's choice at the lift, its rubber band, the settle
-   Arc's spring, moved by Margin frame by frame: no transition of ours). */
-.margin-sidebar { --m-swipe-feel: arc; }
+   (Margin's m-swipe), with Dia's own feel (`--m-swipe-feel: dia`: half the
+   fingers' distance, its choice at the lift, its rubber band, a haptic tick
+   past halfway, the settle its spring as Margin's `--m-swipe-transition`). */
+.margin-sidebar { --m-swipe-feel: dia; }
 .margin-sidebar .space-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .margin-sidebar.m-swiping { overflow: clip; }
 .margin-sidebar.m-swiping .space-pane { will-change: transform; transform: translateX(var(--m-swipe-offset, 0px)); }
-.margin-sidebar.m-settling .space-pane { transform: translateX(var(--m-swipe-offset, 0px)); }
+.margin-sidebar.m-settling .space-pane { transform: translateX(var(--m-swipe-offset, 0px)); transition: var(--m-swipe-transition, none); }
 
 /* One list for the pinned area and the tabs; it scrolls under the top and
    the bottom bar, never the page. The one place that rubber-bands. */

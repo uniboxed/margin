@@ -668,12 +668,15 @@ const withRuntime = Object.assign(T, {
   // The swipe's part each frame for `ms`: its offset (px) and whether it's settling, and the moving part's transition.
   async rtSwipeTrace(selector: string, ms: number) {
     const el = rt.target.querySelector(selector) as HTMLElement;
-    const out: { t: number, offset: number | null, settling: boolean, swiping: boolean }[] = [];
+    // `drawn`: where the moving part is on screen (its computed transform's x: mid-transition, the browser's own value).
+    const out: { t: number, offset: number | null, drawn: number | null, transition: string, settling: boolean, swiping: boolean }[] = [];
     const t0 = performance.now();
     await new Promise<void>((done) => {
       const frame = () => {
         const v = el.style.getPropertyValue('--m-swipe-offset');
-        out.push({ t: performance.now() - t0, offset: v ? parseFloat(v) : null, settling: el.classList.contains('m-settling'), swiping: el.classList.contains('m-swiping') });
+        const pane = el.querySelector('.space-pane:not(.m-swipe-ghost)');
+        const m = pane ? /matrix\(([^)]+)\)/.exec(getComputedStyle(pane).transform) : null;
+        out.push({ t: performance.now() - t0, offset: v ? parseFloat(v) : null, drawn: m ? parseFloat(m[1].split(',')[4]) : null, transition: el.style.getPropertyValue('--m-swipe-transition'), settling: el.classList.contains('m-settling'), swiping: el.classList.contains('m-swiping') });
         if (performance.now() - t0 < ms) requestAnimationFrame(frame); else done();
       };
       requestAnimationFrame(frame);

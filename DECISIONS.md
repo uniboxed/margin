@@ -6367,7 +6367,9 @@ sometimes overshot. Asked to match Arc exactly by reverse-engineering it.
   when it's at least as sideways as it's vertical; Arc then reads the window's events itself
   (`nextEventMatchingMask:`) until `ended`, ignoring momentum. Each move: position += scrollingDeltaX × −0.5 (half the
   fingers' distance). Past the first or last page: Motion's rubber band, coefficient 0.15 over 255 pt. A page crossed
-  past halfway (`frinta` of the progress): `NSHapticFeedbackManager` `.alignment`, `.now`. At the lift: the speed from
+  past halfway (`frinta` of the progress): `NSHapticFeedbackManager` `.alignment`, `.now`, only where
+  `performsPageDetentHaptics` is on (corrected the same day: Arc's sidebar never turns it on, Dia does; see "The space
+  swipe as Dia's"). At the lift: the speed from
   `ARCUI.VelocityTracker` (first and last samples of the last 100 ms); at 5 or more a second its direction decides,
   slower the nearest page; one page at most from where it began. The settle: Motion's spring, damping ratio 1,
   response 0.4 s (0.25 s only with a keyframe handler, which the sidebar has none of), from the lift's speed when it
@@ -6397,3 +6399,31 @@ again (shown at 13:45:51). Now `safariLinked` starts Safari when it isn't runnin
 and then waits as before (the wake and the default-profile fallback keep working); one that doesn't start isn't waited
 for. The window's choice by bounds is said when it had others to tell apart, and a window gone mid-placing is said as
 such, so the next time shows which window it was.
+
+## The space swipe as Dia's (2026-11-20)
+
+Tirth, after Arc's feel: check Dia (The Browser Company's next browser) for a faster or more efficient way, and copy its
+trackpad haptic as a space is switched exactly. Read from Dia 1.58.0's arm64 slice with the same tools (Swift metadata,
+selector stubs, `objdump` with the annotator; a generic class's vtable now read past its generic header).
+
+- **The same controller.** Dia ships the same `ARCUI.PageSwipeController`, byte for byte where it matters: its tracking
+  function is the same 3,228 bytes, and its constants are Arc's (−0.5 of the scroll, 100 ms of speed, 5 a second, the
+  rubber band 0.15 over 255, the spring's damping ratio 1, its response 0.4 s or 0.25 s, keyframes at 1/240 s).
+- **Two differences, both in how it's set up** (`TabSidebar.PagingContainerViewController` and
+  `TabStrip.TabStripSpacePagingController`, each right after making its controller): `performsPageDetentHaptics = true`
+  (vtable slot 34; the initializer stores false, and Arc's `WindowLayoutController` never calls the setter: **Arc's
+  sidebar has no haptic**), and a `settlingAnimationHandler` (slot 1), so the settle's response is **0.25 s** and it's
+  played as keyframes sampled at 240 Hz by Core Animation (`CoreAnimationSettling`, a display link only reading the
+  presentation), not moved by the app each frame (Arc: 0.4 s, frame by frame). Dia's other `.alignment` tick in the
+  sidebar is the tab-reorder one (its setting), not the space's.
+- **Ours.** Feels by name (`--m-swipe-feel: arc | dia`, shared/space-swipe.ts `FEELS`): Arc's 0.4 s with no haptic,
+  as Arc is; Dia's 0.25 s with the detent tick (`haptic.alignment`: `.alignment`, `.now`, crossing halfway, as Dia).
+  Arcadia now asks for Dia's. Either settle is one CSS transition the browser runs (`--m-swipe-transition`: the spring
+  sampled every 1/240 s into a `linear()` easing, `springKeyframes`), as Dia gives Core Animation its keyframes, instead
+  of a script moving `--m-swipe-offset` each frame (Arcadia's moving part takes it under `m-settling`).
+- Not done, as with Arc's: a settle caught by the fingers touching again (Dia, like Arc, can: its session's
+  presentation provider).
+- Checked: unit tests of the two feels and the keyframes (one per 1/240 s, the spring's own positions, a flick further
+  at first); Arcadia's swipe in WebKit and Chromium (the offset at its end at once, one `linear()` transition, the pane
+  drawn on its way frame by frame by the browser and never past the next space, the tick past halfway, the next space
+  shown as it lands). On the real trackpad: to be felt.

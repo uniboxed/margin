@@ -1,7 +1,7 @@
 // shared/space-swipe.ts: the sidebar's swipe between spaces.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createSpaceSwipe, settle, rubberBand, settleArc, rubberBandArc, springArc, ARC } from '../extension/shared/space-swipe.ts';
+import { createSpaceSwipe, settle, rubberBand, settleArc, rubberBandArc, springArc, springKeyframes, ARC, FEELS } from '../extension/shared/space-swipe.ts';
 
 type Swipe = ReturnType<typeof createSpaceSwipe>;
 
@@ -232,4 +232,24 @@ test('arc tracking without phases: momentum told by its decay gives back what it
   assert.ok(r, 'released by the decay');
   assert.ok(Math.sign(r.overrun) === Math.sign(r.offset) && Math.abs(r.overrun) < Math.abs(r.offset), `the run's own offset, the same way (${r.overrun} of ${r.offset})`);
   assert.ok(r.lifted < r.time, 'the lift: the run\'s first event, before its last');
+});
+
+// ---- Dia's (1.58.0, the same controller, 2026-11-20): its haptic on, its settle 0.25 s as 240 Hz keyframes ----
+
+test('feels: Arc\'s 0.4 s and no haptic (it never turns it on); Dia\'s 0.25 s and the detent tick', () => {
+  assert.deepEqual(FEELS.arc, { response: 0.4, haptics: false });
+  assert.deepEqual(FEELS.dia, { response: 0.25, haptics: true });
+  assert.ok(springArc(-120, 0, -260, FEELS.dia.response).duration < springArc(-120, 0, -260, FEELS.arc.response).duration, 'Dia\'s settles sooner');
+});
+
+test('keyframes: the spring every 1/240 s as progress from where it\'s drawn (0) to where it goes (1); nothing to move, none', () => {
+  const spring = springArc(-120, 0, -260, 0.25);
+  const k = springKeyframes(spring, -120, -260)!;
+  assert.equal(k.length, Math.round(spring.duration * 240) + 1, 'one per 1/240 s, both ends');
+  assert.deepEqual([k[0], k.at(-1)], [0, 1]);
+  assert.ok(k.every((p, i) => i === 0 || p >= k[i - 1]), 'from rest: always onward');
+  assert.ok(Math.abs(k[24] - (spring.at(0.1).x + 120) / -140) < 1e-4, 'the spring\'s own position at 0.1 s');
+  const flick = springKeyframes(springArc(-120, -3000, -260, 0.25), -120, -260)!;
+  assert.ok(flick[6] > k[6], 'a flick: further at first');
+  assert.equal(springKeyframes(springArc(0, 0, 0), 0, 0), null);
 });

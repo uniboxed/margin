@@ -11,20 +11,21 @@
 // with one space, while the sidebar is hidden or something is under way
 // (renaming, a menu, a drag).
 //
-// A theme may ask for Arc's own feel (`--m-swipe-feel: arc` on the swiping
-// part; shared/space-swipe.ts ARC, from Arc's code): the sidebar at half the
-// fingers' distance, Arc's choice at the lift (the speed over the last 100 ms,
-// else the nearest space), Arc's rubber band, a haptic tick in Margin.app as
-// the nearer space changes, and the settle a spring this behavior moves frame
-// by frame (`--m-swipe-offset` each frame under `m-settling`: the theme
-// mustn't transition it). In Margin.app the trackpad's own phases say when
+// A theme may ask for Arc's or Dia's own feel (`--m-swipe-feel: arc | dia` on
+// the swiping part; shared/space-swipe.ts ARC and FEELS, from their code): the
+// sidebar at half the fingers' distance, their choice at the lift (the speed
+// over the last 100 ms, else the nearest space), their rubber band, the settle
+// their spring (Arc 0.4 s, Dia 0.25 s) played as one transition sampled at
+// 240 Hz (`--m-swipe-transition`, a `linear()` easing, under `m-settling`: the
+// theme's moving part takes it), and with Dia's a haptic tick in Margin.app as
+// the nearer space changes. In Margin.app the trackpad's own phases say when
 // the fingers touch and lift (`m-wheel-phase`, app/shared/host/overlay.ts):
 // let go at the lift, the momentum after it never moves the space, and fingers
 // resting mid-swipe keep it held, as in Arc.
 import type { Rt } from '../runtime.ts';
 import type { ViewModel } from '../view-model.ts';
 import { canScrollX } from '../../shared/gestures.ts';
-import { createSpaceSwipe, settle, rubberBand, settleArc, rubberBandArc, springArc, ARC, DEFAULTS as SWIPE } from '../../shared/space-swipe.ts';
+import { createSpaceSwipe, settle, rubberBand, settleArc, rubberBandArc, springArc, springKeyframes, ARC, FEELS, DEFAULTS as SWIPE } from '../../shared/space-swipe.ts';
 import { View } from '../render.ts';
 
 export const SETTLE_MS = 220;
@@ -35,9 +36,9 @@ const HELD_MAX_MS = 2000;
 export function installSwipe(rt: Rt) {
   const { view, doc, container } = rt;
   const tracker = createSpaceSwipe();
-  // `arc`: the theme's feel is Arc's (`scale` its distance); `shown`: the offset drawn now; `detent`: the space nearest
-  // it (-1, 0, 1), its change a haptic tick; `settle`: Arc's spring, under way (its frame and length).
-  let swiping: { el: HTMLElement, neighbours: Record<string, string | undefined>, width: number, base: { offset: number, events: number }, settling: boolean, frame: number, offset: number, panes: HTMLElement[], bases: { left: number, top: number, width: number, height: number }[], ghosts: Record<string, HTMLElement[] | null>, position: string, overflow: string, target: string | null, dispatched: boolean, arc: boolean, scale: number, shown: number, detent: number, springFrame: number } | null = null;
+  // `arc`: the theme's feel is Arc's or Dia's (`scale` its distance, `response` its spring's, `haptics` Dia's tick);
+  // `shown`: the offset drawn now; `detent`: the space nearest it (-1, 0, 1), its change a haptic tick.
+  let swiping: { el: HTMLElement, neighbours: Record<string, string | undefined>, width: number, base: { offset: number, events: number }, settling: boolean, frame: number, offset: number, panes: HTMLElement[], bases: { left: number, top: number, width: number, height: number }[], ghosts: Record<string, HTMLElement[] | null>, position: string, overflow: string, target: string | null, dispatched: boolean, arc: boolean, scale: number, response: number, haptics: boolean, shown: number, detent: number } | null = null;
   // The trackpad's phases (Margin.app tells them: `m-wheel-phase`): known at all, the fingers down, the momentum after a
   // lift under way, and a touch since the last wheel event (the next one starts a new gesture).
   const phases = { known: false, fingers: false, momentum: false, touched: false };
@@ -111,8 +112,8 @@ export function installSwipe(rt: Rt) {
     const shown = s.neighbours[toward] ? Math.max(-s.width, Math.min(s.width, offset)) : s.arc ? rubberBandArc(offset) : rubberBand(offset, s.width * 0.2);
     if (s.neighbours[toward]) ghost(s, String(toward));
     draw(s, shown);
-    // Arc's detent: the space nearest the offset changed (past half its width): the trackpad's alignment tick.
-    if (s.arc) {
+    // Dia's detent: the space nearest the offset changed (past half its width): the trackpad's alignment tick.
+    if (s.haptics) {
       const near = Math.round(-shown / s.width);
       const detent = near && s.neighbours[near > 0 ? 1 : -1] ? Math.sign(near) : 0;
       if (detent !== s.detent) {
@@ -134,9 +135,10 @@ export function installSwipe(rt: Rt) {
       const r = p.getBoundingClientRect();
       return { left: r.left - er.left - el.clientLeft + el.scrollLeft, top: r.top - er.top - el.clientTop + el.scrollTop, width: p.offsetWidth, height: p.offsetHeight };
     });
-    const arc = getComputedStyle(el).getPropertyValue('--m-swipe-feel').trim() === 'arc';
+    const feel = FEELS[getComputedStyle(el).getPropertyValue('--m-swipe-feel').trim()] ?? null;
+    const arc = !!feel;
     swiping = { el, neighbours: { [-1]: spaces[at - 1]?.id, [1]: spaces[at + 1]?.id }, width: er.width || 1, base: { offset: 0, events: 0 }, settling: false, frame: 0, offset: 0,
-      panes, bases, ghosts: {}, overflow: el.style.overflow, position, target: null, dispatched: false, arc, scale: arc ? ARC.SCALE : 1, shown: 0, detent: 0, springFrame: 0 };
+      panes, bases, ghosts: {}, overflow: el.style.overflow, position, target: null, dispatched: false, arc, scale: arc ? ARC.SCALE : 1, response: feel?.response ?? ARC.RESPONSE, haptics: feel?.haptics ?? false, shown: 0, detent: 0 };
     el.style.overflow = 'clip'; // the neighbours sit outside it until they slide in
     el.classList.add('m-swiping');
   }
@@ -149,10 +151,10 @@ export function installSwipe(rt: Rt) {
     swiping = null;
     if (s.dispatched) holdUntil = Date.now() + SETTLE_MS;
     cancelAnimationFrame(s.frame);
-    cancelAnimationFrame(s.springFrame);
     s.el.classList.remove('m-swiping', 'm-settling');
     s.el.style.removeProperty('--m-swipe-offset');
     s.el.style.removeProperty('--m-swipe-progress');
+    s.el.style.removeProperty('--m-swipe-transition');
     s.el.style.overflow = s.overflow;
     s.el.style.position = s.position;
     for (const list of Object.values(s.ghosts)) for (const g of list ?? []) g.remove();
@@ -175,19 +177,16 @@ export function installSwipe(rt: Rt) {
       const to = dir ? -dir * s.width : 0;
       const v0 = Math.sign(velocity) === Math.sign(to - s.shown) ? velocity : 0;
       const reduced = !!doc.defaultView?.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-      const spring = springArc(s.shown, v0, to);
-      duration = reduced ? 0 : Math.round(spring.duration * 1000);
+      const spring = springArc(s.shown, v0, to, s.response);
+      const points = reduced ? null : springKeyframes(spring, s.shown, to);
+      duration = points ? Math.round(spring.duration * 1000) : 0;
+      // As Dia plays it (keyframes Core Animation moves, not the app each frame): one transition of the moving part, its
+      // easing the spring's positions every 1/240 s, from where it's drawn to where it goes; the browser runs it.
+      if (points) s.el.style.setProperty('--m-swipe-transition', `transform ${duration}ms linear(${points.join(', ')})`);
       s.settling = true;
       s.el.classList.add('m-settling');
-      const started = performance.now();
-      const step = () => {
-        if (swiping !== s) return;
-        const t = (performance.now() - started) / 1000;
-        if (t * 1000 >= duration) { draw(s, to); s.el.style.setProperty('--m-swipe-progress', dir ? '1' : '0'); return; }
-        draw(s, spring.at(t).x);
-        s.springFrame = requestAnimationFrame(step);
-      };
-      if (duration > 0) s.springFrame = requestAnimationFrame(step); else step();
+      draw(s, to);
+      s.el.style.setProperty('--m-swipe-progress', dir ? '1' : '0');
     } else {
       dir = settle({ offset: offset - s.base.offset, speed, events: events - s.base.events, width: s.width, has: (d) => !!s.neighbours[d] }) as -1 | 0 | 1;
       s.settling = true;
@@ -207,8 +206,6 @@ export function installSwipe(rt: Rt) {
     // real sidebar shows it (afterRender), so nothing jumps.
     rt.later(() => {
       if (swiping !== s) return;
-      // (Arc's spring: at its end exactly, whichever of its frame and this comes first.)
-      if (s.arc) { cancelAnimationFrame(s.springFrame); draw(s, dir ? -dir * s.width : 0); }
       if (!s.target) return finish();
       s.dispatched = true;
       rt.dispatch('space.switch', s.target, 'behavior');

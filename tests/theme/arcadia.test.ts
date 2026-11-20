@@ -146,13 +146,13 @@ for (const [name, engine] of ENGINES) {
         await page.evaluate(() => T.unmountRuntime());
       });
 
-      // Arc's own feel for the space swipe (Tirth, 2026-11-20: "not as smooth as Arc's"; shared/space-swipe.ts ARC, from
-      // Arc's code): half the fingers' distance; with the trackpad's phases (Margin.app), held while the fingers rest and
-      // let go at the lift, never by a pause; Arc's spring moved frame by frame (no transition of the theme's); a haptic
-      // tick as the nearer space changes; the next space shown as it lands.
-      await t.test('space swipe, Arc\'s feel: half the distance, held while the fingers rest, let go at the lift, Arc\'s spring frame by frame, a tick past halfway', async () => {
+      // Dia's own feel for the space swipe (Tirth, 2026-11-20: Arc's first, then Dia's, its haptic "exactly";
+      // shared/space-swipe.ts ARC and FEELS, from their code): half the fingers' distance; with the trackpad's phases
+      // (Margin.app), held while the fingers rest and let go at the lift, never by a pause; Dia's tick past halfway; its
+      // spring (0.25 s) played as one transition the browser runs; the next space shown as it lands.
+      await t.test('space swipe, Dia\'s feel: half the distance, held while the fingers rest, let go at the lift, a tick past halfway, its spring as one transition', async () => {
         await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, replies: { setSpace: { shown: null } } }));
-        assert.equal((await page.evaluate(() => T.rtComputed('.margin-sidebar', '--m-swipe-feel')))?.trim(), 'arc', 'Arcadia asks for Arc\'s feel');
+        assert.equal((await page.evaluate(() => T.rtComputed('.margin-sidebar', '--m-swipe-feel')))?.trim(), 'dia', 'Arcadia asks for Dia\'s feel');
         const width = (await page.evaluate(() => T.rtRect('.margin-sidebar')))!.width;
         await page.evaluate(() => T.rtWheelPhase('began'));
         await page.evaluate(() => T.rtTrackpadRun('.space-title .title', [20, 20, 20, 20, 20, 20]));
@@ -164,11 +164,13 @@ for (const [name, engine] of ENGINES) {
         await page.evaluate((n) => T.rtTrackpadRun('.space-title .title', Array(n).fill(20)), more);
         assert.deepEqual(await page.evaluate(() => T.rtPerformed().filter((n) => n === 'haptic.alignment')), ['haptic.alignment'], 'one tick past halfway');
         await page.evaluate(() => T.rtWheelPhase('ended'));
-        const settle = await page.evaluate(() => T.rtSwipeTrace('.margin-sidebar', 900));
-        const moving = settle.filter((f) => f.settling && f.offset != null).map((f) => f.offset!);
-        assert.ok(moving.length > 10, `moved frame by frame (${moving.length} frames)`);
-        assert.ok(moving.every((x, i) => i === 0 || x <= moving[i - 1] + 0.05) && moving.at(-1)! >= -width - 0.5, `toward the next space, never past it: ${moving.slice(0, 4)} … ${moving.slice(-2)}`);
-        assert.ok(Math.abs(moving.at(-1)! + width) <= 2, `at rest a whole width over by its last frame (${moving.at(-1)} of ${-width})`);
+        const settle = await page.evaluate(() => T.rtSwipeTrace('.margin-sidebar', 700));
+        const during = settle.filter((f) => f.settling);
+        assert.ok(during.length > 3 && during.every((f) => f.offset === -width), `the offset at its end at once: the browser moves it (${JSON.stringify(during.slice(0, 2))})`);
+        assert.match(during[0].transition, /^transform \d+ms linear\(0, [\d., ]+, 1\)$/, 'its spring as one transition (a linear() easing)');
+        const drawn = during.map((f) => f.drawn).filter((x): x is number => x != null);
+        assert.ok(drawn.length > 3 && drawn.some((x) => x > -width + 1 && x < -61), `drawn on its way between frames (${drawn.slice(0, 6)})`);
+        assert.ok(drawn.every((x, i) => i === 0 || x <= drawn[i - 1] + 0.05) && drawn.every((x) => x >= -width - 0.5), `toward the next space, never past it: ${drawn.slice(0, 4)} … ${drawn.slice(-2)}`);
         assert.equal(await page.evaluate(() => T.rtSent().filter(([k]) => k === 'setSpace').at(-1)?.[1].spaceId), 'work', 'the next space asked for at the lift');
         await page.waitForFunction(() => T.rtVmFull().spaceName === 'Work', null, { timeout: 2000 });
         assert.equal(await page.evaluate(() => T.rtComputed('.space-pane', 'transition-duration')), '0s', 'no transition of the theme\'s on the moving part');
