@@ -1163,7 +1163,8 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     }
 
     // The window that owns this window's Space: its stage's (the helper's), else this window (AppKit's full screen).
-    var spaceOwnerNumber: Int { stageSpace != nil ? (owner?.stage?.stageWindow(for: id) ?? number) : number }
+    // 0: this window owns it.
+    var spaceOwnerNumber: Int { stageSpace != nil ? (owner?.stage?.stageWindow(for: id) ?? 0) : 0 }
 
     // Its stage asked for (once at a time): the helper's window for it into full screen on this window's display; this
     // window joins that Space when it's there (`joinStage`). Not asked: AppKit's full screen instead.
@@ -1259,7 +1260,12 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // joins its parent's Space, macOS moves them itself. The panel's behaviour then back to joining full-screen Spaces,
     // so no later order moves the group. Each window's Spaces read back: true, all three in the stage.
     private func placeGroup(_ space: UInt64, stage: MarginStage) -> Bool {
+        // (Out of sight first: "move to the active Space" acts only as a window is ordered IN; Margin's window and panel
+        // were already ordered in on its Desktop, see-through, so they stayed there: 2026-11-19 22:10.)
         panel.parent?.removeChildWindow(panel)
+        window.parent?.removeChildWindow(window)
+        window.orderOut(nil)
+        panel.orderOut(nil)
         let b = backdrop ?? MarginBackdrop(frame: MarginBackdrop.frame(window: window.frame, screen: window.screen?.frame))
         backdrop = b
         b.parent?.removeChildWindow(b)
@@ -1328,8 +1334,12 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         owner?.stage?.close(id: id)
         restoreGroup()
         setButtonsHidden(false)
+        window.orderFrontRegardless()
+        attachPanel("its stage didn't come")
         Diagnostics.warn("Margin's window \(id): no stage (\(why)): AppKit's full screen, Margin owns its Space")
-        DispatchQueue.main.async { [weak self] in self?.tryFullScreen("its stage didn't come") }
+        // (After the stage's Space has closed: asked while it closes, macOS's switch to the Desktop came after Margin's
+        // own full screen and left the Desktop showing, Finder in front, 2026-11-19 22:10.)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in self?.tryFullScreen("its stage didn't come") }
         return true
     }
 

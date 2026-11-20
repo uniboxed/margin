@@ -436,9 +436,10 @@ final class HostEngine {
     // member then, never changes size.
     private(set) var spaceOwnerWindow = 0
     var ownerWindow: Int { spaceOwnerWindow > 0 ? spaceOwnerWindow : marginWindow }
+    // (0: Margin's own window owns it.)
     func spaceOwner(_ window: Int) {
         guard window != spaceOwnerWindow else { return }
-        spaceOwnerWindow = window == marginWindow ? 0 : window
+        spaceOwnerWindow = max(0, window)
         Diagnostics.note("host: Margin's Space is owned by \(spaceOwnerWindow > 0 ? "Margin Space.app's window \(spaceOwnerWindow)" : "Margin's window")")
     }
     private var tileHome: CGRect? // ...its rect: the display's whole tile, from its top left

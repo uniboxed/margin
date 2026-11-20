@@ -136,7 +136,7 @@ enum DefaultBrowser {
 protocol HostedWindow: AnyObject {
     var id: Int { get }
     var number: Int { get } // the window server's
-    var spaceOwnerNumber: Int { get } // the window that owns its Space (its stage's, else its own)
+    var spaceOwnerNumber: Int { get } // the window that owns its Space: its stage's; 0: its own
     var isFullScreen: Bool { get }
     var hostedPlacement: HostPlacement? { get } // the page area and the display's area while hosting; nil until measured
     // The page area as its page draws it now, not hosting (the launcher's), in full screen, measured at its size; nil
@@ -189,7 +189,7 @@ extension HostedWindow {
     func setElsewhere(_ label: String?, app: String?, picture: String?) {}
     func setElsewhere(_ label: String?, app: String?) { setElsewhere(label, app: app, picture: nil) }
     func setStartupStuck(_ why: String?) {}
-    var spaceOwnerNumber: Int { number } // (a stand-in owns its own Space)
+    var spaceOwnerNumber: Int { 0 } // (a stand-in owns its own Space)
 }
 
 // The app whose icon a host's loader shows: an app's own, a Safari window's Safari.
