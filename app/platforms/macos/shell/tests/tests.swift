@@ -64,7 +64,6 @@ final class FakeRegistrar: HotKeyRegistrar {
     layouts()
     frameRate()
     systemAppearance()
-    overlayHover()
     passThrough()
     shortcuts()
     geometry()
@@ -667,17 +666,6 @@ final class FakeRegistrar: HotKeyRegistrar {
 // A theme's system materials (Liquid Glass): WebKit's system appearance turned on for one web view and off again,
 // kept off by the defaults key, and each outcome said. The switch is WebKit's own (private): if a macOS drops it,
 // `set` says so, nothing changes, and the theme draws its plain fills, which this lets through.
-// The pointer's moves as an active window's (OverlayHover, `_simulateMouseMove:`): there on macOS 26 and later, with
-// the type encoding Margin calls it by (the e2e glue checks that the sidebar's :hover follows it).
-@MainActor func overlayHover() {
-    if ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26 {
-        check("overlay hover: on macOS 26 and later, WebKit has \(OverlayHover.selector) as Margin calls it", OverlayHover.available)
-    }
-    let view = WKWebView(frame: .zero)
-    let e = NSEvent.mouseEvent(with: .mouseMoved, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, eventNumber: 0, clickCount: 0, pressure: 0)
-    check("overlay hover: a move given to a web view with no window: taken, or not possible here (no crash)", e.map { OverlayHover.move(view, $0) == OverlayHover.available } ?? false)
-}
-
 @MainActor func systemAppearance() {
     let view = WKWebView(frame: .zero)
     let on = OverlaySystemAppearance.set(true, for: view)

@@ -937,25 +937,49 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     }
 
     // The pointer over Margin's UI while its panel isn't key (the app it hosts has the keys, Tirth 2026-11-20: "hovering
-    // the sidebar highlights nothing"): WebKit drops a plain move in a window that isn't active, so each move is given to
-    // it as an active window's (`OverlayHover`): the theme's :hover follows the pointer as anywhere, the app keeping its
-    // keys and its active look. Left for the hole or out of the window: one move at the page's empty slot there (or its
-    // middle), so what was lit goes. Never while the panel is key (WebKit takes the real moves then) or a button is down
-    // (a drag's own events go on).
-    private var hovering = false
+    // the sidebar highlights nothing"). WebKit hit-tests a move for hover only in a page whose window is active
+    // (WebFrame::handleMouseEvent: with no button down and the page not active, the move goes to the scrollbars alone;
+    // active is its window key, PageClientImpl::isViewWindowActive), and Margin's panel is key only while a field or
+    // menu of Margin's has the keys. So Margin's page does it itself: where the pointer is, said to the page
+    // (`hoverAt`, in its CSS pixels), at most once per run of the loop (the last place wins), which marks the element
+    // there and its ancestors `m-hover` (app/shared/host/overlay.ts), and every theme's :hover also matches [m-hover].
+    // Cleared as the pointer leaves for the hosted app or the window, a button goes down, or the panel becomes key
+    // (WebKit's own hover from then on). Nothing private, nothing per move but a point kept.
+    private var hoverLit = false
+    private var hoverPending: CGPoint?
+    private var hoverQueued = false
     private func hover(_ at: CGPoint, inside: Bool, buttonsDown: Bool) {
-        guard !buttonsDown, !isClosed, !panel.isKeyWindow, options.harness || window.isVisible else { hovering = false; return }
-        let over = inside && !ignoring
-        guard over || hovering else { return }
-        hovering = over
-        let target = inside ? at : window.pageRect.map { CGPoint(x: $0.midX, y: $0.midY) } ?? at
-        let point = panel.convertPoint(fromScreen: ScreenGeometry.topLeftPoint(target))
-        guard let e = NSEvent.mouseEvent(with: .mouseMoved, location: point, modifierFlags: NSEvent.modifierFlags, timestamp: ProcessInfo.processInfo.systemUptime,
-                                         windowNumber: panel.windowNumber, context: nil, eventNumber: 0, clickCount: 0, pressure: 0) else { return }
-        hoverMoves += 1
-        if !OverlayHover.move(webView, e) { webView.mouseMoved(with: e) }
+        let wanted = inside && !ignoring && !buttonsDown && !isClosed && !panel.isKeyWindow && (options.harness || window.isVisible)
+        if wanted {
+            let content = contentFrame
+            hoverPending = CGPoint(x: at.x - content.minX, y: at.y - content.minY)
+        } else {
+            hoverPending = nil
+            guard hoverLit else { return }
+        }
+        guard !hoverQueued else { return }
+        hoverQueued = true
+        DispatchQueue.main.async { [weak self] in self?.flushHover() }
     }
-    private(set) var hoverMoves = 0 // moves given to the web view (the tests read it)
+    private func flushHover() {
+        hoverQueued = false
+        guard !isClosed else { return }
+        if let p = hoverPending {
+            hoverLit = true
+            hoverPushes += 1
+            pushHover(#"{"type":"hoverAt","x":\#(Double(p.x)),"y":\#(Double(p.y))}"#)
+        } else if hoverLit {
+            hoverLit = false
+            hoverPushes += 1
+            pushHover(#"{"type":"hoverAt"}"#)
+        }
+    }
+    private(set) var hoverPushes = 0 // where the pointer is, said to the page (the tests read it)
+    // (Not in `pushed`, the tests' list of what was pushed: a pointer's moves would push everything else out of it.)
+    private func pushHover(_ json: String) {
+        guard asked else { return }
+        webView.callAsyncJavaScript("marginApp.receive(m)", arguments: ["m": json], in: nil, in: .page) { _ in }
+    }
 
     // A press on the page area (the hosted window's, through the hole) or outside: a field of Margin's lets go, the
     // palette goes. A press in the page area around a smaller hosted window (window mode; on it, the app has it already)

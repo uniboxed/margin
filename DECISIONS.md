@@ -6248,12 +6248,19 @@ front of what it hosts since 2026-11-17, so that reason is gone.
 Tirth: with a hosted app in focus, the sidebar highlighted nothing under the pointer, and the "+" menu showed for a
 split second and went. Both while keeping the hosted app in focus.
 
-- **Hover.** The pointer's moves reach Margin's web view while its panel isn't key (its own tracking area is active
-  always), but WebKit drops a plain mouseMoved in a window that isn't active: measured in the glue e2e, `:hover` stayed on
-  whatever the last press hit and only another press or release moved it. Margin's window now gives each move over its
-  UI, while its panel isn't key, to WebKit as an active window's (`-[WKWebView _simulateMouseMove:]`, private:
-  `OverlayHover`, docs/PRIVATE-APIS.md), and one more at the page's empty slot as the pointer leaves for the hosted app,
-  so what was lit goes. The panel stays non-key: the hosted app keeps its keys and its active look.
+- **Hover** (its first fix replaced the same day, after a measured run on the real screen). WebKit hit-tests a
+  pointer's move for :hover only in a page whose window is active (`WebFrame::handleMouseEvent`: with no button down and
+  the page not active, the move goes to the scrollbars alone; active is its window key, `PageClientImpl::isViewWindowActive`),
+  and Margin's panel is key only while a field or menu of Margin's has the keys. The first fix gave WebKit the moves
+  (`-[WKWebView _simulateMouseMove:]`, private) and then also took the web view's input context away while not key:
+  the probe (branch `diag/hover-probe`, never merged) measured 60-110 moves a second given, 0 dispatched to the page
+  whenever the page wasn't focused, all of them for the few seconds after the panel had been key (hence "sometimes").
+  Both are gone. Now Margin's page does hover itself while the panel isn't key: Margin's window says where the pointer is
+  over its UI (`hoverAt`, at most once per run of the loop, cleared as it leaves for the hosted app, a button goes down
+  or the panel becomes key), the page marks the element there and its ancestors `m-hover`, and every style rule's
+  :hover in the sheets it draws with (the theme's, Margin's own) also matches [m-hover] (rewritten in place as the
+  theme is drawn: `withHoverAttr`, app/shared/host/overlay.ts). Nothing private; the marks change only when the element
+  under the pointer does, and the page's change watcher ignores them.
 - **Margin's menus.** After a press in Margin's UI the keys go back to the hosted app (`afterPress` → `keysBack`), which
   took the focus from the page, and the menus close when it loses its focus (`blur`). A menu or prompt of Margin's open
   now takes the keys as a field does (the page's `focus`: `popupOpen` in app/shared/host/overlay.ts): no hand-back at
