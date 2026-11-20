@@ -31,6 +31,20 @@ func marginWindowTests() {
               MarginWindowController.barUpFor == 0.4 && MarginWindowController.barWatchMost == 120 && MarginWindowController.barBand == 40)
     }
 
+    // ---- its Space shown again (2026-11-20: back from another app's full screen, the app shown wasn't the active one) ----
+    do {
+        func back(space: Bool = true, full: Bool = true, shown: Bool = true, front: Bool = true, field: Bool = false, other: Bool = false, modal: Bool = false, bar: Bool = false) -> Bool {
+            MarginWindowController.handsBackOnReturn(onActiveSpace: space, fullScreen: full, appShown: shown, marginFront: front, fieldWantsKeys: field,
+                                                     otherWindowKey: other, modal: modal, barWatched: bar)
+        }
+        check("back to its Space: Margin made the active app with an app shown: the keys back to that app", back())
+        check("back to its Space: not when the app shown is already the active app, nothing's shown, it isn't on the current Space or not in full screen",
+              !back(front: false) && !back(shown: false) && !back(space: false) && !back(full: false))
+        check("back to its Space: never while a field or menu of Margin's wants the keys, another window of Margin's has them (the quit prompt, a file picker), a sheet's up, or the menu bar's watch runs",
+              !back(field: true) && !back(other: true) && !back(modal: true) && !back(bar: true))
+        check("back to its Space: looked at 0.15 s and 0.5 s after the change", MarginWindowController.backLooks == [0.15, 0.5])
+    }
+
     // ---- Margin's UI in a non-activating panel (2026-11-17): key only when allowed, never main; the editing keys ----
     do {
         let panel = MarginPanel(frame: CGRect(x: -20000, y: -20000, width: 800, height: 600), harness: true)

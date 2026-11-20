@@ -1344,6 +1344,39 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         spaceChangedAt = now()
         tryFullScreen("the Space changed")
         if isFullScreen, !options.harness, window.isOnActiveSpace { attachPanel("the Space changed") }
+        lookBack()
+    }
+
+    // Its Space shown again (back from another app's full screen by a swipe, ⌘-Tab or Mission Control): macOS makes the
+    // Space's owner, Margin, the active app, never the app shown in it (it has no Dock icon), so that app looked
+    // inactive and its keys were Margin's until a click (Tirth, 2026-11-20). The keys go back to it, as after macOS's
+    // menu bar. Looked at `backLooks` after the change (the activation can come after it), once at most per change;
+    // never while a field or menu of Margin's wants them, another window of Margin's has them (the quit prompt, a file
+    // picker, a sheet), or the menu bar's own watch runs.
+    nonisolated static let backLooks: [TimeInterval] = [0.15, 0.5]
+    nonisolated static func handsBackOnReturn(onActiveSpace: Bool, fullScreen: Bool, appShown: Bool, marginFront: Bool, fieldWantsKeys: Bool,
+                                              otherWindowKey: Bool, modal: Bool, barWatched: Bool) -> Bool {
+        onActiveSpace && fullScreen && appShown && marginFront && !fieldWantsKeys && !otherWindowKey && !modal && !barWatched
+    }
+    private var backLook = 0 // the Space change being looked at (a newer one replaces it)
+    private(set) var returnHandBacks = 0 // the keys given back as its Space was shown again (the tests read it)
+    private func lookBack() {
+        backLook += 1
+        let look = backLook
+        for delay in Self.backLooks {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let self, self.backLook == look, !self.isClosed else { return }
+                let key = NSApp.keyWindow
+                guard Self.handsBackOnReturn(onActiveSpace: self.options.harness || self.window.isOnActiveSpace, fullScreen: self.isFullScreen,
+                                             appShown: self.hosted != nil && self.pageState == .shown, marginFront: self.appActive(),
+                                             fieldWantsKeys: self.pageWantsKeyboard, otherWindowKey: key != nil && key !== self.window && key !== self.panel,
+                                             modal: NSApp.modalWindow != nil, barWatched: self.barWatch != nil) else { return }
+                self.backLook += 1 // (once per change)
+                self.returnHandBacks += 1
+                Diagnostics.note("Margin's window \(self.id): its Space shown again with Margin the active app: the keys back to the app shown (\(Int(delay * 1000)) ms after)")
+                self.keysBack("its Space shown again")
+            }
+        }
     }
 
     // The window's full screen asked (⌃⌘F, the page's own ask): refused while it's in full screen and always is.

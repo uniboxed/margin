@@ -662,6 +662,22 @@ func glueScenario() async {
   c.windowDidBecomeKey(Notification(name: NSWindow.didBecomeKeyNotification, object: c.window))
   check("AppKit says Margin is active and its window key, the hosted app still the front app, no field of Margin's: the panel can't be key (only a field of Margin's makes it so) and doesn't have the keys",
         !c.panel.allowKey && !c.panel.canBecomeKey && !c.hasKeys && !c.pageWantsKeyboard, "allow \(c.panel.allowKey) has \(c.hasKeys)")
+  // ---- its Space shown again with Margin the active app (back from another app's full screen, 2026-11-20): the keys
+  // back to the app shown, once; not when that app is the active one already ----
+  do {
+    let backsBefore = c.handBacks.count, returnsBefore = c.returnHandBacks
+    c.appActive = { true }
+    c.spaceChanged()
+    let gave = await until(1.5) { c.returnHandBacks == returnsBefore + 1 }
+    try? await Task.sleep(for: .milliseconds(600)) // (past the second look: still once)
+    check("its Space shown again, Margin the active app: the keys back to the app shown (Calculator), once for the change",
+          gave && c.returnHandBacks == returnsBefore + 1 && c.handBacks.count == backsBefore + 1 && c.handBacks.last == shownCalcPid,
+          "\(c.returnHandBacks - returnsBefore) \(c.handBacks.suffix(2)) \(shownCalcPid)")
+    c.appActive = { false }
+    c.spaceChanged()
+    try? await Task.sleep(for: .milliseconds(700))
+    check("its Space shown again with the app shown already the active one: nothing", c.returnHandBacks == returnsBefore + 1 && c.handBacks.count == backsBefore + 1)
+  }
   if let spot = await emptySidebarSpot(c.webView) {
     let handsBefore = c.handBacks.count
     let pressesBefore = c.panel.presses, marginBefore = c.activations.count, asksBefore = c.keyAsks, backBefore = c.keysGivenBack
