@@ -923,6 +923,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         // (Windowed, the window's buttons are the base's, under the panel where the theme draws its window controls.)
         let overButtons = !isFullScreen && controls?.contains(local) == true
         setIgnoring(buttonsDown ? ignoring : overButtons || PassThrough.pageGets(at, slot))
+        hover(at, inside: content.contains(at), buttonsDown: buttonsDown)
         if content.contains(at) {
             pointerInside = true
             let now = Diagnostics.now()
@@ -934,6 +935,27 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             push(#"{"type":"pointerLeft","x":\#(Double(local.x)),"y":\#(Double(local.y))}"#)
         }
     }
+
+    // The pointer over Margin's UI while its panel isn't key (the app it hosts has the keys, Tirth 2026-11-20: "hovering
+    // the sidebar highlights nothing"): WebKit drops a plain move in a window that isn't active, so each move is given to
+    // it as an active window's (`OverlayHover`): the theme's :hover follows the pointer as anywhere, the app keeping its
+    // keys and its active look. Left for the hole or out of the window: one move at the page's empty slot there (or its
+    // middle), so what was lit goes. Never while the panel is key (WebKit takes the real moves then) or a button is down
+    // (a drag's own events go on).
+    private var hovering = false
+    private func hover(_ at: CGPoint, inside: Bool, buttonsDown: Bool) {
+        guard !buttonsDown, !isClosed, !panel.isKeyWindow, options.harness || window.isVisible else { hovering = false; return }
+        let over = inside && !ignoring
+        guard over || hovering else { return }
+        hovering = over
+        let target = inside ? at : window.pageRect.map { CGPoint(x: $0.midX, y: $0.midY) } ?? at
+        let point = panel.convertPoint(fromScreen: ScreenGeometry.topLeftPoint(target))
+        guard let e = NSEvent.mouseEvent(with: .mouseMoved, location: point, modifierFlags: NSEvent.modifierFlags, timestamp: ProcessInfo.processInfo.systemUptime,
+                                         windowNumber: panel.windowNumber, context: nil, eventNumber: 0, clickCount: 0, pressure: 0) else { return }
+        hoverMoves += 1
+        if !OverlayHover.move(webView, e) { webView.mouseMoved(with: e) }
+    }
+    private(set) var hoverMoves = 0 // moves given to the web view (the tests read it)
 
     // A press on the page area (the hosted window's, through the hole) or outside: a field of Margin's lets go, the
     // palette goes. A press in the page area around a smaller hosted window (window mode; on it, the app has it already)
