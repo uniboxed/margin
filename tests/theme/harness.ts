@@ -612,6 +612,20 @@ const withRuntime = Object.assign(T, {
   },
   rtRefused() { return rt.runtime!.refused.map((r) => [r.name, r.reason]); },
   rtPerformed() { return rt.host.performed.map((p) => p.name); },
+  // A trackpad's phase told while reading the swipe's moving part just before and just after, in one task (the browser's
+  // animation time is the same for both reads): where it's drawn, whether it's settling, and the space shown.
+  rtPhaseRead(selector: string, phase: string) {
+    const el = rt.target.querySelector(selector) as HTMLElement;
+    const read = () => {
+      const pane = el.querySelector('.space-pane:not(.m-swipe-ghost)');
+      const m = pane ? /matrix\(([^)]+)\)/.exec(getComputedStyle(pane).transform) : null;
+      return { drawn: m ? parseFloat(m[1].split(',')[4]) : 0, settling: el.classList.contains('m-settling'), swiping: el.classList.contains('m-swiping'), space: (rt.runtime!.vm as any)?.space?.id as string };
+    };
+    const before = read();
+    document.dispatchEvent(new CustomEvent('m-wheel-phase', { detail: { phase } }));
+    return { before, after: read() };
+  },
+  rtFrames(n: number) { return new Promise<void>((done) => { const f = (k: number) => (k ? requestAnimationFrame(() => f(k - 1)) : done()); f(n); }); },
   rtUi() { const { palette, sidebar, editing, menu, editor, switchingTo } = rt.runtime!.ui; return { palette, sidebar, editing, menu, editor, switchingTo }; },
   // --- The behaviors (tests/theme/behaviors.test.ts) ---
   rtPointer(x: number, y: number) { rt.runtime!.pointer({ x, y }); },

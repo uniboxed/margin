@@ -177,6 +177,72 @@ for (const [name, engine] of ENGINES) {
         await page.evaluate(() => T.unmountRuntime());
       });
 
+      // A settle caught by the fingers touching again (as Arc and Dia do; 2026-11-20): held where it's drawn, never a jump;
+      // nearer the space it headed for, that one shown at once and swiped on from (a third space in two quick swipes);
+      // nearer the one it set out from, swiped back there and that space asked back of the copy; a touch with no swipe
+      // after it, settled again to the nearest space.
+      await t.test('space swipe, a settle caught: held where it\'s drawn; on to a third space; back again, asked back; a touch alone settles again', async () => {
+        const spaceOf = () => page.evaluate(() => (__rt.runtime.vm as any).space.id as string);
+        const asked = () => page.evaluate(() => T.rtSent().filter(([k]) => k === 'setSpace').map(([, p]) => p.spaceId as string));
+        const sidebar = '.margin-sidebar';
+        // (1) On past the next space: two quick swipes, a third space.
+        await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, replies: { setSpace: { shown: null } } }));
+        const width = (await page.evaluate(() => T.rtRect('.margin-sidebar')))!.width;
+        const first = await spaceOf();
+        const far = Math.ceil(width * 0.075); // (20 px a step, half of it drawn: three quarters of the width, a settle left to run)
+        await page.evaluate(() => T.rtWheelPhase('began'));
+        await page.evaluate((n) => T.rtTrackpadRun('.space-title .title', Array(n).fill(20)), far);
+        await page.evaluate(() => T.rtWheelPhase('ended'));
+        await page.evaluate(() => T.rtFrames(4)); // (let go a frame after the lift; a few frames into the settle)
+        const caught = await page.evaluate((sel) => T.rtPhaseRead(sel, 'mayBegin'), sidebar);
+        const second = caught.after.space;
+        assert.ok(caught.before.settling && !caught.after.settling && caught.after.swiping, `caught mid-settle: ${JSON.stringify(caught)}`);
+        assert.ok(second !== first, 'nearer the space it headed for: that one shown at once');
+        assert.ok(Math.abs(caught.after.drawn - (caught.before.drawn + width)) <= 1.5, `held where it's drawn, no jump (${caught.before.drawn} + ${width} → ${caught.after.drawn})`);
+        await page.evaluate((n) => T.rtTrackpadRun('.space-title .title', Array(n).fill(20)), far);
+        await page.evaluate(() => T.rtWheelPhase('ended'));
+        await page.waitForFunction((s) => (__rt.runtime.vm as any).space.id !== s, second, { timeout: 3000 });
+        const third = await spaceOf();
+        assert.ok(third !== first && third !== second, `two quick swipes: a third space (${first} → ${second} → ${third})`);
+        assert.deepEqual((await asked()).slice(-1), [third]);
+        await page.evaluate(() => T.unmountRuntime());
+
+        // (2) Back to where it set out from: caught early, swiped back, at rest there: that space asked back of the copy.
+        await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, replies: { setSpace: { shown: null } } }));
+        const home = await spaceOf();
+        await page.evaluate(() => T.rtWheelPhase('began'));
+        await page.evaluate(() => T.rtTrackpadRun('.space-title .title', [20, 20, 20, 20, 20, 20]));
+        await page.evaluate(() => T.rtWheelPhase('ended')); // (still moving: it heads for the next space)
+        await page.evaluate(() => T.rtFrames(2));
+        const early = await page.evaluate((sel) => T.rtPhaseRead(sel, 'mayBegin'), sidebar);
+        assert.ok(early.before.settling && !early.after.settling, `caught: ${JSON.stringify(early)}`);
+        assert.equal(early.after.space, home, 'nearer where it set out from: still that space');
+        assert.ok(Math.abs(early.after.drawn - early.before.drawn) <= 1.5, `held where it's drawn (${early.before.drawn} → ${early.after.drawn})`);
+        const headedFor = (await asked()).at(-1);
+        assert.ok(headedFor && headedFor !== home, 'the next space had been asked for at the lift');
+        await page.evaluate(() => T.rtTrackpadRun('.space-title .title', [-10, -10, -10, -10, -10, -10]));
+        await page.waitForTimeout(300); // (the fingers resting: no speed at the lift, the nearest space)
+        await page.evaluate(() => T.rtWheelPhase('ended'));
+        await page.waitForFunction(() => T.rtCount('.m-swiping') === 0, null, { timeout: 3000 });
+        assert.equal(await spaceOf(), home, 'back where it set out from');
+        assert.deepEqual((await asked()).slice(-1), [home], 'that space asked back of the copy');
+        await page.evaluate(() => T.unmountRuntime());
+
+        // (3) A touch and no swipe: settled again, to the nearest space.
+        await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, replies: { setSpace: { shown: null } } }));
+        const start = await spaceOf();
+        await page.evaluate(() => T.rtWheelPhase('began'));
+        await page.evaluate((n) => T.rtTrackpadRun('.space-title .title', Array(n).fill(20)), far);
+        await page.evaluate(() => T.rtWheelPhase('ended'));
+        await page.evaluate(() => T.rtFrames(4));
+        const touched = await page.evaluate((sel) => T.rtPhaseRead(sel, 'mayBegin'), sidebar);
+        assert.ok(!touched.after.settling && touched.after.space !== start);
+        await page.evaluate(() => T.rtWheelPhase('ended'));
+        await page.waitForFunction(() => T.rtCount('.m-swiping') === 0, null, { timeout: 3000 });
+        assert.equal(await spaceOf(), touched.after.space, 'settled again at the space it was nearest');
+        await page.evaluate(() => T.unmountRuntime());
+      });
+
       await t.test('the launcher in Margin.app\'s overlay: not focused as it first draws, focused at the app\'s word or when it comes later', async () => {
         // (Its overlay isn't on screen as it first draws: Margin.app starting, a link back, a page reloaded.)
         await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, mode: 'fullscreen', inNewTab: true, focusLauncherAtMount: false }));

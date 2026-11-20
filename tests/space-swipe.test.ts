@@ -1,7 +1,7 @@
 // shared/space-swipe.ts: the sidebar's swipe between spaces.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createSpaceSwipe, settle, rubberBand, settleArc, rubberBandArc, springArc, springKeyframes, ARC, FEELS } from '../extension/shared/space-swipe.ts';
+import { createSpaceSwipe, settle, rubberBand, settleArc, rubberBandArc, rubberBandArcInverse, springArc, springKeyframes, ARC, FEELS } from '../extension/shared/space-swipe.ts';
 
 type Swipe = ReturnType<typeof createSpaceSwipe>;
 
@@ -252,4 +252,8 @@ test('keyframes: the spring every 1/240 s as progress from where it\'s drawn (0)
   const flick = springKeyframes(springArc(-120, -3000, -260, 0.25), -120, -260)!;
   assert.ok(flick[6] > k[6], 'a flick: further at first');
   assert.equal(springKeyframes(springArc(0, 0, 0), 0, 0), null);
+});
+
+test('arc rubber band\'s inverse: the overflow a drawn place stands for (a settle caught past an end, the band not applied twice)', () => {
+  for (const v of [0, 1, 40, 300, -120, 5000]) assert.ok(Math.abs(rubberBandArcInverse(rubberBandArc(v)) - v) < 1e-6 * Math.max(1, Math.abs(v)), `${v}`);
 });
