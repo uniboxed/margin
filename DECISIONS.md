@@ -6494,3 +6494,16 @@ sidebar's edge. The cause, two faults:
 - Tests: the clipping rules on stand-ins (`tests/ui-host-app.test.ts`), Arcadia in WebKit and Chromium swiping back and
   on, held and settling, nothing more over the page than at rest (it failed, swiping back, without the change), and the
   catcher drawn into a bitmap (it failed without the copy).
+
+## Safari's toolbar over Margin: traced, cause not known yet (2026-11-20)
+
+Tirth: now and then, back in Margin from another app with a Safari tab shown, Safari's full-screen toolbar shows half
+covered, in the menu bar's place or over the page's top. The logs of the one time (16:31–16:39) held nothing of it:
+Margin read the toolbar window each poll but never said where it was. The one odd return then (the pointer in the menu
+bar's band as Margin's Space came back, the bar revealed, Margin made active by it 0.2 s after Safari got the keys) was
+played by him on purpose with the pointer at the top several times (16:52–16:55): no toolbar, so not that alone.
+Now Margin says, whenever the shown host's own full-screen toolbar window changes (bounds, alpha, layer, on screen),
+where it is (resting above its window, or out over it by so many points), its window's bounds, the front app and the
+pointer (`host: <id>: its full-screen toolbar …`). MenuBarAgent's own log (`com.apple.menubar:reveal`) gives the bar's
+state at the same moments. Nothing read but the pointer: the poll's model has the rest. Next time it's seen, its time
+and these lines tell the cause.

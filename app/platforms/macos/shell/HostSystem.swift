@@ -79,6 +79,7 @@ protocol HostSystem: AnyObject {
     func frontmost(pid: pid_t) async -> Bool
     // The front app's pid now (NSWorkspace's), for the log; nil: unread.
     func frontApp() -> pid_t?
+    func pointer() -> CGPoint? // the pointer, top-left coordinates (nil: unread)
     // Closed as its close button would (AXPress on its AXCloseButton, an action, never a click). True: asked.
     func close(pid: pid_t, window: Int) async -> Bool
     // Minimized into the Dock as its yellow button would (AXMinimized set, never a click). True: asked.
@@ -174,6 +175,7 @@ extension HostSystem {
     // (A stand-in that doesn't play it: not taken, front app unread.)
     func frontmost(pid: pid_t) async -> Bool { false }
     func frontApp() -> pid_t? { nil }
+    func pointer() -> CGPoint? { nil }
     // (A stand-in that doesn't play it: none.)
     func focusedWindow(pid: pid_t) async -> Int? { nil }
     func minimize(pid: pid_t, window: Int) async -> Bool { false }
@@ -657,6 +659,7 @@ final class RealHostSystem: HostSystem {
         return await ax.frontmost(pid: pid)
     }
     func frontApp() -> pid_t? { NSWorkspace.shared.frontmostApplication?.processIdentifier }
+    func pointer() -> CGPoint? { PointerWatch.location }
 
     // The View › Show Sidebar item's title (SafariAX, ShellSafariSidebar.swift): "Hide Sidebar" while it's open,
     // "Show Sidebar" while it's closed; in another language, unknown.
