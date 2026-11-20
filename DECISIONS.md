@@ -6321,3 +6321,14 @@ profile) drawn over the hosted app (Maps), gone after another tab and back.
   (`releaseWokenSpace`). A wake window is never let into Margin's Space.
 - **The address pill** showed "com.apple.Maps" for an app item (its address app://<bundle id> taken for a site): it
   shows the app's name now, as its row does.
+
+## The app shown gets the keys back when Margin's Space is shown again (2026-11-20)
+
+Tirth: back on Margin from another app's full screen, the hosted app wasn't active until a click. macOS makes a
+full-screen Space's owner the active app when the Space is shown (a swipe, ⌘-Tab, Mission Control), and that's Margin:
+the hosted apps have no Dock icon (as with macOS's menu bar, DECISIONS "The keyboard back after macOS's menu bar"). Now,
+when the Space changes and Margin's window is on the current Space, in full screen, with an app shown and Margin the
+active app, the keys go back to that app (`lookBack`: looked at 0.15 s and 0.5 s after the change, once per change).
+Never while a field or menu of Margin's wants them, another window of Margin's has them (the quit prompt, a file
+picker), a sheet is up, or the menu bar's own watch runs. Not on every activation of Margin: a file picker
+(`NSApp.activate()` before its panel) would lose its focus. Checked by the window tests (the decision) and the glue e2e.
