@@ -6385,3 +6385,15 @@ sometimes overshot. Asked to match Arc exactly by reverse-engineering it.
 - Checked: unit tests of each number and rule, Arcadia's own swipe in WebKit and Chromium (half the distance, held while
   resting, one tick past halfway, the spring frame by frame and never past the target, the next space shown as it
   lands, no theme transition), the phases and the tick through Margin.app (glue e2e). On the real trackpad: to be felt.
+
+## Safari not running when its profile is waited for (2026-11-20)
+
+Tirth's launch at 13:45: the browser's preparation failed to place Safari's window ("its window didn't take the page
+area's size in its own Space", its frame not listed by the window server at all: likely a window Safari had restored
+and Margin was closing, picked as the new one by the copy's bounds; not proven), so Margin closed the window and quit
+the Safari it had started. The show after it then waited for that profile's copy and pressed Safari's menu four times
+over 30 s, though Safari wasn't running (its menu can't be pressed, no copy links), before the open started Safari
+again (shown at 13:45:51). Now `safariLinked` starts Safari when it isn't running (no Dock icon, as Margin's start does)
+and then waits as before (the wake and the default-profile fallback keep working); one that doesn't start isn't waited
+for. The window's choice by bounds is said when it had others to tell apart, and a window gone mid-placing is said as
+such, so the next time shows which window it was.

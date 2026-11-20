@@ -607,6 +607,16 @@ func safariWakeTests(_ library: Library) {
               && s.done.contains { $0.contains("no longer waited for") }, "\(elapsed()) \(s.done.suffix(2))")
     }
     do {
+        // Safari not running at all (2026-11-20: quit by Margin after a failed preparation) and it doesn't start (the
+        // stand-in starts nothing): not waited for, never pressed. (Started, it's waited for as usual: the hosted tests'
+        // wakes below begin with no Safari running.)
+        let (s, links, _, elapsed, _) = rig(runs: false)
+        var ok = true
+        hostRun { ok = await s.safariLinked("s-p") }
+        check("wake: Safari not running and not starting: not waited for, never pressed, said", !ok && links.menuOpens.isEmpty && elapsed() < 0.2
+              && s.done.contains { $0.contains("Safari isn't running") }, "\(elapsed()) \(links.menuOpens) \(s.done.suffix(2))")
+    }
+    do {
         // Safari quit while waited for: given up at once.
         let (s, _, stub, elapsed, at) = rig()
         at(2) { stub.runs = false }
