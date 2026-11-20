@@ -6104,3 +6104,22 @@ took the ended instance for the person's own: NSWorkspace still listed it (its t
 worked. An open (and the browser's start) now uses only instances whose process still runs (`HostEngine.liveInstances`).
 Margin's own keys are now said in its log as they're pressed (the command and the front app, never a held key's
 repeats), so a key that didn't reach Margin can be told from one Margin ignored.
+
+
+## The keyboard back after macOS's menu bar (2026-11-19, night)
+
+macOS makes a full-screen Space's owner the active app whenever its menu bar comes down there (the window server's rule;
+only an app with a Dock icon can be an owner), and Margin owns its Space, so the app Margin hosts lost the keyboard to
+Margin at every hover of the top edge and kept it lost after the bar went up. Now Margin, made active with the pointer at
+the display's top edge while an app is shown and no field of Margin's wants the keys, watches the bar (10 times a second,
+only while that's so) and gives the keys back to the app shown once the bar has been up for 0.4 s: the pointer out of the
+top 40 points, no button down, no menu of Margin's open, no Control Center, Notification Center or menu panel on screen (a
+status item's own menu included). It gives up if another app comes in front, a field of Margin's takes the keys (a menu
+item opened the palette), nothing is shown, or after 2 minutes (`MarginWindowController.becameActive`, `watchBar`).
+
+- **Why not keep the keyboard the whole time.** Tried the same day on its own branch, `feat/ownerless-space` (never to be
+  merged without Tirth's word): a Space owned by a helper with no Dock icon, Margin's own drawn menu titles, the real bar
+  shown by Margin. Focus held, but every part of macOS's menu bar needed its own workaround there (an invisible window of
+  the menu bar's own over the status items, third-party items, Notification Center), and one early version stopped the
+  window server. Tirth chose this branch's simpler way: everything at the top stays macOS's own (every status item, the
+  native strip, Margin's real menus), and only the moment the bar is down belongs to Margin.
