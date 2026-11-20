@@ -20,6 +20,25 @@
 //    sidebar recognises as such, Shift+wheel) and pinches never swipe, and
 //    a swipe needs MIN_EVENTS events to switch (a notch or two never does).
 
+// Arc's own feel (reverse-engineered from Arc 1.174.0's sidebar paging, ARCUI.PageSwipeController inside
+// Arc.WindowLayoutController, 2026-11-20; DECISIONS.md "The space swipe as Arc's"), for a theme that asks for it
+// (`--m-swipe-feel: arc`, ui/behaviors/swipe.ts): the sidebar moves half the fingers' scroll distance; their speed is
+// read over the last 100 ms (ARCUI.VelocityTracker); at the lift, moving at 5 px/s or more its direction decides, slower
+// the nearest space; past the first or last space Motion's rubber band (coefficient 0.15 over 255 pt); the settle a
+// critically damped spring (response 0.4 s, damping ratio 1) from the lift's speed when that heads the same way.
+const ARC = {
+  SCALE: 0.5,
+  VELOCITY_MS: 100,
+  COMMIT_SPEED: 5, // px/s of the sidebar
+  RUBBER_COEFFICIENT: 0.15,
+  RUBBER_DIMENSION: 255,
+  RESPONSE: 0.4, // s
+  DAMPING: 1,
+  REST_PX: 0.5, // the settle is over within half a pixel…
+  REST_SPEED: 10, // …moving under 10 px/s
+  SETTLE_MAX_S: 1.5,
+};
+
 const DEFAULTS = {
   GAP_MS: 140,
   AXIS_PX: 6,
@@ -35,7 +54,8 @@ function createSpaceSwipe(options: Partial<typeof DEFAULTS> = {}) {
   const o = { ...DEFAULTS, ...options };
   // A swipe under way: its axis once it's known, how far each way, its offset and events, whether it's let go,
   // its last delta, and its recent deltas with their times.
-  type Gesture = { axis: 'x' | 'y' | null, dx: number, dy: number, offset: number, events: number, released: boolean, last: number, recent: { d: number, t: number }[] };
+  // `samples`: the offset after each counted event, with its time (the velocity's, ARC.VELOCITY_MS).
+  type Gesture = { axis: 'x' | 'y' | null, dx: number, dy: number, offset: number, events: number, released: boolean, last: number, recent: { d: number, t: number }[], samples: { o: number, t: number }[] };
   let gesture: Gesture | null = null;
   let lastTime = -Infinity;
 
@@ -60,14 +80,19 @@ function createSpaceSwipe(options: Partial<typeof DEFAULTS> = {}) {
     }
     return true;
   };
-  const release = (g: Gesture) => {
+  // `time`: when it was let go. `overrun`: by momentum (`decaying`), the offset its run added after its first event, and
+  // `lifted` that first event's time (the fingers lifted about then: Arc's feel takes the run back out).
+  const release = (g: Gesture, time: number, run = false) => {
     g.released = true;
     g.last = -(g.recent.at(-1)?.d ?? 0); // the last delta, as deltaX
-    return { phase: 'release', offset: g.offset, speed: speed(g), events: g.events, counted: false };
+    const tail = run ? g.recent.slice(-(o.MOMENTUM_RUN - 1)) : [];
+    const overrun = tail.reduce((sum, r) => sum + r.d, 0);
+    const lifted = run ? g.recent.at(-o.MOMENTUM_RUN)?.t ?? time : time;
+    return { phase: 'release', offset: g.offset, speed: speed(g), events: g.events, counted: false, time, overrun, lifted };
   };
 
   // One event of gesture `g`; `ok`: this input, here, may swipe.
-  function track(g: Gesture | null, { deltaX, deltaY, time, ok }: { deltaX: number; deltaY: number; time: number; ok: boolean; }) {
+  function track(g: Gesture | null, { deltaX, deltaY, time, ok, decay }: { deltaX: number; deltaY: number; time: number; ok: boolean; decay: boolean }) {
     if (!g || g.axis === 'y' || g.released) return idle();
     if (g.axis == null) {
       if (!ok) {
@@ -85,7 +110,9 @@ function createSpaceSwipe(options: Partial<typeof DEFAULTS> = {}) {
     g.events += 1;
     g.recent.push({ d: -deltaX, t: time });
     if (g.recent.length > 8) g.recent.shift();
-    if (decaying(g)) return release(g);
+    g.samples.push({ o: g.offset, t: time });
+    if (g.samples.length > 64) g.samples.shift();
+    if (decay && decaying(g)) return release(g, time, true);
     return { phase: 'tracking', offset: g.offset, speed: speed(g), events: g.events, counted: true };
   }
 
@@ -95,21 +122,24 @@ function createSpaceSwipe(options: Partial<typeof DEFAULTS> = {}) {
     // gesture doesn't apply (something under the pointer scrolls sideways, a
     // field is being edited); `mouse`: the sidebar recognised a mouse wheel.
     // Checked until the gesture's axis is decided.
-    wheel({ deltaX = 0, deltaY = 0, deltaMode = 0, ctrlKey = false, shiftKey = false, mouse = false, time, usable = true }: { deltaX?: number, deltaY?: number, deltaMode?: number, ctrlKey?: boolean, shiftKey?: boolean, mouse?: boolean, time: number, usable?: boolean }) {
-      let fresh = time - lastTime > o.GAP_MS;
+    // `fresh` (the trackpad's phases known, Margin.app): true, a new gesture whatever the gap (the fingers touched
+    // again); false, the same one (they're still down, however long they rested). Unsaid, the gap decides. `decay`:
+    // false, never let go by momentum (the phases say when the fingers lift).
+    wheel({ deltaX = 0, deltaY = 0, deltaMode = 0, ctrlKey = false, shiftKey = false, mouse = false, time, usable = true, fresh: told, decay = true }: { deltaX?: number, deltaY?: number, deltaMode?: number, ctrlKey?: boolean, shiftKey?: boolean, mouse?: boolean, time: number, usable?: boolean, fresh?: boolean, decay?: boolean }) {
+      let fresh = told ?? time - lastTime > o.GAP_MS;
       lastTime = time;
       // After a release, only momentum continues the gesture: steady or
       // shrinking, the same way, sideways.
       const g0 = gesture;
-      if (!fresh && g0?.released) {
+      if (!fresh && g0?.released && told === undefined) {
         const momentum = Math.abs(deltaX) >= Math.abs(deltaY) && Math.sign(deltaX) !== -Math.sign(g0.last) && Math.abs(deltaX) <= Math.abs(g0.last) * 1.2 + 1;
         if (momentum) g0.last = deltaX;
         else fresh = true;
       }
       // A drag still being tracked when a new gesture starts: let it go now.
-      const unreleased = fresh && gesture?.axis === 'x' && !gesture.released ? release(gesture) : null;
-      if (fresh) gesture = { axis: null, dx: 0, dy: 0, offset: 0, events: 0, released: false, last: 0, recent: [] };
-      const result = track(gesture, { deltaX, deltaY, time, ok: usable && !ctrlKey && !shiftKey && !mouse && deltaMode === 0 });
+      const unreleased = fresh && gesture?.axis === 'x' && !gesture.released ? release(gesture, time) : null;
+      if (fresh) gesture = { axis: null, dx: 0, dy: 0, offset: 0, events: 0, released: false, last: 0, recent: [], samples: [] };
+      const result = track(gesture, { deltaX, deltaY, time, ok: usable && !ctrlKey && !shiftKey && !mouse && deltaMode === 0, decay });
       return unreleased ?? result;
     },
     // Would a wheel event at `time` belong to the swipe being tracked? (The
@@ -118,12 +148,35 @@ function createSpaceSwipe(options: Partial<typeof DEFAULTS> = {}) {
       return !!gesture && gesture.axis === 'x' && time - lastTime <= o.GAP_MS;
     },
     // No wheel events for GAP_MS: the fingers stopped or lifted.
-    end() {
+    end(time = lastTime) {
       const g = gesture;
       gesture = null;
       lastTime = -Infinity;
       if (!g || g.axis !== 'x' || g.released) return idle();
-      return release(g);
+      return release(g, time);
+    },
+    // The fingers lifted (the trackpad's phases, Margin.app): the swipe being tracked let go now. It stays the gesture
+    // (released): its momentum continues it and is ignored.
+    lift(time: number) {
+      const g = gesture;
+      if (!g || g.axis !== 'x' || g.released) return idle();
+      return release(g, time);
+    },
+    // A swipe tracked and not let go, its last event within the gap of `time`.
+    tracking(time: number) {
+      return !!gesture && gesture.axis === 'x' && !gesture.released && time - lastTime <= o.GAP_MS;
+    },
+    // The gesture (tracked or let go) is a sideways swipe.
+    isSwipe() {
+      return gesture?.axis === 'x';
+    },
+    // Arc's velocity (px/ms, signed like the offset): the first and last of the samples within `window` ms before
+    // `time`, the newest at or before it; 0 with fewer than two.
+    velocity(time: number, window: number) {
+      const run = (gesture?.samples ?? []).filter((x) => x.t <= time && x.t >= time - window);
+      if (run.length < 2) return 0;
+      const first = run[0], last = run[run.length - 1];
+      return last.t > first.t ? (last.o - first.o) / (last.t - first.t) : 0;
     },
     reset() {
       gesture = null;
@@ -151,4 +204,42 @@ function rubberBand(offset: number, max: number) {
   return Math.sign(offset) * max * (1 - 1 / (d / max + 1));
 }
 
-export { createSpaceSwipe, settle, rubberBand, DEFAULTS };
+// Arc's: where a released swipe goes (-1, 1 or 0, as `settle`). `offset`: the sidebar's (> 0 toward the previous
+// space); `velocity`: its speed at the lift (px/s, signed alike). At ARC.COMMIT_SPEED or more, its direction: toward a
+// neighbour it's over, that one; away from it, back. Slower, the nearest: past half the width, that neighbour. One
+// space at most, and only toward one there is. `cancelled` (the trackpad cancelled the gesture): back.
+function settleArc({ offset, velocity, width, has, events = Infinity, cancelled = false }: { offset: number, velocity: number, width: number, has: (dir: -1 | 1) => boolean, events?: number, cancelled?: boolean }, o = DEFAULTS) {
+  if (cancelled || events < o.MIN_EVENTS) return 0;
+  const p = -offset, v = -velocity; // Arc's position and velocity: > 0 toward the next space
+  let dir: -1 | 0 | 1;
+  if (Math.abs(v) >= ARC.COMMIT_SPEED) dir = p > 0 ? (v > 0 ? 1 : 0) : p < 0 ? (v > 0 ? 0 : -1) : (v > 0 ? 1 : -1);
+  else dir = Math.abs(p) >= width / 2 ? (p > 0 ? 1 : -1) : 0;
+  return dir && has(dir) ? dir : 0;
+}
+
+// Arc's rubber band (Motion's `rubberband`, coefficient 0.15 over 255 pt): `overflow` px past the last space shown as.
+function rubberBandArc(overflow: number) {
+  const x = Math.abs(overflow) * ARC.RUBBER_COEFFICIENT / ARC.RUBBER_DIMENSION + 1;
+  return Math.sign(overflow) * (1 - 1 / x) * ARC.RUBBER_DIMENSION;
+}
+
+// Arc's settle: a critically damped spring (damping ratio 1; Motion's SpringFunction: stiffness (2π/response)²) from
+// `from` at `velocity` (px/s) to `to`. `at(t)` (seconds): where it is and how fast; `duration`: when it's at rest
+// (within REST_PX, under REST_SPEED; at most SETTLE_MAX_S), found by stepping 1/240 s as Arc samples it.
+function springArc(from: number, velocity: number, to: number, response = ARC.RESPONSE) {
+  const w = (2 * Math.PI) / response;
+  const a = from - to, b = velocity + w * a;
+  const at = (t: number) => {
+    const e = Math.exp(-w * t);
+    return { x: to + (a + b * t) * e, v: (b - w * (a + b * t)) * e };
+  };
+  let duration = 0;
+  for (let t = 0; t <= ARC.SETTLE_MAX_S; t += 1 / 240) {
+    const { x, v } = at(t);
+    duration = t;
+    if (Math.abs(x - to) < ARC.REST_PX && Math.abs(v) < ARC.REST_SPEED) break;
+  }
+  return { at, duration };
+}
+
+export { createSpaceSwipe, settle, rubberBand, settleArc, rubberBandArc, springArc, ARC, DEFAULTS };

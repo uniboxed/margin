@@ -416,6 +416,16 @@ test('the app host: the hosted window\'s own minimum width, from the hello and a
   assert.equal(over.pageMinWidth, 0, 'over a browser window: never');
 });
 
+test('the app host: a space swipe\'s detent tick goes to the app (its own window only)', () => {
+  const b = bridge();
+  const host = createAppHost({ hello: hello({ host: 'app-window' }), post: b.post });
+  assert.equal(host.perform('haptic.alignment'), true);
+  assert.deepEqual(b.posts.at(-1), { op: 'perform', name: 'haptic.alignment' });
+  const over = bridge();
+  assert.equal(createAppHost({ hello: hello(), post: over.post }).perform('haptic.alignment'), false, 'over a browser window: not the app\'s');
+  assert.deepEqual(over.posts, []);
+});
+
 test('the app host: the sidebar\'s width being dragged goes to the app (its own window only); a layout that leaves the corners out keeps them', () => {
   const b = bridge();
   const host = createAppHost({ hello: hello({ host: 'app-window', pageHosted: true }), post: b.post });

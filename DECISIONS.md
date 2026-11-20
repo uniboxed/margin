@@ -6351,3 +6351,37 @@ themes' hover rules then outweighed their own `.active` rules of equal weight th
 Neubrutalism, Pixel; Liquid Glass says `.on:hover` itself). Now `:is(:hover,[m-hover]):where(:not([m-hover-off]),[m-hover])`:
 the same match (hovered and not marked off, or marked), a plain :hover's weight, so the theme's own order decides as
 with WebKit's hover. Checked in the glue e2e (the active row marked keeps its fill; failed with the old rewrite).
+
+## The space swipe as Arc's (2026-11-20)
+
+Tirth: Arcadia's two-finger swipe between spaces wasn't as smooth as Arc's; it didn't follow the gesture properly and
+sometimes overshot. Asked to match Arc exactly by reverse-engineering it.
+
+- **How it was read.** Arc 1.174.0's arm64 slice (`lipo -thin`). Hopper's demo couldn't finish analysing 80 MB within
+  its session (REA timed out waiting for it; the document was left to Hopper). Instead: the Swift type metadata
+  (`__swift5_types`: names, fields, vtables, access functions), the selector stubs (`__objc_stubs`), every call to
+  `momentumPhase`/`phase`/`scrollingDeltaX`, and the functions around them disassembled with `objdump`, annotated by
+  small read-only scripts. The sidebar's pager is `ARCUI.PageSwipeController<LayoutPage>`, the lazy `pagingController`
+  of `Arc.WindowLayoutController`, made with no keyframe handler (so Arc's spring drives it frame by frame).
+- **Arc's model.** A trackpad gesture (phases, precise deltas) starts at `mayBegin` (a settle caught) or at `began`
+  when it's at least as sideways as it's vertical; Arc then reads the window's events itself
+  (`nextEventMatchingMask:`) until `ended`, ignoring momentum. Each move: position += scrollingDeltaX × −0.5 (half the
+  fingers' distance). Past the first or last page: Motion's rubber band, coefficient 0.15 over 255 pt. A page crossed
+  past halfway (`frinta` of the progress): `NSHapticFeedbackManager` `.alignment`, `.now`. At the lift: the speed from
+  `ARCUI.VelocityTracker` (first and last samples of the last 100 ms); at 5 or more a second its direction decides,
+  slower the nearest page; one page at most from where it began. The settle: Motion's spring, damping ratio 1,
+  response 0.4 s (0.25 s only with a keyframe handler, which the sidebar has none of), from the lift's speed when it
+  heads toward the target, else from rest.
+- **Ours.** `shared/space-swipe.ts` `ARC`, `settleArc`, `rubberBandArc`, `springArc`; `ui/behaviors/swipe.ts` uses
+  them when the theme sets `--m-swipe-feel: arc` (Arcadia does; the other themes keep their own feel, Pixel's stepped
+  settle among them), and moves `--m-swipe-offset` each frame of the spring (Arcadia's 200 ms transition removed).
+  Margin.app now tells its page the trackpad's phases (`wheelPhase` → `m-wheel-phase`, only as they change): every
+  theme there is let go at the real lift (no momentum mistaken for the fingers: the overshoot), held while the fingers
+  rest, and its momentum never moves a space; the detent's tick is `haptic.alignment`. Over Safari (no phases) the old
+  inference stays; with Arc's feel, what the momentum added before it was told apart is taken back out.
+- **Not done (yet).** Arc catches a settling sidebar when the fingers touch again (`mayBegin`) and carries on from where
+  it's drawn; ours still ignores a new swipe until the settle is over (~0.5 s). Arc's mouse-wheel path
+  (`NonGesturalScrollState`, cumulative distance) wasn't read.
+- Checked: unit tests of each number and rule, Arcadia's own swipe in WebKit and Chromium (half the distance, held while
+  resting, one tick past halfway, the spring frame by frame and never past the target, the next space shown as it
+  lands, no theme transition), the phases and the tick through Margin.app (glue e2e). On the real trackpad: to be felt.

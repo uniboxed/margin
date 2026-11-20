@@ -1537,6 +1537,32 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         return ask(type, payload) ?? ["ok": true, "result": true]
     }
 
+    // A scroll event's phase change, as its page is told (nil: none worth telling: a move with the fingers down or
+    // momentum under way). The momentum's start and end are told apart from the fingers' (a lift then momentum).
+    nonisolated static func wheelPhaseName(phase: NSEvent.Phase, momentum: NSEvent.Phase) -> String? {
+        if momentum.contains(.began) { return "momentum" }
+        if momentum.contains(.ended) || momentum.contains(.cancelled) { return "momentumEnd" }
+        if phase.contains(.mayBegin) { return "mayBegin" }
+        if phase.contains(.began) { return "began" }
+        if phase.contains(.ended) { return "ended" }
+        if phase.contains(.cancelled) { return "cancelled" }
+        return nil
+    }
+    private(set) var wheelPhasesSaid: [String] = [] // (the tests read them; the last 20)
+    func wheelPhase(_ name: String) {
+        wheelPhasesSaid.append(name)
+        if wheelPhasesSaid.count > 20 { wheelPhasesSaid.removeFirst(wheelPhasesSaid.count - 20) }
+        push(#"{"type":"wheelPhase","phase":"\#(name)"}"#)
+    }
+    // A space swipe's detent (ui/behaviors/swipe.ts, Arc's feel): the trackpad's alignment tick, at once, as Arc does it
+    // (NSHapticFeedbackManager, .alignment, .now). Only a Force Touch trackpad plays it.
+    private(set) var haptics = 0
+    private func alignmentTick() {
+        haptics += 1
+        guard !options.harness else { return }
+        NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+    }
+
     func pageSaid(_ op: String, _ body: JSONObject) {
         switch op {
         case "ready":
@@ -1585,6 +1611,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             // The sidebar's width being dragged, or let go (ui/behaviors/resize.ts): the session's (it holds the hosted
             // window's placing until it's over).
             if name == "sidebar.resizing" { return sidebarResizing((body["arg"] as? JSONObject)?["on"] as? Bool == true) }
+            if name == "haptic.alignment" { return alignmentTick() }
             guard !name.isEmpty else { return }
             ask(name, body["arg"] as? JSONObject ?? [:])
         case "log":
@@ -1674,7 +1701,7 @@ final class MarginWindows {
         menuTarget.handle = { [weak self] action in self?.perform(action) }
         menuTarget.enabled = { [weak self] action in action == .newWindow || self?.front != nil }
         pointer.onMove = { [weak self] at in for c in self?.controllers ?? [] { c.pointerMoved(at) } }
-        if !options.harness { startKeyRelay() }
+        if !options.harness { startKeyRelay(); startWheelPhases() }
         pointer.onPress = { [weak self] at in for c in self?.controllers ?? [] { c.pressed(at) } }
         // Margin activated (its Dock icon, ⌘-Tab): each window in front of what it hosts (the `order` mechanism orders
         // it there again), and one still not in full screen, its toggle ignored while Margin wasn't active, asked again.
@@ -1706,6 +1733,7 @@ final class MarginWindows {
     deinit {
         for o in menuObservers { NotificationCenter.default.removeObserver(o) }
         if let keyRelay { NSEvent.removeMonitor(keyRelay) }
+        if let wheelPhases { NSEvent.removeMonitor(wheelPhases) }
         if let activeObserver { NotificationCenter.default.removeObserver(activeObserver) }
         for o in frontObservers { NSWorkspace.shared.notificationCenter.removeObserver(o) }
     }
@@ -1726,6 +1754,18 @@ final class MarginWindows {
         return keyWindow == .other || fieldWantsKeys ? nil : shown
     }
     private var keyRelay: Any?
+    // The trackpad's phases over a window's UI (its panel): told to its page as they change (`wheelPhase`), for the
+    // space swipe, which a web page's wheel events don't tell. Never consumed: the event goes on to the web view as is.
+    private var wheelPhases: Any?
+    private func startWheelPhases() {
+        guard wheelPhases == nil else { return }
+        wheelPhases = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+            guard let self, event.hasPreciseScrollingDeltas, let c = self.controllers.first(where: { $0.panel === event.window }),
+                  let name = MarginWindowController.wheelPhaseName(phase: event.phase, momentum: event.momentumPhase) else { return event }
+            c.wheelPhase(name)
+            return event
+        }
+    }
     private(set) var keysRelayed = 0
     private func startKeyRelay() {
         guard keyRelay == nil else { return }

@@ -31,6 +31,15 @@ func marginWindowTests() {
               MarginWindowController.barUpFor == 0.4 && MarginWindowController.barWatchMost == 120 && MarginWindowController.barBand == 40)
     }
 
+    // ---- the trackpad's phases told to the page (the space swipe as Arc's, 2026-11-20) ----
+    do {
+        func name(_ p: NSEvent.Phase, _ m: NSEvent.Phase = []) -> String? { MarginWindowController.wheelPhaseName(phase: p, momentum: m) }
+        check("trackpad phases: touched, began, lifted, cancelled; the momentum's start and end; a move or none: nothing told",
+              name(.mayBegin) == "mayBegin" && name(.began) == "began" && name(.ended) == "ended" && name(.cancelled) == "cancelled"
+              && name([], .began) == "momentum" && name([], .ended) == "momentumEnd" && name([], .cancelled) == "momentumEnd"
+              && name(.changed) == nil && name([], .changed) == nil && name([]) == nil && name(.stationary) == nil)
+    }
+
     // ---- its Space shown again (2026-11-20: back from another app's full screen, the app shown wasn't the active one) ----
     do {
         func back(space: Bool = true, full: Bool = true, shown: Bool = true, front: Bool = true, field: Bool = false, other: Bool = false, modal: Bool = false, bar: Bool = false) -> Bool {
