@@ -3280,6 +3280,13 @@ func windowModeTests(world: () -> (FakeHostWorld, HostEngine, URL)) {
         check("reopen during its exit, still listed: nothing left", w.apps.isEmpty && clean(w))
     }
     do {
+        // ...and the real system's own launch (2026-11-20, Weather: its exit heard, its launch refused 2 ms on because
+        // NSWorkspace still listed it): only an instance whose process runs stops a launch.
+        let ended = HostApp(pid: 41, bundleId: "com.apple.weather", launchedAt: 1), live = HostApp(pid: 42, bundleId: "com.apple.weather", launchedAt: 2)
+        check("launch: an instance still listed whose process ended doesn't stop a new launch; a live one does; none listed: nothing stops it",
+              !RealHostSystem.blocksLaunch([ended], runs: { $0 == 42 }) && RealHostSystem.blocksLaunch([ended, live], runs: { $0 == 42 }) && !RealHostSystem.blocksLaunch([], runs: { _ in true }))
+    }
+    do {
         // ...and an old instance that doesn't quit (unsaved work): after `quitWait` it's Margin's again, reused (no
         // second launch), said once.
         let (w, e, _) = world()

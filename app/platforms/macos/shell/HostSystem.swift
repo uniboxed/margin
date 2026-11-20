@@ -518,10 +518,18 @@ final class RealHostSystem: HostSystem {
     }
 
     func launchDockless(bundleId: String, arguments: [String]) -> Bool {
-        guard running(bundleId: bundleId).isEmpty, let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) else { return false }
+        guard !Self.blocksLaunch(running(bundleId: bundleId), runs: { self.processRuns(pid: $0) }),
+              let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) else { return false }
         return calls.launchDockless(url, arguments: arguments) { ok in
             if !ok { Task { @MainActor in Diagnostics.warn("host: LaunchServices didn't start \(bundleId) with no Dock icon") } }
         }
+    }
+
+    // Whether an instance already running stops a launch: only one whose process still runs. NSWorkspace can still list
+    // an app for a moment after its process ended (2026-11-20 12:16:42: Weather's exit heard, its new launch refused
+    // 2 ms on, "couldn't be started with no Dock icon"); the engine waits for that exit, then launches.
+    nonisolated static func blocksLaunch(_ listed: [HostApp], runs: (pid_t) -> Bool) -> Bool {
+        listed.contains { runs($0.pid) }
     }
 
     func terminate(pid: pid_t) -> Bool {
