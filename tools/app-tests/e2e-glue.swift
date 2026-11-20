@@ -1113,6 +1113,30 @@ func glueScenario() async {
       c.pointerMoved(CGPoint(x: display.maxX - 200, y: display.midY), buttonsDown: false)
       _ = await waitJS(c.webView, "return !document.querySelector('[m-hover]')")
     } else { check("two sidebar rows to hover", false) }
+    // WebKit's own :hover left where it was (the row the pointer was over while Margin's panel was key: it follows no move
+    // once the panel isn't), Margin's marks on another row: only the marked one lit (Tirth's recording, 2026-11-20: the
+    // row from before stayed lit beside the one under the pointer).
+    if let rows = await js(c.webView, "return [...document.querySelectorAll('\(rowSelector)')].slice(0, 2).map(e => { const r = e.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })") as? [[Double]], rows.count == 2 {
+      let fillOf = { (i: Int) in "return getComputedStyle(document.querySelectorAll('\(rowSelector)')[\(i)]).backgroundColor" }
+      let plain = await js(c.webView, fillOf(1)) as? String
+      let sel = NSSelectorFromString("_simulateMouseMove:")
+      let p0 = c.webView.convert(NSPoint(x: rows[0][0], y: rows[0][1]), to: nil)
+      if c.webView.responds(to: sel), let e = NSEvent.mouseEvent(with: .mouseMoved, location: p0, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                             windowNumber: c.panel.windowNumber, context: nil, eventNumber: 0, clickCount: 0, pressure: 0) {
+        _ = c.webView.perform(sel, with: e) // (WebKit's own hover, as a key panel's move gives it: the test's way to get one)
+        let webKitHover = await waitJS(c.webView, "return document.querySelectorAll('\(rowSelector)')[0].matches(':hover')")
+        c.pointerMoved(CGPoint(x: display.minX + rows[1][0], y: display.minY + rows[1][1]), buttonsDown: false)
+        let marked = await waitJS(c.webView, "return document.querySelectorAll('\(rowSelector)')[1].hasAttribute('m-hover') && document.querySelectorAll('\(rowSelector)')[0].hasAttribute('m-hover-off')")
+        let stale = await js(c.webView, fillOf(0)) as? String, lit = await js(c.webView, fillOf(1)) as? String
+        let closeShown = await js(c.webView, "return [0, 1].map((i) => getComputedStyle(document.querySelectorAll('\(rowSelector)')[i].querySelector('.icon')).visibility)") as? [String]
+        let stillWebKits = await js(c.webView, "return document.querySelectorAll('\(rowSelector)')[0].matches(':hover')") as? Bool
+        check("hover: WebKit's own :hover left on a row from before, Margin's marks on another: the old one drawn plain (no fill, no ×), only the one under the pointer lit",
+              webKitHover && marked && stillWebKits == true && plain != nil && stale == plain && lit != plain && closeShown == ["hidden", "visible"],
+              "webkit \(webKitHover) marked \(marked) still \(String(describing: stillWebKits)) plain \(String(describing: plain)) old \(String(describing: stale)) new \(String(describing: lit)) × \(String(describing: closeShown))")
+        c.pointerMoved(CGPoint(x: display.maxX - 200, y: display.midY), buttonsDown: false)
+        _ = await waitJS(c.webView, "return !document.querySelector('[m-hover]')")
+      } else { check("WebKit's test hook for its own hover", false) }
+    } else { check("two sidebar rows for the old hover", false) }
     let rewritten = await js(c.webView, "let n = 0, m = 0; const walk = (rules) => { for (const r of rules) { if (r.selectorText) { if (/:hover/.test(r.selectorText)) n++; if (/:hover/.test(r.selectorText) && r.selectorText.includes('[m-hover]')) m++; } if (r.cssRules) walk(r.cssRules); } }; for (const s of document.adoptedStyleSheets) walk(s.cssRules); return [n, m]") as? [Int]
     check("hover: every :hover rule of the theme's and Margin's own also says [m-hover]", (rewritten?.first ?? 0) > 0 && rewritten?.first == rewritten?.last, "\(String(describing: rewritten))")
 
