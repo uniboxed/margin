@@ -47,9 +47,9 @@
 //   page area itself: the theme's launcher, opaque (`launcher`), as Margin's new-tab page draws it over a browser.
 //   A hosted app's window in Margin's page area (Margin's window its whole width, in front of it since 2026-11-17:
 //   the hosted window shows through the page's place): the hello's `pageHosted` and `{ type: 'pageHosted', on }`:
-//   laid out as usual (its own layout), the sidebar docked as beside a tile (`sidebarDocked`: never hidden or
-//   peeking, so the page area the app's window is placed in is the docked layout's), and no launcher in the page
-//   area. The sidebar's width is dragged there as anywhere (only a tile's is fixed: `sidebarFixed`):
+//   laid out as usual (its own layout), its sidebar as the person keeps it (Keep open, or hidden and out over the
+//   app's window from the left edge: Margin's window is in front of it, 2026-11-17; docked whatever it is until
+//   2026-11-20, from when the hosted window sat above Margin's), and no launcher in the page area. The sidebar's width is dragged there as anywhere (only a tile's is fixed: `sidebarFixed`):
 //   the app hears when a change of it begins and ends (`perform('sidebar.resizing', { on })`, behaviors/resize.ts)
 //   and places the hosted window once, when it's over. The hosted window's own minimum width (the hello's
 //   `pageMinWidth`, `{ type: 'pageMin', width }`; null: none) is where a drag's edge stops: the page area never
@@ -368,8 +368,13 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
     get pageStarting() { return pageStarting; },
     get pageStuck() { return pageStarting ? pageStuck : null; },
     get pagePicture() { return pageState === 'elsewhere' ? pagePicture : null; },
-    /** The sidebar kept docked while hosting (beside a tile, or under a window-mode app's window), whatever its setting. */
-    get sidebarDocked() { return pageOutside || pageHosted; },
+    /**
+     * The sidebar kept docked whatever its setting: only beside another app's window (`pageOutside`: Margin's window is
+     * the sidebar alone then). An app's window in the page area (`pageHosted`) leaves it as the person keeps it: hidden,
+     * it comes out over that window from the left edge (Margin's window is in front of it), and its page area is the
+     * frame's (Tirth, 2026-11-20).
+     */
+    get sidebarDocked() { return pageOutside; },
     // The overlay stays on screen through a switch (ui/runtime.ts: the highlight waits for the state).
     staysOnScreen: true,
     // Not on screen as it first draws: its launcher takes the focus only when the app says (the `shown` push's `focus`).
@@ -409,8 +414,10 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
       // frame measures the box only: a width being dragged reports from there, and the ground under the page area
       // would lose its colour until the next measure).
       const kept = appWindow && geometry.fills === undefined && layout?.fills ? { fills: layout.fills } : {};
-      const next = { ...geometry, ...kept, mode: geometry.mode ?? mode, pageOutside };
-      const key = (g: any) => JSON.stringify([g.insets, g.radius, g.radii ?? null, g.container, g.mode ?? null, !!g.pageOutside, g.fills ?? null]);
+      // (Whether it was measured hosting, too: the app places a hosted window only by a layout its page drew for hosting,
+      // never the launcher's from before, whose sidebar is always docked: 2026-11-20, a hidden sidebar's page area.)
+      const next = { ...geometry, ...kept, mode: geometry.mode ?? mode, pageOutside, pageHosted };
+      const key = (g: any) => JSON.stringify([g.insets, g.radius, g.radii ?? null, g.container, g.mode ?? null, !!g.pageOutside, !!g.pageHosted, g.fills ?? null]);
       if (layout && key(layout) === key(next)) return;
       layout = next;
       void post('layout', { geometry: next }).catch(() => {});

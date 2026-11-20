@@ -864,7 +864,9 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // this window isn't its screen's width: a tile added to or taken out of its Space lays it out as a split's half for a
     // moment (under the freeze; the engine sets its rect back at once), never a page area to place anything at.
     var hostedPlacement: HostPlacement? {
-        guard hosting, isFullScreen, let layout, layout.mode == "fullscreen", hostDisplay != nil, !narrowed,
+        // (Only a layout its page measured hosting: the launcher's, from before, has the sidebar docked whatever Keep open
+        // says, and a hidden sidebar's page area is wider: placed by it, the window would be placed again at once.)
+        guard hosting, isFullScreen, let layout, layout.mode == "fullscreen", layout.hosted || layout.outside, hostDisplay != nil, !narrowed,
               let page = MarginWindowGeometry.pageRect(layout: layout, content: contentFrame) else { return nil }
         let display = window.screen.map { ScreenGeometry.appKitRect($0.frame) } ?? .zero
         return HostPlacement(page: page, area: contentFrame, display: display)

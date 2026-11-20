@@ -230,7 +230,7 @@ function measureNow() {
   // takes a layout as the window's only with the window's mode in it: MarginWindowController.)
   // (Margin's own window: the colour around the page's rounded corners too, the ground the app puts under the page area.)
   const fills = host.appWindow ? cornerFill(runtime?.view.pageEl)?.fills ?? null : null;
-  const key = JSON.stringify([g.insets, g.radius, g.radii, g.container, host.mode, !!host.pageOutside, fills]);
+  const key = JSON.stringify([g.insets, g.radius, g.radii, g.container, host.mode, !!host.pageOutside, !!(host as { pageHosted?: boolean }).pageHosted, fills]);
   if (key === lastLayout) return;
   lastLayout = key;
   // (Said as none when the theme draws nothing there: a report that leaves them out keeps the last ones, host-app.ts.)

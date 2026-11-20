@@ -298,6 +298,9 @@ func glueScenario() async {
   let made = shell.makeMarginWindows()
   guard let library = shell.library, let session = shell.hosted, let engine = shell.host else { return check("the library, the session and the engine", false) }
   check("the windows draw the library", made.source is LibraryWindowSource)
+  // (Keep open on, as most of what follows was written for: the sidebar docked beside the hosted app, its edge dragged.
+  // Off, while an app is hosted: the block "Keep open off while an app is hosted" below.)
+  _ = made.source.perform("updateSettings", ["patch": ["sidebarPinnedOpen": true]])
   let c = made.open()
   defer { made.closeAll() }
   world.marginWindow = c.window.windowNumber
@@ -1018,6 +1021,53 @@ func glueScenario() async {
         told(1) == false && told(madeId ?? -1) == true && fake.all("drawn") { int($0["windowId"]) == 1 }.count == 1,
         "\(fake.all("drawn").map { "\(int($0["windowId"]) ?? -1)=\($0["on"] ?? "?")" })")
 
+  // ---- Keep open off while an app is hosted (Tirth, 2026-11-20; docked whatever it was until then): the sidebar
+  // hidden, the app placed at the frame's page area, brought out over the app from the left edge (Margin's window is in
+  // front of it), Margin's the pointer on it; Keep open on again: docked, the app placed beside it again ----
+  do {
+    let shownBefore = engine.shown
+    let docked = engine.pageRect
+    _ = made.source.perform("updateSettings", ["patch": ["sidebarPinnedOpen": false]])
+    c.stateChanged()
+    let hiddenDrawn = await waitJS(c.webView, "return document.querySelector('.arcadia')?.dataset.sidebar === 'hidden'")
+    let placedWide = await until(10, { engine.pageRect.minX - display.minX < 20 && c.window.pageRect == engine.pageRect })
+    await session.idle()
+    check("Keep open off while an app is hosted: the sidebar hidden, the app placed at the frame's page area (the theme's frame alone at its left), still shown, by a layout measured hosting",
+          shownBefore != nil && hiddenDrawn && placedWide && engine.shown == shownBefore && c.layout?.hosted == true && docked.minX - display.minX > 100,
+          "page \(engine.pageRect) docked \(docked) layout \(String(describing: c.layout)) shown \(String(describing: engine.shown))")
+    c.pointerMoved(CGPoint(x: display.minX + 2, y: display.midY))
+    let peeked = await waitJS(c.webView, "return document.querySelector('.arcadia')?.dataset.sidebar === 'peek'")
+    let onSidebar = CGPoint(x: display.minX + 120, y: display.midY), onApp = CGPoint(x: display.maxX - 200, y: display.midY)
+    let marginTakes = await until(3, { c.slot.map { !PassThrough.pageGets(onSidebar, $0) } ?? false })
+    let appGets = c.slot.map { PassThrough.pageGets(onApp, $0) } ?? false
+    check("…the left edge brings it out over the app: Margin takes the pointer on it, the app keeps it beside it; the app not placed again for it",
+          peeked && marginTakes && appGets && engine.pageRect.minX - display.minX < 20 && engine.shown == shownBefore,
+          "peeked \(peeked) margin \(marginTakes) app \(appGets) page \(engine.pageRect)")
+    c.pointerMoved(onApp)
+    _ = made.source.perform("updateSettings", ["patch": ["sidebarPinnedOpen": true]])
+    c.stateChanged()
+    let dockedAgain = await waitJS(c.webView, "return document.querySelector('.arcadia')?.dataset.sidebar === 'open'")
+    let backBeside = await until(10, { engine.pageRect == docked })
+    await session.idle()
+    check("Keep open on again: docked, the app placed beside it again, still shown", dockedAgain && backBeside && engine.shown == shownBefore && c.window.pageRect == docked,
+          "page \(engine.pageRect) docked \(docked)")
+    // A layout its page didn't measure hosting (the launcher's, from before hosting began): never a hosted placement, so
+    // nothing is placed by it; the same measured hosting: the placement.
+    if let real = c.layout {
+      var geometry: JSONObject = ["insets": ["left": real.left, "top": real.top, "right": real.right, "bottom": real.bottom], "radius": real.radius, "radii": real.radii,
+                                  "container": ["width": real.width, "height": real.height], "mode": real.mode, "fills": real.fills]
+      c.pageSaid("layout", ["geometry": geometry])
+      let none = c.hostedPlacement == nil && c.pageAreaWhyNot.contains("launcher")
+      geometry["pageHosted"] = true
+      c.pageSaid("layout", ["geometry": geometry])
+      await session.idle()
+      check("a layout its page didn't measure hosting (the launcher's): no hosted placement, nothing placed by it; measured hosting: the placement again",
+            none && c.hostedPlacement?.page == docked && engine.pageRect == docked && engine.shown == shownBefore, "\(String(describing: c.hostedPlacement)) \(c.pageAreaWhyNot)")
+    } else {
+      check("a layout to check the hosted placement with", false)
+    }
+  }
+
   // ---- ⌘Q with an app Margin hosts in front: Margin's own prompt ----
   // (The app shown now, in front: one Margin hosts.)
   let hostedPid = engine.shown.flatMap { engine.hosts[$0]?.pid } ?? 0
@@ -1110,6 +1160,7 @@ func glueResumeScenario() async {
 
   var atLaunch: String?
   world.onLaunch = { bundle in if bundle == "com.apple.Notes" { atLaunch = "\(made.controllers.first?.isFullScreen == true) \(made.controllers.first?.pageState.rawValue ?? "?") \(made.controllers.first?.hostedPlacement != nil)" } }
+  _ = made.source.perform("updateSettings", ["patch": ["sidebarPinnedOpen": true]]) // (Keep open on: the docked first frame below)
   let c = made.open()
   defer { made.closeAll() }
   world.marginWindow = c.window.windowNumber
