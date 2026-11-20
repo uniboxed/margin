@@ -285,6 +285,8 @@ extension Shell {
         case .toggleSidebar:
             w?.push(#"{"type":"command","name":"toggle-sidebar"}"#)
         case .nextTab, .prevTab, .nextSpace, .prevSpace:
+            // (Tab keys: the picks they make in that window are a cycle's, an app not running yet held a moment first.)
+            if command == .nextTab || command == .prevTab, let id = w?.id { hosted?.cycled(windowId: id) }
             w?.push(#"{"type":"command","name":"\#(command.rawValue)","repeat":\#(isRepeat)}"#)
         }
         w.map { hostedKeysRun.append("\(command.rawValue) → \($0.id)") }

@@ -473,8 +473,8 @@ final class HostEngine {
 
     // Opens `target` (shows it again if it's hosted already) under Margin's window, at `placement`. `wanted`: whether it's
     // still the item asked for (Tirth, 2026-11-20: picking another while an app's first open waits for its window starts
-    // that one at once): asked while a new app's window is awaited; false there, the open is given up (`superseded`), its
-    // app left running out of sight (hidden), so its next open finds it with its window ready.
+    // that one at once): asked while a new app's window is awaited; false there, the open is given up (`superseded`), an
+    // app it started asked to quit, not waited for.
     func open(app target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64, wanted: (@MainActor () -> Bool)? = nil) async -> HostResult {
         await serial(planned: true) {
             self.placement = placement
@@ -1816,11 +1816,13 @@ final class HostEngine {
             if await lookForWindow(options.reopenWait) { break }
         }
         // Another item picked while its window was awaited (or just as it was found): given up, nothing hosted. An app
-        // Margin started is left running out of sight (hidden again if its open had unhidden it): its window comes in
-        // the background, and its next open finds it there (no second launch); it's quit with Margin, as any it started.
+        // Margin started for it, with nothing of it hosted, is asked to quit and not waited for (Tirth, 2026-11-20: an
+        // app only passed over holds no memory), as a row's close asks it: the next open goes on at once, and an open of
+        // this app meanwhile waits for that exit (`awaitExits`). The person's own app is left as it is.
         if givenUp || (wanted.map { !$0() } ?? false) {
-            let hidden = launchedByMargin && sys.isHidden(pid: app.pid) == false && sys.hide(pid: app.pid)
-            Diagnostics.note("host: \(id): its open given up \(ms(since: started)) ms in: another item was picked\(launchedByMargin ? " (pid \(app.pid) left running out of sight\(hidden ? ", hidden again" : ""); its next open finds it there)" : "")")
+            let quits = launchedByMargin && !hosts.values.contains(where: { $0.pid == app.pid })
+            if quits { askQuitWatched(app.pid, bundle: bundle, id: id) }
+            Diagnostics.note("host: \(id): its open given up \(ms(since: started)) ms in: another item was picked\(quits ? " (pid \(app.pid) asked to quit, not waited for)" : "")")
             return .failed(.superseded, "another item was picked")
         }
         guard let window = number else {

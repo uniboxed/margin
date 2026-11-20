@@ -250,6 +250,8 @@ final class HostedSession: LibraryDelegate {
         var startupWait = 15.0 // (Tirth, 2026-11-18) at launch, how long the default browser's start holds the item shown last
         var pictureWait = 0.4 // a web item's picture for its card in the other window, asked before its window leaves: no longer
         var wokenGrace = 5.0 // a window opened to wake a profile, still open this long after its copy linked with no request under way: closed
+        var cycleWindow = 1.0 // (Tirth, 2026-11-20) a pick this soon after the next/previous-tab key in its window: a cycle's
+        var cycleHold = 0.35 // ...an app not running yet held this long before it's started: one only passed over is never started
     }
 
     // Where an item's page is: its host, and for a web item its profile.
@@ -285,6 +287,8 @@ final class HostedSession: LibraryDelegate {
     // of Margin's pages shown this session (open tabs in the UI, as items with a page are: `live`).
     private(set) var marginPages: [Int: String] = [:]
     private(set) var marginOpen: Set<String> = []
+    // When each Margin window's next/previous-tab key was last pressed (its repeats too): the picks a cycle makes.
+    private var cycledAt: [Int: Double] = [:]
     // Each Margin window's item shown when macOS took the window out of full screen: hosted again once it's back in.
     private(set) var resume: [Int: String] = [:]
     // What the loading animation names for a host (the app's name; Safari).
@@ -415,6 +419,13 @@ final class HostedSession: LibraryDelegate {
             if engine.shown != HostTarget.app(bundle).id || hostingWindow != w.id { w.setShowing(labels[HostTarget.app(bundle).id], app: bundle) }
             // (Another item asked for meanwhile: the loader stays for it, never a frame without it in between.)
             defer { if !supersededBy(w, item) { w.setShowing(nil) } }
+            // (Picked by the next/previous-tab key, its app not running yet: held a moment first. One the keys only pass
+            // over is never started: no launch, no memory, no loading bar on its row. A click is never held.)
+            let id = HostTarget.app(bundle).id
+            if let at = cycledAt[w.id], now() - at < options.cycleWindow, !engine.isHosted(id), engine.appRuns(bundleId: bundle) == false,
+               await wait(options.cycleHold, { self.supersededBy(w, item) }) {
+                return note("\(item): passed over by the tab keys (\(bundle) not started)")
+            }
             guard await host(.app(bundle), in: w, for: item) else { return }
             open[item] = OpenItem(host: HostTarget.app(bundle).id, profile: nil)
         case .web(let browser, let profile):
@@ -465,6 +476,9 @@ final class HostedSession: LibraryDelegate {
         drawn = true
         onChange?()
     }
+
+    // The next/previous-tab key pressed in Margin's window `windowId` (each press and repeat; the shell's runHosted).
+    func cycled(windowId: Int) { cycledAt[windowId] = now() }
 
     // Another item asked for in `w` since `item`'s show began (a pick while it was on its way).
     private func supersededBy(_ w: HostedWindow, _ item: String) -> Bool {

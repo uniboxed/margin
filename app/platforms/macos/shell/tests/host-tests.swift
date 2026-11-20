@@ -194,12 +194,6 @@ final class FakeHostWorld: HostSystem {
         hidden.contains(pid) || (apps[pid].map { needsEnhanced.contains($0.bundle) } == true && enhanced[pid] != true)
     }
     func isHidden(pid: pid_t) -> Bool? { apps[pid] == nil ? nil : hidden.contains(pid) }
-    func hide(pid: pid_t) -> Bool {
-        calls.append("hide \(pid)")
-        guard apps[pid] != nil else { return false }
-        hidden.insert(pid)
-        return true
-    }
     func unhide(pid: pid_t) -> Bool {
         calls.append("unhide \(pid)")
         guard let a = apps[pid], !unhideRefused else { return false }

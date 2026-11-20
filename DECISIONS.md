@@ -6189,3 +6189,18 @@ for the item picked to start loading at once, and A's loading bar to go.
   open's own launch is.
 - **No launcher between the two.** While another item is asked for and not shown yet, the hosting isn't settled and the
   loader stays (its show decides); A's loading bar goes as its show returns.
+
+
+## Apps only passed over aren't started (2026-11-20, later)
+
+Tirth, the same evening: an app that wasn't loaded and that the tab keys (⌘⌥↑/↓) only pass over shouldn't load at all, nor
+keep its loading bar; it saves memory. This replaces "the app given up stays running, out of sight" above.
+
+- **Given up: asked to quit.** An app Margin started for an open given up (another item picked while its window was
+  awaited), with nothing of it hosted, is asked to quit and not waited for, as a row's close asks it (`askQuitWatched`):
+  the next item's open goes on at once, an open of the same app meanwhile waits for that exit. The person's own app is
+  never asked. (`HostSystem.hide`, added for the version above, is gone.)
+- **The tab keys: held a moment before a launch.** The shell tells the session each press of the next/previous-tab key
+  (`cycled`); a pick in that window within 1 s of one, of an app that isn't running and isn't hosted, waits 0.35 s
+  before its app is started, and isn't started if the keys moved on meanwhile (no launch, no loading bar on its row).
+  Hosted apps and web items the keys come to are shown at once; a click is never held.
