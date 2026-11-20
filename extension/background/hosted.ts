@@ -4,8 +4,13 @@
 //
 // - `hostShow { windowId, itemId, url }`: the item's page shown in that window. The tab tagged with the item before
 //   (still open, in that window) is used again; else a tab of that window at the same address no other item has;
-//   else the window's lone new-tab page (Safari's first tab of a window Margin made) is sent there; else a new tab.
-//   It comes to the front. Answers `{ tabId, created }` (`created`: a tab made or navigated for it).
+//   else, in a window Margin made (its lone new-tab page), a new tab at the address, the new-tab page closed after it;
+//   else a new tab. It comes to the front. Answers `{ tabId, created }` (`created`: a tab made or navigated for it).
+//   (Not the new-tab page sent there: Safari opens an empty window with the keys in its address field, and a page
+//   loaded into that tab leaves them there; in full screen Safari keeps its toolbar down while they are, so it showed
+//   half covered over the page until a click in it (Tirth, 2026-11-20 17:34, 17:35, 18:33: each a profile's new
+//   window, its toolbar out from its first read; Margin's toolbar trace). A tab opened at an address has the keys in
+//   its page, as a link opened in a new tab does. A blank item (about:blank) keeps the new-tab page: blank either way.)
 // - `hostClose { itemId }`: the item's tab closed (closed from Margin's sidebar). Answers `{ closed }`.
 // - `hostPicture { windowId, itemId }`: a picture of the item's page, as that window shows it, for its card in another
 //   Margin window (the app's `elsewhere`), asked just before the window leaves. Only while the item's tab is the one in
@@ -65,7 +70,13 @@ export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = asy
         tab = list.find((t) => t.id != null && !tagged(t.id) && plain(t.url ?? t.pendingUrl) === plain(url)) ?? null;
         const lone = list.length === 1 && list[0].id != null && !tagged(list[0].id) && (isNewTabPage(list[0].url || list[0].pendingUrl) || !(list[0].url || list[0].pendingUrl) || list[0].url === 'about:blank') ? list[0] : null;
         if (!tab && lone) {
-          tab = await tabs().update(lone.id!, { url, active: true });
+          if (/^about:blank$/i.test(url)) tab = await tabs().update(lone.id!, { url, active: true });
+          else {
+            // (Made first, so the window never has no tab; one Safari refuses: the new-tab page sent there, as before.)
+            tab = await tabs().create({ windowId: win, url, active: true }).catch(() => null);
+            if (tab?.id != null) await tabs().remove(lone.id!).catch(() => {});
+            else tab = await tabs().update(lone.id!, { url, active: true });
+          }
           created = true;
         }
         if (!tab) {

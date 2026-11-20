@@ -34,26 +34,46 @@ function fakeTabs(list: T[]) {
   return { api, tabs, calls };
 }
 
-test('hostShow: a window Margin made: its lone new-tab page goes to the item\'s address, tagged, in front', async () => {
+// (A new tab at the address, not the new-tab page sent there: Safari keeps the keys in the empty window's address
+// field, and its toolbar down over the page in full screen while they are; 2026-11-20.)
+test('hostShow: a window Margin made: a new tab at the item\'s address, in front and tagged, its lone new-tab page closed after it', async () => {
+  for (const blank of [NEW_TAB, 'about:blank', '']) {
+    const f = fakeTabs([{ id: 1, windowId: 9, url: blank, active: true }]);
+    const h = createHostedTabs(() => f.api);
+    assert.deepEqual(await h.show({ windowId: 9, itemId: 't-aaaa', url: 'https://a.example/' }), { tabId: 100, created: true }, blank);
+    assert.deepEqual(f.calls, ['create 9 https://a.example/', 'remove 1'], 'made first: the window never without a tab');
+    assert.deepEqual([...f.tabs.values()], [{ id: 100, windowId: 9, url: 'https://a.example/', active: true }]);
+    assert.equal(h.tags().get('t-aaaa'), 100);
+  }
+});
+
+test('hostShow: a window Margin made: a blank item keeps its new-tab page (blank either way); a tab Safari won\'t make: the page sent there', async () => {
   const f = fakeTabs([{ id: 1, windowId: 9, url: NEW_TAB, active: true }]);
   const h = createHostedTabs(() => f.api);
-  assert.deepEqual(await h.show({ windowId: 9, itemId: 't-aaaa', url: 'https://a.example/' }), { tabId: 1, created: true });
-  assert.equal(f.tabs.get(1)!.url, 'https://a.example/');
-  assert.deepEqual(f.calls, ['update 1 https://a.example/ active']);
-  assert.equal(h.tags().get('t-aaaa'), 1);
+  assert.deepEqual(await h.show({ windowId: 9, itemId: 't-aaaa', url: 'about:blank' }), { tabId: 1, created: true });
+  assert.deepEqual(f.calls, ['update 1 about:blank active']);
+  const g = fakeTabs([{ id: 1, windowId: 9, url: NEW_TAB, active: true }]);
+  g.api.create = async () => { throw new Error('refused'); };
+  const k = createHostedTabs(() => g.api);
+  assert.deepEqual(await k.show({ windowId: 9, itemId: 't-aaaa', url: 'https://a.example/' }), { tabId: 1, created: true });
+  assert.deepEqual(g.calls, ['update 1 https://a.example/ active']);
+  // Its new-tab page not closed (Safari's refusal): the item still shown, in the tab made.
+  const r = fakeTabs([{ id: 1, windowId: 9, url: NEW_TAB, active: true }]);
+  r.api.remove = async () => { throw new Error('refused'); };
+  assert.deepEqual(await createHostedTabs(() => r.api).show({ windowId: 9, itemId: 't-aaaa', url: 'https://a.example/' }), { tabId: 100, created: true });
 });
 
 test('hostShow: a second item: a new tab; the first again: its own tab brought to the front, nothing made', async () => {
   const f = fakeTabs([{ id: 1, windowId: 9, url: NEW_TAB, active: true }]);
   const h = createHostedTabs(() => f.api);
-  await h.show({ windowId: 9, itemId: 't-aaaa', url: 'https://a.example/' });
-  assert.deepEqual(await h.show({ windowId: 9, itemId: 't-bbbb', url: 'https://b.example/' }), { tabId: 100, created: true });
-  assert.equal(f.tabs.get(100)!.active, true);
+  await h.show({ windowId: 9, itemId: 't-aaaa', url: 'https://a.example/' }); // (tab 100, the new-tab page closed)
+  assert.deepEqual(await h.show({ windowId: 9, itemId: 't-bbbb', url: 'https://b.example/' }), { tabId: 101, created: true });
+  assert.equal(f.tabs.get(101)!.active, true);
   f.calls.length = 0;
-  assert.deepEqual(await h.show({ windowId: 9, itemId: 't-aaaa', url: 'https://a.example/' }), { tabId: 1, created: false });
-  assert.deepEqual(f.calls, ['update 1 active'], 'a tab switch only');
-  assert.equal(f.tabs.get(1)!.active, true);
-  assert.equal(f.tabs.get(100)!.active, false);
+  assert.deepEqual(await h.show({ windowId: 9, itemId: 't-aaaa', url: 'https://a.example/' }), { tabId: 100, created: false });
+  assert.deepEqual(f.calls, ['update 100 active'], 'a tab switch only');
+  assert.equal(f.tabs.get(100)!.active, true);
+  assert.equal(f.tabs.get(101)!.active, false);
 });
 
 test('hostShow: an item\'s tab gone or in another window: found by its address, else made again', async () => {
