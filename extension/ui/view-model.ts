@@ -216,11 +216,12 @@ export function abbreviate(name: string) {
 
 function face(state: State, item: { url?: string, title?: string, favIconUrl?: string, target?: unknown }, title: string): Face {
   const url = item.url ?? '';
-  // Margin's own pages (the new-tab page, the start page) have the extension's id for a host: never shown.
-  const host = /^[a-z-]*-extension:/i.test(url) ? '' : hostOf(url);
+  const app = appOfItem(item);
+  // Margin's own pages (the new-tab page, the start page) have the extension's id for a host: never shown. An app item:
+  // its name, as its row says it (its address app://<bundle id> isn't a site: "com.apple.Maps" was drawn, 2026-11-20).
+  const host = app ? title : /^[a-z-]*-extension:/i.test(url) ? '' : hostOf(url);
   // (An app item: the installed app's icon, V.iconFor; with none, its name's letter, not its bundle id's.)
   const icon = V.iconFor(state, item);
-  const app = appOfItem(item);
   const { letter, color } = V.letterAvatar((app ? '' : host) || title || '?');
   const shown = checkIconUrl(icon) ? icon : null;
   return { title, url, host, icon: shown, letter, color, isApp: !!app && shown != null };

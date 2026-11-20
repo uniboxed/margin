@@ -88,6 +88,8 @@ protocol HostedEngine: AnyObject {
     // The windows the presses have opened so far (each parked out of sight as it's listed, looked for now): the press's
     // evidence that it took. And whether the app runs at all (nil: not known, a stand-in).
     func wokenWindows(bundleId: String) -> Int
+    // Those windows parked out of sight and still open (their private Space is kept until there are none).
+    func wokenParked(bundleId: String) -> [Int]
     func appRuns(bundleId: String) -> Bool?
     // A drag of the sidebar's edge began (true) or is over (false): true back, the one shown follows it live (HostEngine
     // `dragging`: its tile's rect, a window-mode window's frame); then each page area of the drag (`follow`), at most one
@@ -105,6 +107,7 @@ extension HostedEngine {
     func stopHidingWoken(bundleId: String) {}
     func releaseWoken(bundleId: String) {}
     func wokenWindows(bundleId: String) -> Int { 0 }
+    func wokenParked(bundleId: String) -> [Int] { [] }
     func appRuns(bundleId: String) -> Bool? { nil }
     func dragging(_ on: Bool) -> Bool { false }
     func follow(_ placement: HostPlacement) {}
@@ -250,6 +253,7 @@ final class HostedSession: LibraryDelegate {
         var resumesLast = true // (Tirth, 2026-11-17) at launch, the item the window showed last is shown again, behind the loader
         var startupWait = 15.0 // (Tirth, 2026-11-18) at launch, how long the default browser's start holds the item shown last
         var pictureWait = 0.4 // a web item's picture for its card in the other window, asked before its window leaves: no longer
+        var wokenLate = 3.0 // closed this soon after the link, the profile's windows that came since are the press's too
         var wokenGrace = 5.0 // a window opened to wake a profile, still open this long after its copy linked with no request under way: closed
         var cycleWindow = 1.0 // (Tirth, 2026-11-20) a pick this soon after the next/previous-tab key in its window: a cycle's
         var cycleHold = 0.35 // ...an app not running yet held this long before it's started: one only passed over is never started
@@ -1176,6 +1180,7 @@ final class HostedSession: LibraryDelegate {
             wokenLinkedAt[p] = nil
             Task { [weak self] in await self?.closeWoken(p, why: " (left open: closed later)") }
         }
+        if wokenHeld { releaseWokenSpace() } // (one left open once: released when it's gone)
         guard options.closesRestoredSafariWindows else { return }
         guard options.safariBundles.contains(where: { engine.launchedPid(bundleId: $0) != nil }) else { swept = [:]; return }
         for p in links.safariProfiles() where !requesting.contains(p) {
@@ -1266,6 +1271,7 @@ final class HostedSession: LibraryDelegate {
         if wokenByMenu[p] != nil {
             _ = await wait(1.5) { !self.links.windowIds(of: p).isEmpty }
             wokenByMenu[p] = links.windowIds(of: p)
+            wokenAtLink[p] = Set(links.windowIds(of: p))
             wokenLinkedAt[p] = now()
         }
         return true
@@ -1324,14 +1330,29 @@ final class HostedSession: LibraryDelegate {
         return fallback
     }
     private var wokenLinkedAt: [String: Double] = [:] // ...and when its copy linked
+    // ...and the windows its copy had then. A copy can link through a window Safari restored before the press's window is
+    // reported (2026-11-20 11:17:35: linked through restored 96 at .340, the press's 152 reported at .642): the press's
+    // window then isn't among them, and is found at the close as one that came since (`wokenLate`).
+    private var wokenAtLink: [String: Set<Int>] = [:]
 
     // The windows opened only to wake a profile, closed by its copy (Margin opened them; they hold no page of the
     // person's), whatever happened to what they were for: Margin's window made for it (`except`), the preparation given
     // up, or left open past `wokenGrace` (the poll). One not closed is tried again by the poll. All closed: the private
     // Space they were parked in released.
+    // Closed within `wokenLate` of the link, a window of the profile that came since and isn't Margin's is the press's
+    // too (the copy linked through a restored one first): closed with them. Later, only those known at the link: a
+    // window that comes later (a link opened from another app) is the person's. The private Space is released only once
+    // every window parked in it is closed: retired with one still in it, macOS puts that one in the current Space,
+    // Margin's, over the page area (2026-11-20: Safari's page drawn over Maps until another tab was picked).
     func closeWoken(_ p: String, except made: Int? = nil, why: String = "") async {
-        guard let ids = wokenByMenu.removeValue(forKey: p) else { return }
-        wokenLinkedAt[p] = nil
+        guard var ids = wokenByMenu.removeValue(forKey: p) else { return }
+        let linkedAt = wokenLinkedAt.removeValue(forKey: p)
+        let atLink = wokenAtLink.removeValue(forKey: p) ?? Set(ids)
+        if let linkedAt, now() - linkedAt <= options.wokenLate {
+            let ours = Set(safariWindows.values).union(made_).union(made.map { [$0] } ?? [])
+            let late = links.windowIds(of: p).filter { !atLink.contains($0) && !ours.contains($0) && !ids.contains($0) }
+            if !late.isEmpty { note("the window opened to wake the profile: \(late.count) more that came after its copy linked (it linked through another)"); ids += late }
+        }
         var left: [Int] = []
         for id in ids where id != made && !made_.contains(id) {
             let (_, error) = await links.request(profile: p, "closeWindow", ["windowId": id])
@@ -1340,10 +1361,24 @@ final class HostedSession: LibraryDelegate {
         }
         if !left.isEmpty, wokenByMenu[p] == nil {
             wokenByMenu[p] = left
+            wokenAtLink[p] = Set(left)
             wokenLinkedAt[p] = now()
         }
-        if wokenByMenu.isEmpty { engine.releaseWoken(bundleId: safariIdentifier) }
+        releaseWokenSpace()
     }
+    // The private Space the woken windows were parked in, released once nothing's woken any more and none of them is
+    // still open (else the poll looks again: `sweepRestoredSafariWindows`).
+    private func releaseWokenSpace() {
+        guard wokenByMenu.isEmpty else { return }
+        let open = engine.wokenParked(bundleId: safariIdentifier)
+        guard open.isEmpty else {
+            if !wokenHeld { wokenHeld = true; note("the private Space of the windows opened to wake a profile kept: \(open.count) of them still open (never let into Margin's Space)") }
+            return
+        }
+        wokenHeld = false
+        engine.releaseWoken(bundleId: safariIdentifier)
+    }
+    private var wokenHeld = false
 
     func requestSafariWindow(_ profile: String?) async -> HostSafariWindow? {
         let p = resolve(profile)

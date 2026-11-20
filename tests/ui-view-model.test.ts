@@ -347,6 +347,7 @@ test('app items: the installed app\'s icon wherever a row or tile shows one; no 
   // The tab in front, the launcher's tiles, the palette's open-tab rows.
   const front = build({ ...withApps, tabs: { ...withApps.tabs, 13: { ...withApps.tabs[13], active: false }, 31: { ...(withApps.tabs as Record<number, any>)[31], active: true } } });
   assert.equal(front.tab?.icon, notes, 'the tab in front');
+  assert.deepEqual([front.tab?.host, row(33).host, row(12).host], ['Notes', 'Maps', 'mail.example'], 'the address pill: an app item\'s name (never its bundle id); a web item\'s site as before');
   assert.equal(buildViewModel({ state: withApps, ui: { windowId: W, inNewTab: true }, platform: PLATFORM }).launcher!.pins.find((p) => p.id === 'pcalc')!.icon, calc, 'the launcher\'s tile');
   const palette = build(withApps, { palette: { open: true, query: 'notes', selected: 0 } });
   const open = palette.palette.rows.filter((r) => r.title === 'Notes' && r.kind !== 'app');
