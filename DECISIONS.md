@@ -6204,3 +6204,20 @@ keep its loading bar; it saves memory. This replaces "the app given up stays run
   (`cycled`); a pick in that window within 1 s of one, of an app that isn't running and isn't hosted, waits 0.35 s
   before its app is started, and isn't started if the keys moved on meanwhile (no launch, no loading bar on its row).
   Hosted apps and web items the keys come to are shown at once; a click is never held.
+
+
+## The app switched to, active from its first frame (2026-11-20)
+
+Switching between hosted apps showed "a focus flicker" (Tirth, with Mail): the app's window came into view drawn as an
+inactive window (Mail's sidebar greyed), and its app was made active 25-30 ms later (Accessibility's frontmost, then the
+raise), when it redrew as the active one. Every app did it; Mail's sidebar shows it most.
+
+- **In, active, then the old one out.** The fast switch (`switchIn`) makes the app active right after its window comes
+  into Margin's Space and before the one shown leaves: a window keeps its place in the window server's order as it
+  moves between Spaces, and the one coming back was last raised before the one leaving, so it's behind it until its
+  app's activation raises it, already active. The switch takes the activation's time more (about 25 ms; Messages' slow
+  raise, 80), before the old one goes; nothing is seen meanwhile but the app shown before.
+- **Checked on the real screen.** A run's first five switches read the two windows' order before the old one leaves and
+  say it ("it came in behind the one before", or IN FRONT); never every switch (a window list read is a cost).
+- Window mode (apps that can't go full screen) still parks the old one first and makes the new one active after; not
+  changed here.

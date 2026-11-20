@@ -342,7 +342,8 @@ func hostBehaviourTests() {
               "\(r.events) \(r.lines.filter { $0.contains("→") })")
         finish(r)
     }
-    // ---- a switch's time: its app in front after it (2026-11-17 real-apps, Messages: front 79 of 142 ms) ----
+    // ---- a switch's time: its app in front within it, before the one before leaves (2026-11-20: never seen inactive;
+    // 2026-11-17 real-apps, Messages: front 79 of 142 ms, the old one covering the new one meanwhile) ----
     do {
         let (r, _) = scenario([:])
         let done = listen(r)
@@ -353,8 +354,8 @@ func hostBehaviourTests() {
         done()
         let line = r.lines.last { $0.contains("host: app:\(plain) switched in") }
         let ms = line.flatMap { l in l.range(of: #"switched in (\d+) ms"#, options: .regularExpression).map { Int(l[$0].split(separator: " ")[2]) ?? 9999 } } ?? 9999
-        check("host: a switch is said done once its window is in and the one before out; its app in front after, not counted (\(ms) ms said, \(Int(took * 1000)) ms with its app's slow raise)",
-              shown(back) && ms < 50 && took >= 0.08 && (line?.contains("its app in front") ?? false), "\(String(describing: line))")
+        check("host: a switch is said done once its window is in, its app in front and the one before out (\(ms) ms said, \(Int(took * 1000)) ms with its app's slow raise)",
+              shown(back) && ms >= 80 && ms < 150 && took >= 0.08 && (line?.contains("its app in front first") ?? false), "\(String(describing: line))")
         finish(r)
     }
     // ---- restore-code (2026-11-17 real screen): its second window asked into full screen by its app lands in a Space of its
