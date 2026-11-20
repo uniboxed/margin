@@ -6451,3 +6451,14 @@ In Margin.app (the trackpad's phases), with Arc's or Dia's feel (`ui/behaviors/s
 - Checked in Arcadia's tests, WebKit and Chromium: caught mid-settle with no jump (the same pixels before and after the
   touch, read in one task), on to a third space in two quick swipes, back where it set out from with that space asked
   back, a touch alone settled again; run four times. On the real trackpad: to be felt.
+
+## The space swipe's tick as Dia's, exactly (2026-11-20)
+
+Tirth asked whether the tick is exactly Dia's. Checked against Dia 1.58.0's code: the call is the same
+(`NSHapticFeedbackManager.defaultPerformer`, `performFeedbackPattern(1 = .alignment, performanceTime: 1 = .now)`); its
+trigger is the page nearest the position (position ÷ the first page's width, `frinta`, kept within the pages), ticking
+whenever that changes; its last detent is set to the page nearest the position at the start of each gesture (in the
+tracking function, before its loop), so a swipe's start or a caught settle never ticks, nor the glide. Margin's rounding
+of the offset from the space drawn is the same for every place that occurs. The one difference: Dia checks at each of
+the trackpad's events, Margin did at the next frame (up to a frame later). Now checked at each event (`detentTick`);
+Arcadia's test sends the events in one task and finds the tick already asked for (it failed with the frame's check).

@@ -112,22 +112,29 @@ export function installSwipe(rt: Rt) {
     // How far toward the neighbour (0 to 1), for a theme that blends the two spaces' colours.
     s.el.style.setProperty('--m-swipe-progress', `${Math.round(Math.min(1, Math.abs(shown) / s.width) * 1000) / 1000}`);
   }
+  // Where the offset is drawn: as far as the neighbour that way, past the first or last space the rubber band.
+  function shownFor(s: NonNullable<typeof swiping>, offset: number) {
+    const toward = offset > 0 ? -1 : 1;
+    return s.neighbours[toward] ? Math.max(-s.width, Math.min(s.width, offset)) : s.arc ? rubberBandArc(offset) : rubberBand(offset, s.width * 0.2);
+  }
   function place(offset: number) {
     const s = swiping;
     if (!s) return;
     const toward = offset > 0 ? -1 : 1;
-    const shown = s.neighbours[toward] ? Math.max(-s.width, Math.min(s.width, offset)) : s.arc ? rubberBandArc(offset) : rubberBand(offset, s.width * 0.2);
     if (s.neighbours[toward]) ghost(s, String(toward));
-    draw(s, shown);
-    // Dia's detent: the space nearest the offset changed (past half its width): the trackpad's alignment tick.
-    if (s.haptics) {
-      const near = Math.round(-shown / s.width);
-      const detent = near && s.neighbours[near > 0 ? 1 : -1] ? Math.sign(near) : 0;
-      if (detent !== s.detent) {
-        s.detent = detent;
-        rt.host.perform?.('haptic.alignment');
-      }
-    }
+    draw(s, shownFor(s, offset));
+  }
+  // Dia's detent, checked at each of the trackpad's events as Dia does (not a frame later): the space nearest where it's
+  // drawn changed (past half its width, either way; its rounding Dia's `frinta`, the same for these places): the
+  // trackpad's alignment tick. Never past the first or last space, nor at a swipe's start or a catch (`detent` is the
+  // space nearest then: Dia sets its last detent at the start of each gesture).
+  function detentTick(s: NonNullable<typeof swiping>, offset: number) {
+    if (!s.haptics) return;
+    const near = Math.round(-shownFor(s, offset) / s.width);
+    const detent = near && s.neighbours[near > 0 ? 1 : -1] ? Math.sign(near) : 0;
+    if (detent === s.detent) return;
+    s.detent = detent;
+    rt.host.perform?.('haptic.alignment');
   }
   function begin(el: HTMLElement) {
     const spaces = rt.vm?.spaces ?? [];
@@ -371,6 +378,7 @@ export function installSwipe(rt: Rt) {
         swiping!.rebase = false;
       }
       swiping!.offset = swiping!.origin + (result.offset - swiping!.base.offset) * swiping!.scale;
+      detentTick(swiping!, swiping!.offset);
       if (!swiping!.frame) swiping!.frame = requestAnimationFrame(() => { if (!swiping) return; swiping.frame = 0; place(swiping.offset); });
       // No events for the gap: the fingers stopped (let go now: no speed at the lift). Phases known, only a lift lets
       // go (fingers resting mid-swipe keep it held, as in Arc); a lift never told, after HELD_MAX_MS.

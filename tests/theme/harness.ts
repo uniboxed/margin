@@ -625,6 +625,13 @@ const withRuntime = Object.assign(T, {
     document.dispatchEvent(new CustomEvent('m-wheel-phase', { detail: { phase } }));
     return { before, after: read() };
   },
+  // Wheel events over `selector` all in one task (no frame between them), the haptic ticks asked for by its end.
+  rtTrackpadNow(selector: string, deltas: number[]) {
+    const el = rt.target.querySelector(selector)!;
+    const t0 = performance.now();
+    for (const dx of deltas) el.dispatchEvent(new WheelEvent('wheel', { deltaX: dx, deltaY: 0, deltaMode: 0, bubbles: true, cancelable: true, composed: true }));
+    return { ticks: rt.host.performed.filter((p) => p.name === 'haptic.alignment').length, ms: performance.now() - t0 };
+  },
   rtFrames(n: number) { return new Promise<void>((done) => { const f = (k: number) => (k ? requestAnimationFrame(() => f(k - 1)) : done()); f(n); }); },
   rtUi() { const { palette, sidebar, editing, menu, editor, switchingTo } = rt.runtime!.ui; return { palette, sidebar, editing, menu, editor, switchingTo }; },
   // --- The behaviors (tests/theme/behaviors.test.ts) ---
