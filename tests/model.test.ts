@@ -1,3 +1,4 @@
+import { checkIconUrl } from '../extension/ui/sanitize.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as model from '../extension/state/model.ts';
@@ -615,6 +616,11 @@ test('favicons: browser icon first, else the fetched one for that site; cache is
   assert.equal(view.iconFor(s, { url: 'https://a.com/page', favIconUrl: 'https://a.com/x.png' }), 'https://a.com/x.png', 'browser icon wins');
   assert.equal(view.iconFor(s, { url: 'https://b.com/', favIconUrl: '' }), '', 'unknown site: letter avatar');
   assert.equal(view.iconFor(s, { url: 'chrome://settings' }), '');
+  // Margin's own Settings page (Margin.app's Settings tab): a gear, a data URL a row's icon check takes.
+  const gear = view.iconFor(s, { url: 'margin://settings', favIconUrl: '' });
+  assert.match(gear, /^data:image\/svg\+xml;base64,/);
+  assert.ok(checkIconUrl(gear), 'drawn as a row\'s icon');
+  assert.equal(view.iconFor(s, { url: 'margin://settingsx' }), '', 'only that page');
   for (let i = 0; i < 10; i++) s = M.rememberFavicon(s, `https://s${i}.com`, { data: 'd', href: 'h', at: 10 + i }, 5);
   assert.deepEqual(Object.keys(s.favicons).sort(), ['https://s5.com', 'https://s6.com', 'https://s7.com', 'https://s8.com', 'https://s9.com']);
   assert.equal(M.rememberFavicon(s, null, { data: 'd', at: 1 } as Parameters<typeof M.rememberFavicon>[2]), s); // no site: nothing else read

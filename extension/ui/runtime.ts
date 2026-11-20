@@ -236,6 +236,8 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   });
 
   const themeInfo = Object.freeze({ id: theme.manifest?.id ?? theme.id, name: theme.manifest?.name ?? '', settings: theme.manifest?.settings ?? {} });
+  // Whether the theme draws the Settings page's categories (set once its template is compiled, below).
+  let drawsSettingsNav = false;
   // The UI state with what the host knows (its window, tab and mode).
   const fullUi = () => ({
     ...ui,
@@ -252,6 +254,10 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     // The sidebar kept docked by the host (Margin.app hosting: beside a tile, or under an app's window in window mode).
     sidebarDocked: !!(host as { sidebarDocked?: boolean }).sidebarDocked,
     settingsPage: !!host.settingsAsked || !!ui.settingsPage,
+    // Margin.app's own window: Settings is its own tab there (margin://settings), never under the launcher's search.
+    appWindow: !!host.appWindow,
+    // The theme draws the Settings page's categories (it reads `settingsTab`): one category's fields at a time.
+    settingsNav: drawsSettingsNav,
     // The active theme, for Settings' "Settings of …" (ui/settings-form.ts): its id, name and theme.json settings.
     theme: themeInfo,
     justShown: (firstRender || Date.now() - lastShownAt < JUST_SHOWN_MS) && switchAskedAt <= lastShownAt,
@@ -265,6 +271,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     onLayout: (geometry) => { placeLoader(); host.reportLayout({ ...geometry, windowId: windowId(), mode: host.mode ?? 'inpage' }); },
     onWarn: (message) => warn(message),
   });
+  drawsSettingsNav = view.reads('settingsTab');
   // Rows that come or go slide the others to their places (ui/row-motion.ts); not while a row is being dragged.
   const motion = createRowMotion(view, win, { skip: () => !!behaviors.drag?.active?.() });
 
@@ -583,8 +590,9 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     const settingIds = vm?.settingsForm?.fields.filter((f) => f.isButton && !f.disabled).map((f) => f.id) ?? [];
     const verdict = checkAction(name, arg, contextFromState(state, items.map((i) => i.id), { menuIds: menu.filter((i) => !i.separator).map((i) => i.id), colorIds: colors, noticeIds, promptIds, settingIds }));
     if (!verdict.ok) return refuse(name, arg, (verdict as any).reason);
-    // Margin's own pages (the launcher) open their Settings in place.
-    if (name === 'settings.open' && host.launcher) return local('settings.toggle', undefined, info);
+    // Margin's own pages over a browser (the launcher) open their Settings in place; Margin's window opens its Settings
+    // tab (the host's openLauncher: HostedSession.swift, a margin://settings item).
+    if (name === 'settings.open' && host.launcher && !host.appWindow) return local('settings.toggle', undefined, info);
     // Made from what's drawn (a fold or Keep open pressed again before the
     // state agrees asks for the other way, not the same again).
     const request = requestFor(name, arg, { state: viewState(state), ui: { windowId: now.windowId, sidebar: vm?.window.sidebar ?? null }, platform: host.platform, row: name === 'palette.run' ? items.find((i) => i.id === arg) : null });
@@ -716,6 +724,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       case 'launcher.more': setUi({ launcher: { ...ui.launcher, allArchived: !ui.launcher?.allArchived } }); return true;
       case 'settings.toggle': setUi({ settingsOpen: !ui.settingsOpen, recording: null }); return true;
       case 'settings.run': return behaviors.settings.run(arg);
+      case 'settings.category': setUi({ settingsCategory: arg, recording: null }); return true;
       // The palette's own rows (shared/search.ts `local` actions). "Toggle
       // sidebar" is the theme's sidebar.toggle: Keep open on or off.
       case 'palette.toggleSidebar': return dispatch('sidebar.toggle', undefined, 'behavior');

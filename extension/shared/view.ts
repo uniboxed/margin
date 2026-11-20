@@ -275,7 +275,12 @@ function pickIconHref(links: { rel: string; href: string; sizes?: string; type?:
 // address app://<bundle id>) the installed app's icon, as the app listed it
 // (the state's `apps`: shared/apps.ts); else the browser's icon if it gave
 // one (Chrome does), else the icon Margin fetched for that site.
+// Margin's own Settings page (Margin.app's Settings tab, margin://settings): a gear, as macOS's System Settings.
+const SETTINGS_ICON = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHJlY3Qgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiByeD0iNy41IiBmaWxsPSIjOGU4ZTkzIi8+PHBvbHlnb24gcG9pbnRzPSIxMy4xMCw3LjU4IDEzLjc5LDQuNjEgMTguMjEsNC42MSAxOC45MCw3LjU4IDE5LjkwLDguMDAgMjIuNDksNi4zOCAyNS42Miw5LjUxIDI0LjAwLDEyLjEwIDI0LjQyLDEzLjEwIDI3LjM5LDEzLjc5IDI3LjM5LDE4LjIxIDI0LjQyLDE4LjkwIDI0LjAwLDE5LjkwIDI1LjYyLDIyLjQ5IDIyLjQ5LDI1LjYyIDE5LjkwLDI0LjAwIDE4LjkwLDI0LjQyIDE4LjIxLDI3LjM5IDEzLjc5LDI3LjM5IDEzLjEwLDI0LjQyIDEyLjEwLDI0LjAwIDkuNTEsMjUuNjIgNi4zOCwyMi40OSA4LjAwLDE5LjkwIDcuNTgsMTguOTAgNC42MSwxOC4yMSA0LjYxLDEzLjc5IDcuNTgsMTMuMTAgOC4wMCwxMi4xMCA2LjM4LDkuNTEgOS41MSw2LjM4IDEyLjEwLDguMDAiIGZpbGw9IiNmZmYiLz48Y2lyY2xlIGN4PSIxNiIgY3k9IjE2IiByPSIzLjQiIGZpbGw9IiM4ZThlOTMiLz48L3N2Zz4=';
+const isSettingsPage = (url: unknown) => typeof url === 'string' && /^margin:\/\/settings\/?$/i.test(url);
+
 function iconFor(state: State, item: { url?: string, favIconUrl?: string, target?: unknown } | null | undefined) {
+  if (isSettingsPage(item?.url)) return SETTINGS_ICON;
   const app = appOfItem(item);
   if (app) return appIcon((state as { apps?: InstalledApp[] | null } | null)?.apps, app) ?? '';
   if (/^(https?|data):/.test(item?.favIconUrl ?? '')) return item!.favIconUrl!; // (an icon matched: it's there)

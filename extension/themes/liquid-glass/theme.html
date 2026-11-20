@@ -260,6 +260,37 @@
   </template>
 
   <template m-part="launcher">
+    <!-- Settings as its own page (Margin.app's Settings tab, margin://settings; the new-tab page's #settings): as
+         macOS's System Settings, its categories in a sidebar and the one chosen beside it. Every word is Margin's. -->
+    <m-if test="settingsTab">
+      <main class="settings-page">
+        <nav class="settings-nav" aria-label="{{settingsTab.title}}">
+          <h1 class="settings-title">{{settingsTab.title}}</h1>
+          <ul class="settings-categories">
+            <m-for each="settingsTab.categories" as="c">
+              <li>
+                <button class="settings-category" m-class:selected="{{c.selected}}" m-attr:aria-current="{{c.selected}}" m-attr:data-category="{{c.id}}" m-action="settings.category" m-arg="{{c.id}}">
+                  <span class="category-icon" aria-hidden="true">
+                    <m-if test="c.isAppearance"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7.5"></circle><path d="M12 4.5a7.5 7.5 0 0 1 0 15z" fill="currentColor" stroke="none"></path></svg></m-if>
+                    <m-if test="c.isTabs"><svg viewBox="0 0 24 24"><rect x="4" y="8.5" width="12" height="11" rx="2"></rect><path d="M8 5h9a3 3 0 0 1 3 3v8"></path></svg></m-if>
+                    <m-if test="c.isBrowsing"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7.5"></circle><path d="M4.5 12h15M12 4.5c2.1 2.1 3.2 4.6 3.2 7.5s-1.1 5.4-3.2 7.5c-2.1-2.1-3.2-4.6-3.2-7.5s1.1-5.4 3.2-7.5z"></path></svg></m-if>
+                    <m-if test="c.isKeyboard"><svg viewBox="0 0 24 24"><rect x="3" y="6.5" width="18" height="11" rx="2"></rect><path d="M7 10.5h.01M10.3 10.5h.01M13.7 10.5h.01M17 10.5h.01M8 14h8"></path></svg></m-if>
+                  </span>
+                  <span class="category-label">{{c.label}}</span>
+                </button>
+              </li>
+            </m-for>
+          </ul>
+        </nav>
+        <section class="settings-pane" m-attr:data-category="{{settingsTab.current.id}}">
+          <header class="pane-head">
+            <h2 class="pane-title">{{settingsTab.current.label}}</h2>
+            <p class="pane-help">{{settingsTab.current.help}}</p>
+          </header>
+          <m-settings class="settings-slot"></m-settings>
+        </section>
+      </main>
+    <m-else>
     <main class="launcher">
       <m-if test="launcher.canSearch"><input class="launcher-query" m-input="launcher" placeholder="Search or enter address" aria-label="Search or enter address" spellcheck="false" autocomplete="off"></m-if>
       <m-if test="launcher.hasPins">
@@ -302,12 +333,17 @@
           </m-if>
         </section>
       </m-if>
-      <section class="settings-section">
-        <m-if test="launcher.settingsPage"><h1>Settings</h1></m-if>
-        <m-if test="launcher.canSearch"><button class="btn pill" m-attr:aria-expanded="{{launcher.settingsOpen}}" m-action="settings.open">Settings</button></m-if>
-        <m-settings></m-settings>
-      </section>
+      <!-- Settings under the search field: not in Margin.app's window, where Settings is its own tab. -->
+      <m-if test="launcher.hasSettings">
+        <section class="settings-section">
+          <m-if test="launcher.settingsPage"><h1>Settings</h1></m-if>
+          <m-if test="launcher.canSearch"><button class="btn pill" m-attr:aria-expanded="{{launcher.settingsOpen}}" m-action="settings.open">Settings</button></m-if>
+          <m-settings></m-settings>
+        </section>
+      </m-if>
     </main>
+    </m-else>
+    </m-if>
   </template>
 
   <template m-part="settings">

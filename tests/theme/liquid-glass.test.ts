@@ -14,6 +14,7 @@ import { chromium, webkit } from 'playwright';
 import { harnessScript, themeForPage, GLASS } from './package.ts';
 import { pageLoaderChecks } from './page-card.ts';
 import type { Harness, HarnessRt } from './harness.ts';
+import { settingsPageChecks } from './settings-page.ts';
 
 // What the harness puts on the page's window (harness.ts), as the page functions below read it.
 declare const T: Harness;
@@ -331,7 +332,7 @@ for (const [name, engine] of ENGINES) {
         await page.emulateMedia({ colorScheme: null, contrast: null, reducedMotion: null });
       });
 
-      await t.test('Margin.app\'s own window with nothing hosted: its page area the launcher, solid; Settings with the theme\'s own width', async () => {
+      await t.test('Margin.app\'s own window with nothing hosted: its page area the launcher, solid; its Settings tab with the theme\'s own settings', async () => {
         await ev(() => T.mountRuntime({ width: 1280, height: 800, mode: 'windowed', appWindow: true }));
         const e = await ev(() => T.rtEmptyPage());
         assert.ok(e.page && e.launcher, 'a launcher drawn in the page card');
@@ -343,11 +344,19 @@ for (const [name, engine] of ENGINES) {
         assert.deepEqual([controls.width, controls.height], [60, 14]);
         assert.ok((await rect('.drag-region')).width > 100);
         assert.ok(await count('.launcher .tile') > 0 && await count('.launcher .archive-row') > 0);
-        await ev(() => T.rtSetUi({ settingsOpen: true }));
-        assert.ok(await count('.settings-form select') > 0 && await count('.settings-form input.toggle') > 0);
-        assert.equal(await computed('.settings-form input.toggle', 'appearance'), 'none', 'the switch drawn by the theme');
+        assert.equal(await count('.launcher [aria-expanded]'), 0, 'no Settings under the search field: its own tab');
+        // Its Settings tab (margin://settings): the theme's own settings under its name in Appearance, its switches in Browsing.
+        await ev(() => T.rtSetUi({ settingsPage: true }));
+        assert.ok(await count('.settings-form select') > 0);
         assert.ok((await ev(() => T.rtText('.setting-group'))).some((g) => /Liquid Glass/.test(g)), 'its own settings under its name');
+        await ev(() => T.rtSetUi({ settingsCategory: 'browsing' }));
+        assert.ok(await count('.settings-form input.toggle') > 0);
+        assert.equal(await computed('.settings-form input.toggle', 'appearance'), 'none', 'the switch drawn by the theme');
         await ev(() => T.unmountRuntime());
+      });
+
+      await t.test('dedicated Settings: its own page, as System Settings (the categories beside the chosen one\'s settings); never under the search field in Margin.app\'s window', async () => {
+        await settingsPageChecks(page);
       });
 
       // Liquid Glass's own page loader (Margin.app, while an item opens): the card as the ground, lit in the space's

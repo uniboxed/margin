@@ -774,6 +774,11 @@ export class View {
     this.sheets = sheets;
   }
 
+  /** Whether the theme reads the view model's `head` anywhere (its template or a part): what it draws. */
+  reads(head: string) {
+    return this.plan.heads.has(head) || [...this.parts.values()].some((part) => part.heads.has(head));
+  }
+
   /** Renders the view model: the first call builds, later ones update. */
   update(vm: unknown) {
     this.rootScope.value = vm ?? {};

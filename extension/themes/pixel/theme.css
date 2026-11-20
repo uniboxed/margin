@@ -496,3 +496,37 @@ img.fav.app { width: 22px; height: 22px; margin: -2px; box-shadow: none; backgro
   .opening-glass, .pixel.blink .opening-caret, .pixel[m-starting] .today::before { animation: none; }
   .pixel .page-loader { transition: none; }
 }
+
+/* ---- Settings as its own page (Margin.app's Settings tab, margin://settings) ----
+   As macOS's System Settings, as a game's options screen: the categories in a
+   menu on the sidebar's colour, each with a tile in the palette's colours,
+   the chosen one on the deep ground in yellow with a blinking cursor; beside
+   it the category's settings in a pixel-bordered box on the dotted ground. */
+.settings-page { height: 100%; box-sizing: border-box; display: grid; grid-template-columns: clamp(180px, 32%, 250px) minmax(0, 1fr); background-color: var(--ground); background-image: radial-gradient(var(--dots) 1px, transparent 1px); background-size: 16px 16px; }
+.settings-nav { overflow-y: auto; padding: 22px 14px; background: var(--side); box-shadow: 3px 0 0 var(--ink); scrollbar-width: thin; scrollbar-color: var(--field) transparent; }
+.settings-title { margin: 0 0 20px; font-family: 'Press Start 2P', monospace; font-size: 14px; font-weight: 400; line-height: 1.4; color: var(--yellow); text-transform: uppercase; text-shadow: 2px 2px 0 var(--deep); }
+.settings-categories { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.settings-category { width: 100%; display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 8px; border: 0; border-radius: 0; background: none; font: inherit; font-size: 17px; color: var(--ink); text-align: left; cursor: pointer; }
+/* The cursor: a stepped ▶ before the chosen one. */
+.settings-category::before { content: ""; flex: none; width: 6px; height: 10px; background: transparent; clip-path: polygon(0 0, 34% 0, 34% 20%, 67% 20%, 67% 40%, 100% 40%, 100% 60%, 67% 60%, 67% 80%, 34% 80%, 34% 100%, 0 100%); }
+.settings-category:hover { background: var(--hover); color: var(--yellow); }
+.settings-category:active { transform: translate(0, 2px); }
+.settings-category:focus-visible { outline: 2px solid var(--yellow); outline-offset: -2px; }
+.settings-category.selected { background: var(--deep); color: var(--yellow); }
+.settings-category.selected::before { background: var(--yellow); }
+.pixel.blink .settings-category.selected::before { animation: px-blink 1s steps(1) infinite; }
+.category-icon { flex: none; display: grid; place-items: center; width: 22px; height: 22px; color: var(--deep); background: var(--field); box-shadow: var(--pxs); }
+.category-icon svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: square; stroke-linejoin: miter; }
+.settings-category[data-category="appearance"] .category-icon { background: #ff77a8; }
+.settings-category[data-category="tabs"] .category-icon { background: var(--blue); }
+.settings-category[data-category="browsing"] .category-icon { background: var(--green); }
+.settings-category[data-category="keyboard"] .category-icon { background: #ffa300; }
+.category-label { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-transform: uppercase; }
+.settings-pane { overflow-y: auto; padding: 28px 32px 48px; scrollbar-width: thin; scrollbar-color: var(--field) transparent; }
+.settings-pane > * { max-width: 640px; margin-inline: auto; }
+.pane-title { margin: 0; font-family: 'Press Start 2P', monospace; font-size: 18px; font-weight: 400; line-height: 1.4; text-transform: uppercase; color: var(--ink); text-shadow: 3px 3px 0 var(--deep); }
+.pane-help { margin: 10px 0 22px; font-size: 16px; line-height: 1.3; color: var(--muted); }
+.settings-page .settings-form { margin: 3px; }
+@media (prefers-reduced-motion: reduce) {
+  .pixel.blink .settings-category.selected::before { animation: none; }
+}

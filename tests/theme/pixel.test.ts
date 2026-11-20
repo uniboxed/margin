@@ -17,6 +17,7 @@ import { chromium, webkit } from 'playwright';
 import { harnessScript, themeForPage, PIXEL } from './package.ts';
 import { pageLoaderChecks, rgba } from './page-card.ts';
 import type { Harness, HarnessRt } from './harness.ts';
+import { settingsPageChecks } from './settings-page.ts';
 
 // What the harness puts on the page's window (harness.ts), as the page functions below read it.
 declare const T: Harness;
@@ -294,13 +295,8 @@ for (const [name, engine] of ENGINES) {
         assert.deepEqual(await ev(() => T.rtRefused()), []);
       });
 
-      await t.test('dedicated Settings has a heading and controls without a start-page field', async () => {
-        await mount({ inNewTab: true });
-        await ev(() => T.rtSetUi({ settingsPage: true }));
-        assert.equal(await count('.launcher h1'), 1);
-        assert.equal(await count('.launcher-query'), 0);
-        assert.equal(await count('.launcher .archive-row, .launcher .tile'), 0);
-        assert.ok(await count('.settings-form input') > 0);
+      await t.test('dedicated Settings: its own page, as System Settings (the categories beside the chosen one\'s settings); never under the search field in Margin.app\'s window', async () => {
+        await settingsPageChecks(page);
       });
 
       await t.test('the new-tab page: a title screen, the > field focused, pinned tiles, the archive; Settings in Pixel\'s inputs', async () => {

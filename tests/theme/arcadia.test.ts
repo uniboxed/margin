@@ -13,6 +13,7 @@ import assert from 'node:assert/strict';
 import { chromium, webkit } from 'playwright';
 import { harnessScript, themeForPage, ARCADIA } from './package.ts';
 import { pageLoaderChecks, rgba, near } from './page-card.ts';
+import { settingsPageChecks } from './settings-page.ts';
 import type { Harness, HarnessRt } from './harness.ts';
 
 // What the harness puts on the page's window (harness.ts), as the page functions below read it.
@@ -181,12 +182,8 @@ for (const [name, engine] of ENGINES) {
         assert.deepEqual(result, { target: 't-saved00001', active: true });
       });
 
-      await t.test('dedicated Settings has a heading and controls without start-page sections', async () => {
-        await page.evaluate(() => T.mountRuntime({ container: 'document', mode: 'inpage', inNewTab: true }));
-        await page.evaluate(() => T.rtSetUi({ settingsPage: true }));
-        assert.equal(await page.locator('.launcher h1').innerText(), 'Settings');
-        assert.equal(await page.locator('.launcher-query, .launcher .archive-row, .launcher .tile').count(), 0);
-        assert.ok(await page.locator('.settings-form input').count() > 0);
+      await t.test('dedicated Settings: its own page, as System Settings (the categories beside the chosen one\'s settings); never under the search field in Margin.app\'s window', async () => {
+        await settingsPageChecks(page);
       });
 
       await t.test('the launcher\'s Settings: Margin\'s inputs in the theme\'s settings part, each saving through its field', async () => {

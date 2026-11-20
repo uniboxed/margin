@@ -135,7 +135,12 @@ function bundle(out: string, manifest: Record<string, any>, profile: Target) {
 // page's, run by Margin.app in JavaScriptCore: app/platforms/macos/shell/LibraryRules.swift). Safari's profile for now
 // (Margin 2 Phase 2 is Safari's; Chrome and Edge are Phase 5).
 export const LIBRARY_FILE = 'library.js';
-export const APP_FILES = ['overlay.html', 'overlay.js', 'arcadia.js', LIBRARY_FILE];
+// Every built-in theme's package, for Margin.app to hand its window when that theme is chosen (ShellThemes.swift
+// BuiltinThemes): the window's page has only Arcadia of its own (FALLBACK_FILE), and the others came only from a
+// browser's copy, so choosing one in Margin's own Settings changed nothing (2026-11-19).
+export const BUILTIN_THEMES = ['arcadia', 'neubrutalism', 'pixel', 'liquid-glass'];
+export const builtinThemeFile = (id: string) => `theme.${id}.json`;
+export const APP_FILES = ['overlay.html', 'overlay.js', 'arcadia.js', LIBRARY_FILE, ...BUILTIN_THEMES.map(builtinThemeFile)];
 export function buildApp(outDir: string | URL, { profile = 'safari' }: { profile?: Target } = {}) {
   const out = outDir instanceof URL ? fileURLToPath(outDir) : outDir;
   rmSync(out, { recursive: true, force: true });
@@ -157,6 +162,7 @@ export function buildApp(outDir: string | URL, { profile = 'safari' }: { profile
   });
   cpSync(fileURLToPath(new URL('app/shared/host/overlay.html', root)), `${out}/overlay.html`);
   writeFileSync(`${out}/${FALLBACK_FILE}`, fallbackScript());
+  for (const id of BUILTIN_THEMES) writeFileSync(`${out}/${builtinThemeFile(id)}`, JSON.stringify(themePackage(id)));
   return out;
 }
 
@@ -167,13 +173,16 @@ export function buildApp(outDir: string | URL, { profile = 'safari' }: { profile
 // message's shape (background/theme-package.ts ThemeMessage), loaded only
 // when it's needed (app/shared/host/overlay.ts fallBack).
 export const FALLBACK_FILE = 'arcadia.js';
-export function fallbackPackage() {
-  const dir = new URL('themes/arcadia/', SOURCE);
+export function fallbackPackage() { return themePackage('arcadia'); }
+// A built-in theme's package in the `theme` message's shape ({ id, manifest, html, css, files }: its fonts and images
+// as base64).
+export function themePackage(id: string) {
+  const dir = new URL(`themes/${id}/`, SOURCE);
   const manifest = readFileSync(new URL('theme.json', dir), 'utf8');
   const raw = JSON.parse(manifest);
   const named: string[] = [...(raw.fonts ?? []).map((f: { file: string }) => f.file), ...(raw.images ?? [])];
   const files = Object.fromEntries(named.map((p) => [p, readFileSync(new URL(p, dir)).toString('base64')]));
-  return { id: 'arcadia', manifest, html: readFileSync(new URL('theme.html', dir), 'utf8'), css: readFileSync(new URL('theme.css', dir), 'utf8'), files };
+  return { id, manifest, html: readFileSync(new URL('theme.html', dir), 'utf8'), css: readFileSync(new URL('theme.css', dir), 'utf8'), files };
 }
 function fallbackScript() {
   return `// Arcadia for Margin.app's overlay to fall back on (scripts/build.ts fallbackPackage).\nglobalThis.marginFallbackTheme = ${JSON.stringify(fallbackPackage())};\n`;

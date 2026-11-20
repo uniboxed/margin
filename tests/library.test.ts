@@ -139,6 +139,46 @@ test('library: closing: a web item to the archive with its target, an app item f
   assert.equal(lib.act('itemClosed', { tabId: t }).requests.length, 0, 'closed outside Margin: nothing asked');
 });
 
+test('library: Margin\'s Settings page as an item of its own (margin://settings): one per space, shown again, never archived or changed by a browser', () => {
+  const lib = library({ spaces: { a: { name: 'A', order: 0 }, b: { name: 'B', order: 1 } } });
+  const settings = { kind: 'margin', page: 'settings' };
+  assert.deepEqual(L.targetOf(settings), settings);
+  assert.equal(L.targetOf({ kind: 'margin', page: 'evil' }), null, 'only Margin\'s own pages');
+  assert.equal(L.targetOf({ kind: 'margin' }), null);
+  const first = lib.act('openMarginPage', { windowId: 1, page: 'settings' });
+  const id = first.result.tabId;
+  assert.deepEqual(first.requests, [{ type: 'newTab', windowId: 1, item: id, url: 'margin://settings', target: settings, spaceId: 'a' }]);
+  assert.deepEqual([lib.values.tabs[id].url, lib.values.tabs[id].title, lib.values.tabs[id].icon, lib.values.tabs[id].target, lib.values.tabs[id].selected], ['margin://settings', 'Settings', '', settings, true]);
+  const other = lib.act('newTab', { windowId: 1, url: 'https://one.example/' }).result.tabId;
+  assert.equal(lib.values.tabs[id].selected, false);
+  const again = lib.act('openMarginPage', { windowId: 1, page: 'settings' });
+  assert.deepEqual(again.requests, [{ type: 'activateTab', windowId: 1, item: id, url: 'margin://settings', target: settings, spaceId: 'a' }], 'the space\'s one shown again');
+  assert.equal(items(lib, 'a').length, 2, 'no second Settings item');
+  assert.equal(lib.values.tabs[id].selected, true);
+  assert.equal(lib.act('openMarginPage', { windowId: 1, page: 'nope' }).ok, false);
+  // A browser's report never changes it.
+  lib.act('updateItem', { tabId: id, url: 'https://elsewhere.example/', title: 'Elsewhere', icon: 'data:image/png;base64,AA' });
+  assert.deepEqual([lib.values.tabs[id].url, lib.values.tabs[id].title, lib.values.tabs[id].icon], ['margin://settings', 'Settings', '']);
+  // Another space: its own.
+  lib.act('setSpace', { windowId: 1, spaceId: 'b' });
+  const inB = lib.act('openMarginPage', { windowId: 1, page: 'settings' }).result.tabId;
+  assert.notEqual(inB, id);
+  assert.equal(lib.values.tabs[inB].spaceId, 'b');
+  // Made by the hosting (a pin opened with no item): the same address and title, whatever it said.
+  const added = lib.act('addItem', { windowId: 1, target: settings, url: 'https://x.example/', title: 'X', icon: 'data:image/png;base64,AA' }).result.tabId;
+  assert.deepEqual([lib.values.tabs[added].url, lib.values.tabs[added].title, lib.values.tabs[added].icon], ['margin://settings', 'Settings', '']);
+  // Closed: forgotten, not archived; the next one named.
+  lib.act('setSpace', { windowId: 1, spaceId: 'a' });
+  const closed = lib.act('closeTab', { tabId: id });
+  assert.deepEqual(closed.requests, [{ type: 'closeTab', item: id, url: 'margin://settings', target: settings, spaceId: 'a', next: other }]);
+  assert.equal(lib.values.tabs[id], undefined);
+  assert.equal(Object.keys(lib.values.archive).length, 0, 'never archived');
+  // Pinned: the pin keeps its target, and opening it shows its item again.
+  const pin = lib.act('pinTab', { tabId: inB }).result;
+  assert.deepEqual(lib.values.pins[pin].target, settings);
+  assert.equal(lib.act('openPin', { windowId: 1, pinId: pin }).requests[0].target?.kind, 'margin');
+});
+
 test('library: folders and pins follow the model\'s order rules', () => {
   const lib = library({ spaces: { a: { name: 'A', order: 0 } } });
   const pins = ['x', 'y', 'z'].map((n) => lib.act('pinTab', { tabId: lib.act('newTab', { windowId: 1, url: `https://${n}.example/` }).result.tabId }).result);

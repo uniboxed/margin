@@ -1,7 +1,8 @@
 // Margin.app's library (docs/MARGIN-APP.md, phase 1; DECISIONS.md "Margin.app owns the spaces"): the person's
 // spaces, pins, folders and Margin tabs ("items"), owned by the app in one data set of its own
 // (app/platforms/macos/shell/Library.swift, data/app/), not by each profile's copy of the extension. An item is a
-// web page (shown in a browser's profile) or a Mac app (its bundle id): its `target`.
+// web page (shown in a browser's profile), a Mac app (its bundle id) or one of Margin's own pages (Settings, drawn in
+// Margin's window itself: `margin://settings`): its `target`.
 //
 // The edit rules are state/model.ts's, run here unchanged: the library's values become a model State (its items as
 // kept tabs: a Margin tab with no browser tab, which is what an item is to the app), the model's function runs, and
@@ -23,7 +24,9 @@ export const FORMAT = 1;
 
 export type WebTarget = { kind: 'web', browser: string, profile: string | null };
 export type AppTarget = { kind: 'app', bundleId: string, name: string };
-export type Target = WebTarget | AppTarget;
+/** One of Margin's own pages (MARGIN_PAGES), drawn by Margin's window in its page area: nothing hosted for it. */
+export type MarginTarget = { kind: 'margin', page: string };
+export type Target = WebTarget | AppTarget | MarginTarget;
 /** collection → id → value (the data set's live values) */
 export type Values = Record<string, Record<string, any>>;
 export type Change = { collection: string, id: string, value: any } | { collection: string, id: string, deleted: true };
@@ -32,6 +35,8 @@ export type Env = { now: number, ids?: string[] };
 export type Outcome = { ok: boolean, result?: any, error?: string, changes: Change[], requests: Request[] };
 
 const BROWSERS = new Set(['safari', 'chrome', 'edge']);
+/** Margin's own pages, and the title each item of one has. */
+export const MARGIN_PAGES: Readonly<Record<string, string>> = Object.freeze({ settings: 'Settings' });
 const BUNDLE_ID = /^[A-Za-z0-9][A-Za-z0-9.-]{0,254}$/;
 const str = (v: unknown, max = 2000) => (typeof v === 'string' ? v.slice(0, max) : '');
 const finite = (v: unknown, or = 0): number => (Number.isFinite(v) ? v as number : or);
@@ -47,6 +52,7 @@ export function targetOf(raw: unknown): Target | null {
     const bundleId = str(raw.bundleId, 255);
     return BUNDLE_ID.test(bundleId) ? { kind: 'app', bundleId, name: str(raw.name, 100) || bundleId } : null;
   }
+  if (raw.kind === 'margin') return typeof raw.page === 'string' && Object.hasOwn(MARGIN_PAGES, raw.page) ? { kind: 'margin', page: raw.page } : null;
   if (raw.kind === 'web') {
     const browser = BROWSERS.has(raw.browser) ? raw.browser : 'safari';
     return { kind: 'web', browser, profile: typeof raw.profile === 'string' && raw.profile ? raw.profile.slice(0, 256) : null };
@@ -56,6 +62,15 @@ export function targetOf(raw: unknown): Target | null {
 const webTarget = (browser: string, profile: string | null): WebTarget => ({ kind: 'web', browser, profile });
 /** An app item's address: what the model matches items and pins by (never a web page: never archived). */
 export const appUrl = (bundleId: string) => `app://${bundleId}`;
+/** A Margin page's address (never a web page's: never archived, never updated by a browser). */
+export const marginUrl = (page: string) => `margin://${page}`;
+/** An item's address and title for its target: an app's and a Margin page's are their own, a web page's as given. */
+const placeOf = (target: Target, url: unknown, title: unknown) => {
+  if (target.kind === 'app') return { url: appUrl(target.bundleId), title: str(title) || target.name };
+  if (target.kind === 'margin') return { url: marginUrl(target.page), title: MARGIN_PAGES[target.page] };
+  const u = str(url);
+  return { url: u, title: str(title) || u };
+};
 
 // ---- the model's state from the values, and back ---------------------------------------------------
 // Items are the model's kept tabs (keyed by their own `t-` ids); open tabs are the hosting's, never here. Each
@@ -235,10 +250,10 @@ const ACTIONS: Record<string, Handler> = {
     const spaceId = hasSpace(s, p?.spaceId) ? p.spaceId : windowSpace(s, w);
     if (!spaceId) return fail(s, 'no space');
     const target = targetOf(p?.target) ?? spaceTarget(s, spaceId);
-    const url = target.kind === 'app' ? appUrl(target.bundleId) : str(p?.url);
+    const { url, title } = placeOf(target, p?.url, target.kind === 'app' ? '' : p?.title);
     if (!url) return fail(s, 'no address'); // (⌘T with nothing typed is the palette: the UI's own)
     const id = ids.tab();
-    let next = addItem(s, id, { spaceId, url, title: target.kind === 'app' ? target.name : str(p.title) || url, icon: '', target, now });
+    let next = addItem(s, id, { spaceId, url, title, icon: '', target, now });
     next = used(next, id, w, now);
     requests.push({ type: 'newTab', windowId: p?.windowId ?? null, item: id, url, target, spaceId });
     return { s: next, result: { tabId: id } };
@@ -250,17 +265,19 @@ const ACTIONS: Record<string, Handler> = {
     const spaceId = hasSpace(s, p?.spaceId) ? p.spaceId : windowSpace(s, w);
     if (!spaceId) return fail(s, 'no space');
     const target = targetOf(p?.target) ?? spaceTarget(s, spaceId);
-    const url = target.kind === 'app' ? appUrl(target.bundleId) : str(p?.url);
+    const { url, title } = placeOf(target, p?.url, p?.title);
     if (!url) return fail(s, 'no address');
     const id = ids.tab();
-    let next = addItem(s, id, { spaceId, url, title: target.kind === 'app' ? str(p.title) || target.name : str(p.title) || url, icon: str(p.icon, 100_000), target, now });
+    let next = addItem(s, id, { spaceId, url, title, icon: target.kind === 'margin' ? '' : str(p.icon, 100_000), target, now });
     if (p.front) next = used(next, id, w, now);
     return { s: next, result: { tabId: id } };
   },
-  // The page an item's tab shows now (its address, title, icon), as the hosting saw it. A web item's only.
+  // The page an item's tab shows now (its address, title, icon), as the hosting saw it. A web item's only (an app's
+  // title too; a Margin page's never changes).
   updateItem({ s, p }) {
     const k: any = s.keptTabs[p?.tabId];
     if (!k) return fail(s, 'no such item');
+    if (targetOfItem(k).kind === 'margin') return { s };
     if (targetOfItem(k).kind === 'app') {
       const title = str(p.title);
       return { s: title && title !== k.title ? { ...s, keptTabs: { ...s.keptTabs, [k.id]: { ...k, title } } } : s };
@@ -270,6 +287,26 @@ const ACTIONS: Record<string, Handler> = {
     if (typeof p.title === 'string') patch.title = str(p.title);
     if (typeof p.icon === 'string') patch.favIconUrl = str(p.icon, 100_000);
     return { s: { ...s, keptTabs: { ...s.keptTabs, [k.id]: { ...k, ...patch } } } };
+  },
+  // One of Margin's own pages (`page`: MARGIN_PAGES) in the window: the item of that page in the window's space, shown
+  // again, else a new one (Settings asked for from the palette, a menu, a theme's button).
+  openMarginPage({ s, p, now, ids, requests }) {
+    if (typeof p?.page !== 'string' || !Object.hasOwn(MARGIN_PAGES, p.page)) return fail(s, 'no such page');
+    const w = win(p);
+    const spaceId = windowSpace(s, w);
+    if (!spaceId) return fail(s, 'no space');
+    const target: MarginTarget = { kind: 'margin', page: p.page };
+    const had = itemsOf(s, spaceId).filter((k) => { const t = targetOfItem(k); return t.kind === 'margin' && t.page === p.page; })
+      .sort((a, b) => finite(b.lastActive) - finite(a.lastActive) || a.id.localeCompare(b.id))[0];
+    if (had) {
+      requests.push({ type: 'activateTab', windowId: p.windowId ?? null, item: had.id, url: had.url, target, spaceId });
+      return { s: used(s, had.id, w, now), result: { tabId: had.id } };
+    }
+    const id = ids.tab();
+    const { url, title } = placeOf(target, '', '');
+    const next = used(addItem(s, id, { spaceId, url, title, icon: '', target, now }), id, w, now);
+    requests.push({ type: 'newTab', windowId: p.windowId ?? null, item: id, url, target, spaceId });
+    return { s: next, result: { tabId: id } };
   },
   activateTab({ s, p, now, requests }) {
     const k = s.keptTabs[p?.tabId];

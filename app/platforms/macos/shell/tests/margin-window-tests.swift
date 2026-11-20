@@ -241,6 +241,34 @@ func marginWindowTests() {
         check("theme settings: only numbers, short strings and switches are kept, per theme", Set(cleaned.keys) == ["arcadia"] && Set(cleaned["arcadia"]?.keys.map { $0 } ?? []) == ["sidebarWidth", "name", "on"], "\(cleaned)")
     }
 
+    // ---- Margin's settings kept across launches, and the theme chosen in its own Settings drawn (2026-11-20) ----
+    do {
+        var stored: JSONObject = [:]
+        var writes = 0
+        let keeper = SettingsKeeper(read: { stored }, write: { stored = $0; writes += 1 })
+        func source() -> DataSetWindowSource { DataSetWindowSource(data: DataSync(store: DataStore(root: tempFolder("window-settings"))), pick: { nil }, settingsKeeper: keeper) }
+        let first = source()
+        check("settings: none chosen in Margin's Settings yet: no theme of its own (the profile's set says)", first.chosenTheme == nil && writes == 0)
+        first.perform("updateSettings", ["patch": ["theme": "pixel", "archiveAfterHours": 6, "themes": ["x": 1]], "windowId": 1])
+        check("settings: a change is written as it's made (never a theme's own settings with it)", writes == 1 && stored["theme"] as? String == "pixel" && int(stored["archiveAfterHours"]) == 6 && stored["themes"] == nil, "\(stored)")
+        check("settings: the theme chosen there is the window's theme", first.chosenTheme == "pixel" && (first.snapshot()["settings"] as? JSONObject)?["theme"] as? String == "pixel")
+        let next = source()
+        check("settings: the next launch has what was chosen", next.chosenTheme == "pixel" && int((next.snapshot()["settings"] as? JSONObject)?["archiveAfterHours"]) == 6)
+        let cleaned = SettingsKeeper.clean(["theme": "arcadia", "on": true, "n": 3, "sites": ["a.com", "b.com"], "mixed": ["a", 1], "nested": ["a": 1], "themes": ["x": 1], "long": String(repeating: "x", count: 501)])
+        check("settings: only numbers, switches, short strings and lists of strings are kept, never `themes`", Set(cleaned.keys) == ["theme", "on", "n", "sites"], "\(cleaned)")
+
+        // The built-in packages Margin carries (dist/app, as the app's Resources/app has them).
+        let builtins = BuiltinThemes(root: URL(fileURLWithPath: "../../dist/app"))
+        for id in ["arcadia", "neubrutalism", "pixel", "liquid-glass"] {
+            let json = builtins.message(id)
+            let o = json.flatMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? JSONObject }
+            check("built-in themes: \(id)'s package, in the theme message's shape", o?["id"] as? String == id && o?["html"] is String && o?["css"] is String && o?["manifest"] is String)
+        }
+        check("built-in themes: Neubrutalism's earlier name still gives it", builtins.message("neo-brutalism").map { $0.contains(#""id":"neubrutalism""#) } == true)
+        check("built-in themes: an imported theme's id, or junk, is no built-in", builtins.message("my-theme") == nil && builtins.message("../overlay") == nil && builtins.message("") == nil)
+        check("built-in themes: none without the folder (a test's, the harness's)", BuiltinThemes(root: nil).message("pixel") == nil)
+    }
+
     // ---- the window's ground with the page area cut out of it (WindowGroundView): Margin's window in front of what it hosts ----
     do {
         let ground = WindowGroundView(frame: NSRect(x: 0, y: 0, width: 1512, height: 949))

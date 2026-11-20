@@ -148,6 +148,16 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // `elsewhere`: not hosting, its item in another Margin window or parked (one window hosts at a time): its card, faded
     // ("Click to show … here"); focused, the item comes back here (HostedSession `focused`).
     enum PageState: String { case empty, loading, shown, elsewhere }
+    // One of Margin's own pages in the page area while nothing's hosted there (HostedSession: ItemTarget.margin), nil:
+    // the launcher. The page draws it (ui/host-app.ts `marginPage`); hosting covers it as it covers the launcher.
+    private(set) var marginPage: String?
+    func setMarginPage(_ page: String?) {
+        let page = page.flatMap { ItemTarget.marginPages.contains($0) ? $0 : nil }
+        guard page != marginPage else { return }
+        marginPage = page
+        Diagnostics.note("Margin's window \(id): \(page.map { "Margin's \($0) page" } ?? "no page of Margin's") in its page area")
+        push(#"{"type":"marginPage","page":"# + (page.flatMap { jsonString($0) } ?? "null") + "}")
+    }
     private var elsewhereLabel: String?
     private var elsewhereApp: String?
     // A web item's page, as Safari showed it before it left for the other window (a data URL): the page draws it faded
@@ -1383,6 +1393,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         json += #","themes":"# + owner.themes()
         json += #","apps":"# + owner.apps()
         json += #","pageHosted":"# + (hosting ? "true" : "false")
+        json += #","marginPage":"# + (marginPage.flatMap { jsonString($0) } ?? "null")
         json += #","pageMinWidth":"# + (pageMinimum.map { String(Int($0)) } ?? "null")
         json += #","pageState":""# + pageState.rawValue + #"","pageOpening":"# + (loaderLabel.flatMap { jsonString($0) } ?? "null")
         json += #","pageOpeningBundleId":"# + (loaderApp.flatMap { jsonString($0) } ?? "null")

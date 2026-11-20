@@ -22,6 +22,9 @@ import Security
 enum ItemTarget: Hashable {
     case web(browser: String, profile: String?) // profile nil: the browser's default
     case app(bundleId: String, name: String)
+    case margin(page: String) // one of Margin's own pages (library.ts MARGIN_PAGES), drawn in Margin's window: nothing hosted
+
+    static let marginPages: Set<String> = ["settings"]
 
     init?(json: Any?) {
         guard let o = json as? JSONObject else { return nil }
@@ -30,6 +33,9 @@ enum ItemTarget: Hashable {
         case "app":
             guard let id = o["bundleId"] as? String, !id.isEmpty else { return nil }
             self = .app(bundleId: id, name: o["name"] as? String ?? id)
+        case "margin":
+            guard let page = o["page"] as? String, Self.marginPages.contains(page) else { return nil }
+            self = .margin(page: page)
         default: return nil
         }
     }
@@ -38,6 +44,7 @@ enum ItemTarget: Hashable {
         switch self {
         case .web(let browser, let profile): return ["kind": "web", "browser": browser, "profile": profile ?? NSNull()]
         case .app(let bundleId, let name): return ["kind": "app", "bundleId": bundleId, "name": name]
+        case .margin(let page): return ["kind": "margin", "page": page]
         }
     }
 }
