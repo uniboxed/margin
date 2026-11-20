@@ -52,7 +52,9 @@ export const ACTIONS = Object.freeze({
   'space.edit': 'space',
   'space.rename': 'space',
   'space.setName': Object.freeze({ space: 'space', name: 'name' }),
-  'space.update': Object.freeze({ space: 'space', name: 'name', emoji: 'emoji', color: 'hex?' }),
+  'space.update': Object.freeze({ space: 'space', name: 'name', emoji: 'emoji', color: 'hex?', theme: 'theme?' }),
+  // A space's theme (ui/space-theme.ts; null: none, the profile's): its menu's Theme items, Settings' Theme.
+  'space.setTheme': Object.freeze({ space: 'space', theme: 'theme?' }),
   'space.delete': 'space',
   'today.clear': 'none',
   'nav.back': 'none',
@@ -68,6 +70,8 @@ export const ACTIONS = Object.freeze({
   'editor.cancel': 'none',
   'editor.delete': 'none',
   'editor.color': 'color',
+  // The space editor's theme (one of `editor.themes`' ids).
+  'editor.theme': 'theme',
   'sidebar.toggle': 'none',
   'archive.open': 'none',
   'archive.restore': 'archive',
@@ -122,6 +126,8 @@ export type ActionContext = {
   hasMenuItem?(id: any): boolean, hasColor?(id: any): boolean,
   hasNoticeItem?(id: any): boolean, hasPromptItem?(id: any): boolean,
   hasSettingItem?(id: any): boolean,
+  /** A theme Margin has (built in or imported: ui/space-theme.ts themeChoices). */
+  hasTheme?(id: any): boolean,
 };
 
 export const NAME_MAX = 40;
@@ -145,6 +151,7 @@ function valueOk(kind: string | readonly unknown[], v: any, ctx: ActionContext) 
     case 'name': return plainText(v, NAME_MAX);
     case 'emoji': return plainText(v, EMOJI_MAX);
     case 'hex': return typeof v === 'string' && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v);
+    case 'theme': return isId(v) && !!ctx.hasTheme?.(v);
     default: return false;
   }
 }
@@ -167,7 +174,7 @@ export function checkAction(name: string, arg: any, ctx: ActionContext): { ok: t
     tab: ctx.hasTab, space: ctx.hasSpace, folder: ctx.hasFolder, pin: ctx.hasPin, archive: ctx.hasArchived, row: ctx.hasPaletteRow,
     item: ctx.hasMenuItem ?? (() => false), color: ctx.hasColor ?? (() => false),
     'notice-item': ctx.hasNoticeItem ?? (() => false), 'prompt-item': ctx.hasPromptItem ?? (() => false),
-    'setting-item': ctx.hasSettingItem ?? (() => false),
+    'setting-item': ctx.hasSettingItem ?? (() => false), theme: ctx.hasTheme ?? (() => false),
   };
   switch (kind) {
     case 'none':
@@ -208,7 +215,7 @@ export function createDispatcher({ context, run, log = () => {} }: { context: ()
  * rows of the palette while it's open (`paletteIds`, from ui/view-model.ts
  * paletteItems), and the open menu's items and the editor's swatches.
  * */
-export function contextFromState(state: any, paletteIds: Iterable<string> = [], { menuIds = [], colorIds = [], noticeIds = [], promptIds = [], settingIds = [] }: { menuIds?: Iterable<string>, colorIds?: Iterable<string>, noticeIds?: Iterable<string>, promptIds?: Iterable<string>, settingIds?: Iterable<string> } = {}): ActionContext {
+export function contextFromState(state: any, paletteIds: Iterable<string> = [], { menuIds = [], colorIds = [], noticeIds = [], promptIds = [], settingIds = [], themeIds = [] }: { menuIds?: Iterable<string>, colorIds?: Iterable<string>, noticeIds?: Iterable<string>, promptIds?: Iterable<string>, settingIds?: Iterable<string>, themeIds?: Iterable<string> } = {}): ActionContext {
   const tabs = state?.tabs && typeof state.tabs === 'object' ? state.tabs : {};
   const kept = state?.keptTabs && typeof state.keptTabs === 'object' ? state.keptTabs : {};
   const ids = (list: unknown) => new Set((Array.isArray(list) ? list : []).map((x) => x?.id));
@@ -222,6 +229,7 @@ export function contextFromState(state: any, paletteIds: Iterable<string> = [], 
   const notices = new Set(noticeIds);
   const prompts = new Set(promptIds);
   const settingButtons = new Set(settingIds);
+  const themes = new Set(themeIds);
   return {
     // An open tab by its browser tab's id, or a Margin tab that isn't open
     // by its own (state/model.ts keptTabs).
@@ -237,6 +245,7 @@ export function contextFromState(state: any, paletteIds: Iterable<string> = [], 
     hasNoticeItem: (id) => notices.has(id),
     hasPromptItem: (id) => prompts.has(id),
     hasSettingItem: (id) => settingButtons.has(id),
+    hasTheme: (id) => themes.has(id),
   };
 }
 
@@ -276,7 +285,8 @@ export function contextFromState(state: any, paletteIds: Iterable<string> = [], 
 // | space.edit         | space id          | local: the space editor       | (it sends space.update, space.delete)   |
 // | space.rename       | space id          | local: its name edited in place |                                       |
 // | space.setName      | {space, name}     | renameSpace                   | { spaceId, name }                       |
-// | space.update       | {space, name, emoji, color} | renameSpace         | { spaceId, name, emoji, color }         |
+// | space.update       | {space, name, emoji, color, theme?} | renameSpace | { spaceId, name, emoji, color, theme? } |
+// | space.setTheme     | {space, theme}    | setSpaceTheme                 | { spaceId, theme } (null: the profile's) |
 // | space.delete       | space id          | deleteSpace                   | { spaceId }                             |
 // | today.clear        | none              | clearToday                    | { windowId }                            |
 // | nav.back, .forward, .reload | none     | host, else goBack, goForward, reload | { windowId }                     |
@@ -291,7 +301,7 @@ export function contextFromState(state: any, paletteIds: Iterable<string> = [], 
 // | menu.open          | 'add'             | local: that menu, at the button |                                       |
 // | menu.run           | item id           | the item's own action         | (ui/behaviors/menu-items.ts)            |
 // | menu.close         | none              | local                         |                                         |
-// | editor.save, .cancel, .delete, .color | | local: the space editor     | (save: space.update; delete: twice)     |
+// | editor.save, .cancel, .delete, .color, .theme | | local: the space editor | (save: space.update; delete: twice)  |
 // | sidebar.toggle     | none              | updateSettings                | { patch: { sidebarPinnedOpen: !now } }  |
 // | archive.open       | none              | openLauncher                  | { windowId }                            |
 // | archive.restore    | archive id        | restoreArchive                | { archiveId, windowId }                 |
@@ -338,6 +348,7 @@ export const ACTION_MAP = Object.freeze({
   'space.rename': 'local',
   'space.setName': 'renameSpace',
   'space.update': 'renameSpace',
+  'space.setTheme': 'setSpaceTheme',
   'space.delete': 'deleteSpace',
   'today.clear': 'clearToday',
   'nav.back': 'host | goBack',
@@ -353,6 +364,7 @@ export const ACTION_MAP = Object.freeze({
   'editor.cancel': 'local',
   'editor.delete': 'local',
   'editor.color': 'local',
+  'editor.theme': 'local',
   'sidebar.toggle': 'updateSettings',
   'archive.open': 'openLauncher',
   'archive.restore': 'restoreArchive',
@@ -369,7 +381,7 @@ export const ACTION_MAP = Object.freeze({
   'settings.category': 'local',
 });
 
-const LOCAL = new Set(['space.edit', 'space.rename', 'folder.rename', 'palette.open', 'palette.close', 'menu.open', 'menu.run', 'menu.close', 'editor.save', 'editor.cancel', 'editor.delete', 'editor.color',
+const LOCAL = new Set(['space.edit', 'space.rename', 'folder.rename', 'palette.open', 'palette.close', 'menu.open', 'menu.run', 'menu.close', 'editor.save', 'editor.cancel', 'editor.delete', 'editor.color', 'editor.theme',
   'notice.run', 'notice.close', 'prompt.run', 'prompt.close', 'launcher.more', 'settings.run', 'settings.category']);
 const NAV = { 'nav.back': 'goBack', 'nav.forward': 'goForward', 'nav.reload': 'reload' };
 
@@ -417,7 +429,8 @@ export function requestFor(name: string, arg: any, { state, ui, platform, row }:
     case 'space.switch': return send('setSpace', { windowId, spaceId: arg, ...show });
     case 'space.new': return send('createSpace', { windowId });
     case 'space.setName': return send('renameSpace', { spaceId: arg.space, name: arg.name });
-    case 'space.update': return send('renameSpace', { spaceId: arg.space, name: arg.name, emoji: arg.emoji, color: arg.color });
+    case 'space.update': return send('renameSpace', { spaceId: arg.space, name: arg.name, emoji: arg.emoji, color: arg.color, ...(arg.theme !== undefined ? { theme: arg.theme } : {}) });
+    case 'space.setTheme': return send('setSpaceTheme', { spaceId: arg.space, theme: arg.theme ?? null });
     case 'space.delete': return send('deleteSpace', { spaceId: arg });
     case 'today.clear': return send('clearToday', { windowId });
     case 'nav.back': case 'nav.forward': case 'nav.reload':

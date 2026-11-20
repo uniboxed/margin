@@ -81,16 +81,21 @@ function field(f: Partial<SettingsField> & { id: string, kind: SettingsField['ki
  * and the form's own state (`ui`: the
  * shortcut being recorded, the statuses, the active theme: its id, name and theme.json settings).
  * */
-export function settingsFields(settings: any, features: any = {}, ui: { recording?: string | null, status?: Record<string, { text: string, error?: boolean } | undefined>, theme?: { id: string, name: string, settings: Record<string, any> } | null } = {}): SettingsField[] {
+export function settingsFields(settings: any, features: any = {}, ui: { recording?: string | null, status?: Record<string, { text: string, error?: boolean } | undefined>, theme?: { id: string, name: string, settings: Record<string, any> } | null, spaceTheme?: string | null } = {}): SettingsField[] {
   const s = settings ?? {};
   const f = features ?? {};
   const status = ui.status ?? {};
   const list: SettingsField[] = [];
-  // What Margin looks like: the built-in themes, then the ones imported (Margin.app's: `features.userThemes`).
+  // What Margin looks like: the built-in themes, then the ones imported (Margin.app's: `features.userThemes`). With a
+  // space shown (`spaceTheme`: the theme it's drawn with, ui/space-theme.ts), its theme: each space has its own
+  // (2026-11-20); else the profile's.
   const imported = userThemeList(f.userThemes);
-  const theme = PACKAGE_THEMES.includes(s.theme) || imported.some((t) => t.id === s.theme) ? s.theme : PACKAGE_THEMES[0];
+  const known = (id: unknown) => PACKAGE_THEMES.includes(id as string) || imported.some((t) => t.id === id);
+  const spaced = ui.spaceTheme != null;
+  const chosen = spaced ? ui.spaceTheme : s.theme;
+  const theme = known(chosen) ? chosen : PACKAGE_THEMES[0];
   const options = [...PACKAGE_THEMES.map((id) => ({ id, label: (PACKAGE_THEME_NAMES as Record<string, string>)[id] ?? id })), ...imported.map((t) => ({ id: t.id, label: t.name || t.id }))];
-  list.push(field({ id: 'theme', kind: 'choice', label: 'Theme', options: options.map((o) => ({ ...o, selected: o.id === theme })), value: theme, status: status.theme?.text ?? '', error: !!status.theme?.error }));
+  list.push(field({ id: 'theme', kind: 'choice', label: spaced ? 'Theme of this space' : 'Theme', help: spaced ? 'Each space has its own theme. New spaces start with the theme of the space they’re made from.' : '', options: options.map((o) => ({ ...o, selected: o.id === theme })), value: theme, status: status.theme?.text ?? '', error: !!status.theme?.error }));
   list.push(...importFields(f, status, imported));
   list.push(field({ id: 'engine', kind: 'info', label: engineText(s, f) }));
   list.push(field({ id: 'archiveAfterHours', kind: 'number', label: 'Archive tabs not used for (hours, 0 = never)', value: String(s.archiveAfterHours ?? 12), min: 0, max: 720, step: '1' }));

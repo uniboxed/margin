@@ -306,6 +306,19 @@ test('spaces: create and update (rename / emoji / recolor), blanks ignored', () 
   assert.equal(M.createSpace(s, { id: 'x', name: '  ' }).spaces[2].name, 'New space');
 });
 
+test('spaces: a theme (2026-11-20): an id kept, null clears it, anything else changes nothing', () => {
+  let s = twoSpaces();
+  assert.equal('theme' in M.createSpace(s, { id: 'x' }).spaces[2], false, 'none asked: none (the profile\'s)');
+  assert.equal(M.createSpace(s, { id: 'x', theme: 'pixel' }).spaces[2].theme, 'pixel');
+  assert.equal('theme' in M.createSpace(s, { id: 'x', theme: 'Pixel!' }).spaces[2], false, 'an id only');
+  s = M.updateSpace(s, 'work', { theme: 'material' });
+  assert.deepEqual(s.spaces[1], { id: 'work', name: 'Work', emoji: '💼', color: s.spaces[1].color, theme: 'material' });
+  assert.equal(M.updateSpace(s, 'work', { name: 'Job' }).spaces[1].theme, 'material', 'left out: kept');
+  assert.equal(M.updateSpace(s, 'work', { theme: '../x' }).spaces[1].theme, 'material', 'not an id: kept');
+  assert.equal('theme' in M.updateSpace(s, 'work', { theme: null }).spaces[1], false, 'null: none again');
+  assert.equal(M.updateSpace(s, 'work', { theme: 'pixel' }).spaces[0], s.spaces[0], 'the other space untouched');
+});
+
 test('view.sidebar: shows the window\'s active space, pins separately, newest tabs first', () => {
   let s = twoSpaces();
   s = M.addPin(s, { id: 'p1', spaceId: 'personal', url: 'https://mail.com', title: 'Mail' });

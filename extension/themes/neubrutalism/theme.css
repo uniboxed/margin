@@ -337,6 +337,10 @@ img.fav.app, .tab.on img.fav.app { width: 22px; height: 22px; margin: -2px; bord
 .swatches { display: flex; gap: 6px; flex-wrap: wrap; }
 .swatch { --swatch: var(--paper); width: 26px; height: 26px; border: 2.5px solid var(--ink); border-radius: 7px; background: var(--swatch); }
 .swatch.on { box-shadow: inset 0 0 0 2.5px var(--paper); transform: translate(2px, 2px); }
+.theme-choices { display: flex; gap: 6px; flex-wrap: wrap; }
+.theme-choice { height: 28px; padding: 0 10px; border: 2.5px solid var(--ink); border-radius: 7px; background: var(--paper); color: var(--ink); font-size: 12px; font-weight: 700; }
+.theme-choice:hover { background: var(--yellow); }
+.theme-choice.on { background: var(--ink); color: var(--paper); transform: translate(2px, 2px); }
 .small { height: 32px; padding: 0 12px; white-space: nowrap; font-size: 12px; font-weight: 700; text-transform: uppercase; box-shadow: 2px 2px 0 var(--ink); }
 .small.primary { background: var(--yellow); }
 .small.danger { color: #c0262d; }

@@ -338,7 +338,9 @@ test('the action list is PLAN.md §3\'s, plus palette.run and the behaviors\' an
   const step4 = ['settings.run'];
   // Margin.app's Settings tab (2026-11-20): its categories' sidebar.
   const settingsTab = ['settings.category'];
-  assert.deepEqual(Object.keys(ACTIONS).sort(), [...plan, 'palette.run', ...step2, ...step3, ...step4, ...settingsTab].sort());
+  // A theme per space (2026-11-20): the editor's theme, a space's menu's and Settings' Theme.
+  const spaceThemes = ['editor.theme', 'space.setTheme'];
+  assert.deepEqual(Object.keys(ACTIONS).sort(), [...plan, 'palette.run', ...step2, ...step3, ...step4, ...settingsTab, ...spaceThemes].sort());
   assert.ok(isAction('tab.activate'));
   assert.equal(isAction('toString'), false);
   assert.equal(isAction('__proto__'), false);

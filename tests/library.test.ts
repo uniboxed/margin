@@ -59,6 +59,37 @@ test('library: spaces are created, renamed, given a profile, ordered, and the la
   assert.deepEqual(spaces(lib), ['a']);
 });
 
+// A theme per space (2026-11-20, Tirth): asked as it's made, the theme of the space it was made from by default; changed
+// in its editor (renameSpace), its menu or Settings (setSpaceTheme); none (spaces from before) is the profile's.
+test('library: a space\'s theme: the one it was made from by default, as asked, changed, cleared, kept in the set', () => {
+  const lib = library({ spaces: { a: { name: 'A', order: 0, theme: 'pixel' }, b: { name: 'B', order: 1 } } });
+  lib.act('setSpace', { windowId: 7, spaceId: 'a' });
+  const fromA = lib.act('createSpace', { windowId: 7, name: 'From A' }).result.spaceId;
+  assert.equal(lib.values.spaces[fromA].theme, 'pixel', 'the theme of the space the window showed');
+  const asked = lib.act('createSpace', { windowId: 7, name: 'Asked', theme: 'material' }).result.spaceId;
+  assert.equal(lib.values.spaces[asked].theme, 'material', 'one asked for');
+  lib.act('setSpace', { windowId: 7, spaceId: 'b' });
+  const fromB = lib.act('createSpace', { windowId: 7, name: 'From B' }).result.spaceId;
+  assert.equal('theme' in lib.values.spaces[fromB], false, 'made from one with none: none (the profile\'s, as it)');
+  assert.equal('theme' in lib.values.spaces.b, false, 'a space with none keeps none: nothing written for it');
+  lib.act('renameSpace', { spaceId: fromB, name: 'Renamed', theme: 'liquid-glass' });
+  assert.deepEqual([lib.values.spaces[fromB].name, lib.values.spaces[fromB].theme], ['Renamed', 'liquid-glass'], 'its editor');
+  lib.act('renameSpace', { spaceId: fromB, name: 'Again' });
+  assert.equal(lib.values.spaces[fromB].theme, 'liquid-glass', 'a rename without a theme leaves it');
+  assert.equal(lib.act('setSpaceTheme', { spaceId: fromB, theme: 'neubrutalism' }).ok, true);
+  assert.equal(lib.values.spaces[fromB].theme, 'neubrutalism', 'its menu, Settings');
+  assert.equal(lib.act('setSpaceTheme', { spaceId: fromB, theme: null }).ok, true);
+  assert.equal('theme' in lib.values.spaces[fromB], false, 'null: none again');
+  const bad = lib.act('setSpaceTheme', { spaceId: fromB, theme: 'Not An Id!' });
+  assert.deepEqual([bad.ok, bad.error, bad.changes], [false, 'not a theme id', []]);
+  assert.equal(lib.act('setSpaceTheme', { spaceId: 'nope', theme: 'pixel' }).ok, false);
+  assert.equal(lib.act('createSpace', { name: 'Odd', theme: '../x' }).ok, true);
+  assert.equal(lib.values.spaces[spaces(lib).at(-1)!].theme, 'pixel', 'not an id: as none asked (no window: the first space\'s, the one such a window shows)');
+  // What the UI draws: each space with its theme.
+  const shot = L.snapshot(lib.values);
+  assert.deepEqual(shot.spaces.map((s: any) => s.theme ?? null), ['pixel', null, 'pixel', 'material', null, 'pixel']);
+});
+
 test('library: deleting a space moves its items, pins, folders, archive and windows to the first space left', () => {
   const lib = library({ spaces: { a: { name: 'A', order: 0 }, b: { name: 'B', order: 1 } } });
   lib.act('setSpace', { windowId: 1, spaceId: 'b' });

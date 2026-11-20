@@ -138,7 +138,7 @@ export const STATE_KEYS = ['openTabs', 'spaces', 'pins', 'folders', 'archive', '
 export const APP_REQUESTS = new Set([
   'activateTab', 'closeTab', 'newTab', 'pinTab', 'unpin', 'moveTabToSpace', 'moveTab', 'openPin', 'movePin',
   'setFolderOpen', 'createFolder', 'renameFolder', 'deleteFolder', 'moveFolder', 'setSpace', 'createSpace',
-  'renameSpace', 'deleteSpace', 'clearToday', 'goBack', 'goForward', 'reload', 'restoreArchive', 'openLauncher',
+  'renameSpace', 'setSpaceTheme', 'deleteSpace', 'clearToday', 'goBack', 'goForward', 'reload', 'restoreArchive', 'openLauncher',
   'newWindow', 'search', 'toggleFullscreen', 'updateSettings', 'updateThemeSettings', 'navigate', 'sidebarScroll',
   'setSidebarScroll', 'wakeSleeping', 'windowState', 'openHere', 'cancelNewTab',
   // A button of one of Margin's notices the overlay put up (background/notices.ts).

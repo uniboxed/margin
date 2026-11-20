@@ -1,5 +1,6 @@
 // The space editor (themes/arcadia/sidebar.js, "space editor"): its name,
-// emoji and color, and deleting it. The theme draws it: its
+// emoji, color and theme (`editor.themes`, each `editor.theme` with its id;
+// 2026-11-20: a theme per space, asked as it's made), and deleting it. The theme draws it: its
 // `<template m-part="space-editor">` goes in `<m-editor>` while `editor` is
 // set, with the fields `m-input="space-name"` and `m-input="space-emoji"`,
 // the swatches (`editor.colors`, each `editor.color` with its id), and
@@ -12,6 +13,7 @@
 import type { Rt } from '../runtime.ts';
 import type { ViewModel } from '../view-model.ts';
 import { SPACE_COLORS } from './menu-items.ts';
+import { themeChoices } from '../space-theme.ts';
 
 const HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
@@ -61,8 +63,12 @@ export function installEditor(rt: Rt) {
       if (!e) return false;
       const name = view.input('space-name')?.value ?? e.name;
       const emoji = view.input('space-emoji')?.value ?? e.emoji;
+      // (Its theme: the one picked here; none picked, the space's own as it is: none stays none, the profile's. One
+      // that isn't there any more (an imported theme removed) goes to none: it's drawn with the profile's already.)
+      const wanted = e.theme ?? spaceOf(e.spaceId!)?.theme ?? null;
+      const theme = wanted && themeChoices((rt.host.platform as any)?.features).some((c) => c.id === wanted) ? wanted : null;
       close();
-      return rt.dispatch('space.update', { space: e.spaceId, name: String(name).slice(0, 40), emoji: [...String(emoji)].slice(0, 8).join(''), color: HEX.test(e.color) ? e.color : null }, 'behavior');
+      return rt.dispatch('space.update', { space: e.spaceId, name: String(name).slice(0, 40), emoji: [...String(emoji)].slice(0, 8).join(''), color: HEX.test(e.color) ? e.color : null, theme }, 'behavior');
     },
     cancel: () => close(),
     remove() {
@@ -77,6 +83,13 @@ export function installEditor(rt: Rt) {
       const color = SPACE_COLORS[Number(String(id).slice(1))];
       if (!e || !color) return false;
       rt.setUi({ editor: { ...e, color } });
+      return true;
+    },
+    // (Checked against Margin's themes by the dispatch: `editor.theme`'s kind.)
+    theme(id: string) {
+      const e = rt.ui.editor;
+      if (!e || typeof id !== 'string') return false;
+      rt.setUi({ editor: { ...e, theme: id } });
       return true;
     },
     onInput(name: string, value: string) {

@@ -7,6 +7,7 @@
 
 import type { State } from '../../../types/margin';
 import type { FolderRow, SpaceView } from '../view-model.ts';
+import { themeChoices, spaceThemeId, spaceThemesOn } from '../space-theme.ts';
 
 // The space editor's swatches (Arcadia's).
 export const SPACE_COLORS = Object.freeze(['#6c5ce7', '#0984e3', '#00b894', '#fdcb6e', '#e17055', '#d63031', '#e84393', '#636e72']);
@@ -19,7 +20,9 @@ export type MenuTarget = { kind: 'tab' | 'pin' | 'folder' | 'space' | 'add', id?
  * as the sidebar shows it (ui/view-model.ts `space`: its `pinned` area, the
  * folders and pins in the order shown). None: no menu (its subject is gone).
  * */
-export function menuItems(target: MenuTarget | null | undefined, { state, space }: { state: (Omit<Partial<State>, 'settings'> & { settings?: Partial<State['settings']> } & Record<string, any>) | null, space: SpaceView | null | undefined }): MenuItem[] {
+// (`features`: the host's (Margin.app's imported themes: a space's menu offers them too). Every caller gives the same,
+// so the items and their ids are the same where they're drawn and where one is run.)
+export function menuItems(target: MenuTarget | null | undefined, { state, space, features = null }: { state: (Omit<Partial<State>, 'settings'> & { settings?: Partial<State['settings']> } & Record<string, any>) | null, space: SpaceView | null | undefined, features?: Record<string, any> | null }): MenuItem[] {
   if (!target || !state) return [];
   const list: MenuItem[] = [];
   let n = 0;
@@ -78,6 +81,13 @@ export function menuItems(target: MenuTarget | null | undefined, { state, space 
       if (!sp) return [];
       item('Edit Space…', 'space.edit', sp.id);
       item('Rename Space', 'space.rename', sp.id);
+      // Its theme (ui/space-theme.ts), the one it's drawn with checked: where each space's is drawn.
+      if (spaceThemesOn(features)) {
+        separator();
+        const choices = themeChoices(features);
+        const drawn = spaceThemeId(sp, state.settings, features, choices);
+        for (const c of choices) item(`Theme: ${c.name}${c.id === drawn ? ' ✓' : ''}`, 'space.setTheme', { space: sp.id, theme: c.id });
+      }
       separator();
       item('New Space', 'space.new');
       // The last space can't be deleted (the editor's rule); a second press confirms.

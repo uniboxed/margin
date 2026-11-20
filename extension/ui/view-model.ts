@@ -16,6 +16,7 @@
 // list, the space, the whole model) IS `prev`'s object. The renderer skips a
 // row whose item is the same object (ui/render.ts), so this is what keeps an
 // update down to the rows that changed. Pure: no browser APIs, runs in Node.
+import { themeChoices, spaceThemeId, spaceThemesOn } from './space-theme.ts';
 import type { State } from '../../types/margin';
 import * as V from '../shared/view.ts';
 import { NEW_TAB } from '../shared/switching.ts';
@@ -43,7 +44,7 @@ export type UiState = {
   menu?: { kind: MenuTarget['kind'], id?: string | number | null, x?: number, y?: number, above?: boolean, confirming?: string | null } | null,
   editing?: { kind: 'space' | 'folder', id: string } | null,
   // (`fresh`: a space just made, switched to as its editor closes.)
-  editor?: { spaceId?: string, name: string, emoji: string, color: string, confirmDelete?: boolean, fresh?: boolean } | null,
+  editor?: { spaceId?: string, name: string, emoji: string, color: string, theme?: string, confirmDelete?: boolean, fresh?: boolean } | null,
   newTabPending?: boolean,
   opening?: { title: string, url: string, from: number | null } | null,
   notice?: { id: string, text: string, actions?: { id: string, label: string, primary?: boolean }[] } | null,
@@ -134,8 +135,11 @@ export type MenuRow = { id: string, label: string, separator: boolean, danger: b
 export type EditorView = {
   id: string, name: string, emoji: string, color: string,
   colors: { id: string, color: string, selected: boolean }[],
+  /** The themes the space can have (ui/space-theme.ts), the chosen one selected (none where each space's theme isn't
+   * drawn: `hasThemes` false); `theme`: its id. */
+  themes: { id: string, name: string, selected: boolean }[], hasThemes: boolean, theme: string,
   canDelete: boolean, cannotDelete: boolean, confirmDelete: boolean, deleteLabel: string, deleteTitle: string,
-  labels: { title: string, name: string, emoji: string, colors: string, save: string, cancel: string },
+  labels: { title: string, name: string, emoji: string, colors: string, theme: string, save: string, cancel: string },
 };
 export type NoticeAction = { id: string, label: string, primary: boolean, danger: boolean };
 export type NoticeView = { id: string, text: string, actions: NoticeAction[], hasActions: boolean };
@@ -454,7 +458,7 @@ function fresh(input: ViewModelInput): ViewModel {
   // A context menu (ui/behaviors/menus.ts): its rows, from what it's for.
   let menu: ViewModel['menu'] = null;
   if (ui.menu) {
-    const items = menuItems((ui.menu as any), { state, space });
+    const items = menuItems((ui.menu as any), { state, space, features: input.platform?.features ?? null });
     if (items.length) {
       menu = {
         kind: String(ui.menu.kind), id: ui.menu.id ?? null, x: Number(ui.menu.x) || 0, y: Number(ui.menu.y) || 0,
@@ -473,12 +477,18 @@ function fresh(input: ViewModelInput): ViewModel {
   const edited = ui.editor?.spaceId != null ? state.spaces.find((s) => s.id === ui.editor?.spaceId) : null;
   if (ui.editor && edited) {
     const only = state.spaces.length < 2;
+    // (The one picked in the editor, if it's there; else the theme the space is drawn with.)
+    const choices = spaceThemesOn(input.platform?.features) ? themeChoices(input.platform?.features) : [];
+    const editorTheme = choices.some((c) => c.id === ui.editor?.theme) ? ui.editor.theme! : spaceThemeId(edited, state.settings, input.platform?.features, choices);
     editor = {
       id: edited.id,
       name: String(ui.editor.name ?? ''),
       emoji: String(ui.editor.emoji ?? ''),
       color: String(ui.editor.color ?? ''),
       colors: SPACE_COLORS.map((color, i) => ({ id: `c${i}`, color, selected: color === ui.editor?.color })),
+      themes: choices.map((c) => ({ ...c, selected: c.id === editorTheme })),
+      hasThemes: choices.length > 0,
+      theme: editorTheme,
       canDelete: !only,
       cannotDelete: only,
       confirmDelete: !!ui.editor.confirmDelete,
@@ -522,7 +532,10 @@ function fresh(input: ViewModelInput): ViewModel {
   // category shown's fields only.
   let settingsForm: ViewModel['settingsForm'] = null;
   if (launcher && (ui.settingsOpen || ui.settingsPage)) {
-    const all = settingsFields(state.settings, input.platform?.features ?? {}, { recording: ui.recording ?? null, status: ui.settingsStatus ?? {}, theme: ui.theme ?? null });
+    // (Its Theme: the space this window shows, its own; ui/space-theme.ts.)
+    const shownSpace = state.spaces.find((s) => s.id === space.id) ?? null;
+    const spaceTheme = shownSpace && spaceThemesOn(input.platform?.features) ? spaceThemeId(shownSpace, state.settings, input.platform?.features) : null;
+    const all = settingsFields(state.settings, input.platform?.features ?? {}, { recording: ui.recording ?? null, status: ui.settingsStatus ?? {}, theme: ui.theme ?? null, spaceTheme });
     const fields = ui.settingsPage && ui.settingsNav ? fieldsIn(all, category) : all;
     settingsForm = { fields, hasFields: fields.length > 0 };
   }
@@ -587,7 +600,7 @@ const LAUNCHER_ARCHIVE = 12;
 // The words of Margin's own parts (the menu's and the editor's), which a
 // theme binds rather than writes (ui/sanitize.ts GUARDED_PARTS).
 const MENU_LABELS = Object.freeze({ tab: 'Tab', pin: 'Pin', folder: 'Folder', space: 'Space', add: 'New' });
-const EDITOR_LABELS = Object.freeze({ title: 'Edit space', name: 'Space name', emoji: 'Space emoji', colors: 'Space color', save: 'Save', cancel: 'Cancel' });
+const EDITOR_LABELS = Object.freeze({ title: 'Edit space', name: 'Space name', emoji: 'Space emoji', colors: 'Space color', theme: 'Space theme', save: 'Save', cancel: 'Cancel' });
 
 // Rows that go somewhere (Arcadia's arrow button).
 const GOES = new Set(['tab', 'pin', 'archive', 'go', 'app']);

@@ -347,8 +347,10 @@ host. Immutable: rows that didn't change are the same objects.
   tile), `icon`, `letter`, `color`, `selected`, `goes`; `hasRows`),
   `menu` (`label`, `items[]`: `id`, `label`, `separator`, `danger`,
   `confirming`), `settingsForm` (`fields[]`, above), `editor` (`name`, `emoji`, `color`, `colors[]`,
+  `themes[]` (`id`, `name`, `selected`: each theme the space can have, its own
+  chosen; each space has its own theme) and `theme` (the chosen one's id),
   `deleteLabel`, `deleteTitle`, `cannotDelete`, `confirmDelete`, `labels`:
-  `title`, `name`, `emoji`, `colors`, `save`, `cancel`), `notice` and
+  `title`, `name`, `emoji`, `colors`, `theme`, `save`, `cancel`), `notice` and
   `prompt` (`text`, `title`, `actions[]`: `id`, `label`, `primary`,
   `danger`), `launcher` (`pins`, `archive`, `hasPins`, `hasArchive`, `more`,
   `moreLabel`, `settingsOpen`, `settingsPage`, `hasSettings`), `settingsTab`
@@ -397,7 +399,9 @@ else is ignored and logged.
 - The palette: `palette.open`, `palette.close`, `palette.run` (a row).
 - Menus: `menu.open` (`add`), `menu.run` (an item), `menu.close`.
 - The space editor: `editor.save`, `editor.cancel`, `editor.delete` (asks
-  first), `editor.color` (a swatch).
+  first), `editor.color` (a swatch), `editor.theme` (one of `editor.themes`'
+  ids: the space's theme, saved with the rest; a space's menu offers the
+  themes too, so a theme without this row still lets a space have its own).
 - Notices and prompts: `notice.run`, `prompt.run` (one of their buttons),
   `notice.close`, `prompt.close`.
 - The rest: `sidebar.toggle`, `nav.back`, `nav.forward`, `nav.reload`,
@@ -409,7 +413,7 @@ else is ignored and logged.
   `launcher.more`, `window.close`, `window.minimise`, `window.fullscreen`.
 - Only Margin's behaviors and menus run `tab.move`, `tab.pinAt`,
   `tab.moveToSpace`, `pin.move`, `folder.move`, `folder.setName`,
-  `space.setName`, `space.update` and `space.delete`.
+  `space.setName`, `space.update`, `space.setTheme` and `space.delete`.
 
 ## Behaviors
 

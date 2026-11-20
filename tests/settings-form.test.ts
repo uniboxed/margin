@@ -37,6 +37,12 @@ test('Settings covers today\'s form: theme, search engine, archive, sleep, never
   assert.ok(f.blockGestures.isToggle && f.theme.isChoice && f.neverSleepSites.isList && f.nextTab.isShortcut && f.shortcuts.isGroup);
   // Safari closes a sleeping tab (each opens as it's clicked): nothing to wake.
   assert.ok(!('wakeAll' in f));
+  // A space shown (2026-11-20, a theme per space): its theme, said as this space's; without one, the profile's.
+  const spaced = byId(settingsFields({ theme: 'arcadia' }, SAFARI, { spaceTheme: 'pixel' }));
+  assert.deepEqual([spaced.theme.value, spaced.theme.label, spaced.theme.options.filter((o) => o.selected).map((o) => o.id)], ['pixel', 'Theme of this space', ['pixel']]);
+  assert.match(spaced.theme.help, /Each space has its own theme/);
+  assert.deepEqual([f.theme.label, f.theme.help], ['Theme', ''], 'no space: the profile\'s, as before');
+  assert.equal(byId(settingsFields({ theme: 'arcadia' }, SAFARI, { spaceTheme: 'gone' })).theme.value, 'arcadia', 'one not there: Arcadia');
   const discards = byId(settingsFields({}, DISCARDS));
   assert.ok(discards.wakeAll?.isButton, 'Wake all where they\'re discarded');
   // Gone from the form: keep-ready, the warm-up, the switch log.

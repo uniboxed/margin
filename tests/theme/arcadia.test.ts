@@ -333,7 +333,7 @@ for (const [name, engine] of ENGINES) {
       });
 
       await t.test('the launcher\'s Settings: Margin\'s inputs in the theme\'s settings part, each saving through its field', async () => {
-        const platform = { browser: 'safari', os: 'mac', features: { sleepTabs: 'discard', blockGestures: true, newTabHint: true, search: 'learn' } };
+        const platform = { browser: 'safari', os: 'mac', features: { sleepTabs: 'discard', blockGestures: true, newTabHint: true, search: 'learn', spaceThemes: true } };
         await page.evaluate((p) => T.mountRuntime({ container: 'document', mode: 'inpage', inNewTab: true, platform: p, replies: { wakeSleeping: 0 } }), platform);
         await page.evaluate(() => T.rtSetUi({ settingsOpen: true }));
         const form = () => page.evaluate(() => {
@@ -356,8 +356,12 @@ for (const [name, engine] of ENGINES) {
         const lastSent = (type: string) => page.evaluate((t) => T.rtSent().filter(([k]) => k === t).at(-1) ?? null, type);
         await page.click('label:has-text("keep the frame") input');
         assert.deepEqual(await lastSent('updateSettings'), ['updateSettings', { patch: { frameWhenHidden: false } }]);
+        // Theme: the theme of the space shown (2026-11-20: each space has its own), not the profile's.
         await page.selectOption('.settings-form select', 'neubrutalism');
-        assert.deepEqual(await lastSent('updateSettings'), ['updateSettings', { patch: { theme: 'neubrutalism' } }]);
+        const space = await page.evaluate(() => T.rtVmFull().space);
+        assert.deepEqual(await lastSent('setSpaceTheme'), ['setSpaceTheme', { spaceId: space, theme: 'neubrutalism' }]);
+        assert.equal((await page.evaluate(() => T.rtSent().filter(([k, p]) => k === 'updateSettings' && 'theme' in (p?.patch ?? {})))).length, 0, 'the profile\'s theme left as it is');
+        assert.match(await page.evaluate(() => document.querySelector('.settings-form')?.textContent ?? ''), /Theme of this space/);
         await page.click('label:has-text("Next tab") input');
         await page.keyboard.press('Control+Alt+KeyN');
         const saved = (await lastSent('updateSettings'))![1].patch.shortcuts;

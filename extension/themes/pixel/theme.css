@@ -393,6 +393,10 @@ img.fav.app { width: 22px; height: 22px; margin: -2px; box-shadow: none; backgro
 .swatches { display: flex; gap: 8px; flex-wrap: wrap; padding: 3px; }
 .swatch { --swatch: var(--ink); width: 22px; height: 22px; background: var(--swatch); box-shadow: var(--pxs); }
 .swatch.on { box-shadow: 0 -3px 0 var(--yellow), 0 3px 0 var(--yellow), -3px 0 0 var(--yellow), 3px 0 0 var(--yellow); }
+.theme-choices { display: flex; gap: 8px; flex-wrap: wrap; padding: 3px; }
+.theme-choice { height: 22px; padding: 0 7px; font-size: 12px; color: var(--ink); background: var(--field); box-shadow: var(--pxs); }
+.theme-choice:hover { background: var(--hover); }
+.theme-choice.on { color: var(--deep); background: var(--yellow); }
 
 /* Small press buttons (notices, prompts, the editor, Settings) */
 .small { flex-shrink: 0; white-space: nowrap; height: 30px; padding: 0 12px; font-family: 'Press Start 2P', monospace; font-size: 9px; text-transform: uppercase; background: var(--hover); color: var(--ink); box-shadow: var(--pxs); margin: 2px; }

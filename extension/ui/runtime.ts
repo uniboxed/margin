@@ -14,6 +14,7 @@
 // or space renamed, Keep open turned on or off, a space switched to, a
 // sidebar width being dragged. Each lasts until the state agrees, or a few
 // seconds (the request failed: back to what the state says).
+import { themeChoices } from './space-theme.ts';
 import type { Host } from './host.ts';
 import type { LoadedTheme } from './theme-loader.ts';
 import type { UiState, ViewModel } from './view-model.ts';
@@ -583,12 +584,13 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     const now = fullUi();
     // (The palette's rows as drawn: from the state as the UI shows it, a row closed a moment ago not among them.)
     const items = ui.palette.open ? paletteItems(viewState(state), now, host.platform) : [];
-    const menu = ui.menu && vm ? menuItems((ui.menu as any), { state: viewState(state), space: vm.space }) : [];
+    const menu = ui.menu && vm ? menuItems((ui.menu as any), { state: viewState(state), space: vm.space, features: (host.platform as any)?.features ?? null }) : [];
     const colors = vm?.editor ? vm.editor.colors.map((c) => c.id) : [];
     const noticeIds = vm?.notice?.actions.map((a) => a.id) ?? [];
     const promptIds = vm?.prompt?.actions.map((a) => a.id) ?? [];
     const settingIds = vm?.settingsForm?.fields.filter((f) => f.isButton && !f.disabled).map((f) => f.id) ?? [];
-    const verdict = checkAction(name, arg, contextFromState(state, items.map((i) => i.id), { menuIds: menu.filter((i) => !i.separator).map((i) => i.id), colorIds: colors, noticeIds, promptIds, settingIds }));
+    const themeIds = themeChoices((host.platform as any)?.features).map((c) => c.id);
+    const verdict = checkAction(name, arg, contextFromState(state, items.map((i) => i.id), { menuIds: menu.filter((i) => !i.separator).map((i) => i.id), colorIds: colors, noticeIds, promptIds, settingIds, themeIds }));
     if (!verdict.ok) return refuse(name, arg, (verdict as any).reason);
     // Margin's own pages over a browser (the launcher) open their Settings in place; Margin's window opens its Settings
     // tab (the host's openLauncher: HostedSession.swift, a margin://settings item).
@@ -709,6 +711,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       case 'editor.cancel': return behaviors.editor.cancel();
       case 'editor.delete': return behaviors.editor.remove();
       case 'editor.color': return behaviors.editor.color(arg);
+      case 'editor.theme': return behaviors.editor.theme(arg);
       // Margin's notices and prompts: a button is the host's to run (what
       // it does stays in Margin, as a menu item's), then it goes.
       case 'notice.run': case 'prompt.run': {

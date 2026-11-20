@@ -6507,3 +6507,34 @@ where it is (resting above its window, or out over it by so many points), its wi
 pointer (`host: <id>: its full-screen toolbar …`). MenuBarAgent's own log (`com.apple.menubar:reveal`) gives the bar's
 state at the same moments. Nothing read but the pointer: the poll's model has the rest. Next time it's seen, its time
 and these lines tell the cause.
+
+## A theme per space (2026-11-20)
+
+Tirth: each space its own theme, asked when a space is made (the theme of the space it's made from chosen by default),
+and changeable later. His choices: a swipe to a space with another theme slides as usual in the theme it started in,
+then the window cross-fades into the new one as it lands; Settings' Theme sets the theme of the space shown; the theme
+is chosen in the space editor (create and edit) and in each space's menu (Theme: … items, so imported themes whose
+editor lacks the row still work).
+- Data: a space's `theme` (a theme's id; state/model.ts `themeIdOk`); none (every space from before) is the profile's
+  settings.theme, so nothing changes until one is chosen and no value is rewritten (the field is written only when
+  set). The library (app/shared/library) keeps it; `createSpace` takes the one asked for, else the theme of the space
+  the window shows (as browser and profile already were); `renameSpace` takes `theme` (null: none); `setSpaceTheme`
+  for the menu and Settings. The copy's handlers and data set carry it too.
+- Drawn: ui/space-theme.ts says which theme a space is drawn with (its own if Margin has it, else the profile's, else
+  Arcadia: an imported theme removed since never errors). Margin.app picks each window's package by the space it shows
+  (MarginWindowController.spaceTheme, ShellHosted hostedTheme) at every state change, as it already compared the
+  package; nothing chosen anywhere now ends at Arcadia's own package instead of nil (nil told a window that drew
+  another space's theme nothing: the glue check caught it). The overlay waits for a swipe's settle to land (`m-swiping`/
+  `m-settling` gone, 4 s at most), then swaps the theme inside a view transition (180 ms cross-fade; reduced motion or
+  no view transitions: at once).
+- Only where each space's theme is drawn (`features.spaceThemes`: Margin.app's own window): a browser's overlay
+  (Windows, unverified) draws its profile's, so it offers no per-space choice and Settings' Theme stays the profile's.
+- Each built-in theme's editor has a theme row (`editor.themes`, `editor.theme` action, `labels.theme`), styled in its
+  own look; the themes README says it for authors.
+- Cost: nothing per frame; the theme is resolved at each state change as before (cached packages), a rebuild only when
+  a window's theme changes (~45–145 ms measured headless, plus the hosted window re-placed if the page area differs).
+- Tests: model, data set, library, actions, menus, view model, Settings (unit); every built-in theme in WebKit and
+  Chromium (its editor's row, a real click, Save, the menu's item; none without the feature); Margin.app's checks of a
+  window's space theme, and the glue run: a space made with Pixel draws Pixel, back draws Arcadia, Material set on the
+  shown space draws at once, none again draws Arcadia, a theme come mid-swipe waits for it to land.
+Not changed: Import Theme in Margin's own window isn't wired yet (its `theme.save` goes nowhere there, as before).

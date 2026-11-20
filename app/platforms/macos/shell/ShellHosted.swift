@@ -143,7 +143,9 @@ final class DataSetWindowSource: MarginWindowSource {
         }
         func number(_ v: Any?) -> Double { num(v).flatMap { $0.isFinite ? $0 : nil } ?? 0 }
         var spaces: [JSONObject] = objects("spaces").sorted { (number($0.value["order"]), $0.id) < (number($1.value["order"]), $1.id) }.map { id, s in
-            ["id": id, "name": s["name"] as? String ?? "", "emoji": s["emoji"] as? String ?? "", "color": s["color"] as? String ?? ""]
+            var space: JSONObject = ["id": id, "name": s["name"] as? String ?? "", "emoji": s["emoji"] as? String ?? "", "color": s["color"] as? String ?? ""]
+            if let theme = s["theme"] as? String, !theme.isEmpty { space["theme"] = theme }
+            return space
         }
         if spaces.isEmpty { spaces = [defaultSpace] }
         let known = Set(spaces.compactMap { $0["id"] as? String })
@@ -190,10 +192,17 @@ extension Shell {
     // The theme Margin's window draws (a package's JSON): the one its settings choose (`hostedSettings`: what was
     // chosen in Margin's own Settings, else the profile's set), an imported one or a built-in Margin carries; with none
     // chosen, a linked copy's package; nil: Arcadia, bundled with the page.
-    func hostedTheme() -> String? {
+    // A window's (`window`, `state`: the state it draws): the theme of the space it shows first (2026-11-20, Tirth: a
+    // theme per space; MarginWindowController.spaceTheme), when Margin has that theme (an imported one removed since:
+    // the next one down).
+    func hostedTheme(window: Int? = nil, state: JSONObject? = nil) -> String? {
+        if let window, let state, let own = MarginWindowController.spaceTheme(window: window, state: state),
+           let json = userThemes.store.message(own) ?? builtinThemes.message(own) { return json }
         let chosen = hostedSettings?.chosenTheme ?? hostedProfile().flatMap { data.values("settings", of: $0)["theme"] as? String }
         if let chosen, let json = userThemes.store.message(chosen) ?? builtinThemes.message(chosen) { return json }
-        return links.keys.sorted().lazy.compactMap { self.links[$0]?.theme }.first
+        // (Nothing chosen: Arcadia's own package, never nil while it's there: a window that drew another space's theme
+        // must be told to draw Arcadia again, and nil tells it nothing.)
+        return links.keys.sorted().lazy.compactMap { self.links[$0]?.theme }.first ?? builtinThemes.message("arcadia")
     }
 
     // Margin's windows, made once.
@@ -207,7 +216,7 @@ extension Shell {
         if !o.harness, windowOptions == nil, UserDefaults.standard.string(forKey: FrontMechanism.key) == FrontMechanism.order.rawValue { o.front = .order }
         let source = makeHostedSource()
         let windows = MarginWindows(pages: pages, source: source, options: o)
-        windows.theme = { [weak self] in self?.hostedTheme() }
+        windows.theme = { [weak self] window, state in self?.hostedTheme(window: window, state: state) }
         windows.themes = { [weak self] in self?.themesListJSON ?? "[]" }
         windows.browser = options.lastBrowser()
         marginWindows = windows
