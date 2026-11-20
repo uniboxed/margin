@@ -127,10 +127,11 @@ nonisolated struct StageCalls: @unchecked Sendable {
         return overrideFn(cid, display, on)
     }
 
-    // The menu bar's process told the bar came down (true) or went up in `space` (with AppKit's own 0.25 s).
-    func revealChanged(space: UInt64, shown: Bool) {
+    // The menu bar's process told the bar came down (true) or went up in `space` (with AppKit's own 0.25 s). `toolbars`:
+    // the full-screen windows' toolbars told too.
+    func revealChanged(space: UInt64, shown: Bool, toolbars: Bool = true) {
         guard !refuses, space > 0, let revealFn else { return }
-        revealFn(NSMenu.self, NSSelectorFromString(Self.revealSelector), Int64(space), shown ? 1 : 0, shown ? 1 : 0, 0.25)
+        revealFn(NSMenu.self, NSSelectorFromString(Self.revealSelector), Int64(space), shown ? 1 : 0, shown && toolbars ? 1 : 0, 0.25)
     }
 
     // macOS's own Apple menu (its items filled in once), nil: off.

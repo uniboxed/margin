@@ -47,6 +47,7 @@ final class MarginMenuBar {
     private var leftAt: Date?
     private(set) var shown = false
     private var openMenu: NSMenu?
+    private var revealMode = "both"
     private var pending: Int?
     private(set) var reveals = 0
 
@@ -102,12 +103,26 @@ final class MarginMenuBar {
         shown = true
         reveals += 1
         calls.showMenuBar(true, display: display)
-        calls.revealChanged(space: space, shown: true) // (the menu bar's process told: its status items take clicks then)
+        // (The menu bar's process told: its status items take clicks then. `MarginBarReveal`: "both" (the default: the
+        // bar and full-screen toolbars), "menu" (the bar only), "none" (not told): read at each reveal, for the hand test
+        // of 2026-11-19 23:00, where the bar's status items took no click in Margin.)
+        let mode = UserDefaults.standard.string(forKey: "MarginBarReveal") ?? "both"
+        if mode != "none" { calls.revealChanged(space: space, shown: true, toolbars: mode != "menu") }
+        revealMode = mode
         edge.orderOut(nil)
         layoutTitles()
         place(titles)
         showStrip()
         leftAt = nil
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            guard let self, self.shown else { return }
+            let p = CGPoint(x: self.screen.frame.maxX - 300, y: 12) // (over the status icons, in the window server's coordinates)
+            let stack = ((CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]]) ?? []).compactMap { d -> String? in
+                guard let b = d[kCGWindowBounds as String] as? [String: Any], let r = CGRect(dictionaryRepresentation: b as CFDictionary), r.contains(p) else { return nil }
+                return "\(d[kCGWindowOwnerName as String] ?? "?")@\(d[kCGWindowLayer as String] ?? "?") \(Int(r.width))×\(Int(r.height))"
+            }.prefix(4).joined(separator: " > ")
+            Diagnostics.note("Margin's menu bar: down (\(self.revealMode)); over the status icons: \(stack); front \(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "none")")
+        }
         let t = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in MainActor.assumeIsolated { self?.look() } }
         RunLoop.main.add(t, forMode: .common) // (also while a menu tracks)
         timer = t
@@ -119,7 +134,7 @@ final class MarginMenuBar {
         timer?.invalidate()
         timer = nil
         calls.showMenuBar(false, display: display)
-        calls.revealChanged(space: space, shown: false)
+        if revealMode != "none" { calls.revealChanged(space: space, shown: false) }
         titles.orderOut(nil)
         hideStrip()
         placeEdge()

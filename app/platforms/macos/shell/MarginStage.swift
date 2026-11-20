@@ -204,6 +204,15 @@ final class MarginStage {
     private var watching: [NSObjectProtocol] = []
     private var menuTimer: Timer?
     private var tracking = 0
+    // Each menu window shown with "move to the active Space", with the behaviour it had: given back as its menu closes
+    // (kept, AppKit reused the windows later and showed them, empty, on whatever Space was showing: the Desktop's
+    // see-through boxes of 2026-11-19 22:45).
+    private var moved: [(window: NSWindow, behavior: NSWindow.CollectionBehavior)] = []
+    private func bring(_ w: NSWindow) {
+        if !moved.contains(where: { $0.window === w }) { moved.append((w, w.collectionBehavior)) }
+        w.collectionBehavior = Self.menuBehavior
+        w.orderFrontRegardless()
+    }
 
     func watchOwnWindows() {
         guard watching.isEmpty, usable else { return }
@@ -227,8 +236,7 @@ final class MarginStage {
             MainActor.assumeIsolated {
                 for w in NSApp.windows where w.level.rawValue >= Self.menuLevel && w.windowNumber > 0 && !before.contains(w.windowNumber) && !done.contains(w.windowNumber) {
                     done.insert(w.windowNumber)
-                    w.collectionBehavior = Self.menuBehavior
-                    w.orderFrontRegardless()
+                    self?.bring(w)
                 }
                 // (Submenus open later: looked at for as long as the menu tracks, at a slower pace after the first second.)
                 if Date().timeIntervalSince(started) > 1, t.timeInterval < 0.05 { t.invalidate(); self?.slowWatch(before: before.union(done)) }
@@ -242,12 +250,11 @@ final class MarginStage {
     private func slowWatch(before: Set<Int>) {
         guard tracking > 0 else { return }
         var done = before
-        let t = Timer(timeInterval: 0.05, repeats: true) { _ in
+        let t = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 for w in NSApp.windows where w.level.rawValue >= Self.menuLevel && w.windowNumber > 0 && w.isVisible && !done.contains(w.windowNumber) {
                     done.insert(w.windowNumber)
-                    w.collectionBehavior = Self.menuBehavior
-                    w.orderFrontRegardless()
+                    self?.bring(w)
                 }
             }
         }
@@ -260,6 +267,17 @@ final class MarginStage {
         guard tracking == 0 else { return }
         menuTimer?.invalidate()
         menuTimer = nil
+        // (After AppKit's own fade-out: each window out of sight, its behaviour as it was.)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.tracking == 0 else { return }
+                for m in self.moved {
+                    if m.window.isVisible, m.window.level.rawValue >= Self.menuLevel { m.window.orderOut(nil) }
+                    m.window.collectionBehavior = m.behavior
+                }
+                self.moved = []
+            }
+        }
     }
 
     // Margin quitting: the helper told to close everything (it quits as Margin's end of the pipe closes anyway).
