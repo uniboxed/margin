@@ -10,6 +10,27 @@ func marginWindowTests() {
         PageLayout(left: l, top: t, right: r, bottom: b, radius: radius, radii: [radius, radius, radius, radius], width: w, height: h, mode: "windowed")
     }
 
+    // ---- macOS's menu bar (2026-11-19): made active by it, the keys back to the app shown once it's up again ----
+    do {
+        let screen = CGRect(x: 0, y: 0, width: 1512, height: 982)
+        func by(_ full: Bool = true, _ shown: Bool = true, _ field: Bool = false, x: CGFloat = 400, y: CGFloat = 980) -> Bool {
+            MarginWindowController.madeActiveByBar(fullScreen: full, appShown: shown, fieldWantsKeys: field, pointer: CGPoint(x: x, y: y), screen: screen)
+        }
+        check("menu bar: made active with the pointer at the top and an app shown: the bar did it", by())
+        check("menu bar: the pointer lower down (⌘-Tab, the Dock, a click in Margin's UI): not the bar", !by(y: 900) && !by(y: 941))
+        check("menu bar: the pointer at the top of another display: not this one's bar", !by(x: 1600) && !by(x: -10))
+        check("menu bar: nothing shown, out of full screen, or a field of Margin's wanting the keys: not watched",
+              !by(true, false) && !by(false) && !by(true, true, true))
+        func down(y: CGFloat = 500, buttons: Int = 0, menus: Int = 0, panels: Bool = false) -> Bool {
+            MarginWindowController.barDown(pointer: CGPoint(x: 400, y: y), screen: screen, buttons: buttons, menus: menus, panels: panels)
+        }
+        check("menu bar: up once the pointer's lower, no button held, no menu and no panel open", !down())
+        check("menu bar: still down with the pointer at the top, a button held, a menu open, or a panel open (Wi-Fi, Notification Center, a status item's menu)",
+              down(y: 960) && down(buttons: 1) && down(menus: 1) && down(panels: true))
+        check("menu bar: the keys go back once it's been up 0.4 s; the watch gives up after 2 minutes",
+              MarginWindowController.barUpFor == 0.4 && MarginWindowController.barWatchMost == 120 && MarginWindowController.barBand == 40)
+    }
+
     // ---- Margin's UI in a non-activating panel (2026-11-17): key only when allowed, never main; the editing keys ----
     do {
         let panel = MarginPanel(frame: CGRect(x: -20000, y: -20000, width: 800, height: 600), harness: true)

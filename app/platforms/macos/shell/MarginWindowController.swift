@@ -432,6 +432,8 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         graceTimer?.invalidate()
         retryTimer?.invalidate()
         isClosed = true
+        barWatch?.invalidate()
+        barWatch = nil
         pages.bridge.unregister(webView)
         webView.navigationDelegate = nil
         webView.stopLoading()
@@ -1039,6 +1041,80 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         if !hosting, loadingLabel == nil, showingLabel == nil, pageState == .empty { activate("a press in its launcher, nothing hosted") }
     }
 
+    // ---- macOS's menu bar: the keys back once it's up again ----
+
+    // Margin owns its full-screen Space, and macOS's own menu bar makes the Space's owner the active app as it comes down
+    // there (the window server's rule: only an app with a Dock icon can be a full-screen Space's owner, and the hosted
+    // apps have none; docs/PRIVATE-APIS.md "Considered, not used"). So the app Margin hosts loses the keyboard while the
+    // bar is down. Margin made active while the pointer is at the display's top edge, an app shown and no field of
+    // Margin's wanting the keys: the bar did it. Looked at 10 times a second until the bar is up again (the pointer out
+    // of the top band, no button down, no menu open, no Control Center, Notification Center or menu-bar panel open, a
+    // status item's menu included) for `barUpFor`, then the keys back to the app shown (`keysBack`, as after a press in
+    // Margin's UI). Given up when another app comes in front (the person clicked it), a field of Margin's takes the keys
+    // (a menu item opened the palette), nothing is shown, or after `barWatchMost`. (Decided by Tirth, 2026-11-19, after
+    // the ownerless Space was tried and kept off this branch: feat/ownerless-space, DECISIONS.md.)
+    nonisolated static let barBand: CGFloat = 40 // points from the display's top: the menu bar and the pointer pushing at it
+    nonisolated static let barUpFor: TimeInterval = 0.4
+    nonisolated static let barWatchMost: TimeInterval = 120
+    private var barWatch: Timer?
+    private(set) var barHandBacks = 0 // the keys given back after the bar went up (the tests read it)
+
+    // The decision, on its own (tests/margin-window-tests.swift): Margin just made active, by macOS's menu bar?
+    nonisolated static func madeActiveByBar(fullScreen: Bool, appShown: Bool, fieldWantsKeys: Bool, pointer: CGPoint, screen: CGRect) -> Bool {
+        fullScreen && appShown && !fieldWantsKeys && pointer.y >= screen.maxY - barBand && pointer.x >= screen.minX && pointer.x <= screen.maxX
+    }
+    // ...and is the bar still down (the pointer at the top, a button held, a menu or a panel open)?
+    nonisolated static func barDown(pointer: CGPoint, screen: CGRect, buttons: Int, menus: Int, panels: Bool) -> Bool {
+        pointer.y >= screen.maxY - barBand || buttons != 0 || menus > 0 || panels
+    }
+
+    // A panel the menu bar opened, on screen: Control Center's (Wi-Fi, Bluetooth, the battery…), Notification Center's (the
+    // clock), or any menu (a status item's own, an app's: the menu level). Read from the window server's on-screen list.
+    nonisolated static func barPanelsOpen() -> Bool {
+        let menuLevel = Int(CGWindowLevelForKey(.popUpMenuWindow))
+        let list = (CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]) ?? []
+        return list.contains { d in
+            let layer = d[kCGWindowLayer as String] as? Int ?? 0
+            let owner = d[kCGWindowOwnerName as String] as? String ?? ""
+            guard layer == menuLevel || owner == "Control Center" || owner == "Notification Center" || owner == "NotificationCenter",
+                  let b = d[kCGWindowBounds as String] as? [String: Any], let r = CGRect(dictionaryRepresentation: b as CFDictionary) else { return false }
+            return r.height > 40
+        }
+    }
+
+    // Margin became active (MarginWindows): watched if the bar did it.
+    func becameActive() {
+        guard !options.harness, window.isOnActiveSpace, let screen = window.screen ?? NSScreen.main,
+              Self.madeActiveByBar(fullScreen: isFullScreen, appShown: hosted != nil && pageState == .shown, fieldWantsKeys: pageWantsKeyboard,
+                                   pointer: NSEvent.mouseLocation, screen: screen.frame) else { return }
+        watchBar(screen: screen)
+    }
+
+    private func watchBar(screen: NSScreen) {
+        guard barWatch == nil else { return }
+        Diagnostics.note("Margin's window \(id): made active by macOS's menu bar: the keys go back to the app shown once the bar is up again")
+        let started = Date()
+        var upSince: Date?
+        let t = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                func stop() { self.barWatch?.invalidate(); self.barWatch = nil }
+                guard !self.isClosed, self.appActive(), self.hosted != nil, self.pageState == .shown, !self.pageWantsKeyboard,
+                      Date().timeIntervalSince(started) < Self.barWatchMost else { return stop() }
+                if Self.barDown(pointer: NSEvent.mouseLocation, screen: screen.frame, buttons: NSEvent.pressedMouseButtons,
+                                menus: self.owner?.menusTracking ?? 0, panels: Self.barPanelsOpen()) { upSince = nil; return }
+                if let u = upSince {
+                    guard Date().timeIntervalSince(u) >= Self.barUpFor else { return }
+                    stop()
+                    self.barHandBacks += 1
+                    self.keysBack("macOS's menu bar went up again")
+                } else { upSince = Date() }
+            }
+        }
+        RunLoop.main.add(t, forMode: .common)
+        barWatch = t
+    }
+
     // Margin's own menu item run while it's the front app (clicked from its Dock icon, ⌘-Tab): the app shown gets
     // the activation back (a field the item opened takes the keys from the panel without it).
     func menuItemRan() {
@@ -1472,8 +1548,13 @@ final class MarginWindows {
         // Margin activated (its Dock icon, ⌘-Tab): each window in front of what it hosts (the `order` mechanism orders
         // it there again), and one still not in full screen, its toggle ignored while Margin wasn't active, asked again.
         activeObserver = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { for c in self?.controllers ?? [] { c.keepFront(); c.appBecameActive() } }
+            MainActor.assumeIsolated { for c in self?.controllers ?? [] { c.keepFront(); c.appBecameActive(); c.becameActive() } }
         }
+        // (Margin's menus open, any of them: the menu bar watch keeps the keys while one is.)
+        menuObservers = [
+            NotificationCenter.default.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main) { [weak self] _ in MainActor.assumeIsolated { self?.menusTracking += 1 } },
+            NotificationCenter.default.addObserver(forName: NSMenu.didEndTrackingNotification, object: nil, queue: .main) { [weak self] _ in MainActor.assumeIsolated { if let s = self { s.menusTracking = max(0, s.menusTracking - 1) } } },
+        ]
         // Another Space current, or another app in front (a hosted app activated: its window may have come over
         // Margin's at the same level): in front of it again (a window not on the current Space: nothing, `keepFront`).
         let workspace = NSWorkspace.shared.notificationCenter
@@ -1488,8 +1569,11 @@ final class MarginWindows {
     }
 
     private var activeObserver: NSObjectProtocol?
+    private var menuObservers: [NSObjectProtocol] = []
+    private(set) var menusTracking = 0
     private var frontObservers: [NSObjectProtocol] = []
     deinit {
+        for o in menuObservers { NotificationCenter.default.removeObserver(o) }
         if let keyRelay { NSEvent.removeMonitor(keyRelay) }
         if let activeObserver { NotificationCenter.default.removeObserver(activeObserver) }
         for o in frontObservers { NSWorkspace.shared.notificationCenter.removeObserver(o) }
