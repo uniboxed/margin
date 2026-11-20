@@ -6302,3 +6302,22 @@ whether a window's close button closes that window or the whole app.
   left takes its own item back once it's in front. The hosted tiles stay in the closed window's Space until the next
   window hosts and adopts them (`adoptTiles`), as when Margin's window leaves full screen. Checked by the hosted
   session tests and the glue e2e; on the real screen still to be seen (two windows, each close).
+
+## Safari's wake window left over a hosted app (2026-11-20)
+
+Tirth, now and then at Margin's start: a Safari window ("Margin.app hasn't placed this window yet", the Personal
+profile) drawn over the hosted app (Maps), gone after another tab and back.
+
+- **Why** (the log of 11:17:35). To link the Personal profile's extension, Margin opened a window from Safari's menu
+  (the wake window), parked out of sight in a private Space. Safari had also restored a Personal window from its last
+  session (96), and the profile's copy linked through that one at .340, before the wake window (152) was reported at
+  .642. The wake windows were taken to be the profile's windows at the link, [96] only. 96 was swept as a restored
+  window, the close of the wake windows asked for 96 ("Window not found") and never 152, and the private Space was then
+  released with 152 still in it: macOS put it in the current Space, Margin's, over the page area. The engine took it
+  for a dialog there and left it. It's rare because it needs a restored window of that profile to link first.
+- **Fix.** Closed within `wokenLate` (3 s) of the link, the profile's windows that came since and aren't Margin's are the
+  wake's too and are closed with it; later, only those known at the link (a window that comes later is the person's).
+  The private Space is released only once no window parked in it is still open; until then the poll looks again
+  (`releaseWokenSpace`). A wake window is never let into Margin's Space.
+- **The address pill** showed "com.apple.Maps" for an app item (its address app://<bundle id> taken for a site): it
+  shows the app's name now, as its row does.

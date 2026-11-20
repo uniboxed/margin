@@ -486,6 +486,52 @@ func preparedBrowserTests(_ library: Library) {
               "\(String(describing: r.engine.hosts[safari]?.window)) \(mine) \(lines.filter { $0.contains("wake") || $0.contains("prepared") })")
         hostRun { await r.engine.quitAll() }
     }
+    do {
+        // (2026-11-20 11:17:35, the real Mac: the copy linked through a window Safari restored (96) before the press's
+        // window was reported; only 96 was known at the link, so only 96 was closed (already gone: swept as restored),
+        // the press's window was left open, its private Space released, and it fell into Margin's Space over Maps.)
+        let (r, wokenWindow) = wakeRig()
+        r.links.wakes = []
+        let opened = r.links.onMenuOpen
+        r.links.onMenuOpen = { p in
+            opened?(p)
+            r.links.profiles.append(p) // (linked at once, through the restored window)
+            r.links.windowsOf[p] = [96]
+            r.links.restored[p] = [96]
+        }
+        // (The press's window, the copy's 77, reported after the link, before Margin's own window is made.)
+        let made = r.links.onNewWindow
+        r.links.onNewWindow = { id, payload in
+            if r.links.windowsOf["s-default"]?.contains(77) == false { r.links.windowsOf["s-default", default: []].append(77) }
+            made?(id, payload)
+        }
+        let lines = prepare(r)
+        let n = wokenWindow() ?? -1
+        check("wake: the copy linked through a restored window before the press's was reported: the press's window, come since, closed with it (never left open)",
+              r.links.asked.contains { $0.type == "closeWindow" && int($0.payload["windowId"]) == 77 } && r.w.wins[n] == nil && r.engine.hosts[safari]?.phase == .parked
+              && lines.contains { $0.contains("1 more that came after its copy linked") },
+              "\(r.links.asked.filter { $0.type == "closeWindow" }.map(\.payload)) \(String(describing: r.w.wins[n])) \(lines.filter { $0.contains("wake") })")
+        hostRun { await r.engine.quitAll() }
+    }
+    do {
+        // A woken window its copy didn't close: its private Space kept (never let into Margin's Space), released once it's gone.
+        let (r, wokenWindow) = wakeRig()
+        let closes = r.links.onCloseWindow
+        r.links.onCloseWindow = { _ in } // (its copy answers, the window stays: an id that wasn't the press's window's)
+        let lines = prepare(r)
+        let n = wokenWindow() ?? -1
+        let spaces = r.w.spaces(window: n) ?? []
+        check("wake: a woken window not closed: kept in its private Space, out of sight (never in Margin's Space), said",
+              r.w.wins[n] != nil && !spaces.contains(FakeHostWorld.marginSpace) && r.w.wins[n]?.priv.map { r.w.privates.contains($0) } == true && r.engine.wokenParked(bundleId: "com.apple.Safari") == [n]
+              && lines.contains { $0.contains("private Space of the windows opened to wake a profile kept: 1 of them still open") },
+              "\(spaces) parked \(r.engine.wokenParked(bundleId: "com.apple.Safari")) n \(n) \(lines.filter { $0.contains("wake") })")
+        r.links.onCloseWindow = closes
+        r.w.closeWindow(n)
+        r.session.sweepRestoredSafariWindows()
+        check("wake: once it's gone: the private Space released (the poll's look)", r.engine.wokenParked(bundleId: "com.apple.Safari").isEmpty && r.engine.wokenWindows(bundleId: "com.apple.Safari") == 0,
+              "\(r.engine.wokenWindows(bundleId: "com.apple.Safari"))")
+        hostRun { await r.engine.quitAll() }
+    }
 }
 
 // ---- a profile's copy waited for, waking it through Safari's menu: evidence decides, time only paces (2026-11-17 20:44:
