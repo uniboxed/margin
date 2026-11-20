@@ -35,6 +35,33 @@ struct ThemeSettingsKeeper {
     }
 }
 
+// Margin's settings changed in Margin's window (updateSettings), kept across launches: the app's defaults
+// (`MarginWindowSettings`: { setting: a number, a string, a switch or a list of strings }); a test's or the harness's: none.
+// Until the app's own store has settings. Only Margin's own keys (no `themes`: each theme's are ThemeSettingsKeeper's).
+struct SettingsKeeper {
+    var read: () -> JSONObject
+    var write: (JSONObject) -> Void
+
+    static let key = "MarginWindowSettings"
+    static let appDefaults = SettingsKeeper(
+        read: { clean(UserDefaults.standard.dictionary(forKey: key) ?? [:]) },
+        write: { UserDefaults.standard.set(clean($0), forKey: key) })
+
+    // At most 100 settings: numbers and switches, strings up to 500 characters, lists of up to 500 such strings.
+    static func clean(_ raw: [String: Any]) -> JSONObject {
+        var out: JSONObject = [:]
+        for (key, value) in raw.sorted(by: { $0.key < $1.key }).prefix(100) where key.count <= 60 && key != "themes" {
+            if value is NSNumber { out[key] = value }
+            else if let s = value as? String, s.count <= 500 { out[key] = s }
+            else if let list = value as? [Any] {
+                let strings = list.compactMap { $0 as? String }.filter { $0.count <= 500 }
+                if strings.count == list.count, strings.count <= 500 { out[key] = strings }
+            }
+        }
+        return out
+    }
+}
+
 final class DataSetWindowSource: MarginWindowSource {
     let data: DataSync
     // The profile whose set is shown (asked again at every snapshot: a copy linking can change it).
@@ -45,16 +72,21 @@ final class DataSetWindowSource: MarginWindowSource {
     // Settings changed in the UI (updateSettings), and each theme's (updateThemeSettings), over the set's.
     private(set) var settings: JSONObject = [:]
     private(set) var themeSettings: [String: JSONObject] = [:]
+    // The theme chosen in Margin's own Settings (nil: none chosen there: the profile's set says).
+    var chosenTheme: String? { settings["theme"] as? String }
     // Requests this can't do yet, by type (the log says the first of each).
     private(set) var unhandled: [String: Int] = [:]
 
     private let keeper: ThemeSettingsKeeper?
+    private let settingsKeeper: SettingsKeeper?
 
-    init(data: DataSync, pick: @escaping () -> DataProfile?, keeper: ThemeSettingsKeeper? = nil) {
+    init(data: DataSync, pick: @escaping () -> DataProfile?, keeper: ThemeSettingsKeeper? = nil, settingsKeeper: SettingsKeeper? = nil) {
         self.data = data
         self.pick = pick
         self.keeper = keeper
+        self.settingsKeeper = settingsKeeper
         themeSettings = keeper?.read() ?? [:]
+        settings = settingsKeeper?.read() ?? [:]
         // (After the shell's own: a set changed on disk is drawn again.)
         let before = data.onChange
         data.onChange = { [weak self] p, collections in
@@ -83,7 +115,8 @@ final class DataSetWindowSource: MarginWindowSource {
             return nil
         }
         if type == "updateSettings", let patch = payload["patch"] as? JSONObject, !patch.isEmpty {
-            settings.merge(patch) { _, new in new }
+            settings.merge(patch.filter { $0.key != "themes" }) { _, new in new }
+            settingsKeeper?.write(settings)
             onChange?()
             return nil
         }
@@ -154,11 +187,12 @@ extension Shell {
         return withSpaces.first { $0.browser == last } ?? withSpaces.first
     }
 
-    // The theme Margin's window draws (a package's JSON): an imported theme its settings choose, else a linked copy's
-    // package; nil: Arcadia, bundled with the page.
+    // The theme Margin's window draws (a package's JSON): the one its settings choose (`hostedSettings`: what was
+    // chosen in Margin's own Settings, else the profile's set), an imported one or a built-in Margin carries; with none
+    // chosen, a linked copy's package; nil: Arcadia, bundled with the page.
     func hostedTheme() -> String? {
-        let chosen = hostedProfile().flatMap { data.values("settings", of: $0)["theme"] as? String }
-        if let chosen, let json = userThemes.store.message(chosen) { return json }
+        let chosen = hostedSettings?.chosenTheme ?? hostedProfile().flatMap { data.values("settings", of: $0)["theme"] as? String }
+        if let chosen, let json = userThemes.store.message(chosen) ?? builtinThemes.message(chosen) { return json }
         return links.keys.sorted().lazy.compactMap { self.links[$0]?.theme }.first
     }
 

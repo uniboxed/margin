@@ -78,6 +78,8 @@ final class Shell: ExtensionLinkDelegate {
     private(set) var options: Options
     lazy var pages = OverlayPages(root: options.root ?? OverlayPages.appRoot) // Margin's windows' page (ShellHosted.swift)
     var marginWindows: MarginWindows? // made the first time one is opened
+    var hostedSettings: DataSetWindowSource? // the settings Margin's windows draw and change (ShellHostedGlue makeHostedSource)
+    lazy var builtinThemes = BuiltinThemes(root: options.harness ? nil : OverlayPages.appRoot)
 
     private(set) var links: [String: Link] = [:]
     // Safari's menus through Accessibility (a profile's new window, the sidebar item).

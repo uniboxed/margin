@@ -184,3 +184,30 @@ enum ThemeFileReader {
         return (["type": "themeFile", "kind": "folder", "files": files], "folder", total)
     }
 }
+
+// The built-in themes' packages Margin.app carries for its own window (scripts/build.ts BUILTIN_THEMES: theme.<id>.json
+// beside the window's page in Resources/app/), each the `theme` message's JSON ({ id, manifest, html, css, files }).
+// The page has only Arcadia of its own; the others came only from a browser's copy, so a built-in chosen in Margin's own
+// Settings never reached its window (2026-11-19). Read once each, kept.
+@MainActor
+final class BuiltinThemes {
+    // Neubrutalism's earlier name (ThemeStore.builtins), as saved settings may still say it.
+    static let aliases = ["neo-brutalism": "neubrutalism"]
+    let root: URL?
+    private var cache: [String: String] = [:]
+
+    init(root: URL?) { self.root = root }
+
+    // The package's JSON, nil: not a built-in, or its file missing or not a package of that id.
+    func message(_ chosen: String) -> String? {
+        let id = Self.aliases[chosen] ?? chosen
+        guard ThemeStore.builtins.contains(id), Self.aliases[id] == nil, let root else { return nil }
+        if let json = cache[id] { return json }
+        guard let data = try? Data(contentsOf: root.appendingPathComponent("theme.\(id).json")),
+              let o = try? JSONSerialization.jsonObject(with: data) as? JSONObject, o["id"] as? String == id,
+              o["manifest"] is String, o["html"] is String, o["css"] is String, o["files"] is [String: String],
+              let json = String(data: data, encoding: .utf8) else { return nil }
+        cache[id] = json
+        return json
+    }
+}

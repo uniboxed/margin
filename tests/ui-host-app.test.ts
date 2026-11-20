@@ -10,7 +10,8 @@ import { fileURLToPath } from 'node:url';
 import { applyChanges, chromeRects, cornerFill, createAppHost, hitRects, modeOf, sidebarFixed, splitShadows } from '../extension/ui/host-app.ts';
 import { toStorage } from '../extension/shared/stored.ts';
 import { buildViewModel } from '../extension/ui/view-model.ts';
-import { APP_FILES, buildApp } from '../scripts/build.ts';
+import { APP_FILES, BUILTIN_THEMES, buildApp, builtinThemeFile } from '../scripts/build.ts';
+import { PACKAGE_THEMES } from '../extension/themes/packages.ts';
 import { smallState, W } from './ui/fixtures.ts';
 import type { State } from '../types/margin.d.ts';
 
@@ -575,6 +576,14 @@ test('dist/app is up to date with app/shared/host and extension/ (run `npm run b
     assert.ok(js.includes('name:"safari"') && !js.includes('name:"chrome"'), 'Safari\'s profile, only');
     assert.doesNotMatch(js, /\bimport\s*\(|importScripts|fetch\(/, 'one script, nothing loaded');
     assert.match(readFileSync(join(tmp, 'overlay.html'), 'utf8'), /<script src="overlay.js" defer><\/script>/);
+    // Every built-in theme's package beside the page, for Margin.app to hand its window when one is chosen.
+    assert.deepEqual([...BUILTIN_THEMES], [...PACKAGE_THEMES], 'the same built-ins as the extension');
+    for (const id of BUILTIN_THEMES) {
+      const pkg = JSON.parse(readFileSync(join(tmp, builtinThemeFile(id)), 'utf8'));
+      assert.equal(pkg.id, id);
+      assert.equal(JSON.parse(pkg.manifest).id, id);
+      assert.ok(typeof pkg.html === 'string' && typeof pkg.css === 'string' && typeof pkg.files === 'object');
+    }
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
