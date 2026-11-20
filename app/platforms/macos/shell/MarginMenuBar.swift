@@ -150,7 +150,7 @@ final class MarginMenuBar {
     }
 
     // A Control Center or menu-bar panel open (Wi-Fi, Bluetooth, a status item's menu): the bar stays down.
-    private static func panelsOpen() -> Bool {
+    static func panelsOpen() -> Bool {
         let list = (CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]) ?? []
         return list.contains { d in
             let layer = d[kCGWindowLayer as String] as? Int ?? 0

@@ -114,4 +114,21 @@ func stageCallsTests() {
     check("menu bar: the Apple menu's copy: every item enabled, not auto-enabled, Location hidden",
           !apple.autoenablesItems && apple.items.filter { !$0.isSeparatorItem }.allSatisfy(\.isEnabled) && apple.items[4].isHidden)
     check("menu bar: the highlight is the real bar's (23.5 points)", MarginMenuBar.pillHeight == 23.5)
+
+    // The fallback (Margin owns its Space): made active by macOS's menu bar, the keys go back once it's up again.
+    let screen = CGRect(x: 0, y: 0, width: 1512, height: 982)
+    func by(_ stage: Bool = false, _ full: Bool = true, _ shown: Bool = true, _ field: Bool = false, y: CGFloat = 980) -> Bool {
+        MarginWindowController.madeActiveByBar(inStage: stage, fullScreen: full, appShown: shown, fieldWantsKeys: field, pointer: CGPoint(x: 400, y: y), screen: screen)
+    }
+    check("fallback bar: made active with the pointer at the top, an app shown: the bar did it", by())
+    check("fallback bar: the pointer lower down (⌘-Tab, the Dock): not the bar", !by(y: 900))
+    check("fallback bar: in a stage (nobody is made active there): never watched", !by(true))
+    check("fallback bar: nothing shown, not in full screen, or a field of Margin's wanting the keys: not watched", !by(false, true, false) && !by(false, false) && !by(false, true, true, true))
+    func down(y: CGFloat = 500, buttons: Int = 0, menus: Int = 0, panels: Bool = false) -> Bool {
+        MarginWindowController.barDown(pointer: CGPoint(x: 400, y: y), screen: screen, buttons: buttons, menus: menus, panels: panels)
+    }
+    check("fallback bar: up once the pointer's lower, no button, no menu, no panel", !down())
+    check("fallback bar: still down at the top, with a button held, a menu open or a Control Center panel open",
+          down(y: 960) && down(buttons: 1) && down(menus: 1) && down(panels: true))
+    check("fallback bar: the keys go back after it's been up 0.4 s, given up after 2 minutes", MarginWindowController.barUpFor == 0.4 && MarginWindowController.barWatchMost == 120)
 }
