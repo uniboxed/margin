@@ -43,6 +43,8 @@ final class MarginMenuBar {
     private let titles: BarPanel
     private let titlesView: TitlesView
     private let strip: BarPanel
+    private let icons: BarPanel
+    private let iconsView = IconsView(frame: .zero)
     private var timer: Timer?
     private var leftAt: Date?
     private(set) var shown = false
@@ -64,6 +66,9 @@ final class MarginMenuBar {
         titles.contentView = titlesView
         titles.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.mainMenuWindow)) + 2)
         strip = BarPanel(contentRect: .zero)
+        icons = BarPanel(contentRect: .zero)
+        icons.contentView = iconsView
+        icons.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.mainMenuWindow)) + 2)
         strip.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.mainMenuWindow)) - 1)
         strip.contentView = StripView(close: { [weak self] in self?.closeTab() })
         edge.onEnter = { [weak self] in self?.show() }
@@ -81,6 +86,7 @@ final class MarginMenuBar {
         shown = false
         edge.orderOut(nil)
         titles.orderOut(nil)
+        icons.orderOut(nil)
         strip.orderOut(nil)
     }
 
@@ -112,6 +118,7 @@ final class MarginMenuBar {
         edge.orderOut(nil)
         layoutTitles()
         place(titles)
+        showIcons()
         showStrip()
         leftAt = nil
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
@@ -136,6 +143,7 @@ final class MarginMenuBar {
         calls.showMenuBar(false, display: display)
         if revealMode != "none" { calls.revealChanged(space: space, shown: false) }
         titles.orderOut(nil)
+        icons.orderOut(nil)
         hideStrip()
         placeEdge()
     }
@@ -173,6 +181,25 @@ final class MarginMenuBar {
                   let b = d[kCGWindowBounds as String] as? [String: Any], let r = CGRect(dictionaryRepresentation: b as CFDictionary) else { return false }
             return r.height > 30
         }
+    }
+
+    // ---- the status items (Wi-Fi, Bluetooth, the battery, Control Center, the clock…) ----
+
+    // In a Space nobody owns, macOS keeps a window of its menu bar's own over the bar (layer 25, the whole width) while a
+    // window of an app with a Dock icon (Margin's) is in it: there to bring the bar down for that app, which it never does
+    // there, it takes every click meant for the status items (2026-11-19 23:12: the clicks reached MenuBarAgent's layer-25
+    // window, no panel opened; the test kit, with no such app's window in its Space, had none). So, while the bar is down,
+    // a panel of Margin's lies over the status items, above that window, and a press on an item presses that item
+    // through Accessibility (Margin's grant), as the click would have: its panel opens and the app shown keeps the
+    // keyboard (nobody owns the Space; measured 23:16). The items' frames are read as the bar comes down, never on a timer.
+    private func showIcons() {
+        let items = StatusItems.read()
+        guard let minX = items.map({ $0.frame.minX }).min() else { return icons.orderOut(nil) }
+        let x = minX - 4
+        iconsView.items = items.map { (element: $0.element, rect: NSRect(x: $0.frame.minX - x, y: 0, width: $0.frame.width, height: barHeight), name: $0.name) }
+        icons.setFrame(NSRect(x: x, y: screen.frame.maxY - barHeight, width: screen.frame.maxX - x, height: barHeight), display: false)
+        iconsView.frame = NSRect(origin: .zero, size: icons.frame.size)
+        place(icons)
     }
 
     // ---- the titles ----
@@ -260,6 +287,49 @@ final class MarginMenuBar {
         guard strip.isVisible, let up = stripFrame(down: false) else { return strip.orderOut(nil) }
         NSAnimationContext.runAnimationGroup({ c in c.duration = 0.2; strip.animator().setFrame(up, display: true) },
                                              completionHandler: { [weak self] in MainActor.assumeIsolated { if self?.shown == false { self?.strip.orderOut(nil) } } })
+    }
+}
+
+// macOS's status items, as Accessibility has them (MenuBarAgent's extras menu bar: each item, or each group's item, and
+// the hidden items' button), with their frames in AppKit's coordinates. Nothing logged but identifiers.
+enum StatusItems {
+    struct Item { var element: AXUIElement; var frame: NSRect; var name: String }
+    static func read() -> [Item] {
+        guard AXIsProcessTrusted(), let agent = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == "com.apple.MenuBarAgent" || $0.localizedName == "MenuBarAgent" }) else { return [] }
+        func attr<T>(_ e: AXUIElement, _ n: String) -> T? { var v: CFTypeRef?; return AXUIElementCopyAttributeValue(e, n as CFString, &v) == .success ? v as? T : nil }
+        let app = AXUIElementCreateApplication(agent.processIdentifier)
+        AXUIElementSetMessagingTimeout(app, 0.3)
+        guard let bar: AXUIElement = attr(app, "AXExtrasMenuBar"), let groups: [AXUIElement] = attr(bar, kAXChildrenAttribute) else { return [] }
+        let top = NSScreen.screens.first?.frame.maxY ?? 0
+        var out: [Item] = []
+        for g in groups {
+            let role: String? = attr(g, kAXRoleAttribute)
+            let candidates = role == "AXGroup" ? ((attr(g, kAXChildrenAttribute) as [AXUIElement]?) ?? []) : [g]
+            for e in candidates {
+                guard let r: String = attr(e, kAXRoleAttribute), r == "AXMenuBarItem" || r == "AXButton" else { continue }
+                var p = CGPoint.zero, s = CGSize.zero
+                guard let pv: AXValue = attr(e, kAXPositionAttribute), let sv: AXValue = attr(e, kAXSizeAttribute),
+                      AXValueGetValue(pv, .cgPoint, &p), AXValueGetValue(sv, .cgSize, &s), s.width > 0 else { continue }
+                out.append(Item(element: e, frame: NSRect(x: p.x, y: top - p.y - s.height, width: s.width, height: s.height), name: (attr(e, "AXIdentifier") as String?) ?? r))
+            }
+        }
+        return out
+    }
+}
+
+// The panel over the status items: a press on one presses it through Accessibility.
+private final class IconsView: NSView {
+    var items: [(element: AXUIElement, rect: NSRect, name: String)] = []
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func mouseDown(with event: NSEvent) {
+        let p = convert(event.locationInWindow, from: nil)
+        guard let item = items.first(where: { $0.rect.insetBy(dx: -3, dy: 0).contains(p) }) else { return }
+        let element = item.element, name = item.name
+        DispatchQueue.global(qos: .userInteractive).async {
+            AXUIElementSetMessagingTimeout(element, 0.5)
+            let r = AXUIElementPerformAction(element, kAXPressAction as CFString)
+            DispatchQueue.main.async { Diagnostics.note("Margin's menu bar: \(name) pressed for the click (\(r == .success ? "done" : "Accessibility said \(r.rawValue)"))") }
+        }
     }
 }
 
