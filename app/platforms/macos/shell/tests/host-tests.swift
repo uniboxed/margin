@@ -1712,8 +1712,10 @@ func hostTests() {
               && w.bounds(window: aw) == page && w.wins[bw]?.priv != nil && w.wins[bw]?.fullScreen == true && e.hosts[notes.id]?.phase == .parked, "\(String(describing: back))")
         check("host: the switch: well under 100 ms (\(Int(took * 1000)) ms on the stand-in's clock, a move each way), no freeze, no full-screen exit or entry, no loading animation",
               took < 0.1 && w.freezes == freezes && !w.calls.contains { $0.hasPrefix("fullScreen") || $0.hasPrefix("reserve") } && said.loading.isEmpty, "\(took) \(w.calls)")
-        check("host: the new one in before the old one out (Margin's page area never seen between), then its app in front",
-              at(w, "move \(aw) \(FakeHostWorld.marginSpace)") < (w.calls.firstIndex { $0.hasPrefix("move \(bw) ") } ?? -1) && w.calls.last == "activate \(pid(w, "com.apple.TextEdit")) \(aw)", "\(w.calls)")
+        // (Its app in front while the one before still covers it, Tirth 2026-11-20: never seen drawn as inactive.)
+        let activated = w.calls.firstIndex(of: "activate \(pid(w, "com.apple.TextEdit")) \(aw)") ?? -1
+        check("host: the new one in, its app in front, then the old one out (Margin's page area never seen between; the new one never seen inactive)",
+              at(w, "move \(aw) \(FakeHostWorld.marginSpace)") < activated && activated < (w.calls.firstIndex { $0.hasPrefix("move \(bw) ") } ?? -1), "\(w.calls)")
         check("host: its private Space given back once shown; one left (the second's)", w.privates.count == 1 && w.privates.first == w.wins[bw]?.priv && clean(w))
         var times: [Double] = []
         for i in 0..<6 {

@@ -396,6 +396,7 @@ final class HostEngine {
     private var freezeHolds = 0 // steps holding the freeze now (Margin's quit gives every host back at once)
     private var preparing = false // a window made ready out of sight (`prepare`): parked once it's placed, never shown
     private var openWanted: (@MainActor () -> Bool)? // the open under way still wanted (`open`'s `wanted`; nil: always)
+    private var orderChecks = 0 // switches whose windows' order was read (switchIn): a run's first few only
 
     private var tail: Task<Void, Never>?
     private var jumps = 0
@@ -2382,9 +2383,12 @@ final class HostEngine {
     }
 
     // A member shown again (the fast path, no full-screen exit or entry): into Margin's Space out of its private Space,
-    // then the one shown before out of it (a member parked as it is; a window its frame given back first, under the
-    // freeze), then its app in front. The new one comes in before the old one leaves: Margin's page area isn't seen
-    // between the two.
+    // its app in front, then the one shown before out of it (a member parked as it is; a window its frame given back
+    // first, under the freeze). The new one comes in before the old one leaves: Margin's page area isn't seen between the
+    // two. Its app is made active while the old one still covers it (Tirth, 2026-11-20: "a focus flicker", the window
+    // seen drawn as inactive, then active, ~30 ms later): a window keeps its place in the window server's order as it
+    // moves between Spaces, and the one coming back was last raised before the one leaving, so it's behind it until its
+    // app's activation raises it, active from its first frame seen.
     private func switchIn(_ host: Host) async -> HostResult {
         let started = sys.now()
         var times: [String] = []
@@ -2406,6 +2410,14 @@ final class HostEngine {
             }
         }
         step("in", t0)
+        // (Its app in front before the one before leaves: never seen drawn as inactive. Said with the switch.)
+        t0 = sys.now()
+        let fronted = await front(host)
+        let frontMs = ms(since: t0)
+        // (Its order against the one leaving read for a run's first switches only: a check on the real screen, never a cost
+        // every switch pays.)
+        var behind: Bool??
+        if let previous, orderChecks < 5 { orderChecks += 1; behind = windowBehind(host.window, previous.window) }
         if let previous {
             t0 = sys.now()
             guard await retire(previous) else {
@@ -2444,9 +2456,10 @@ final class HostEngine {
         // Messages: front 79 of 142 ms, Accessibility's raise answered late by the app).)
         let total = ms(since: started)
         emit(.shown(host.id, ms: total))
-        t0 = sys.now()
-        let fronted = await front(host)
-        Diagnostics.note("host: \(host.id) switched in \(total) ms (\(times.joined(separator: ", ")))\(fronted ? "; its app in front \(ms(since: t0)) ms after" : "")")
+        // (`behind`: whether it came in behind the one leaving, as the window server's order read just before that left:
+        // its app's activation in front then never showed it inactive. Said, to check on the real screen.)
+        let order = behind.map { $0 == true ? ", it came in behind the one before" : $0 == false ? ", it came in IN FRONT of the one before (seen inactive until its app's activation)" : ", their order unread" } ?? ""
+        Diagnostics.note("host: \(host.id) switched in \(total) ms (\(times.joined(separator: ", ")))\(fronted ? "; its app in front first, \(frontMs) ms, before the one before left" : "; its app not brought in front")\(order)")
         return .shown(host.id, placed: true)
     }
 
@@ -3403,6 +3416,13 @@ final class HostEngine {
     // AXFrontmost first (the app activates itself: Margin, never the active app since its UI is a panel, can't hand it
     // the activation; 2026-11-17, a window-mode app started hidden stayed off screen until it was the front app), then
     // the window raised (and NSRunningApplication's activation, which macOS takes only while Margin is active).
+    // Whether window `a` is behind window `b` in the window server's on-screen order (front to back); nil: unread (either
+    // not listed on screen).
+    private func windowBehind(_ a: Int, _ b: Int) -> Bool? {
+        guard let list = sys.onScreenWindows()?.map(\.number), let ia = list.firstIndex(of: a), let ib = list.firstIndex(of: b) else { return nil }
+        return ia > ib
+    }
+
     private func front(_ host: Host) async -> Bool {
         guard !quitting else { return false }
         let asked = await sys.frontmost(pid: host.pid)
