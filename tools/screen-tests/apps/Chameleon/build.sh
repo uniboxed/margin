@@ -3,12 +3,13 @@
 # signed ad hoc, into a build folder (never /Applications or ~/Applications: the suite copies them into ~/Applications
 # for a run and removes them after). Then checks each switch is read: the binary's `--describe` with each switch as a
 # launch argument (no window, no window-server connection: it exits before AppKit's application starts).
-#   build.sh [N (default 3)] [out folder (default tools/screen-tests/build/apps)]
+#   build.sh [N (default 3)] [out folder (default tools/screen-tests/build/apps.noindex: Spotlight never lists its copies,
+#   named "Margin Chameleon", when the person looks for Margin)]
 # Copy i: "Margin Chameleon i.app", bundle id test.margin.chameleon.i, executable Chameleon.
 set -eu
 cd "$(dirname "$0")"
 N="${1:-3}"
-OUT="${2:-$PWD/../../build/apps}"
+OUT="${2:-$PWD/../../build/apps.noindex}"
 mkdir -p "$OUT"
 BIN="$OUT/Chameleon"
 if [ ! -x "$BIN" ] || [ -n "$(find Switches.swift main.swift -newer "$BIN" 2>/dev/null)" ]; then

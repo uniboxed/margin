@@ -18,7 +18,7 @@ let dryRun = args.contains("--dry-run"), withReal = args.contains("--real-apps")
 let buildDir = value("--build") ?? (URL(fileURLWithPath: CommandLine.arguments[0]).deletingLastPathComponent().path)
 statePath = buildDir + "/state.json"
 handoffPath = buildDir + "/handoff.json"
-builtApps = value("--apps") ?? buildDir + "/apps"
+builtApps = value("--apps") ?? buildDir + "/apps.noindex" // (a .noindex folder: Spotlight never lists the copies)
 let builtMargin = value("--margin") ?? ""
 let allParts = parts(realApps: withReal)
 

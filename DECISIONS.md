@@ -6462,3 +6462,14 @@ tracking function, before its loop), so a swipe's start or a caught settle never
 of the offset from the space drawn is the same for every place that occurs. The one difference: Dia checks at each of
 the trackpad's events, Margin did at the next frame (up to a frame later). Now checked at each event (`detentTick`);
 Arcadia's test sends the events in one task and finds the tick already asked for (it failed with the frame's check).
+
+## No test copies of Margin in Spotlight (2026-11-20)
+
+Tirth: searching Spotlight for "margin" listed many "Margin" apps with no icon beside the real one. They were the helper
+test's stand-ins (`tools/app-tests/helper-test.sh`: a background-only `Margin.app` and `Browser.app` per run, in
+`build/helper-test-<pid>`), forgotten by LaunchServices at the end but left on disk, so Spotlight indexed each one: 305
+folders, 80 MB (plus two from before the folders were numbered, and the removed splash test's). Deleted; the test now
+removes its folder when it passes (kept when a check failed, to look at). The screen suite's three test apps ("Margin
+Chameleon N", reused across runs) are built into `tools/screen-tests/build/apps.noindex` instead of `build/apps`:
+Spotlight skips a `.noindex` folder, and the suite still copies them into ~/Applications only for a run. Spotlight now
+lists the installed Margin alone (and an experiment of the person's outside the repo, left as it is).

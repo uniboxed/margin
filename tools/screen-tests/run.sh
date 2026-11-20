@@ -37,12 +37,12 @@ while [ $# -gt 0 ]; do
   esac
 done
 mkdir -p "$BUILD/logs"
-apps/Chameleon/build.sh 3 "$BUILD/apps" || exit 1
+apps/Chameleon/build.sh 3 "$BUILD/apps.noindex" || exit 1
 SUITE_BIN="$BUILD/screen-suite"
 if [ ! -x "$SUITE_BIN" ] || [ -n "$(find suite apps/Chameleon/Switches.swift -name '*.swift' -newer "$SUITE_BIN" 2>/dev/null)" ]; then
   swiftc -O -swift-version 5 suite/*.swift apps/Chameleon/Switches.swift -o "$SUITE_BIN" || exit 1
 fi
-SUITE=("$SUITE_BIN" --build "$BUILD" --apps "$BUILD/apps" --margin "$MARGIN" ${PASS[@]+"${PASS[@]}"})
+SUITE=("$SUITE_BIN" --build "$BUILD" --apps "$BUILD/apps.noindex" --margin "$MARGIN" ${PASS[@]+"${PASS[@]}"})
 if [ "$RESTORE" = 1 ]; then exec "${SUITE[@]}" --restore; fi
 if [ "$SELF" = 1 ]; then exec "${SUITE[@]}" --self-check; fi
 # What it will do, first.

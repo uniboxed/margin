@@ -42,7 +42,7 @@ today's engine: that's the baseline stage 3 (the reconciler) turns green.
 
 The behaviour test app (from the kit's TestPane: toolbar, text field, button, grid; a menu bar). `apps/Chameleon/build.sh
 [N] [folder]` builds the binary and N copies (`Margin Chameleon N.app`, `test.margin.chameleon.N`, ad hoc signed) into
-`build/apps`, never into an Applications folder, then checks each switch is read (`Chameleon --describe` with the switch
+`build/apps.noindex` (a `.noindex` folder: Spotlight never lists them), never into an Applications folder, then checks each switch is read (`Chameleon --describe` with the switch
 as a launch argument: no window, no window-server connection). Switches are its own defaults, read at launch
 (`defaults write test.margin.chameleon.3 ChameleonAxBusy 2.5`), described in `Switches.swift`:
 
