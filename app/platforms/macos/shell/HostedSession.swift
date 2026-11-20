@@ -164,7 +164,7 @@ protocol HostedWindow: AnyObject {
     // The one shown's own minimum width (nil: none): the sidebar's edge stops where the page area would be narrower
     // (its page's resize behaviour, ui/behaviors/resize.ts), as Split View's divider stops at a window's minimum.
     func setPageMinimum(_ width: CGFloat?)
-    // Not hosting, its item hosted in another Margin window or parked: the card ("Click to show … here", faded), nil: none.
+    // Not hosting, its item hosted in another Margin window or parked: the card ("… is in another window. Click to show it here.", faded), nil: none.
     // `picture`: a web item's page as Safari last showed it (a data URL, the copy's `hostPicture`), drawn faded under
     // the card's words; nil: the card alone. In memory only, never logged.
     func setElsewhere(_ label: String?, app: String?, picture: String?)
@@ -494,13 +494,24 @@ final class HostedSession: LibraryDelegate {
         // (Hosted already, or not: opened or shown again with Margin's window's placement and Space as they are now,
         // which change when its window left full screen and came back. A new app's open that's waiting for its window is
         // given up as soon as another item is picked in this window (Tirth, 2026-11-20): that one starts at once.)
+        // (Its window closed meanwhile: not wanted either.)
         let result = await engine.open(app: target, in: placement, marginWindow: w.number, marginSpace: space, wanted: { [weak self] in
-            self.map { !$0.supersededBy(w, item) } ?? false
+            self.map { !$0.supersededBy(w, item) && $0.window(w.id) != nil } ?? false
         })
         switch result {
+        case .shown(let id, _) where window(w.id) == nil:
+            // (Shown into a window closed while it opened: parked at once, nothing of it left where that window was.)
+            note("\(id): shown as Margin's window \(w.id) closed: parked")
+            await engine.parkShown(why: "its Margin window closed")
+            if hostingWindow == w.id { hostingWindow = nil }
+            return false
         case .shown(let id, let placed):
             note("\(id): shown\(placed ? "" : " (not fitted to the page area)")")
             return true
+        case .failed(.superseded, _) where window(w.id) == nil:
+            note("\(target.id): its open given up: Margin's window \(w.id) closed meanwhile")
+            if hostingWindow == w.id { hostingWindow = nil }
+            return false
         case .failed(.superseded, _):
             // (Its loading bar goes with its show; Margin's window keeps hosting and its loader for the item picked since.)
             note("\(target.id): its open given up for the item picked since (\(requested[w.id] ?? "?"))")
@@ -530,7 +541,7 @@ final class HostedSession: LibraryDelegate {
             was.setHosting(false)
             if let item { showElsewhere(item, in: was, picture: picture) }
         }
-        if elsewhere[w.id] != nil { elsewhere[w.id] = nil; w.setElsewhere(nil, app: nil) }
+        // (This window's own card stays until it hosts (below): cleared before, its launcher was drawn in between.)
         if !w.isFullScreen {
             note("Margin's window \(w.id) not in full screen (it always is while hosting is on: \(w.fullScreenState)): asked")
             w.toFullScreen()
@@ -544,6 +555,8 @@ final class HostedSession: LibraryDelegate {
         }
         w.setHosting(true)
         hostingWindow = w.id
+        // (Its card, if it had one, goes now that it hosts: straight to the loader, never its launcher for a frame.)
+        if elsewhere[w.id] != nil { elsewhere[w.id] = nil; w.setElsewhere(nil, app: nil) }
         // (Asked to measure again at every look: a size the window took may not have been drawn yet.)
         guard await wait(options.pageWait, { if w.hostedPlacement != nil { return true }; w.remeasure(); return false }), let placement = w.hostedPlacement else {
             note("Margin's window \(w.id): no page area (\(w.pageAreaWhyNot))")
@@ -718,7 +731,7 @@ final class HostedSession: LibraryDelegate {
 
     // ---- an item in another Margin window (Tirth, 2026-11-18) ----
 
-    // One Margin window hosts at a time. Another one's item stays on it as a card, faded ("Click to show … here", the
+    // One Margin window hosts at a time. Another one's item stays on it as a card, faded ("… is in another window. Click to show it here.", the
     // page's words); the window brought in front (`focused`, a click on it) takes the item back: the app's one window
     // follows the window in use. Each window's item, by window.
     private(set) var elsewhere: [Int: String] = [:]
@@ -771,6 +784,38 @@ final class HostedSession: LibraryDelegate {
             if self.requested[windowId] == item { self.requested[windowId] = nil }
         }
     }
+    // A Margin window closing while it hosts (its close button): only that window goes (Margin keeps running, its items
+    // stay open, tabs of their spaces). What it shows is parked first, while its Space is still there; `done` closes it.
+    // Not queued behind the session's own work: the engine takes it next.
+    func windowClosing(_ w: HostedWindow, then done: @escaping () -> Void) {
+        guard w.id == hostingWindow, engine.shown != nil else { return done() }
+        note("Margin's window \(w.id) closing while it hosts: the one shown parked first")
+        Task {
+            await self.engine.parkShown(why: "its Margin window closed")
+            done()
+        }
+    }
+
+    // A Margin window closed: what the session kept for it goes (its card, its item shown, asked for or to resume, its
+    // Margin page). It hosted: nothing hosts until another window shows something (parked already by `windowClosing`;
+    // now if that didn't get there in time). The window in front next takes its own item back (`focused`).
+    func windowClosed(_ id: Int) {
+        note("Margin's window \(id) closed: its items stay open (parked)\(elsewhere[id].map { ", its card for \($0) gone" } ?? "")")
+        forgetElsewhere(windowId: id)
+        requested[id] = nil
+        shown[id] = nil
+        marginPages[id] = nil
+        resume[id] = nil
+        cycledAt[id] = nil
+        if hostingWindow == id {
+            hostingWindow = nil
+            if engine.shown != nil { Task { await self.engine.parkShown(why: "its Margin window closed") } }
+        }
+        refreshLoading()
+        loadingSaid[id] = nil
+        onChange?()
+    }
+
     // A window gone, or its item closed: its card goes.
     func forgetElsewhere(windowId: Int? = nil, item: String? = nil) {
         for (w, i) in elsewhere where w == windowId || i == item {

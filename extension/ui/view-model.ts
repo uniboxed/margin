@@ -313,8 +313,9 @@ function fresh(input: ViewModelInput): ViewModel {
   const loadingApp = ui.pageOpening && isBundleId(ui.pageOpening.bundleId) ? ui.pageOpening.bundleId : null;
   const loadingIcon = loadingApp ? appIcon((state as { apps?: InstalledApp[] | null } | null)?.apps, loadingApp) : null;
   // (Margin's start, its default browser first: its own words, never "Opening Getting you started…".)
-  // (Its item in another Margin window: its card, faded; brought in front, this window takes it back.)
-  const loadingLabel = ui.pageOpening?.elsewhere === true ? `Click to show ${loadingName || 'it'} here.`
+  // (Its item in another Margin window: its card, faded, saying where it is; brought in front or clicked, this window
+  // takes it back.)
+  const loadingLabel = ui.pageOpening?.elsewhere === true ? `${loadingName || 'This tab'} is in another window. Click to show it here.`
     : ui.pageOpening?.starting === true ? 'Getting you started…' : loadingName ? `Opening ${loadingName}…` : 'Opening…';
   const pageLoader = ui.pageOpening ? { name: loadingName, label: loadingLabel, icon: checkIconUrl(loadingIcon) ? loadingIcon : null } : null;
   if (!state) {

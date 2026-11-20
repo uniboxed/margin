@@ -199,6 +199,11 @@ extension Shell {
         guard let session = hosted else { return }
         // (A Margin window brought in front takes back its item from another one; one closed forgets its card.)
         windows.onKey = { [weak session] id in session?.focused(id) }
+        windows.onClosing = { [weak session] controller, done in
+            guard let session else { return done() }
+            session.windowClosing(controller, then: done)
+        }
+        windows.onClosed = { [weak session] id in session?.windowClosed(id) }
         session.window = { [weak windows] id in
             guard let windows else { return nil }
             if let id { return windows.controllers.first { $0.id == id } }

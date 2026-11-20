@@ -254,7 +254,9 @@ export async function pageLoaderChecks(t: TestContext, browser: Browser, o: Load
     // ---- elsewhere: its item in another Margin window: the card faded and still, its words, the pointer let through ----
     const away = await ev(() => T.rtPageState('elsewhere', 'Notes'));
     assert.equal(away.attr, 'elsewhere');
-    assert.equal(away.loader?.text.trim(), 'Click to show Notes here.', 'elsewhere: Margin\'s words for the card');
+    assert.equal(away.loader?.text.trim(), 'Notes is in another window. Click to show it here.', 'elsewhere: Margin\'s words for the card');
+    const fits = await ev((s) => { const el = document.querySelector(s) as HTMLElement | null; return el ? [el.scrollWidth, el.clientWidth] : null; }, o.label);
+    assert.ok(fits && fits[0] <= fits[1] + 1, `elsewhere: the card's words whole, never cut short (${JSON.stringify(fits)})`);
     const card = (await ev(() => T.rtLoader()))!;
     assert.ok(card.visibility === 'visible' && card.opacity > 0.3 && card.opacity < 0.8 && card.pointer === 'none', `elsewhere: the card seen, faded, the pointer let through (${JSON.stringify([card.visibility, card.opacity, card.pointer])})`);
     const still = (await ev(() => T.rtAnimations())).filter((a) => a.loader && a.running && !a.name.startsWith('transition:'));
@@ -269,7 +271,7 @@ export async function pageLoaderChecks(t: TestContext, browser: Browser, o: Load
       `elsewhere: the picture exactly over the page's place (${JSON.stringify([pic.el!.box, lay])})`);
     assert.equal(pic.el!.pointer, 'none', 'elsewhere: the picture lets the pointer through (a click is the window\'s)');
     assert.ok(pic.el!.img?.src && pic.el!.img.complete && pic.el!.img.opacity > 0.2 && pic.el!.img.opacity < 0.8, `elsewhere: the page's picture, faded (${JSON.stringify(pic.el!.img)})`);
-    assert.ok(pic.el!.label?.visible && pic.el!.label.text.trim() === 'Click to show Notes here.', `elsewhere: Margin's words on the picture (${JSON.stringify(pic.el!.label)})`);
+    assert.ok(pic.el!.label?.visible && pic.el!.label.text.trim() === 'Notes is in another window. Click to show it here.', `elsewhere: Margin's words on the picture (${JSON.stringify(pic.el!.label)})`);
     assert.equal(pic.el!.moving, 0, 'elsewhere: nothing of the picture moving');
     await page.waitForTimeout(60);
     at = await shot();

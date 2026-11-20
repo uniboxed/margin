@@ -300,6 +300,7 @@ img.fav.app { width: 22px; height: 22px; margin: -2px; box-shadow: none; backgro
 .pixel[m-page-state="elsewhere"] .page-loader { opacity: .55; visibility: visible; pointer-events: none; transition: none; }
 .pixel[m-page-state="elsewhere"] .opening-fill { animation: none; transform: scaleX(0); }
 .pixel[m-page-state="elsewhere"] .opening :is(.opening-glass, .opening-caret) { animation: none; } /* (over .pixel.blink's caret) */
+.pixel[m-page-state="elsewhere"] .opening-head { white-space: normal; } /* (its words whole: wrapped above the bar) */
 /* A web item's picture over it (m-page-picture, Margin's): the page faded into the ground, the words in a box. */
 .pixel > m-page-picture { background: var(--ground); }
 .pixel > m-page-picture > [m-picture-label] { background: var(--deep); color: var(--ink); border: 2px solid var(--ink); border-radius: 0; box-shadow: none; font-size: 12px; text-transform: uppercase; }

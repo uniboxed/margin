@@ -370,6 +370,66 @@ func glueScenario() async {
   check("asked to leave full screen (⌃⌘F, the page's own ask): refused, still full screen", c.isFullScreen && c.refusedExits == 1)
   check("its menu has no Enter/Exit Full Screen item", !made.menu.items.flatMap { $0.submenu?.items ?? [] }.contains { $0.action == #selector(NSWindow.toggleFullScreen(_:)) })
 
+  // ---- its card (its item in another Margin window) and the item coming back (bug of 2026-11-20: the launcher was
+  // drawn for the loader's grace between the card and the loader) ----
+  c.setElsewhere("Notes", app: "com.apple.Notes", picture: nil)
+  let cardMark = c.pageStates.count
+  let carded = c.pageState == .elsewhere
+  c.setShowing("Notes", app: "com.apple.Notes", slow: false)
+  let stillCard = c.pageState == .elsewhere
+  c.setHosting(true)
+  c.setElsewhere(nil, app: nil, picture: nil)
+  let backStates = Array(c.pageStates.dropFirst(cardMark))
+  check("its item back from its card: the card kept until it hosts, then the loader at once (no grace), never its launcher in between",
+        carded && stillCard && backStates == ["loading Notes"] && c.pageState == .loading, "\(carded) \(stillCard) \(backStates)")
+  c.setHosting(false) // (as the session does: hosting off before the loader's words go)
+  c.setShowing(nil, app: nil, slow: false)
+  // A press on its card (another display: the window in use without becoming key): its item asked back there.
+  c.setElsewhere("Notes", app: "com.apple.Notes", picture: nil)
+  var cardAsks: [Int] = []
+  let onKey = made.onKey
+  made.onKey = { cardAsks.append($0) }
+  let cardPage = c.window.pageRect
+  if let page = cardPage { c.pressEnded(at: CGPoint(x: page.midX - c.contentFrame.minX, y: page.midY - c.contentFrame.minY)) }
+  c.pressEnded(at: CGPoint(x: 2, y: 2)) // (its sidebar's corner, outside the page area: nothing)
+  c.setElsewhere(nil, app: nil, picture: nil)
+  c.pressEnded(at: CGPoint(x: (cardPage?.midX ?? 0) - c.contentFrame.minX, y: (cardPage?.midY ?? 0) - c.contentFrame.minY)) // (no card: nothing)
+  made.onKey = onKey
+  check("a press on its card's page area: its item asked back in this window, once; outside it or with no card, nothing", cardPage != nil && cardAsks == [c.id], "\(cardAsks) \(String(describing: cardPage))")
+
+  // ---- closed (its close button) while it hosts: held until what it shows is parked, then only this window closes
+  // (a second window of its own; the session's hooks put back after) ----
+  do {
+    let other = made.open()
+    _ = await until(5) { other.isFullScreen }
+    let onClosing = made.onClosing, onClosed = made.onClosed
+    other.setHosting(true)
+    var closeHolds: [() -> Void] = []
+    made.onClosing = { _, done in closeHolds.append(done) }
+    var closedIds: [Int] = []
+    made.onClosed = { closedIds.append($0) }
+    let firstPress = other.windowShouldClose(other.window)
+    let againPress = other.windowShouldClose(other.window)
+    let heldOpen = !other.isClosed && closedIds.isEmpty && made.controllers.contains { $0 === other }
+    closeHolds.first?()
+    let closedAfter = await until(2) { other.isClosed }
+    made.onClosing = onClosing
+    made.onClosed = onClosed
+    check("closed while it hosts: held (pressed again: still held, asked once), closed once what it shows is parked: that window only, gone from Margin's windows, the first one still open",
+          !firstPress && !againPress && closeHolds.count == 1 && heldOpen && closedAfter && closedIds == [other.id] && !made.controllers.contains { $0 === other }
+            && made.controllers.contains { $0 === c } && !c.isClosed,
+          "\(firstPress) \(againPress) \(closeHolds.count) \(heldOpen) \(closedAfter) \(closedIds)")
+    // Not hosting: closed at once, nothing asked.
+    let plain = made.open()
+    made.onClosing = { _, done in closeHolds.append(done) }
+    let plainCloses = plain.windowShouldClose(plain.window)
+    made.onClosing = onClosing
+    check("closed while it hosts nothing: closed at once, nothing held", plainCloses && closeHolds.count == 1)
+    plain.window.close()
+    _ = await until(2) { plain.isClosed }
+  }
+  let pickMark = c.pageStates.count
+
   // ---- an app picked in the palette: an item, the app opened above Margin's page area ----
   let display = c.contentFrame
   world.display = display // (full screen in a test is the window's state only: the display is its frame)
@@ -401,14 +461,16 @@ func glueScenario() async {
         && c.mechanism == .level && c.yieldOrders == 0, "hosted \(String(describing: c.hosted)) level \(c.window.level.rawValue)")
   // ---- the page card: loading while the app launched, shown now: the page area a hole ----
   // (Margin's start before the pick, with no item to show again: "Getting you started", then the launcher.)
-  let start = ["loading \(HostedSession.startupLabel)", "empty"]
-  let states = Array(c.pageStates.starts(with: start) ? c.pageStates.dropFirst(start.count) : c.pageStates[...])
+  // (Since the checks of its card and of a window closed, just before the pick.)
+  let states = Array(c.pageStates.dropFirst(pickMark))
   check("the page card `loading` as the app launched (the engine's slow step: at once, with its name), nothing of Margin's window see-through then; `shown` once its window was in place",
         cardAtLaunch["com.apple.TextEdit"] == "loading hole none ground whole clear false" && states == ["loading com.apple.TextEdit", "shown"]
         && c.pushed.contains(#"{"type":"pageState","state":"loading","label":"com.apple.TextEdit","bundleId":"com.apple.TextEdit"}"#) && c.pushed.contains(#"{"type":"pageState","state":"shown","label":null}"#) && c.pageState == .shown, "\(cardAtLaunch) \(states)")
+  // (From the pick on: the card's checks before it said `elsewhere` with Notes' bundle id, as a card does.)
+  let fromPick = Array(c.pushed.drop { !$0.contains(#""label":"com.apple.TextEdit""#) })
   check("an app item's loader: the pageState message names the app's bundle id (the page shows its icon), and only while loading",
-        c.pushed.filter { $0.contains(#""type":"pageState""#) && $0.contains(#""state":"loading""#) && !$0.contains(#""starting":true"#) }.allSatisfy { $0.contains(#""bundleId":"com.apple.TextEdit""#) }
-        && c.pushed.filter { $0.contains(#""type":"pageState""#) && !$0.contains(#""state":"loading""#) }.allSatisfy { !$0.contains("bundleId") }, "\(c.pushed.filter { $0.contains("pageState") })")
+        !fromPick.isEmpty && fromPick.filter { $0.contains(#""type":"pageState""#) && $0.contains(#""state":"loading""#) && !$0.contains(#""starting":true"#) }.allSatisfy { $0.contains(#""bundleId":"com.apple.TextEdit""#) }
+        && fromPick.filter { $0.contains(#""type":"pageState""#) && !$0.contains(#""state":"loading""#) }.allSatisfy { !$0.contains("bundleId") }, "\(c.pushed.filter { $0.contains("pageState") })")
   let rootShown = await waitJS(c.webView, "const l = document.querySelector('.arcadia > m-page-loader'); return document.querySelector('.arcadia')?.getAttribute('m-page-state') === 'shown' && !!l && !l.hasAttribute('m-default') && document.querySelectorAll('m-page-loader').length === 1 && l.textContent.trim() === '' && getComputedStyle(l).pointerEvents === 'none'")
   check("the theme's root says shown; the theme's own loader (Arcadia's slot, no default of Margin's beside it) has its part taken out and lets go as it's shown", rootShown)
   // (The page card's rounded corners: Arcadia's 10 pt radius, its frame around them, which is the space's colour mixed
@@ -1211,6 +1273,7 @@ func glueScenario() async {
   check("quit: Calculator back at its own frame before it was quit", world.frameAtQuit[GlueHostWorld.calculator] == GlueHostWorld.calculatorFrame, "\(world.frameAtQuit)")
   check("quit: the apps Margin started quit, nothing left in Margin's Space, Mission Control Margin's Space only", world.apps.isEmpty && world.inMargin.isEmpty && world.listsMarginOnly
         && (world.reservation[GlueHostWorld.marginSpace] ?? .zero).isZero, "\(world.apps.values.map(\.bundle)) \(world.fullScreenSpaces)")
+
 }
 
 // Margin opened again with an item selected in its window's space (HostedSession.resumeLast; asked 2026-11-17: "open

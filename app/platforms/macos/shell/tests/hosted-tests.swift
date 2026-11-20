@@ -30,6 +30,7 @@ final class FakeHostedWindow: HostedWindow {
         hosting = on
         hostings.append(on)
         if !on { hosted = nil; loading = nil; showing = nil }
+        if on { onHosting?() }
     }
     var hosted: Int?
     var hosteds: [Int?] = [] // each setHosted, in order
@@ -41,7 +42,12 @@ final class FakeHostedWindow: HostedWindow {
     var elsewhere: String? // its card's name (HostedSession `elsewhere`)
     var elsewhereApp: String?
     var elsewherePicture: String?
-    func setElsewhere(_ label: String?, app: String?, picture: String?) { elsewhere = label; elsewhereApp = app; elsewherePicture = picture }
+    var elsewhereClears: [Bool] = [] // each card cleared, whether it hosted by then (never its launcher in between)
+    func setElsewhere(_ label: String?, app: String?, picture: String?) {
+        if label == nil, elsewhere != nil { elsewhereClears.append(hosting) }
+        elsewhere = label; elsewhereApp = app; elsewherePicture = picture
+    }
+    var onHosting: (() -> Void)? // called as it's told to host (a test closes it then)
     var stuck: String? // what the start screen says is wrong now (HostedSession `holdStartup`)
     var stucks: [String?] = [] // each setStartupStuck, in order
     func setStartupStuck(_ why: String?) { stuck = why; stucks.append(why) }
@@ -1242,7 +1248,7 @@ func hostedResumeTests(script: URL) {
         run { session.openApp("com.apple.Notes", windowId: 1) }
         let notesShown = engine.shown == HostTarget.app("com.apple.Notes").id && session.hostingWindow == 1
         run { session.openApp("com.apple.TextEdit", windowId: 2) }
-        check("elsewhere: an app opened in a second Margin window: hosted there, the first window's item kept as its card (faded: \"Click to show Notes here\"), not the launcher",
+        check("elsewhere: an app opened in a second Margin window: hosted there, the first window's item kept as its card (faded: \"Notes is in another window. Click to show it here.\"), not the launcher",
               notesShown && engine.shown == HostTarget.app("com.apple.TextEdit").id && session.hostingWindow == 2 && window.elsewhere == "Notes" && window.elsewhereApp == "com.apple.Notes"
               && !window.hosting && second.elsewhere == nil && session.elsewhere[1] != nil, "\(String(describing: engine.shown)) \(String(describing: window.elsewhere)) \(session.elsewhere)")
         session.focused(1)
@@ -1250,11 +1256,79 @@ func hostedResumeTests(script: URL) {
         check("elsewhere: the first window brought in front: its item hosted there again (the app's one window follows the window in use), the second window's item its card now",
               engine.shown == HostTarget.app("com.apple.Notes").id && session.hostingWindow == 1 && window.elsewhere == nil && second.elsewhere != nil && session.elsewhere[2] != nil && session.elsewhere[1] == nil,
               "\(String(describing: engine.shown)) \(String(describing: second.elsewhere)) \(session.elsewhere)")
+        // (Bug of 2026-11-20: its card cleared before it hosted again: the launcher drawn between the card and the loader.)
+        check("elsewhere: its card cleared only once it hosts again: from the card straight to the loader, never its launcher in between",
+              window.elsewhereClears == [true], "\(window.elsewhereClears)")
         session.focused(1)
         run {}
         check("elsewhere: in front again with its item already there: nothing more", engine.shown == HostTarget.app("com.apple.Notes").id && session.hostingWindow == 1)
         run { await engine.quitAll() }
         _ = library.perform("activateTab", ["windowId": 1, "tabId": notes]) // (Notes the item shown last again, for the tests after)
+    }
+    // ---- a Margin window closed (its close button): only that window goes, its items stay open (Tirth, 2026-11-20) ----
+    do {
+        let (w, engine, session, window, run) = launch()
+        window.isFullScreen = true
+        let second = FakeHostedWindow(id: 2, number: 77)
+        second.isFullScreen = true
+        w.wins[77] = FakeHostWorld.Win(pid: 1, spaces: [FakeHostWorld.marginSpace])
+        var secondOpen = true
+        session.window = { id in id == nil || id == 1 ? window : id == 2 && secondOpen ? second : nil }
+        let notesId = HostTarget.app("com.apple.Notes").id, editId = HostTarget.app("com.apple.TextEdit").id
+        run { session.openApp("com.apple.Notes", windowId: 1) }
+        run { session.openApp("com.apple.TextEdit", windowId: 2) }
+        let before = engine.shown == editId && session.hostingWindow == 2 && window.elsewhere == "Notes"
+        // Closing the window that hosts: what it shows parked first (its app still running, still hosted), then it closes.
+        var closedNow = false
+        session.windowClosing(second) { closedNow = true }
+        let parked = spin(run) { closedNow }
+        check("closed: the window that hosts, closing: what it shows parked first (never left where that window's Space was), its app still running and hosted, then it closes",
+              before && parked && engine.shown == nil && engine.isHosted(editId) && engine.isHosted(notesId) && w.running(bundleId: "com.apple.TextEdit").count == 1,
+              "\(before) \(parked) \(String(describing: engine.shown))")
+        secondOpen = false
+        session.windowClosed(2)
+        check("closed: what the session kept for it gone (nothing hosts now, no card, no item shown, nothing asked for)",
+              session.hostingWindow == nil && session.elsewhere[2] == nil && session.shown[2] == nil && session.elsewhere[1] != nil, "\(session.elsewhere) \(session.shown)")
+        session.focused(1)
+        run {}
+        check("closed: the window left, in front: its own item back (its card goes), the items of the one closed still open",
+              engine.shown == notesId && session.hostingWindow == 1 && window.elsewhere == nil && session.shown[1] != nil && engine.isHosted(editId), "\(String(describing: engine.shown)) \(session.elsewhere)")
+        // Closing a window that doesn't host: closed at once, nothing parked.
+        var at = false
+        session.windowClosing(second) { at = true }
+        check("closed: a window that doesn't host: closed at once, what's shown elsewhere left as it is", at && engine.shown == notesId && session.hostingWindow == 1)
+        run { await engine.quitAll() }
+        _ = library.perform("activateTab", ["windowId": 1, "tabId": notes])
+    }
+    do {
+        // The window closed before the park got there (its hold over): parked once the session hears it closed.
+        let (w, engine, session, window, run) = launch()
+        window.isFullScreen = true
+        let second = FakeHostedWindow(id: 2, number: 77)
+        second.isFullScreen = true
+        w.wins[77] = FakeHostWorld.Win(pid: 1, spaces: [FakeHostWorld.marginSpace])
+        var secondOpen = true
+        session.window = { id in id == nil || id == 1 ? window : id == 2 && secondOpen ? second : nil }
+        let editId = HostTarget.app("com.apple.TextEdit").id
+        run { session.openApp("com.apple.TextEdit", windowId: 2) }
+        let shownThere = engine.shown == editId && session.hostingWindow == 2
+        secondOpen = false
+        session.windowClosed(2)
+        check("closed: the window closed while it still hosted (its hold over): parked then, nothing hosts", spin(run) { engine.shown == nil } && shownThere
+              && session.hostingWindow == nil && engine.isHosted(editId), "\(shownThere) \(String(describing: engine.shown))")
+        // An app's open into a window that closes while it opens: parked once shown (or given up), never left in its place.
+        let third = FakeHostedWindow(id: 3, number: 78)
+        third.isFullScreen = true
+        w.wins[78] = FakeHostWorld.Win(pid: 1, spaces: [FakeHostWorld.marginSpace])
+        var thirdOpen = true
+        session.window = { id in id == nil || id == 1 ? window : id == 3 && thirdOpen ? third : nil }
+        third.onHosting = { thirdOpen = false; session.windowClosed(3) }
+        run { session.openApp("com.apple.Notes", windowId: 3) }
+        _ = spin(run) { engine.shown == nil }
+        check("closed: an app opening into a window that closed meanwhile: parked (or given up), nothing shown, nothing hosting",
+              third.hostings == [true] && engine.shown == nil && session.hostingWindow == nil && session.shown[3] == nil, "\(String(describing: engine.shown)) \(String(describing: session.hostingWindow)) \(session.done.suffix(3))")
+        run { await engine.quitAll() }
+        _ = library.perform("activateTab", ["windowId": 1, "tabId": notes])
     }
     // ---- a web item's card in the other window: its page's picture, taken as its window leaves ----
     do {
