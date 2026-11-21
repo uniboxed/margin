@@ -142,6 +142,8 @@ extension Shell {
         host.front = { [weak session] read in session?.front(read) }
         host.onRoute = { [weak session] id, route in session?.routeChanged(id, route) }
         host.onAsking = { [weak session] id in session?.appAsking(id) }
+        // (All panes active: the apps kept active, for the pane click tap.)
+        host.onKeptActive = { [weak self] pids in self?.marginWindows?.keptActiveChanged(pids) }
         let before = host.onEvent
         // (A notification of a hosted app's: the shell's read now, then fast for a while: the hosting core's schedule.)
         host.onWake = { [weak self] in self?.soon() }
@@ -243,6 +245,10 @@ extension Shell {
         windows.onEnteredFullScreen = { [weak session] controller in session?.enteredFullScreen(controller) }
         windows.onPagePress = { [weak session] controller, at in session?.pagePressed(controller, at: at) }
         windows.onPaneClick = { [weak session] controller, result in session?.paneClicked(controller, result) }
+        // All panes active (PanesActive.swift): the split and the front app to the engine, its front process to the tap.
+        windows.onPanesActive = { [weak self] scene in self?.host?.panesShown(scene) }
+        windows.onFrontApp = { [weak self] pid in self?.host?.frontChanged(pid) }
+        windows.paneFronting = { [weak self] in self?.host?.paneFronting }
         windows.onCaughtPress = { [weak session] controller, at in session?.caughtPress(controller, at: at) }
         windows.onCardRect = { [weak session] controller in session?.cardRectChanged(controller) }
         windows.onPanes = { [weak session] controller in session?.pageRectChanged(controller) }

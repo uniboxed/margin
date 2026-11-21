@@ -27,11 +27,24 @@ final class FakePaneFocus: PaneFocusing, @unchecked Sendable {
     private var asked: (at: Double, pid: pid_t, window: Int)?
     func now() -> Double { clock }
     func pause(_ seconds: Double) { clock += seconds }
+    // All panes active: apps kept active by records (AppKit in them says it's active: AXFrontmost true), the window
+    // server's front process (nil: no such read, Accessibility's word alone).
+    var axActive: Set<pid_t> = []
+    var serverFront: pid_t?
     func keyState(pid: pid_t, until: Double) -> (front: Bool, window: Int?)? {
         keyReads += 1
         clock += readCost
-        if let a = asked, let after = keyAfter, clock - a.at >= after { front = a.pid; focusedOf[a.pid] = a.window }
-        return unread ? nil : (front == pid, focusedOf[pid])
+        if let a = asked, let after = keyAfter, clock - a.at >= after { front = a.pid; focusedOf[a.pid] = a.window; if serverFront != nil { serverFront = a.pid } }
+        return unread ? nil : (front == pid || axActive.contains(pid), focusedOf[pid])
+    }
+    func frontProcess() -> pid_t? { serverFront }
+    func makeFront(pid: pid_t, window: Int) -> Bool {
+        log.append("makeFront \(window)")
+        clock += 0.0003
+        front = pid
+        if serverFront != nil { serverFront = pid }
+        focusedOf[pid] = window
+        return true
     }
     func focus(pid: pid_t, window: Int, frontmost: Bool, until: Double) -> Bool {
         log.append("focus \(window)\(frontmost ? " frontmost" : "")")
@@ -54,6 +67,7 @@ nonisolated final class PaneBox<T>: @unchecked Sendable {
 func paneClickTests() {
     paneClickDecisionTests()
     paneClickHoldTests()
+    paneClickKeptTests()
     paneClickEngineTests()
 }
 
@@ -302,6 +316,72 @@ private func paneClickHoldTests() {
 }
 
 // The engine's side of a press the tap focused: Margin's word follows (the one shown, the holes' focus), nothing fronted.
+// All panes active (PanesActive.swift): a press on a pane whose app is kept active by records (AppKit in it says it's
+// active, its pane's window focused: Accessibility reads "key already") while the window server's front process is
+// another app: never "key already"; the window server makes it the front one (AppKit's own activation may be taken for
+// done), Accessibility its window main and raised, and the press goes on once the window server says so.
+private func paneClickKeptTests() {
+    func press(_ p: CGPoint, number: Int = 0) -> PaneClickCore.Press { .init(point: p, flags: [], number: number, otherButtons: false) }
+    func kept(_ pids: Set<pid_t>, focused: Int? = 10) -> PaneClickScene { var s = scene(rightPid: 502, focused: focused); s.kept = pids; return s }
+    func focuser(server: pid_t?, front: pid_t, active: Set<pid_t>) -> FakePaneFocus {
+        let f = FakePaneFocus()
+        f.front = front
+        f.serverFront = server
+        f.axActive = active
+        f.focusedOf = [501: 10, 502: 20]
+        return f
+    }
+    // ---- the window server reads: Notes (502) kept active, TextEdit (501) the front one ----
+    do {
+        let f = focuser(server: 501, front: 501, active: [502]), said = PaneBox<[PaneClickResult]>([])
+        let c = PaneClickCore(focuser: f, report: { said.value.append($0) })
+        c.update(kept([502]))
+        let r = c.pressed(press(inRight, number: 5))
+        check("pane click kept: a press on a kept app's pane (Accessibility: active, its window focused): not 'key already'; the window server makes it the front one, then its window main and raised (no AXFrontmost), let go once the window server says so",
+              f.log == ["makeFront 20", "focus 20"] && r?.outcome == .delivered(already: false) && r?.crossApp == true && r?.server == true && f.serverFront == 502 && c.claimed(number: 5, at: .zero),
+              "\(f.log) \(String(describing: r))")
+    }
+    // ---- the kept set not told to the tap yet: Accessibility and the window server disagree ----
+    do {
+        let f = focuser(server: 501, front: 501, active: [502]), said = PaneBox<[PaneClickResult]>([])
+        let c = PaneClickCore(focuser: f, report: { said.value.append($0) })
+        c.update(kept([]))
+        let r = c.pressed(press(inRight))
+        check("pane click kept: an app that says it's active while the window server's front one is another (the tap not told yet): the window server's way too",
+              f.log == ["makeFront 20", "focus 20"] && r?.server == true && r?.outcome == .delivered(already: false), "\(f.log) \(String(describing: r))")
+    }
+    // ---- the window server unread: the kept set alone says it isn't the front one ----
+    do {
+        let f = focuser(server: nil, front: 501, active: [502]), said = PaneBox<[PaneClickResult]>([])
+        let c = PaneClickCore(focuser: f, report: { said.value.append($0) })
+        c.update(kept([502]))
+        let r = c.pressed(press(inRight))
+        check("pane click kept: the window server unread, the app kept: never 'key already' (made the front one; unconfirmed: the cap, then let go as before)",
+              f.log.first == "makeFront 20" && r?.outcome == .notKey && r?.server == true, "\(f.log) \(String(describing: r))")
+    }
+    // ---- the front app's own pane: still the fast path ----
+    do {
+        let f = focuser(server: 502, front: 502, active: [501]), said = PaneBox<[PaneClickResult]>([])
+        let c = PaneClickCore(focuser: f, report: { said.value.append($0) })
+        c.update(kept([501], focused: 10))
+        let r = c.pressed(press(inRight))
+        check("pane click kept: a press on the front app's own pane (Margin's word behind): key already for both Accessibility and the window server, nothing asked",
+              f.log.isEmpty && r?.outcome == .delivered(already: true), "\(f.log) \(String(describing: r))")
+    }
+    // ---- an app not kept, across apps: AXFrontmost as before ----
+    do {
+        let f = focuser(server: 501, front: 501, active: []), said = PaneBox<[PaneClickResult]>([])
+        let c = PaneClickCore(focuser: f, report: { said.value.append($0) })
+        c.update(kept([]))
+        let r = c.pressed(press(inRight))
+        check("pane click kept: an app not kept, across apps: made the front one by Accessibility, as before (the window server's way never asked)",
+              f.log == ["focus 20 frontmost"] && r?.server == false && r?.outcome == .delivered(already: false) && f.serverFront == 502, "\(f.log) \(String(describing: r))")
+    }
+    // ---- a press at no finite point (a make-key record's) ----
+    check("pane click kept: a press at no finite point (a make-key record's, never a person's) passes",
+          PaneClick.decide(CGPoint(x: CGFloat.nan, y: CGFloat.nan), flags: [], otherButtons: false, scene: scene(rightPid: 502), focused: 10) { _ in nil } == .pass(.margin))
+}
+
 private func paneClickEngineTests() {
     let folder = FileManager.default.temporaryDirectory.appendingPathComponent("margin-pane-click-tests-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: folder) }

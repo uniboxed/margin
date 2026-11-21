@@ -21,8 +21,12 @@ extension Shell {
         guard calls.host else {
             return Diagnostics.note("host: its calls didn't pass their check (\(calls.reasons["host"] ?? "not checked")): nothing is hosted")
         }
+        // (`defaults write com.unibox.margin MarginPanesActive -bool NO`: a split's other panes never kept active, only the
+        // focused one draws active, as before; a crashed run's kept apps are still let go.)
+        let keepsActive = UserDefaults.standard.object(forKey: "MarginPanesActive") as? Bool != false
+        if calls.panesActive, !keepsActive { Diagnostics.note("panes active: off (MarginPanesActive is NO): only a split's focused pane draws active") }
         let system = RealHostSystem(calls: HostPrivate(resolver: resolver, availability: calls), sky: sky, spaces: spaces, slots: SkyLightSlots(sky: sky),
-                                    freezer: freezer, sidebarMenu: { [weak self] in self?.sidebarMenu })
+                                    freezer: freezer, sidebarMenu: { [weak self] in self?.sidebarMenu }, keepsActive: keepsActive)
         let engine = HostEngine(system: system, marker: hostMarkerURL, observation: RealHostObservation())
         engine.options.safariBundle = UserDefaults.standard.string(forKey: "MarginHostedSafari") ?? safariIdentifier
         // (`defaults write com.unibox.margin MarginTiles -bool NO`: no tiles, every hosted window a plain member of Margin's

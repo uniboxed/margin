@@ -217,6 +217,14 @@ nonisolated struct HostMarker: Codable, Equatable, Sendable {
         var appLaunchedAt: Double?
         var number: Int?
     }
+    // An app a split's pane kept active (PanesActive.swift): deactivated by the next launch after a crash if it still
+    // takes itself for the active app (that same launch, not the front one).
+    struct Kept: Codable, Equatable, Sendable {
+        var pid: Int32
+        var window: Int
+        var bundleId: String?
+        var launchedAt: Double?
+    }
     var pid: Int32 // this Margin's
     var marginSpace: UInt64?
     var apps: [App] = []
@@ -227,8 +235,9 @@ nonisolated struct HostMarker: Codable, Equatable, Sendable {
     var marginTile: UInt64? = nil
     var goneTiles: [UInt64]? = nil
     var anchors: [UInt64]? = nil // Margin's own empty tiles at its Space's front (a killed Margin leaves them there)
+    var keptActive: [Kept]? = nil // (optional: a marker from before them reads)
 
-    var isEmpty: Bool { apps.isEmpty && windows.isEmpty && leftSpaces.isEmpty && (leftSafariWindows ?? []).isEmpty && marginSpace == nil && (goneTiles ?? []).isEmpty && (anchors ?? []).isEmpty }
+    var isEmpty: Bool { apps.isEmpty && windows.isEmpty && leftSpaces.isEmpty && (leftSafariWindows ?? []).isEmpty && marginSpace == nil && (goneTiles ?? []).isEmpty && (anchors ?? []).isEmpty && (keptActive ?? []).isEmpty }
 
     static func read(_ url: URL) -> HostMarker? {
         guard let data = try? Data(contentsOf: url) else { return nil }

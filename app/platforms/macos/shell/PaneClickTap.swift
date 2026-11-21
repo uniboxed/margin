@@ -27,6 +27,14 @@
 // Margin's has the keys, and a press on any other window over the pane (a menu, a popup, a sheet, the Dock, a banner:
 // the window server's list read for that press only). Drags, releases, moves and scrolls never reach the tap.
 //
+// All panes active (PanesActive.swift): the split's panes of other apps are kept active by records, so AppKit in them
+// takes itself for the active app (Accessibility's AXFrontmost reads true, its pane's window focused) while the window
+// server's front process, which has the keyboard, is another. A press on such a pane is still a change of the front
+// app: never "key already" unless that app is the window server's front one too (`frontProcess`), and that app is made
+// the front one by the window server (`makeFront`: AppKit's own activation, which AXFrontmost asks for, may be taken
+// for done), its window then made main and raised by Accessibility as before. The keyboard follows the click; the app
+// that had it is kept active from then on.
+//
 // Costs: no tap at all unless two or more hosted windows are visible in a Margin window on the current Space (one pane,
 // nothing hosted, another Space current: none). With one: a round trip per left press anywhere, a held press's focus,
 // nothing per move. On a thread and run loop of its own, never the main thread's (Margin busy never holds the input);
@@ -49,6 +57,7 @@ nonisolated struct PaneClickScene: Equatable, Sendable {
     var slot: Slot? // Margin's page slot: its hits over the page and the holes (PassThrough.pageGets)
     var marginWindows: [Int] = [] // Margin's own windows over the panes (its window, its panel, its backdrop): never a cover
     var fieldHasKeys = false // a field of Margin's has the keys (the palette): presses as before
+    var kept: Set<pid_t> = [] // apps kept active (PanesActive.swift): their own word that they're active isn't the window server's
 }
 
 // Another window over a pane at a press's point (the window server's list), never one of Margin's own.
@@ -87,6 +96,7 @@ nonisolated enum PaneClick {
                        cover: (PaneClickScene.Pane) -> PaneClickCover?) -> Decision {
         guard let scene, !scene.panes.isEmpty else { return .pass(.noPanes) }
         if scene.fieldHasKeys { return .pass(.field) }
+        guard point.x.isFinite, point.y.isFinite else { return .pass(.margin) } // (no press of a person's)
         if otherButtons { return .pass(.button) }
         guard PassThrough.pageGets(point, scene.slot) else { return .pass(.margin) }
         // (A card open: its page alone, whatever else is listed.)
@@ -112,6 +122,7 @@ nonisolated struct PaneClickResult: Equatable, Sendable {
     var ms: Double // from the press's arrival to its window key (or the give-up)
     var crossApp = false // its app made the front app (another app had the keys)
     var number = 0 // the press's event number (the window server's mouseEventNumber)
+    var server = false // ...by the window server (its app was kept active: PanesActive.swift)
 }
 
 // A pane's window made key, as the tap's thread asks it (HostSystem.swift `AXPaneFocus`; a test's stand-in). Every call
@@ -127,6 +138,15 @@ nonisolated protocol PaneFocusing: AnyObject, Sendable {
     func cover(at point: CGPoint, above window: Int, except: [Int]) -> PaneClickCover?
     // The panes' windows' elements looked up ahead (off the tap's thread), the others' dropped.
     func warm(_ panes: [PaneClickScene.Pane])
+    // The window server's front process (nil: unread, or no such read: Accessibility's word alone, as before).
+    func frontProcess() -> pid_t?
+    // The app made the window server's front process and `window` its key one (an app kept active). True: taken.
+    func makeFront(pid: pid_t, window: Int) -> Bool
+}
+
+extension PaneFocusing {
+    nonisolated func frontProcess() -> pid_t? { nil }
+    nonisolated func makeFront(pid: pid_t, window: Int) -> Bool { false }
 }
 
 // The hold, apart from the event tap (the tests drive it with a stand-in focuser and a pipe of presses). A press comes in
@@ -191,19 +211,26 @@ nonisolated final class PaneClickCore: @unchecked Sendable {
             return said(PaneClickResult(window: pane.window, pid: pane.pid, outcome: .covered(c), ms: ms(since: t0), number: p.number))
         case .hold(let pane):
             let until = t0 + cap
+            let kept = scene?.kept.contains(pane.pid) == true
+            // (Its app the front one: Accessibility's word, and the window server's when it reads; a kept app's own word
+            // alone never counts.)
+            func front(_ s: (front: Bool, window: Int?)) -> Bool { s.front && (focuser.frontProcess().map { $0 == pane.pid } ?? !kept) }
             // (Key already, Margin's word behind: let go at once, Margin told.)
             let state = focuser.keyState(pid: pane.pid, until: until)
-            if let state, state.front, state.window == pane.window { return given(pane, p, t0, already: true, crossApp: false) }
-            let crossApp = state?.front != true
-            _ = focuser.focus(pid: pane.pid, window: pane.window, frontmost: crossApp, until: until)
+            if let state, front(state), state.window == pane.window { return given(pane, p, t0, already: true, crossApp: false) }
+            let crossApp = !(state.map(front) ?? false)
+            // (Kept active, or taking itself for the active app while it isn't the window server's front one: the window
+            // server makes it the front one, Accessibility then its window main and raised.)
+            let server = crossApp && (kept || state?.front == true) && focuser.makeFront(pid: pane.pid, window: pane.window)
+            _ = focuser.focus(pid: pane.pid, window: pane.window, frontmost: crossApp && !server, until: until)
             while focuser.now() < until {
-                if let s = focuser.keyState(pid: pane.pid, until: until), s.front, s.window == pane.window {
-                    return given(pane, p, t0, already: false, crossApp: crossApp)
+                if let s = focuser.keyState(pid: pane.pid, until: until), front(s), s.window == pane.window {
+                    return given(pane, p, t0, already: false, crossApp: crossApp, server: server)
                 }
                 let left = until - focuser.now()
                 if left > 0 { focuser.pause(min(every, left)) }
             }
-            return said(PaneClickResult(window: pane.window, pid: pane.pid, outcome: .notKey, ms: ms(since: t0), crossApp: crossApp, number: p.number))
+            return said(PaneClickResult(window: pane.window, pid: pane.pid, outcome: .notKey, ms: ms(since: t0), crossApp: crossApp, number: p.number, server: server))
         }
     }
 
@@ -214,7 +241,7 @@ nonisolated final class PaneClickCore: @unchecked Sendable {
         return r
     }
 
-    private func given(_ pane: PaneClickScene.Pane, _ p: Press, _ t0: Double, already: Bool, crossApp: Bool) -> PaneClickResult {
+    private func given(_ pane: PaneClickScene.Pane, _ p: Press, _ t0: Double, already: Bool, crossApp: Bool, server: Bool = false) -> PaneClickResult {
         let now = focuser.now()
         lock.lock()
         given = (pane.window, now)
@@ -222,7 +249,7 @@ nonisolated final class PaneClickCore: @unchecked Sendable {
         claims.append((p.number, p.point, now))
         if claims.count > 8 { claims.removeFirst(claims.count - 8) }
         lock.unlock()
-        return said(PaneClickResult(window: pane.window, pid: pane.pid, outcome: .delivered(already: already), ms: ms(since: t0), crossApp: crossApp, number: p.number))
+        return said(PaneClickResult(window: pane.window, pid: pane.pid, outcome: .delivered(already: already), ms: ms(since: t0), crossApp: crossApp, number: p.number, server: server))
     }
 
     // On the main thread, for each press its monitor hears in a pane: whether it's one the tap gave its pane's window

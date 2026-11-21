@@ -2058,8 +2058,12 @@ final class MarginWindows {
             workspace.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { for c in self?.controllers ?? [] { c.spaceChanged(); c.keepFront() }; self?.paneSceneChanged() }
             },
-            workspace.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { for c in self?.controllers ?? [] { c.keepFront(); c.tryFullScreen("an app activated") } }
+            workspace.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] note in
+                let pid = (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.processIdentifier
+                MainActor.assumeIsolated {
+                    for c in self?.controllers ?? [] { c.keepFront(); c.tryFullScreen("an app activated") }
+                    self?.onFrontApp?(pid) // (all panes active: the split's other panes kept active again)
+                }
             },
         ]
     }
@@ -2207,6 +2211,7 @@ final class MarginWindows {
         lastKey = nil
         pointer.stop()
         closingAll = false
+        onPanesActive?(nil) // (all panes active: no split shown any more)
     }
 
     // ---- the first click in another pane (PaneClickTap.swift) ----
@@ -2217,9 +2222,25 @@ final class MarginWindows {
     // change takes the panes away for a moment), at once when Margin quits.
     // `makePaneTap`: the real tap (never in a test, MARGIN_APP_TESTS); a test's stand-in otherwise. Its word on each press
     // it held comes back on the main thread (`onPaneClick`), its own lines into the log.
-    lazy var makePaneTap: (_ report: @escaping @Sendable (PaneClickResult) -> Void, _ said: @escaping @Sendable (String) -> Void) -> PaneClickTapping? = { report, said in
+    lazy var makePaneTap: (_ report: @escaping @Sendable (PaneClickResult) -> Void, _ said: @escaping @Sendable (String) -> Void) -> PaneClickTapping? = { [weak self] report, said in
         guard !PrivateCalls.inTests else { return nil }
-        return PaneClickTap(core: PaneClickCore(focuser: AXPaneFocus(), report: report), said: said)
+        return PaneClickTap(core: PaneClickCore(focuser: AXPaneFocus(fronting: self?.paneFronting()), report: report), said: said)
+    }
+    // All panes active (PanesActive.swift): the window server's front process for the tap (the engine's; nil: none), the
+    // split as the engine is told it (each change of the scene), each change of the front app (NSWorkspace's, the tap's
+    // focus), and the apps kept active as the engine says them (the tap's scene carries them).
+    var paneFronting: () -> PaneFronting? = { nil }
+    var onPanesActive: ((PaneClickScene?) -> Void)?
+    var onFrontApp: ((pid_t?) -> Void)?
+    private(set) var keptActive: Set<pid_t> = []
+    private var paneSceneTold: PaneClickScene?
+    func keptActiveChanged(_ pids: Set<pid_t>) {
+        guard pids != keptActive else { return }
+        keptActive = pids
+        guard let tap = paneTap, var s = paneSceneTold else { return }
+        s.kept = pids
+        paneSceneTold = s
+        tap.update(s)
     }
     var paneTapTrusted: () -> Bool = { AXIsProcessTrusted() }
     var paneTapGrace: TimeInterval = 1
@@ -2235,7 +2256,10 @@ final class MarginWindows {
     // A Margin window's panes changed (its holes, a field of Margin's took or let go of the keys, the Space changed, a
     // window closed): the tap made, told, or let go.
     func paneSceneChanged() {
-        let scene = closingAll ? nil : controllers.lazy.compactMap { $0.paneScene }.first
+        var scene = closingAll ? nil : controllers.lazy.compactMap { $0.paneScene }.first
+        onPanesActive?(scene)
+        scene?.kept = keptActive
+        paneSceneTold = scene
         guard let scene else {
             guard let tap = paneTap else { return }
             tap.update(nil)
@@ -2285,6 +2309,7 @@ final class MarginWindows {
     func paneTapClaimed(number: Int, at: CGPoint) -> Bool { paneTap?.claimed(number: number, at: at) ?? false }
 
     private func paneClicked(_ r: PaneClickResult) {
+        if case .delivered = r.outcome, r.crossApp { onFrontApp?(r.pid) } // (its app the front one: the one before kept active)
         guard let c = controllers.first(where: { $0.visibleHosts.contains { $0.window == r.window } }) else { return }
         onPaneClick?(c, r)
     }

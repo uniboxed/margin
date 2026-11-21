@@ -1229,5 +1229,5 @@
 .arcadia m-page[m-split="row"] > m-divider:is(:hover, :focus-visible, [m-dragging])::after { transform: translate(-50%, -50%) scaleY(1.55); }
 .arcadia m-page[m-split="column"] > m-divider:is(:hover, :focus-visible, [m-dragging])::after { transform: translate(-50%, -50%) scaleX(1.55); }
 .arcadia m-divider[m-dragging]::after { background: var(--accent); }
-.arcadia m-pane[m-focused] { border-radius: 6px; box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 70%, transparent); }
+.arcadia m-pane[m-focused] { border-radius: 6px; box-shadow: 0 0 0 2px var(--accent), 0 0 0 3px var(--fg); }
 @media (prefers-reduced-motion: reduce) { .arcadia m-divider::after { transition: none; } }

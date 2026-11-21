@@ -129,7 +129,15 @@ keeps Safari's toolbar down). Then it's the preview card: Expand puts it in the 
   live (tiles and window mode; a plain member re-placed at release under its loader). Release: `split.resize` saves
   the ratios. Double-click a divider: equal sizes.
 - **Focus:** a click in a pane focuses it (keys, the sidebar's highlight). ⌘W closes the focused pane's tab: the split
-  goes on with the rest, or ends at one.
+  goes on with the rest, or ends at one. The first click in another pane goes through (the pane click tap,
+  `PaneClickTap.swift`).
+- **Every pane draws active** (`PanesActive.swift`, DECISIONS.md 2026-11-21): each visible pane whose app isn't the
+  front one is kept active by the window server's records (its caret, selection, active toolbar, `document.hasFocus()`),
+  one window per app (two panes of one app: only the one with its key window), while the keyboard and the menu bar stay
+  the front app's, the pane last clicked. The theme's ring around the focused pane says where typing goes. Re-asserted
+  at each change of the front app; let go 1 s after a pane's gone, at once when another app comes in front or its app
+  quits, at Margin's quit, and after a crash by the next launch (the marker). A card open: the split's apps left as
+  they are.
 - **Leaving:** picking an item outside the split parks the other panes' windows; the split stays for next time.
 - **Sidebar drag:** every pane follows live.
 
