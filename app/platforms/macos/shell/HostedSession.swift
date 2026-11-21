@@ -119,6 +119,9 @@ protocol HostedEngine: AnyObject {
     func liveFollowers() -> (follow: Int, visible: Int)
     // Every app's windows' known minimum by bundle id (HostEngine `knownAppMinimums`): told to the page for every pane.
     var knownAppMinimums: [String: CGSize] { get }
+    // A new pane's reveal: its own full-screen toolbar out over its page waited for until it rests (HostEngine
+    // `toolbarsRest`, bounded); nil: none was out.
+    func toolbarsRest(_ ids: [HostID]) async -> String?
 }
 
 // One of a profile's hosted Safari windows: its profile and its role (docs/PEEK-SPLIT.md §1).
@@ -171,6 +174,7 @@ extension HostedEngine {
     func showsAlone(_ id: HostID) -> Bool { true }
     func liveFollowers() -> (follow: Int, visible: Int) { (shownFillsPage ? 1 : 0, shown == nil ? 0 : 1) }
     var knownAppMinimums: [String: CGSize] { [:] }
+    func toolbarsRest(_ ids: [HostID]) async -> String? { nil }
     func start(bundleId: String) async -> HostApp? { nil }
     func prepare(_ target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64) async -> HostResult { .failed(.launch, "no engine to prepare it") }
 }
@@ -871,6 +875,12 @@ final class HostedSession: LibraryDelegate {
             panesLaying[w.id] = Dictionary(parts.enumerated().filter { $0.offset > 0 ? $0.element.role == .pane : again }.map { ($0.element.target.id, $0.element.item) }, uniquingKeysWith: { a, _ in a })
         }
         defer { panesLaying[w.id] = nil }
+        // (A pane whose window is made now: its loader kept over its box until its tab is in and its window's own
+        // full-screen toolbar rests: `revealHeld`. The real screen, 2026-11-21 14:30:00: lifted as the engine was done,
+        // before the copy moved the pane's tab in, Safari's toolbar out over the new pane's page for ~150 ms meanwhile.)
+        let made = panesLaying[w.id] == nil ? [] : parts.dropFirst().filter { $0.role == .pane && $0.profile != nil && !engine.isHosted($0.target.id) }.map(\.target.id)
+        if !made.isEmpty { revealHeld.insert(w.id) }
+        defer { releaseReveal(w.id) }
         let results = await engine.setLayout(main: first.target, mainRect: first.rect, extras: wanted, focused: focusPart?.target.id, in: placement, marginWindow: w.number, marginSpace: space)
         var shownItems: [String] = []
         for part in parts {
@@ -878,6 +888,10 @@ final class HostedSession: LibraryDelegate {
             if part.profile != nil, !tabbed.contains(part.item) { guard await showTab(part) else { continue } }
             if part.profile == nil { open[part.item] = OpenItem(host: part.target.id, profile: nil) }
             shownItems.append(part.item)
+        }
+        if !made.isEmpty {
+            _ = await engine.toolbarsRest(made.filter { id in parts.contains { $0.target.id == id && shownItems.contains($0.item) } })
+            releaseReveal(w.id)
         }
         guard shownItems.contains(main) else { settleHosting(); onChange?(); return }
         let focus = focused.flatMap { shownItems.contains($0) ? $0 : nil } ?? main
@@ -1038,6 +1052,14 @@ final class HostedSession: LibraryDelegate {
     // setLayout), and the pane whose slow step is under way (its window, its host).
     var panesLaying: [Int: [HostID: String]] = [:]
     private var paneLoadingAt: (window: Int, host: HostID)?
+    // Margin windows whose new pane keeps its loader after the engine's slow step is over (applyLayout: until its tab is
+    // shown and its toolbar rests), and the hold let go.
+    private var revealHeld: Set<Int> = []
+    private func releaseReveal(_ wid: Int) {
+        guard revealHeld.remove(wid) != nil, let had = paneLoadingAt, had.window == wid, appLoading != had.host else { return }
+        window(wid)?.setPaneLoading(nil, label: nil, app: nil)
+        paneLoadingAt = nil
+    }
     // The engine's slow step for a split's pane opening (or placed again) beside the panes shown (docs/PEEK-SPLIT.md
     // §4): its loader over its own box (the window's `setPaneLoading`: its item, a web page's title or the app's name,
     // its icon), the other panes shown and usable; never the page area's loader over all of them (2026-11-21: Notes
@@ -1047,6 +1069,7 @@ final class HostedSession: LibraryDelegate {
         let item = id.flatMap { id in wid.flatMap { panesLaying[$0]?[id] } }
         var was = false
         if let had = paneLoadingAt, item == nil || had.window != wid || had.host != id {
+            if id == nil, revealHeld.contains(had.window) { return true } // (kept: `releaseReveal`)
             window(had.window)?.setPaneLoading(nil, label: nil, app: nil)
             paneLoadingAt = nil
             was = id == nil

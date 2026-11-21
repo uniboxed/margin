@@ -147,6 +147,13 @@ final class HostEngine {
         // The visible hosts' order looked at after they're fronted, until the focused one is in front, for this long
         // (then the ones out of place raised once more: `frontVisible`).
         var orderWait = 0.15
+        // A full-screen window's room above it for its own toolbar window (Safari's, resting just above its window:
+        // 52 pt, measured on the real screen), counted in two visible hosts' overlap (`overlapping`). A stacked split's
+        // band above a Safari pane is as tall (`SAFARI_TOOLBAR`): its toolbar meets the pane above, never overlaps it.
+        var toolbarRoom: CGFloat = 52
+        // A new pane's toolbar out over its page at its reveal: waited for this long at most, read this often.
+        var toolbarRestWait = 0.5
+        var toolbarEvery = 0.01
         var destroyWait = 1.5
         var placeWait = 1.5 // its own Space's reservation taking effect
         var windowPlaceWait = 0.6 // a window-mode host's frame set by Accessibility: at most this long for the window server's bounds
@@ -751,29 +758,57 @@ final class HostEngine {
     // never took on the real screen (2026-11-21 13:26:02: `raised again`, +~230 ms, then the copy's focus, +~320 ms, then
     // out to a private Space and back, 19 ms, in front): the focused one, if fresh and not in front at the first read
     // after its raise, goes out and back at once, no wait, no copy asked (it's under its own loader: never seen).
+    // Only the order that shows is kept (the real screen, 2026-11-21 14:30:00: a pane's first open beside main, side by
+    // side, fronted twice: once in its layout, then again by the page's next report of its panes' rects, after Safari had
+    // put main's window back in front as the copy moved the pane's tab in from it; raise, its copy, out to a private
+    // Space and back, ~590 ms and a second move between Spaces, for an order nobody could see). Two visible hosts need
+    // an order only when they overlap (`overlapping`: their windows, a full-screen window's toolbar above it): a card over
+    // the panes, a stacked pane's toolbar against the pane above. Panes side by side never do; the focused one only needs
+    // the keys (its app made active, its window made its app's main one: that takes even when the raise doesn't).
+    // Nothing more is done for an order among non-overlapping hosts, whatever Safari does to its own windows' order.
     private func frontVisible(fresh: Set<HostID> = []) async {
         let focused = shown.flatMap { id in hosts[id].flatMap { $0.phase == .shown ? $0 : nil } }
         let wanted = visibleHosts.filter { $0 !== focused } + (focused.map { [$0] } ?? []) // (back to front)
         guard let top = wanted.last else { return }
         let t0 = sys.now()
-        var from = 0
-        if let now = serverOrder(of: wanted) {
-            from = now.last == top.window ? wanted.count - 1 : wanted.indices.first { now[$0] != wanted[$0].window } ?? wanted.count - 1
+        let pairs = overlapping(wanted)
+        let topIndex = wanted.count - 1
+        // (Each pair whose front one, by the layout, is behind the other in the window server's order; unread: `unread`.)
+        func violated(_ order: [Int]?, unread: [(Int, Int)]) -> [(Int, Int)] {
+            guard let order else { return unread }
+            let at = Dictionary(order.enumerated().map { ($0.element, $0.offset) }, uniquingKeysWith: { a, _ in a })
+            return pairs.filter { (at[wanted[$0.1].window] ?? 0) < (at[wanted[$0.0].window] ?? 0) }
         }
-        for h in wanted[from...] { _ = await front(h) }
-        guard wanted.count > 1, top === focused else { return }
-        func inFrontNow() -> Bool { serverOrder(of: wanted).map { $0.last == top.window } ?? true }
-        if fresh.contains(top.id) {
-            if inFrontNow() { return }
-            await outAndBack(top, wanted, since: t0, why: "its window just came in with its tile (its raise doesn't take then)")
+        let bad = violated(serverOrder(of: wanted), unread: pairs)
+        // (In the order that shows already, or nothing overlapping: only the focused one's keys.)
+        if bad.isEmpty { _ = await front(top); return }
+        let involved = Set(pairs.flatMap { [$0.0, $0.1] })
+        // (The focused one in front of every host it overlaps: none of those raised over it (its raise may not take);
+        // two others out of order between them only when neither overlaps it, then it last, for its keys.)
+        if !bad.contains(where: { $0.1 == topIndex }) {
+            let under = Set(pairs.filter { $0.1 == topIndex }.map(\.0))
+            let fix = Set(bad.filter { !under.contains($0.0) && !under.contains($0.1) }.flatMap { [$0.0, $0.1] })
+            for k in fix.sorted() { _ = await front(wanted[k]) }
+            _ = await front(top)
             return
         }
-        if await wait(options.orderWait, every: options.memberEvery, { inFrontNow() }) { return }
+        // Else the ones from the first out of place that overlap another raised, back to front, the focused one last.
+        let from = bad.map(\.0).min() ?? 0
+        for k in from..<wanted.count where k == topIndex || involved.contains(k) { _ = await front(wanted[k]) }
+        guard wanted.count > 1, top === focused else { return }
+        // (Read again: the focused one behind a host it overlaps. Unread: taken as in front, as before.)
+        func topBehind() -> Bool { violated(serverOrder(of: wanted), unread: []).contains { $0.1 == topIndex } }
+        if fresh.contains(top.id) {
+            if !topBehind() { return }
+            await outAndBack(top, wanted, since: t0, why: "its window just came in with its tile (its raise doesn't take then)", behind: topBehind)
+            return
+        }
+        if await wait(options.orderWait, every: options.memberEvery, { !topBehind() }) { return }
         Diagnostics.note("host: \(top.id), focused, not in front of the other visible hosts once fronted (back to front \(serverOrder(of: wanted).map { $0.map(String.init).joined(separator: ", ") } ?? "unread"), wanted \(wanted.map { String($0.window) }.joined(separator: ", "))): raised again")
         _ = await front(top)
         // (A Safari window made a moment ago that Accessibility can't raise, seen on the real screen 2026-11-21: Safari
         // itself asked to put it in front, through its copy, then read again.)
-        func inFront() async -> Bool { await wait(options.orderWait, every: options.memberEvery, { inFrontNow() }) }
+        func inFront() async -> Bool { await wait(options.orderWait, every: options.memberEvery, { !topBehind() }) }
         if await inFront() { return }
         if let copyId = top.safariWindow, let safariFocus {
             let asked = await safariFocus(top.profile, copyId)
@@ -781,7 +816,27 @@ final class HostEngine {
             Diagnostics.note("host: \(top.id): still not in front after its raise: its copy asked to bring it in front (\(asked ? "asked" : "not asked")), \(now ? "in front now" : "still not in front")")
             if now { return }
         }
-        await outAndBack(top, wanted, since: t0, why: "nothing else brought it in front")
+        await outAndBack(top, wanted, since: t0, why: "nothing else brought it in front", behind: topBehind)
+    }
+
+    // The pairs of `list` (back to front, by index) whose order shows: their windows overlap, each as it is and where the
+    // layout puts it, a full-screen window with its toolbar's room above it (Safari's toolbar window rests just above
+    // its window: a stacked pane's against the pane above, across its band).
+    private func overlapping(_ list: [Host]) -> [(Int, Int)] {
+        let zones = list.map { h -> CGRect in
+            var r = frame(h)
+            if let b = sys.bounds(window: h.window) { r = r.union(b) }
+            if h.mode == .fullScreen { r = CGRect(x: r.minX, y: r.minY - options.toolbarRoom, width: r.width, height: r.height + options.toolbarRoom) }
+            return r
+        }
+        var out: [(Int, Int)] = []
+        for i in zones.indices {
+            for j in zones.indices where j > i {
+                let x = zones[i].intersection(zones[j])
+                if !x.isNull, x.width > options.tolerance, x.height > options.tolerance { out.append((i, j)) }
+            }
+        }
+        return out
     }
 
     // The last way to bring `top` in front of the other visible hosts: its window out to a private Space and straight back
@@ -789,7 +844,7 @@ final class HostEngine {
     // window that came in with its tile stayed behind main whatever raised it; the same window parked and switched in, a
     // move, was in front). Done under its own loader (a card's or a pane's opening: the window isn't revealed yet), so no
     // freeze. Its rect set again if its tile was laid out meanwhile.
-    private func outAndBack(_ top: Host, _ wanted: [Host], since t0: Double, why: String) async {
+    private func outAndBack(_ top: Host, _ wanted: [Host], since t0: Double, why: String, behind: () -> Bool) async {
         guard sys.spaces(window: top.window) == [marginSpace], let priv = sys.createPrivateSpace() else { return }
         let t1 = sys.now()
         var out = false, back = false
@@ -800,7 +855,7 @@ final class HostEngine {
         retirePrivate(priv)
         _ = await front(top)
         if top.tile != nil, let b = sys.bounds(window: top.window), !HostLayout.near(b, frame(top), within: options.tolerance) { await reapplyTiles(first: top) }
-        let now = await wait(options.orderWait, every: options.memberEvery) { self.serverOrder(of: wanted).map { $0.last == top.window } ?? true }
+        let now = await wait(options.orderWait, every: options.memberEvery) { !behind() }
         Diagnostics.note("host: \(top.id): out to a private Space and back into Margin's (\(why); \(out ? "out" : "not out"), \(back ? "back" : "not back")) in \(ms(since: t1)) ms, \(ms(since: t0)) ms from its first raise: \(now ? "in front now" : "still not in front")")
     }
     // These hosts' windows in the window server's order now, back to front (its on-screen list is front to back); nil:
@@ -1187,6 +1242,40 @@ final class HostEngine {
         // (Each host's toolbars remembered while it's parked: shown again as it was, nothing said. A few dozen at most:
         // forgotten all at once past 64.)
         if toolbarSaid.count > 64 { toolbarSaid = seen }
+    }
+
+    // A new pane's reveal waits for its own full-screen toolbar to rest (the real screen, 2026-11-21 14:30:00.298:
+    // a pane's toolbar out over its page, 628×52 at its top, for ~70–150 ms after its loader was lifted; Safari keeps it
+    // down while the keys are in a new window's address field, its first blank page, until its tab is moved in). Read
+    // from the window server as the toolbar trace reads it (its own strip at its window's top edge, in its window's
+    // Spaces: out when its bottom is below its window's top), at most `toolbarRestWait`, only while one is out (a read
+    // per host otherwise: never polled at rest). Never moved, parked or reordered (2026-11-07). Nil: none was out;
+    // else what was waited for, said.
+    func toolbarsRest(_ ids: [HostID]) async -> String? {
+        let list = ids.compactMap { hosts[$0] }.filter { $0.phase == .shown && $0.mode == .fullScreen && isVisible($0.id) }
+        guard !list.isEmpty else { return nil }
+        let t0 = sys.now()
+        func out() -> [(host: Host, over: Int)] { list.compactMap { h in toolbarOver(h).map { (h, $0) } } }
+        let first = out()
+        guard !first.isEmpty else { return nil }
+        let rested = await wait(options.toolbarRestWait, every: options.toolbarEvery) { out().isEmpty }
+        let line = "host: \(first.map { "\($0.host.id): its full-screen toolbar out over its page by \($0.over) pt" }.joined(separator: "; ")) at its reveal: \(rested ? "resting" : "still out (revealed anyway)") after \(ms(since: t0)) ms"
+        Diagnostics.note(line)
+        return line
+    }
+
+    // How far its own full-screen toolbar window is out over its window's top now (pt), nil: resting (or none).
+    private func toolbarOver(_ host: Host) -> Int? {
+        guard let f = sys.bounds(window: host.window), let list = sys.serverWindows(pid: host.pid) else { return nil }
+        let others = Set(hosts.values.map(\.window))
+        let spaces = sys.spaces(window: host.window)
+        for w in list where w.number != host.window && !others.contains(w.number) && w.onScreen && w.bounds.height <= options.stripMaxHeight && Self.toolbarOf(w.bounds, window: f) {
+            let over = Int((w.bounds.maxY - f.minY).rounded())
+            guard over > 2 else { continue }
+            if let spaces, let its = sys.spaces(window: w.number), its != spaces { continue }
+            return over
+        }
+        return nil
     }
 
     // A strip at a full-screen window's top edge: its left edge and width the window's, from just above its top to inside it.

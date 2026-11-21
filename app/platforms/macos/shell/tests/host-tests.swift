@@ -289,6 +289,11 @@ final class FakeHostWorld: HostSystem {
     var toolbarOf: [Int: Int] = [:] // the window → its toolbar
     func toolbarHost(_ n: Int) -> Int? { toolbarOf.first { $0.value == n }?.key }
     static let toolbarHeight: CGFloat = 52
+    // Windows whose toolbar is out over their top (Safari keeps it down while the keys are in its address field: a new
+    // window's first blank page, until a page's tab is in): `toolbarHeight` over the window's top edge, not above it.
+    var toolbarOut: Set<Int> = []
+    var toolbarRestsAt: [Int: Double] = [:] // ...back up (resting) from then on (Safari's slide once the keys left its field)
+    func isToolbarOut(_ window: Int) -> Bool { toolbarOut.contains(window) && !(toolbarRestsAt[window].map { clock >= $0 } ?? false) }
     func makeToolbar(for window: Int) {
         guard let w = wins[window], toolbarOf[window] == nil, let bundle = apps[w.pid]?.bundle, toolbarAbove.contains(bundle) else { return }
         let n = nextWindow
@@ -680,6 +685,9 @@ final class FakeHostWorld: HostSystem {
     // `moveFronts`: a window moved into Margin's Space from a private Space comes in front of the others there and can
     // be raised from then on (the real screen's: a parked window switched in), as `raised` has it.
     var moveFronts = false
+    // ...and `moveRaisable` false: still unraisable after it (the real screen, 2026-11-21 14:30:00: a pane's new window,
+    // in front after its out and back, then neither its raise nor its copy brought it in front again).
+    var moveRaisable = true
     // Whether window `a` is in front of window `b` by that order (nil: either never raised).
     func inFront(_ a: Int, of b: Int) -> Bool? {
         guard let ia = raised.firstIndex(of: a), let ib = raised.firstIndex(of: b) else { return nil }
@@ -813,7 +821,7 @@ final class FakeHostWorld: HostSystem {
     // doesn't take it); a member: the frame it had as it came in; Margin's window: the whole area.
     func bounds(window: Int) -> CGRect? {
         guard let w = wins[window] else { return nil }
-        if let h = toolbarHost(window) { return bounds(window: h).map { CGRect(x: $0.minX, y: $0.minY - Self.toolbarHeight, width: $0.width, height: Self.toolbarHeight) } }
+        if let h = toolbarHost(window) { return bounds(window: h).map { CGRect(x: $0.minX, y: $0.minY - (isToolbarOut(h) ? 0 : Self.toolbarHeight), width: $0.width, height: Self.toolbarHeight) } }
         if let lag = lagging[window], clock < lag.until { return lag.frame }
         if window == Self.marginWindow { return tilesOn ? tileBounds(Self.marginTile) : Self.display }
         if w.tiled, w.fullScreen, let t = tileOf(window) { return tileBounds(t) }
@@ -945,7 +953,7 @@ final class FakeHostWorld: HostSystem {
         calls.append("move \(window) \(space)")
         if let h = toolbarHost(window) { return move(window: h, to: space) }
         if moveFronts, space == Self.marginSpace, let w = wins[window], w.priv != nil || w.spaces.contains(where: { privates.contains($0) }) {
-            unraisable.remove(window); raised.removeAll { $0 == window }; raised.insert(window, at: 0)
+            if moveRaisable { unraisable.remove(window) }; raised.removeAll { $0 == window }; raised.insert(window, at: 0)
         }
         guard var w = wins[window], !(fail.contains("moveIn") && space == Self.marginSpace), !(noMoveIn.contains(window) && space == Self.marginSpace) else { return false }
         let before = spaces(window: window) ?? []
