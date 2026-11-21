@@ -199,3 +199,32 @@ test('hostPicture: the item\'s page while its tab is in front, made smaller; not
   await failing.show({ windowId: 9, itemId: 't-bbbb', url: 'https://b.example/' });
   assert.deepEqual(await failing.picture({ windowId: 9, itemId: 't-bbbb' }), { data: 'data:image/jpeg;base64,QUJD' });
 });
+
+// (A split's pane window made AROUND its item's tab, open in another of the app's windows: no blank first page, whose
+// address field keeps Safari's full-screen toolbar down over the pane: the real screen, 2026-11-21.)
+test('windowAround: a pane\'s window made with its item\'s tab in it (full screen asked), a blank left behind in a window it would empty; no tab or the browser refuses: null', async () => {
+  const f = fakeTabs([{ id: 1, windowId: 9, url: NEW_TAB, active: true }]);
+  const h = createHostedTabs(() => withMove(f));
+  await h.show({ windowId: 9, itemId: 't-aaaa', url: 'https://a.example/' }); // (tab 100, alone in window 9 once the new-tab page goes)
+  f.calls.length = 0;
+  const made: { tabId: number, focused: boolean, state?: string }[] = [];
+  const create = async (p: { tabId: number, focused: boolean, state?: string }) => { made.push(p); const t = f.tabs.get(p.tabId)!; t.windowId = 50; return { id: 50 }; };
+  assert.deepEqual(await h.windowAround('t-aaaa', create, true), { id: 50 });
+  assert.deepEqual(made, [{ tabId: 100, focused: true, state: 'fullscreen' }], 'made around the tab, full screen asked at once');
+  assert.deepEqual(f.calls, ['create 9 about:blank'], 'window 9 kept with a blank tab, nothing else made or navigated');
+  assert.equal(f.tabs.get(100)!.url, 'https://a.example/', 'its page kept');
+  // Shown there next: a tab switch, never a move or a new tab.
+  f.calls.length = 0;
+  assert.deepEqual(await h.show({ windowId: 50, itemId: 't-aaaa', url: 'https://a.example/' }), { tabId: 100, created: false });
+  // Full screen refused at creation: made again without it.
+  const g = fakeTabs([{ id: 1, windowId: 9, url: NEW_TAB, active: true }]);
+  const k = createHostedTabs(() => withMove(g));
+  await k.show({ windowId: 9, itemId: 't-bbbb', url: 'https://b.example/' });
+  await k.show({ windowId: 9, itemId: 't-cccc', url: 'https://c.example/' });
+  const asked: unknown[] = [];
+  assert.deepEqual(await k.windowAround('t-bbbb', async (p) => { asked.push(p); if (p.state) throw new Error('no full screen'); return { id: 51 }; }, true), { id: 51 });
+  assert.equal(asked.length, 2);
+  // No such tab, or the browser won't make it: null (the caller opens the window as before).
+  assert.equal(await k.windowAround('t-zzzz', async () => ({ id: 52 }), false), null);
+  assert.equal(await k.windowAround('t-cccc', async () => null, false), null);
+});

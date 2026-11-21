@@ -182,8 +182,8 @@ private func splitSessionTests() {
     run { _ = library.perform("addToSplit", ["windowId": 1, "tabId": b, "splitId": sp]) }
     rects = panes()
     let opened = links.asked.dropFirst(mark).first { $0.type == "newWindow" }
-    check("split session: a pane of the same profile: a pane window asked of its copy, blank (its tab open in the main window is moved in), never the new-tab page",
-          opened?.payload["url"] as? String == "about:blank" && session.safariWindows[SafariKey("s-default", .pane(1))] == 91
+    check("split session: a pane of the same profile: a pane window asked of its copy AROUND its item's tab open in the main window (`itemId`: no blank first page, whose address field keeps Safari's toolbar down; blank only for an older copy), never the new-tab page",
+          opened?.payload["itemId"] as? String == b && opened?.payload["url"] as? String == "about:blank" && session.safariWindows[SafariKey("s-default", .pane(1))] == 91
           && links.asked.dropFirst(mark).contains { $0.type == "hostShow" && $0.payload["itemId"] as? String == b && int($0.payload["windowId"]) == 91 }, "\(links.types(since: mark)) \(session.safariWindows)")
     check("split session: …three panes at their rects, b focused in its pane window",
           bounds(safari) == rects[a] && bounds(editId) == rects[edit] && bounds(pane1) == rects[b] && inMargin(pane1) && session.shown[1] == b && engine.shown == pane1

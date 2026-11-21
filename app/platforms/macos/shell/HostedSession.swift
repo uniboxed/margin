@@ -756,6 +756,10 @@ final class HostedSession: LibraryDelegate {
         // blank page closed then: background/hosted.ts): never Safari's empty new-tab page, whose address field keeps
         // Safari's toolbar down over the page: `requestSafariWindow`.)
         for id in webs { paneAddress[id] = open[id] == nil ? library.items().first { $0.id == id }?.value["url"] as? String : "about:blank" }
+        // (Its tab open elsewhere: the window made around that tab by the copy (`newWindow { itemId }`), so it never has a
+        // blank page first, whose address field keeps Safari's toolbar down; an older copy ignores it and opens blank.)
+        for id in webs where open[id] != nil { paneItem[id] = id }
+        defer { paneItem = [:] }
         defer { paneAddress = [:] }
         await applyLayout(w.id, main: main, mainRect: nil, extras: panes.filter { $0 != main }.map { HostedLayout.Extra(item: $0, role: .pane, rect: .zero) },
                           focused: focus, split: (split.id, split.panes))
@@ -766,6 +770,9 @@ final class HostedSession: LibraryDelegate {
     // The address each web pane being laid out opens at, for its window's first page (`requestSafariWindow`).
     private var paneAddress: [String: String?] = [:]
     private var paneAddressFor: [SafariKey: String] = [:]
+    // A web pane whose tab is open in another of Margin's windows: its window made around that tab (`newWindow { itemId }`).
+    private var paneItem: [String: String] = [:]
+    private var paneItemFor: [SafariKey: String] = [:]
 
     // The split's panes as `w`'s page lays them out now, each pane's rect by its item (`items` in that order: the
     // split's, as the page has them), waited for (`pageWait`), the page asked to measure again at each look; nil: not
@@ -832,6 +839,7 @@ final class HostedSession: LibraryDelegate {
                     role = .pane(n)
                 }
                 if role != .main, role != .card, let address = paneAddress[a.item] ?? nil { paneAddressFor[SafariKey(p, role)] = address }
+                if role != .main, role != .card { paneItemFor[SafariKey(p, role)] = paneItem[a.item] }
                 labels[HostTarget.safariWindow(p, role).id] = "Safari"
                 parts.append(LayoutPart(item: a.item, target: .safariWindow(p, role), profile: p, url: url, role: a.role, rect: a.rect))
             case .margin:
@@ -851,7 +859,7 @@ final class HostedSession: LibraryDelegate {
         }
         var tabbed: Set<String> = []
         for part in parts where part.profile != nil && engine.isHosted(part.target.id) { if await showTab(part) { tabbed.insert(part.item) } }
-        defer { paneAddressFor = [:] }
+        defer { paneAddressFor = [:]; paneItemFor = [:] }
         guard let (placement, space) = await prepare(w, for: lead.target) else { settleHosting(); return }
         // (A split: every pane's rect as the page lays the split out, docs/PEEK-SPLIT.md §4.)
         if let split {
@@ -1989,6 +1997,7 @@ final class HostedSession: LibraryDelegate {
         if role == .card, let c = cards[p], Self.webAddress(c.url) { payload["url"] = c.url }
         // (A split's pane window: opened at its pane's page, docs/PEEK-SPLIT.md §4; never the new-tab page.)
         if role.isPane, let address = paneAddressFor[SafariKey(p, role)], address == "about:blank" || address.lowercased().hasPrefix("http") { payload["url"] = address }
+        if role.isPane, let item = paneItemFor[SafariKey(p, role)] { payload["itemId"] = item }
         var askedEpoch = links.linkEpoch(of: p) // (the link the ask went on: one replaced while it was answered counts as back)
         var (result, error) = await links.request(profile: p, "newWindow", payload)
         // (A copy that isn't the one in charge answers `stale`, and a copy just starting can drop its link: Safari keeps an

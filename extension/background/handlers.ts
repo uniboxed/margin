@@ -828,7 +828,7 @@ export const handlers = {
   // at its launch (HostedSession.prepareBrowser): nothing loaded in it. Always focused: a hidden Safari (one Margin.app
   // started) asked for an unfocused window answers its id but never orders it in (the real Mac, 2026-11-16), so the
   // app couldn't find it; the app keeps its own Space current while it's made.
-  async newWindow({ fromWindowId, fullscreen, url }: { fromWindowId?: number, fullscreen?: boolean, url?: string } = {}, sender?: BrowserMessageSender) {
+  async newWindow({ fromWindowId, fullscreen, url, itemId }: { fromWindowId?: number, fullscreen?: boolean, url?: string, itemId?: string } = {}, sender?: BrowserMessageSender) {
     const from = Number.isInteger(fromWindowId) ? await api.windows.get(fromWindowId as number).catch(() => null) : null;
     const spaceId = from ? M.activeSpaceId(await load(), from.id) : null;
     const full = fullscreen ?? from?.state === 'fullscreen';
@@ -839,7 +839,12 @@ export const handlers = {
     const props = { focused: true, ...(url === 'about:blank' || page ? { url } : {}) };
     markMarginOpening();
     let win;
-    try {
+    // (A split's pane window around its item's tab, open in another of Margin's windows: made with the tab in it, never a
+    // blank page first (hosted.ts windowAround). Margin.app's ask only; else, or when the browser doesn't take it, as below.)
+    if (sender?.app && typeof itemId === 'string' && itemId.length <= 80) {
+      win = await hostedTabs.windowAround(itemId, (p) => api.windows.create(p as Parameters<typeof api.windows.create>[0]), full);
+    }
+    if (win) { /* made around its tab */ } else try {
       win = await api.windows.create({ ...props, ...(full ? { state: 'fullscreen' } : {}) });
     } catch {
       win = await api.windows.create(props).catch(() => null) // a browser that won't make it full screen at once

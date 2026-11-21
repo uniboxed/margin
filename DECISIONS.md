@@ -7158,3 +7158,14 @@ every split resize became a re-place out of full screen and in (1 s behind the l
 (order chased, main out of full screen) came from that. Now `tileIn` looks once more (another `reapplyTiles`) before
 tiles go off for the run, says when it took longer, and the off message names Margin's own window's bounds too.
 Check: screen-engine-tests.swift (Margin's own window back after 0.4 s: tiles kept; never back: off, as before).
+
+## A split's pane window made around its open tab (2026-11-21)
+
+On the real screen a new pane whose tab was open in the main window came up with Safari's full-screen toolbar down
+over it and the address field focused (blue ring): its window had been opened blank, the tab moved in after, and Safari
+had already put the keys in the blank window's address field (the same cause as the 2026-11-20 toolbar). The engine's
+reveal waited 0.5 s and gave up ("still out (revealed anyway)"). Now the app names the item (`newWindow { itemId }`)
+and the copy makes the window around that tab (`windows.create({ tabId, focused, state: 'fullscreen' })`, hosted.ts
+`windowAround`: a blank left behind in a window it would empty), so the window never has a blank first page. An older
+copy ignores `itemId` and opens blank, as before; a browser that refuses `tabId` falls back the same way. Checks:
+tests/hosted-tabs.test.ts (windowAround), split-tests.swift (the payload names the item; failing without it).

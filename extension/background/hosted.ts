@@ -106,6 +106,22 @@ export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = asy
     return null;
   }
   return {
+    /** A new window made around an item's tab open in another of Margin's windows (a split's pane window, docs/
+     * PEEK-SPLIT.md §4): the tab moved in as the window is made (keeps its page), so no blank page is ever its first —
+     * Safari puts the keys in a new window's address field, which keeps its full-screen toolbar down over the page (the
+     * real screen, 2026-11-21: a pane opened blank, its tab moved in after, the toolbar stayed down). A tab alone in its
+     * window gets a blank one left behind first. Null: no such tab, or the browser didn't take it (the caller opens the
+     * window as before). */
+    async windowAround<W extends { id?: number }>(itemId: string, create: (props: { tabId: number, focused: boolean, state?: string }) => Promise<W | null>, full: boolean): Promise<W | null> {
+      const tab = await own(itemId, null);
+      if (tab?.id == null || tab.windowId == null || !shownIn.has(tab.windowId)) return null;
+      await leaveBlank(tab.windowId);
+      const props = { tabId: tab.id, focused: true };
+      const win = (full ? await create({ ...props, state: 'fullscreen' }).catch(() => null) : null) ?? await create(props).catch(() => null);
+      if (win?.id == null) return null;
+      shownIn.add(win.id);
+      return win;
+    },
     /** For the tests: the item each tab is tagged with. */
     tags: () => new Map(byItem),
     /** The item a tab is tagged with (the mini player's sources name it: background/media.ts), null: none. */
