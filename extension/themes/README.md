@@ -119,7 +119,8 @@ Margin's slots:
 | `<m-notice>` | the `notice` part | `notice` |
 | `<m-prompt>` | the `prompt` part | `prompt` |
 | `<m-toast>` | the `toast` part (guarded: Margin's transient toast pill, e.g. `Copied URL`) | `toast` |
-| `<m-peek>` | the `peek` part (guarded: hosted Safari Peek / Little Arc modal chrome) | `peek` |
+| `<m-peek>` | the `peek` part (guarded: Peek's card and Little Arc, below) | `peek` |
+| `<m-peek-page>` (only in the `peek` part, one, empty) | where the card's page goes: Margin.app puts the card's Safari window exactly over it (measured as laid out, like `<m-page>`); never paint it while the card is `ready` | inside the part |
 | `<m-launcher>` | the `launcher` part (Margin's new-tab page) | `launcher` |
 | `<m-page-loader>` | the `page-loader` part (Margin.app: the page card while an item opens) | `pageLoader` (the page card is `loading`) |
 | `<m-settings>` | the `settings` part (put it in your launcher) | `settingsForm` (Settings open) |
@@ -129,6 +130,40 @@ Parts are `<template m-part="name">` anywhere in the template: `menu`,
 `menu-item`, `space-editor`, `palette`, `palette-row`, `notice`, `prompt`,
 `toast`, `peek`, `launcher`, `settings`, `window-controls`, `page-loader`. What a theme puts
 inside a slot is used when it has no part for it.
+
+### Peek's card and Little Arc (the `peek` part)
+
+Margin.app shows a link in a card over the page (Shift+click, or a click to another site from a pinned tab or a
+favorite) and Little Arc (⌥⌘N: an address field first) in the theme's guarded `peek` part, in `<m-peek>`. The card's
+page is a Safari window of its own that Margin.app places exactly at your `<m-peek-page>`, so lay the part out with
+it in mind:
+
+- **Where.** While a card is up the root has `--m-page-left`, `--m-page-top`, `--m-page-right`, `--m-page-bottom`
+  (px from the window's edges: the page's place) and `--m-page-radius`. Put `<m-peek>` over the page area with them
+  (`position: fixed`, those four as its edges, `overflow: hidden`) and the card inside it. The built-in themes centre
+  the card with 8% of the page area beside it and 7% above and below, at least 420×320 for its page, under a 44 pt bar
+  (`left: clamp(0px, 8%, calc(50% - 210px))` and so on: no transform in its place, which the card's motion owns).
+- **The page.** `<m-peek-page>` is measured as laid out (offsets, not the box as drawn: a scale on the card never moves
+  the window). While `peek.loading` (its window isn't in place yet) paint it opaque (your panel's colour, a spinner):
+  the window is under it. Once `peek.ready`, it must be clear and take no pointer (`pointer-events: none`): the card's
+  window shows through and takes the clicks. As it goes (`peek.closing`) paint it again.
+- **The dim.** Dim the page area around the card only, never over `<m-peek-page>`: Margin's window is above the hosted
+  windows, so a dim drawn over the card's page darkens it. The built-ins use an element at the card's place with
+  `box-shadow: 0 0 0 100vmax <dim>` (`<m-peek>`'s `overflow: hidden` keeps it in the page area); light and dark each
+  their own strength. Once the card's window is in place the dimmed area takes no pointer (Margin.app catches a press
+  there and closes the card); while it loads, and for Little Arc's field alone, a full-size button with
+  `m-action="peek.close"` under the card takes it.
+- **The bar.** `peek.back`, `peek.forward`, `peek.copyUrl`, `peek.expand` (into the space, also ⌘↩), `peek.close`
+  (also Esc and ⌘W), the address (`peek.host`); Little Arc: `<input m-input="peek">` (Return takes it as the palette
+  does: an address, else a search; Escape closes) in `<m-if test="peek.isLittleArc">`, with `<m-peek-page>` hidden.
+  Its words are Margin's (`peek.labels`).
+- **Motion.** Open: the dim fades in and the card comes from `scale(0.96)` and `opacity: 0` in about 150 ms; close
+  (`peek.closing`, then the part is gone 150 ms later): the reverse. Transform and opacity only; with
+  `prefers-reduced-motion`, opacity only.
+
+A theme with no `peek` part (or no `<m-peek>` with anything in it) gets Margin's default card (`m-peek[m-default]`,
+drawn in `Canvas` and `CanvasText`, restyled with rules on `m-peek[m-default]`): the same place, bar and motion. A
+`peek` part with no `<m-peek-page>`: Margin.app puts the card's window at that default place, under whatever you draw.
 
 **Never paint under `<m-page>`.** The browser's page shows through it: in a
 page, Margin's UI lies over the page, and in Margin.app the page slot is a
@@ -318,7 +353,7 @@ host. Immutable: rows that didn't change are the same objects.
 - `favorites`: `items[]` (web tabs & hosted apps, up to 12, sticky `open`/`active`/`drifted`/`rootUrl`/`audible`/`muted`), `hasItems`, `columns` (1–4).
 - `media` (the background mini player: null unless a tab not in front of this window is playing, or paused within the last 30 s; hosted Mac apps later): `title`, `subtitle`, `artwork` (a data URL, or null), `icon`, `letter`, `color`, `playing`, `paused`, `muted`, `canPrev`, `canNext`.
 - `toast` (null unless showing; guarded): `id`, `text`.
-- `peek` (null unless open; guarded): `url`, `host`, `title`, `canGoBack`, `canGoForward`, `isLittleArc`, `labels` (`expand`, `copyUrl`, `close`, `back`, `forward`).
+- `peek` (null unless open; guarded): `url`, `host`, `title`, `isLittleArc` (and `littleArc`), `loading` (its window not in place yet), `ready` (in place: `<m-peek-page>` clear), `closing`, `query` (Little Arc's field), `canGoBack`, `canGoForward` (true unless the page said otherwise), `spaceId`, `spaceName`, `spaceEmoji`, `labels` (`expand`, `copyUrl`, `close`, `back`, `forward`, `search`).
 - `split` (null unless the active tab is inside a Split View): `id`, `axis`, `isHorizontal`, `isVertical`, `panes[]`, `dividers[]`, `canAddPane`, `labels`.
 - Each tab or pin row: `id`, `title`, `url`, `host`, `icon` (or `letter` on
   `color`; an app item's, in Margin.app: the installed app's icon, its name's
@@ -407,7 +442,7 @@ else is ignored and logged.
 - Folders: `folder.toggle`, `folder.new`, `folder.newSubfolder`, `folder.newWithTab` (tab),
   `folder.newWithPin` (pin), `folder.rename`, `folder.delete` (its pins stay).
 - Media Mini Player: `media.toggle`, `media.prev`, `media.next`, `media.mute`, `media.focus`.
-- Peek & Little Arc: `peek.open`, `peek.close`, `peek.expand`, `peek.back`, `peek.forward`, `peek.copyUrl`, `littleArc.open`.
+- Peek & Little Arc: `peek.close`, `peek.expand`, `peek.back`, `peek.forward`, `peek.copyUrl`, `peek.setSpace` (space), `littleArc.open`.
 - Air Traffic Control: `airTraffic.add`, `airTraffic.remove`, `airTraffic.toggle`, `airTraffic.alwaysHere`.
 - Split View: `split.create`, `split.addPane`, `split.closePane`, `split.breakOut`, `split.swap`, `split.toggleAxis`, `split.resize`, `split.focus`.
 - Spaces: `space.switch`, `space.new`, `space.edit`, `space.rename`,
@@ -466,7 +501,8 @@ Classes and variables Margin sets for you to style:
   Margin.app past halfway): under `m-settling` Margin then gives the settle as
   `--m-swipe-transition` (the spring sampled into a `linear()` easing), so use it on the
   moving part: `transition: var(--m-swipe-transition, none)` (Arcadia does this);
-- `--m-menu-x`, `--m-menu-y` (`<m-menu>`), `--m-reveal-zone` (`m-peek`),
+- `--m-menu-x`, `--m-menu-y` (`<m-menu>`), `--m-reveal-zone` (`m-peek`), `--m-page-left`, `--m-page-top`,
+  `--m-page-right`, `--m-page-bottom`, `--m-page-radius` (on the root while Peek's card is up: the page's place),
   `--m-<setting>` (your settings).
 
 ## Motion
