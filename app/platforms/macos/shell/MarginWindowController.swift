@@ -701,10 +701,20 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         let said = (0..<4).map { i in i < (layout?.fills.count ?? 0) ? PageFill.color(layout?.fills[i] ?? "") : nil }
         pageGround = hosting ? PageFill.common(said.compactMap { $0 }) : nil
         let fill = pageGround ?? .windowBackgroundColor
-        holes = list.map(\.rect)
+        // (A card open: its whole page box cut out of the ground, whatever its window's frame reads and whatever is under
+        // it, a split's gap or a toolbar's band: Margin's ground is never drawn across the card's page. The real screen,
+        // 2026-11-21: a stacked split's gap drawn as a stripe through the card.)
+        var cuts = list.filter { $0.host.role != .card }
+        if pageState == .shown, let page = window.pageRect {
+            for v in visibleHosts where v.role == .card {
+                let r = v.rect.intersection(page)
+                if !r.isNull, r.width >= 1, r.height >= 1 { cuts.append((r, v)) }
+            }
+        }
+        holes = cuts.map(\.rect)
         let next = list.first { $0.host.focused }?.rect ?? list.last?.rect
-        if !list.isEmpty, let page = window.pageRect {
-            let cut = Self.groundHoles(list.map { ($0.rect.offsetBy(dx: -content.minX, dy: -content.minY), holeRadii($0.rect, page: page)) })
+        if !cuts.isEmpty, let page = window.pageRect {
+            let cut = Self.groundHoles(cuts.map { ($0.rect.offsetBy(dx: -content.minX, dy: -content.minY), holeRadii($0.rect, page: page)) })
             ground.show(color: fill, holes: cut)
             if panel.backgroundColor != .clear { panel.backgroundColor = .clear }
         } else {

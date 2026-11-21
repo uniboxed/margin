@@ -139,6 +139,40 @@ export function installCard(rt: Rt) {
     if (g) root.style.setProperty('--m-page-radius', `${g.radius}px`); else root.style.removeProperty('--m-page-radius');
   }
 
+  // ---- nothing of the page's place painted inside the card's page ----
+  // `<m-peek-page>` is see-through once the card's window is in place, so whatever Margin's page draws in `<m-page>`
+  // under it (a split's dividers and toolbar bands, a pane's loader, a theme's pane ring) would show across the card's
+  // page (the real screen, 2026-11-21: a stacked split's band drawn as a stripe through the card). While a card is up,
+  // `<m-page>` is clipped to everything but the card's page box (`m-card-clip`, an even-odd path in its own border box,
+  // its outer edge far outside it so a theme's frame or shadow on it is never cut), so nothing of it paints or takes a
+  // press there; the dividers aren't reported as taking the pointer meanwhile either (host-app.ts hitRects: the dim
+  // around the card is Margin's, the card's page the card's).
+  let clipped: HTMLElement | null = null;
+  let clipKey = '';
+  function clipPage() {
+    const pageEl = view.pageEl as HTMLElement | null;
+    const box = rt.ui.peek ? view.measurePeekPage() : null;
+    const g = box && pageEl?.isConnected ? view.measure() : null;
+    let key = '';
+    if (box && g && box.width > 0 && box.height > 0) {
+      const n = (v: number) => Math.round(v * 100) / 100;
+      const x = n(box.x - g.outer.left), y = n(box.y - g.outer.top), far = 100000;
+      key = `path(evenodd, "M${-far} ${-far}H${far}V${far}H${-far}Z M${x} ${y}h${n(box.width)}v${n(box.height)}h${n(-box.width)}Z")`;
+    }
+    if (clipped && clipped !== pageEl) { clipped.style.removeProperty('clip-path'); clipped.removeAttribute('m-card-clip'); clipped = null; clipKey = ''; }
+    if (!pageEl?.style || key === clipKey) return;
+    clipKey = key;
+    if (key) {
+      pageEl.style.setProperty('clip-path', key, 'important');
+      pageEl.setAttribute('m-card-clip', '');
+      clipped = pageEl;
+    } else {
+      pageEl.style.removeProperty('clip-path');
+      pageEl.removeAttribute('m-card-clip');
+      clipped = null;
+    }
+  }
+
   // ---- Margin's default card (a theme with no `peek` part of its own) ----
   // Centred in the page area, 8% of it each side and 7% above and below (at least 420×320), a 52 pt bar over its page
   // (back, forward, the address, Copy URL, Open in Space, Close; Little Arc: the field), the page area around it dimmed
@@ -213,6 +247,7 @@ export function installCard(rt: Rt) {
     afterRender() {
       placePage();
       followDefault();
+      clipPage();
       if (!focusField || !rt.ui.peek?.littleArc) return;
       const field = view.input('peek');
       if (!field) return;
@@ -221,7 +256,10 @@ export function installCard(rt: Rt) {
       field.select?.();
     },
     /** The page's place changed (a resize, the sidebar): the page area's variables follow. */
-    layout() { placePage(); },
-    destroy() { stopClosing(); dflt?.el.remove(); dflt = null; },
+    layout() { placePage(); clipPage(); },
+    destroy() {
+      stopClosing(); dflt?.el.remove(); dflt = null;
+      if (clipped) { clipped.style.removeProperty('clip-path'); clipped.removeAttribute('m-card-clip'); clipped = null; }
+    },
   };
 }

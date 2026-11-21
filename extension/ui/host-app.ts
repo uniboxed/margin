@@ -169,7 +169,9 @@ export function hitRects(root: Element, slot: { left: number, top: number, right
     for (const child of (el.children as any) as Element[]) {
       if (child.localName === 'template') continue;
       if (child.localName === 'm-page') {
-        // (Nothing of the page's place takes the pointer but a split's dividers, Margin's own: docs/PEEK-SPLIT.md §4.)
+        // (Nothing of the page's place takes the pointer but a split's dividers, Margin's own: docs/PEEK-SPLIT.md §4;
+        // none while Peek's card is up over it, `m-card-clip`: its page is the card's, the dim around it Margin's.)
+        if (child.hasAttribute?.('m-card-clip')) continue;
         for (const d of (child.children as any) as Element[]) {
           if (d.localName !== 'm-divider') continue;
           const b = d.getBoundingClientRect();
