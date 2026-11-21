@@ -118,6 +118,8 @@ Margin's slots:
 | `<m-palette>` | the `palette` part (or draw it yourself inside `<m-if test="palette.open">`) | `palette.open` |
 | `<m-notice>` | the `notice` part | `notice` |
 | `<m-prompt>` | the `prompt` part | `prompt` |
+| `<m-toast>` | the `toast` part (guarded: Margin's transient toast pill, e.g. `Copied URL`) | `toast` |
+| `<m-peek>` | the `peek` part (guarded: hosted Safari Peek / Little Arc modal chrome) | `peek` |
 | `<m-launcher>` | the `launcher` part (Margin's new-tab page) | `launcher` |
 | `<m-page-loader>` | the `page-loader` part (Margin.app: the page card while an item opens) | `pageLoader` (the page card is `loading`) |
 | `<m-settings>` | the `settings` part (put it in your launcher) | `settingsForm` (Settings open) |
@@ -125,7 +127,7 @@ Margin's slots:
 
 Parts are `<template m-part="name">` anywhere in the template: `menu`,
 `menu-item`, `space-editor`, `palette`, `palette-row`, `notice`, `prompt`,
-`launcher`, `settings`, `window-controls`, `page-loader`. What a theme puts
+`toast`, `peek`, `launcher`, `settings`, `window-controls`, `page-loader`. What a theme puts
 inside a slot is used when it has no part for it.
 
 **Never paint under `<m-page>`.** The browser's page shows through it: in a
@@ -307,14 +309,21 @@ host. Immutable: rows that didn't change are the same objects.
   `sidebarOpen`, `peek`, `pinnedOpen` (Keep open), `frameWhenHidden`.
 - `space`: `id`, `name`, `emoji`, `color`, `abbr`, `index` (from 0),
   `number` (its place counted from 1: Pixel's "WORLD 2-1"), `tabCount`,
-  `pinned` (folders and loose pins in order; `isFolder` tells them apart),
-  `folders[]` (`name`, `open`, `count`, `pins`, `shown`, `hasShown`), `pins`,
+  `pinned` (top-level folders and loose pins in order; `isFolder` tells them apart),
+  `pinnedFlat` (pre-order flattened list of all visible folders up to depth 4 and pins, each with `depth`),
+  `folders[]` (`name`, `open`, `parentFolderId`, `depth`, `count`, `pins`, `shown`, `shownFlat`, `hasShown`), `pins`,
+  `splits[]` (`id`, `axis`, `active`, `panes[]`, `ratios`, `count`, `title`) and `hasSplits`,
   `today` (the other tabs, newest first), `hasToday`, `hasPinned`,
   `newTab.active`.
+- `favorites`: `items[]` (web tabs & hosted apps, up to 12, sticky `open`/`active`/`drifted`/`rootUrl`/`audible`/`muted`), `hasItems`, `columns` (1–4).
+- `media` (null unless a background tab or hosted app is playing or within its 30 s pause grace period): `title`, `subtitle`, `artwork`, `icon`, `letter`, `color`, `playing`, `paused`, `muted`, `canPrev`, `canNext`.
+- `toast` (null unless showing; guarded): `id`, `text`.
+- `peek` (null unless open; guarded): `url`, `host`, `title`, `canGoBack`, `canGoForward`, `isLittleArc`, `labels` (`expand`, `copyUrl`, `close`, `back`, `forward`).
+- `split` (null unless the active tab is inside a Split View): `id`, `axis`, `isHorizontal`, `isVertical`, `panes[]`, `dividers[]`, `canAddPane`, `labels`.
 - Each tab or pin row: `id`, `title`, `url`, `host`, `icon` (or `letter` on
   `color`; an app item's, in Margin.app: the installed app's icon, its name's
-  letter when it has none), `active`, `behind`, `away`, `audible`, `asleep`, `loading`; pins also
-  `open`, `tabId`, `folderId`, `nested`.
+  letter when it has none), `active`, `behind`, `away`, `audible`, `muted`, `asleep`, `loading`, `hasCustomTitle`; pins also
+  `open`, `tabId`, `folderId`, `nested`, `depth`, `drifted`, `rootUrl`.
 - `away` (with `active`): the row is this window's chosen tab, shown live in another window of the profile (two
   windows on one space list the same tabs, and the tab follows the window in front: docs/BROWSER-WINDOWS.md §9). Keep it
   highlighted, faded: Arcadia and Pixel fade the row, Neubrutalism fades the pressed button. Margin draws the
@@ -391,9 +400,16 @@ else is ignored and logged.
 
 - Tabs and pins: `tab.activate` (tab), `tab.close` (tab), `tab.new` (none:
   the palette for a new tab; or a space), `tab.pin` (tab), `tab.unpin` (pin),
-  `pin.open` (pin).
-- Folders: `folder.toggle`, `folder.new`, `folder.newWithTab` (tab),
+  `tab.copyUrl`, `tab.mute`, `tab.duplicate`, `tab.unload`, `tab.reopenLast`,
+  `tab.rename`, `tab.setTitle`, `pin.open` (pin), `pin.reset` (drifted sticky pin),
+  `pin.rename`, `pin.setTitle`.
+- Favorites: `favorite.open`, `favorite.add`, `favorite.remove`, `favorite.move`, `favorite.reset`.
+- Folders: `folder.toggle`, `folder.new`, `folder.newSubfolder`, `folder.newWithTab` (tab),
   `folder.newWithPin` (pin), `folder.rename`, `folder.delete` (its pins stay).
+- Media Mini Player: `media.toggle`, `media.prev`, `media.next`, `media.mute`, `media.focus`.
+- Peek & Little Arc: `peek.open`, `peek.close`, `peek.expand`, `peek.back`, `peek.forward`, `peek.copyUrl`, `littleArc.open`.
+- Air Traffic Control: `airTraffic.add`, `airTraffic.remove`, `airTraffic.toggle`, `airTraffic.alwaysHere`.
+- Split View: `split.create`, `split.addPane`, `split.closePane`, `split.breakOut`, `split.swap`, `split.toggleAxis`, `split.resize`, `split.focus`.
 - Spaces: `space.switch`, `space.new`, `space.edit`, `space.rename`,
   `today.clear`.
 - The palette: `palette.open`, `palette.close`, `palette.run` (a row).

@@ -60,7 +60,21 @@ test('a tab moved to another space with its menu', async (t) => {
   await m.until(async () => (await view()).tabs.some((r) => r.id === noir), { what: 'the portfolio\'s row' });
   await ui.click(tabRow(noir), { button: 'right' });
   await m.until(async () => (await view()).menu.length, { what: 'the tab\'s menu' });
-  assert.deepEqual((await view()).menu, ['Pin Tab', 'New Folder with Tab', 'Move to 💼 Work', 'Move to 🧭 Trips', 'Close Tab']);
+  assert.deepEqual((await view()).menu, [
+    'Pin Tab',
+    'Add to Favorites',
+    'Open in Split View',
+    'New Folder with Tab',
+    'Rename Tab',
+    'Copy URL',
+    'Duplicate Tab',
+    'Mute Tab',
+    'Always Open noir.test in This Space',
+    'Move to 💼 Work',
+    'Move to 🧭 Trips',
+    'Sleep Tab',
+    'Close Tab',
+  ]);
   await m.shoot(t, 'menu');
   await menuItem(ui, 'Move to 🧭 Trips');
   await m.until(async () => (await m.state()).tabSpace[noir] === 'sp-trips', { what: 'the tab in Trips' });

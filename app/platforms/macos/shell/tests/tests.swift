@@ -351,7 +351,8 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("a key not known: not one", Combo.parse("Meta+Banana") == nil)
     check("a modifier twice: not one", Combo.parse("Meta+Meta+KeyT") == nil)
     check("its name", Combo.parse("Ctrl+Meta+ArrowRight")?.description == "⌃⌘ArrowRight")
-    check("seven keys by default (⌘N a new Margin window, docs/BROWSER-WINDOWS.md §5)", ShortcutSet.bindings.count == 7 && ShortcutSet.bindings[Combo.parse("Meta+KeyN")!] == .newWindow && Set(ShortcutSet.bindings.values) == Set(AppCommand.allCases))
+    let defaultCount = AppCommand.allCases.count
+    check("default keys cover every command (⌘N a new Margin window, docs/BROWSER-WINDOWS.md §5)", ShortcutSet.bindings.count == defaultCount && ShortcutSet.bindings[Combo.parse("Meta+KeyN")!] == .newWindow && Set(ShortcutSet.bindings.values) == Set(AppCommand.allCases))
     let fromCopy = ShortcutSet.bindings(from: ["next-tab": ["Alt+Meta+ArrowDown", "Ctrl+Meta+ArrowDown"], "toggle-sidebar": ["Alt+KeyK"], "palette": [], "prev-space": ["Banana"]])
     check("the copy's keys: both of a command's combinations", fromCopy[Combo.parse("Alt+Meta+ArrowDown")!] == .nextTab && fromCopy[Combo.parse("Ctrl+Meta+ArrowDown")!] == .nextTab)
     check("the copy's keys: the sidebar's own", fromCopy[Combo.parse("Alt+KeyK")!] == .toggleSidebar && fromCopy[Combo.parse("Alt+KeyS")!] == nil)
@@ -373,9 +374,9 @@ final class FakeRegistrar: HotKeyRegistrar {
     keys.onCommand = { command, _ in ran.append(command) }
     check("not held at first", fake.held.isEmpty && !keys.isActive)
     keys.set(active: true)
-    check("held while active", fake.held.count == 7 && keys.isActive)
+    check("held while active", fake.held.count == defaultCount && keys.isActive)
     keys.set(active: true)
-    check("not registered twice", fake.registrations == 7)
+    check("not registered twice", fake.registrations == defaultCount)
     let nextTab = fake.held.first { $0.value == Combo.parse("Alt+Meta+ArrowDown") }!.key
     fake.onHit?(nextTab)
     check("a key: its command", ran == [.nextTab])
@@ -385,7 +386,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("a stray hit after letting go: nothing", ran == [.nextTab])
     fake.taken = [Combo.parse("Meta+KeyT")!]
     keys.set(active: true)
-    check("one another app holds: the rest still Margin's", fake.held.count == 6 && keys.unavailable == [Combo.parse("Meta+KeyT")!])
+    check("one another app holds: the rest still Margin's", fake.held.count == defaultCount - 1 && keys.unavailable == [Combo.parse("Meta+KeyT")!])
     fake.taken = []
     keys.rebind(fromCopy)
     check("new keys while held: the new ones held at once", keys.isActive && Set(fake.held.values) == Set(fromCopy.keys) && fake.held.count == fromCopy.count)

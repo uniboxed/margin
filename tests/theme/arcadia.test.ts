@@ -347,9 +347,12 @@ for (const [name, engine] of ENGINES) {
           };
         });
         const f = await form();
-        assert.deepEqual(f.select, [['arcadia', ['Arcadia', 'Neubrutalism', 'Pixel', 'Liquid Glass', 'Material']]]);
+        assert.deepEqual(f.select, [
+          ['arcadia', ['Arcadia', 'Neubrutalism', 'Pixel', 'Liquid Glass', 'Material']],
+          ['global', ['Global across Spaces', 'Per browser profile']],
+        ]);
         assert.equal(f.numbers.length, 3, 'two of Margin\'s, and Arcadia\'s own sidebar width (Settings of “Arcadia”)');
-        assert.equal(f.toggles.length, 5);
+        assert.equal(f.toggles.length, 6);
         assert.equal(f.lists, 1);
         assert.equal(f.shortcuts.length, 5);
         assert.ok(f.shortcuts.every(([ro]) => ro));
@@ -357,7 +360,7 @@ for (const [name, engine] of ENGINES) {
         await page.click('label:has-text("keep the frame") input');
         assert.deepEqual(await lastSent('updateSettings'), ['updateSettings', { patch: { frameWhenHidden: false } }]);
         // Theme: the theme of the space shown (2026-11-20: each space has its own), not the profile's.
-        await page.selectOption('.settings-form select', 'neubrutalism');
+        await page.selectOption('.settings-form select >> nth=0', 'neubrutalism');
         const space = await page.evaluate(() => T.rtVmFull().space);
         assert.deepEqual(await lastSent('setSpaceTheme'), ['setSpaceTheme', { spaceId: space, theme: 'neubrutalism' }]);
         assert.equal((await page.evaluate(() => T.rtSent().filter(([k, p]) => k === 'updateSettings' && 'theme' in (p?.patch ?? {})))).length, 0, 'the profile\'s theme left as it is');

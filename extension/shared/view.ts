@@ -187,6 +187,7 @@ function sidebar(state: State, windowId: number | null, currentTabId: number | n
   type ShownFolder = {
     kind: 'folder', id: string, name: string, open: boolean, pos: number,
     parentFolderId: string | null, depth: number, pins: ShownPin[], peek: ShownPin[],
+    shownFlat?: (ShownFolder | ShownPinItem)[],
   };
   type TreeFolder = ShownFolder & { allPins: ShownPin[], children: (TreeFolder | ShownPinItem)[] };
   const buildLevel = (parentId: string | null, depth: number): (TreeFolder | ShownPinItem)[] => {
@@ -218,25 +219,30 @@ function sidebar(state: State, windowId: number | null, currentTabId: number | n
   const tree = buildLevel(null, 0);
   // Pre-order flat list for nested folder rendering (respecting collapsed ancestors + active peek).
   const pinnedFlat: (ShownFolder | ShownPinItem)[] = [];
-  const flatten = (nodes: (TreeFolder | ShownPinItem)[], visible: boolean) => {
+  const flatten = (nodes: (TreeFolder | ShownPinItem)[], visible: boolean, out: (ShownFolder | ShownPinItem)[]) => {
     for (const n of nodes) {
       if (n.kind === 'folder') {
         const row: ShownFolder = { kind: 'folder', id: n.id, name: n.name, open: n.open, pos: n.pos, parentFolderId: n.parentFolderId, depth: n.depth, pins: n.allPins, peek: n.peek };
-        if (visible) pinnedFlat.push(row);
-        flatten(n.children, visible && n.open);
+        if (visible) out.push(row);
+        flatten(n.children, visible && n.open, out);
         if (visible && !n.open && n.peek.length) {
-          for (const p of n.peek) pinnedFlat.push({ kind: 'pin', depth: n.depth + 1, ...p });
+          for (const p of n.peek) out.push({ kind: 'pin', depth: n.depth + 1, ...p });
         }
       } else if (visible) {
-        pinnedFlat.push(n);
+        out.push(n);
       }
     }
   };
-  flatten(tree, true);
-  // Top-level `pinned` stays compatible with existing single-level themes (with nested pins rolled into each top folder's `pins`).
-  const pinned: (ShownFolder | ShownPinItem)[] = tree.map((item) => (item.kind === 'folder'
-    ? { kind: 'folder' as const, id: item.id, name: item.name, open: item.open, pos: item.pos, parentFolderId: item.parentFolderId, depth: item.depth, pins: item.allPins, peek: item.peek }
-    : item));
+  flatten(tree, true, pinnedFlat);
+  // Top-level `pinned` stays compatible with card-grouped themes (liquid-glass, neubrutalism, pixel),
+  // with `shownFlat` exposing each top-level folder's visible descendants (subfolders + pins up to depth 4).
+  const pinned: (ShownFolder | ShownPinItem)[] = tree.map((item) => {
+    if (item.kind !== 'folder') return item;
+    const sub: (ShownFolder | ShownPinItem)[] = [];
+    if (item.open) flatten(item.children, true, sub);
+    else for (const p of item.peek) sub.push({ kind: 'pin', depth: item.depth + 1, ...p });
+    return { kind: 'folder' as const, id: item.id, name: item.name, open: item.open, pos: item.pos, parentFolderId: item.parentFolderId, depth: item.depth, pins: item.allPins, peek: item.peek, shownFlat: sub };
+  });
   // Every pin of the space, flat, in the order shown.
   const pins = pinned.flatMap((item) => (item.kind === 'folder' ? item.pins : [item]));
   const pinnedUrls = new Set(pins.map((p) => normalizeUrl(p.rootUrl)));

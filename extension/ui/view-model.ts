@@ -121,7 +121,7 @@ export type FavoritesView = { items: FavoriteRow[], hasItems: boolean, columns: 
 export type FolderRow = {
   kind: 'folder', isFolder: true, id: string, name: string, open: boolean,
   parentFolderId: string | null, depth: number,
-  count: number, pins: PinRow[], shown: PinRow[], hasShown: boolean,
+  count: number, pins: PinRow[], shown: PinRow[], shownFlat: (FolderRow | PinRow)[], hasShown: boolean,
 };
 export type SplitPaneView = Face & {
   id: string, tabId: number | string, index: number, active: boolean, ratio: number, percent: number,
@@ -432,7 +432,23 @@ function fresh(input: ViewModelInput): ViewModel {
   // (`shown`: view.peek), so the highlight stays in sight.
   const pins: PinRow[] = [];
   const folders: FolderRow[] = [];
+  const folderById = new Map<string, FolderRow>();
   const pinById = new Map<string, PinRow>();
+  const toFlatRow = (entry: any): FolderRow | PinRow => {
+    if (entry.kind !== 'folder') return pinById.get(entry.id) ?? pinRow(state, entry, (entry.depth ?? 0) > 0, entry.depth ?? 0);
+    const existing = folderById.get(entry.id);
+    if (existing) return existing;
+    const inside = (entry.pins ?? []).map((p: any) => pinById.get(p.id) ?? pinRow(state, p, true, (entry.depth ?? 0) + 1));
+    const shown = entry.open ? inside : (entry.peek ?? []).map((p: any) => pinById.get(p.id)!).filter(Boolean);
+    const folder: FolderRow = {
+      kind: 'folder', isFolder: true, id: entry.id, name: entry.name, open: entry.open,
+      parentFolderId: entry.parentFolderId ?? null, depth: entry.depth ?? 0,
+      count: inside.length, pins: inside, shown, shownFlat: [], hasShown: shown.length > 0,
+    };
+    folderById.set(folder.id, folder);
+    folders.push(folder);
+    return folder;
+  };
   const pinned = view.pinned.map((item: any) => {
     if (item.kind !== 'folder') {
       const row = pinRow(state, item, false, 0);
@@ -447,20 +463,17 @@ function fresh(input: ViewModelInput): ViewModel {
     });
     const byId = new Map(inside.map((p: PinRow) => [p.id, p]));
     const shown = item.open ? inside : item.peek.map((p: any) => byId.get(p.id)!); // (peek: some of its pins)
-    const folder: FolderRow = { kind: 'folder', isFolder: true, id: item.id, name: item.name, open: item.open, parentFolderId: item.parentFolderId ?? null, depth: item.depth ?? 0, count: inside.length, pins: inside, shown, hasShown: shown.length > 0 };
+    const shownFlat = (item.shownFlat ?? shown).map((entry: any) => (entry.kind === 'folder' || entry.kind === 'pin' ? toFlatRow(entry) : entry));
+    const folder: FolderRow = {
+      kind: 'folder', isFolder: true, id: item.id, name: item.name, open: item.open,
+      parentFolderId: item.parentFolderId ?? null, depth: item.depth ?? 0,
+      count: inside.length, pins: inside, shown, shownFlat, hasShown: shownFlat.length > 0,
+    };
+    folderById.set(folder.id, folder);
     folders.push(folder);
     return folder;
   });
-  const pinnedFlat: (FolderRow | PinRow)[] = (view.pinnedFlat ?? []).map((item: any) => {
-    if (item.kind !== 'folder') return pinById.get(item.id) ?? pinRow(state, item, (item.depth ?? 0) > 0, item.depth ?? 0);
-    const existing = folders.find((f) => f.id === item.id);
-    if (existing) return existing;
-    const inside = (item.pins ?? []).map((p: any) => pinById.get(p.id) ?? pinRow(state, p, true, (item.depth ?? 0) + 1));
-    const shown = item.open ? inside : (item.peek ?? []).map((p: any) => pinById.get(p.id)!).filter(Boolean);
-    const folder: FolderRow = { kind: 'folder', isFolder: true, id: item.id, name: item.name, open: item.open, parentFolderId: item.parentFolderId ?? null, depth: item.depth ?? 0, count: inside.length, pins: inside, shown, hasShown: shown.length > 0 };
-    folders.push(folder);
-    return folder;
-  });
+  const pinnedFlat: (FolderRow | PinRow)[] = (view.pinnedFlat ?? []).map(toFlatRow);
   const rawToday = view.tabs.map((t) => tabRow(state, t));
   // Combined Split View rows (Arc's single capsule row in the sidebar for 2–4 panes):
   const splitMemberIds = new Set<string>();
