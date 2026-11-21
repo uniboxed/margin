@@ -115,4 +115,25 @@ func peekSplitTests() {
     check("peek over a split: a press around the card closes it; the split stays shown at its rects",
           session.cards.isEmpty && !inMargin(cardId) && engine.visible.count == 2 && session.layout[1]?.split == sp && bounds(safari) == rects[a] && bounds(editId) == rects[edit],
           "\(engine.visible) \(String(describing: session.layout[1]))")
+
+    // ---- a preview from a split's SECOND Safari pane (its own window): taken, the card opened over the split for that
+    // pane's item (the real screen, 2026-11-21: refused, "not a window Margin hosts", only main's window was taken) ----
+    run { _ = library.perform("removeFromSplit", ["windowId": 1, "tabId": edit]) }
+    run { _ = library.perform("newTab", ["windowId": 1, "url": "https://b.example/"]) }
+    let b = library.items(space: home).first { $0.value["url"] as? String == "https://b.example/" }?.id ?? ""
+    run { _ = library.perform("createSplit", ["windowId": 1, "panes": [a, b]]) }
+    let paneCopy = session.safariWindows[SafariKey("s-default", .pane(1))]
+    check("peek from a pane: set up: a split of two web pages, the second in its own Safari window (pane1)",
+          paneCopy != nil && paneCopy != 90 && engine.visible.count == 2 && library.split(ofItem: b) != nil, "\(session.safariWindows) \(engine.visible)")
+    window.cardRect = card
+    let answers = links.asked.filter { $0.type == "peekAnswer" }.count
+    run { session.peekOpen(profile: "s-default", windowId: paneCopy, msg: ["id": "ps-3", "url": "https://docs.example.org/three", "notAfter": later()]) }
+    check("peek from a pane: a click in the second pane's window is taken (answered ok): the card over the split, focused, its opener that pane's item",
+          links.asked.dropFirst(answers).contains { $0.type == "peekAnswer" && $0.payload["ok"] as? Bool == true } && engine.visible.count == 3 && engine.shown == cardId
+          && session.cards["s-default"]?.opener == b, "\(links.asked.dropFirst(answers).map(\.type)) \(engine.visible) \(String(describing: session.cards["s-default"]))")
+    // (A window of that profile Margin doesn't host: still refused.)
+    let before = links.asked.filter { $0.type == "peekAnswer" }.count
+    run { session.peekOpen(profile: "s-default", windowId: 4242, msg: ["id": "ps-4", "url": "https://docs.example.org/four", "notAfter": later()]) }
+    check("peek from a pane: a window of the profile Margin doesn't host: refused",
+          links.asked.dropFirst(before).contains { $0.type == "peekAnswer" && $0.payload["ok"] as? Bool == false })
 }

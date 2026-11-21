@@ -121,16 +121,21 @@ extension HostedSession {
         guard Self.webAddress(url) else { return answer(false, "not a web address") }
         guard Date().timeIntervalSince1970 * 1000 <= notAfter else { return answer(false, "too late: the page opened it") }
         guard let windowId else { return answer(false, "no window") }
-        let fromCard = safariWindows[SafariKey(profile, .card)] == windowId
-        guard fromCard || safariWindows[SafariKey(profile)] == windowId else { return answer(false, "not a window Margin hosts") }
+        // (Its window: any Margin hosts for that profile, main's, a split's pane's or the card's: the real screen,
+        // 2026-11-21, refused a preview from a split's second pane, taken only from main's.)
+        guard let role = safariWindows.first(where: { $0.key.profile == profile && $0.value == windowId })?.key.role else {
+            return answer(false, "not a window Margin hosts")
+        }
+        let fromCard = role == .card
         guard let wid = hostingWindow, let w = window(wid) else { return answer(false, "nothing hosted") }
         let main = layout[wid]?.main ?? shown[wid]
         guard let main, !Self.isCardItem(main), open[main] != nil else { return answer(false, "nothing shown under it") }
-        if !fromCard, open[main]?.profile != profile, !(layout[wid]?.items.contains { open[$0]?.profile == profile && open[$0]?.host == HostTarget.safariWindow(profile).id } ?? false) {
-            return answer(false, "the page isn't one Margin shows")
-        }
+        // The item the clicked page shows: the one in that window (a split's pane), else main (the card's own clicks).
+        let host = HostTarget.safariWindow(profile, role).id
+        let clicked = fromCard ? main : ((layout[wid]?.items ?? [main]).first { open[$0]?.host == host } ?? (open[main]?.host == host ? main : nil))
+        guard let opener = clicked else { return answer(false, "the page isn't one Margin shows") }
         answer(true, "")
-        showCard(w, profile: profile, url: url, opener: main, space: library.space(ofItem: main) ?? library.space(ofWindow: wid), click: id)
+        showCard(w, profile: profile, url: url, opener: opener, space: library.space(ofItem: opener) ?? library.space(ofWindow: wid), click: id)
     }
 
     // The copy gave up on a click before the app's word reached it (`peekCancel`): its card, if shown, closed again.
