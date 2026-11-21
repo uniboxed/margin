@@ -47,7 +47,10 @@ final class Grid: NSView {
         NSColor(red: 1, green: 0.8, blue: 0.2, alpha: 1).setFill(); NSRect(x: bounds.width - 30, y: bounds.height - 30, width: 30, height: 30).fill()
         NSColor(red: 1, green: 0.3, blue: 0.5, alpha: 1).setFill(); NSRect(x: 0, y: 0, width: 30, height: 30).fill()
     }
-    override func mouseDown(with e: NSEvent) { clog("click at \(Int(e.locationInWindow.x)),\(Int(e.locationInWindow.y)) window \(window?.windowNumber ?? 0)"); window?.makeFirstResponder(nil) }
+    // (A click, its drags and its release, each with its count: the pane click checks, a double-click's second is count 2.)
+    override func mouseDown(with e: NSEvent) { clog("click at \(Int(e.locationInWindow.x)),\(Int(e.locationInWindow.y)) window \(window?.windowNumber ?? 0) count \(e.clickCount)"); window?.makeFirstResponder(nil) }
+    override func mouseDragged(with e: NSEvent) { clog("drag at \(Int(e.locationInWindow.x)),\(Int(e.locationInWindow.y)) window \(window?.windowNumber ?? 0)") }
+    override func mouseUp(with e: NSEvent) { clog("release at \(Int(e.locationInWindow.x)),\(Int(e.locationInWindow.y)) window \(window?.windowNumber ?? 0) count \(e.clickCount)") }
 }
 
 // AppKit's state restoration (`restore` by the system): each saved window made again by its identifier; AppKit puts

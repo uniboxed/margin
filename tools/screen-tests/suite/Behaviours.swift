@@ -61,6 +61,9 @@ extension Runner {
     case .minDrag(let t, let dx, let st, let ends, let parked): minDrag(t, dx: dx, steps: st, endsAt: ends, parked: parked)
     case .overflow(let t, let s): overflowHeld(t, seconds: s)
     case .settled(let t, let s): settledHeld(t, seconds: s)
+    case .splitWith(let main, let adding): splitWith(main, adding: adding)
+    case .paneClick(let n, let kind): paneClick(n, kind)
+    case .paneClickTimes(let a, let b, let t): paneClickTimes(a, b, times: t)
     case .idleCost(let label, let s): idleCostStep(label, seconds: s)
     case .animations(let label):
       gate("asking the page")
