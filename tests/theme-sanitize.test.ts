@@ -340,7 +340,9 @@ test('the action list is PLAN.md §3\'s, plus palette.run and the behaviors\' an
   const settingsTab = ['settings.category'];
   // A theme per space (2026-11-20): the editor's theme, a space's menu's and Settings' Theme.
   const spaceThemes = ['editor.theme', 'space.setTheme'];
-  assert.deepEqual(Object.keys(ACTIONS).sort(), [...plan, 'palette.run', ...step2, ...step3, ...step4, ...settingsTab, ...spaceThemes].sort());
+  // Track 2 M2.1 (Arc QoL): copy URL, duplicate, mute, unload/sleep, reopen last archived, toast close.
+  const arcQol = ['tab.copyUrl', 'pin.copyUrl', 'tab.duplicate', 'tab.mute', 'tab.unload', 'archive.restoreLast', 'toast.close'];
+  assert.deepEqual(Object.keys(ACTIONS).sort(), [...plan, 'palette.run', ...step2, ...step3, ...step4, ...settingsTab, ...spaceThemes, ...arcQol].sort());
   assert.ok(isAction('tab.activate'));
   assert.equal(isAction('toString'), false);
   assert.equal(isAction('__proto__'), false);

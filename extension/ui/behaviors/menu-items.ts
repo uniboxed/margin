@@ -46,13 +46,18 @@ export function menuItems(target: MenuTarget | null | undefined, { state, space,
       const pin = (state.pins ?? []).find((p) => p.id === target.id);
       if (!pin) return [];
       const shown = shownPins.find((p) => p.id === pin.id);
+      const isWeb = /^https?:\/\//i.test(pin.url ?? '');
+      const liveTab = shown?.tabId != null ? state.tabs?.[shown.tabId] : null;
       item('Unpin', 'tab.unpin', pin.id);
+      if (isWeb) item('Copy URL', 'pin.copyUrl', pin.id);
       separator();
       for (const f of folders) if (f.id !== shown?.folderId) item(`Move to 📁 ${f.name}`, 'pin.move', { pin: pin.id, folder: f.id, before: null });
       if (shown?.folderId) item('Remove from Folder', 'pin.move', { pin: pin.id, folder: null, before: null });
       item('New Folder with Pin', 'folder.newWithPin', pin.id);
-      if (shown?.tabId != null && state.tabs?.[shown.tabId]) {
+      if (liveTab && shown?.tabId != null) {
         separator();
+        if (isWeb) item(liveTab.muted ? 'Unmute Tab' : 'Mute Tab', 'tab.mute', shown.tabId);
+        item(isWeb ? 'Sleep Tab' : 'Unload App', 'tab.unload', shown.tabId);
         item('Close Tab', 'tab.close', shown.tabId);
       }
       break;
@@ -62,10 +67,19 @@ export function menuItems(target: MenuTarget | null | undefined, { state, space,
       // own id: the same menu; closing it archives it).
       const tabId = target.id;
       const kept = typeof tabId === 'string' ? state.keptTabs?.[tabId] : null;
-      if (!kept && (!Number.isInteger(tabId) || !state.tabs?.[tabId as number])) return [];
+      const live = Number.isInteger(tabId) ? state.tabs?.[tabId as number] : null;
+      if (!kept && !live) return [];
+      const url = (live?.url ?? kept?.url ?? '');
+      const isWeb = /^https?:\/\//i.test(url);
       item('Pin Tab', 'tab.pin', tabId);
       for (const f of folders) item(`Pin to 📁 ${f.name}`, 'tab.pinAt', { tab: tabId, folder: f.id, before: null });
       item('New Folder with Tab', 'folder.newWithTab', tabId);
+      if (isWeb) {
+        separator();
+        item('Copy URL', 'tab.copyUrl', tabId);
+        item('Duplicate Tab', 'tab.duplicate', tabId);
+        if (live) item(live.muted ? 'Unmute Tab' : 'Mute Tab', 'tab.mute', tabId);
+      }
       const spaceId = kept ? kept.spaceId : state.tabSpace?.[tabId as number]; // (not kept: an open tab's id)
       const others = (state.spaces ?? []).filter((sp) => sp.id !== spaceId);
       if (others.length) {
@@ -73,6 +87,7 @@ export function menuItems(target: MenuTarget | null | undefined, { state, space,
         for (const sp of others) item(`Move to ${sp.emoji} ${sp.name}`, 'tab.moveToSpace', { tab: tabId, space: sp.id });
       }
       separator();
+      if (live) item(isWeb ? 'Sleep Tab' : 'Unload App', 'tab.unload', tabId);
       item('Close Tab', 'tab.close', tabId);
       break;
     }

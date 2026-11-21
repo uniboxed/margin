@@ -588,7 +588,7 @@ async function swapTheme(pkg: any) {
 }
 
 // The palette opened: drawn how long after the word came (work, then frames until it's on screen), one line each time.
-function openPaletteTimed(options: { newTab: boolean }, by: string) {
+function openPaletteTimed(options: { newTab: boolean, query?: string, selectAll?: boolean }, by: string) {
   if (!runtime) return;
   const from = performance.now();
   runtime.openPalette(options);
@@ -768,6 +768,39 @@ function onMessage(msg: any) {
       // Margin's own window, the palette's Settings while it hosted (HostedSession.swift openLauncher): its launcher is
       // in the page area again, with its Settings open.
       else if (msg.name === 'settings' && host?.appWindow) runtime?.setUi({ settingsOpen: true, recording: null });
+      else if (msg.name === 'copy-url') runtime?.dispatch('tab.copyUrl', undefined, 'behavior');
+      else if (msg.name === 'focus-address') {
+        const cur = runtime?.vm?.tab;
+        const url = cur?.url && /^https?:\/\//i.test(cur.url) ? cur.url : '';
+        openPaletteTimed({ newTab: false, query: url, selectAll: true }, '⌘L');
+      } else if (msg.name === 'toggle-pin') {
+        const cur = runtime?.vm?.tab;
+        if (!cur) return;
+        const pin = runtime?.vm?.space?.pins?.find((p: { active?: boolean, tabId?: number | null }) => p.active || p.tabId === cur.id);
+        if (pin) {
+          runtime?.dispatch('tab.unpin', pin.id, 'behavior');
+          runtime?.showToast('Unpinned Tab');
+        } else {
+          runtime?.dispatch('tab.pin', cur.id, 'behavior');
+          runtime?.showToast('Pinned Tab');
+        }
+      } else if (msg.name === 'reopen-archived') runtime?.dispatch('archive.restoreLast', undefined, 'behavior');
+      else if (msg.name === 'space-index' && Number.isInteger(msg.index)) {
+        const sp = runtime?.vm?.spaces?.[msg.index - 1];
+        if (sp) runtime?.dispatch('space.switch', sp.id, 'behavior');
+      } else if (msg.name === 'item-index' && Number.isInteger(msg.index)) {
+        const idx = msg.index - 1;
+        const rows = [
+          ...(runtime?.vm?.space?.pins ?? []).map((p: { id: string }) => ({ kind: 'pin' as const, id: p.id })),
+          ...(runtime?.vm?.space?.today ?? []).map((t: { id: number | string }) => ({ kind: 'tab' as const, id: t.id })),
+        ];
+        const target = rows[idx];
+        if (target?.kind === 'pin') runtime?.dispatch('pin.open', target.id, 'behavior');
+        else if (target?.kind === 'tab') runtime?.dispatch('tab.activate', target.id, 'behavior');
+      }
+      return;
+    case 'toast':
+      if (typeof msg.text === 'string' && msg.text) runtime?.showToast(msg.text);
       return;
     case 'link':
       // (Margin's own window has no copy's link to lose.)

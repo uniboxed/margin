@@ -248,8 +248,11 @@ extension Shell {
         if active {
             let said = links.keys.sorted().lazy.compactMap { self.links[$0] }.first { $0.connection.isUp && $0.keys != nil }?.keys
             var bindings = ShortcutSet.bindings(from: said ?? [:])
-            // (A hosted app in front: the sidebar stays docked while hosting, so its key would only take the app's typing.)
-            if apps.frontPid != own { bindings = bindings.filter { $0.value != .toggleSidebar } }
+            // (A hosted app in front: the sidebar key stays with it; browser-only shortcuts like ⌘L/⌘D/⌘1-9 stay with native apps.)
+            if apps.frontPid != own {
+                let isBrowser = host?.hosts.values.first(where: { $0.pid == apps.frontPid })?.safariWindow != nil
+                bindings = bindings.filter { $0.value != .toggleSidebar && (isBrowser || !$0.value.browserOnly) }
+            }
             shortcuts.rebind(bindings)
         }
         // (Which app took the front is said by its bundle id: 2026-11-17's log let go and held the keys again and again
@@ -294,6 +297,12 @@ extension Shell {
             // (Tab keys: the picks they make in that window are a cycle's, an app not running yet held a moment first.)
             if command == .nextTab || command == .prevTab, let id = w?.id { hosted?.cycled(windowId: id) }
             w?.push(#"{"type":"command","name":"\#(command.rawValue)","repeat":\#(isRepeat)}"#)
+        case .copyUrl, .focusAddress, .togglePin, .reopenArchived:
+            w?.push(#"{"type":"command","name":"\#(command.rawValue)"}"#)
+        case .space1, .space2, .space3, .space4, .space5, .space6, .space7, .space8, .space9:
+            if let index = command.spaceNumber { w?.push(#"{"type":"command","name":"space-index","index":\#(index)}"#) }
+        case .item1, .item2, .item3, .item4, .item5, .item6, .item7, .item8, .item9:
+            if let index = command.itemNumber { w?.push(#"{"type":"command","name":"item-index","index":\#(index)}"#) }
         }
         w.map { hostedKeysRun.append("\(command.rawValue) → \($0.id)") }
         if hostedKeysRun.count > 50 { hostedKeysRun.removeFirst(hostedKeysRun.count - 50) }

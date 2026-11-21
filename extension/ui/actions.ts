@@ -34,10 +34,15 @@ export const ACTIONS = Object.freeze({
   'tab.new': 'optional-space',
   'tab.pin': 'tab',
   'tab.unpin': 'pin',
+  'tab.copyUrl': 'optional-tab',
+  'tab.duplicate': 'tab',
+  'tab.mute': 'tab',
+  'tab.unload': 'tab',
   'tab.moveToSpace': Object.freeze({ tab: 'tab', space: 'space' }),
   'tab.move': Object.freeze({ tab: 'tab', nextTo: 'tab', side: Object.freeze(['before', 'after']) }),
   'tab.pinAt': Object.freeze({ tab: 'tab', folder: 'folder?', before: 'pin-or-folder?' }),
   'pin.open': 'pin',
+  'pin.copyUrl': 'pin',
   'pin.move': Object.freeze({ pin: 'pin', folder: 'folder?', before: 'pin-or-folder?' }),
   'folder.toggle': 'folder',
   'folder.new': 'none',
@@ -75,6 +80,8 @@ export const ACTIONS = Object.freeze({
   'sidebar.toggle': 'none',
   'archive.open': 'none',
   'archive.restore': 'archive',
+  'archive.restoreLast': 'none',
+  'toast.close': 'none',
   'window.close': 'none',
   'window.minimise': 'none',
   'window.fullscreen': 'none',
@@ -182,6 +189,9 @@ export function checkAction(name: string, arg: any, ctx: ActionContext): { ok: t
     case 'optional-space':
       if (none) return { ok: true };
       return isId(arg) && ctx.hasSpace(arg) ? { ok: true } : { ok: false, reason: `${name}: not a space` };
+    case 'optional-tab':
+      if (none) return { ok: true };
+      return isId(arg) && ctx.hasTab(arg) ? { ok: true } : { ok: false, reason: `${name}: not a tab` };
     case 'menu':
       return MENUS.includes(arg) ? { ok: true } : { ok: false, reason: `${name}: no such menu` };
     case 'settings-category':
@@ -329,10 +339,15 @@ export const ACTION_MAP = Object.freeze({
   'tab.new': 'newTab | local',
   'tab.pin': 'pinTab',
   'tab.unpin': 'unpin',
+  'tab.copyUrl': 'local',
+  'tab.duplicate': 'duplicateTab',
+  'tab.mute': 'muteTab',
+  'tab.unload': 'unloadTab',
   'tab.moveToSpace': 'moveTabToSpace',
   'tab.move': 'moveTab',
   'tab.pinAt': 'pinTab',
   'pin.open': 'openPin',
+  'pin.copyUrl': 'local',
   'pin.move': 'movePin',
   'folder.toggle': 'setFolderOpen',
   'folder.new': 'createFolder',
@@ -368,6 +383,8 @@ export const ACTION_MAP = Object.freeze({
   'sidebar.toggle': 'updateSettings',
   'archive.open': 'openLauncher',
   'archive.restore': 'restoreArchive',
+  'archive.restoreLast': 'restoreLastArchive',
+  'toast.close': 'local',
   'window.close': 'host',
   'window.minimise': 'host',
   'window.fullscreen': 'toggleFullscreen | host',
@@ -382,7 +399,7 @@ export const ACTION_MAP = Object.freeze({
 });
 
 const LOCAL = new Set(['space.edit', 'space.rename', 'folder.rename', 'palette.open', 'palette.close', 'menu.open', 'menu.run', 'menu.close', 'editor.save', 'editor.cancel', 'editor.delete', 'editor.color', 'editor.theme',
-  'notice.run', 'notice.close', 'prompt.run', 'prompt.close', 'launcher.more', 'settings.run', 'settings.category']);
+  'notice.run', 'notice.close', 'prompt.run', 'prompt.close', 'launcher.more', 'settings.run', 'settings.category', 'tab.copyUrl', 'pin.copyUrl', 'toast.close']);
 const NAV = { 'nav.back': 'goBack', 'nav.forward': 'goForward', 'nav.reload': 'reload' };
 
 /**
@@ -406,6 +423,9 @@ export function requestFor(name: string, arg: any, { state, ui, platform, row }:
       return arg == null || arg === '' ? { kind: 'local', name: 'palette.open', arg: { newTab: true } } : send('newTab', { windowId, spaceId: arg });
     case 'tab.pin': return send('pinTab', { tabId: arg });
     case 'tab.unpin': return send('unpin', { pinId: arg });
+    case 'tab.duplicate': return send('duplicateTab', { tabId: arg, windowId });
+    case 'tab.mute': return send('muteTab', { tabId: arg, windowId });
+    case 'tab.unload': return send('unloadTab', { tabId: arg, windowId });
     case 'tab.moveToSpace': return send('moveTabToSpace', { tabId: arg.tab, spaceId: arg.space });
     case 'tab.move': {
       // The tab it goes next to, by its address and place too (as the
@@ -454,6 +474,7 @@ export function requestFor(name: string, arg: any, { state, ui, platform, row }:
     // pages toggle the form: ui/runtime.ts).
     case 'settings.open': return send('openLauncher', { windowId, settings: true });
     case 'archive.restore': return send('restoreArchive', { archiveId: arg, windowId });
+    case 'archive.restoreLast': return send('restoreLastArchive', { windowId });
     default: return { kind: 'none', reason: `${name}: no mapping` };
   }
 }

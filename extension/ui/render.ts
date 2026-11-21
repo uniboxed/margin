@@ -37,9 +37,12 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 // never takes clicks: the browser's page is there.
 const BASE_CSS = `
 m-page{display:block;box-sizing:border-box;background:none!important;pointer-events:none!important}
-m-window-controls,m-drag-region,m-palette,m-notice,m-menu,m-editor,m-launcher,m-prompt,m-settings,m-page-loader{display:block}
+m-window-controls,m-drag-region,m-palette,m-notice,m-menu,m-editor,m-launcher,m-prompt,m-settings,m-page-loader,m-toast{display:block}
 m-menu{position:fixed;left:var(--m-menu-x,0px);top:var(--m-menu-y,0px);z-index:2147483600;outline:none}
-m-menu:empty,m-editor:empty,m-palette:empty,m-notice:empty,m-launcher:empty,m-prompt:empty,m-settings:empty,m-page-loader:empty{display:none}
+m-menu:empty,m-editor:empty,m-palette:empty,m-notice:empty,m-launcher:empty,m-prompt:empty,m-settings:empty,m-page-loader:empty,m-toast:empty{display:none}
+m-toast[m-default]{position:fixed;left:50%;top:18px;transform:translateX(-50%);z-index:2147483640;padding:7px 14px;border-radius:999px;background:rgba(28,28,32,.9);color:#f5f5f7;font:500 12.5px/1.3 -apple-system,BlinkMacSystemFont,system-ui,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.28),0 0 0 1px rgba(255,255,255,.12);pointer-events:none;white-space:nowrap;max-width:min(80vw,360px);overflow:hidden;text-overflow:ellipsis;animation:m-toast-in .14s ease-out}
+@keyframes m-toast-in{from{opacity:0;transform:translate(-50%,-6px) scale(.97)}to{opacity:1;transform:translate(-50%,0) scale(1)}}
+@media (prefers-reduced-motion:reduce){m-toast[m-default]{animation:none}}
 m-page-loader[m-default]{position:fixed;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;background:Canvas;color:CanvasText;font:13px/1.3 system-ui,sans-serif;text-align:center;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .12s linear,visibility 0s linear .12s}
 [m-page-state="loading"]>m-page-loader[m-default]{opacity:1;visibility:visible;pointer-events:auto;transition:none}
 [m-page-state="elsewhere"]>m-page-loader[m-default]{opacity:.55;visibility:visible;pointer-events:none;transition:none}
@@ -101,6 +104,7 @@ const SLOTS: Record<string, { part: string, test: string[] }> = {
   'm-page-loader': { part: 'page-loader', test: ['pageLoader'] },
   'm-prompt': { part: 'prompt', test: ['prompt'] },
   'm-settings': { part: 'settings', test: ['settingsForm'] },
+  'm-toast': { part: 'toast', test: ['toast'] },
 };
 // Margin's own words (ui/sanitize.ts GUARDED_PARTS): inside these parts and
 // slots, text the theme wrote is dropped again here, whatever tree the

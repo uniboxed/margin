@@ -630,8 +630,9 @@ function tabRecord(tab: BrowserTab, prev: TabRecord | null | undefined, now: num
     ...(before ? { going } : {}),
     favIconUrl: before ? '' : seen.favIconUrl ?? prev?.favIconUrl ?? '',
     active: !!seen.active,
-    // Playing sound (the row's playing mark). Only while it is: no field otherwise.
+    // Playing sound (the row's playing mark) and muted state. Only while true: no field otherwise.
     ...(seen.audible ? { audible: true } : {}),
+    ...(seen.mutedInfo?.muted ? { muted: true } : {}),
     lastActive: prev?.lastActive ?? seen.lastAccessed ?? now,
     // Its Margin tab's id and place in the list (new ones: upsertTab, syncTabs).
     ...(isTabId(prev?.mid) ? { mid: prev.mid } : {}),

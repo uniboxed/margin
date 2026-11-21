@@ -496,6 +496,10 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
         case 'window.fullscreen':
           void post('perform', { name, arg: arg ?? null }).catch(() => {});
           return true;
+        case 'copyUrl':
+          if (typeof arg?.url !== 'string' || !arg.url) return false;
+          void post('perform', { name, arg: { url: arg.url } }).catch(() => {});
+          return true;
         // Themes (app/platforms/macos/shell/ShellThemes.swift): the file picker; a checked theme kept; one removed.
         case 'theme.import':
           void post('perform', { name, arg: null }).catch(() => {});

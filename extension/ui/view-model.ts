@@ -40,7 +40,8 @@ export type UiState = {
   mode?: WindowMode,
   focused?: boolean,
   sidebar?: SidebarState | null,
-  palette?: { open?: boolean, query?: string, selected?: number, newTab?: boolean },
+  palette?: { open?: boolean, query?: string, selected?: number, newTab?: boolean, selectAll?: boolean },
+  toast?: { id: string, text: string } | null,
   menu?: { kind: MenuTarget['kind'], id?: string | number | null, x?: number, y?: number, above?: boolean, confirming?: string | null } | null,
   editing?: { kind: 'space' | 'folder', id: string } | null,
   // (`fresh`: a space just made, switched to as its editor closes.)
@@ -98,13 +99,13 @@ export type ViewModelInput = {
 export type Face = { title: string, url: string, host: string, icon: string | null, letter: string, color: string, isApp: boolean };
 export type TabRow = Face & {
   kind: 'tab', id: number | string, active: boolean, behind: boolean, away: boolean,
-  audible: boolean, asleep: boolean, loading: boolean, pinned: false,
+  audible: boolean, muted: boolean, asleep: boolean, loading: boolean, pinned: false,
   open: boolean, notOpen: boolean,
 };
 export type PinRow = Face & {
   kind: 'pin', isFolder: false, id: string, folderId: string | null, nested: boolean,
   tabId: number | null, open: boolean, active: boolean, behind: boolean, away: boolean,
-  audible: boolean, asleep: boolean, loading: boolean, pinned: true,
+  audible: boolean, muted: boolean, asleep: boolean, loading: boolean, pinned: true,
 };
 export type FolderRow = {
   kind: 'folder', isFolder: true, id: string, name: string, open: boolean,
@@ -121,7 +122,7 @@ export type SpaceView = SpaceChip & {
   newTab: { active: boolean },
 };
 export type ActiveTab = Face & {
-  id: number, loading: boolean, audible: boolean, asleep: boolean, pinned: boolean, newTab: boolean,
+  id: number, loading: boolean, audible: boolean, muted: boolean, asleep: boolean, pinned: boolean, newTab: boolean,
 };
 export type ArchiveRow = Face & { id: string, spaceId: string, closedAt: number, ago: string };
 export type PaletteRow = {
@@ -144,6 +145,7 @@ export type EditorView = {
 export type NoticeAction = { id: string, label: string, primary: boolean, danger: boolean };
 export type NoticeView = { id: string, text: string, actions: NoticeAction[], hasActions: boolean };
 export type PromptView = NoticeView & { title: string };
+export type ToastView = { id: string, text: string };
 export type GestureView = { pull: boolean, swipe: boolean, back: boolean, forward: boolean, armed: boolean, done: boolean, leaving: boolean, progress: number, percent: number };
 export type LauncherView = {
   pins: PinRow[], hasPins: boolean, archive: ArchiveRow[], hasArchive: boolean, emptyArchive: boolean,
@@ -177,6 +179,7 @@ export type ViewModel = {
   editor: EditorView | null,
   notice: NoticeView | null,
   prompt: PromptView | null,
+  toast: ToastView | null,
   gesture: GestureView | null,
   launcher: LauncherView | null,
   /** The page card's loader (the `page-loader` part), while an item opens in the page area: Margin's words for it. */
@@ -248,6 +251,7 @@ function tabRow(state: State, t: any): TabRow {
     // Chosen here, but live in another window of the profile (docs/BROWSER-WINDOWS.md §9): drawn faded.
     away: open && !!t.away,
     audible: open && !!t.audible,
+    muted: open && !!t.muted,
     asleep: open && !!t.sleeping,
     loading: open && isLoading(t),
     pinned: false,
@@ -272,6 +276,7 @@ function pinRow(state: State, p: any, nested: boolean): PinRow {
     behind: !!p.behind,
     away: !!p.away,
     audible: !!tab?.audible,
+    muted: !!tab?.muted,
     asleep: !!tab?.sleeping,
     loading: isLoading(tab),
     pinned: true,
@@ -311,6 +316,7 @@ function fresh(input: ViewModelInput): ViewModel {
   const editing = ui.editing ? { kind: ui.editing.kind, id: ui.editing.id } : null;
   const notice = ui.notice ? noticeView(ui.notice) : null;
   const prompt = ui.prompt ? { ...noticeView(ui.prompt), title: String(ui.prompt.title ?? '') } : null;
+  const toast = ui.toast && typeof ui.toast.text === 'string' && ui.toast.text ? { id: String(ui.toast.id ?? 'toast'), text: ui.toast.text.slice(0, 140) } : null;
   const gesture = ui.gesture ? gestureView(ui.gesture) : null;
   // (Margin's own words: the name is the app's or the item's, as Margin.app says it.)
   const loadingName = ui.pageOpening ? String(ui.pageOpening.name ?? '').slice(0, 120) : '';
@@ -329,7 +335,7 @@ function fresh(input: ViewModelInput): ViewModel {
       space: { id: '', name: '', emoji: '', color: '', abbr: '', index: 0, number: 1, active: true, tabCount: 0, label: '', pinned: [], folders: [], pins: [], today: [], hasToday: false, hasPinned: false, newTab: { active: false } },
       spaces: [], tab: null, archive: [], hasArchive: false,
       palette: { open: !!paletteUi.open, query: paletteUi.query ?? '', newTab: !!paletteUi.newTab, rows: [], hasRows: false, selected: null },
-      menu: null, editing, editor: null, notice, prompt, gesture, launcher: null, pageLoader, settingsForm: null, settingsTab: null, settings, platform,
+      menu: null, editing, editor: null, notice, prompt, toast, gesture, launcher: null, pageLoader, settingsForm: null, settingsTab: null, settings, platform,
     };
   }
 
@@ -406,6 +412,7 @@ function fresh(input: ViewModelInput): ViewModel {
     // in-page host: content/loader.js, the pill's timing).
     loading: isLoading(current) || (!!ui.pageLoading && current.id === currentTabId),
     audible: !!current.audible,
+    muted: !!current.muted,
     asleep: !!current.sleeping,
     pinned: pinnedUrls.has(V.normalizeUrl(current.url)),
     newTab: V.isNewTabPage(current.url),
@@ -555,6 +562,7 @@ function fresh(input: ViewModelInput): ViewModel {
     editor,
     notice,
     prompt,
+    toast,
     gesture,
     launcher,
     pageLoader,

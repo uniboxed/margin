@@ -331,6 +331,35 @@ const ACTIONS: Record<string, Handler> = {
     requests.push({ type: 'closeTab', item: k.id, url: k.url, target: targetOfItem(k), spaceId: k.spaceId, next: after?.id ?? null });
     return { s: next };
   },
+  // Manual sleep / unload: closes the live browser tab or asks the hosted app to quit, while keeping the item in its space.
+  unloadTab({ s, p, requests }) {
+    const k = s.keptTabs[p?.tabId];
+    if (!k) return fail(s, 'no such item');
+    const after = frontOf(s, k.spaceId, k.id);
+    requests.push({ type: 'unloadTab', windowId: p?.windowId ?? null, item: k.id, url: k.url, target: targetOfItem(k), spaceId: k.spaceId, next: after?.id ?? null });
+    return { s, result: { item: k.id } };
+  },
+  // Duplicate a web item right next to it in the same space and open it.
+  duplicateTab({ s, p, now, ids, requests }) {
+    const k: any = s.keptTabs[p?.tabId];
+    if (!k) return fail(s, 'no such item');
+    const target = targetOfItem(k);
+    if (target.kind !== 'web') return fail(s, 'only web items can be duplicated');
+    const id = ids.tab();
+    const w = win(p);
+    let next = addItem(s, id, { spaceId: k.spaceId, url: k.url, title: k.title, icon: k.favIconUrl ?? '', target, now });
+    next = M.placeKept(next, id, k.id, 'before', k.spaceId) as LibState;
+    next = used(next, id, w, now);
+    requests.push({ type: 'newTab', windowId: p?.windowId ?? null, item: id, url: k.url, target, spaceId: k.spaceId });
+    return { s: next, result: { tabId: id } };
+  },
+  // Mute / unmute a live web item's tab (hosted Safari copy toggles mutedInfo).
+  muteTab({ s, p, requests }) {
+    const k = s.keptTabs[p?.tabId];
+    if (!k) return fail(s, 'no such item');
+    requests.push({ type: 'muteTab', windowId: p?.windowId ?? null, item: k.id, url: k.url, target: targetOfItem(k), spaceId: k.spaceId });
+    return { s, result: { item: k.id } };
+  },
   // Its page closed outside Margin (the browser's own tab bar, the app quit): archived as closeTab, nothing asked.
   itemClosed({ s, p, now, ids }) {
     if (!s.keptTabs[p?.tabId]) return fail(s, 'no such item');
@@ -372,6 +401,13 @@ const ACTIONS: Record<string, Handler> = {
     next = used(next, id, win(p), now);
     requests.push({ type: 'restoreArchive', windowId: p.windowId ?? null, item: id, url: entry.url, target, spaceId });
     return { s: next, result: { tabId: id } };
+  },
+  // ⇧⌘T: reopen the most recently archived entry in this space (or newest overall if this space has none).
+  restoreLastArchive({ s, p, now, ids, requests }) {
+    const spaceId = windowSpace(s, win(p));
+    const entry = (spaceId ? s.archive.find((a) => a.spaceId === spaceId) : null) ?? s.archive[0];
+    if (!entry) return { s, result: null };
+    return ACTIONS.restoreArchive({ s, p: { ...p, archiveId: entry.id }, now, ids, requests });
   },
   // ---- pins ----
   // An item pinned in its space: the item becomes the pin (as a kept tab does in the extension), its target the pin's.

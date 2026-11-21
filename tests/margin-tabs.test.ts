@@ -333,7 +333,7 @@ test('menus: a kept tab\'s menu is a tab\'s (pin, folders, move to a space, clos
   const id = Object.keys(s.keptTabs)[0];
   const vm = buildViewModel({ state: s, ui: { windowId: 1, tabId: 1 } });
   const items = menuItems({ kind: 'tab', id }, { state: s, space: vm.space });
-  assert.deepEqual(items.filter((i) => !i.separator).map((i) => [i.label, i.action]), [['Pin Tab', 'tab.pin'], ['New Folder with Tab', 'folder.newWithTab'], ['Move to 🏠 Personal', 'tab.moveToSpace'], ['Close Tab', 'tab.close']]);
+  assert.deepEqual(items.filter((i) => !i.separator).map((i) => [i.label, i.action]), [['Pin Tab', 'tab.pin'], ['New Folder with Tab', 'folder.newWithTab'], ['Copy URL', 'tab.copyUrl'], ['Duplicate Tab', 'tab.duplicate'], ['Move to 🏠 Personal', 'tab.moveToSpace'], ['Close Tab', 'tab.close']]);
   assert.deepEqual(menuItems({ kind: 'tab', id: 't-gone' }, { state: s, space: vm.space }), []);
 });
 

@@ -42,7 +42,8 @@ import { createIntents } from './intents.ts';
 import type { Front } from './intents.ts';
 import { createRowMotion } from './row-motion.ts';
 
-const CLOSED_PALETTE = Object.freeze({ open: false, query: '', selected: 0, newTab: false });
+const CLOSED_PALETTE = Object.freeze({ open: false, query: '', selected: 0, newTab: false, selectAll: false });
+const TOAST_MS = 1800;
 // What's shown ahead of the state lasts this long at most (sidebar.js SHOWN_SPACE_MS).
 const PENDING_MS = 3000;
 // The page was shown this recently: its own tab's space until the state
@@ -122,7 +123,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   onSwitchRun?: (run: import('../shared/switching.ts').SwitchRun) => void,
 }) {
   // (Always with a palette: closed, or as it's open.)
-  let ui: Ui = { sidebar: null, palette: CLOSED_PALETTE, menu: null, editing: null, editor: null, notice: null, focused: true, switchingTo: null, newTabPending: false, opening: null, ...start };
+  let ui: Ui = { sidebar: null, palette: CLOSED_PALETTE, menu: null, editing: null, editor: null, notice: null, prompt: null, toast: null, focused: true, switchingTo: null, newTabPending: false, opening: null, ...start };
   let vm: ViewModel | null = null;
   let drawn: ViewModel | null = null;
   let savedKey: string | null = null; // the theme's saved settings last applied (as JSON)
@@ -308,6 +309,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       if (moving) motion.after();
     }
     followPage();
+    followToast();
     if (vm.ready) firstRender = false;
     for (const b of list) b.afterRender?.(vm, prev);
     expireLater();
@@ -325,6 +327,47 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   // `shown` for its fade-out, see-through and never taking the pointer.
   // `m-starting`: from the root's first frame until a frame after the state's data was first drawn (a theme's
   // skeleton); never set when the data is there at the first draw.
+  let defaultToast: HTMLElement | null = null;
+  let toastTimer: Timer | null = null;
+  let toastSeq = 0;
+  function showToast(text: string, ms: number = TOAST_MS) {
+    const clean = String(text ?? '').trim().slice(0, 140);
+    if (!clean || destroyed) return;
+    clearTimeout(toastTimer);
+    const id = `toast-${++toastSeq}`;
+    setUi({ toast: { id, text: clean } });
+    toastTimer = setTimeout(() => {
+      toastTimer = null;
+      if (!destroyed && ui.toast?.id === id) setUi({ toast: null });
+    }, Math.max(300, ms));
+  }
+  function followToast() {
+    const root = (view.rootElement() as HTMLElement | null);
+    if (!root) return;
+    const own = view.parts.has('toast') && !!root.querySelector('m-toast:not([m-default])');
+    if (own || !vm?.toast) {
+      if (defaultToast) { defaultToast.remove(); defaultToast = null; }
+      return;
+    }
+    if (!defaultToast) {
+      defaultToast = doc.createElement('m-toast');
+      defaultToast.setAttribute('m-default', '');
+      defaultToast.setAttribute('role', 'status');
+      defaultToast.setAttribute('aria-live', 'polite');
+    }
+    if (defaultToast.textContent !== vm.toast.text) defaultToast.textContent = vm.toast.text;
+    if (defaultToast.parentNode !== root) root.appendChild(defaultToast);
+  }
+  function copyText(text: string, label: string) {
+    if (!text) return false;
+    if (host.perform?.('copyUrl', { url: text })) { showToast(label); return true; }
+    try {
+      void win.navigator?.clipboard?.writeText?.(text).catch(() => {});
+    } catch {}
+    showToast(label);
+    return true;
+  }
+
   let defaultLoader: HTMLElement | null = null;
   // `elsewhere` with a web item's picture (host.pagePicture): `<m-page-picture>` over the page's place, above any
   // loader: the page as Safari last showed it, faded, and the card's words (BASE_CSS; a theme may restyle it). Made
@@ -690,13 +733,35 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   function local(name: string, arg: any, info: any): unknown {
     switch (name) {
       case 'palette.open':
-        setUi({ palette: { open: true, query: '', selected: 0, newTab: !!arg?.newTab }, menu: null, newTabPending: false });
+        setUi({
+          palette: { open: true, query: typeof arg?.query === 'string' ? arg.query : '', selected: 0, newTab: !!arg?.newTab, selectAll: !!arg?.selectAll },
+          menu: null, newTabPending: false,
+        });
         return true;
       case 'palette.close':
         if (!ui.palette.open) return true;
         setUi({ palette: CLOSED_PALETTE });
         behaviors.palette?.closed(false);
         onPalette?.('close');
+        return true;
+      case 'tab.copyUrl': {
+        const state = host.getState();
+        const targetId = arg !== undefined && arg !== null && arg !== '' ? arg : frontTab();
+        const item = typeof targetId === 'string' ? state?.keptTabs?.[targetId] : targetId != null ? state?.tabs?.[targetId] : null;
+        const url = item?.url ?? '';
+        if (!/^https?:\/\//i.test(url)) return false;
+        return copyText(url, arg == null || arg === '' ? 'Copied Current URL' : 'Copied URL');
+      }
+      case 'pin.copyUrl': {
+        const pin = host.getState()?.pins?.find((p: { id: string }) => p.id === arg);
+        const url = pin?.url ?? '';
+        if (!/^https?:\/\//i.test(url)) return false;
+        return copyText(url, 'Copied URL');
+      }
+      case 'toast.close':
+        clearTimeout(toastTimer);
+        toastTimer = null;
+        if (ui.toast) setUi({ toast: null });
         return true;
       case 'space.edit': return behaviors.editor.open(arg);
       case 'space.rename': return behaviors.rename.start('space', arg);
@@ -912,10 +977,11 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       if (tabId === frontTab()) switching.toFront(tabId, request);
       else switching.start(tabId, request);
     },
-    /** The palette, opened by the host (its key, ⌘T's hand-off): `newTab`, to choose a new tab. */
-    openPalette: ({ newTab = false } = {}) => local('palette.open', { newTab }, null),
+    /** The palette, opened by the host (its key, ⌘T's hand-off, ⌘L address): `newTab`, to choose a new tab. */
+    openPalette: ({ newTab = false, query = '', selectAll = false }: { newTab?: boolean, query?: string, selectAll?: boolean } = {}) => local('palette.open', { newTab, query, selectAll }, null),
     closePalette: () => { if (ui.palette.open) local('palette.close', undefined, null); },
     get paletteOpen() { return !!ui.palette.open; },
+    showToast,
     /** The new-tab launcher's field focused, by the host's word (its overlay shown over a new window: behaviors/palette.js). */
     focusLauncher: () => !!behaviors.palette?.focusLauncher(),
     /** The tab list's scroll: saved now (before a switch), or set (a page prepared for a show). */
@@ -936,6 +1002,9 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       motion.destroy();
       clearTimeout(expiryTimer);
       clearTimeout(newTabTimer);
+      clearTimeout(toastTimer);
+      defaultToast?.remove();
+      defaultToast = null;
       for (const id of timers) clearTimeout(id);
       for (const fn of offs.splice(0)) fn();
       view.destroy();

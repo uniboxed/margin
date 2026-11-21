@@ -96,6 +96,7 @@ export function installPalette(rt: Rt) {
             const was = active();
             restoreFocus = was && !isField(was) ? was : null;
             input.focus({ preventScroll: true });
+            if (rt.ui.palette.selectAll && input.value) input.select?.();
           }
         }
         if (reveal) {

@@ -22,9 +22,46 @@ enum AppCommand: String, CaseIterable {
     case nextTab = "next-tab", prevTab = "prev-tab", nextSpace = "next-space", prevSpace = "prev-space", palette
     case toggleSidebar = "toggle-sidebar"
     case newWindow = "new-window" // a Margin window of its own (docs/BROWSER-WINDOWS.md §5)
+    case copyUrl = "copy-url"
+    case focusAddress = "focus-address"
+    case togglePin = "toggle-pin"
+    case reopenArchived = "reopen-archived"
+    case space1 = "space-1", space2 = "space-2", space3 = "space-3", space4 = "space-4", space5 = "space-5"
+    case space6 = "space-6", space7 = "space-7", space8 = "space-8", space9 = "space-9"
+    case item1 = "item-1", item2 = "item-2", item3 = "item-3", item4 = "item-4", item5 = "item-5"
+    case item6 = "item-6", item7 = "item-7", item8 = "item-8", item9 = "item-9"
 
     // Held down, these run again at the Mac's key repeat (a hot key itself fires once).
     var repeats: Bool { self == .nextTab || self == .prevTab || self == .nextSpace || self == .prevSpace }
+
+    // Commands that belong to Margin or a hosted browser, never hijacked from a hosted native app (e.g. Terminal, Notes).
+    var browserOnly: Bool {
+        switch self {
+        case .copyUrl, .focusAddress, .togglePin, .reopenArchived,
+             .item1, .item2, .item3, .item4, .item5, .item6, .item7, .item8, .item9:
+            return true
+        default:
+            return false
+        }
+    }
+
+    var spaceNumber: Int? {
+        switch self {
+        case .space1: return 1; case .space2: return 2; case .space3: return 3
+        case .space4: return 4; case .space5: return 5; case .space6: return 6
+        case .space7: return 7; case .space8: return 8; case .space9: return 9
+        default: return nil
+        }
+    }
+
+    var itemNumber: Int? {
+        switch self {
+        case .item1: return 1; case .item2: return 2; case .item3: return 3
+        case .item4: return 4; case .item5: return 5; case .item6: return 6
+        case .item7: return 7; case .item8: return 8; case .item9: return 9
+        default: return nil
+        }
+    }
 }
 
 // A held key's repeat: the Mac's own delay and rate (Keyboard settings), a
@@ -91,6 +128,16 @@ enum ShortcutSet {
         .nextSpace: "Alt+Meta+ArrowRight", .prevSpace: "Alt+Meta+ArrowLeft",
         .palette: "Meta+KeyT", .toggleSidebar: "Alt+KeyS",
         .newWindow: "Meta+KeyN",
+        .copyUrl: "Shift+Meta+KeyC",
+        .focusAddress: "Meta+KeyL",
+        .togglePin: "Meta+KeyD",
+        .reopenArchived: "Shift+Meta+KeyT",
+        .space1: "Ctrl+Digit1", .space2: "Ctrl+Digit2", .space3: "Ctrl+Digit3",
+        .space4: "Ctrl+Digit4", .space5: "Ctrl+Digit5", .space6: "Ctrl+Digit6",
+        .space7: "Ctrl+Digit7", .space8: "Ctrl+Digit8", .space9: "Ctrl+Digit9",
+        .item1: "Meta+Digit1", .item2: "Meta+Digit2", .item3: "Meta+Digit3",
+        .item4: "Meta+Digit4", .item5: "Meta+Digit5", .item6: "Meta+Digit6",
+        .item7: "Meta+Digit7", .item8: "Meta+Digit8", .item9: "Meta+Digit9",
     ]
 
     static var bindings: [Combo: AppCommand] {

@@ -304,6 +304,7 @@ final class HostedSession: LibraryDelegate {
     private var appLoading: HostID?
     private var showing: [HostID: String] = [:]
     private(set) var safariTabs: [String: Int] = [:]
+    private(set) var safariMuted: Set<String> = []
     private var copyLoading: [String: Set<Int>] = [:]
     private(set) var loadingSaid: [Int: [Int]] = [:]
     // Each Margin window's item asked to be shown and not shown yet (the newest): drawn in front at once.
@@ -389,14 +390,22 @@ final class HostedSession: LibraryDelegate {
             let out = library.perform("addItem", payload)
             guard out.ok, let item = (out.result as? JSONObject)?["tabId"] as? String else { return note("openPin: no item made (\(out.error ?? "?"))") }
             await show(item, url: r.url, target: r.target, windowId: r.windowId)
-        case "closeTab":
+        case "closeTab", "unloadTab":
             guard let item = r.item else { return }
             let windows = shown.filter { $0.value == item }.map(\.key)
             let next = r.body["next"] as? String
             if let next, let window = windows.first, requested[window] == nil { requested[window] = next } // (in front at once)
+            safariMuted.remove(item)
             await close(item, target: r.target)
             if let next, let window = windows.first {
                 await show(next, url: nil, target: library.target(ofItem: next), windowId: window)
+            }
+        case "muteTab":
+            guard let item = r.item, let entry = open[item], let profile = entry.profile else { return }
+            let answer = await links.request(profile: profile, "hostMute", ["itemId": item])
+            if let muted = answer.result?["muted"] as? Bool {
+                if muted { safariMuted.insert(item) } else { safariMuted.remove(item) }
+                onChange?()
             }
         case "clearToday":
             for item in r.body["items"] as? [String] ?? [] { await close(item, target: nil) }
@@ -1657,7 +1666,7 @@ final class HostedSession: LibraryDelegate {
             let n = number(ofItem: item)
             tabs[String(n)] = [
                 "id": n, "windowId": windowId, "index": index, "title": k["title"] ?? "", "url": k["url"] ?? "", "favIconUrl": k["favIconUrl"] ?? "",
-                "active": front == item, "lastActive": k["lastActive"] ?? 0, "mid": item, "order": k["order"] ?? 0,
+                "active": front == item, "muted": safariMuted.contains(item), "lastActive": k["lastActive"] ?? 0, "mid": item, "order": k["order"] ?? 0,
             ]
             tabSpace[String(n)] = space
             kept[item] = nil
@@ -1731,6 +1740,13 @@ final class LibraryWindowSource: MarginWindowSource {
         switch type {
         case "updateSettings", "updateThemeSettings":
             return profileSource.perform(type, payload)
+        case "copyUrl":
+            if let url = payload["url"] as? String, !url.isEmpty {
+                let pb = NSPasteboard.general
+                pb.clearContents()
+                pb.setString(url, forType: .string)
+            }
+            return ["ok": true, "result": true]
         case "app.open":
             guard let id = payload["bundleId"] as? String, AppCatalog.isBundleId(id) else { return ["ok": false, "error": "not a bundle id"] }
             session.openApp(id, windowId: windowId)

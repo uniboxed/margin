@@ -769,6 +769,57 @@ export const handlers = {
     if (!sender?.app) throw new Error('the app\'s request only');
     return hostedTabs.close(message);
   },
+  async hostMute(message: { itemId?: string, muted?: boolean }, sender: BrowserMessageSender) {
+    if (!sender?.app) throw new Error('the app\'s request only');
+    return hostedTabs.mute(message);
+  },
+  async duplicateTab({ tabId, windowId }: { tabId: number | string, windowId?: number }, sender: BrowserMessageSender) {
+    const s = await load();
+    const kept = typeof tabId === 'string' ? s.keptTabs[tabId] : null;
+    const live = Number.isInteger(tabId) ? s.tabs[tabId as number] : null;
+    const url = live?.url ?? kept?.url;
+    const spaceId = kept ? kept.spaceId : live ? s.tabSpace[live.id] : null;
+    if (!url || !/^https?:\/\//i.test(url)) return null;
+    const win = windowId ?? live?.windowId ?? sender.tab?.windowId;
+    if (win == null) return null;
+    markMarginOpening();
+    const created = await api.tabs.create({ windowId: win, url, active: true });
+    if (created?.id != null && spaceId) {
+      await mutate((st) => M.moveTab(M.upsertTab(st, created, now()), created.id, spaceId));
+    }
+    return created?.id ?? null;
+  },
+  async muteTab({ tabId }: { tabId: number | string }) {
+    if (!Number.isInteger(tabId)) return { muted: false };
+    const tab = await api.tabs.get(tabId as number).catch(() => null);
+    if (!tab) return { muted: false };
+    const next = !tab.mutedInfo?.muted;
+    const updated = await api.tabs.update(tab.id, { muted: next }).catch(() => null);
+    if (updated) await mutate((s) => M.upsertTab(s, updated, now()));
+    return { muted: updated?.mutedInfo?.muted ?? next };
+  },
+  async unloadTab({ tabId }: { tabId: number | string }) {
+    if (!Number.isInteger(tabId)) return false;
+    const id = tabId as number;
+    const s = await load();
+    if (!s.tabs[id]) return false;
+    if (capabilities?.sleepTabs === 'discard' && typeof api.tabs.discard === 'function') {
+      await api.tabs.discard(id).catch(() => null);
+      return true;
+    }
+    await mutate((st) => M.keepTab(st, id, { why: 'sleep', now: now() }));
+    noteClosing([id], 'keep', 'sleep');
+    await api.tabs.remove(id).catch(() => {});
+    return true;
+  },
+  async restoreLastArchive({ windowId }: { windowId?: number }, sender: BrowserMessageSender) {
+    const s = await load();
+    const win = windowId ?? sender.tab?.windowId ?? null;
+    const spaceId = win != null ? V.activeSpaceId(s, win) : s.spaces[0]?.id ?? null;
+    const entry = (spaceId ? s.archive.find((a) => a.spaceId === spaceId) : null) ?? s.archive[0];
+    if (!entry) return null;
+    return handlers.restoreArchive({ archiveId: entry.id, windowId: win ?? undefined });
+  },
   // Margin.app's index of the themes the person imported (app/platforms/macos/shell/ThemeStore.swift: they're the
   // Mac's, kept by the app; a copy holds only the list, never a package), sent as a copy links and
   // whenever it changes. Kept in storage.local (`userThemes`) for updateSettings and the theme's settings.

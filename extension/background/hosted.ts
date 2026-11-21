@@ -21,13 +21,13 @@
 // Nothing here touches the copy's own spaces: its usual tab tracking goes on as for any tab.
 import { isNewTabPage } from '../shared/view.ts';
 
-type Tab = { id?: number, windowId?: number, url?: string, pendingUrl?: string, active?: boolean };
+type Tab = { id?: number, windowId?: number, url?: string, pendingUrl?: string, active?: boolean, mutedInfo?: { muted: boolean } };
 /** What of the browser's tabs API this uses (the extension's `api.tabs`, a test's stand-in). */
 export type HostedTabsApi = {
   get(id: number): Promise<Tab>,
   query(info: { windowId?: number }): Promise<Tab[]>,
   create(props: { windowId: number, url: string, active: boolean }): Promise<Tab>,
-  update(id: number, props: { url?: string, active?: boolean }): Promise<Tab>,
+  update(id: number, props: { url?: string, active?: boolean, muted?: boolean }): Promise<Tab>,
   remove(id: number): Promise<void>,
   captureVisibleTab?(windowId: number, options: { format: 'jpeg', quality: number }): Promise<string>,
 };
@@ -108,6 +108,14 @@ export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = asy
       if (tab?.id == null) return { closed: false };
       await tabs().remove(tab.id);
       return { closed: true };
+    },
+    async mute({ itemId, muted }: { itemId?: unknown, muted?: unknown }) {
+      if (typeof itemId !== 'string' || !ITEM.test(itemId)) throw new Error('no item');
+      const tab = await own(itemId, null);
+      if (tab?.id == null) return { muted: false, ok: false };
+      const next = typeof muted === 'boolean' ? muted : !tab.mutedInfo?.muted;
+      const updated = await tabs().update(tab.id, { muted: next });
+      return { muted: updated?.mutedInfo?.muted ?? next, ok: true };
     },
   };
 }
