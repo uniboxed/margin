@@ -34,7 +34,7 @@ import { createAppNotices, createGestureFeedback } from '../../../extension/ui/a
 import { backgroundSwitches, describeSwitchRun, OVERLAY_SWITCH_PREFIX, pickNavTab } from '../../../extension/shared/switching.ts';
 import { cycleSpace, cycleTab } from '../../../extension/shared/view.ts';
 import { pickBridge } from '../../../extension/ui/overlay-bridge.ts';
-import { numberedAction, togglePin } from '../../../extension/ui/shortcut-targets.ts';
+import { numberedAction, numberedRows, togglePin } from '../../../extension/ui/shortcut-targets.ts';
 
 // WebKit's handler on the Mac, WebView2's on Windows (ui/overlay-bridge.ts).
 const bridge = pickBridge(globalThis);
@@ -340,10 +340,23 @@ function reportSpace() {
   spaceTold = told;
   void post('shownSpace', { windowId: host?.windowId ?? null, space: vm.space.id ?? null }).catch(() => {});
 }
+// How many spaces and numbered rows (⌘1–9: ui/shortcut-targets.ts) the sidebar has, told to the app when it changes: it
+// holds only the numbered keys with something behind them, so a press of another reaches the app in front
+// (Shortcuts.swift ShortcutSet.held: Carbon's hot keys can't pass one on).
+let countsTold = '';
+function reportCounts() {
+  const vm = runtime?.vm;
+  if (!vm?.space) return;
+  const counts = { spaces: vm.spaces?.length ?? 0, items: numberedRows(vm).length };
+  const told = JSON.stringify(counts);
+  if (told === countsTold) return;
+  countsTold = told;
+  void post('counts', counts).catch(() => {});
+}
 const watcher = new MutationObserver((records) => {
   // (The page's own hover marks change nothing measured: m-hover alone, nothing to do.)
   if (records.every((r) => r.type === 'attributes' && (r.attributeName === HOVER_ATTR || r.attributeName === HOVER_OFF))) return;
-  hitsSoon(); hitsAfter(400); queueMicrotask(measureNow); queueMicrotask(reportWant); queueMicrotask(reportSpace); queueMicrotask(followPopup);
+  hitsSoon(); hitsAfter(400); queueMicrotask(measureNow); queueMicrotask(reportWant); queueMicrotask(reportSpace); queueMicrotask(reportCounts); queueMicrotask(followPopup);
 });
 // A menu or prompt of Margin's opened or closed: the keys taken or given back with it (`popupOpen`, as a field's).
 function followPopup() { const want = stillHasKeys(); if (want !== hasKeys) setKeys(want); }
