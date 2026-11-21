@@ -6841,7 +6841,16 @@ user's choices (the doc's table) as built; what was decided here is marked so.
   elsewhere replaces it.
 - **Expand.** A new item of the card's space at its current address and title (target the card's profile), the
   card's tab moved into the profile's main window as that item's (`hostPromotePeek`, which now leaves a blank tab
-  behind), then shown as main; the card window parked. A split's panes under a card are kept as they were.
+  behind), then shown as main; the card window parked. Over a split, the expanded page is shown alone, as any item
+  picked outside a split (the split stays for its next pick).
+- **Over a split** (merged with split view, §4). A card opens over a split as one more visible host: the split's
+  layout is kept (`HostedLayout.split`, its panes at their `<m-pane>`s, asked of the page again; the card keeps its own
+  `<m-peek-page>` rect, never a pane's), the focused pane stays the window's item shown. Closing it (any way) lays the
+  split out again without it, its focused pane focused. ⌘W: the card when one is up (Margin's Close Tab and a hosted
+  app's ⌘W alike), else the focused pane (split's rule). A page-area change or a drag places the card at its
+  `<m-peek-page>` with the panes (one engine call, the layout held for all). One helper leaves the blank tab in any of
+  Margin's windows a move, a close or an Expand would empty (background/hosted.ts `leaveBlank`). The copy takes an
+  http(s) `newWindow` address from Margin.app only (a card's or a pane's window). Checked: peek-split-tests.swift.
 - **Little Arc** (⌥⌘N, `littleArc.open`): the card with Margin's own field (`m-input="peek"`, no window yet;
   `peek.littleArc` tells the app so ⌘W closes it). Return takes what's typed as the palette does (shared/search.ts
   `resolveInput`): an address, else a search, its address from the engine Safari searches with (the palette's
