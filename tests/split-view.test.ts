@@ -9,7 +9,7 @@ import * as L from '../app/shared/library/library.ts';
 import { checkAction, contextFromState, requestFor } from '../extension/ui/actions.ts';
 import { menuItems } from '../extension/ui/behaviors/menu-items.ts';
 import { buildViewModel } from '../extension/ui/view-model.ts';
-import { dividerSizes, dragRatios, equalRatios, nextSplitPane, paneFloors, panesFit, PANE_FLOOR, SAFARI_TOOLBAR } from '../extension/ui/behaviors/split.ts';
+import { appKeyOf, dividerSizes, dragRatios, equalRatios, nextSplitPane, paneFloors, panesFit, PANE_FLOOR, SAFARI_TOOLBAR } from '../extension/ui/behaviors/split.ts';
 import { createHostedTabs } from '../extension/background/hosted.ts';
 import * as M from '../extension/state/model.ts';
 
@@ -128,6 +128,18 @@ test('split view, library: Remove from Split View shows the rest; Break Out show
   assert.equal(lib.values.splits[sp2], undefined);
 });
 
+test('split view, library: a pane Margin.app takes out (it couldn\'t open) keeps the keys where they were (`focus`)', () => {
+  const lib = library();
+  const [a, b, c] = ['https://a.example/', 'https://b.example/', 'https://c.example/'].map(lib.web);
+  const sp = lib.act('createSplit', { panes: [a, b, c], windowId: 1 }).result.splitId;
+  // (c, the one added, failed: a had the keys before it; never c's neighbour b by the next-pane rule.)
+  const removed = lib.act('removeFromSplit', { tabId: c, windowId: 1, focus: a });
+  assert.deepEqual(shows(removed), [{ split: sp, item: a, panes: [a, b] }]);
+  // A focus that isn't one of the rest (the removed one itself, another item): the next-pane rule, as before.
+  const sp2 = lib.act('createSplit', { panes: [a, b, c], windowId: 1 }).result.splitId;
+  assert.deepEqual(shows(lib.act('removeFromSplit', { tabId: b, windowId: 1, focus: b })), [{ split: sp2, item: c, panes: [a, c] }]);
+});
+
 // ---- the UI ----
 
 function splitState() {
@@ -169,6 +181,16 @@ test('split view, UI: a pane\'s menu has Remove, Break Out, Swap, Stacked; anoth
 test('split view, UI: a divider moves the two panes beside it, each stopping at its floor', () => {
   assert.deepEqual(paneFloors({ axis: 'horizontal', panes: [{ id: 'a' }, { id: 'b' }] as any }, { a: [500, 300] }), [500, PANE_FLOOR.width]);
   assert.deepEqual(paneFloors({ axis: 'vertical', panes: [{ id: 'a' }, { id: 'b' }] as any }, { a: [500, 300] }), [300, PANE_FLOOR.height]);
+  // Its app's known minimum (Margin.app's `appMin`: `web` for Safari's pages, an app by its bundle id), whether its
+  // window is open or not: a pane not opened yet, main, one being added (2026-11-21: a third Safari pane let in).
+  const apps = { web: [574, 220], 'com.apple.Notes': [700, 400] } as Record<string, [number, number]>;
+  const mixed = [{ id: 'a', url: 'https://a.example/' }, { id: 'n', url: 'app://com.apple.Notes' }, { id: 'x', url: 'app://com.example.Other' }];
+  assert.deepEqual(paneFloors({ axis: 'horizontal', panes: mixed }, {}, apps), [574, 700, PANE_FLOOR.width]);
+  assert.deepEqual(paneFloors({ axis: 'vertical', panes: mixed }, {}, apps), [220, 400, PANE_FLOOR.height]);
+  assert.deepEqual(paneFloors({ axis: 'horizontal', panes: mixed }, { a: [600, 0], n: [650, 0] }, apps), [600, 700, PANE_FLOOR.width], 'the larger of its own and its app\'s');
+  assert.equal(appKeyOf('app://com.apple.Notes'), 'com.apple.Notes');
+  assert.equal(appKeyOf('https://a.example/x'), 'web');
+  assert.equal(panesFit(paneFloors({ axis: 'horizontal', panes: [mixed[0], mixed[0], mixed[0]] }, {}, apps), 1264, 8), false, '3 Safari panes in 1264: no');
   const r = dragRatios([600, 600], [200, 200], 0, -100);
   assert.deepEqual(r.map((v) => Math.round(v * 1200)), [500, 700]);
   assert.deepEqual(dragRatios([600, 600], [500, 200], 0, -400).map((v) => Math.round(v * 1200)), [500, 700], 'stops at the left one\'s floor');

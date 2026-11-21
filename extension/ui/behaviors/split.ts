@@ -7,7 +7,10 @@
 // View.measure: `split`, `panes`), and Margin.app places each pane's window at its box (HostedSession.swift).
 //
 // - A pane is never laid out below its window's own minimum (the app's `paneMin`: host-app.ts `paneMinimums`, the
-//   engine's as learnt), nor below PANE_FLOOR: its box's `min-width` (side by side) or `min-height` (stacked).
+//   engine's as learnt), nor below its app's known minimum (`appMin`: every app's, `web` for Safari's pages, whether a
+//   window of it is open or not: a pane being added, main, a pane not opened yet), nor below PANE_FLOOR: its box's
+//   `min-width` (side by side) or `min-height` (stacked). The real screen, 2026-11-21: a third Safari pane let into a
+//   split of two, its window made and refused, because only the open panes' minimums were known.
 // - A divider dragged: the two panes beside it change size with the pointer, at most once a frame, each stopping at
 //   its minimum; the page measured and reported that frame (the app's windows follow it live: `split.resizing`, as a
 //   drag of the sidebar's edge); let go, `split.resize` saves the ratios. Double-click: equal sizes. Focused (Tab),
@@ -23,7 +26,8 @@
 //   with Margin's loader in it (`<m-pane-loader>`: a spinner, "Opening …"), over that pane's box only; the other panes
 //   stay shown and usable (never the page card's loader over the whole page area).
 // - Adding a pane that can't fit (each pane's minimum and the gaps, bands counted, more than the page area): refused
-//   with a toast (`refusesAdd`, runtime.ts dispatch). The sidebar's edge stops where the panes would no longer fit
+//   with a toast before anything is opened (`refusesAdd`, runtime.ts dispatch); so is stacking (or unstacking) panes
+//   that wouldn't fit along the other axis (`refusesAxis`). The sidebar's edge stops where the panes would no longer fit
 //   (`floor`, behaviors/resize.ts).
 import type { Rt } from '../runtime.ts';
 import type { ViewModel } from '../view-model.ts';
@@ -40,12 +44,23 @@ const BIG_STEP = 0.1;
 
 type Split = NonNullable<ViewModel['split']>;
 
-/** Each pane's floor along the axis (`row`: widths), from the app's minimums (by item id) and PANE_FLOOR. */
-export function paneFloors(split: Pick<Split, 'axis' | 'panes'>, minimums: Record<string, [number, number]> = {}): number[] {
+/** The app a pane's window is of, as Margin.app names its known minimums (`appMin`): an app's bundle id, `web` for a
+ *  web page (Safari's, the one browser hosted beside others). */
+export function appKeyOf(url: unknown): string {
+  const m = /^app:\/\/([^/?#]+)/i.exec(String(url ?? ''));
+  return m ? m[1] : 'web';
+}
+
+/** Each pane's floor along the axis (`row`: widths): its window's own minimum (by item id), else its app's known one
+ *  (by its address), and PANE_FLOOR at least. */
+export function paneFloors(split: { axis: string, panes: readonly { id: unknown, url?: string | null }[] }, minimums: Record<string, [number, number]> = {}, apps: Record<string, [number, number]> = {}): number[] {
   const row = split.axis !== 'vertical';
   return split.panes.map((p) => {
-    const m = minimums[String(p.id)];
-    return Math.max(row ? PANE_FLOOR.width : PANE_FLOOR.height, m ? (row ? m[0] : m[1]) : 0);
+    const own = minimums[String(p.id)];
+    const app = apps[appKeyOf(p.url)];
+    const m = own ?? app;
+    const either = own && app ? (row ? Math.max(own[0], app[0]) : Math.max(own[1], app[1])) : m ? (row ? m[0] : m[1]) : 0;
+    return Math.max(row ? PANE_FLOOR.width : PANE_FLOOR.height, either);
   });
 }
 
@@ -111,7 +126,8 @@ export function installSplit(rt: Rt) {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let laidOut = '';
 
-  const host = () => rt.host as typeof rt.host & { appWindow?: boolean, pageHosted?: boolean, paneMinimums?: Record<string, [number, number]>, paneLoading?: { item: string, name: string } | null };
+  const host = () => rt.host as typeof rt.host & { appWindow?: boolean, pageHosted?: boolean, paneMinimums?: Record<string, [number, number]>, appMinimums?: Record<string, [number, number]>, paneLoading?: { item: string, name: string } | null };
+  const floorsOf = (split: { axis: string, panes: readonly { id: unknown, url?: string | null }[] }) => paneFloors(split, host().paneMinimums, host().appMinimums);
   const page = () => view.pageEl as HTMLElement | null;
   /** The split shown here now: the item in front a pane of it, a window hosted in the page area. */
   const shown = (vm: ViewModel | null = rt.vm): Split | null => {
@@ -198,7 +214,7 @@ export function installSplit(rt: Rt) {
       return;
     }
     const ratios = ratiosFor(split);
-    const floors = paneFloors(split, host().paneMinimums);
+    const floors = floorsOf(split);
     const opening = host().paneLoading ?? null;
     const key = JSON.stringify([split.id, split.axis, split.panes.map((p) => [p.id, p.active, p.url, p.title, p.host]), ratios, floors, opening]);
     if (key === laidOut) return;
@@ -290,7 +306,7 @@ export function installSplit(rt: Rt) {
     const index = Number(d.getAttribute('m-index'));
     const now = sizes(el, split);
     const total = now.reduce((a, b) => a + b, 0) || 1;
-    drag = { el: d, pointerId: e.pointerId, index, start: row(split) ? e.clientX : e.clientY, sizes: now, floors: paneFloors(split, host().paneMinimums), ratios: now.map((s) => s / total), told: false, split: split.id };
+    drag = { el: d, pointerId: e.pointerId, index, start: row(split) ? e.clientX : e.clientY, sizes: now, floors: floorsOf(split), ratios: now.map((s) => s / total), told: false, split: split.id };
     d.setAttribute('m-dragging', '');
     view.rootElement()?.classList.add('m-split-resizing');
   }, true);
@@ -350,7 +366,7 @@ export function installSplit(rt: Rt) {
     const index = Number(d.getAttribute('m-index'));
     const now = sizes(el, split);
     const total = now.reduce((a, b) => a + b, 0) || 1;
-    const floors = paneFloors(split, host().paneMinimums);
+    const floors = floorsOf(split);
     const back = row(split) ? 'ArrowLeft' : 'ArrowUp';
     const on = row(split) ? 'ArrowRight' : 'ArrowDown';
     let delta: number | null = null;
@@ -374,7 +390,7 @@ export function installSplit(rt: Rt) {
       const split = shown();
       const el = page();
       if (!split || !el) return 0;
-      const floors = paneFloors(split, host().paneMinimums);
+      const floors = floorsOf(split);
       return row(split) ? floors.reduce((a, b) => a + b, 0) + gapOf(el) * (floors.length - 1) : Math.max(...floors);
     },
     /**
@@ -389,25 +405,46 @@ export function installSplit(rt: Rt) {
       if (!h.appWindow || !vm || !g) return null;
       const split = vm.split;
       const axis = split?.axis ?? 'horizontal';
-      const ids = split ? split.panes.map((p) => String(p.id)) : [];
       if (split && split.panes.some((p) => p.tabId === tabId || String(p.id) === String(tabId))) return null;
       if (split && split.panes.length >= 4) return 'A split view has 4 panes at most';
-      const panes = [...ids, String(tabId)];
-      if (!split) panes.unshift('front');
-      const floors = paneFloors({ axis, panes: panes.map((id) => ({ id })) as any }, h.paneMinimums);
-      const room = axis === 'vertical' ? g.container.height - g.insets.top - g.insets.bottom : g.container.width - g.insets.left - g.insets.right;
-      const el = page();
-      // (Each pane's address, for the bands: the split's own, the one added from the state; the item in front first.)
+      // (Each pane's id and address: the split's own, the one added from the state; the item in front first. Its address
+      // names its app for its known minimum (`appMin`, known before its window exists) and its band, stacked.)
       const st: any = rt.state;
       const urlOf = (id: unknown) => {
         const known = split?.panes.find((p) => String(p.id) === String(id) || String(p.tabId) === String(id));
         if (known) return known.url;
         return (typeof id === 'string' ? st?.keptTabs?.[id]?.url : st?.tabs?.[id as number]?.url) ?? '';
       };
-      const urls = [...(split ? [] : [vm.tab?.url ?? '']), ...ids.map(urlOf), urlOf(tabId)];
-      const gaps = dividerSizes({ axis, panes: urls.map((url) => ({ url })) }, el ? gapOf(el) : SPLIT_GAP);
-      return panesFit(floors, room, gaps) ? null : 'Not enough room for another pane';
+      const panes = [
+        ...(split ? split.panes.map((p) => ({ id: String(p.id), url: p.url ?? '' })) : [{ id: String(vm.tab?.id ?? 'front'), url: vm.tab?.url ?? '' }]),
+        { id: String(tabId), url: urlOf(tabId) },
+      ];
+      return fits(axis, panes) ? null : 'Not enough room for another pane';
+    },
+    /**
+     * Why the split shown can't be stacked (or put side by side) now, null: it can: its panes along the other axis,
+     * each at its minimum, wouldn't fit the page area. Said as a toast.
+     */
+    refusesAxis(splitId: unknown): string | null {
+      const h = host();
+      const split = rt.vm?.split;
+      if (!h.appWindow || !split || !h.layout || (splitId != null && String(splitId) !== split.id)) return null;
+      const axis = split.axis === 'vertical' ? 'horizontal' : 'vertical';
+      return fits(axis, split.panes.map((p) => ({ id: String(p.id), url: p.url ?? '' }))) ? null
+        : axis === 'vertical' ? 'Not enough room to stack these panes' : 'Not enough room for these panes side by side';
     },
     destroy() { if (frame) { rt.win.cancelAnimationFrame(frame); rt.cancel(timer); } },
   };
+
+  // Whether these panes (in order), each at its floor, fit the page area along `axis` with the gaps between them (bands
+  // above Safari panes counted, stacked).
+  function fits(axis: string, panes: { id: string, url: string }[]) {
+    const g = host().layout;
+    if (!g) return true;
+    const floors = floorsOf({ axis, panes });
+    const room = axis === 'vertical' ? g.container.height - g.insets.top - g.insets.bottom : g.container.width - g.insets.left - g.insets.right;
+    const el = page();
+    const gaps = dividerSizes({ axis, panes }, el ? gapOf(el) : SPLIT_GAP);
+    return panesFit(floors, room, gaps);
+  }
 }

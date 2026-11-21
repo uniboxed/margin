@@ -731,12 +731,15 @@ const ACTIONS: Record<string, Handler> = {
     requests.push({ type: 'activateTab', windowId: p.windowId ?? null, item: k.id, url: k.url, target: targetOfItem(k), spaceId: k.spaceId });
     return { s: next };
   },
-  // Out of its split, the rest of it shown (its next pane focused; one left: that one, alone).
+  // Out of its split, the rest of it shown (its next pane focused, or `focus` when it's one of the rest; one left: that
+  // one, alone). `focus`: Margin.app's own when a pane that couldn't open leaves (HostedSession.swift), the pane that had
+  // the keys keeping them.
   removeFromSplit({ s, p, now, requests }) {
     const group = M.splitForItem(s, p?.tabId);
     const k = s.keptTabs[p?.tabId];
     if (!group || !k) return { s };
-    const after = splitNext(s, k.id);
+    const kept = typeof p?.focus === 'string' && p.focus !== k.id && group.panes.includes(p.focus) && !!s.keptTabs[p.focus] ? p.focus : null;
+    const after = kept ?? splitNext(s, k.id);
     let next = M.removeFromSplit(s, group.id, k.id) as LibState;
     const left = (next.splits ?? []).find((g) => g.id === group.id);
     if (after && next.keptTabs[after]) {
