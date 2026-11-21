@@ -4621,9 +4621,18 @@ final class HostEngine {
         tileCount = sys.tiles(of: marginSpace)?.count ?? list.count + 1
         saveMarker()
         learnMinimum(host)
-        let sized = await reapplyTiles(first: host, each: each)
+        var sized = await reapplyTiles(first: host, each: each)
+        // (One more look before tiles go off for the run: under load the window server can lay Margin's own window out
+        // again, after a tile change, later than `tileWait` — the real Mac, 2026-11-21 15:09, with other test apps
+        // busy: the window at its rect, Margin's own still a split's half, and live resize was off for the whole run.)
+        if landed, !sized {
+            let t1 = sys.now()
+            sized = await reapplyTiles(first: host, each: each)
+            if sized { Diagnostics.note("host: \(host.id): its tile's rect and Margin's own window took \(ms(since: t1)) ms more than \(Int(options.tileWait * 1000)) ms: tiles kept") }
+        }
         guard landed, sized else {
-            return .notSized("its tile \(tile) \(landed ? "came in" : "came in without its window") and its window is at \(sys.bounds(window: host.window).map(r) ?? "?"), not \(r(frame(host)))")
+            let mine = sys.bounds(window: marginWindow)
+            return .notSized("its tile \(tile) \(landed ? "came in" : "came in without its window") and its window is at \(sys.bounds(window: host.window).map(r) ?? "?") (wanted \(r(frame(host)))), Margin's own window at \(mine.map(r) ?? "?") (wanted the display's width \(Int(placement.area.width)))")
         }
         Diagnostics.note("host: \(host.id): its tile \(tile) moved into Margin's Space and sized to the page area in \(ms(since: t0)) ms (\(tileCount) tiles there)")
         return .placed

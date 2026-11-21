@@ -11,6 +11,7 @@ import AppKit
 import Foundation
 
 func screenEngineTests() {
+    screenTilesLateTests()
     screenLayoutHeldTests()
     screenLeftFullScreenTests()
     screenDragLineTests()
@@ -189,3 +190,31 @@ private func screenLeftFullScreenTests() {
               "\(String(describing: w.bounds(window: edit))) \(l.all.filter { $0.contains("TextEdit") }.suffix(8))")
     }
 }
+
+// ---- Margin's own window back at its width later than `tileWait` after a tile came in (the real Mac under load,
+// 2026-11-21 15:09: "live resize off for this run: a tile's rect didn't take (… its window is at 240,41 1264×933, not
+// 240,41 1264×933)" — the window was there; Margin's own was still a split's half): one more look, tiles kept. ----
+private func screenTilesLateTests() {
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent("margin-screen-tiles-late-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let page = CGRect(x: 240, y: 41, width: 1264, height: 933)
+    let placement = HostPlacement(page: page, area: FakeHostWorld.display)
+    let textEdit = HostTarget.app("com.apple.TextEdit")
+    func run(late: Double) -> (FakeHostWorld, HostEngine) {
+        let w = FakeHostWorld()
+        w.tilesOn = true
+        w.marginBackAfter = late
+        let e = HostEngine(system: w, marker: folder.appendingPathComponent("\(late)/\(HostMarker.fileName)"), pid: 1)
+        e.options.privateRetire = 0
+        _ = hostRun { await e.open(app: textEdit, in: placement, marginWindow: FakeHostWorld.marginWindow, marginSpace: FakeHostWorld.marginSpace) }
+        return (w, e)
+    }
+    let (w1, e1) = run(late: e1Late)
+    check("screen: Margin's own window back at its width 0.4 s after a tile came in (past tileWait): one more look, tiles kept for the run, the window in its tile at the page area",
+          e1.tilesOff == nil && e1.hosts[textEdit.id]?.tile != nil && w1.bounds(window: w1.running(bundleId: "com.apple.TextEdit").first.flatMap { w1.apps[$0.pid]?.windows.first } ?? 0) == page,
+          "tiles off: \(e1.tilesOff ?? "no") tile \(String(describing: e1.hosts[textEdit.id]?.tile))")
+    let (_, e2) = run(late: 5)
+    check("screen: …Margin's own window never back within both looks: tiles off for the run, as before, the message naming Margin's own window",
+          e2.tilesOff?.contains("Margin's own window at") == true, "\(e2.tilesOff ?? "nil")")
+}
+private let e1Late = 0.4

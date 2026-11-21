@@ -7147,3 +7147,14 @@ window 23774): the pane was fronted twice and its toolbar showed over its page. 
   8 pt gap (order kept), stacked across the 52 pt band (not chased), a toolbar that stays out (revealed after 0.5 s)),
   `split-real-use-tests.swift` 4 (no out and back side by side, the keys the pane's), `screen-card-tests.swift`
   (unchanged: the card's order). Nothing on the real screen: TESTING.md M2.7 step 13g.
+
+## Tiles kept when Margin's own window comes back late after a tile change (2026-11-21)
+
+On the real Mac under load (two research test apps busy), Margin's launch turned live resize off for the whole run:
+"a tile's rect didn't take (its tile came in and its window is at 240,41 1264×933, not 240,41 1264×933)". The hosted
+window was at its rect; what `reapplyTiles` hadn't seen within `tileWait` (0.3 s) was Margin's own window back at the
+display's width (a tile change lays it out as a split's half for a moment). With tiles off, Safari was a plain member:
+every split resize became a re-place out of full screen and in (1 s behind the loader), and the chain that followed
+(order chased, main out of full screen) came from that. Now `tileIn` looks once more (another `reapplyTiles`) before
+tiles go off for the run, says when it took longer, and the off message names Margin's own window's bounds too.
+Check: screen-engine-tests.swift (Margin's own window back after 0.4 s: tiles kept; never back: off, as before).

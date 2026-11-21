@@ -219,6 +219,9 @@ final class FakeHostWorld: HostSystem {
     // The window server's bounds of a window Accessibility just set: its old frame this long after (none: at once).
     var frameLag = 0.0
     var lagging: [Int: (frame: CGRect, until: Double)] = [:]
+    // Margin's own window read as a split's half this long after a tile comes into its Space (the real Mac under load,
+    // 2026-11-21: longer than `tileWait`).
+    var marginBackAfter = 0.0
     // Apps whose window comes up already in full screen, in a Space of its own (owned by the app), the app hidden: they
     // restored it so (Maps, 2026-11-17: `windowIsFullScreen=1 appIsHidden=1`, the Dock adding its Space as it launched).
     var restoredFullScreen: Set<String> = []
@@ -1185,6 +1188,9 @@ final class FakeHostWorld: HostSystem {
             if moveLag > 0 { landing[n] = (before, clock + moveLag) }
         }
         relayFirstTwo(space)
+        if marginBackAfter > 0, space == Self.marginSpace {
+            lagging[Self.marginWindow] = (CGRect(x: 0, y: 0, width: ((Self.display.width - 12) / 2).rounded(.down), height: Self.display.height), clock + marginBackAfter)
+        }
         noteListing()
         return true
     }
