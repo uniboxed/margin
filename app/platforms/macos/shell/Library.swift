@@ -75,7 +75,7 @@ struct LibraryOutcome {
 }
 
 final class Library {
-    static let collections = ["spaces", "pins", "favorites", "airTraffic", "folders", "tabs", "archive", "windows", "imports"]
+    static let collections = ["spaces", "pins", "favorites", "airTraffic", "splits", "folders", "tabs", "archive", "windows", "imports"]
     // The set's key in its store (the store is flat: the key names no folder).
     static let key = DataProfile(browser: "app", profile: "library")
     static let requestsKept = 100

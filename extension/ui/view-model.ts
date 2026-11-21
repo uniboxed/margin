@@ -123,6 +123,18 @@ export type FolderRow = {
   parentFolderId: string | null, depth: number,
   count: number, pins: PinRow[], shown: PinRow[], hasShown: boolean,
 };
+export type SplitPaneView = Face & {
+  id: string, tabId: number | string, index: number, active: boolean, ratio: number, percent: number,
+};
+export type SplitRow = {
+  kind: 'split', isSplit: true, id: string, axis: 'horizontal' | 'vertical',
+  active: boolean, panes: SplitPaneView[], ratios: number[], count: number, title: string,
+};
+export type ActiveSplitView = {
+  id: string, axis: 'horizontal' | 'vertical', isHorizontal: boolean, isVertical: boolean,
+  panes: SplitPaneView[], dividers: { index: number, percent: number }[], canAddPane: boolean,
+  labels: { swap: string, breakOut: string, closePane: string, toggleAxis: string },
+};
 export type SpaceChip = {
   id: string, name: string, emoji: string, color: string, abbr: string,
   index: number, number: number, active: boolean, tabCount: number,
@@ -130,6 +142,7 @@ export type SpaceChip = {
 };
 export type SpaceView = SpaceChip & {
   pinned: (FolderRow | PinRow)[], pinnedFlat: (FolderRow | PinRow)[], folders: FolderRow[], pins: PinRow[],
+  splits: SplitRow[], hasSplits: boolean,
   today: TabRow[], hasToday: boolean, hasPinned: boolean,
   newTab: { active: boolean },
 };
@@ -206,6 +219,7 @@ export type ViewModel = {
   toast: ToastView | null,
   media: MediaView | null,
   peek: PeekView | null,
+  split: ActiveSplitView | null,
   gesture: GestureView | null,
   launcher: LauncherView | null,
   /** The page card's loader (the `page-loader` part), while an item opens in the page area: Margin's words for it. */
@@ -397,10 +411,10 @@ function fresh(input: ViewModelInput): ViewModel {
   if (!state) {
     return {
       version: VM_VERSION, ready: false, window: win,
-      space: { id: '', name: '', emoji: '', color: '', abbr: '', index: 0, number: 1, active: true, tabCount: 0, label: '', pinned: [], pinnedFlat: [], folders: [], pins: [], today: [], hasToday: false, hasPinned: false, newTab: { active: false } },
+      space: { id: '', name: '', emoji: '', color: '', abbr: '', index: 0, number: 1, active: true, tabCount: 0, label: '', pinned: [], pinnedFlat: [], folders: [], pins: [], splits: [], hasSplits: false, today: [], hasToday: false, hasPinned: false, newTab: { active: false } },
       spaces: [], favorites: { items: [], hasItems: false, columns: 3 }, tab: null, archive: [], hasArchive: false,
       palette: { open: !!paletteUi.open, query: paletteUi.query ?? '', newTab: !!paletteUi.newTab, rows: [], hasRows: false, selected: null },
-      menu: null, editing, editor: null, notice, prompt, toast, media: null, peek: null, gesture, launcher: null, pageLoader, settingsForm: null, settingsTab: null, settings, platform,
+      menu: null, editing, editor: null, notice, prompt, toast, media: null, peek: null, split: null, gesture, launcher: null, pageLoader, settingsForm: null, settingsTab: null, settings, platform,
     };
   }
 
@@ -447,7 +461,50 @@ function fresh(input: ViewModelInput): ViewModel {
     folders.push(folder);
     return folder;
   });
-  const today = view.tabs.map((t) => tabRow(state, t));
+  const rawToday = view.tabs.map((t) => tabRow(state, t));
+  // Combined Split View rows (Arc's single capsule row in the sidebar for 2–4 panes):
+  const splitMemberIds = new Set<string>();
+  const splits: SplitRow[] = [];
+  for (const g of (state.splits ?? [])) {
+    if (g.spaceId !== view.spaceId || !Array.isArray(g.panes) || g.panes.length < 2) continue;
+    const panes: SplitPaneView[] = [];
+    const rawRatios = Array.isArray(g.ratios) && g.ratios.length === g.panes.length ? g.ratios : g.panes.map(() => 1 / g.panes.length);
+    const ratioSum = rawRatios.reduce((acc, v) => acc + (Number.isFinite(v) && v > 0 ? v : 1), 0) || g.panes.length;
+    g.panes.forEach((pid, index) => {
+      const asNum = /^\d+$/.test(pid) ? Number(pid) : null;
+      const live: any = asNum != null ? state.tabs[asNum] : Object.values(state.tabs).find((t) => t.mid === pid);
+      const kept: any = !live ? state.keptTabs?.[pid] : null;
+      const item = live ?? kept;
+      if (!item) return;
+      const tabId: number | string = live ? live.id : item.id;
+      const ratio = (Number.isFinite(rawRatios[index]) && rawRatios[index] > 0 ? rawRatios[index] : 1) / ratioSum;
+      const title = (item.customTitle || item.title || item.url || 'Pane').trim();
+      panes.push({
+        id: pid,
+        tabId,
+        index,
+        ...face(state, item, title),
+        active: !!(live && (live.id === currentTabId || (currentTabId == null && live.windowId === windowId && live.active)))
+          || !!(kept && kept.id === ui.switchingTo),
+        ratio,
+        percent: Math.round(ratio * 1000) / 10,
+      });
+    });
+    if (panes.length < 2) continue;
+    for (const p of panes) { splitMemberIds.add(String(p.id)); splitMemberIds.add(String(p.tabId)); }
+    splits.push({
+      kind: 'split',
+      isSplit: true,
+      id: g.id,
+      axis: g.axis === 'vertical' ? 'vertical' : 'horizontal',
+      active: panes.some((p) => p.active),
+      panes,
+      ratios: panes.map((p) => p.ratio),
+      count: panes.length,
+      title: panes.map((p) => p.title).join(' · '),
+    });
+  }
+  const today = rawToday.filter((t) => !splitMemberIds.has(String(t.id)));
   const favItems = (view.favorites ?? []).map((f: any) => favoriteRow(state, f));
   const favorites: FavoritesView = { items: favItems, hasItems: favItems.length > 0, columns: favoriteColumns(favItems.length) };
 
@@ -479,6 +536,8 @@ function fresh(input: ViewModelInput): ViewModel {
     pinnedFlat,
     folders,
     pins,
+    splits,
+    hasSplits: splits.length > 0,
     today,
     hasToday: today.length > 0,
     hasPinned: pinned.length > 0,
@@ -695,6 +754,27 @@ function fresh(input: ViewModelInput): ViewModel {
     };
   }
 
+  const activeSplitRow = splits.find((sp) => sp.active) ?? null;
+  let split: ActiveSplitView | null = null;
+  if (activeSplitRow) {
+    let acc = 0;
+    const dividers: { index: number, percent: number }[] = [];
+    for (let i = 0; i < activeSplitRow.panes.length - 1; i++) {
+      acc += activeSplitRow.panes[i].percent;
+      dividers.push({ index: i, percent: Math.round(acc * 10) / 10 });
+    }
+    split = {
+      id: activeSplitRow.id,
+      axis: activeSplitRow.axis,
+      isHorizontal: activeSplitRow.axis === 'horizontal',
+      isVertical: activeSplitRow.axis === 'vertical',
+      panes: activeSplitRow.panes,
+      dividers,
+      canAddPane: activeSplitRow.panes.length < 4,
+      labels: { swap: 'Swap Panes', breakOut: 'Break Out', closePane: 'Close Pane', toggleAxis: activeSplitRow.axis === 'horizontal' ? 'Stack Vertically' : 'Place Side by Side' },
+    };
+  }
+
   return {
     version: VM_VERSION,
     ready: true,
@@ -714,6 +794,7 @@ function fresh(input: ViewModelInput): ViewModel {
     toast,
     media,
     peek,
+    split,
     gesture,
     launcher,
     pageLoader,

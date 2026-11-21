@@ -22,6 +22,7 @@ pub mod front;
 pub mod guard;
 pub mod kinds;
 pub mod layout;
+pub mod panes;
 pub mod reconciler;
 pub mod routes;
 pub mod schedule;

@@ -106,6 +106,13 @@ export function menuItems(target: MenuTarget | null | undefined, { state, space,
       const isWeb = /^https?:\/\//i.test(url);
       item('Pin Tab', 'tab.pin', tabId);
       if (canAddFav(url)) item('Add to Favorites', 'favorite.add', tabId);
+      const inSplit = (state.splits ?? []).find((g) => g.panes.includes(String(tabId)) || (live?.mid && g.panes.includes(live.mid)));
+      if (inSplit) {
+        item('Break Out of Split', 'split.breakOut', tabId);
+        item('Swap Split Panes', 'split.swap', inSplit.id);
+      } else {
+        item('Open in Split View', 'split.add', tabId);
+      }
       for (const f of folders) item(`Pin to 📁 ${f.name}`, 'tab.pinAt', { tab: tabId, folder: f.id, before: null });
       item('New Folder with Tab', 'folder.newWithTab', tabId);
       item('Rename Tab', 'tab.rename', tabId);

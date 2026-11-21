@@ -110,6 +110,13 @@ export const ACTIONS = Object.freeze({
   'peek.back': 'none',
   'peek.forward': 'none',
   'airTraffic.addHost': 'tab',
+  'split.add': 'tab',
+  'split.open': 'split',
+  'split.focus': 'tab',
+  'split.breakOut': 'tab',
+  'split.closePane': 'tab',
+  'split.swap': 'split',
+  'split.toggleAxis': 'split',
   'window.close': 'none',
   'window.minimise': 'none',
   'window.fullscreen': 'none',
@@ -157,7 +164,7 @@ const isId = (value: unknown) => (typeof value === 'number' && Number.isSafeInte
  */
 export type ActionContext = {
   hasTab(id: any): boolean, hasSpace(id: any): boolean, hasFolder(id: any): boolean,
-  hasPin(id: any): boolean, hasFavorite?(id: any): boolean, hasArchived(id: any): boolean, hasPaletteRow(id: any): boolean,
+  hasPin(id: any): boolean, hasFavorite?(id: any): boolean, hasSplit?(id: any): boolean, hasArchived(id: any): boolean, hasPaletteRow(id: any): boolean,
   hasMenuItem?(id: any): boolean, hasColor?(id: any): boolean,
   hasNoticeItem?(id: any): boolean, hasPromptItem?(id: any): boolean,
   hasSettingItem?(id: any): boolean,
@@ -183,6 +190,7 @@ function valueOk(kind: string | readonly unknown[], v: any, ctx: ActionContext) 
     case 'folder': return isId(v) && ctx.hasFolder(v);
     case 'pin': return isId(v) && ctx.hasPin(v);
     case 'favorite': return isId(v) && !!ctx.hasFavorite?.(v);
+    case 'split': return isId(v) && !!ctx.hasSplit?.(v);
     case 'pin-or-folder': return isId(v) && (ctx.hasPin(v) || ctx.hasFolder(v));
     case 'name': return plainText(v, NAME_MAX);
     case 'emoji': return plainText(v, EMOJI_MAX);
@@ -207,7 +215,7 @@ export function checkAction(name: string, arg: any, ctx: ActionContext): { ok: t
     return { ok: true };
   }
   const has: Record<string, (id: any) => boolean> = {
-    tab: ctx.hasTab, space: ctx.hasSpace, folder: ctx.hasFolder, pin: ctx.hasPin, favorite: ctx.hasFavorite ?? (() => false), archive: ctx.hasArchived, row: ctx.hasPaletteRow,
+    tab: ctx.hasTab, space: ctx.hasSpace, folder: ctx.hasFolder, pin: ctx.hasPin, favorite: ctx.hasFavorite ?? (() => false), split: ctx.hasSplit ?? (() => false), archive: ctx.hasArchived, row: ctx.hasPaletteRow,
     item: ctx.hasMenuItem ?? (() => false), color: ctx.hasColor ?? (() => false),
     'notice-item': ctx.hasNoticeItem ?? (() => false), 'prompt-item': ctx.hasPromptItem ?? (() => false),
     'setting-item': ctx.hasSettingItem ?? (() => false), theme: ctx.hasTheme ?? (() => false),
@@ -262,6 +270,7 @@ export function contextFromState(state: any, paletteIds: Iterable<string> = [], 
   const folders = ids(state?.folders);
   const pins = ids(state?.pins);
   const favorites = ids(state?.favorites);
+  const splits = ids(state?.splits);
   const archived = ids(state?.archive);
   const rows = new Set(paletteIds);
   const items = new Set(menuIds);
@@ -279,6 +288,7 @@ export function contextFromState(state: any, paletteIds: Iterable<string> = [], 
     hasFolder: (id) => folders.has(id),
     hasPin: (id) => pins.has(id),
     hasFavorite: (id) => favorites.has(id),
+    hasSplit: (id) => splits.has(id),
     hasArchived: (id) => archived.has(id),
     hasPaletteRow: (id) => rows.has(id),
     hasMenuItem: (id) => items.has(id),
@@ -444,6 +454,13 @@ export const ACTION_MAP = Object.freeze({
   'peek.back': 'local',
   'peek.forward': 'local',
   'airTraffic.addHost': 'addAirTrafficRule',
+  'split.add': 'addToSplit',
+  'split.open': 'openSplit',
+  'split.focus': 'activateTab',
+  'split.breakOut': 'breakOutSplit',
+  'split.closePane': 'closeSplitPane',
+  'split.swap': 'swapSplit',
+  'split.toggleAxis': 'toggleSplitAxis',
   'window.close': 'host',
   'window.minimise': 'host',
   'window.fullscreen': 'toggleFullscreen | host',
@@ -558,6 +575,13 @@ export function requestFor(name: string, arg: any, { state, ui, platform, row }:
       const spaceId = typeof arg === 'string' ? state?.keptTabs?.[arg]?.spaceId : state?.tabSpace?.[arg];
       return send('addAirTrafficRule', { pattern: host, spaceId: spaceId ?? undefined });
     }
+    case 'split.add': return send('addToSplit', { tabId: arg, windowId });
+    case 'split.open': return send('openSplit', { splitId: arg, windowId, ...show });
+    case 'split.focus': return send('activateTab', { tabId: arg, ...(typeof arg === 'string' && windowId != null ? { windowId } : {}), ...show });
+    case 'split.breakOut': return send('breakOutSplit', { tabId: arg, windowId });
+    case 'split.closePane': return send('closeSplitPane', { tabId: arg, windowId });
+    case 'split.swap': return send('swapSplit', { splitId: arg, windowId });
+    case 'split.toggleAxis': return send('toggleSplitAxis', { splitId: arg, windowId });
     default: return { kind: 'none', reason: `${name}: no mapping` };
   }
 }

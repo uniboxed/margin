@@ -164,6 +164,12 @@ final class DataSetWindowSource: MarginWindowSource {
         let airTraffic: [JSONObject] = objects("airTraffic").sorted { (number($0.value["order"]), $0.id) < (number($1.value["order"]), $1.id) }.map { id, r in
             ["id": id, "pattern": r["pattern"] as? String ?? "", "spaceId": r["spaceId"] as? String ?? "", "enabled": r["enabled"] as? Bool ?? true, "order": number(r["order"])]
         }
+        let splits: [JSONObject] = objects("splits").map { id, g in
+            var split: JSONObject = ["id": id, "spaceId": g["spaceId"] as? String ?? "", "axis": g["axis"] as? String ?? "horizontal", "panes": g["panes"] as? [String] ?? [], "ratios": g["ratios"] as? [Double] ?? []]
+            if let pinned = g["pinned"] as? Bool, pinned { split["pinned"] = true }
+            if let folder = g["folderId"] as? String { split["folderId"] = folder }
+            return split
+        }
         let folders: [JSONObject] = objects("folders").map { id, f in
             var folder: JSONObject = ["id": id, "spaceId": f["spaceId"] as? String ?? "", "name": f["name"] as? String ?? "", "open": f["open"] as? Bool ?? true, "pos": number(f["pos"])]
             if let parent = f["parentId"] as? String, !parent.isEmpty { folder["parentId"] = parent }
@@ -183,7 +189,7 @@ final class DataSetWindowSource: MarginWindowSource {
         var shown: JSONObject = [:]
         for (window, space) in active where known.contains(space) { shown[String(window)] = space }
         return [
-            "spaces": spaces, "pins": pins, "favorites": favorites, "airTraffic": airTraffic, "folders": folders, "archive": archive, "settings": settings,
+            "spaces": spaces, "pins": pins, "favorites": favorites, "airTraffic": airTraffic, "splits": splits, "folders": folders, "archive": archive, "settings": settings,
             "favicons": values("siteIcons"), "keptTabs": kept, "tabs": JSONObject(), "tabSpace": JSONObject(),
             "activeSpaceByWindow": shown, "awayByWindow": JSONObject(), "lostTabs": NSNull(),
         ]

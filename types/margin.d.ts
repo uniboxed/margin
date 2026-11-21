@@ -45,6 +45,18 @@ export interface AirTrafficRule {
   enabled?: boolean;
   order?: number;
 }
+export interface SplitGroup {
+  id: string;
+  spaceId: string;
+  axis: 'horizontal' | 'vertical';
+  /** 2–4 member tab/item ids (numbers stored as strings or Margin `t-...` item ids) */
+  panes: string[];
+  /** Relative size ratios summing to 1.0 (length === panes.length) */
+  ratios: number[];
+  pinned?: boolean;
+  folderId?: string;
+  pos?: number;
+}
 export interface Folder {
   id: string; spaceId: string; name: string; open: boolean; pos?: number;
   /** parent folder in the same space (nested folders, max depth 4); absent: top level */
@@ -155,6 +167,7 @@ export interface State {
   pins: Pin[];
   favorites?: Favorite[];
   airTraffic?: AirTrafficRule[];
+  splits?: SplitGroup[];
   folders: Folder[];
   archive: ArchiveEntry[];
   settings: Settings;

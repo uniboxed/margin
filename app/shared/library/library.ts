@@ -20,7 +20,7 @@ import { fingerprint } from '../../../extension/shared/data-set.ts';
 import type { State } from '../../../types/margin';
 
 /** The library's collections (the data set's), and `imports`: the import's marker. */
-export const COLLECTIONS = Object.freeze(['spaces', 'pins', 'favorites', 'airTraffic', 'folders', 'tabs', 'archive', 'windows', 'imports']);
+export const COLLECTIONS = Object.freeze(['spaces', 'pins', 'favorites', 'airTraffic', 'splits', 'folders', 'tabs', 'archive', 'windows', 'imports']);
 export const FORMAT = 1;
 
 export type WebTarget = { kind: 'web', browser: string, profile: string | null };
@@ -94,6 +94,15 @@ export function stateOf(values: Values): LibState {
   const airTraffic = sorted(values?.airTraffic).filter(([, r]) => typeof r.pattern === 'string' && typeof r.spaceId === 'string')
     .sort((a, b) => finite(a[1].order) - finite(b[1].order) || a[0].localeCompare(b[0]))
     .map(([id, r], i) => ({ id, pattern: str(r.pattern, 200), spaceId: r.spaceId, enabled: r.enabled !== false, order: finite(r.order, i) }));
+  const splits = sorted(values?.splits).filter(([, g]) => typeof g.spaceId === 'string' && Array.isArray(g.panes) && g.panes.length >= 2)
+    .map(([id, g]) => ({
+      id, spaceId: g.spaceId, axis: g.axis === 'vertical' ? 'vertical' as const : 'horizontal' as const,
+      panes: g.panes.filter((x: unknown): x is string => typeof x === 'string' && !!x).slice(0, M.MAX_SPLIT_PANES),
+      ratios: Array.isArray(g.ratios) ? g.ratios.map((n: unknown) => finite(n, 1)) : g.panes.map(() => 1 / g.panes.length),
+      ...(g.pinned ? { pinned: true } : {}),
+      ...(typeof g.folderId === 'string' && g.folderId ? { folderId: g.folderId } : {}),
+      ...(Number.isFinite(g.pos) ? { pos: g.pos } : {}),
+    }));
   const folders = sorted(values?.folders).filter(([, f]) => typeof f.spaceId === 'string')
     .map(([id, f]) => ({ id, spaceId: f.spaceId, name: str(f.name, 200), open: f.open !== false, pos: finite(f.pos), ...(typeof f.parentId === 'string' && f.parentId ? { parentId: f.parentId } : {}) }));
   const archive = sorted(values?.archive).filter(([, a]) => typeof a.url === 'string')
@@ -114,15 +123,16 @@ export function stateOf(values: Values): LibState {
   }
   const activeSpaceByWindow: Record<string, string> = {};
   for (const [w, v] of sorted(values?.windows)) if (typeof v.spaceId === 'string') activeSpaceByWindow[w] = v.spaceId;
-  return { ...base, spaces, pins, favorites, airTraffic, folders, archive, keptTabs, activeSpaceByWindow, tabs: {}, tabSpace: {}, awayByWindow: {}, favicons: {} } as unknown as LibState;
+  return { ...base, spaces, pins, favorites, airTraffic, splits, folders, archive, keptTabs, activeSpaceByWindow, tabs: {}, tabSpace: {}, awayByWindow: {}, favicons: {} } as unknown as LibState;
 }
 
 export function valuesOf(state: LibState, imports: Record<string, any> = {}): Values {
-  const out: Values = { spaces: {}, pins: {}, favorites: {}, airTraffic: {}, folders: {}, tabs: {}, archive: {}, windows: {}, imports: { ...imports } };
+  const out: Values = { spaces: {}, pins: {}, favorites: {}, airTraffic: {}, splits: {}, folders: {}, tabs: {}, archive: {}, windows: {}, imports: { ...imports } };
   state.spaces.forEach((s, i) => { out.spaces[s.id] = { name: s.name ?? '', emoji: s.emoji ?? '', color: s.color ?? '', order: i, browser: s.browser ?? 'safari', profile: s.profile ?? null, ...(M.themeIdOk(s.theme) ? { theme: s.theme } : {}) }; });
   state.pins.forEach((p: any, i) => { out.pins[p.id] = { spaceId: p.spaceId, url: p.url, title: p.title ?? '', ...(p.customTitle ? { customTitle: p.customTitle } : {}), folderId: p.folderId ?? null, pos: finite(p.pos, i), target: targetOf(p.target) ?? webTarget('safari', null) }; });
   (state.favorites ?? []).forEach((f: any, i) => { out.favorites[f.id] = { scope: f.scope || 'global', url: f.url, title: f.title ?? '', ...(f.customTitle ? { customTitle: f.customTitle } : {}), pos: finite(f.pos, i), target: targetOf(f.target) ?? webTarget('safari', null) }; });
   (state.airTraffic ?? []).forEach((r: any, i) => { out.airTraffic[r.id] = { pattern: r.pattern, spaceId: r.spaceId, enabled: r.enabled !== false, order: finite(r.order, i) }; });
+  (state.splits ?? []).forEach((g: any) => { out.splits[g.id] = { spaceId: g.spaceId, axis: g.axis === 'vertical' ? 'vertical' : 'horizontal', panes: g.panes, ratios: g.ratios, ...(g.pinned ? { pinned: true } : {}), ...(g.folderId ? { folderId: g.folderId } : {}), ...(Number.isFinite(g.pos) ? { pos: g.pos } : {}) }; });
   (state.folders ?? []).forEach((f, i) => { out.folders[f.id] = { spaceId: f.spaceId, name: f.name ?? '', open: f.open !== false, pos: finite(f.pos, i), ...(f.parentId ? { parentId: f.parentId } : {}) }; });
   for (const k of Object.values(state.keptTabs ?? {}) as any[]) {
     out.tabs[k.id] = {
@@ -349,7 +359,9 @@ const ACTIONS: Record<string, Handler> = {
     if (!k) return fail(s, 'no such item');
     const isSticky = (typeof k.pinnedBy === 'string' && s.pins.some((pin) => pin.id === k.pinnedBy))
       || (typeof k.favoriteId === 'string' && (s.favorites ?? []).some((fav) => fav.id === k.favoriteId));
-    const next = isSticky ? M.forgetKept(s, k.id) as LibState : archiveItem(s, k.id, ids.other('a'), now);
+    const existingSplit = M.splitForItem(s, k.id);
+    let next = existingSplit ? M.removeFromSplit(s, existingSplit.id, k.id) as LibState : s;
+    next = isSticky ? M.forgetKept(next, k.id) as LibState : archiveItem(next, k.id, ids.other('a'), now);
     const after = frontOf(next, k.spaceId);
     requests.push({ type: 'closeTab', item: k.id, url: k.url, target: targetOfItem(k), spaceId: k.spaceId, next: after?.id ?? null });
     return { s: next };
@@ -570,6 +582,93 @@ const ACTIONS: Record<string, Handler> = {
     if (!rule) return { s, result: null };
     return { s, result: { ruleId: rule.id, pattern: rule.pattern, spaceId: rule.spaceId, target: spaceTarget(s, rule.spaceId) } };
   },
+  // ---- split view (2–4 panes) ----
+  createSplit({ s, p, ids, now, requests }) {
+    const raw: string[] = Array.isArray(p?.panes) ? p.panes.filter((x: unknown): x is string => typeof x === 'string' && !!s.keptTabs[x]) : [];
+    if (raw.length < 2) return fail(s, 'need at least 2 items');
+    const spaceId = hasSpace(s, p?.spaceId) ? p.spaceId : s.keptTabs[raw[0]].spaceId;
+    const id = ids.other('spv');
+    let next = M.createSplit(s, { id, spaceId, panes: raw, axis: p?.axis === 'vertical' ? 'vertical' : 'horizontal', ratios: p?.ratios }) as LibState;
+    next = used(next, raw[0], win(p), now);
+    const group = (next.splits ?? []).find((g) => g.id === id);
+    if (group) {
+      requests.push({
+        type: 'showSplit',
+        windowId: p?.windowId ?? null,
+        splitId: group.id,
+        axis: group.axis,
+        ratios: group.ratios,
+        panes: group.panes.map((itemId) => ({ item: itemId, url: next.keptTabs[itemId]?.url ?? '', target: targetOfItem(next.keptTabs[itemId]) })),
+      });
+    }
+    return { s: next, result: { splitId: id } };
+  },
+  addToSplit({ s, p, ids, now, requests }) {
+    const k = s.keptTabs[p?.tabId];
+    if (!k) return fail(s, 'no such item');
+    const w = win(p);
+    const front = frontOf(s, k.spaceId, k.id);
+    const existing = (typeof p?.splitId === 'string' ? (s.splits ?? []).find((g) => g.id === p.splitId) : null)
+      ?? (front ? M.splitForItem(s, front.id) : null);
+    if (existing) {
+      const next = M.addToSplit(s, existing.id, k.id) as LibState;
+      const group = (next.splits ?? []).find((g) => g.id === existing.id);
+      if (group) {
+        requests.push({
+          type: 'showSplit',
+          windowId: p?.windowId ?? null,
+          splitId: group.id,
+          axis: group.axis,
+          ratios: group.ratios,
+          panes: group.panes.map((itemId) => ({ item: itemId, url: next.keptTabs[itemId]?.url ?? '', target: targetOfItem(next.keptTabs[itemId]) })),
+        });
+      }
+      return { s: used(next, k.id, w, now), result: { splitId: existing.id } };
+    }
+    if (!front) return fail(s, 'no second item to split with');
+    return ACTIONS.createSplit({ s, p: { ...p, panes: [front.id, k.id], spaceId: k.spaceId }, now, ids, requests });
+  },
+  openSplit({ s, p, now, requests }) {
+    const group = (s.splits ?? []).find((g) => g.id === p?.splitId);
+    if (!group) return fail(s, 'no such split');
+    const first = group.panes.find((id) => !!s.keptTabs[id]);
+    if (!first) return fail(s, 'split has no items');
+    const next = used(s, first, win(p), now);
+    requests.push({
+      type: 'showSplit',
+      windowId: p?.windowId ?? null,
+      splitId: group.id,
+      axis: group.axis,
+      ratios: group.ratios,
+      panes: group.panes.filter((id) => !!next.keptTabs[id]).map((itemId) => ({ item: itemId, url: next.keptTabs[itemId]?.url ?? '', target: targetOfItem(next.keptTabs[itemId]) })),
+    });
+    return { s: next, result: { splitId: group.id } };
+  },
+  breakOutSplit({ s, p }) {
+    const group = M.splitForItem(s, p?.tabId);
+    if (!group) return { s };
+    return { s: M.removeFromSplit(s, group.id, p.tabId) as LibState };
+  },
+  closeSplitPane({ s, p, now, ids, requests }) {
+    return ACTIONS.closeTab({ s, p, now, ids, requests });
+  },
+  swapSplit({ s, p }) {
+    const group = (s.splits ?? []).find((g) => g.id === p?.splitId);
+    if (!group) return fail(s, 'no such split');
+    const a = Number.isInteger(p?.a) ? p.a : 0;
+    const b = Number.isInteger(p?.b) ? p.b : 1;
+    return { s: M.swapSplitPanes(s, group.id, a, b) as LibState };
+  },
+  resizeSplit({ s, p }) {
+    const group = (s.splits ?? []).find((g) => g.id === p?.splitId);
+    if (!group) return fail(s, 'no such split');
+    return { s: M.resizeSplit(s, group.id, p?.ratios) as LibState };
+  },
+  toggleSplitAxis({ s, p }) {
+    const group = (s.splits ?? []).find((g) => g.id === p?.splitId);
+    if (!group) return fail(s, 'no such split');
+    return { s: M.toggleSplitAxis(s, group.id) as LibState };
+  },
   // ---- folders ----
   // In the window's space (or `spaceId`), holding `pinIds`, or the item `tabId` pinned into it (it's the pin then).
   createFolder({ s, p, ids }) {
@@ -641,6 +740,7 @@ export function snapshot(values: Values) {
     pins: s.pins,
     favorites: s.favorites ?? [],
     airTraffic: s.airTraffic ?? [],
+    splits: s.splits ?? [],
     folders: s.folders,
     archive: s.archive,
     openTabs: { origin: 'margin-app', since: 0, synced: true, tabs: {}, tabSpace: {}, activeSpaceByWindow: s.activeSpaceByWindow, awayByWindow: {}, keptTabs: s.keptTabs },

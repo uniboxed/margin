@@ -132,7 +132,7 @@ const FAST_CLOSE_MS = 100; // a kept link closed this soon: refused (nothing lis
 // The stored values the app's UI draws from (as pages read them, before
 // shared/stored.ts fromStorage). Not the theme package (sent as `theme`), the
 // data set's times, this link's own key, page zoom or user themes.
-export const STATE_KEYS = ['openTabs', 'spaces', 'pins', 'favorites', 'airTraffic', 'folders', 'archive', 'settings', 'favicons', 'owner'];
+export const STATE_KEYS = ['openTabs', 'spaces', 'pins', 'favorites', 'airTraffic', 'splits', 'folders', 'archive', 'settings', 'favicons', 'owner'];
 // What the app's UI may ask (ui/actions.ts, shared/search.ts rows,
 // app/platforms/macos/shell/Shell.swift's keys), and nothing else.
 export const APP_REQUESTS = new Set([
@@ -140,6 +140,7 @@ export const APP_REQUESTS = new Set([
   'resetPin', 'renamePin', 'renameTab', 'nestFolder',
   'addFavorite', 'removeFavorite', 'openFavorite', 'resetFavorite', 'renameFavorite', 'moveFavorite',
   'addAirTrafficRule', 'removeAirTrafficRule', 'toggleAirTrafficRule', 'routeUrl',
+  'createSplit', 'addToSplit', 'openSplit', 'breakOutSplit', 'closeSplitPane', 'swapSplit', 'resizeSplit', 'toggleSplitAxis',
   'duplicateTab', 'muteTab', 'unloadTab', 'restoreLastArchive',
   'setFolderOpen', 'createFolder', 'renameFolder', 'deleteFolder', 'moveFolder', 'setSpace', 'createSpace',
   'renameSpace', 'setSpaceTheme', 'deleteSpace', 'clearToday', 'goBack', 'goForward', 'reload', 'restoreArchive', 'openLauncher',

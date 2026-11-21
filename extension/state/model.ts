@@ -9,7 +9,7 @@ import { PACKAGE_THEMES, USER_THEME_ID } from '../themes/packages.ts';
 import { neverSleeps, oldSleepPage, siteList } from '../shared/sleep.ts';
 import { isAwayPage } from '../shared/away.ts';
 import { normalizePattern } from '../shared/air-traffic.ts';
-import type { AirTrafficRule, ArchiveEntry, KeptTab, State, TabRecord } from '../../types/margin';
+import type { AirTrafficRule, ArchiveEntry, KeptTab, SplitGroup, State, TabRecord } from '../../types/margin';
 // A kept tab lost with its window: where it was (a window that comes back takes it back).
 type KeptFrom = KeptTab & { from: NonNullable<KeptTab['from']> };
 
@@ -75,7 +75,7 @@ const DEFAULT_SPACE = Object.freeze({
 // `lostTabs` is the old name of the kept tabs' reclaimable part (Margin 2,
 // Phase 2): read once, moved into `keptTabs`, and written as null so it's
 // never moved again.
-const STATE_KEYS = ['spaces', 'activeSpaceByWindow', 'awayByWindow', 'tabSpace', 'pins', 'favorites', 'airTraffic', 'folders', 'archive', 'settings', 'tabs', 'keptTabs', 'favicons', 'lostTabs'];
+const STATE_KEYS = ['spaces', 'activeSpaceByWindow', 'awayByWindow', 'tabSpace', 'pins', 'favorites', 'airTraffic', 'splits', 'folders', 'archive', 'settings', 'tabs', 'keptTabs', 'favicons', 'lostTabs'];
 const FAVICON_CAP = 150;
 
 function defaultState(): State {
@@ -90,6 +90,7 @@ function defaultState(): State {
     pins: [],
     favorites: [],
     airTraffic: [],
+    splits: [],
     // Folders of pins, per space (Arc): { id, spaceId, name, open, pos }.
     folders: [],
     archive: [],
@@ -125,6 +126,7 @@ function normalizeState(raw: any = {}): State {
     pins: Array.isArray(raw.pins) ? raw.pins : [],
     favorites: Array.isArray(raw.favorites) ? raw.favorites.filter((f: any) => f && typeof f.id === 'string' && typeof f.url === 'string') : [],
     airTraffic: Array.isArray(raw.airTraffic) ? raw.airTraffic.filter((r: any) => r && typeof r.id === 'string' && typeof r.pattern === 'string' && typeof r.spaceId === 'string') : [],
+    splits: Array.isArray(raw.splits) ? raw.splits.filter((g: any) => g && typeof g.id === 'string' && typeof g.spaceId === 'string' && Array.isArray(g.panes) && g.panes.length >= 2) : [],
     folders: Array.isArray(raw.folders) ? raw.folders.filter((f: any) => f && typeof f.id === 'string' && typeof f.spaceId === 'string') : [],
     archive: Array.isArray(raw.archive) ? raw.archive : [],
     settings: {
@@ -1412,6 +1414,9 @@ function deleteSpace(state: State, spaceId: string) {
   if (state.airTraffic?.length) {
     next.airTraffic = state.airTraffic.filter((r) => r.spaceId !== spaceId);
   }
+  if (state.splits?.length) {
+    next.splits = state.splits.map((g) => (g.spaceId === spaceId ? { ...g, spaceId: target } : g));
+  }
   return next;
 }
 
@@ -1567,6 +1572,97 @@ function toggleAirTrafficRule(state: State, ruleId: string, enabled?: boolean) {
   return { ...state, airTraffic: list.map((r) => (r.id === ruleId ? { ...r, enabled: nextEnabled } : r)) };
 }
 
+// ---- split view (2–4 panes) -----------------------------------------------
+const MAX_SPLIT_PANES = 4;
+
+function normalizeSplitRatios(ratios: number[] | undefined, count: number): number[] {
+  if (count <= 0) return [];
+  const raw = Array.isArray(ratios) && ratios.length === count
+    ? ratios.map((r) => (Number.isFinite(r) && r > 0 ? r : 1))
+    : Array.from({ length: count }, () => 1);
+  const sum = raw.reduce((acc, v) => acc + v, 0) || count;
+  return raw.map((v) => Math.round((v / sum) * 10000) / 10000);
+}
+
+function splitForItem(state: State, itemId: string | number): SplitGroup | null {
+  const key = String(itemId);
+  return (state.splits ?? []).find((g) => g.panes.includes(key)) ?? null;
+}
+
+function createSplit(state: State, { id, spaceId, panes, axis = 'horizontal', ratios }: {
+  id: string, spaceId: string, panes: (string | number)[], axis?: 'horizontal' | 'vertical', ratios?: number[],
+}) {
+  if (!hasSpace(state, spaceId)) return state;
+  const unique = [...new Set(panes.map(String).filter(Boolean))].slice(0, MAX_SPLIT_PANES);
+  if (unique.length < 2) return state;
+  // Remove any of these panes from existing splits first so a tab belongs to at most one split.
+  let next = state;
+  for (const p of unique) {
+    const prev = splitForItem(next, p);
+    if (prev) next = removeFromSplit(next, prev.id, p);
+  }
+  const group: SplitGroup = {
+    id,
+    spaceId,
+    axis: axis === 'vertical' ? 'vertical' : 'horizontal',
+    panes: unique,
+    ratios: normalizeSplitRatios(ratios, unique.length),
+  };
+  return { ...next, splits: [...(next.splits ?? []), group] };
+}
+
+function addToSplit(state: State, splitId: string, paneId: string | number) {
+  const key = String(paneId);
+  const list = state.splits ?? [];
+  const group = list.find((g) => g.id === splitId);
+  if (!group || !key || group.panes.includes(key) || group.panes.length >= MAX_SPLIT_PANES) return state;
+  let next = state;
+  const other = splitForItem(next, key);
+  if (other && other.id !== splitId) next = removeFromSplit(next, other.id, key);
+  const panes = [...group.panes, key];
+  const ratios = normalizeSplitRatios(undefined, panes.length);
+  return { ...next, splits: (next.splits ?? []).map((g) => (g.id === splitId ? { ...g, panes, ratios } : g)) };
+}
+
+function removeFromSplit(state: State, splitId: string, paneId: string | number) {
+  const key = String(paneId);
+  const list = state.splits ?? [];
+  const group = list.find((g) => g.id === splitId);
+  if (!group || !group.panes.includes(key)) return state;
+  const panes = group.panes.filter((p) => p !== key);
+  // Fewer than 2 panes remaining: dissolve the split group automatically.
+  if (panes.length < 2) return { ...state, splits: list.filter((g) => g.id !== splitId) };
+  const ratios = normalizeSplitRatios(undefined, panes.length);
+  return { ...state, splits: list.map((g) => (g.id === splitId ? { ...g, panes, ratios } : g)) };
+}
+
+function swapSplitPanes(state: State, splitId: string, indexA: number, indexB: number) {
+  const list = state.splits ?? [];
+  const group = list.find((g) => g.id === splitId);
+  if (!group || indexA === indexB || indexA < 0 || indexB < 0 || indexA >= group.panes.length || indexB >= group.panes.length) return state;
+  const panes = [...group.panes];
+  const ratios = [...normalizeSplitRatios(group.ratios, panes.length)];
+  [panes[indexA], panes[indexB]] = [panes[indexB], panes[indexA]];
+  [ratios[indexA], ratios[indexB]] = [ratios[indexB], ratios[indexA]];
+  return { ...state, splits: list.map((g) => (g.id === splitId ? { ...g, panes, ratios } : g)) };
+}
+
+function resizeSplit(state: State, splitId: string, ratios: number[]) {
+  const list = state.splits ?? [];
+  const group = list.find((g) => g.id === splitId);
+  if (!group || !Array.isArray(ratios) || ratios.length !== group.panes.length) return state;
+  const norm = normalizeSplitRatios(ratios, group.panes.length);
+  return { ...state, splits: list.map((g) => (g.id === splitId ? { ...g, ratios: norm } : g)) };
+}
+
+function toggleSplitAxis(state: State, splitId: string) {
+  const list = state.splits ?? [];
+  const group = list.find((g) => g.id === splitId);
+  if (!group) return state;
+  const axis: 'horizontal' | 'vertical' = group.axis === 'vertical' ? 'horizontal' : 'vertical';
+  return { ...state, splits: list.map((g) => (g.id === splitId ? { ...g, axis } : g)) };
+}
+
 // ---- archive --------------------------------------------------------------
 
 // Newest first, one entry per URL, capped.
@@ -1697,6 +1793,14 @@ export {
   addAirTrafficRule,
   removeAirTrafficRule,
   toggleAirTrafficRule,
+  MAX_SPLIT_PANES,
+  splitForItem,
+  createSplit,
+  addToSplit,
+  removeFromSplit,
+  swapSplitPanes,
+  resizeSplit,
+  toggleSplitAxis,
   archiveTab,
   removeArchived,
   rememberFavicon,

@@ -297,7 +297,7 @@ extension Shell {
             // (Tab keys: the picks they make in that window are a cycle's, an app not running yet held a moment first.)
             if command == .nextTab || command == .prevTab, let id = w?.id { hosted?.cycled(windowId: id) }
             w?.push(#"{"type":"command","name":"\#(command.rawValue)","repeat":\#(isRepeat)}"#)
-        case .copyUrl, .focusAddress, .togglePin, .reopenArchived, .littleArc:
+        case .copyUrl, .focusAddress, .togglePin, .reopenArchived, .littleArc, .addSplit:
             w?.push(#"{"type":"command","name":"\#(command.rawValue)"}"#)
         case .space1, .space2, .space3, .space4, .space5, .space6, .space7, .space8, .space9:
             if let index = command.spaceNumber { w?.push(#"{"type":"command","name":"space-index","index":\#(index)}"#) }

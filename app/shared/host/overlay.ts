@@ -786,6 +786,11 @@ function onMessage(msg: any) {
         }
       } else if (msg.name === 'reopen-archived') runtime?.dispatch('archive.restoreLast', undefined, 'behavior');
       else if (msg.name === 'little-arc') openPaletteTimed({ newTab: true }, '⌥⌘N Little Arc');
+      else if (msg.name === 'add-split') {
+        const next = runtime?.vm?.space?.today?.find((t: { active?: boolean }) => !t.active);
+        if (next) runtime?.dispatch('split.add', next.id, 'behavior');
+        else openPaletteTimed({ newTab: true }, '⌃⇧= Add Split');
+      }
       else if (msg.name === 'space-index' && Number.isInteger(msg.index)) {
         const sp = runtime?.vm?.spaces?.[msg.index - 1];
         if (sp) runtime?.dispatch('space.switch', sp.id, 'behavior');

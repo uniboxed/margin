@@ -662,6 +662,60 @@ export const handlers = {
     const rule = matchAirTrafficRule(url, s.airTraffic, new Set(s.spaces.map((sp) => sp.id)));
     return rule ? { ruleId: rule.id, pattern: rule.pattern, spaceId: rule.spaceId } : null;
   },
+  async createSplit({ panes, axis = 'horizontal', spaceId, windowId }: { panes: (number | string)[], axis?: 'horizontal' | 'vertical', spaceId?: string, windowId?: number }, sender: BrowserMessageSender) {
+    const id = newId();
+    await mutate((s) => {
+      const targetSpace = spaceId && s.spaces.some((sp) => sp.id === spaceId) ? spaceId : V.activeSpaceId(s, windowId ?? sender?.tab?.windowId);
+      return M.createSplit(s, { id, spaceId: targetSpace, panes, axis });
+    });
+    return { splitId: id };
+  },
+  async addToSplit({ tabId, splitId, windowId }: { tabId: number | string, splitId?: string, windowId?: number }, sender: BrowserMessageSender) {
+    const id = newId();
+    await mutate((s) => {
+      if (splitId) return M.addToSplit(s, splitId, tabId);
+      const win = windowId ?? sender?.tab?.windowId;
+      const spaceId = typeof tabId === 'string' ? s.keptTabs[tabId]?.spaceId : s.tabSpace[tabId];
+      if (!spaceId) return s;
+      const active = Object.values(s.tabs).find((t) => (win == null || t.windowId === win) && t.active && t.id !== tabId && s.tabSpace[t.id] === spaceId);
+      if (!active) return s;
+      const existing = M.splitForItem(s, active.id);
+      if (existing) return M.addToSplit(s, existing.id, tabId);
+      return M.createSplit(s, { id, spaceId, panes: [active.id, tabId], axis: 'horizontal' });
+    });
+    return { ok: true };
+  },
+  async openSplit({ splitId, windowId }: { splitId: string, windowId?: number }) {
+    const s = await load();
+    const g = (s.splits ?? []).find((x) => x.id === splitId);
+    if (!g) return null;
+    const first = g.panes[0];
+    if (!first) return null;
+    if (/^\d+$/.test(first)) return handlers.activateTab({ tabId: Number(first), windowId }, {} as BrowserMessageSender);
+    return handlers.activateTab({ tabId: first, windowId }, {} as BrowserMessageSender);
+  },
+  async breakOutSplit({ tabId }: { tabId: number | string }) {
+    await mutate((s) => {
+      const g = M.splitForItem(s, tabId);
+      return g ? M.removeFromSplit(s, g.id, tabId) : s;
+    });
+  },
+  async closeSplitPane({ tabId }: { tabId: number | string }) {
+    await mutate((s) => {
+      const g = M.splitForItem(s, tabId);
+      return g ? M.removeFromSplit(s, g.id, tabId) : s;
+    });
+    return handlers.closeTab({ tabId });
+  },
+  async swapSplit({ splitId, a = 0, b = 1 }: { splitId: string, a?: number, b?: number }) {
+    await mutate((s) => M.swapSplitPanes(s, splitId, a, b));
+  },
+  async resizeSplit({ splitId, ratios }: { splitId: string, ratios: number[] }) {
+    await mutate((s) => M.resizeSplit(s, splitId, ratios));
+  },
+  async toggleSplitAxis({ splitId }: { splitId: string }) {
+    await mutate((s) => M.toggleSplitAxis(s, splitId));
+  },
   // A space shown in the window (its tab most used there to the front); `bringTab: false`: only
   // the sidebar's space, the page in front stays. Answers which tab is in front now.
   async setSpace({ windowId, spaceId, bringTab = true, sidebarTop, deadline }: { windowId?: number, spaceId: string, bringTab?: boolean, sidebarTop?: number, deadline?: number }, sender: BrowserMessageSender) {
