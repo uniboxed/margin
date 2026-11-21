@@ -62,7 +62,8 @@ as a launch argument: no window, no window-server connection). Switches are its 
 | `extraWindow` | another window on File › New Window, on its `test.margin.chameleon.extraWindow` notification, or `at:<s>` |
 
 It logs every window event it makes and gets (made, ordered in/out, closed, key/main, full screen, occlusion, Space
-changes, reopen and terminate asks, key codes, clicks, the field's length) to `/tmp/margin-screen-tests/<id>.log`.
+changes, reopen and terminate asks, key codes, clicks with their count, its grid's drags and releases, the field's
+length) to `/tmp/margin-screen-tests/<id>.log`.
 The stand-in world plays the same switches off screen: `app/platforms/macos/shell/tests/behaviour-world.swift`
 (`tools/app-tests/run.sh unit`).
 
@@ -92,6 +93,16 @@ The stand-in world plays the same switches off screen: `app/platforms/macos/shel
   wide), nothing placed again or behind the loader; Chameleon 3 parked while the page area goes narrower than it (sized
   at its minimum, its right edge the page area's, never in a user Space), shown so for 5 s, dragged wider again.
   `real-apps-min` (opt-in, `--real-apps`): the same drags with the person's Weather (minimum 1048 wide), nothing posted.
+- `pane-clicks` (Margin's `PaneClickTap.swift`: the first click in another pane goes through): Chameleon 1 and 2 hosted,
+  made a split through the dev hook (`say: layout` for each one's item, then `ui split.add`); clicks posted only where
+  the window list says Margin's panel then that copy are under the point, each in the pane WITHOUT the keys: its grid
+  (an NSView that refuses the first mouse, as WebKit does: before the tap such a click only made its window key), its
+  button, its field then a plain key (only with the copy the front app and no field of Margin's focused), a
+  double-click (counts 1 and 2), a drag from it (press, drags, release in order); each needs Margin's `host:
+  app:test.margin.chameleon.N: a click in its pane … the click delivered` line, the copy's window key and Margin's focus
+  on it. Then 8 timed clicks back and forth (Margin's key time under the 120 ms cap; the press's post to the copy's
+  click), a click in the pane with the keys (straight through, nothing said), Margin's idle cost with the tap on, and
+  Margin's quit.
 - `real-apps` (opt-in, `--real-apps`): Maps, Phone, Messages, Mail, WhatsApp, Safari, Notes, Calculator (the list at the
   top of `suite/RealApps.swift`; skipped if not installed). Recorded first (running, pid, windows, saved-state defaults
   keys, Margin's library items); each hosted through the dev hook only and its desired state held 30 s; a switch to

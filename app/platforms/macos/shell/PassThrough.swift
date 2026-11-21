@@ -15,8 +15,9 @@
 
 import AppKit
 
-// The page slot of one overlay, in the window server's coordinates (top left).
-struct Slot: Equatable {
+// The page slot of one overlay, in the window server's coordinates (top left). (Nonisolated: the pane click tap reads it
+// on its own thread, PaneClickTap.swift.)
+nonisolated struct Slot: Equatable, Sendable {
     var rect: CGRect
     var radius: CGFloat = 0
     // What the theme draws over the slot that takes the pointer.
@@ -30,7 +31,7 @@ struct Slot: Equatable {
 
 enum PassThrough {
     // Whether the page gets the pointer at `point` (the overlay ignores the mouse there).
-    static func pageGets(_ point: CGPoint, _ slot: Slot?) -> Bool {
+    nonisolated static func pageGets(_ point: CGPoint, _ slot: Slot?) -> Bool {
         guard let slot, !slot.captureAll, slot.rect.contains(point) else { return false }
         if slot.hits.contains(where: { $0.contains(point) }) { return false }
         if let holes = slot.holes, !holes.contains(where: { $0.contains(point) }) { return false }
@@ -128,7 +129,7 @@ struct PointerWant: Equatable {
 // each press (a press in the browser re-orders the overlays above it).
 final class PointerWatch {
     var onMove: ((CGPoint) -> Void)? // top-left coordinates
-    var onPress: ((CGPoint) -> Void)?
+    var onPress: ((CGPoint, Int) -> Void)? // (and the press's event number: the window server's, its CGEvent's mouseEventNumber)
     private var monitors: [Any] = []
 
     var isStarted: Bool { !monitors.isEmpty }
@@ -139,7 +140,7 @@ final class PointerWatch {
         let presses: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
         let handle: (NSEvent) -> Void = { [weak self] event in
             let at = ScreenGeometry.topLeftPoint(NSEvent.mouseLocation)
-            if presses.contains(NSEvent.EventTypeMask(rawValue: 1 << event.type.rawValue)) { self?.onPress?(at) } else { self?.onMove?(at) }
+            if presses.contains(NSEvent.EventTypeMask(rawValue: 1 << event.type.rawValue)) { self?.onPress?(at, event.eventNumber) } else { self?.onMove?(at) }
         }
         if let global = NSEvent.addGlobalMonitorForEvents(matching: moves.union(presses), handler: { event in MainActor.assumeIsolated { handle(event) } }) {
             monitors.append(global)

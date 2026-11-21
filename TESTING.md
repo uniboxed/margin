@@ -186,6 +186,31 @@ Manual verification checklist in real Safari + Margin.app (automated unit, Rust,
         the other visible hosts`, `its copy asked to bring it in front`, `brought in front by its copy`. Typing goes to B
         right away (its keys). Then Stacked from the pane menu, and a card over the split (Shift+click a link in A): the
         card in front of both panes on its first open (its out and back may still show for the card: that's expected).
+     h. **The first click in another pane goes through (feat/pane-click-tap, DECISIONS.md 2026-11-21).** One click, never
+        two, in the pane WITHOUT the keys. Read the log alongside; each held click says one line: `host: <id>: a click in
+        its pane while <other id> had the keys: its window <n> key in <ms> ms (in its own app | its app made the front
+        app): the click delivered`. Expect about 5–15 ms within Safari, 25–80 ms across apps, up to ~65 ms the first click
+        after the split appears. When the split appears: `pane clicks: on (an event tap on left presses, its own
+        thread): …`; when it goes (one pane, another item, another Space for a second): `pane clicks: off (no split shown
+        on the current Space)`; at quit `pane clicks: off (Margin quits)`. Never: `not key within`, `macOS turned the
+        event tap off`, `the event tap wasn't made`, `Accessibility isn't granted`.
+        - **Safari + Safari** (two web items side by side, A focused): click a **link** in B: it opens in B at once;
+          **Shift+click** a link in B: the preview card at once (one click); click B's page's **text field** and type:
+          the letters in B's field; **double-click** a word in B: selected (and a page's dblclick fires); **drag-select**
+          text in B from a press in B: the selection follows the drag; then ⌘W: B's tab closes (the clicked pane had the
+          keys and the sidebar's highlight moved to it with the click).
+        - **Safari + Notes** (Notes the app pane): with Safari focused, click into a note's text in Notes: the caret where
+          clicked, typing goes there; double-click a word in Notes: selected; drag-select in Notes. With Notes focused,
+          click a link in Safari: it opens at once; Shift+click: the card; type in a Safari field after one click.
+        - **Unchanged:** ⌘-click and right-click in the other pane (as before: Safari takes them without the keys); a
+          click in the pane that has the keys (no log line); the divider's drag, a double-click on the divider; the
+          stacked band; the sidebar and its edge's drag; the card's bar and the dim around a card (closes it); the
+          palette over a split (a click in a pane closes it as before); a menu or popup of the focused pane over the other
+          one (a `<select>`'s list, a context menu: the item picked, never the pane under it focused; its line says `a
+          click in its pane over another window there (window …, layer 101): let go as before`); a hosted app's own
+          menus and sheets; a single item shown (no `pane clicks: on` at all); scrolling the other pane (never held).
+        - **Costs:** with the split up and nothing touched, Activity Monitor's Margin CPU at 0 as before (the tap waits
+          for presses only); `npm run test:screen -- --part pane-clicks` says Margin's idle cost with the tap on.
 - [ ] **M2.8 All 5 Built-in Themes:** Switch Spaces through **Arcadia**, **Liquid Glass**, **Material**, **Neubrutalism**, and **Pixel** and inspect Favorites grid, nested folders, drifted pin reset, combined Split View row, background Mini Player, Peek modal, and Toast pill in light and dark appearance (and macOS 26 system glass for Liquid Glass).
 
 ## Safari startup (2026-11-10)

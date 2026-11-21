@@ -100,6 +100,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     paneFrontingTests() // pane-fronting-tests.swift: a split pane's first open as the real screen had it, 2026-11-21 14:30 (fronted once, revealed once its toolbar rests)
     screenEngineTests() // screen-engine-tests.swift: the real screen's finds of 2026-11-21 (a layout held through a lone placing, a window out of full screen by itself, Remove from Split View)
     loopGuardTests() // loop-guard-tests.swift: the hosting core's loop guard against Weather's loop (docs/ARCHITECTURE-PLAN.md)
+    paneClickTests() // pane-click-tests.swift: the first click in another pane goes through (the tap's decision, its hold, the engine's bookkeeping)
     print(failures == 0 ? "all \(passed) checks passed" : "\(failures) of \(passed + failures) checks failed", String(format: "(%.2f s)", Date().timeIntervalSince(started)))
     exit(failures == 0 ? 0 : 1)
   }
