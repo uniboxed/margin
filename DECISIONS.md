@@ -7000,3 +7000,37 @@ in front of the others there, as a parked card's switch showed), under the card'
 yet), so no freeze; its rect set again if its tile was laid out meanwhile. The name `focusWindow` stays refused: it was the overlay era's request, removed with it. Checks: the stand-in
 world's new window behind main and unraisable (screen-card-tests.swift, failing without the hook), the copy's handler
 (tests/handoff-copy.test.ts), the app requests list (tests/link.test.ts).
+
+## Margin's own names for Arc's features (2026-11-21)
+
+Tirth decided Margin never uses Arc's names in the product. Everything a person or a theme author sees now says:
+**Quick Tab** (was Little Arc: the ⌥⌘N card with an address field first), **preview** / **the preview card** (was Peek:
+the card a link opens in, Shift+click; Auto-Peek is **auto-preview**, in Settings "Open external links from Pinned tabs
+and Favorites in a preview") and **Link Rules** (was Air Traffic Control: Settings' group; the menu's "Always Open
+<host> in This Space" and "Remove Rule for …" stay). Arcadia's description no longer says "Arc's look"; the theme keeps
+its name. Older entries here keep the old names.
+
+- Theme API (themes/README.md, all five themes, the sanitizer): `<m-peek>` → `<m-preview>`, the guarded `peek` part →
+  `preview`, `<m-peek-page>` → `<m-preview-page>`, `m-input="peek"` → `m-input="preview"`, the view model's `peek` →
+  `preview` (`isLittleArc`/`littleArc` → `isQuickTab`/`quickTab`, type `PreviewView`), actions `peek.*` → `preview.*`,
+  `littleArc.open` → `quickTab.open`, `airTraffic.addHost|remove|toggle` → `linkRules.*`; Margin's default card
+  `m-preview[m-default]` with `[m-preview-card|bar|host|field|button]` and `[m-quick-tab]`; the themes' classes
+  `.preview-*`, `.quick-tab`, `--preview-dim`, `*-preview-in|out` keyframes. The old names are refused like any unknown
+  slot, part or action (tests/feature-names.test.ts). The renamed card is unreleased (feat/arc-suite), so
+  `VM_VERSION` stays 1. Settings' link-rule field ids: `linkRules`, `linkRulesNone`, `linkRule:<id>`,
+  `removeLinkRule:<id>` (never stored). The app key's label: "Open a Quick Tab".
+- "Peek" stays the sidebar's hover reveal (the `m-peek` attribute, `window.sidebar === 'peek'`, `vm.window.peek`,
+  ui/behaviors/peek.ts, PassThrough's peek edges), and a closed folder's `peek` pins: neither is Arc's Peek.
+- Kept, with why: the stored setting `autoPeekPins` and the stored key `settings.appKeys.littleArc` (users' data); the
+  library and extension collection `airTraffic` and its records (stored); the wire between copy, page and app
+  (`peekOpen`, `peekCancel`, `peekAnswer`, `peekPinned`, `openPeek`, `hostPromotePeek`, `hostCardClose`, `cardPage`,
+  `cardKey`, `peekRect`, the app's `peek` push, Margin's page's `peek.close|back|forward|expand|setSpace|littleArc|go`
+  performs, the `addAirTrafficRule`/`removeAirTrafficRule`/`toggleAirTrafficRule` requests, the `little-arc` command
+  and `AppCommand.littleArc`: an older copy with a newer app, or the reverse, must still talk); native identifiers
+  (`card`, HostedPeek.swift, `PeekCard`, `SafariRole.card`, `littleArcs`); code names no one sees (the runtime's
+  `ui.peek` and its `littleArc` flag, `behaviors.card.openLittleArc`, `measurePeekPage`, shared/peek.ts,
+  shared/air-traffic.ts, background/peek.ts, content/peek.ts, the `CARD_ITEM` tag `peek-card`); file names
+  (docs/PEEK-SPLIT.md, its many references kept; the tests' file names). Margin.app's log lines say "Preview:" and
+  "Quick Tab" now. Comments use the new names where they name the feature.
+- Not renamed (not one of the three names): the theme value `--m-swipe-feel: arc` (Arc's swipe feel) and comments
+  that credit Arc's behaviour.
