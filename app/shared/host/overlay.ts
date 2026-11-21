@@ -133,7 +133,7 @@ function flushNav() {
 // drawing took. `marginApp.stats()` has the counts (the app's tests read it).
 const SLOW_MS = 50;
 const SAY_EVERY_MS = 10_000;
-const stats = { slow: 0, hits: 0, hitsMs: 0, hitsMaxMs: 0, measures: 0, measureMs: 0, received: 0, receivedMs: 0, receivedMaxMs: 0, pointers: 0, inputMaxMs: 0, palette: ([] as any[]) };
+const stats = { slow: 0, hits: 0, hitsMs: 0, hitsMaxMs: 0, measures: 0, measureMs: 0, received: 0, receivedMs: 0, receivedMaxMs: 0, pointers: 0, inputMaxMs: 0, palette: ([] as any[]), themeSwaps: ([] as any[]) };
 const saidAt = new Map();
 const unsaid = new Map();
 function slow(what: string, ms: number, cause: string) {
@@ -512,10 +512,15 @@ async function mount(pkg: any, { fallback = false, preview: previewing = false }
 
 // Another theme from the app while one is drawn (2026-11-20, Tirth: a theme per space; Settings' Theme, a space's menu
 // or editor): drawn once a space swipe has landed (the space is asked for at the lift, its settle still sliding in the
-// theme it started in), then cross-faded from the theme before (the document's view transition: the old picture fades
-// into the new as one; 180 ms, overlay.html), not cut. The first theme, the same theme again, reduced motion, or a
-// WebKit without view transitions: drawn as before, at once.
+// theme it started in), then at once, no animation (Tirth, 2026-11-20: none). A page area bigger than the one before
+// (Arcadia's 1264×933 after Neubrutalism's 1190×911): the theme before stays on screen (the document's view transition,
+// no animation: overlay.html) until the hosted window has taken the new page area (the app's `hostedFrame`), at most
+// HOSTED_WAIT_MS; then the new theme in one frame, the hosted window under it already its size (before: drawn first, the
+// window was smaller than its card ~50-100 ms, 2026-11-20 20:18:23). A smaller one: drawn at once, the window bigger than
+// it a moment, under the theme's frame. The first theme, the same theme again, or a WebKit without view transitions:
+// drawn as before, at once.
 const SWIPE_WAIT_MS = 4000;
+const HOSTED_WAIT_MS = 300;
 function swipeLanded(): Promise<void> {
   const busy = () => { const root = runtime?.view.rootElement(); return !!root && (root.matches('.m-swiping, .m-settling') || !!root.querySelector('.m-swiping, .m-settling')); };
   if (!busy()) return Promise.resolve();
@@ -526,16 +531,59 @@ function swipeLanded(): Promise<void> {
     setTimeout(check, 30);
   });
 }
+type Box = { left: number, top: number, right: number, bottom: number };
+/** The hosted window's bounds in this page, as the app last said them (`hostedFrame`); null: none hosted. */
+let hostedBox: Box | null = null;
+const hostedWaiters = new Set<() => void>();
+function hostedFrameSaid(rect: unknown) {
+  hostedBox = Array.isArray(rect) && rect.length === 4 && rect.every((v) => Number.isFinite(v)) && rect[2] > 0 && rect[3] > 0
+    ? { left: rect[0], top: rect[1], right: rect[0] + rect[2], bottom: rect[1] + rect[3] } : null;
+  for (const wake of [...hostedWaiters]) wake();
+}
+/** The page slot as the theme drawn now lays it out (the layout reported to the app). */
+function slotBox(): Box | null {
+  const g = host?.layout;
+  if (!g) return null;
+  return { left: g.insets.left, top: g.insets.top, right: g.container.width - g.insets.right, bottom: g.container.height - g.insets.bottom };
+}
+const covers = (a: Box, b: Box, e = 2) => a.left <= b.left + e && a.top <= b.top + e && a.right >= b.right - e && a.bottom >= b.bottom - e;
+/** Once the hosted window covers `slot` (true), or `ms` on (false). */
+function hostedCovering(slot: Box, ms: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const finish = (ok: boolean) => { hostedWaiters.delete(check); if (timer) clearTimeout(timer); resolve(ok); };
+    function check() { if (hostedBox && covers(hostedBox, slot)) finish(true); }
+    hostedWaiters.add(check);
+    timer = setTimeout(() => finish(false), ms);
+    check();
+  });
+}
 async function swapTheme(pkg: any) {
-  if (runtime && drawn && drawn.pkg?.id !== pkg?.id) await swipeLanded();
-  const fade = !!runtime && !!drawn && drawn.pkg?.id !== pkg?.id && typeof (document as any).startViewTransition === 'function'
-    && !matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (!fade) return mount(pkg);
+  const other = !!runtime && !!drawn && drawn.pkg?.id !== pkg?.id;
+  if (!other) return mount(pkg);
+  await swipeLanded();
+  const hold = !!host?.appWindow && hostedBox != null && typeof (document as any).startViewTransition === 'function';
+  if (!hold) return mount(pkg);
   let result: unknown = false;
   const from = performance.now();
-  const transition = (document as any).startViewTransition(async () => { result = await mount(pkg); });
+  let waited: string | null = null;
+  let waitMs = 0;
+  let covered = true;
+  const transition = (document as any).startViewTransition(async () => {
+    result = await mount(pkg);
+    // (The window covers the new slot already, a smaller one: shown at once.)
+    const slot = slotBox();
+    if (!slot || !hostedBox || covers(hostedBox, slot)) return;
+    const t = performance.now();
+    covered = await hostedCovering(slot, HOSTED_WAIT_MS);
+    waitMs = Math.round(performance.now() - t);
+    waited = covered ? `the hosted window took its page area in ${waitMs} ms first` : `the hosted window not at its page area within ${HOSTED_WAIT_MS} ms: shown anyway`;
+  });
   await transition.updateCallbackDone.catch(() => {});
-  log('note', `theme ${JSON.stringify(String(pkg?.id ?? '').slice(0, 64))} drawn in ${Math.round(performance.now() - from)} ms, cross-faded from the one before`);
+  const ms = Math.round(performance.now() - from);
+  stats.themeSwaps.push({ id: String(pkg?.id ?? ''), ms, waitedMs: waitMs, covered });
+  if (stats.themeSwaps.length > 20) stats.themeSwaps.shift();
+  log('note', `theme ${JSON.stringify(String(pkg?.id ?? '').slice(0, 64))} drawn in ${ms} ms${waited ? ` (${waited})` : ''}`);
   return result;
 }
 
@@ -837,6 +885,9 @@ document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) s
     // Where the pointer is over Margin's UI while a hosted app has the keys (the app's, MarginWindowController.hover):
     // the page's own hover, before anything else (it's many a second, and nothing else needs it).
     if (msg?.type === 'hoverAt') { hoverAt(msg.x, msg.y); return; }
+    // The hosted window's bounds in this page, as they change (MarginWindowController.readHosted): a theme with a bigger
+    // page area waits for them (swapTheme).
+    if (msg?.type === 'hostedFrame') { hostedFrameSaid(msg.rect); return; }
     // The trackpad's phases over Margin's UI (MarginWindowController.wheelPhase): for the space swipe (ui/behaviors/
     // swipe.ts), which web pages' wheel events don't tell.
     if (msg?.type === 'wheelPhase') {
@@ -925,6 +976,7 @@ async function start() {
   const hello = typeof text === 'string' ? JSON.parse(text) : text;
   if (!hello) return log('warn', 'no window for this overlay');
   host = createAppHost({ hello, post, onMessage, onNotice: (arg) => notices.run(arg), warn: (...args) => log('warn', ...args) });
+  hostedFrameSaid(hello?.hostedFrame);
   host.onState(() => followPage());
   // What the copy pushed for this window before this page was there (a
   // notice, the tabs loading: an app that holds them says so in its hello's `held`), as if it came now.
