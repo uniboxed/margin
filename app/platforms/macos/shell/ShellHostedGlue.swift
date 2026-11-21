@@ -108,6 +108,9 @@ final class LateHostEngine: HostedEngine {
     }
     func focus(_ id: HostID) async -> Bool { await resolve()?.focus(id) ?? false }
     func visibleHost(at point: CGPoint) -> HostID? { resolve()?.visibleHost(at: point) }
+    func follow(_ placement: HostPlacement, rects: [HostID: CGRect]) { resolve()?.follow(placement, rects: rects) }
+    func pageRectChanged(_ placement: HostPlacement, rects: [HostID: CGRect]) async -> Bool { await resolve()?.pageRectChanged(placement, rects: rects) ?? false }
+    func minimum(of id: HostID) -> CGSize? { resolve()?.minimum(of: id) }
 }
 
 extension Shell {
@@ -229,6 +232,7 @@ extension Shell {
         windows.onEnteredFullScreen = { [weak session] controller in session?.enteredFullScreen(controller) }
         windows.onPagePress = { [weak session] controller, at in session?.pagePressed(controller, at: at) }
         windows.onCaughtPress = { [weak session] controller, at in session?.caughtPress(controller, at: at) }
+        windows.onPanes = { [weak session] controller in session?.pageRectChanged(controller) }
         windows.onFieldClosed = { [weak session] controller in session?.fieldClosed(controller) }
         windows.onOpen = { [weak session] controller in session?.resumeLast(controller) }
         windows.onSidebarResizing = { [weak session] controller, on in session?.sidebarResizing(controller, on) }

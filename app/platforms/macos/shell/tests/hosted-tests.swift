@@ -86,6 +86,26 @@ final class FakeHostedWindow: HostedWindow {
         return HostPlacement(page: page, area: FakeHostWorld.display)
     }
     func push(_ json: String) { pushed.append(json) }
+    // A split as its page lays it out (docs/PEEK-SPLIT.md §4): `splitShown` says which (its id, items in order, stacked or
+    // not, ratios; a test sets it as the page would for the item in front), laid out in the page area with an 8 pt gap.
+    var splitShown: (() -> (id: String, items: [String], vertical: Bool, ratios: [CGFloat])?)?
+    var paneLayout: (split: String, panes: [PagePane])? {
+        guard hosting, let s = splitShown?(), let page = hostedPlacement?.page, s.items.count >= 2 else { return nil }
+        let gap: CGFloat = 8, n = CGFloat(s.items.count)
+        let room = (s.vertical ? page.height : page.width) - gap * (n - 1)
+        let sum = s.ratios.count == s.items.count ? s.ratios.reduce(0, +) : n
+        var at = s.vertical ? page.minY : page.minX
+        let panes = s.items.enumerated().map { i, item -> PagePane in
+            let size = (room * (s.ratios.count == s.items.count ? s.ratios[i] : 1) / sum).rounded()
+            defer { at += size + gap }
+            return PagePane(item: item, rect: s.vertical ? CGRect(x: page.minX, y: at, width: page.width, height: size) : CGRect(x: at, y: page.minY, width: size, height: page.height))
+        }
+        return (s.id, panes)
+    }
+    var paneMinimumsSaid: [[String: CGSize]] = [] // each setPaneMinimums, in order
+    func setPaneMinimums(_ minimums: [String: CGSize]) { paneMinimumsSaid.append(minimums) }
+    var visibleSaid: [[HostShownWindow]] = [] // each setVisibleHosts, in order
+    func setVisibleHosts(_ list: [HostShownWindow]) { visibleSaid.append(list) }
     var marginPage: String? // Margin's own page in its page area (setMarginPage)
     var marginPages: [String?] = [] // each setMarginPage, in order
     func setMarginPage(_ page: String?) { guard page != marginPage else { return }; marginPage = page; marginPages.append(page) }

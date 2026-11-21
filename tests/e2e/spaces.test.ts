@@ -63,7 +63,7 @@ test('a tab moved to another space with its menu', async (t) => {
   assert.deepEqual((await view()).menu, [
     'Pin Tab',
     'Add to Favorites',
-    'Open in Split View',
+    'Add to Split View',
     'New Folder with Tab',
     'Rename Tab',
     'Copy URL',

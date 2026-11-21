@@ -746,6 +746,41 @@ const withRuntime = Object.assign(T, {
     rt.mock.state = { ...rt.mock.state, tabs: Object.fromEntries(Object.entries(rt.mock.state.tabs).map(([k, t]) => [k, { ...t, audible: false }])) };
     rt.host.setState(rt.mock.state);
   },
+  // Split View (split-view.test.ts): a split of these tabs (the browser's ids, as a pane can be named), the first in
+  // front; what Margin laid out in <m-page> (its panes, by id, with their boxes; the dividers) and the last layout's
+  // panes as the host was told them; the panes' windows' minimums as Margin.app says them (`paneMin`).
+  rtSplit(tabs: number[], { axis = 'horizontal', ratios = null as number[] | null, id = 'spv-1' } = {}) {
+    const front = tabs[0];
+    rt.mock.state = {
+      ...rt.mock.state,
+      tabs: Object.fromEntries(Object.entries(rt.mock.state.tabs).map(([k, t]) => [k, { ...t, active: Number(k) === front ? true : (t.windowId === 1 ? false : t.active) }])),
+      splits: [{ id, spaceId: rt.mock.state.tabSpace[front], axis, panes: tabs.map(String), ratios: ratios ?? tabs.map(() => 1 / tabs.length) }],
+    } as typeof rt.mock.state;
+    rt.host.setState(rt.mock.state);
+    return rt.runtime!.vm!.split ? { id: rt.runtime!.vm!.split.id, panes: rt.runtime!.vm!.split.panes.map((p) => p.id) } : null;
+  },
+  rtNoSplit() { rt.mock.state = { ...rt.mock.state, splits: [] } as typeof rt.mock.state; rt.host.setState(rt.mock.state); },
+  rtPanes() {
+    const page = rt.target.querySelector('m-page');
+    const box = (el: Element) => { const r = el.getBoundingClientRect(); return { left: r.left, top: r.top, width: r.width, height: r.height, x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
+    return {
+      axis: page?.getAttribute('m-split') ?? null,
+      split: page?.getAttribute('m-split-id') ?? null,
+      panes: [...(page?.querySelectorAll(':scope > m-pane') ?? [])].map((p) => ({ id: p.getAttribute('m-pane-id'), focused: p.hasAttribute('m-focused'), ...box(p), ring: getComputedStyle(p).boxShadow })),
+      dividers: [...(page?.querySelectorAll(':scope > m-divider') ?? [])].map((d) => ({ ...box(d), background: getComputedStyle(d).backgroundColor, cursor: getComputedStyle(d).cursor, grip: `${getComputedStyle(d, '::after').backgroundColor}|${getComputedStyle(d, '::after').backgroundImage}`, role: d.getAttribute('role') })),
+      layout: (rt.host.layouts.at(-1) as { split?: string, panes?: { id: string, rect: number[] }[] } | undefined)?.panes ?? null,
+      layoutSplit: (rt.host.layouts.at(-1) as { split?: string } | undefined)?.split ?? null,
+    };
+  },
+  rtPaneMin(items: Record<string, readonly [number, number]>) { Object.assign(rt.host, { paneMinimums: items }); rt.host.setState(rt.mock.state); },
+  // Add to Split View (the UI's `split.add`) with the page area `width` wide as Margin.app last measured it: what was
+  // sent, and the toast shown.
+  rtSplitAdd(tabId: number, width: number) {
+    Object.assign(rt.host, { layout: { container: { width, height: 800 }, insets: { left: 0, top: 0, right: 0, bottom: 0 } } });
+    rt.host.sent.length = 0;
+    rt.runtime!.dispatch('split.add', tabId, 'behavior');
+    return { sent: rt.host.sent.map((s) => s.type), toast: rt.runtime!.vm?.toast?.text ?? null };
+  },
   rtVm() { const vm = rt.runtime!.vm!; return { space: vm.space.id, sidebar: vm.window.sidebar, palette: vm.palette.open, rows: vm.palette.rows.length, today: vm.space.today.length }; },
   rtCount(selector: string) { return rt.target.querySelectorAll(selector).length; },
   // The page's box (<m-page>) and the launcher's, with the launcher's background (Margin.app's empty window).

@@ -44,8 +44,12 @@ struct PageLayout: Equatable {
     // each corner's colour outside the card (CSS colours, top left clockwise; empty: not said). The ground under the
     // page area is the colour most of them have (MarginWindowController `pageGround`).
     var fills: [String] = []
+    // A split shown (docs/PEEK-SPLIT.md §4): its id and each pane's box as Margin's renderer laid it out in `<m-page>`
+    // (`<m-pane>`, in the page's coordinates, top left), in the split's order, each by its item; none: no split.
+    var split: String?
+    var panes: [PagePane] = []
 
-    // From the page's report ({ insets, radius, radii, container, mode, pageOutside }); nil if it isn't one.
+    // From the page's report ({ insets, radius, radii, container, mode, pageOutside, split, panes }); nil if it isn't one.
     init?(geometry g: JSONObject) {
         guard let insets = g["insets"] as? JSONObject,
               let l = num(insets["left"]), let t = num(insets["top"]), let r = num(insets["right"]), let b = num(insets["bottom"]),
@@ -60,10 +64,29 @@ struct PageLayout: Equatable {
         hosted = g["pageHosted"] as? Bool == true
         let said = (g["fills"] as? [Any])?.prefix(4).map { ($0 as? String).flatMap { $0.count <= 80 ? $0 : nil } ?? "" } ?? []
         fills = said.count == 4 ? said : []
+        // (At most 4 panes, each an item's id and a finite box of its own; anything else: no split said.)
+        if let id = g["split"] as? String, PagePane.idOk(id), let list = g["panes"] as? [Any], (2...4).contains(list.count) {
+            let parsed = list.compactMap { PagePane($0) }
+            if parsed.count == list.count, Set(parsed.map(\.item)).count == parsed.count { split = id; panes = parsed }
+        }
     }
 
     init(left: Double, top: Double, right: Double, bottom: Double, radius: Double, radii: [Double], width: Double, height: Double, mode: String) {
         (self.left, self.top, self.right, self.bottom, self.radius, self.radii, self.width, self.height, self.mode) = (left, top, right, bottom, radius, radii, width, height, mode)
+    }
+}
+
+// One pane of a split as the page laid it out (PageLayout `panes`): its item and its box in the page, top left.
+struct PagePane: Equatable {
+    var item: String
+    var rect: CGRect
+    static func idOk(_ s: String) -> Bool { !s.isEmpty && s.count <= 256 && s.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || "-_:.".contains($0)) } }
+    init(item: String, rect: CGRect) { (self.item, self.rect) = (item, rect) }
+    init?(_ raw: Any) {
+        guard let o = raw as? JSONObject, let item = o["id"] as? String, Self.idOk(item), let r = o["rect"] as? [Any], r.count == 4 else { return nil }
+        let n = r.compactMap(num)
+        guard n.count == 4, n.allSatisfy(\.isFinite), n[2] > 0, n[3] > 0 else { return nil }
+        self.init(item: item, rect: CGRect(x: n[0], y: n[1], width: n[2], height: n[3]))
     }
 }
 

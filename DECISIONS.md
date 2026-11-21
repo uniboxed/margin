@@ -6711,3 +6711,74 @@ Step 1 of the plan, on feat/multi-host; not wired to any UI yet (steps 2–3 cal
   shows the page card's loader over the whole page area (Peek's own loader is step 2). Tests: the stand-in world
   (multi-host-tests.swift, multi-host-session-tests.swift), Margin's real window off screen (e2e-glue `multiHoleChecks`),
   the copy's tabs (hosted-tabs.test.ts). Nothing on the real screen yet (step 4).
+
+## Split View in Margin.app (docs/PEEK-SPLIT.md §4, feat/split, 2026-11-21)
+
+Step 3 of the plan, on the foundation (§1). Decided here (Tirth's decisions are the doc's: 2–4 panes, Safari tabs and Mac
+apps mixed, side by side or stacked, live dividers, each Safari pane a window of its own in the space's profile).
+
+- **Showing.** A split's item shown anywhere (a sidebar pick, the capsule, ⌘1–9, a key, a show after a close) shows the
+  whole split, that pane focused (HostedSession `showSplit`): its panes are the split's items that can be hosted (Safari
+  web pages, Mac apps, each app once: its one window is one pane; Margin's own pages and Chrome/Edge items are left out,
+  said). Main is the pane that keeps its window: the window's layout of this split already, else the split's first web
+  pane (its profile's main window), else its first pane; a profile's other web panes `#pane1`…`#pane3`. Fewer than two
+  hostable panes: the item alone. The library's split actions ask for `showSplit` (create, add, open, swap, axis,
+  remove), with the pane to focus (none: the one the window has focused, else the first); a resize asks nothing.
+- **Rects come from the page, never computed twice.** Margin's renderer puts `<m-pane>`s (flexed by the ratios) and
+  `<m-divider>`s inside `<m-page>` (ui/behaviors/split.ts) while the item in front is a pane and a window is hosted;
+  `View.measure` reports `split` and each pane's box; `PageLayout.panes` → `MarginWindowController.paneLayout` (whole
+  points, screen coordinates) → the session (`paneRects`, waited for up to `pageWait`, the page asked to measure at
+  each look) → `engine.setLayout`. The core's `host/panes.rs` (LayoutPanes, ResizeDivider, never called) is removed:
+  the page is the one geometry source, the engine's `belowMinimum` the one check.
+- **Pane windows** open at their pane's page (`newWindow { url }`, http(s)), or blank when the item's tab is open in
+  another of Margin's windows: it's moved in (`hostShow`) and the blank first page closed (background/hosted.ts), never
+  Safari's new-tab page (its address field keeps the toolbar down). A pane's last tab closed (⌘W) leaves its window a
+  blank page (Margin's window, never closed by Safari with its tab). A pane window in no layout for `paneIdle` (15
+  min) is closed by its copy (the shell's poll, `closeIdlePaneWindows`); with its profile's main window gone, at once.
+- **Leaving** (an item outside the split picked): the engine's one-host switch parks the other panes; the split stays.
+- **Dividers.** Dragged in the page: the two panes beside it take the pointer's change, each stopping at its floor (its
+  window's minimum, `paneMin` from the engine's `minimum(of:)`, else 200 × 140); at most one frame applied per display
+  frame (a 50 ms timer for a window with no frames), measured and reported in that frame; the app told `split.resizing`
+  (the sidebar drag's path: `sidebarResizing`, `engine.dragging`), so tiles and window-mode hosts follow live
+  (`follow(_:rects:)`, every pane's rect), plain members are placed again at the release under their loader. Let go:
+  `split.resize` saves the ratios (drawn ahead of the state until it has them). Double-click: equal. Focused (Tab):
+  ←/→ (↑/↓ stacked) 2%, ⇧ 10%, Home/End, Enter equal; each saved. (Margin.app's panel takes the keys only for its
+  fields, so the keyboard path works in the page, not from a hosted app's focus.)
+- **Live holes.** `follow(_:rects:)` tells Margin's window every visible host's rect in that frame at once
+  (`sayHostedWindows(live:)`); while following, the window takes only the rects (no window-server reads, no log line,
+  no reorder) and its holes and the pointer's way through them follow the page. The overlay's mutation watcher skips a
+  drag frame's own attribute changes on `m-pane`/`m-divider` (what takes the pointer read 150 ms after the last).
+- **The page area changed with several visible** (`pageRectChanged(_:rects:)`): the layout is held while each host is
+  placed again (a plain member's out-of-full-screen-and-in made the one shown the layout alone, so the other panes were
+  never placed and dropped out of it: found by split-tests.swift's drag at release).
+- **Off-screen budgets per host.** `backOnScreen`'s tries, its once-per-show act and what it said are each host's own
+  (Host.offTries, visibleAt, …): a pane's try never uses up main's.
+- **Focus and keys.** A press in a pane focuses it (`pressedHost`: the engine's `shown`, the session's `shown[w]`, the
+  capsule's highlight). ⌘W in a hosted app closes `shown[w]`, the focused pane; the library's `closeTab` then shows the
+  split's next pane (the one after it, else before it), so the split goes on with the rest, or ends at the one left,
+  shown alone; a pane closed while another is focused re-shows the split around the focused one. keysBack and a
+  field's close front the visible hosts back to front, the focused one last. A press on a divider is Margin's (it's in
+  the page's `hits`), never a pane's.
+- **Menus.** A pane's row (the capsule's pane buttons open the tab menu now): Remove from Split View (`split.remove`:
+  the rest shown, its next pane focused), Break Out of Split View (`split.breakOut`: shown alone), Swap Panes (the
+  first two), Stacked / Side by Side. Any other row (not one of Margin's own pages): Add to Split View, into the split
+  of the item in front, or split with it — the row's menu is the chooser of what's added.
+- **⌃⇧= (decided here).** Adds the space's item used most recently that isn't in front or a pane already (Arc pairs the
+  tab you were on before); none: the palette opens for a new tab, and the item it opens is added beside the one in
+  front once it's in front (Escape, or 15 s with nothing new: nothing added).
+- **Refusals.** The library: 4 panes at most, one space, Margin's own pages never, an app once. The page: a pane that
+  can't fit (each pane's floor and the gaps wider than the page area) isn't asked for, a toast says "Not enough room for
+  another pane". The sidebar's edge stops where the panes would no longer fit (`floor`, behaviors/resize.ts). The
+  engine still refuses a rect below a window's known minimum (that pane not shown, said).
+- **Themes.** All five style `m-divider` (gap colour = their frame, a grip, hover/focus/drag), `m-pane[m-focused]` (a
+  ring in the gap), light and dark through their own tokens, `--m-split-gap` 8–12 px; nothing moves the boxes.
+- **Not done / known limits.** Pane windows' loading bar (the copy's `loading` push is read for main windows only); a
+  pane refused by its minimum isn't laid out again once the page re-lays out at the minimum (pick it again); swap of
+  three or more web panes may move tabs between pane windows (roles follow the order); the keyboard divider works only
+  where the page has the keys. Nothing here was run on the real screen: TESTING.md M2.7 is the list.
+- **Checked** (headless): unit (`tests/split-view.test.ts`: the library's requests and refusals, ⌘W's next pane, the
+  actions, a pane's menu, the divider's arithmetic, ⌃⇧='s pick, the copy's pane windows), themes in WebKit and
+  Chromium (`tests/theme/split-view.test.ts`: panes drawn and measured, a real drag, the minimum, double-click, stacked,
+  refusal), Swift (`split-tests.swift`: the session on the stand-in world end to end; live holes; per-host budgets),
+  the app's e2e with the real page (`tools/app-tests/e2e-split.swift`: two apps split, panes measured by the real
+  WKWebView page, windows at those boxes, a divider dragged by pointer events, saved, placed again).

@@ -93,6 +93,14 @@ export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = asy
       // (Moved first: its tag found in another window is forgotten by `own`.)
       let tab: Tab | null = await moveHere(itemId, win);
       const moved = tab != null;
+      // (Moved into a window Margin made that had only its first page (a blank page, the new-tab page): that page goes,
+      // the moved tab alone there, the keys in its page: docs/PEEK-SPLIT.md §4.)
+      if (tab?.id != null) {
+        const movedId = tab.id;
+        const rest = (await tabs().query({ windowId: win }).catch(() => [] as Tab[])).filter((t) => t.id != null && t.id !== movedId);
+        const blank = (t: Tab) => isNewTabPage(t.url || t.pendingUrl) || !(t.url || t.pendingUrl) || t.url === 'about:blank';
+        if (rest.length === 1 && !tagged(rest[0].id!) && blank(rest[0])) await tabs().remove(rest[0].id!).catch(() => {});
+      }
       tab ??= await own(itemId, win);
       let created = false;
       shownIn.add(win);
@@ -137,6 +145,12 @@ export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = asy
       const tab = await own(itemId, null);
       byItem.delete(itemId);
       if (tab?.id == null) return { closed: false };
+      // (The last tab of a window the app shows items in (a split's pane window, its card): a blank one left first, as
+      // a move does, so that window, Margin's, isn't closed with it; the app shows what comes next there, or parks it.)
+      if (tab.windowId != null && shownIn.has(tab.windowId)) {
+        const left = await tabs().query({ windowId: tab.windowId }).catch(() => [] as Tab[]);
+        if (left.length <= 1) await tabs().create({ windowId: tab.windowId, url: 'about:blank', active: false }).catch(() => null);
+      }
       await tabs().remove(tab.id);
       return { closed: true };
     },

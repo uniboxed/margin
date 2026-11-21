@@ -141,7 +141,7 @@ export const APP_REQUESTS = new Set([
   'resetPin', 'renamePin', 'renameTab', 'nestFolder',
   'addFavorite', 'removeFavorite', 'openFavorite', 'resetFavorite', 'renameFavorite', 'moveFavorite',
   'addAirTrafficRule', 'removeAirTrafficRule', 'toggleAirTrafficRule', 'routeUrl',
-  'createSplit', 'addToSplit', 'openSplit', 'breakOutSplit', 'closeSplitPane', 'swapSplit', 'resizeSplit', 'toggleSplitAxis',
+  'createSplit', 'addToSplit', 'openSplit', 'breakOutSplit', 'removeFromSplit', 'closeSplitPane', 'swapSplit', 'resizeSplit', 'toggleSplitAxis',
   'duplicateTab', 'muteTab', 'unloadTab', 'restoreLastArchive',
   'setFolderOpen', 'createFolder', 'renameFolder', 'deleteFolder', 'moveFolder', 'setSpace', 'createSpace',
   'renameSpace', 'setSpaceTheme', 'deleteSpace', 'clearToday', 'goBack', 'goForward', 'reload', 'restoreArchive', 'openLauncher',
