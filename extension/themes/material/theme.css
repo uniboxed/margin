@@ -1499,13 +1499,13 @@
 .peek-backdrop { position: absolute; inset: 0; pointer-events: none; }
 .peek-backdrop > .peek-scrim { position: absolute; inset: 0; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; animation: none; cursor: default; pointer-events: none; }
 .peek-backdrop:is(.loading, .little-arc) > .peek-scrim { pointer-events: auto; }
-.peek-dim, .peek-card { position: absolute; left: clamp(0px, 8%, calc(50% - 210px)); right: clamp(0px, 8%, calc(50% - 210px)); top: clamp(0px, 7%, calc(50% - 182px)); bottom: clamp(0px, 7%, calc(50% - 182px)); border-radius: 28px; }
+.peek-dim, .peek-card { position: absolute; left: clamp(0px, 8%, calc(50% - 210px)); right: clamp(0px, 8%, calc(50% - 210px)); top: clamp(0px, 7%, calc(50% - 186px)); bottom: clamp(0px, 7%, calc(50% - 186px)); border-radius: 28px; }
 .peek-backdrop.little-arc :is(.peek-dim, .peek-card) { bottom: auto; height: 48px; }
 .peek-dim { box-shadow: 0 0 0 100vmax var(--peek-dim); pointer-events: none; animation: m3-peek-fade-in 150ms ease-out both; }
 .peek-backdrop.closing .peek-dim { animation: m3-peek-fade-out 150ms ease-in both; }
 .peek-card { display: flex; flex-direction: column; overflow: hidden; pointer-events: none; transform-origin: 50% 40%; animation: m3-peek-in 150ms cubic-bezier(.2, .8, .2, 1) both; background: transparent; color: var(--on-surface); box-shadow: var(--elev-3); }
 .peek-backdrop.closing .peek-card { animation: m3-peek-out 150ms cubic-bezier(.4, 0, 1, 1) both; }
-.peek-bar { flex: none; box-sizing: border-box; height: 44px; display: flex; align-items: center; gap: 6px; padding: 0 10px; pointer-events: auto; height: 48px; gap: 8px; padding: 0 14px; background: var(--sc-low); color: var(--on-surface); border-bottom: 1px solid var(--outline-variant); }
+.peek-bar { flex: none; box-sizing: border-box; height: 44px; display: flex; align-items: center; gap: 6px; padding: 0 10px; pointer-events: auto; height: 52px; gap: 8px; padding: 0 14px; background: var(--sc-low); color: var(--on-surface); border-bottom: 1px solid var(--outline-variant); }
 .peek-host { flex: 1 1 0; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13px; color: var(--on-surface-variant); }
 .peek-field { flex: 1 1 0; min-width: 0; height: 30px; box-sizing: border-box; padding: 0 10px; font: inherit; outline: none; height: 34px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--sc-high); color: var(--on-surface); }
 .peek-page { position: relative; flex: 1 1 auto; min-height: 0; background: transparent; }

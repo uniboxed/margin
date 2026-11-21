@@ -6901,3 +6901,12 @@ user's choices (the doc's table) as built; what was decided here is marked so.
   Margin's top frame, as one window's does). The app doesn't read the toolbar's height (only the engine knows that
   window): 52 is the measured one. Checked: `tests/split-view.test.ts`, `tests/theme/split-view.test.ts` (5 themes, both
   engines: the band's height, place, name; the stacked room check).
+- **Peek's card: its bar covers the card window's toolbar.** The card window's own Safari toolbar window rests just above
+  the card's page (on screen: 1062×52 at the page's top − 52) while every bar was 44–50 pt: its top showed, dimmed,
+  through the dim above the card, and a still pointer there got Safari's "Tab Group picker" tooltip once. Every card
+  bar (the five themes' and Margin's default) is now 52 pt and opaque (Liquid Glass's was 96% `--pop-fill`), so the
+  toolbar rests under it; Margin's default rect (HostedPeek `defaultCardRect`) is under a 52 pt bar, and the cards'
+  clamp keeps 320 pt for the page (`50% - 186px`). The themes README says a card's bar must cover those 52 pt. Left: a
+  rounded card's top corners (radius up to 28 pt in Material) leave the toolbar's square top corners outside the
+  card's curve, a few points under the dim. Checked: `tests/theme/peek-card.test.ts` (the bar covers the 52 pt above
+  `<m-peek-page>` across its width, opaque), `peek-session-tests.swift`.

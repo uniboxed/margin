@@ -191,11 +191,11 @@ func peekSessionTests() {
     window.cardRect = nil
     run { session.peekOpen(profile: "s-default", windowId: 90, msg: ["id": "peek-9", "url": "https://default.example/", "notAfter": later()]) }
     let dflt = HostedSession.defaultCardRect(page: page)
-    check("peek session: no <m-peek-page>: Margin's default place, centred with 8% and 7% margins under a 44 pt bar",
+    check("peek session: no <m-peek-page>: Margin's default place, centred with 8% and 7% margins under a 52 pt bar (the card window's toolbar rests under it)",
           w.bounds(window: cardWindow) == dflt && abs(dflt.minX - page.minX - (page.maxX - dflt.maxX)) <= 1 && abs(dflt.minX - page.minX - (page.width * 0.08).rounded()) <= 1
-          && abs(dflt.minY - 44 - page.minY - (page.height * 0.07).rounded()) <= 1, "\(dflt) in \(page), at \(String(describing: w.bounds(window: cardWindow)))")
+          && abs(dflt.minY - 52 - page.minY - (page.height * 0.07).rounded()) <= 1, "\(dflt) in \(page), at \(String(describing: w.bounds(window: cardWindow)))")
     let small = HostedSession.defaultCardRect(page: CGRect(x: 0, y: 0, width: 500, height: 400))
-    check("peek session: the default card at least 420×320 (its page) in a small page area, centred", small.width == 420 && small.height == 320 && small.minX == 40 && small.minY == 62, "\(small)")
+    check("peek session: the default card at least 420×320 (its page) in a small page area, centred", small.width == 420 && small.height == 320 && small.minX == 40 && small.minY == 66, "\(small)")
     run { _ = session.closeCard(windowId: 1, why: "test") }
     window.cardRect = rect
 

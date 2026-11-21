@@ -140,7 +140,7 @@ export function installCard(rt: Rt) {
   }
 
   // ---- Margin's default card (a theme with no `peek` part of its own) ----
-  // Centred in the page area, 8% of it each side and 7% above and below (at least 420×320), a 44 pt bar over its page
+  // Centred in the page area, 8% of it each side and 7% above and below (at least 420×320), a 52 pt bar over its page
   // (back, forward, the address, Copy URL, Open in Space, Close; Little Arc: the field), the page area around it dimmed
   // (ui/render.ts BASE_CSS `m-peek[m-default]`, which a theme's CSS can restyle). Margin's own elements, its own words.
   let dflt: { el: HTMLElement, host: HTMLElement, field: HTMLInputElement } | null = null;
