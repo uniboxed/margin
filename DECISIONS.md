@@ -7253,3 +7253,11 @@ with its dblclick, a drag-select, a right-click, across apps both ways. 6-13 ms 
   left by the monitor, the card's page alone, another Space for a moment and for good, gone at one, Margin's quit).
   The real screen: the `pane-clicks` part of `npm run test:screen` (two Chameleon copies; Chameleon's grid refuses the
   first mouse as WebKit does) and TESTING.md M2.7 step 13h (Safari+Safari, Safari+Notes).
+
+## The pane click tap: overlays aren't covers (2026-11-21)
+
+On the real Mac the screen suite's first run of the pane-clicks part let every held press go: "a click in its pane over
+another window there (window 36, pid 874, layer 2147483628)", a keep-awake app's two full-screen windows at the
+shielding level, over the whole display and letting the pointer through. Windows at the assistive-technology level
+(1500) and above (screen dimmers, keep-awake and zoom overlays, shielding, cursor) are never covers now
+(`PaneClick.overlay`); a menu, a sheet or panel, the Dock or a system dialog still is.

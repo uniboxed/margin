@@ -59,6 +59,13 @@ nonisolated struct PaneClickCover: Equatable, Sendable {
 }
 
 nonisolated enum PaneClick {
+    // A window at the assistive-technology level or above (screen dimmers, keep-awake and zoom overlays, the shielding
+    // and cursor levels): by convention one that lets the pointer through, never a cover. The real Mac, 2026-11-21: a
+    // keep-awake app's two full-screen windows at layer 2147483628 over every pane, and every held press let go for them.
+    // A menu (101), a sheet or panel (3-8), the Dock (20), a system dialog (1000) still cover.
+    static let overlayLayer = Int(CGWindowLevelForKey(.assistiveTechHighWindow))
+    static func overlay(layer: Int) -> Bool { layer >= overlayLayer }
+
     enum Pass: Equatable, Sendable {
         case noPanes // no split up (no scene, or no pane in it)
         case field // a field of Margin's has the keys

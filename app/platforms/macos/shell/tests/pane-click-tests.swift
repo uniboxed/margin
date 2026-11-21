@@ -69,6 +69,12 @@ private func scene(rightPid: pid_t = 501, focused: Int? = 10, hits: [CGRect] = [
 private let inRight = CGPoint(x: 1200, y: 500), inLeft = CGPoint(x: 500, y: 500)
 
 private func paneClickDecisionTests() {
+    // (Overlays at the assistive-technology level and above let the pointer through: never a cover. The real Mac,
+    // 2026-11-21: a keep-awake app's full-screen windows at layer 2147483628 had every held press let go.)
+    check("pane click: a window at an overlay's level (assistive tech and above: 1500, shielding 2147483628, cursor 2147483630) is never a cover; a menu (101), a sheet (3), the Dock (20) or a system dialog (1000) is",
+          PaneClick.overlay(layer: 2147483628) && PaneClick.overlay(layer: 2147483630) && PaneClick.overlay(layer: Int(CGWindowLevelForKey(.assistiveTechHighWindow)))
+          && !PaneClick.overlay(layer: 101) && !PaneClick.overlay(layer: 3) && !PaneClick.overlay(layer: 20) && !PaneClick.overlay(layer: 1000) && !PaneClick.overlay(layer: 0),
+          "overlay from \(PaneClick.overlayLayer)")
     var coverAsks = 0
     func decide(_ p: CGPoint, _ s: PaneClickScene?, flags: CGEventFlags = [], buttons: Bool = false, focused: Int?? = nil, cover: PaneClickCover? = nil) -> PaneClick.Decision {
         PaneClick.decide(p, flags: flags, otherButtons: buttons, scene: s, focused: focused ?? s?.focused) { _ in coverAsks += 1; return cover }

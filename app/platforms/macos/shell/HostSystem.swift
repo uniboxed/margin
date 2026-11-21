@@ -584,6 +584,7 @@ nonisolated final class AXPaneFocus: PaneFocusing, @unchecked Sendable {
         for w in list {
             guard let number = (w[kCGWindowNumber as String] as? NSNumber)?.intValue, !except.contains(number) else { continue }
             if let alpha = (w[kCGWindowAlpha as String] as? NSNumber)?.doubleValue, alpha <= 0 { continue }
+            if PaneClick.overlay(layer: (w[kCGWindowLayer as String] as? NSNumber)?.intValue ?? 0) { continue }
             guard let b = w[kCGWindowBounds as String], CFGetTypeID(b as CFTypeRef) == CFDictionaryGetTypeID(),
                   let r = CGRect(dictionaryRepresentation: b as! CFDictionary), r.contains(point) else { continue }
             return PaneClickCover(window: number, pid: (w[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value ?? 0,
