@@ -1266,6 +1266,7 @@ final class FakeSafariCopy {
     var closes = true // the copy closes a window when asked
     var bounds: CGRect? = CGRect(x: 100, y: 100, width: 800, height: 600) // as its `windows` list has a new window
     var windowFrame: CGRect? // where Safari opens it (none: at `bounds`)
+    var opensIn: UInt64? // the Space Safari opens it in (none: the Desktop; a full-screen one current a moment, 2026-11-20)
     var extraOnRequest: [ServerWindow] = [] // other windows Safari makes at that moment (the window server lists them)
     init(_ world: FakeHostWorld, pid: @escaping () -> pid_t?) { self.world = world; self.pid = pid }
     func wire(_ e: HostEngine) {
@@ -1282,7 +1283,7 @@ final class FakeSafariCopy {
         if makesWindow {
             let n = world.nextWindow
             world.nextWindow += 1
-            world.wins[n] = FakeHostWorld.Win(pid: pid, spaces: [FakeHostWorld.desktop], frame: windowFrame ?? bounds)
+            world.wins[n] = FakeHostWorld.Win(pid: pid, spaces: [opensIn ?? FakeHostWorld.desktop], frame: windowFrame ?? bounds)
             world.apps[pid]?.windows.append(n)
             windowOf[id] = n
         }
@@ -1990,6 +1991,41 @@ func hostTests() {
         let normalAt = at(w, "copy fullScreen 7914 false"), closeAt = at(w, "copy close 7914")
         check("host: quit: the shown Safari window parked first (its exit unseen), put normal by its copy there, onto the Desktop, then closed as a normal window",
               parkAt < normalAt && normalAt < at(w, "move \(mine) \(FakeHostWorld.desktop)") && at(w, "move \(mine) \(FakeHostWorld.desktop)") < closeAt && copy.closedAs == ["normal"], "\(w.calls) \(copy.closedAs)")
+    }
+    do {
+        // Safari's asked-for window opened, a normal window, in a full-screen Space of Safari's own (a woken window's, current
+        // a moment: 2026-11-20 19:11:29): never taken for full screen there; onto the Desktop, asked, placed.
+        let (w, e, _) = world()
+        let safariPid = w.start("com.apple.Safari", policy: .regular, windows: 1)
+        let copy = FakeSafariCopy(w) { safariPid }
+        copy.wire(e)
+        let stray: UInt64 = 7766
+        w.tiles[stray] = [stray + 1]
+        w.owner[stray] = safariPid
+        copy.opensIn = stray
+        var lines: [String] = []
+        let echo = Diagnostics.echo
+        Diagnostics.echo = { lines.append($0) }
+        let r = open(e, .safariWindow(nil))
+        Diagnostics.echo = echo
+        let mine = e.hosts[HostTarget.safariWindow(nil).id]?.window ?? 0
+        check("host: Safari's window opened in a full-screen Space it doesn't fill: not full screen there: onto the Desktop, asked by its copy, placed at the page area",
+              r == .shown(HostTarget.safariWindow(nil).id, placed: true) && copy.fullScreens == ["7914 on"] && lines.contains { $0.contains("stood in a full-screen Space it doesn't fill") }
+              && w.wins[mine]?.member == true && w.bounds(window: mine) == page, "\(String(describing: r)) \(copy.fullScreens) \(w.calls.suffix(12))")
+    }
+    do {
+        // Its open failed with the window a normal one standing in a full-screen Space (Margin's): never asked out of a full
+        // screen it isn't in, never waited on (2026-11-20 19:11:33-47: 7 s, twice).
+        let (w, e, _) = world()
+        let safariPid = w.start("com.apple.Safari", policy: .regular, windows: 1)
+        let copy = FakeSafariCopy(w) { safariPid }
+        copy.wire(e)
+        copy.opensIn = FakeHostWorld.marginSpace
+        copy.fullScreenWorks = false
+        let t0 = w.now()
+        let r = open(e, .safariWindow(nil))
+        check("host: a normal Safari window in Margin's Space, its open failed: closed by its copy, never asked out of full screen, no exit waited for",
+              { if case .failed? = r { return true }; return false }() && copy.closed == [7914] && !copy.fullScreens.contains("7914 off"), "\(String(describing: r)) \(copy.fullScreens) \(w.now() - t0)")
     }
     do {
         let (w, e, _) = world()
@@ -4404,6 +4440,53 @@ func session1405Tests(world: () -> (FakeHostWorld, HostEngine, URL)) {
         e.releaseWoken(bundleId: "com.apple.Safari")
         done()
         check("woken: closed and released: its private Space destroyed", w.privates.count == spaces - 1, "\(w.privates)")
+        hostRun { await e.quitAll() }
+    }
+    do {
+        // Opened from a full-screen window of Safari's: macOS gave it a full-screen Space of its own and would switch to it
+        // (2026-11-20 19:11:29: the screen jumped, Safari's next window opened there): that Space destroyed as the window
+        // leaves it; one already showing: Margin's Space shown again, destroyed at the next poll; one with another window of
+        // Safari's in it: left alone.
+        let (w, e, _) = world()
+        let (lines, done) = listen()
+        _ = open(e, calculator)
+        let sp = w.start("com.apple.Safari", policy: .accessory, windows: 1)
+        func wokenIn(_ space: UInt64) -> Int {
+            w.tiles[space] = [space + 1]
+            w.owner[space] = sp
+            let n = w.nextWindow
+            w.nextWindow += 1
+            w.wins[n] = FakeHostWorld.Win(pid: sp, spaces: [space])
+            w.apps[sp]?.windows.append(n)
+            return n
+        }
+        e.hideWoken(bundleId: "com.apple.Safari")
+        let a: UInt64 = 7764
+        let first = wokenIn(a)
+        e.poll()
+        check("woken: in a full-screen Space of its own (not showing yet): parked, that Space destroyed as it left, the display never moved",
+              w.wins[first]?.priv != nil && w.calls.contains("destroy \(a)") && w.tiles[a] == nil && w.dropped == 0 && w.current == FakeHostWorld.marginSpace
+              && said(lines, "destroyed as it left") == 1, "\(w.calls.suffix(6))")
+        e.hideWoken(bundleId: "com.apple.Safari")
+        let b: UInt64 = 7774
+        let second = wokenIn(b)
+        w.current = b // (macOS already switched to it)
+        e.poll()
+        let backFirst = w.current == FakeHostWorld.marginSpace && w.tiles[b] != nil
+        e.poll()
+        _ = hostRun { await e.activateShown(at: nil); return true } // (what the poll queued, run to its end)
+        check("woken: its Space already showing: Margin's Space shown again at once, the Space destroyed at the next poll, never while it showed",
+              w.wins[second]?.priv != nil && backFirst && w.tiles[b] == nil && w.dropped == 0 && said(lines, "was showing: Margin's Space shown again") == 1, "\(w.calls.suffix(8))")
+        let c: UInt64 = 7784
+        let person = wokenIn(c) // (the person's own full-screen Safari window, in that Space, there before the press)
+        e.hideWoken(bundleId: "com.apple.Safari")
+        let third = w.nextWindow
+        w.nextWindow += 1
+        w.wins[third] = FakeHostWorld.Win(pid: sp, spaces: [c])
+        w.apps[sp]?.windows.append(third)
+        e.poll()
+        check("woken: a Space with another window of Safari's in it (the person's): left alone, that window untouched", w.wins[third]?.priv != nil && w.wins[person]?.priv == nil && w.tiles[c] != nil && !w.calls.contains("destroy \(c)"), "\(w.calls.suffix(6))")
+        done()
         hostRun { await e.quitAll() }
     }
     do {
