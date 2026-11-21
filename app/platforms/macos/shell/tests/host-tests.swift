@@ -358,6 +358,35 @@ final class FakeHostWorld: HostSystem {
     var entered: Set<Int> = [] // windows still in their own Space when macOS's change was over (not moved out by then)
     var membersEarly: Set<Int> = [] // windows macOS brought into their own Space before its switch (`stageMember`)
     var moveLosesFrame = 0 // the next N moves of a pending window into Margin's Space leave it at the display's whole size
+    // Each app's version (its bundle's), as the engine reads it for the routes and the minimums kept per version.
+    var appVersions: [String: String] = [:]
+    func appVersion(pid: pid_t) -> String? { apps[pid].flatMap { appVersions[$0.bundle] } }
+    // macOS's switches to another Space while the screen wasn't frozen (seen by the person), and how long each freeze held.
+    var switchesSeen = 0
+    var frozenSince: Double?
+    var frozenFor: [Double] = []
+    // A window that comes up already in full screen, in a new Space of its own its app owns, listed at once (the real
+    // Mac, 2026-11-21 13:26:01: Safari's new window while its key window was full screen, the Dock's `SpaceChange.added`,
+    // `fullscreened`, `tileWindowJoined`): its Space's reservation lays it out `stageFrame` later; macOS switches the display
+    // to that Space `switchAfter` from now, if it's still there. Until it's laid out it has its Space's whole area.
+    var bornWindows: Set<Int> = []
+    func bornFullScreen(_ n: Int, switchAfter: Double = 0.3) {
+        guard var win = wins[n] else { return }
+        let space = nextId, tile = nextId + 1
+        nextId += 2
+        tiles[space] = [tile]
+        owner[space] = win.pid
+        tileWindow[tile] = n
+        win.fullScreen = true
+        win.spaces = [space]
+        win.priv = nil
+        wins[n] = win
+        makeToolbar(for: n)
+        bornWindows.insert(n)
+        pending[n] = Pending(space: space, tile: tile, asked: clock + switchAfter - stageEnter, listed: true, deliveredAt: clock)
+        stagedSpaces.insert(space)
+        noteListing()
+    }
     func advance() {
         advanceHelpers()
         for n in pending.keys.sorted() {
@@ -376,7 +405,7 @@ final class FakeHostWorld: HostSystem {
                 framedSpaces.insert(p.space)
                 framedAt[n] = clock
             }
-            if let j = stageJump, p.listed, !p.jumped, since >= j { p.jumped = true; current = stageJumpTo ?? p.space; currentSince = clock }
+            if let j = stageJump, p.listed, !p.jumped, since >= j { p.jumped = true; current = stageJumpTo ?? p.space; currentSince = clock; if !frozen { switchesSeen += 1 } }
             if p.deliveredAt == nil, p.listed, since >= (stageMember ?? stageEnter) {
                 p.deliveredAt = clock
                 if tiles[p.space] != nil {
@@ -398,7 +427,7 @@ final class FakeHostWorld: HostSystem {
             if since >= stageEnter {
                 if tiles[p.space] != nil {
                     if !p.movedOut { entered.insert(n) }
-                    if jumpOnFullScreen { current = p.space; currentSince = clock }
+                    if jumpOnFullScreen { current = p.space; currentSince = clock; if !frozen { switchesSeen += 1 } }
                 }
                 pending[n] = nil
                 continue
@@ -789,7 +818,7 @@ final class FakeHostWorld: HostSystem {
         if window == Self.marginWindow { return tilesOn ? tileBounds(Self.marginTile) : Self.display }
         if w.tiled, w.fullScreen, let t = tileOf(window) { return tileBounds(t) }
         if w.member, let f = w.memberFrame { return f }
-        if let p = pending[window] { return p.framed ? (reservation[p.space] ?? .zero).inset(Self.display) : (w.frame ?? Self.defaultFrame) }
+        if let p = pending[window] { return p.framed ? (reservation[p.space] ?? .zero).inset(Self.display) : bornWindows.contains(window) ? Self.display : (w.frame ?? Self.defaultFrame) }
         guard w.fullScreen, w.priv == nil, let space = w.spaces.first, tiles[space] != nil else { return w.frame ?? Self.defaultFrame }
         let sidebar = apps[w.pid]?.sidebarOpen == true || apps[w.pid].map { noLayout.contains($0.bundle) } == true
         return (sidebar ? .zero : (reservation[space] ?? .zero)).inset(Self.display)
@@ -971,8 +1000,8 @@ final class FakeHostWorld: HostSystem {
     func destroyPrivateSpace(_ space: UInt64) -> Bool { noteDestroy(space); return privates.remove(space) != nil }
 
     // ---- the freeze, outside opens ----
-    func freeze() -> Bool { freezes += 1; frozen = true; return true }
-    func reveal() { onReveal?(); reveals += 1; frozen = false }
+    func freeze() -> Bool { freezes += 1; frozen = true; frozenSince = clock; return true }
+    func reveal() { onReveal?(); reveals += 1; frozen = false; if let s = frozenSince { frozenFor.append(clock - s) }; frozenSince = nil }
     func watchOpens(pid: pid_t, _ heard: @escaping (Int32) -> Void) -> Bool { listeners[pid] = heard; return true }
     func stopWatchingOpens(pid: pid_t) { listeners[pid] = nil }
     func openFromOutside(_ pid: pid_t) {
@@ -1072,9 +1101,15 @@ final class FakeHostWorld: HostSystem {
         if !limitIgnored { maxTileConfig[space] = count }
         return true
     }
+    // A tiled window that takes this long to reach its tile's new rect (its app laying itself out again: a Safari page),
+    // its old bounds until then; and when each tile's rect was set (on the clock).
+    var tileLag: [Int: Double] = [:]
+    var tileRectTimes: [(tile: UInt64, at: Double)] = []
     func setTileRect(_ tile: UInt64, _ rect: CGRect) -> Bool {
         calls.append("tileRect \(tile) \(Int(rect.minX)),\(Int(rect.minY)) \(Int(rect.width))×\(Int(rect.height))")
         guard tilesOn else { return false }
+        tileRectTimes.append((tile, clock))
+        if let n = tileWindow[tile], let lag = tileLag[n], let old = bounds(window: n) { lagging[n] = (old, clock + lag) }
         if !rectsIgnored { tileRects[tile] = rect }
         if let n = tileWindow[tile], let pid = wins[n]?.pid, let bundle = apps[pid]?.bundle, answersResize.contains(bundle),
            let space = tiles.first(where: { $0.value.contains(tile) })?.key {
