@@ -46,6 +46,9 @@ protocol DevHookWorld: AnyObject {
     func devFront() -> String // how the front window is in front, its page card and its hole, in one line
     func devPicture(watch seconds: Double?, done: @escaping (String) -> Void) // the page area in Margin's own window's picture
     func devPage(_ what: String, done: @escaping (String) -> Void) // `field` or `spot` of the front window's page, in one line
+    func devUI(_ action: String, arg: String?, done: @escaping (String) -> Void) // a theme action in the front window's page
+    func devState(done: @escaping (String) -> Void) // the front page's tab, card and split, in one line
+    func devLayout() -> String // the front window's visible hosts (session and engine), in one line
 }
 
 // DEV-HOOK: the hook itself.
@@ -118,6 +121,21 @@ final class DevHooks {
                 return say("dev hook: host drag \(parts[0]),\(parts[1]) \(asked)")
             }
             if fields["say"] == "front" { return say("dev hook: front: \(world.devFront()) \(asked)") }
+            // A theme action in the front window's page (the on-screen checks of Peek and split view): `ui` its name,
+            // `arg` a number or a short id; `say: state` what the page shows of the tab, card and split; `say: layout`
+            // the window's visible hosts as the session and the engine have them.
+            if let action = fields["ui"] {
+                guard action.count <= 40, action.allSatisfy({ $0.isLetter || $0 == "." }) else { return refuse("not an action") }
+                let arg = fields["arg"]
+                if let arg, !(arg.count <= 64 && arg.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" || $0 == ":" })) { return refuse("not an argument") }
+                world.devUI(action, arg: arg) { [weak self] line in self?.say("dev hook: ui \(action): \(line) \(asked)") }
+                return say("dev hook: host ui \(action) \(asked)")
+            }
+            if fields["say"] == "state" {
+                world.devState { [weak self] line in self?.say("dev hook: state: \(line) \(asked)") }
+                return say("dev hook: host say state \(asked)")
+            }
+            if fields["say"] == "layout" { return say("dev hook: layout: \(world.devLayout()) \(asked)") }
             if let what = fields["say"], what == "field" || what == "spot" || what == "animations" {
                 world.devPage(what) { [weak self] line in self?.say("dev hook: \(what): \(line) \(asked)") }
                 return say("dev hook: host say \(what) \(asked)")
@@ -179,7 +197,7 @@ extension Shell: DevHookWorld {
             let target = v["target"] as? JSONObject
             if let b = target?["bundleId"] as? String, bundles.contains(b) { return true }
             guard let url = v["url"] as? String, let host = URL(string: url)?.host else { return false }
-            return host == "example.com" || host == "example.org"
+            return host == "example.com" || host == "example.org" || host == "127.0.0.1" || host == "localhost"
         }
         let ids = library.items().filter { test($0.value) }.map(\.id)
         for id in ids { library.perform("removeItem", ["tabId": id]) }
@@ -269,6 +287,30 @@ extension Shell: DevHookWorld {
             let content = w.contentFrame
             done("at \(Int(content.minX + parts[0])),\(Int(content.minY + parts[1]))")
         }
+    }
+
+    func devUI(_ action: String, arg: String?, done: @escaping (String) -> Void) {
+        guard let w = marginWindows?.front else { return done("no Margin window") }
+        let value: Any = arg.flatMap { Int($0) }.map { $0 as Any } ?? (arg as Any? ?? NSNull())
+        w.webView.callAsyncJavaScript("return window.marginApp && window.marginApp.devDispatch ? String(window.marginApp.devDispatch(action, arg === null ? undefined : arg)) : 'no hook'",
+                                      arguments: ["action": action, "arg": value], in: nil, in: .page) { result in
+            if case .success(let v) = result { done("dispatched: \(v as? String ?? "?")") } else { done("no answer from the page") }
+        }
+    }
+
+    func devState(done: @escaping (String) -> Void) {
+        guard let w = marginWindows?.front else { return done("no Margin window") }
+        w.webView.callAsyncJavaScript("return window.marginApp && window.marginApp.devState ? window.marginApp.devState() : 'no hook'", arguments: [:], in: nil, in: .page) { result in
+            if case .success(let v) = result, let text = v as? String { done(text) } else { done("no answer from the page") }
+        }
+    }
+
+    func devLayout() -> String {
+        guard let w = marginWindows?.front else { return "no Margin window" }
+        func r(_ c: CGRect?) -> String { c.map { "\(Int($0.minX)),\(Int($0.minY)) \(Int($0.width))×\(Int($0.height))" } ?? "page" }
+        let session = hosted?.layout[w.id].map { l in "main \(l.main) at \(r(l.mainRect)), " + l.extras.map { "\($0.role) \($0.item) at \(r($0.rect))" }.joined(separator: ", ") + ", focused \(l.focused)\(l.split.map { ", split \($0)" } ?? "")" } ?? "one item"
+        let engine = host.map { h in h.visible.sorted { $0.value.z < $1.value.z }.map { "\($0.key) \($0.value.role) at \(r($0.value.rect))" }.joined(separator: "; ") } ?? "no engine"
+        return "session: \(session); engine: \(engine); shown item \(hosted?.shown[w.id] ?? "none")"
     }
 
     func devPicture(watch seconds: Double?, done: @escaping (String) -> Void) {

@@ -1026,6 +1026,21 @@ document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) s
   },
   // The counts above (the app's tests read them).
   stats: () => JSON.parse(JSON.stringify(stats)),
+  // DEV-HOOK: an action run as a theme's behaviour would (DevHooks.swift `host { ui }`, the on-screen checks of Peek
+  // and split view), and what the page shows of them: its tab in front, its card, its split. Never addresses.
+  devDispatch: (action: string, arg?: unknown) => (runtime ? !!runtime.dispatch(action, arg, 'behavior') : false), // DEV-HOOK
+  devState: () => { // DEV-HOOK
+    const vm: any = runtime?.vm;
+    if (!vm) return 'no view model';
+    const rows = [...(vm.favorites?.items ?? []), ...(vm.space?.pinnedFlat ?? []).filter((p: any) => !p.isFolder), ...(vm.space?.today ?? [])];
+    const name = (id: unknown) => { const r = rows.find((x: any) => x.id === id || x.tabId === id); return r ? String(r.title ?? '').slice(0, 24) : String(id); };
+    return JSON.stringify({ space: vm.space?.name, tab: vm.tab ? { id: vm.tab.id, title: String(vm.tab.title ?? '').slice(0, 24) } : null,
+      today: (vm.space?.today ?? []).map((t: any) => ({ id: t.id, title: String(t.title ?? '').slice(0, 24), active: !!t.active })),
+      peek: vm.peek ? { host: vm.peek.host, littleArc: !!vm.peek.isLittleArc, loading: !!vm.peek.loading } : null,
+      split: vm.split ? { axis: vm.split.axis, panes: (vm.split.panes ?? []).map((p: any) => ({ id: p.id, title: name(p.id), focused: !!(p.focused ?? p.active) })) } : null,
+      splits: (vm.space?.splits ?? []).map((sp: any) => ({ id: sp.id, count: sp.count })),
+      hostedFrames: hostedBoxes.length });
+  },
   // The visible hosts' windows as the app last said them (`hostedFrames`), empty with one host. The app's tests read it.
   hostedFrames: () => hostedBoxes.map((f) => ({ ...f, box: { ...f.box } })),
   // The window this page draws for. The app's tests read it.
