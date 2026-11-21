@@ -137,6 +137,41 @@ Manual verification checklist in real Safari + Margin.app (automated unit, Rust,
   11. **No room.** In a small window (or with 3 panes), add a pane that can't fit: a toast "Not enough room for another
      pane", nothing changes.
   12. **All 5 themes**, light and dark: the gap, the grip (hover, drag), the focused ring, the capsule row.
+  13. **Real use (fix/split-real-use, 2026-11-21).** Display 1512×982, page area 1264×933 (sidebar 240).
+     a. **Split from a Safari page, its first pane window.** A shown alone; right-click B → **Add to Split View**. Seen:
+        no slide to another Space and back; A stays full width while B's box shows "Opening …" over A's right part, then A
+        and B appear side by side together. Log: `hosted: Safari window <id> made for hosting (its pane1)`;
+        `host: safari:p…#pane1 opened (…): window … (by the window server, under the freeze from its ask)` (maybe
+        `1 Space change undone under the freeze`); `host: safari:p…#pane1: full screen by the early path in … ms (born in
+        full screen, listed …, reserved …, …, the freeze let go …, in place, its Space gone …), under the freeze`;
+        `host: layout: safari:p… laid out again with safari:p…#pane1 in … ms, once it was in place`. If B's window came in
+        behind A: `host: safari:p…#pane1: out to a private Space and back into Margin's (its window just came in with its
+        tile …) in … ms, … ms from its first raise: in front now` (under ~60 ms). Never: `place safari:p…#pane1 attempt`,
+        `its tile sized to the page area 240,41 628×933` before pane1's lines, `pane1, focused, not in front`, `its copy
+        asked to bring it in front`. The Dock's log (`/usr/bin/log show --last 2m --predicate 'process == "Dock"' | grep
+        becameCurrent`): a `becameCurrent` of the new Space, if any, is never seen on screen (it falls between pane1's
+        ask and its `the freeze let go` mark), and Margin's Space is current after. The freeze (the loader's spinner still)
+        lasts about the time the window took to open plus ~0.1–0.3 s.
+     b. **A third Safari pane.** With A and B side by side, right-click C → Add to Split View: the toast "Not enough room
+        for another pane", nothing opened (no `made for hosting (its pane2)`, no `#pane2` line at all). Once per Safari
+        version: `host: com.apple.Safari …: its windows' minimum 574×220 kept for it`. Quit Margin, relaunch, split A and B
+        again, add C: refused at once (the minimum from minimums.json beside routes.json, before any pane window exists).
+     c. **Stacked that can't fit.** In a small page area (a wide sidebar) with two panes whose minimums don't fit stacked,
+        **Stacked** from the pane menu: the toast "Not enough room to stack these panes", nothing changes.
+     d. **A pane that fails** (hard to cause by hand; if it happens): `hosted: split …: <item>: out of the split (…)`, a
+        toast "… couldn't open in Split View" (or "Not enough room for …"), the rest re-laid with no empty box; one left:
+        `host: layout: safari:p… left alone of the layout asked: at the page area 240,41 1264×933`.
+     e. **Divider drag between two Safari panes**, ~10 s back and forth. Log: `hosted: a split's divider dragged in
+        Margin's window <n>: 2 hosted windows follow it live` (never "the hosted window follows it live"), then `host: live
+        resize: in … ms: <n> page area changes (every … ms, p95 …), <m> sent to every window that follows (… coalesced),
+        followed … (median … ms, p95 … ms) …; <x> of <y> sends with more than one window at once; each: safari:p… <k> sent,
+        landed median … ms, p95 … ms; safari:p…#pane1 …`. Compare with 13:26:47's `median 26.0 ms, p95 48.8 ms` (each
+        window's own median now; a sidebar drag with one window was 4–5 ms) and send the line to Claude. Never a pane
+        below 574 wide (the divider stops).
+     f. **Nothing else changed**: the preview card over the split (Shift+click), stacked bands (Stacked: the 52 pt band
+        with the pane's name above the lower Safari pane), ⌘W in each pane, an item outside the split then a pane again
+        (the whole split back, no `made for hosting`), a sidebar drag with the split up (both follow), a single item
+        shown alone (as before).
 - [ ] **M2.8 All 5 Built-in Themes:** Switch Spaces through **Arcadia**, **Liquid Glass**, **Material**, **Neubrutalism**, and **Pixel** and inspect Favorites grid, nested folders, drifted pin reset, combined Split View row, background Mini Player, Peek modal, and Toast pill in light and dark appearance (and macOS 26 system glass for Liquid Glass).
 
 ## Safari startup (2026-11-10)
