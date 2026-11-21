@@ -312,6 +312,11 @@ final class HostEngine {
         var offSaid = false
         var offActedFor: Double?
         var offInPlaceSaid: Double?
+        // When its window was last put back into full screen after leaving it by itself (`reenterFullScreen`: Safari's
+        // own Esc, 2026-11-21), and whether giving up on that was said: `returnsMax` within `returnsWithin`, then left to
+        // the reconciler's own corrections.
+        var reentries: [Double] = []
+        var reentrySaid = false
         init(id: HostID, target: HostTarget, pid: pid_t, window: Int, launchedByMargin: Bool, madeByMargin: Bool, safariWindow: Int? = nil) {
             self.id = id
             self.target = target
@@ -1123,6 +1128,9 @@ final class HostEngine {
             Task { await serial {
                 self.reconcileQueued = false
                 guard let host = self.hosts[id] else { return }
+                // (A tile sized or a member placed again for a window that left full screen by itself: back into full
+                // screen instead, never a try of these.)
+                if [.sizeTile, .placeAgain].contains(c), await self.leftFullScreen(host) { return }
                 // (Read again in its turn: an operation in between may have settled it.)
                 let now = self.situation(host)
                 guard self.decide(host, now) == c, let tried = self.admitted(host, c) else { return }
@@ -1144,6 +1152,7 @@ final class HostEngine {
             Task { await serial {
                 self.reconcileQueued = false
                 guard let host = self.hosts[id] else { return self.sizeTilesSoon() }
+                if await self.leftFullScreen(host) { return self.sizeTilesSoon() }
                 let now = self.situation(host)
                 guard self.decide(host, now) == .sizeTile, let tried = self.admitted(host, .sizeTile) else { return self.sizeTilesSoon() }
                 await self.apply(.sizeTile, host, now, tried: tried)
@@ -1174,6 +1183,79 @@ final class HostEngine {
             movedDown(host, from: from, to: next, why: why, version: version)
             return nil
         }
+    }
+
+    // ---- a hosted window out of full screen by itself ----
+
+    // Its window, shown as a full-screen member (a tile or a plain member), left full screen by itself and is still in
+    // Margin's Space as a normal window: Safari's own Esc in its page exits its window's full screen (the real screen,
+    // 2026-11-21, twice: its toolbar strip gone first, the window at its own frame, 0,46 667×865, its tile empty). Sizing
+    // its tile or placing it as a member can't bring it back (its window isn't in the tile; it isn't full screen to leave),
+    // and counted as a tile's fight it moved Safari down to members for its version, saved. Why it's taken so (nil: it
+    // isn't, or not surely): its tile in Margin's Space holding no window of its; every toolbar window of its own gone
+    // with the window still listed; Accessibility reading it out of full screen. A window full screen in its tile that
+    // doesn't take the rect is a real fight: the loop guard's.
+    private func leftFullScreenSign(_ host: Host) -> String? {
+        guard host.phase == .shown, host.member, host.mode == .fullScreen, isVisible(host.id), !host.gone,
+              sys.bounds(window: host.window) != nil, sys.spaces(window: host.window) == [marginSpace] else { return nil }
+        if let t = host.tile {
+            // (Still in its tile: full screen there, whatever else reads.)
+            if sys.tileWindow(t) == host.window { return nil }
+            if sys.tiles(of: marginSpace)?.contains(t) == true, sys.tileRect(t) != nil {
+                return sys.tileWindow(t).map { "its tile \(t) holds another window, \($0)" } ?? "its tile \(t) is empty"
+            }
+        }
+        if !host.toolbars.isEmpty, host.toolbars.allSatisfy({ sys.bounds(window: $0) == nil }) {
+            return "its own toolbar window\(host.toolbars.count == 1 ? "" : "s") \(host.toolbars.sorted().map(String.init).joined(separator: ", ")) gone"
+        }
+        if observer.model.apps[host.pid]?.windows[host.window]?.ax?.fullScreen == false { return "Accessibility reads it out of full screen" }
+        return nil
+    }
+
+    // In the reconciler's turn, before a tile is sized or a member placed again: its window out of full screen by
+    // itself (`leftFullScreenSign`, else Accessibility's read now) is put back into full screen at its rect instead.
+    // True: it was (nothing else to do this turn).
+    private func leftFullScreen(_ host: Host) async -> Bool {
+        guard hosts[host.id] === host, host.phase == .shown, host.member, host.mode == .fullScreen, isVisible(host.id) else { return false }
+        var why = leftFullScreenSign(host)
+        if why == nil, sys.spaces(window: host.window) == [marginSpace], host.tile.map({ sys.tileWindow($0) != host.window }) ?? true,
+           await sys.isFullScreen(pid: host.pid, window: host.window) == false {
+            why = "Accessibility reads it out of full screen"
+        }
+        guard let why else { return false }
+        return await reenterFullScreen(host, why)
+    }
+
+    // A "left full screen" event: back into full screen at its rect (the page area, its pane's, its card's), behind the
+    // loader, the layout held; its old tile out of Margin's Space (empty: destroyed with the next look). Margin's own
+    // operation: never a reaction the loop guard counts, its budgets anew, its route kept (it comes back on tiles when
+    // they're on). `returnsMax` times within `returnsWithin`; past that, false (left to the reconciler, said once).
+    private func reenterFullScreen(_ host: Host, _ why: String) async -> Bool {
+        host.reentries = host.reentries.filter { sys.now() - $0 < options.returnsWithin }
+        guard host.reentries.count < options.returnsMax else {
+            if !host.reentrySaid { host.reentrySaid = true; Diagnostics.warn("host: \(host.id): its window left full screen again (\(why)), \(host.reentries.count) times in \(Int(options.returnsWithin)) s: left to the reconciler") }
+            return false
+        }
+        host.reentries.append(sys.now())
+        host.reentrySaid = false
+        planned = true // (what this changes is Margin's plan, not a reaction)
+        let t0 = sys.now()
+        Diagnostics.note("host: \(host.id): its window left full screen by itself (\(why)), at \(sys.bounds(window: host.window).map(r) ?? "?") in Margin's Space: back into full screen at \(r(pageOf(host))), behind the loader (no tile's fight: no try counted, its route kept)")
+        core.resetTries(host: host.id.raw)
+        core.cleared(host: host.id.raw)
+        let release = holdLayout(for: host)
+        if host.tile != nil { await tileLeft(host) }
+        host.member = false
+        host.placedPage = nil
+        host.toolbars = []
+        host.offPageReads = 0
+        host.phase = .preparing
+        let result = await placeFullScreenNow(host, isNew: false, retrying: false)
+        await release?()
+        if case .failed = result, !isVisible(host.id) { emit(.unshown(host.id)) }
+        if case .shown = result { Diagnostics.note("host: \(host.id): back in full screen at its rect in \(ms(since: t0)) ms") }
+        checkListed("after \(host.id) came back into full screen")
+        return true
     }
 
     // A window shown in Margin's Space (window mode, or a member after the show's late watch), the current one at rest,
