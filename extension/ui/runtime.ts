@@ -774,11 +774,6 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
         if (!/^https?:\/\//i.test(url)) return false;
         return copyText(url, 'Copied URL');
       }
-      case 'toast.close':
-        clearTimeout(toastTimer);
-        toastTimer = null;
-        if (ui.toast) setUi({ toast: null });
-        return true;
       case 'peek.close':
         setUi({ peek: null });
         host.perform?.('peek.close');

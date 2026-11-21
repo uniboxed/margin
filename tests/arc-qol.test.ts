@@ -48,7 +48,8 @@ test('M2.1: QoL actions validate and map to requests', () => {
   assert.equal(checkAction('tab.mute', 5, ctx).ok, true);
   assert.equal(checkAction('tab.unload', 5, ctx).ok, true);
   assert.equal(checkAction('archive.restoreLast', undefined, ctx).ok, true);
-  assert.equal(checkAction('toast.close', undefined, ctx).ok, true);
+  // A toast goes by itself (ui/runtime.ts showToast) and no theme draws a close for one: no action closes it.
+  assert.equal(checkAction('toast.close', undefined, ctx).ok, false);
 
   assert.deepEqual(requestFor('tab.duplicate', 5, { state: s, ui: { windowId: 1 } }), { kind: 'send', type: 'duplicateTab', payload: { tabId: 5, windowId: 1 } });
   assert.deepEqual(requestFor('tab.mute', 5, { state: s, ui: { windowId: 1 } }), { kind: 'send', type: 'muteTab', payload: { tabId: 5, windowId: 1 } });
