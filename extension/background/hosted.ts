@@ -111,7 +111,8 @@ export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = asy
     },
     /** Whether `windowId` is the card's window (Peek's, Margin.app's `hostShow` with `role: 'card'`). */
     isCard: (windowId: number) => cards.has(windowId),
-    async show({ windowId, itemId, url, role }: { windowId?: unknown, itemId?: unknown, url?: unknown, role?: unknown }) {
+    // `fresh` (the card's only): a new Peek's page: the card's tab sent there if it shows another one.
+    async show({ windowId, itemId, url, role, fresh }: { windowId?: unknown, itemId?: unknown, url?: unknown, role?: unknown, fresh?: unknown }) {
       if (!Number.isInteger(windowId)) throw new Error('no window');
       if (typeof itemId !== 'string' || !ITEM.test(itemId)) throw new Error('no item');
       if (typeof url !== 'string' || !SHOWN.test(url)) throw new Error('not an address');
@@ -121,6 +122,10 @@ export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = asy
       if (role === 'card') {
         cards.add(win);
         const out = await this.showIn(win, itemId, url);
+        if (fresh === true && !out.created) {
+          const t = await tabs().get(out.tabId).catch(() => null);
+          if (t && plain(t.url || t.pendingUrl) !== plain(url)) await tabs().update(out.tabId, { url, active: true });
+        }
         tellPage(out.tabId, true);
         return out;
       }

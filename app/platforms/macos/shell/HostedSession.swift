@@ -219,6 +219,8 @@ protocol HostedWindow: AnyObject {
     func push(_ json: String)
     // Every visible host's window while more than one is (docs/PEEK-SPLIT.md §1: its holes), [] when one is again.
     func setVisibleHosts(_ list: [HostShownWindow])
+    // Where its page draws Peek's card page (the theme's <m-peek-page>, top-left screen points), nil: none drawn.
+    var cardRect: CGRect? { get }
 }
 
 extension HostedWindow {
@@ -233,6 +235,7 @@ extension HostedWindow {
     func setStartupStuck(_ why: String?) {}
     func setMarginPage(_ page: String?) {}
     func setVisibleHosts(_ list: [HostShownWindow]) {}
+    var cardRect: CGRect? { nil }
 }
 
 // The app whose icon a host's loader shows: an app's own, a Safari window's Safari.
@@ -341,7 +344,7 @@ final class HostedSession: LibraryDelegate {
     // Each Margin window's item shown when macOS took the window out of full screen: hosted again once it's back in.
     private(set) var resume: [Int: String] = [:]
     // What the loading animation names for a host (the app's name; Safari).
-    private var labels: [HostID: String] = [:]
+    var labels: [HostID: String] = [:]
     // The loading bar (setLoadingTabs): the engine's slow step now (its host), the item each host is being shown for,
     // each web item's tab in its Safari window (the copy's id, from hostShow), the tabs each profile's copy says are
     // loading in its hosted window (its `loading` push), and what each Margin window was told last.
@@ -354,7 +357,7 @@ final class HostedSession: LibraryDelegate {
     private var copyLoading: [String: Set<Int>] = [:]
     private(set) var loadingSaid: [Int: [Int]] = [:]
     // Each Margin window's item asked to be shown and not shown yet (the newest): drawn in front at once.
-    private(set) var requested: [Int: String] = [:]
+    var requested: [Int: String] = [:]
     static let showRequests: Set<String> = ["activateTab", "newTab", "restoreArchive", "setSpace", "openPin", "openFavorite"]
     // The first run's space (the library was empty), for the UI's editor once a window's page is drawn.
     var firstSpace: String?
@@ -365,6 +368,13 @@ final class HostedSession: LibraryDelegate {
     // What was done, newest last (the tests read it; numbers, item ids and bundle ids only).
     private(set) var done: [String] = []
     private var tail: Task<Void, Never>?
+    // Peek's cards and Little Arc (HostedPeek.swift, docs/PEEK-SPLIT.md §2, §3): each profile's card, when each card
+    // window was last used (closed after `cardIdle` unused), the Margin windows with Little Arc's field up, the card
+    // whose window's first open is under way (its own loader, never the page card's).
+    var cards: [String: PeekCard] = [:]
+    var cardUsedAt: [String: Double] = [:]
+    var littleArcs: [Int: String] = [:]
+    var cardLoading: HostID?
 
     init(library: Library, engine: HostedEngine, links: HostedLinks, options: Options = Options()) {
         self.library = library
@@ -375,7 +385,7 @@ final class HostedSession: LibraryDelegate {
 
     // ---- one at a time ----
 
-    private func enqueue(_ body: @escaping () async -> Void) {
+    func enqueue(_ body: @escaping () async -> Void) {
         let previous = tail
         tail = Task { _ = await previous?.value; await body() }
     }
@@ -388,7 +398,7 @@ final class HostedSession: LibraryDelegate {
         }
     }
 
-    private func note(_ line: String) {
+    func note(_ line: String) {
         done.append(line)
         if done.count > 200 { done.removeFirst(done.count - 200) }
         Diagnostics.note("hosted: \(line)")
@@ -399,6 +409,7 @@ final class HostedSession: LibraryDelegate {
     func library(_ library: Library, wants request: LibraryRequest) {
         // The item in front in its window at once (the sidebar's switch highlight lands as it's asked: an app's switch
         // takes seconds, and the highlight went back to the item left meanwhile, "back on a tab it had passed").
+        if Self.showRequests.contains(request.type), let w = window(request.windowId) { cardLeaving(w, for: request.item) }
         if Self.showRequests.contains(request.type), let item = request.item, let w = window(request.windowId), requested[w.id] != item {
             requested[w.id] = item
             onChange?()
@@ -523,6 +534,8 @@ final class HostedSession: LibraryDelegate {
     // and for a web item its tab in front there.
     func show(_ item: String, url: String?, target: ItemTarget?, windowId: Int?) async {
         guard let w = window(windowId) else { return note("\(item): no Margin window to show it in") }
+        // (Peek's card there hides with its opener: this show lays the item out alone. HostedPeek.swift.)
+        cardLeaving(w, for: item)
         // (Shown or not, it's no longer one asked for: a failure draws the item shown before in front again.)
         var drawn = false
         defer { if requested[w.id] == item { requested[w.id] = nil; if !drawn { onChange?() } } }
@@ -593,6 +606,7 @@ final class HostedSession: LibraryDelegate {
         if requested[w.id] == item { requested[w.id] = nil }
         drawn = true
         onChange?()
+        cardReturning(w, to: item)
     }
 
     // The next/previous-tab key pressed in Margin's window `windowId` (each press and repeat; the shell's runHosted).
@@ -654,14 +668,16 @@ final class HostedSession: LibraryDelegate {
         }
     }
 
-    private struct LayoutPart { let item: String; let target: HostTarget; let profile: String?; let url: String; let role: HostRole; let rect: CGRect? }
+    struct LayoutPart { let item: String; let target: HostTarget; let profile: String?; let url: String; let role: HostRole; let rect: CGRect? }
 
-    private func applyLayout(_ windowId: Int?, main: String, mainRect: CGRect?, extras: [HostedLayout.Extra], focused: String?) async {
+    func applyLayout(_ windowId: Int?, main: String, mainRect: CGRect?, extras: [HostedLayout.Extra], focused: String?) async {
         guard let w = window(windowId) else { return note("layout: no Margin window to lay it out in") }
         var parts: [LayoutPart] = []
         var mainUsed: Set<String> = [], panes: [String: Int] = [:]
         let asked: [(item: String, role: HostRole, rect: CGRect?)] = [(main, .main, mainRect)] + extras.map { ($0.item, $0.role, $0.rect) }
         for (i, a) in asked.enumerated() {
+            // (Peek's card: its profile's card window at the card's page, HostedPeek.swift.)
+            if i > 0, let card = cardPart(a.item, rect: a.rect) { parts.append(card); continue }
             guard let t = library.target(ofItem: a.item) else { note("layout: \(a.item): no target"); if i == 0 { return }; continue }
             let url = (library.items().first { $0.id == a.item }?.value["url"] as? String) ?? ""
             switch t {
@@ -689,7 +705,7 @@ final class HostedSession: LibraryDelegate {
         // (A web item whose window is there already: its tab in front first, out of sight, as a show does.)
         func showTab(_ part: LayoutPart) async -> Bool {
             guard let p = part.profile, case .safariWindow(_, let role) = part.target, let windowId = safariWindows[SafariKey(p, role)] else { return false }
-            let (result, error) = await links.request(profile: p, "hostShow", ["windowId": windowId, "itemId": part.item, "url": part.url.isEmpty ? "about:blank" : part.url])
+            let (result, error) = await links.request(profile: p, "hostShow", cardShowPayload(part.item, windowId: windowId) ?? ["windowId": windowId, "itemId": part.item, "url": part.url.isEmpty ? "about:blank" : part.url])
             guard let result else { note("layout: \(part.item): its tab wasn't shown (\(error ?? "no answer"))"); return false }
             open[part.item] = OpenItem(host: part.target.id, profile: p)
             if let tab = int(result["tabId"]) { safariTabs[part.item] = tab }
@@ -714,7 +730,8 @@ final class HostedSession: LibraryDelegate {
         let others = parts.dropFirst().filter { shownItems.contains($0.item) }
         layout[w.id] = others.isEmpty ? nil : HostedLayout(main: main, mainRect: first.rect, extras: others.map { HostedLayout.Extra(item: $0.item, role: $0.role, rect: $0.rect ?? .zero) }, focused: focus)
         if marginPages[w.id] != nil { marginPages[w.id] = nil; w.setMarginPage(nil) }
-        shown[w.id] = focus
+        // (A card focused: the item under it stays the window's item shown, the sidebar's highlight; the card isn't one.)
+        shown[w.id] = Self.isCardItem(focus) ? main : focus
         if requested[w.id] == main || requested[w.id] == focus { requested[w.id] = nil }
         onChange?()
         note("layout: \(shownItems.count) item(s) shown in Margin's window \(w.id), \(focus) focused")
@@ -817,6 +834,7 @@ final class HostedSession: LibraryDelegate {
     // The engine's slow step for a host started (its first open, its placing again: nil when it's over): the hosting
     // window's page card is opaque, with the theme's loader and the app's name.
     func loading(_ id: HostID?) {
+        if cardLoadingStep(id) { return }
         appLoading = id
         defer { refreshLoading() }
         guard let wid = hostingWindow, let w = window(wid) else { return }
@@ -988,7 +1006,7 @@ final class HostedSession: LibraryDelegate {
     func caughtPress(_ w: HostedWindow, at point: CGPoint) {
         guard w.id == hostingWindow, layout[w.id]?.extras.contains(where: { $0.role == .card }) == true else { return }
         note("Margin's window \(w.id): a press on the page around the card")
-        onCardDismiss?(w.id)
+        if let onCardDismiss { onCardDismiss(w.id) } else { closeCard(windowId: w.id, why: "a press on the dimmed page around it") }
     }
 
     // A visible host pressed in Margin's window `w` (its window's own press, or one in its pane around a smaller window):
@@ -1296,7 +1314,7 @@ final class HostedSession: LibraryDelegate {
     // Margin's window hosts only while the engine shows something in it: nothing shown, its launcher in the page area
     // again (after each of the session's steps, and the engine's events, once the engine is done). Not while its last
     // item is still on its way at launch (`resuming`).
-    private func settleHosting() {
+    func settleHosting() {
         guard engine.shown == nil, let id = hostingWindow, resuming != id else { return }
         // (Another item asked for and not shown yet: its show is next and decides; no launcher for a frame in between.)
         if let next = requested[id], next != shown[id] { return }
@@ -1462,6 +1480,7 @@ final class HostedSession: LibraryDelegate {
     // closed by their copy. A window that comes later (a link opened from another app) is never touched, nor any of a
     // Safari the person opened. Called from the shell's poll.
     func sweepRestoredSafariWindows() {
+        closeIdleCards()
         // (A window opened to wake a profile, still open `wokenGrace` after its copy linked with nothing asked of it: what
         // it was for went another way. Closed, whoever started Safari.)
         for (p, at) in wokenLinkedAt.sorted(by: { $0.key < $1.key }) where now() - at >= options.wokenGrace && !requesting.contains(p) {
@@ -1689,7 +1708,10 @@ final class HostedSession: LibraryDelegate {
         // orders it in, so the window server never lists it (the real Mac, 2026-11-16). The engine unhides it first and
         // keeps Margin's Space current while it's made; Margin is activated again after.)
         if wokenByMenu[p] != nil { engine.stopHidingWoken(bundleId: safariIdentifier) } // (the window asked for now is Margin's own: never parked so)
-        let payload: JSONObject = preparingProfile == p ? ["fullscreen": false, "url": "about:blank"] : ["fullscreen": false]
+        // (Peek's card window: opened at the card's page, never Safari's empty new-tab page, whose address field keeps
+        // Safari's toolbar down over the page: background/hosted.ts.)
+        let cardUrl: String? = role == .card ? cards[p].flatMap { Self.webAddress($0.url) ? $0.url : nil } : nil
+        let payload: JSONObject = cardUrl.map { ["fullscreen": false, "url": $0] } ?? (preparingProfile == p ? ["fullscreen": false, "url": "about:blank"] : ["fullscreen": false])
         var askedEpoch = links.linkEpoch(of: p) // (the link the ask went on: one replaced while it was answered counts as back)
         var (result, error) = await links.request(profile: p, "newWindow", payload)
         // (A copy that isn't the one in charge answers `stale`, and a copy just starting can drop its link: Safari keeps an
@@ -1783,6 +1805,7 @@ final class HostedSession: LibraryDelegate {
             for (w, i) in shown where items.contains(i) { shown[w] = nil }
             for k in safariWindows.keys where HostTarget.safariWindow(k.profile, k.role).id == id { safariWindows[k] = nil; if k.role == .main { copyLoading[k.profile] = nil } }
             forgetInLayouts(id)
+            cardHostGone(id)
             refreshLoading()
         default:
             return
@@ -2007,7 +2030,7 @@ final class HostedSession: LibraryDelegate {
         return linked.sorted()[0]
     }
 
-    private func wait(_ seconds: Double, _ done: () -> Bool) async -> Bool {
+    func wait(_ seconds: Double, _ done: () -> Bool) async -> Bool {
         var left = seconds
         while true {
             if done() { return true }
@@ -2091,8 +2114,30 @@ final class LibraryWindowSource: MarginWindowSource {
             let settings = profileSource.snapshot()["settings"] as? JSONObject
             payload["favoritesScope"] = settings?["favoritesScope"] as? String == "profile" ? "profile" : "global"
             payload["scope"] = nil
+        // Peek's card and Little Arc (ui/behaviors/card.ts → HostedPeek.swift).
+        case "peek.close":
+            session.closeCard(windowId: windowId, why: "its close", tellPage: false)
+            return ["ok": true, "result": true]
+        case "peek.expand":
+            session.expandCard(windowId: windowId, spaceId: payload["spaceId"] as? String)
+            return ["ok": true, "result": true]
+        case "peek.back", "peek.forward":
+            session.cardHistory(windowId: windowId, back: type == "peek.back")
+            return ["ok": true, "result": true]
+        case "peek.littleArc":
+            session.littleArcOpened(windowId: windowId, spaceId: payload["spaceId"] as? String)
+            return ["ok": true, "result": true]
+        case "peek.go":
+            // An address as it was typed, or a search: its address from the engine Safari searches with (the palette's).
+            let query = (payload["query"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let url = (payload["url"] as? String).flatMap { HostedSession.webAddress($0) ? $0 : nil }
+                ?? (query.isEmpty ? nil : Self.searchUrl(String(query.prefix(1000)), settings: profileSource.snapshot()["settings"] as? JSONObject))
+            guard let url else { return ["ok": false, "error": "no address"] }
+            session.littleArcGo(windowId: windowId, url: url, spaceId: payload["spaceId"] as? String)
+            return ["ok": true, "result": true]
         case "closeTab" where payload["tabId"] == nil:
-            // ⌘W: the item shown in that window.
+            // ⌘W: the card in that window (or Little Arc's field), never the item under it; else the item shown there.
+            if session.closeCardForKey(windowId: windowId) { return ["ok": true, "result": true] }
             guard let w = windowId, let item = session.shown[w] else { return nil }
             payload["tabId"] = item
         default:

@@ -1061,6 +1061,8 @@ async function start() {
   if (!hello) return log('warn', 'no window for this overlay');
   host = createAppHost({ hello, post, onMessage, onNotice: (arg) => notices.run(arg), warn: (...args) => log('warn', ...args) });
   hostedFrameSaid(hello?.hostedFrame);
+  // (Several visible as it starts: Peek's card, a split's panes. `hostedFrames` pushes keep it as they change.)
+  hostedFramesSaid(hello?.hostedFrames);
   host.onState(() => followPage());
   // What the copy pushed for this window before this page was there (a
   // notice, the tabs loading: an app that holds them says so in its hello's `held`), as if it came now.

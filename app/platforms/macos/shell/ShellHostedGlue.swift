@@ -229,6 +229,7 @@ extension Shell {
         windows.onEnteredFullScreen = { [weak session] controller in session?.enteredFullScreen(controller) }
         windows.onPagePress = { [weak session] controller, at in session?.pagePressed(controller, at: at) }
         windows.onCaughtPress = { [weak session] controller, at in session?.caughtPress(controller, at: at) }
+        windows.onCardRect = { [weak session] controller in session?.cardRectChanged(controller) }
         windows.onFieldClosed = { [weak session] controller in session?.fieldClosed(controller) }
         windows.onOpen = { [weak session] controller in session?.resumeLast(controller) }
         windows.onSidebarResizing = { [weak session] controller, on in session?.sidebarResizing(controller, on) }
@@ -333,6 +334,10 @@ extension Shell {
             let target = await host.keyWindow(pid: pid)
             var done: String
             switch (key, target) {
+            case (.closeTab, .hosted(let id)) where id.safariRole == .card:
+                // (Peek's card has the keys: the card closes, never the item under it, HostedPeek.swift.)
+                let w = self.hosted?.hostingWindow ?? self.marginWindows?.front?.id
+                done = self.hosted?.closeCardForKey(windowId: w) == true ? "the card closed in Margin's window \(w ?? 0)" : "the card's window, no card open: nothing"
             case (.closeTab, .hosted(let id)):
                 let w = self.hosted?.hostingWindow.flatMap { n in self.marginWindows?.controllers.first { $0.id == n } } ?? self.marginWindows?.front
                 if let w { w.run(.closeTab); done = "Close Tab in Margin's window \(w.id) (\(id))" } else { done = "no Margin window: nothing" }

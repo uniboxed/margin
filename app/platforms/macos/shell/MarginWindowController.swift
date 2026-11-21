@@ -140,6 +140,8 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // Its bounds by the window server (top left; nil: unread), read when it's shown or placed. A test's stand-in reads its own.
     var hostedBounds: (Int) -> CGRect? = { MarginWindowController.serverBounds($0) }
     private var hostedFrame: CGRect?
+    // Peek's card page as its page draws it (the theme's <m-peek-page>, top-left screen points), nil: none drawn.
+    private(set) var cardRect: CGRect?
     // The engine's slow step (a first open, a placing again): the app's name; an item the session is showing that
     // isn't ready yet: its name. Either: the page card is `loading` (the second only after `loaderGrace`).
     private(set) var loadingLabel: String?
@@ -593,13 +595,17 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     private var frontVisible: Int? { visibleHosts.first { $0.focused }?.window ?? visibleHosts.max { $0.z < $1.z }?.window }
     // ...said to the page as they change (`hostedFrames`, in its coordinates), and once ([]) when it's one again.
     private var hostedFramesSent: String?
-    private func sayHostedFrames() {
+    // (Also in each hello: a page that starts, or starts again, while several are visible knows them at once.)
+    var hostedFramesJSON: String {
         let c = contentFrame
         let items = visibleHosts.map { v -> String in
             let f = visibleFrames[v.window] ?? v.rect
             return #"{"role":"\#(v.role.rawValue)","focused":\#(v.focused),"z":\#(v.z),"rect":[\#(Int((f.minX - c.minX).rounded())),\#(Int((f.minY - c.minY).rounded())),\#(Int(f.width.rounded())),\#(Int(f.height.rounded()))]}"#
         }
-        let json = "[" + items.joined(separator: ",") + "]"
+        return "[" + items.joined(separator: ",") + "]"
+    }
+    private func sayHostedFrames() {
+        let json = hostedFramesJSON
         guard asked, json != hostedFramesSent, hostedFramesSent != nil || !visibleHosts.isEmpty else { return }
         hostedFramesSent = json
         push(#"{"type":"hostedFrames","frames":"# + json + "}")
@@ -1678,6 +1684,10 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         themeSent = theme
         hostedFrameSent = hostedFrameJSON
         json += #","hostedFrame":"# + hostedFrameSent!
+        // (Every visible host's window while several are: the same as the `hostedFrames` push, kept as said.)
+        let frames = hostedFramesJSON
+        if !visibleHosts.isEmpty { hostedFramesSent = frames }
+        json += #","hostedFrames":"# + frames
         json += #","theme":"# + (theme ?? "null") + "}"
         return json
     }
@@ -1742,6 +1752,16 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             }
             self.layout = layout
             updatePage()
+        case "peekRect":
+            // Where the theme draws Peek's card page (overlay.ts reportPeekPage), in its page: the card's window goes there.
+            let next = (body["rect"] as? [Any]).flatMap { Self.rect($0) }.flatMap { r -> CGRect? in
+                guard r.width >= 1, r.height >= 1 else { return nil }
+                let c = contentFrame
+                return CGRect(x: (c.minX + r.minX).rounded(), y: (c.minY + r.minY).rounded(), width: r.width.rounded(), height: r.height.rounded())
+            }
+            guard next != cardRect else { return }
+            cardRect = next
+            owner?.onCardRect?(self)
         case "hits":
             let rects = (body["rects"] as? [[Any]] ?? []).compactMap { Self.rect($0) }
             hits = Array(rects.prefix(64))
@@ -1842,6 +1862,7 @@ final class MarginWindows {
     var onEnteredFullScreen: ((MarginWindowController) -> Void)? // in full screen (again)
     var onPagePress: ((MarginWindowController, CGPoint) -> Void)? // a press in its page area around a window-mode host's window
     var onCaughtPress: ((MarginWindowController, CGPoint) -> Void)? // a card open: a press on the page area around its content (docs/PEEK-SPLIT.md §2)
+    var onCardRect: ((MarginWindowController) -> Void)? // its page's <m-peek-page> moved, came or went (`cardRect`)
     // A window closing while it hosts: what it shows parked, then the closure called (it closes then).
     var onClosing: ((MarginWindowController, @escaping () -> Void) -> Void)?
     var onClosed: ((Int) -> Void)? // a window closed (its id): gone from `controllers`

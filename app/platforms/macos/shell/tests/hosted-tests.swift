@@ -86,6 +86,7 @@ final class FakeHostedWindow: HostedWindow {
         return HostPlacement(page: page, area: FakeHostWorld.display)
     }
     func push(_ json: String) { pushed.append(json) }
+    var cardRect: CGRect? // where its page draws Peek's card page (the theme's <m-peek-page>), nil: none
     var marginPage: String? // Margin's own page in its page area (setMarginPage)
     var marginPages: [String?] = [] // each setMarginPage, in order
     func setMarginPage(_ page: String?) { guard page != marginPage else { return }; marginPage = page; marginPages.append(page) }
@@ -154,6 +155,8 @@ final class FakeHostedLinks: HostedLinks {
             onHostShow?()
             nextTab += 1
             return (["tabId": nextTab - 1, "created": true], nil)
+        case "hostPromotePeek":
+            return (["ok": true, "tabId": nextTab - 1, "moved": true], nil)
         default:
             return ([:], nil)
         }

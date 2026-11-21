@@ -819,11 +819,14 @@ export const handlers = {
   // at its launch (HostedSession.prepareBrowser): nothing loaded in it. Always focused: a hidden Safari (one Margin.app
   // started) asked for an unfocused window answers its id but never orders it in (the real Mac, 2026-11-16), so the
   // app couldn't find it; the app keeps its own Space current while it's made.
-  async newWindow({ fromWindowId, fullscreen, url }: { fromWindowId?: number, fullscreen?: boolean, url?: string } = {}) {
+  async newWindow({ fromWindowId, fullscreen, url }: { fromWindowId?: number, fullscreen?: boolean, url?: string } = {}, sender?: BrowserMessageSender) {
     const from = Number.isInteger(fromWindowId) ? await api.windows.get(fromWindowId as number).catch(() => null) : null;
     const spaceId = from ? M.activeSpaceId(await load(), from.id) : null;
     const full = fullscreen ?? from?.state === 'fullscreen';
-    const props = { focused: true, ...(url === 'about:blank' ? { url } : {}) };
+    // (A web address only from Margin.app: its Peek card window, opened at the card's page, never Safari's empty new-tab
+    // page. Any other address asked is ignored, as before.)
+    const page = url === 'about:blank' || (!!sender?.app && typeof url === 'string' && url.length <= 4096 && /^https?:\/\//i.test(url));
+    const props = { focused: true, ...(page ? { url } : {}) };
     markMarginOpening();
     let win;
     try {

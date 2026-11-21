@@ -308,7 +308,10 @@ test('newWindow made ready out of sight (Margin.app at its launch): a blank page
   assert.equal(fake.tabs.get(blank.windowId * 10)?.url, 'about:blank', 'nothing loaded in it');
   const other = (await handlers.newWindow({ fullscreen: false, url: 'https://a.example/' }))!;
   assert.deepEqual(fake.createdWith[1], { focused: true }, 'only a blank page is taken');
-  for (const w of [blank, other]) { fake.windows.delete(w.windowId); fake.tabs.delete(w.windowId * 10); }
+  // Margin.app's Peek card window: opened at the card's page (never Safari's empty new-tab page); the app's ask only.
+  const card = (await handlers.newWindow({ fullscreen: false, url: 'https://peek.example/doc' }, { app: true, tab: { windowId: null } } as any))!;
+  assert.deepEqual(fake.createdWith[2], { focused: true, url: 'https://peek.example/doc' });
+  for (const w of [blank, other, card]) { fake.windows.delete(w.windowId); fake.tabs.delete(w.windowId * 10); }
   fake.windows.get(1)!.focused = true;
 });
 
