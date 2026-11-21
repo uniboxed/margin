@@ -6553,3 +6553,24 @@ page after it (made first: never a window without a tab; a closed blank tab is n
 A blank item keeps the new-tab page (blank either way); a tab Safari refuses to make: the page sent there, as before.
 The trace no longer says "first seen" at every switch between two hosts (each host's toolbars kept while parked).
 To check by hand: the trace's line for the next new profile window should say "resting" at its first read.
+
+## A profile's first window: no screen jump, no 20 s open (2026-11-20)
+
+Tirth, 19:11: an empty space's first search took ~20 s, the screen moved away and back. Margin's log and macOS's
+(Dock, MenuBarAgent) together: the profile had no window, so Margin pressed Safari's File › New Window to wake its copy;
+Safari's front window was full screen (in Margin's Space), so macOS gave that window a full-screen Space of its own
+(764) and switched the display to it 300 ms later, after Margin had already moved the window out of sight. Safari's
+asked-for window then opened in that Space, a normal 667×865 window; the engine took the Space for its full screen
+(no ask of the copy), its placing failed when the Space went (3 s), and the back-out asked a normal window out of
+full screen and waited for it, 7 s twice, before the retry made it in 0.55 s. Three changes (no freeze: it would stop
+the loading animation, Tirth):
+- The woken window's full-screen Space is destroyed as soon as the window leaves it, before macOS switches to it (as
+  an early full screen's own Space is destroyed); only its app's or no one's, with no other window of its app's (the
+  person's) and no hosted window in it; one already showing: Margin's Space shown again, destroyed at the next poll.
+- Through the copy, a window in a full-screen Space it doesn't fill (Margin's full-screen area less the Space's
+  reserved edges: what every real full-screen Safari window measured) isn't full screen there: onto the Desktop, then
+  asked as usual.
+- The back-out and the close through the copy ask out of full screen, and wait, only for a window really full screen
+  (`copyFullScreen`); unread with a Space of its own recorded: asked, as before.
+Tests (the stand-in world): each of the three, failing without the change (the first as the real log: place failed),
+and the person's full-screen Space left alone.

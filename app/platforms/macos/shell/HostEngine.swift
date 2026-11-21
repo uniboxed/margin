@@ -675,7 +675,8 @@ final class HostEngine {
             if sys.now() > w.until { w.budget = 0 }
             guard w.budget > 0, sys.processRuns(pid: w.pid) else { woken[bundle] = w; continue }
             for win in serverList(pid: w.pid) ?? [] where w.budget > 0 && !w.known.contains(win.number) && win.layer == 0 && win.bounds.width >= 100 && win.bounds.height >= 100 && !isHosted(window: win.number) {
-                guard !(sys.spaces(window: win.number) ?? []).isEmpty else { continue } // (not ordered in yet: looked at again)
+                let was = sys.spaces(window: win.number) ?? []
+                guard !was.isEmpty else { continue } // (not ordered in yet: looked at again)
                 w.known.insert(win.number)
                 w.seen += 1
                 if w.space == nil { w.space = sys.createPrivateSpace() }
@@ -686,9 +687,32 @@ final class HostEngine {
                 w.parked.append(win.number)
                 w.budget -= 1
                 Diagnostics.note("host: \(bundle): the window \(win.number) it opened only to wake a profile parked out of sight (it was in \(sys.currentSpace(onDisplayOf: marginSpace) == marginSpace ? "Margin's Space" : "a user Space"))")
+                for s in was where s != marginSpace && sys.spaceType(s) == ManagedSpace.fullScreenType { dropWokenSpace(s, pid: w.pid, bundle: bundle, leaving: win.number) }
             }
             woken[bundle] = w
         }
+    }
+
+    // A full-screen Space a woken window came up in, emptied by its parking. Opened from a full-screen window of its app's
+    // (Safari's in Margin's Space), the window gets a full-screen Space of its own, and macOS switches the display to it a
+    // few hundred ms later: Tirth's screen jumped away and back, and Safari's next window, the one Margin asked for, opened
+    // in that Space and was taken for full screen there (2026-11-20 19:11:29, macOS's log: Space 764 added for window
+    // 9788, current 300 ms later). Destroyed at once, before that switch, as an early full screen's own Space is: only its
+    // app's (or no one's), with no other window of its app's in it and no hosted window. One already showing: Margin's
+    // Space shown again first, the Space left for the poll to destroy (`destroyLeftSpaces`).
+    // (`leaving`: the woken window itself, which may still read as in it right after its move.)
+    private func dropWokenSpace(_ s: UInt64, pid: pid_t, bundle: String, leaving: Int) {
+        guard let owner = sys.fullScreenSpaceOwners()?[s], [pid, 0].contains(owner) else { return }
+        let others = (serverList(pid: pid) ?? []).contains { $0.number != leaving && $0.layer == 0 && $0.bounds.width >= 100 && $0.bounds.height >= 100 && sys.spaces(window: $0.number)?.contains(s) == true }
+        guard !others, !hosts.values.contains(where: { sys.spaces(window: $0.window)?.contains(s) == true }) else { return }
+        if sys.currentSpace(onDisplayOf: s) != s, sys.destroyFullScreenSpace(s) {
+            Diagnostics.note("host: \(bundle): the full-screen Space \(s) the woken window came up in destroyed as it left (macOS never switches to it)")
+            return
+        }
+        if sys.currentSpace(onDisplayOf: s) == s { _ = sys.setCurrentSpace(marginSpace) }
+        leftSpaces.insert(s)
+        saveMarker()
+        Diagnostics.note("host: \(bundle): the full-screen Space \(s) the woken window came up in was showing: Margin's Space shown again, the Space destroyed at the next poll")
     }
 
     // The shell's poll: a hosted app quit or promoted, its window gone, a left Space destroyed. Skipped while an
@@ -2882,6 +2906,42 @@ final class HostEngine {
         return list.contains { sys.spaceType($0) == ManagedSpace.fullScreenType }
     }
 
+    // Whether `window` fills full-screen Space `s`: Margin's full-screen area less what `s` reserves (Safari's full-screen
+    // windows measured exactly that: 240,41 1264×933 in a 240/8/8/8 Space; a woken one 1512×949 in its own). A normal
+    // window that only stands in a full-screen Space doesn't (Safari's asked-for window, 667×865, opened in the Space a
+    // woken window had, 2026-11-20 19:11:29). Nil: unread (no full-screen area known yet, its bounds unread).
+    private func fills(_ window: Int, space s: UInt64) -> Bool? {
+        let a = placement.area
+        guard a.width > 0, a.height > 0, let b = sys.bounds(window: window) else { return nil }
+        let e = sys.reserved(space: s) ?? .zero
+        return b.width >= a.width - e.left - e.right - 40 && b.height >= a.height - e.top - e.bottom - 60
+    }
+
+    // Whether a copy's window is really in full screen: a member of Margin's Space, or in a full-screen Space it fills. A
+    // normal window standing in a full-screen Space (Margin's once the Space it opened in was gone) isn't: asked out of
+    // full screen it changes nothing, and the wait for it to leave waited 7 s, twice (19:11:33-47). Unread (no Space, or
+    // one whose fill doesn't read): as `isFullScreen` says.
+    private func copyFullScreen(_ host: Host) async -> Bool? {
+        guard let list = sys.spaces(window: host.window), !list.isEmpty else { return await isFullScreen(host) }
+        let full = list.filter { sys.spaceType($0) == ManagedSpace.fullScreenType }
+        if full.isEmpty { return false }
+        if host.member, full.contains(marginSpace) { return true }
+        var unread = false
+        for s in full where s != marginSpace || !host.member {
+            switch fills(host.window, space: s) {
+            case true?: return true
+            case nil: unread = true
+            default: break
+            }
+        }
+        return unread ? await isFullScreen(host) : false
+    }
+
+    private func copyBackOutAsks(_ host: Host, own: UInt64?) async -> Bool {
+        let full = await copyFullScreen(host)
+        return full == true || (full == nil && own != nil)
+    }
+
     // How a window went into full screen: in a Space of its own (the slow path: steps 5-7 to come), already a member of
     // Margin's Space at the page area (the early path), or not at all.
     private enum Entry { case own, member(String), failed(String) }
@@ -2923,6 +2983,15 @@ final class HostEngine {
                 saveMarker()
                 Diagnostics.note("host: \(host.id): its window was in a full-screen Space \(its ? "it isn't full screen in" : "of another app's") (\(s)): moved onto its Desktop first\(there ? "" : " (not seen there)"), then asked")
             }
+        }
+        // Through the copy: in a full-screen Space it doesn't fill, it isn't full screen there (a normal window that opened in
+        // one: `fills`): onto its display's Desktop first, then asked, never taken for full screen in that Space.
+        if copy, let s = ownSpace(), fills(host.window, space: s) == false,
+           let desk = sys.desktop(onDisplayOf: marginSpace), sys.move(window: host.window, to: desk) {
+            let there = await wait(options.parkWait, every: options.memberEvery) { self.sys.spaces(window: host.window) == [desk] }
+            host.away = true
+            saveMarker()
+            Diagnostics.note("host: \(host.id): its window stood in a full-screen Space it doesn't fill (\(s), not full screen there): moved onto its Desktop first\(there ? "" : " (not seen there)"), then asked")
         }
         // The full-screen Spaces listed before the ask: the early path watches for a new one (nil: not tried, as when
         // its window already has a Space of its own, or the list doesn't read).
@@ -4369,10 +4438,12 @@ final class HostEngine {
             // (In its own full-screen Space, not the current one, never read there by Accessibility: a window that came up
             // full screen. Out of it on the current Space, where Accessibility acts, as a member would be.)
             _ = await leaveMember(host)
-        } else if await isFullScreen(host) == true || (copy && own != nil) {
+        } else if copy ? await copyBackOutAsks(host, own: own) : await isFullScreen(host) == true {
+            // (Through the copy: only one really full screen (`copyFullScreen`): one whose Space went is a normal window now.
+            // Unread with a Space of its own recorded: asked, as before.)
             _ = await setFullScreen(host, false)
             _ = await wait(options.exitWait) {
-                let full = await self.isFullScreen(host)
+                let full = copy ? await self.copyFullScreen(host) : await self.isFullScreen(host)
                 // (Through the copy, out of a private Space: in no Space at all it doesn't read; a normal window is one on
                 // a Desktop, read by the window server.)
                 return copy && host.privateSpace != nil ? full != true : full == false
@@ -4570,9 +4641,11 @@ final class HostEngine {
             _ = await leaveMember(host)
         }
         if host.privateSpace != nil { _ = await unpark(host) }
-        guard await isFullScreen(host) == true else { return }
+        // (Through the copy: only one really full screen, `copyFullScreen`.)
+        let copy = viaCopy(host)
+        guard (copy ? await copyFullScreen(host) : await isFullScreen(host)) == true else { return }
         _ = await setFullScreen(host, false)
-        _ = await wait(options.exitWait) { await self.isFullScreen(host) == false }
+        _ = await wait(options.exitWait) { (copy ? await self.copyFullScreen(host) : await self.isFullScreen(host)) == false }
     }
 
     // Whether an app Margin started has its hosted window closed (its close button) before it's asked to quit: whenever
