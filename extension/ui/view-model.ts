@@ -478,6 +478,12 @@ function fresh(input: ViewModelInput): ViewModel {
   // Combined Split View rows (Arc's single capsule row in the sidebar for 2–4 panes):
   const splitMemberIds = new Set<string>();
   const splits: SplitRow[] = [];
+  // Open tabs by their Margin tab's id (a pane named so), indexed once a split asks (the first with an id, as find).
+  let byMid: Map<string, any> | null = null;
+  const liveByMid = (mid: string) => {
+    if (!byMid) { byMid = new Map(); for (const t of Object.values(state.tabs) as any[]) if (t?.mid && !byMid.has(t.mid)) byMid.set(t.mid, t); }
+    return byMid.get(mid);
+  };
   for (const g of (state.splits ?? [])) {
     if (g.spaceId !== view.spaceId || !Array.isArray(g.panes) || g.panes.length < 2) continue;
     const panes: SplitPaneView[] = [];
@@ -485,7 +491,7 @@ function fresh(input: ViewModelInput): ViewModel {
     const ratioSum = rawRatios.reduce((acc, v) => acc + (Number.isFinite(v) && v > 0 ? v : 1), 0) || g.panes.length;
     g.panes.forEach((pid, index) => {
       const asNum = /^\d+$/.test(pid) ? Number(pid) : null;
-      const live: any = asNum != null ? state.tabs[asNum] : Object.values(state.tabs).find((t) => t.mid === pid);
+      const live: any = asNum != null ? state.tabs[asNum] : liveByMid(pid);
       const kept: any = !live ? state.keptTabs?.[pid] : null;
       const item = live ?? kept;
       if (!item) return;

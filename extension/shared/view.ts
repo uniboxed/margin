@@ -9,7 +9,21 @@ import { favoriteScopeOf } from '../state/model.ts';
 const posOf = (item: { pos?: number } | null | undefined, i: number): number => (Number.isFinite(item?.pos) ? item!.pos! : i);
 
 // Keep in sync with state/model.ts normalizeUrl.
+// Each address worked out once (a URL parse is the dear part of a sidebar's build: every pin and favorite is matched
+// against every tab), the answers kept until there are this many, then dropped all at once.
+const NORMALIZED_KEPT = 4000;
+const normalized = new Map<string, string>();
 function normalizeUrl(url: string | null | undefined) {
+  if (typeof url !== 'string') return parseUrl(url);
+  let out = normalized.get(url);
+  if (out === undefined) {
+    if (normalized.size >= NORMALIZED_KEPT) normalized.clear();
+    out = parseUrl(url);
+    normalized.set(url, out);
+  }
+  return out;
+}
+function parseUrl(url: string | null | undefined) {
   try {
     const u = new URL(url as string); // (none: it throws, and that's caught)
     const path = u.pathname === '/' ? '' : u.pathname;
@@ -117,19 +131,27 @@ function sidebar(state: State, windowId: number | null, currentTabId: number | n
   };
   const boundFavTabIds = new Set<number>();
   const boundFavKeptIds = new Set<string>();
-  const favorites: ShownFavorite[] = (state.favorites ?? [])
+  // The tabs by what binds them, each list in the tabs' order: worked out once, not once per favorite or pin.
+  const group = <T, K>(list: T[], keyOf: (t: T) => K | null | undefined) => {
+    const out = new Map<K, T[]>();
+    for (const t of list) { const k = keyOf(t); if (k == null) continue; const at = out.get(k); if (at) at.push(t); else out.set(k, [t]); }
+    return out;
+  };
+  const favs = state.favorites ?? [];
+  const openByFavorite = favs.length ? group(allOpenTabs, (t) => t.favoriteId) : new Map();
+  const openByUrl = favs.length ? group(allOpenTabs, (t) => (!t.favoriteId && !t.pinnedBy ? normalizeUrl(t.url) : null)) : new Map();
+  const keptByFavorite = favs.length ? group(allKeptTabs, (k) => k.favoriteId) : new Map();
+  const favorites: ShownFavorite[] = favs
     .filter((f) => (f.scope || 'global') === favScope)
     .map((f, i) => ({ f, i }))
     .sort((a, b) => posOf(a.f, a.i) - posOf(b.f, b.i))
     .map(({ f, i }) => {
       const key = normalizeUrl(f.url);
-      const sticky = allOpenTabs.filter((t) => t.favoriteId === f.id);
-      const matches = sticky.length
-        ? sticky
-        : allOpenTabs.filter((t) => !t.favoriteId && !t.pinnedBy && normalizeUrl(t.url) === key);
+      const sticky = openByFavorite.get(f.id) ?? [];
+      const matches: typeof allOpenTabs = sticky.length ? sticky : openByUrl.get(key) ?? [];
       const tab = matches.find((t) => t.active) ?? matches.find((t) => t.behind) ?? matches.find((t) => t.windowId === windowId) ?? matches[0];
       if (tab?.id != null) boundFavTabIds.add(tab.id);
-      for (const k of allKeptTabs) if (k.favoriteId === f.id) boundFavKeptIds.add(k.id);
+      for (const k of keptByFavorite.get(f.id) ?? []) boundFavKeptIds.add(k.id);
       const drifted = Boolean(tab && normalizeUrl(tab.url) !== key);
       return {
         ...f,
@@ -156,16 +178,17 @@ function sidebar(state: State, windowId: number | null, currentTabId: number | n
   const bound = new Map<string, ShownPin>(); // pin id → the pin as shown
   const boundTabIds = new Set<number>(boundFavTabIds);
   const boundKeptIds = new Set<string>(boundFavKeptIds);
+  const spaceByPin = group(spaceTabs, (t) => t.pinnedBy);
+  const spaceByUrl = group(spaceTabs, (t) => (!t.pinnedBy && !t.favoriteId ? normalizeUrl(t.url) : null));
+  const keptByPin = group(kept, (k) => k.pinnedBy);
   state.pins.forEach((p, i) => {
     if (p.spaceId !== spaceId) return;
     const key = normalizeUrl(p.url);
-    const sticky = spaceTabs.filter((t) => t.pinnedBy === p.id);
-    const matches = sticky.length
-      ? sticky
-      : spaceTabs.filter((t) => !t.pinnedBy && !t.favoriteId && normalizeUrl(t.url) === key);
+    const sticky = spaceByPin.get(p.id) ?? [];
+    const matches = sticky.length ? sticky : spaceByUrl.get(key) ?? [];
     const tab = matches.find((t) => t.active) ?? matches.find((t) => t.behind) ?? matches.find((t) => t.windowId === windowId) ?? matches[0];
     if (tab?.id != null) boundTabIds.add(tab.id);
-    for (const k of kept) if (k.pinnedBy === p.id) boundKeptIds.add(k.id);
+    for (const k of keptByPin.get(p.id) ?? []) boundKeptIds.add(k.id);
     const drifted = Boolean(tab && normalizeUrl(tab.url) !== key);
     bound.set(p.id, {
       ...p,
