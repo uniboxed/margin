@@ -576,13 +576,46 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     private(set) var caughtPresses: [CGPoint] = []
     var catchRegion: CatchRegion { catcher.region } // (what the catch fill fills now: the tests read it)
     func setVisibleHosts(_ list: [HostShownWindow]) {
-        let changed = list != visibleHosts
+        // (Only their rects new, in a drag's frame: the holes follow, nothing read, said or reordered; docs/PEEK-SPLIT.md §4.)
+        func shape(_ l: [HostShownWindow]) -> [String] { l.map { "\($0.window) \($0.role.rawValue) \($0.z) \($0.focused)" } }
+        let changed = shape(list) != shape(visibleHosts)
         visibleHosts = list
-        readVisible()
+        if !followingPage { readVisible() }
         if changed { Diagnostics.note("Margin's window \(id): \(list.isEmpty ? "one hosted window again" : "\(list.count) hosted windows visible (\(list.map { "\($0.window) \($0.role.rawValue)\($0.focused ? " focused" : "")" }.joined(separator: ", ")))")") }
-        sayHostedFrames()
+        if !followingPage { sayHostedFrames() }
         updateHole()
         if changed { keepFront() }
+    }
+
+    // ---- a split's panes (docs/PEEK-SPLIT.md §4) ----
+
+    // The split its page lays out now, each pane's box on the screen (top left), in the split's order; nil: none, or not
+    // hosting (the launcher's page area never has one).
+    var paneLayout: (split: String, panes: [PagePane])? {
+        guard hosting, let layout, let split = layout.split, !layout.panes.isEmpty else { return nil }
+        let c = contentFrame
+        // (Whole points, each edge rounded on its own: a window is placed at whole points, and the gap stays the gap.)
+        func whole(_ r: CGRect) -> CGRect {
+            let x0 = r.minX.rounded(), y0 = r.minY.rounded()
+            return CGRect(x: x0, y: y0, width: r.maxX.rounded() - x0, height: r.maxY.rounded() - y0)
+        }
+        return (split, layout.panes.map { PagePane(item: $0.item, rect: whole($0.rect.offsetBy(dx: c.minX, dy: c.minY))) })
+    }
+    // Each pane's window's own minimum (its item's id: width, height; the engine's, as learnt): its page lays no pane
+    // below it and its divider stops there. Said when it changes, and in each hello.
+    private(set) var paneMinimums: [String: CGSize] = [:]
+    func setPaneMinimums(_ minimums: [String: CGSize]) {
+        let m = minimums.mapValues { CGSize(width: $0.width.rounded(.up), height: $0.height.rounded(.up)) }
+        guard m != paneMinimums else { return }
+        paneMinimums = m
+        push(#"{"type":"paneMin","items":"# + paneMinimumsJSON + "}")
+    }
+    var paneMinimumsJSON: String {
+        let items = paneMinimums.keys.sorted().compactMap { k -> String? in
+            guard let v = paneMinimums[k], let key = jsonString(k) else { return nil }
+            return "\(key):[\(Int(v.width)),\(Int(v.height))]"
+        }
+        return "{" + items.joined(separator: ",") + "}"
     }
     private func readVisible() {
         var frames: [Int: CGRect] = [:]
@@ -688,7 +721,11 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     func followsPage(_ on: Bool) {
         guard on != followingPage else { return }
         followingPage = on
-        if !on { readHosted() }
+        if !on {
+            readHosted()
+            // (A split's windows' bounds read again once the drag is over, and said to the page: none were meanwhile.)
+            if !visibleHosts.isEmpty { readVisible(); sayHostedFrames() }
+        }
         updateHole()
     }
 
@@ -1130,7 +1167,9 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     func pressed(_ at: CGPoint) {
         // (Several visible: a card open catches a press on the page around its content; else the press's host is found
         // by its rect, HostedSession `pagePressed`, and focused.)
-        if visibleHosts.count > 1, pageState == .shown, !pageWantsKeyboard, options.harness || (window.isVisible && window.isOnActiveSpace), let page = window.pageRect, page.contains(at) {
+        // (A press on what the page draws over the page area, a split's divider: Margin's own, never a pane's.)
+        let onHits = slot?.hits.contains { $0.contains(at) } == true
+        if visibleHosts.count > 1, !onHits, pageState == .shown, !pageWantsKeyboard, options.harness || (window.isVisible && window.isOnActiveSpace), let page = window.pageRect, page.contains(at) {
             if let card = cardHole, !card.contains(at) {
                 caughtPresses.append(at)
                 if caughtPresses.count > 50 { caughtPresses.removeFirst() }
@@ -1669,6 +1708,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         json += #","pageHosted":"# + (hosting ? "true" : "false")
         json += #","marginPage":"# + (marginPage.flatMap { jsonString($0) } ?? "null")
         json += #","pageMinWidth":"# + (pageMinimum.map { String(Int($0)) } ?? "null")
+        if !paneMinimums.isEmpty { json += #","paneMin":"# + paneMinimumsJSON }
         json += #","pageState":""# + pageState.rawValue + #"","pageOpening":"# + (loaderLabel.flatMap { jsonString($0) } ?? "null")
         json += #","pageOpeningBundleId":"# + (loaderApp.flatMap { jsonString($0) } ?? "null")
         if starting { json += #","pageStarting":true"# }
@@ -1740,8 +1780,12 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
                     Diagnostics.note("Margin's window \(id): hosting, its page measured \(said) (window \(Int(window.frame.width))×\(Int(window.frame.height)), full screen \(window.styleMask.contains(.fullScreen)))")
                 }
             }
+            let panesWere = self.layout.map { ($0.split, $0.panes) }
             self.layout = layout
             updatePage()
+            // (A split's panes laid out again with the page area where it was: a divider dragged, the axis or the order
+            // changed. The session places the panes' windows, docs/PEEK-SPLIT.md §4.)
+            if hosting, panesWere?.0 != layout.split || panesWere?.1 != layout.panes { owner?.onPanes?(self) }
         case "hits":
             let rects = (body["rects"] as? [[Any]] ?? []).compactMap { Self.rect($0) }
             hits = Array(rects.prefix(64))
@@ -1775,6 +1819,9 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             // The sidebar's width being dragged, or let go (ui/behaviors/resize.ts): the session's (it holds the hosted
             // window's placing until it's over).
             if name == "sidebar.resizing" { return sidebarResizing((body["arg"] as? JSONObject)?["on"] as? Bool == true) }
+            // (A split's divider dragged, or let go (ui/behaviors/split.ts): the same hold or live follow as the sidebar's
+            // edge, every pane's window following its rect.)
+            if name == "split.resizing" { return sidebarResizing((body["arg"] as? JSONObject)?["on"] as? Bool == true) }
             if name == "haptic.alignment" { return alignmentTick() }
             guard !name.isEmpty else { return }
             ask(name, body["arg"] as? JSONObject ?? [:])
@@ -1842,6 +1889,7 @@ final class MarginWindows {
     var onEnteredFullScreen: ((MarginWindowController) -> Void)? // in full screen (again)
     var onPagePress: ((MarginWindowController, CGPoint) -> Void)? // a press in its page area around a window-mode host's window
     var onCaughtPress: ((MarginWindowController, CGPoint) -> Void)? // a card open: a press on the page area around its content (docs/PEEK-SPLIT.md §2)
+    var onPanes: ((MarginWindowController) -> Void)? // a split's panes laid out again by its page (docs/PEEK-SPLIT.md §4)
     // A window closing while it hosts: what it shows parked, then the closure called (it closes then).
     var onClosing: ((MarginWindowController, @escaping () -> Void) -> Void)?
     var onClosed: ((Int) -> Void)? // a window closed (its id): gone from `controllers`

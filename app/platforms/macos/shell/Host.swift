@@ -34,6 +34,8 @@ nonisolated enum SafariRole: Hashable, Sendable, CustomStringConvertible {
         }
     }
     var description: String { self == .main ? "main" : String(suffix.dropFirst()) }
+    // A split's pane window (docs/PEEK-SPLIT.md §4).
+    var isPane: Bool { if case .pane = self { return true }; return false }
     // From an id's suffix (`card`, `pane2`); nil: not a role.
     init?(suffix s: Substring) {
         if s == "card" { self = .card; return }
