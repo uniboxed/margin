@@ -206,7 +206,9 @@ export const handlers = {
     const fullscreen = windowId != null && capabilities?.marginFullscreen && engine.fullscreen ? await engine.fullscreen.isFullscreen(windowId) : false;
     // `since`: with the page's own address, which copy's tab ids it may trust (shared/stored.ts).
     // `card`: its window is Peek's card window in Margin.app (background/hosted.ts): its Esc and ⌘↩ are the card's.
-    return { tabId: sender.tab?.id ?? null, windowId, instanceId, fullscreen, app: appState(windowId), since: thisCopy().since, ...(windowId != null && hostedTabs.isCard(windowId) ? { card: true } : {}) };
+    // `pinned`: Margin.app shows a pin's or favorite's item in it (Auto-Peek).
+    const tabId = sender.tab?.id;
+    return { tabId: tabId ?? null, windowId, instanceId, fullscreen, app: appState(windowId), since: thisCopy().since, ...(windowId != null && hostedTabs.isCard(windowId) ? { card: true } : {}), ...(tabId != null && hostedTabs.isPinned(tabId) ? { pinned: true } : {}) };
   },
   // Whether this copy owns the state: only an owner answers this (the others
   // say `stale`, background.ts), after checking the stored owner again.

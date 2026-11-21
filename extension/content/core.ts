@@ -403,6 +403,7 @@ export function startCore() {
     helloWindowId = ctx.windowId;
     fullscreen = ctx.fullscreen;
     cardKeys.set((ctx as { card?: boolean }).card === true);
+    appPinned = (ctx as { pinned?: boolean }).pinned === true;
     // The background's word on the link (it may be newer than storage's).
     if (ctx.app !== undefined) {
       const drawn = { ...(appLink?.drawn ?? {}) };
@@ -445,6 +446,8 @@ export function startCore() {
   startPeek({
     isDrawn: () => !dormant && appLink !== undefined && drawsWindow(appLink, windowId ?? helloWindowId),
     isPinnedOrFav: () => {
+      // (Margin.app's library says so for its items: the copy's own state doesn't have its pins.)
+      if (appPinned) return true;
       const s = state;
       if (!s) return false;
       const t = tabId != null ? s.tabs?.[tabId] : null;
@@ -466,6 +469,8 @@ export function startCore() {
       window.open(url, '_blank', 'noopener');
     },
   });
+  // A pin's or favorite's item in Margin.app (the copy says so: hello's `pinned`, then `peekPinned`).
+  let appPinned = false;
   // Esc and ⌘↩ in a page of the card's window (the copy says which: hello's `card`, then `cardWindow`).
   const cardKeys = startCardKeys({ send: (key) => { if (!dormant) void send('cardKey', { key }, false); } });
   const onMessage = (message: any, _: BrowserMessageSender, sendResponse: (response?: any) => void) => {
@@ -476,6 +481,7 @@ export function startCore() {
     if (message?.type === 'windowState') return setFullscreen(!!message.fullscreen);
     // This page's tab in the card's window of Margin.app's Peek, or out of it (background/hosted.ts).
     if (message?.type === 'cardWindow' && typeof message.on === 'boolean') return cardKeys.set(message.on);
+    if (message?.type === 'peekPinned' && typeof message.on === 'boolean') { appPinned = message.on; return; }
     if (message?.type === 'mediaCommand' && typeof message.command === 'string') {
       return sendResponse({ ok: mediaWatcher.command(message.command) });
     }

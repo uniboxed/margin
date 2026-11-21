@@ -61,6 +61,14 @@ extension HostedSession {
         return CGRect(x: x.rounded(), y: (y + bar).rounded(), width: w.rounded(), height: max(0, h - bar).rounded())
     }
 
+    // An item that's a pin's or a favorite's tab (the library's `pinnedBy`, `favoriteId`): its page's links to other
+    // sites open in a card (Auto-Peek, settings.autoPeekPins). Told to the copy with each hostShow (`pinned`): the copy's
+    // own state doesn't have the library's pins.
+    func pinnedOrFavorite(_ item: String) -> Bool {
+        guard let v = library.items().first(where: { $0.id == item })?.value else { return false }
+        return !((v["pinnedBy"] as? String) ?? "").isEmpty || !((v["favoriteId"] as? String) ?? "").isEmpty
+    }
+
     // ---- what the layout needs of a card (HostedSession.applyLayout) ----
 
     func cardPart(_ item: String, rect: CGRect?) -> LayoutPart? {

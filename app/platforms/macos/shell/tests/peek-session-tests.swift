@@ -70,6 +70,9 @@ func peekSessionTests() {
     let mainWindow = engine.hosts[main]?.window ?? 0
     check("peek session: set up: a web item shown in the profile's main window (the copy's 90)",
           session.shown[1] == bItem && session.safariWindows == [SafariKey("s-default"): 90] && engine.shown == main && page.width > 1000, "\(session.safariWindows) \(page)")
+    let itemShow = links.asked.last { $0.type == "hostShow" && $0.payload["itemId"] as? String == bItem }?.payload
+    check("peek session: each item's hostShow says whether it's a pin's or favorite's (Auto-Peek: the copy has no library pins)",
+          itemShow?["pinned"] as? Bool == false && session.pinnedOrFavorite(bItem) == false, "\(String(describing: itemShow))")
     func peeks(since mark: Int) -> [JSONObject] {
         window.pushed.dropFirst(mark).compactMap { (try? JSONSerialization.jsonObject(with: Data($0.utf8))) as? JSONObject }.filter { $0["type"] as? String == "peek" }
     }

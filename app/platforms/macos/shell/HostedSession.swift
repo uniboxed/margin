@@ -579,7 +579,7 @@ final class HostedSession: LibraryDelegate {
                 if !there { guard await host(.safariWindow(p), in: w, for: item) else { return } }
             }
             guard let windowId = safariWindows[SafariKey(p)] else { return note("\(item): no Safari window of its profile") }
-            let (result, error) = await links.request(profile: p, "hostShow", ["windowId": windowId, "itemId": item, "url": address.isEmpty ? "about:blank" : address])
+            let (result, error) = await links.request(profile: p, "hostShow", ["windowId": windowId, "itemId": item, "url": address.isEmpty ? "about:blank" : address, "pinned": pinnedOrFavorite(item)])
             guard let result else { return note("\(item): its tab wasn't shown (\(error ?? "no answer"))") }
             open[item] = OpenItem(host: id, profile: p)
             if let tab = int(result["tabId"]) { safariTabs[item] = tab }
@@ -705,7 +705,7 @@ final class HostedSession: LibraryDelegate {
         // (A web item whose window is there already: its tab in front first, out of sight, as a show does.)
         func showTab(_ part: LayoutPart) async -> Bool {
             guard let p = part.profile, case .safariWindow(_, let role) = part.target, let windowId = safariWindows[SafariKey(p, role)] else { return false }
-            let (result, error) = await links.request(profile: p, "hostShow", cardShowPayload(part.item, windowId: windowId) ?? ["windowId": windowId, "itemId": part.item, "url": part.url.isEmpty ? "about:blank" : part.url])
+            let (result, error) = await links.request(profile: p, "hostShow", cardShowPayload(part.item, windowId: windowId) ?? ["windowId": windowId, "itemId": part.item, "url": part.url.isEmpty ? "about:blank" : part.url, "pinned": pinnedOrFavorite(part.item)])
             guard let result else { note("layout: \(part.item): its tab wasn't shown (\(error ?? "no answer"))"); return false }
             open[part.item] = OpenItem(host: part.target.id, profile: p)
             if let tab = int(result["tabId"]) { safariTabs[part.item] = tab }

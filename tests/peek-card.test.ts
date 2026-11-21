@@ -106,3 +106,18 @@ test('Peek card: Expand moves its tab into main\'s window as the new item\'s (it
   h.windowRemoved(12);
   assert.equal(h.isCard(12), false);
 });
+
+test('Auto-Peek in Margin.app: a pin\'s or favorite\'s item is said so by the app with each hostShow, and its page told (the copy\'s own state has no library pins)', async () => {
+  const f = fake([{ id: 1, windowId: 9, url: 'https://mail.example/', active: true }]);
+  const h = createHostedTabs(() => f.api);
+  const shown = await h.show({ windowId: 9, itemId: 't-pin1', url: 'https://mail.example/', pinned: true });
+  assert.equal(h.isPinned(shown.tabId), true);
+  assert.deepEqual(f.told, [[shown.tabId, { type: 'peekPinned', on: true }]]);
+  await h.show({ windowId: 9, itemId: 't-pin1', url: 'https://mail.example/', pinned: true });
+  assert.equal(f.told.length, 1, 'said once, as it changes');
+  await h.show({ windowId: 9, itemId: 't-pin1', url: 'https://mail.example/', pinned: false });
+  assert.equal(h.isPinned(shown.tabId), false);
+  assert.deepEqual(f.told.at(-1), [shown.tabId, { type: 'peekPinned', on: false }]);
+  await h.show({ windowId: 9, itemId: 't-other', url: 'https://other.example/' });
+  assert.equal(f.told.length, 2, 'not said: nothing changes');
+});

@@ -60,6 +60,10 @@ export const CARD_ITEM = 'peek-card';
 export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = async (d) => d, push: (windowId: number, msg: Record<string, unknown>) => unknown = () => false) {
   const byItem = new Map<string, number>();
   const cards = new Set<number>(); // the card windows (one per copy: its profile's)
+  // Tabs of items that are a pin's or a favorite's in Margin.app's library (`hostShow`'s `pinned`): their pages'
+  // links to other sites open in Peek's card (Auto-Peek). The copy's own state doesn't have the library's pins.
+  const pinnedTabs = new Set<number>();
+  const tellPinned = (tabId: number, on: boolean) => { void tabs().sendMessage?.(tabId, { type: 'peekPinned', on })?.catch?.(() => {}); };
   const tellPage = (tabId: number, on: boolean) => { void tabs().sendMessage?.(tabId, { type: 'cardWindow', on })?.catch?.(() => {}); };
   const sayCard = (tab: Tab & { title?: string }) => {
     if (tab.windowId == null) return;
@@ -111,8 +115,10 @@ export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = asy
     },
     /** Whether `windowId` is the card's window (Peek's, Margin.app's `hostShow` with `role: 'card'`). */
     isCard: (windowId: number) => cards.has(windowId),
+    /** Whether a tab shows a pin's or favorite's item in Margin.app (Auto-Peek). */
+    isPinned: (tabId: number) => pinnedTabs.has(tabId),
     // `fresh` (the card's only): a new Peek's page: the card's tab sent there if it shows another one.
-    async show({ windowId, itemId, url, role, fresh }: { windowId?: unknown, itemId?: unknown, url?: unknown, role?: unknown, fresh?: unknown }) {
+    async show({ windowId, itemId, url, role, fresh, pinned }: { windowId?: unknown, itemId?: unknown, url?: unknown, role?: unknown, fresh?: unknown, pinned?: unknown }) {
       if (!Number.isInteger(windowId)) throw new Error('no window');
       if (typeof itemId !== 'string' || !ITEM.test(itemId)) throw new Error('no item');
       if (typeof url !== 'string' || !SHOWN.test(url)) throw new Error('not an address');
@@ -130,7 +136,13 @@ export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = asy
         return out;
       }
       if (cards.has(win)) throw new Error('the card\'s window shows the card only');
-      return this.showIn(win, itemId, url);
+      const out = await this.showIn(win, itemId, url);
+      // (Said to its page when it changes: its clicks decide Auto-Peek at once, with no question asked.)
+      if (typeof pinned === 'boolean' && pinned !== pinnedTabs.has(out.tabId)) {
+        if (pinned) pinnedTabs.add(out.tabId); else pinnedTabs.delete(out.tabId);
+        tellPinned(out.tabId, pinned);
+      }
+      return out;
     },
     async showIn(win: number, itemId: string, url: string) {
       // (Moved first: its tag found in another window is forgotten by `own`.)
