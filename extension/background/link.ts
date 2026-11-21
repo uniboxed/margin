@@ -155,8 +155,8 @@ export const APP_REQUESTS = new Set([
   'userThemes',
   // Margin.app hosting this profile's window in its page area (background/hosted.ts): an item's tab shown, closed, muted, navigated, promoted from Peek.
   'hostShow', 'hostClose', 'hostPicture', 'hostMute', 'hostNavigate', 'hostPromotePeek', 'openPeek',
-  // Mini Player (M2.4): remote playback controls.
-  'mediaControl',
+  // The mini player's buttons for an item's page (M2.4, background/hosted.ts media).
+  'hostMedia',
 ]);
 // The requests that call windows.update or windows.remove for one window: each carries `notAfter`
 // from the app, and only one runs per window at a time (background/handoff.ts).

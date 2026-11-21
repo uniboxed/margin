@@ -6593,8 +6593,66 @@ window said it was there; never there: drawn after 300 ms.
 - **M2.1 QoL, Toasts, Mute, Unload & Shortcuts (`87217e83`):** Added guarded `<m-toast>` slot & `toast` part, `⇧⌘C` Copy URL + toast, `⌘L` focus-address pre-filled & selected, `⌘D` toggle pin, `⇧⌘T` reopen last archived, `⌃1–9` Space jump, `⌘1–9` item jump, Mute/Unmute, Duplicate, and manual Unload/Sleep.
 - **M2.2 Sticky Pins, Inline Rename & Nested Folders (`1a701a96`):** Pinned tabs keep a sticky `pinnedBy` binding across sub-navigation with `drifted` indicator and `pin.reset` back to `rootUrl`; closing a sticky pin unloads it without archiving. Added `customTitle` inline rename (`m-rename="tab|pin"`) and nested folders up to `MAX_FOLDER_DEPTH = 4` with cycle/depth guards, pre-order `space.pinnedFlat`, and per-folder `shownFlat` for card-grouped themes (`liquid-glass`, `neubrutalism`, `pixel`) so existing `.folder` card layouts and DOM mutation budgets stay intact.
 - **M2.3 Favorites Grid (`39b408f4`):** Added `favorites` collection (cap 12, web tabs & macOS apps, sticky `favoriteId` binding, global across Spaces by default with `settings.favoritesScope: 'global' | 'profile'` in Settings → Tabs, `⌘1–9` prioritizes Favorites first).
-- **M2.4 Background Mini Player (`882a4016`):** Added `extension/content/media.ts` (Media Session + `<audio>`/`<video>` observer), `extension/background/media.ts` (strictly background-only visibility, active tab suppresses mini player, 30 s pause grace period), and `app/platforms/macos/private/NowPlaying.swift` for hosted macOS apps.
+- **M2.4 Background Mini Player (`882a4016`):** Added `extension/content/media.ts` (Media Session + `<audio>`/`<video>` observer), `extension/background/media.ts` (strictly background-only visibility, active tab suppresses mini player). It never reached Margin.app's window (its pushes were dropped, its buttons unsupported there); rebuilt on `feat/arc-media` (below). Its `NowPlaying.swift` (MediaRemote, never instantiated) is removed.
 - **M2.5 Hosted Safari Peek & Little Arc (`3a73f380`):** Added `extension/shared/peek.ts`, `extension/content/peek.ts` (Shift+Click & optional `settings.autoPeekPins` external link capture), guarded `<m-peek>` slot & `peek` part, `hostPromotePeek`, and `⌥⌘N` Little Arc shortcut.
 - **M2.6 Air Traffic Control (`9ce02101`):** Added `extension/shared/air-traffic.ts` and `airTraffic` collection across model/library/Swift, 1-click "Always Open `<host>` in This Space" context menu, and automatic URL-to-Space routing on `newTab`.
 - **M2.7 Universal Split View (`de714188`):** Added multi-pane layout & divider math in Rust (`app/shared/core/src/host/panes.rs` + `api.rs`: `LayoutPanes`, `ResizeDivider`, 2–4 panes, horizontal/vertical axes), `splits` collection, combined capsule `SplitRow` in `ViewModel` + `ActiveSplitView`, and `⌃⇧=` shortcut.
 - **M2.8 All 5 Built-in Themes:** Wired complete Track 2 markup and bespoke sanitizer-clean CSS (no `backdrop-filter`, zero removed by `sanitizeTemplate`/`sanitizeCss`) across Arcadia, Liquid Glass, Material, Neubrutalism, and Pixel, and updated `extension/themes/README.md` and `TESTING.md`. Real Safari/macOS interactive behavior remains manual verification (`TESTING.md`).
+
+## The background mini player in Margin.app (M2.4, `feat/arc-media`, 2026-11-21)
+
+Decided by Tirth: the mini player for Safari tabs now; hosted Mac apps later (MediaRemote, the only way to read and
+drive another app's Now Playing, is closed to third parties since macOS 15.4). `NowPlaying.swift` is gone; nothing
+claims hosted apps.
+
+- **The path.** A page (`content/media.ts`) says what it plays (`mediaState`) → the copy keeps each tab's source in
+  memory (`background/media.ts` `createMediaHub`) and pushes `{ type: 'media', sources }` for that tab's window, each
+  source with the item the tab shows (`hostedTabs.itemOf`) → Margin.app passes it on (`Shell.linkReceived` →
+  `HostedSession.copyPush`, checked by `UIPush.swift`) to a Margin window's page → `overlay.ts` `media` →
+  `ui.media` → the view model picks the one shown (`shared/media.ts` `selectBackgroundMedia`) → the themes'
+  `media` part (all five draw it).
+- **The buttons.** Play/Pause, Previous, Next: the UI's `mediaControl` → the library's `mediaControl` (a request,
+  nothing changed) → `HostedSession` → the copy's `hostMedia { itemId, command, tabId }` → the item's tab's page
+  (`mediaCommand`). Mute: `muteTab` (→ `hostMute`, `tabs.update` muted; the copy hears `mutedInfo` and says so).
+  The title: `activateTab` (the item shown, as a sidebar pick).
+- **The UI pushes from a copy, one route.** Margin.app passes only the types in `UIPush.forwarded` (now `media`,
+  `toast`), and of each only its listed fields, each checked and cut (text lengths, http(s) addresses, image data
+  URLs under 128 KB, flags, times); a copy's tab ids never reach the page: each becomes the UI's number for its item,
+  and an entry whose tab isn't an item open in Margin is dropped. Only pushes for the Safari window Margin hosts for
+  that profile; the person's own windows' are not Margin's. A new type (`peekOpen`) is one line.
+- **Which Margin window.** The one showing the space of the item the push is about (its first source: the copy lists
+  playing ones first, newest first); several: the hosting one, else the one in front, else the lowest id; none
+  showing it: the hosting window, else the one in front. A standing push (`media`) given to another window is taken
+  back from the one that had it (its empty one). The window is chosen again at each push, not when a window
+  switches space.
+- **Shown when.** Only for a tab not in front of that window (any item in front: a web item or a Mac app). Playing
+  ones before paused, the newest first. Paused: stays 30 s (`PAUSE_GRACE_MS`, everywhere), then goes: the copy's
+  one timer, only while something is paused. A tab closed (`tabs.onRemoved`) or its page left (a new document in its
+  main frame: `webNavigation.onCommitted`, frameId 0) goes at once.
+- **Safari's tab ids** change on a restart or an update: nothing outlives the background (memory only), the page
+  reports again when it plays (and once as its script starts, which an update's re-injection is). The app finds the
+  item by the copy's tag, else the tab hostShow answered, else the open item of that profile at the page's address;
+  that tab is then kept as the item's and named in `hostMedia`, which the copy uses when its tag is gone.
+- **What a page can't do from Margin's world.** The page's Media Session action handlers belong to the page's world
+  (no `ExecutionWorld.MAIN` in Safari 27.2): Previous and Next press the page's own buttons labelled exactly
+  Next/Previous (with what's played and a shortcut allowed: never "Next page", "Skip ad"); Previous otherwise starts
+  the track again. Media in a frame (`all_frames` is false), a shadow root, or an `Audio()` never in the page isn't
+  seen by the content script: Safari's `audible` for the tab stands in (its title and host; its Play/Pause may do
+  nothing).
+- **Artwork.** The page's Media Session artwork (the largest it lists): fetched by the copy's background (its host
+  permissions; `credentials: 'omit'`, no referrer, https or an image data URL only, an image only, 2 MB at most,
+  6 s), drawn at most 128 px (OffscreenCanvas; else a small one as it is), sent as a PNG data URL (under 96 KB). The
+  report never waits for it: sent without, then again with it. The last 16 kept per address. In Safari without
+  "Allow on every website", a site that doesn't send CORS headers gives none: the site icon, or the letter.
+- **Cost.** Content script: one capturing listener per media event on the document, a report at most every 120 ms
+  after one, the page's elements and its buttons read only then; no MutationObserver, no polling. Background: woken
+  only by those reports and the tab events it already listens to; no timer unless something is paused.
+- **Checked** (headless): unit (`tests/media-player.test.ts`: the rule, the 30 s grace on a fake clock and timer,
+  closed tabs, mute and audible, artwork never waited for and cached, `loadArtwork`'s limits, the page's report and
+  buttons on a stand-in document, `hostMedia`, the library's `mediaControl`); the five themes in WebKit and Chromium
+  (`tests/theme/mini-player.test.ts`: drawn, hidden for the tab in front, paused, gone; real presses send the
+  requests); Swift (`hosted-tests.swift`: `copyPush`'s checks, numbers, windows, the address fallback, `hostMedia`);
+  the app's e2e (`e2e-glue.swift`: a real `media` push over the link drawn in Margin's off-screen WKWebView, a real
+  press on Play/Pause reaching the copy as `hostMedia`, hidden for the item in front, gone with no sources; failing
+  first with the route off). Only by hand in real Safari: TESTING.md M2.4.
+

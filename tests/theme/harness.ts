@@ -739,6 +739,13 @@ const withRuntime = Object.assign(T, {
     return r.width > 0 && r.height > 0 && s.visibility === 'visible' && Number(s.opacity) > 0 && s.display !== 'none';
   },
   rtFolderRename(folderId: string, name: string) { rt.mock.state = { ...rt.mock.state, folders: rt.mock.state.folders.map((f) => (f.id === folderId ? { ...f, name } : f)) }; rt.host.setState(rt.mock.state); },
+  // The tab in front, the space's tabs, and the mini player the view model has (mini-player.test.ts).
+  rtMedia() { const vm = rt.runtime!.vm!; return { front: vm.tab?.id ?? null, today: vm.space.today.map((t) => t.id), media: vm.media ? { tabId: vm.media.tabId, title: vm.media.title, paused: vm.media.paused } : null }; },
+  // No tab audible (as Margin.app's state has none: its mini player is the copies' `media` push only).
+  rtSilence() {
+    rt.mock.state = { ...rt.mock.state, tabs: Object.fromEntries(Object.entries(rt.mock.state.tabs).map(([k, t]) => [k, { ...t, audible: false }])) };
+    rt.host.setState(rt.mock.state);
+  },
   rtVm() { const vm = rt.runtime!.vm!; return { space: vm.space.id, sidebar: vm.window.sidebar, palette: vm.palette.open, rows: vm.palette.rows.length, today: vm.space.today.length }; },
   rtCount(selector: string) { return rt.target.querySelectorAll(selector).length; },
   // The page's box (<m-page>) and the launcher's, with the launcher's background (Margin.app's empty window).

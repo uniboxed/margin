@@ -210,6 +210,7 @@ extension Shell {
             if let id { return windows.controllers.first { $0.id == id } }
             return windows.front
         }
+        session.windowIds = { [weak windows] in windows?.controllers.map(\.id) ?? [] }
         windows.onPageRect = { [weak session] controller, _ in session?.pageRectChanged(controller) }
         windows.onReady = { [weak session] controller in
             guard let session, let space = session.firstSpace else { return }
