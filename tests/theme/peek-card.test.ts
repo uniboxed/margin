@@ -63,7 +63,18 @@ for (const [name, engine] of ENGINES) {
         assert.ok(near(cardBox.left - pageArea.x, Math.round(pageArea.width * 0.08), 4), `8% beside it: ${cardBox.left - pageArea.x} of ${pageArea.width}`);
         assert.ok(near(cardBox.top - pageArea.y, Math.round(pageArea.height * 0.07), 4), `7% above it: ${cardBox.top - pageArea.y} of ${pageArea.height}`);
         assert.ok(r.width >= 420 && r.height >= 320 - 60, `at least 420 wide: ${JSON.stringify(r)}`);
-        assert.ok(barBox.bottom <= r.y + 1 && barBox.height >= 40 && barBox.height <= 56, `the bar above the card's page: ${JSON.stringify({ barBox, r })}`);
+        assert.ok(barBox.bottom <= r.y + 1 && barBox.height >= 40 && barBox.height <= 60, `the bar above the card's page: ${JSON.stringify({ barBox, r })}`);
+        // The card window's own full-screen toolbar window rests just above its page (Safari's, 52 pt; on the real screen
+        // 2026-11-21 it showed through the dim above a 44 pt bar): the bar covers those 52 pt across the page's width,
+        // opaque, so nothing of it is seen (nor hovered: the bar takes the pointer).
+        assert.ok(barBox.top <= r.y - 52 + 1 && barBox.bottom >= r.y - 1 && barBox.left <= r.x + 1 && barBox.right >= r.x + r.width - 1,
+          `the bar covers the 52 pt above the card's page: ${JSON.stringify({ barBox, r })}`);
+        // (The bar's own fill, else the card's under it: Margin's default card is filled, its bar clear.)
+        const ownFill = (await ev((s) => T.rtComputed(s, 'background-color'), bar))!;
+        const barFill = ownFill === 'rgba(0, 0, 0, 0)' ? (await ev((s) => T.rtComputed(s, 'background-color'), card))! : ownFill;
+        // (rgb(r, g, b), rgba(r, g, b, a) or color(space r g b / a): no alpha, or 1.)
+        const alpha = /^rgba\([^)]*,\s*([\d.]+)\)$/.exec(barFill)?.[1] ?? /\/\s*([\d.]+)\)$/.exec(barFill)?.[1];
+        assert.ok(alpha == null || Number(alpha) === 1, `the bar is opaque: ${barFill}`);
         assert.ok(r.x >= pageArea.x && r.y >= pageArea.y && r.x + r.width <= pageArea.x + pageArea.width && r.y + r.height <= pageArea.y + pageArea.height, 'inside the page area');
         // Loading: its page covered (opaque), taking the pointer (nothing reaches main under the dim meanwhile).
         const cover = await ev(() => T.rtComputed('m-peek-page', 'background-color'));

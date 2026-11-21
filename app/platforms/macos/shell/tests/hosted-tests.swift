@@ -103,6 +103,8 @@ final class FakeHostedWindow: HostedWindow {
         }
         return (s.id, panes)
     }
+    var paneLoadingsSaid: [(item: String?, label: String?, app: String?)] = [] // each setPaneLoading, in order
+    func setPaneLoading(_ item: String?, label: String?, app: String?) { paneLoadingsSaid.append((item, label, app)) }
     var paneMinimumsSaid: [[String: CGSize]] = [] // each setPaneMinimums, in order
     func setPaneMinimums(_ minimums: [String: CGSize]) { paneMinimumsSaid.append(minimums) }
     var visibleSaid: [[HostShownWindow]] = [] // each setVisibleHosts, in order
@@ -842,6 +844,22 @@ func hostedTests() {
     let pinned = HostedSession.liveTab(["title": "T", "url": "https://p.example/", "pinnedBy": "p-1", "favoriteId": "", "customTitle": "Mine"], number: 7, item: "t-x", windowId: 1, index: 0, active: false, audible: false, muted: false)
     check("hosted: a pin's open item: its pinnedBy carried (an empty binding not)", pinned["pinnedBy"] as? String == "p-1" && pinned["customTitle"] as? String == "Mine"
           && pinned["favoriteId"] == nil && pinned["audible"] == nil && pinned["mid"] as? String == "t-x" && int(pinned["id"]) == 7)
+    // Pinned from its row (the UI's Pin Tab, by its number): the item shown stays, open, the pin's tab (sticky pins).
+    if let front = session.shown[1] {
+        let marked = links.asked.count
+        let pinnedNow = source.perform("pinTab", ["windowId": 1, "tabId": session.number(ofItem: front)])
+        run {}
+        let pinId = pinnedNow?["result"] as? String ?? ""
+        let row = liveTab(front)
+        check("hosted: an item pinned: it stays shown and open, its tab the new pin's and in front, nothing asked of the copy",
+              !pinId.isEmpty && session.shown[1] == front && session.open[front] != nil && library.items().contains { $0.id == front }
+              && row?["pinnedBy"] as? String == pinId && row?["active"] as? Bool == true && links.types(since: marked).isEmpty,
+              "\(String(describing: pinnedNow)) \(String(describing: row)) \(links.types(since: marked))")
+        _ = source.perform("unpin", ["windowId": 1, "pinId": pinId])
+        run {}
+        check("hosted: …unpinned: still shown and open, Today's again (no pin binding)",
+              session.shown[1] == front && session.open[front] != nil && liveTab(front)?["pinnedBy"] == nil, "\(String(describing: liveTab(front)))")
+    } else { check("hosted: an item shown to pin", false) }
 
     let unsupported = source.perform("renameProfile", ["windowId": 1])
     check("hosted: a request the library doesn't take: refused, said to the page", unsupported?["ok"] as? Bool == false)

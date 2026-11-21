@@ -4,7 +4,7 @@
 // - A card is a profile's card window (`safari:<profile>#card`, the engine's `requestRoleWindow(.card)`: opened by the
 //   copy at the card's address, never Safari's empty new-tab page, whose address field keeps Safari's toolbar down)
 //   shown above the item of a Margin window (its opener) at the theme's `<m-peek-page>` (the page's `peekRect`, else
-//   Margin's default rect: centred in the page area, 8% each side, 7% above and below, at least 420×320, under a 44 pt
+//   Margin's default rect: centred in the page area, 8% each side, 7% above and below, at least 420×320, under a 52 pt
 //   bar), focused (the keys are its window's). One card per profile, attached to its opener: a pick of another item in
 //   that window hides it (parked, its page kept), coming back to the opener shows it again; a Peek elsewhere replaces it.
 // - Its page is the copy's tab tagged `peek-card` (background/hosted.ts CARD_ITEM), never one of the library's items:
@@ -52,9 +52,9 @@ extension HostedSession {
     static func isCardItem(_ item: String?) -> Bool { item?.hasPrefix(cardPrefix) == true }
 
     // Margin's default card rect in a page area (a theme with no `<m-peek-page>`): centred, 8% each side and 7% above
-    // and below at most (at least 420 wide, 320 tall for its page), its page under a 44 pt bar.
+    // and below at most (at least 420 wide, 320 tall for its page), its page under a 52 pt bar (at least Safari's full-screen toolbar window, which rests just above the card window, never seen through the dim).
     nonisolated static func defaultCardRect(page: CGRect) -> CGRect {
-        let bar: CGFloat = 44
+        let bar: CGFloat = 52
         let w = max(min(page.width, 420), page.width - 2 * min(page.width * 0.08, max(0, (page.width - 420) / 2)))
         let h = max(min(page.height, 320 + bar), page.height - 2 * min(page.height * 0.07, max(0, (page.height - 320 - bar) / 2)))
         let x = page.minX + (page.width - w) / 2, y = page.minY + (page.height - h) / 2

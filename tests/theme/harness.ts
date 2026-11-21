@@ -771,16 +771,30 @@ const withRuntime = Object.assign(T, {
       axis: page?.getAttribute('m-split') ?? null,
       split: page?.getAttribute('m-split-id') ?? null,
       panes: [...(page?.querySelectorAll(':scope > m-pane') ?? [])].map((p) => ({ id: p.getAttribute('m-pane-id'), focused: p.hasAttribute('m-focused'), ...box(p), ring: getComputedStyle(p).boxShadow })),
-      dividers: [...(page?.querySelectorAll(':scope > m-divider') ?? [])].map((d) => ({ ...box(d), background: getComputedStyle(d).backgroundColor, cursor: getComputedStyle(d).cursor, grip: `${getComputedStyle(d, '::after').backgroundColor}|${getComputedStyle(d, '::after').backgroundImage}`, role: d.getAttribute('role') })),
+      dividers: [...(page?.querySelectorAll(':scope > m-divider') ?? [])].map((d) => ({ ...box(d), background: getComputedStyle(d).backgroundColor, cursor: getComputedStyle(d).cursor, grip: `${getComputedStyle(d, '::after').backgroundColor}|${getComputedStyle(d, '::after').backgroundImage}`, role: d.getAttribute('role'),
+        band: d.hasAttribute('m-band'), label: d.querySelector('m-band-title')?.textContent ?? null, labelBox: (() => { const l = d.querySelector('m-band-title'); return l ? box(l) : null; })(), labelColor: (() => { const l = d.querySelector('m-band-title'); return l ? getComputedStyle(l).color : null; })() })),
       layout: (rt.host.layouts.at(-1) as { split?: string, panes?: { id: string, rect: number[] }[] } | undefined)?.panes ?? null,
       layoutSplit: (rt.host.layouts.at(-1) as { split?: string } | undefined)?.split ?? null,
     };
   },
   rtPaneMin(items: Record<string, readonly [number, number]>) { Object.assign(rt.host, { paneMinimums: items }); rt.host.setState(rt.mock.state); },
+  // A split pane's window opening (Margin.app's `paneLoading`): its item (the pane's id) and name; null: none. What each
+  // pane draws then: whether it's loading, its loader's box, words and spinner.
+  rtPaneLoading(pane: { item: string, name: string } | null) { Object.assign(rt.host, { paneLoading: pane ? { ...pane, bundleId: null } : null }); rt.host.setState(rt.mock.state); },
+  rtPaneLoaders() {
+    const page = rt.target.querySelector('m-page');
+    return [...(page?.querySelectorAll(':scope > m-pane') ?? [])].map((p) => {
+      const l = p.querySelector('m-pane-loader');
+      const b = (l ?? p).getBoundingClientRect(), pb = p.getBoundingClientRect();
+      const spin = l?.querySelector('m-pane-spinner');
+      return { id: p.getAttribute('m-pane-id'), loading: p.hasAttribute('m-loading'), text: l?.textContent ?? null, inside: !!l && b.left >= pb.left - 0.5 && b.right <= pb.right + 0.5 && b.top >= pb.top - 0.5 && b.bottom <= pb.bottom + 0.5,
+        visible: !!l && b.width > 0 && b.height > 0 && getComputedStyle(l).visibility !== 'hidden' && getComputedStyle(l).display !== 'none', spinning: !!spin && getComputedStyle(spin).animationName !== 'none', color: l ? getComputedStyle(l).color : null, background: l ? getComputedStyle(l).backgroundColor : null };
+    });
+  },
   // Add to Split View (the UI's `split.add`) with the page area `width` wide as Margin.app last measured it: what was
   // sent, and the toast shown.
-  rtSplitAdd(tabId: number, width: number) {
-    Object.assign(rt.host, { layout: { container: { width, height: 800 }, insets: { left: 0, top: 0, right: 0, bottom: 0 } } });
+  rtSplitAdd(tabId: number, width: number, height = 800) {
+    Object.assign(rt.host, { layout: { container: { width, height }, insets: { left: 0, top: 0, right: 0, bottom: 0 } } });
     rt.host.sent.length = 0;
     rt.runtime!.dispatch('split.add', tabId, 'behavior');
     return { sent: rt.host.sent.map((s) => s.type), toast: rt.runtime!.vm?.toast?.text ?? null };

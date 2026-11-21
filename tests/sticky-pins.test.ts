@@ -67,8 +67,8 @@ test('M2.2 sticky pins: library closeTab unloads without archiving, openPin focu
 
   const tabId = act('newTab', { windowId: 1, url: 'https://linear.app/inbox', title: 'Inbox' }, ['t001']).result.tabId;
   const pinId = act('pinTab', { tabId }, ['p001']).result;
-  // Simulate HostedSession opening the pin with pinnedBy.
-  const liveId = act('addItem', { spaceId: 'a', windowId: 1, url: 'https://linear.app/inbox', title: 'Inbox', front: true, pinnedBy: pinId }, ['t002']).result.tabId;
+  // The item pinned stays, the pin's tab (its page stays shown).
+  const liveId = tabId;
   assert.equal(values.tabs[liveId].pinnedBy, pinId);
 
   // Navigate to subpage.

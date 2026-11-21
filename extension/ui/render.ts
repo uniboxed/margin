@@ -42,14 +42,21 @@ m-page[m-split="column"]{flex-direction:column}
 m-pane{display:block;box-sizing:border-box;flex:1 1 0px;min-width:0;min-height:0;background:none!important;pointer-events:none!important}
 m-divider{display:block;box-sizing:border-box;flex:0 0 var(--m-split-gap,8px);position:relative;pointer-events:auto!important;cursor:col-resize;touch-action:none;outline:none;-webkit-user-select:none;user-select:none}
 m-page[m-split="column"]>m-divider{cursor:row-resize}
+m-pane{position:relative}
+m-pane>m-pane-loader{position:absolute;inset:0;display:flex;background:Canvas;color:CanvasText;color-scheme:light dark;flex-direction:column;align-items:center;justify-content:center;gap:10px;overflow:hidden;pointer-events:none;font:500 13px/1.3 -apple-system,BlinkMacSystemFont,system-ui,sans-serif;-webkit-user-select:none;user-select:none}
+m-pane-loader>m-pane-spinner{display:block;flex:none;width:20px;height:20px;box-sizing:border-box;border-radius:50%;border:2px solid color-mix(in srgb,currentColor 18%,transparent);border-top-color:color-mix(in srgb,currentColor 70%,transparent);animation:m-pane-spin .9s linear infinite}
+m-pane-loader>m-pane-label{display:block;max-width:90%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;opacity:.72}
+@keyframes m-pane-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){m-pane-loader>m-pane-spinner{animation-duration:2.4s}}
+m-divider>m-band-title{position:absolute;left:12px;right:calc(50% + 34px);top:50%;transform:translateY(-50%);display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font:500 12px/16px -apple-system,BlinkMacSystemFont,system-ui,sans-serif;opacity:.72;pointer-events:none;-webkit-user-select:none;user-select:none}
 m-window-controls,m-drag-region,m-palette,m-notice,m-menu,m-editor,m-launcher,m-prompt,m-settings,m-page-loader,m-toast,m-peek{display:block}
 m-peek-page{display:block}
 m-peek[m-default]{position:fixed;left:var(--m-page-left,0px);top:var(--m-page-top,0px);right:var(--m-page-right,0px);bottom:var(--m-page-bottom,0px);z-index:2147483630;overflow:hidden;border-radius:var(--m-page-radius,0px);pointer-events:none;color-scheme:light dark;font:13px/1.3 -apple-system,BlinkMacSystemFont,system-ui,sans-serif}
 m-peek[m-default]:is([m-loading],[m-little-arc]){pointer-events:auto}
-m-peek[m-default]>[m-peek-card]{position:absolute;left:clamp(0px,8%,calc(50% - 210px));right:clamp(0px,8%,calc(50% - 210px));top:clamp(0px,7%,calc(50% - 182px));bottom:clamp(0px,7%,calc(50% - 182px));display:flex;flex-direction:column;border-radius:12px;overflow:hidden;background:Canvas;color:CanvasText;box-shadow:0 0 0 100vmax rgba(0,0,0,.32),0 18px 48px rgba(0,0,0,.3);animation:m-peek-in .15s cubic-bezier(.2,.8,.2,1) both}
+m-peek[m-default]>[m-peek-card]{position:absolute;left:clamp(0px,8%,calc(50% - 210px));right:clamp(0px,8%,calc(50% - 210px));top:clamp(0px,7%,calc(50% - 186px));bottom:clamp(0px,7%,calc(50% - 186px));display:flex;flex-direction:column;border-radius:12px;overflow:hidden;background:Canvas;color:CanvasText;box-shadow:0 0 0 100vmax rgba(0,0,0,.32),0 18px 48px rgba(0,0,0,.3);animation:m-peek-in .15s cubic-bezier(.2,.8,.2,1) both}
 m-peek[m-default][m-little-arc]>[m-peek-card]{bottom:auto;height:44px}
 m-peek[m-default][m-closing]>[m-peek-card]{animation:m-peek-out .15s cubic-bezier(.4,0,1,1) both}
-m-peek[m-default] [m-peek-bar]{flex:none;height:44px;box-sizing:border-box;display:flex;align-items:center;gap:6px;padding:0 10px;pointer-events:auto;border-bottom:1px solid color-mix(in srgb,CanvasText 12%,transparent)}
+m-peek[m-default] [m-peek-bar]{flex:none;height:52px;box-sizing:border-box;display:flex;align-items:center;gap:6px;padding:0 10px;pointer-events:auto;border-bottom:1px solid color-mix(in srgb,CanvasText 12%,transparent)}
 m-peek[m-default] [m-peek-bar] button{font:inherit;color:inherit;height:28px;min-width:28px;padding:0 9px;border-radius:7px;border:1px solid color-mix(in srgb,CanvasText 16%,transparent);background:transparent;cursor:default}
 m-peek[m-default] [m-peek-bar] button:hover{background:color-mix(in srgb,CanvasText 8%,transparent)}
 m-peek[m-default] [m-peek-host]{flex:1 1 0;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;opacity:.7}

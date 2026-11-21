@@ -13,9 +13,18 @@
 //   drag of the sidebar's edge); let go, `split.resize` saves the ratios. Double-click: equal sizes. Focused (Tab),
 //   ←/→ (↑/↓ stacked) move it 2% (⇧: 10%), Home/End to its ends, Enter makes them equal; each saved.
 // - Nothing per frame but a drag's own frames; nothing at all while no split is shown (no listener does any work).
-// - Adding a pane that can't fit (each pane's minimum and the gaps more than the page area): refused with a toast
-//   (`refusesAdd`, runtime.ts dispatch). The sidebar's edge stops where the panes would no longer fit (`floor`,
-//   behaviors/resize.ts).
+// - Stacked, the gap above a pane hosted in a Safari window (a web item's) is a band at least SAFARI_TOOLBAR tall
+//   (`<m-divider m-band>`, the pane's name in its `<m-band-title>`): Safari's full-screen toolbar window rests just
+//   above its window, and is drawn whenever its window was raised after the pane above (the focused pane is raised
+//   last); in the band it rests under Margin's opaque ground, never in the hole of the pane above. That toolbar window
+//   is never moved or parked (it broke Safari's full screen: DECISIONS.md). Side by side, the toolbars rest under
+//   Margin's top frame, as one window's does: no band.
+// - A pane whose window is opening beside the panes shown (Margin.app's `paneLoading`: its item): `<m-pane m-loading>`
+//   with Margin's loader in it (`<m-pane-loader>`: a spinner, "Opening …"), over that pane's box only; the other panes
+//   stay shown and usable (never the page card's loader over the whole page area).
+// - Adding a pane that can't fit (each pane's minimum and the gaps, bands counted, more than the page area): refused
+//   with a toast (`refusesAdd`, runtime.ts dispatch). The sidebar's edge stops where the panes would no longer fit
+//   (`floor`, behaviors/resize.ts).
 import type { Rt } from '../runtime.ts';
 import type { ViewModel } from '../view-model.ts';
 
@@ -23,6 +32,9 @@ import type { ViewModel } from '../view-model.ts';
 export const PANE_FLOOR = Object.freeze({ width: 200, height: 140 });
 /** The gap between panes when the theme doesn't set `--m-split-gap`. */
 export const SPLIT_GAP = 8;
+/** Safari's full-screen toolbar window's height (pt; measured on the real screen 2026-11-21: 1264×52 resting just above
+ *  its window, its toolbar hidden). Margin.app's engine doesn't say it to the page (it never touches that window). */
+export const SAFARI_TOOLBAR = 52;
 const STEP = 0.02;
 const BIG_STEP = 0.1;
 
@@ -57,9 +69,20 @@ export function dragRatios(sizes: number[], floors: number[], index: number, del
 /** Equal ratios for `n` panes. */
 export const equalRatios = (n: number) => Array.from({ length: n }, () => 1 / n);
 
-/** Whether `count` panes with these floors fit along `room` px with the gaps between them. */
-export function panesFit(floors: number[], room: number, gap = SPLIT_GAP) {
-  return floors.reduce((a, b) => a + b, 0) + gap * Math.max(0, floors.length - 1) <= room + 0.5;
+/** A pane hosted in a Safari window: a web item's (not a Mac app's, nor one of Margin's own pages). */
+export const inSafari = (pane: { url?: string | null }) => { const u = String(pane?.url ?? ''); return u !== '' && !/^(app|margin):/i.test(u); };
+/** Each divider's size along the axis (px): stacked, the band above a pane in Safari (its toolbar's height, or the gap
+ *  if that's more), else the gap. */
+export function dividerSizes(split: { axis: string, panes: { url?: string | null }[] }, gap = SPLIT_GAP, band = SAFARI_TOOLBAR): number[] {
+  const column = split.axis === 'vertical';
+  return split.panes.slice(1).map((p) => (column && inSafari(p) ? Math.max(gap, band) : gap));
+}
+
+/** Whether `count` panes with these floors fit along `room` px with the gaps between them (`gap`: one for every
+ *  divider, or each divider's own: `dividerSizes`). */
+export function panesFit(floors: number[], room: number, gap: number | number[] = SPLIT_GAP) {
+  const gaps = Array.isArray(gap) ? gap.reduce((a, b) => a + b, 0) : gap * Math.max(0, floors.length - 1);
+  return floors.reduce((a, b) => a + b, 0) + gaps <= room + 0.5;
 }
 
 /**
@@ -88,7 +111,7 @@ export function installSplit(rt: Rt) {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let laidOut = '';
 
-  const host = () => rt.host as typeof rt.host & { appWindow?: boolean, pageHosted?: boolean, paneMinimums?: Record<string, [number, number]> };
+  const host = () => rt.host as typeof rt.host & { appWindow?: boolean, pageHosted?: boolean, paneMinimums?: Record<string, [number, number]>, paneLoading?: { item: string, name: string } | null };
   const page = () => view.pageEl as HTMLElement | null;
   /** The split shown here now: the item in front a pane of it, a window hosted in the page area. */
   const shown = (vm: ViewModel | null = rt.vm): Split | null => {
@@ -99,9 +122,13 @@ export function installSplit(rt: Rt) {
   const panesOf = (el: HTMLElement) => [...el.children].filter((c) => c.localName === 'm-pane') as HTMLElement[];
   const dividersOf = (el: HTMLElement) => [...el.children].filter((c) => c.localName === 'm-divider') as HTMLElement[];
   const row = (split: Split) => split.axis !== 'vertical';
+  // The theme's gap: a plain divider's size (a band is the toolbar's), else its `--m-split-gap`.
   const gapOf = (el: HTMLElement) => {
-    const d = dividersOf(el)[0];
-    if (!d) return SPLIT_GAP;
+    const d = dividersOf(el).find((x) => !x.hasAttribute('m-band'));
+    if (!d) {
+      const v = parseFloat(rt.win.getComputedStyle(el).getPropertyValue('--m-split-gap'));
+      return Number.isFinite(v) && v > 0 ? v : SPLIT_GAP;
+    }
     const b = d.getBoundingClientRect();
     return el.getAttribute('m-split') === 'column' ? b.height : b.width;
   };
@@ -113,6 +140,45 @@ export function installSplit(rt: Rt) {
       held = null;
     }
     return split.panes.map((p) => p.ratio);
+  }
+
+  // A pane's own loader while its window opens (`name`: what's opening; null: none): Margin's elements, its words.
+  function loader(p: HTMLElement, name: string | null) {
+    let el = [...p.children].find((c) => c.localName === 'm-pane-loader') as HTMLElement | undefined;
+    if (name == null) {
+      if (p.hasAttribute('m-loading')) p.removeAttribute('m-loading');
+      el?.remove();
+      return;
+    }
+    if (!p.hasAttribute('m-loading')) p.setAttribute('m-loading', '');
+    if (!el) {
+      el = doc.createElement('m-pane-loader');
+      el.setAttribute('role', 'status');
+      el.appendChild(doc.createElement('m-pane-spinner'));
+      el.appendChild(doc.createElement('m-pane-label'));
+      p.appendChild(el);
+    }
+    const label = el.querySelector('m-pane-label')!;
+    const text = name ? `Opening ${name}…` : 'Opening…';
+    if (label.textContent !== text) label.textContent = text;
+  }
+
+  // A divider as the band above a Safari pane (stacked): `m-band`, at least the toolbar's height, the pane's name in it
+  // (Margin's own text, never markup); `pane` null: a plain divider again.
+  function band(d: HTMLElement, pane: Split['panes'][number] | null) {
+    let title = [...d.children].find((c) => c.localName === 'm-band-title') as HTMLElement | undefined;
+    if (!pane) {
+      if (d.hasAttribute('m-band')) d.removeAttribute('m-band');
+      if (d.style.getPropertyValue('flex-basis')) d.style.removeProperty('flex-basis');
+      title?.remove();
+      return;
+    }
+    if (!d.hasAttribute('m-band')) d.setAttribute('m-band', '');
+    const basis = `max(var(--m-split-gap, ${SPLIT_GAP}px), ${SAFARI_TOOLBAR}px)`;
+    if (d.style.getPropertyValue('flex-basis') !== basis) d.style.setProperty('flex-basis', basis);
+    if (!title) { title = doc.createElement('m-band-title'); title.setAttribute('aria-hidden', 'true'); d.appendChild(title); }
+    const text = pane.host && pane.title && pane.title !== pane.host ? `${pane.title} — ${pane.host}` : pane.title || pane.host || '';
+    if (title.textContent !== text) title.textContent = text;
   }
 
   // The page's place drawn as the split now: its panes, their order, ratios and minimums, the focused one; nothing new
@@ -133,7 +199,8 @@ export function installSplit(rt: Rt) {
     }
     const ratios = ratiosFor(split);
     const floors = paneFloors(split, host().paneMinimums);
-    const key = JSON.stringify([split.id, split.axis, split.panes.map((p) => [p.id, p.active]), ratios, floors]);
+    const opening = host().paneLoading ?? null;
+    const key = JSON.stringify([split.id, split.axis, split.panes.map((p) => [p.id, p.active, p.url, p.title, p.host]), ratios, floors, opening]);
     if (key === laidOut) return;
     laidOut = key;
     const axis = row(split) ? 'row' : 'column';
@@ -168,6 +235,7 @@ export function installSplit(rt: Rt) {
       const id = String(pane.id);
       if (p.getAttribute('m-pane-id') !== id) p.setAttribute('m-pane-id', id);
       if (pane.active) { if (!p.hasAttribute('m-focused')) p.setAttribute('m-focused', ''); } else if (p.hasAttribute('m-focused')) p.removeAttribute('m-focused');
+      loader(p, opening && opening.item === id ? opening.name : null);
       const s = p.style;
       const grow = String(round4(ratios[i] ?? 1 / n));
       if (s.flexGrow !== grow) s.flexGrow = grow;
@@ -178,6 +246,7 @@ export function installSplit(rt: Rt) {
       if (i < n - 1) {
         acc += ratios[i] ?? 1 / n;
         const d = dividers[i];
+        band(d, axis === 'column' && inSafari(split.panes[i + 1]) ? split.panes[i + 1] : null);
         const orient = axis === 'row' ? 'vertical' : 'horizontal';
         if (d.getAttribute('aria-orientation') !== orient) d.setAttribute('aria-orientation', orient);
         const now = String(Math.round(acc * 100));
@@ -328,7 +397,16 @@ export function installSplit(rt: Rt) {
       const floors = paneFloors({ axis, panes: panes.map((id) => ({ id })) as any }, h.paneMinimums);
       const room = axis === 'vertical' ? g.container.height - g.insets.top - g.insets.bottom : g.container.width - g.insets.left - g.insets.right;
       const el = page();
-      return panesFit(floors, room, el ? gapOf(el) : SPLIT_GAP) ? null : 'Not enough room for another pane';
+      // (Each pane's address, for the bands: the split's own, the one added from the state; the item in front first.)
+      const st: any = rt.state;
+      const urlOf = (id: unknown) => {
+        const known = split?.panes.find((p) => String(p.id) === String(id) || String(p.tabId) === String(id));
+        if (known) return known.url;
+        return (typeof id === 'string' ? st?.keptTabs?.[id]?.url : st?.tabs?.[id as number]?.url) ?? '';
+      };
+      const urls = [...(split ? [] : [vm.tab?.url ?? '']), ...ids.map(urlOf), urlOf(tabId)];
+      const gaps = dividerSizes({ axis, panes: urls.map((url) => ({ url })) }, el ? gapOf(el) : SPLIT_GAP);
+      return panesFit(floors, room, gaps) ? null : 'Not enough room for another pane';
     },
     destroy() { if (frame) { rt.win.cancelAnimationFrame(frame); rt.cancel(timer); } },
   };

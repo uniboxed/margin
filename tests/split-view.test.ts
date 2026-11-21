@@ -9,7 +9,7 @@ import * as L from '../app/shared/library/library.ts';
 import { checkAction, contextFromState, requestFor } from '../extension/ui/actions.ts';
 import { menuItems } from '../extension/ui/behaviors/menu-items.ts';
 import { buildViewModel } from '../extension/ui/view-model.ts';
-import { dragRatios, equalRatios, nextSplitPane, paneFloors, panesFit, PANE_FLOOR } from '../extension/ui/behaviors/split.ts';
+import { dividerSizes, dragRatios, equalRatios, nextSplitPane, paneFloors, panesFit, PANE_FLOOR, SAFARI_TOOLBAR } from '../extension/ui/behaviors/split.ts';
 import { createHostedTabs } from '../extension/background/hosted.ts';
 import * as M from '../extension/state/model.ts';
 
@@ -177,6 +177,21 @@ test('split view, UI: a divider moves the two panes beside it, each stopping at 
   assert.deepEqual(equalRatios(3).map((v) => Math.round(v * 300)), [100, 100, 100]);
   assert.equal(panesFit([500, 500], 1008, 8), true);
   assert.equal(panesFit([500, 500], 1000, 8), false);
+});
+
+test('split view, UI: stacked, the gap above a Safari pane is a band its full-screen toolbar rests in (never over the pane above)', () => {
+  const web = (id: string) => ({ id, url: `https://${id}.example/` });
+  const app = (id: string) => ({ id, url: 'app://com.apple.Notes' });
+  assert.equal(SAFARI_TOOLBAR, 52, 'Safari\'s full-screen toolbar window: 52 pt, resting just above its window');
+  assert.deepEqual(dividerSizes({ axis: 'vertical', panes: [web('a'), web('b'), app('c')] }, 8), [52, 8], 'above a web pane the band, above an app the gap');
+  assert.deepEqual(dividerSizes({ axis: 'vertical', panes: [app('a'), web('b')] }, 60), [60], 'a theme\'s gap wider than the band: the gap');
+  assert.deepEqual(dividerSizes({ axis: 'horizontal', panes: [web('a'), web('b'), web('c')] }, 10), [10, 10], 'side by side: the toolbars rest under Margin\'s top frame, no band');
+  assert.deepEqual(dividerSizes({ axis: 'vertical', panes: [web('a'), { id: 'm', url: 'margin://settings' }] }, 8), [8], 'Margin\'s own page has no toolbar');
+  // The room check takes the bands: three stacked web panes need 3 floors and 2 bands.
+  const floors = [140, 140, 140];
+  assert.equal(panesFit(floors, 436, 8), true, 'with plain gaps it would fit');
+  assert.equal(panesFit(floors, 436, dividerSizes({ axis: 'vertical', panes: [web('a'), web('b'), web('c')] }, 8)), false, 'with the bands it doesn\'t');
+  assert.equal(panesFit(floors, 524, [52, 52]), true);
 });
 
 test('split view, UI: ⌃⇧= adds the item used last that isn\'t in front or a pane; none: null (the palette then)', () => {

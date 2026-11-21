@@ -6898,3 +6898,56 @@ From Margin's log on the real screen (split view and Peek with real Safari). UI 
 - Checked: `split-tests.swift` (every show path out of a split with main focused), `screen-engine-tests.swift` (the
   layout held; out of full screen by itself, alone, in a split, as a plain member; a real tile fight still demoted; the
   drag line), `devhooks-tests.swift`, the app's e2e (`e2e-split.swift`: Remove from Split View on an app's pane of two).
+
+## Fixes from the real screen of Peek and split view (fix/screen-ui, 2026-11-21)
+
+- **An item pinned in Margin.app stays, the pin's tab.** The library's `pinTab` (and `createFolder` with an item) forgot
+  the item, so the page stayed shown with no item behind it: no highlighted row, an empty address field until the pin
+  was clicked again. Now (sticky pins, M2.2) the item stays, bound to the new pin (`pinnedBy`; the pin takes its address,
+  title, given name and target): the pin shows open and active, the item isn't in Today, nothing is asked of the
+  hosting (the page stays shown, `shown` unchanged). Its close isn't an archive (closeTab's rule for a pin's tab), the
+  pin opens that item (openPin finds it by its binding), and unpinned it's Today's again, still open (removePin unbinds
+  it). The extension already bound an open tab this way. Checked: `tests/arc-data.test.ts` (12), `hosted-tests.swift`.
+- **Esc in a hosted page never takes Safari's window out of full screen** (`content/keep-fullscreen.ts`). Safari's own
+  action for an Escape keydown no page took is leaving its window's full screen, which the engine then had to undo
+  (about a second, the page area empty). In a window Margin.app draws (the copy's `appDrawn`: main's, a card's, a pane's
+  windows), an Escape the page left alone has its default prevented. Decided last: a bubble listener is added on the
+  window as the key's capture phase passes it, so it runs after every listener the page has there (the DOM takes each
+  target's listeners as the event reaches it) and after Peek's card's Esc (which closes the card and prevents it
+  itself). Left alone: ⌘/⌃/⌥/⇧ held, a key being composed, an element in full screen (a video's Esc is Safari's), a
+  search field, a modal dialog and an open popover (the engine's own Esc closes or clears them), a key the page stopped.
+  Not covered: a key in a frame (the content script is the top frame's). Checked: `tests/keep-fullscreen.test.ts`
+  (stand-in), `tests/theme/keep-fullscreen.test.ts` (WebKit and Chromium: the order, the dialog closing, the popover).
+- **Stacked split: a band above each Safari pane for its toolbar.** Safari's full-screen toolbar window rests just
+  above its window (on screen: 1264×52 at the pane's top − 52) and is drawn whenever that window was raised after the
+  pane above it (the focused pane is raised last): it showed inside the upper pane's hole. It's never moved or parked
+  (that broke Safari's full screen, 2026-11-07), so the fix is geometry: stacked, the divider above a pane hosted in a
+  Safari window (a web item's; not a Mac app's) is a band at least `SAFARI_TOOLBAR` (52 pt) tall (`<m-divider m-band>`,
+  `flex-basis: max(--m-split-gap, 52px)`), and the toolbar rests in Margin's opaque ground there. The band carries the
+  pane's name and host (`<m-band-title>`, Margin's text; base CSS, each theme's divider colour and grip) like Arc's pane
+  header. The room check for another pane counts the bands (`dividerSizes`, `panesFit` with each divider's size); a
+  pane's own minimum is unchanged (the band is the divider's). Side by side nothing changes (the toolbars rest under
+  Margin's top frame, as one window's does). The app doesn't read the toolbar's height (only the engine knows that
+  window): 52 is the measured one. Checked: `tests/split-view.test.ts`, `tests/theme/split-view.test.ts` (5 themes, both
+  engines: the band's height, place, name; the stacked room check).
+- **Peek's card: its bar covers the card window's toolbar.** The card window's own Safari toolbar window rests just above
+  the card's page (on screen: 1062×52 at the page's top − 52) while every bar was 44–50 pt: its top showed, dimmed,
+  through the dim above the card, and a still pointer there got Safari's "Tab Group picker" tooltip once. Every card
+  bar (the five themes' and Margin's default) is now 52 pt and opaque (Liquid Glass's was 96% `--pop-fill`), so the
+  toolbar rests under it; Margin's default rect (HostedPeek `defaultCardRect`) is under a 52 pt bar, and the cards'
+  clamp keeps 320 pt for the page (`50% - 186px`). The themes README says a card's bar must cover those 52 pt. Left: a
+  rounded card's top corners (radius up to 28 pt in Material) leave the toolbar's square top corners outside the
+  card's curve, a few points under the dim. Checked: `tests/theme/peek-card.test.ts` (the bar covers the 52 pt above
+  `<m-peek-page>` across its width, opaque), `peek-session-tests.swift`.
+- **A split pane opening: its loader over its own box.** Adding a pane (Notes) covered the whole page area with the page
+  card's loader ("Opening Notes…", 2.2 s on screen) while the other panes were shown. The engine's slow step for a
+  host being laid out as a split's pane beside the panes shown (HostedSession `panesLaying`, set around applyLayout's
+  `engine.setLayout`; main's too when that split is what the window shows already) is now that pane's
+  (`paneLoadingStep`): Margin's window says `paneLoading { item, label, bundleId }` (and in its hello), and the page
+  draws `<m-pane m-loading>` with Margin's loader in it (`<m-pane-loader>`: a spinner, "Opening …" with the app's name
+  or the page's title; Canvas/CanvasText so it reads on any ground; a theme may restyle it), never the page area's. The
+  other panes stay shown and usable (their holes, the pointer); the item's row keeps its loading bar. A switch to one
+  item, a card's first open and the first host of a split are as before. Panes already shown that the engine places
+  again as plain members (no tiles) each get their own box's loader meanwhile. Checked: `split-tests.swift` (no
+  page-area loader, the pane's item and name), `tests/ui-host-app.test.ts` (the message and hello, checked),
+  `tests/theme/split-view.test.ts` (5 themes, both engines: the loader in that pane's box only, readable, gone after).

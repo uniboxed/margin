@@ -58,6 +58,7 @@ for (const [name, engine] of ENGINES) {
         assert.ok(near(a.width, b.width), `equal ratios, equal widths: ${a.width} ${b.width}`);
         assert.ok(near(a.left + a.width + p.dividers[0].width, b.left, 1), 'the divider is the gap between them');
         assert.ok(p.dividers[0].width >= 6 && p.dividers[0].width <= 14, `the theme's gap: ${p.dividers[0].width}`);
+        assert.equal(p.dividers[0].band, false, 'side by side: no toolbar band (Safari\'s toolbars rest under Margin\'s top frame)');
         assert.equal(p.dividers[0].cursor, 'col-resize');
         assert.ok(p.panes[0].ring !== 'none' && p.panes[1].ring === 'none', `the focused pane's ring only: ${p.panes[0].ring} / ${p.panes[1].ring}`);
         assert.ok(p.dividers[0].grip && !/^rgba\(0, 0, 0, 0\)\|none$/.test(p.dividers[0].grip), `a grip drawn: ${p.dividers[0].grip}`);
@@ -99,6 +100,21 @@ for (const [name, engine] of ENGINES) {
         await frames();
         p = await ev(() => T.rtPanes());
 
+        // A pane's window opening beside the one shown (Notes added): its loader over its own box only, the other pane
+        // drawn as it was (its window shows and takes the pointer); gone when it's in place.
+        await ev((item) => T.rtPaneLoading({ item, name: 'Notes' }), String(tabs[1]));
+        await frames();
+        let loaders = await ev(() => T.rtPaneLoaders());
+        assert.deepEqual(loaders.map((l) => l.loading), [false, true], 'only the pane opening is loading');
+        assert.ok(loaders[1].visible && loaders[1].inside && loaders[1].text === 'Opening Notes…' && loaders[1].spinning, `its loader in its box: ${JSON.stringify(loaders)}`);
+        assert.ok(loaders[1].background !== 'rgba(0, 0, 0, 0)' && loaders[1].color !== loaders[1].background, `readable on its own ground: ${loaders[1].color} on ${loaders[1].background}`);
+        assert.equal(loaders[0].text, null, 'the other pane: nothing over it');
+        assert.equal(await ev(() => T.rtComputed('m-pane[m-loading]', 'pointer-events')), 'none', 'never the pointer\'s');
+        await ev(() => T.rtPaneLoading(null));
+        await frames();
+        loaders = await ev(() => T.rtPaneLoaders());
+        assert.deepEqual(loaders.map((l) => [l.loading, l.text]), [[false, null], [false, null]], 'in place: gone');
+
         // A double-click: equal sizes again.
         await ev(() => T.rtSentClear());
         await page.mouse.dblclick(p.dividers[0].x, p.dividers[0].y);
@@ -123,6 +139,25 @@ for (const [name, engine] of ENGINES) {
         assert.ok(near(p.panes[1].height, p.panes[2].height) && p.panes[0].height > p.panes[1].height * 1.8, `by their ratios: ${p.panes.map((x) => x.height)}`);
         assert.ok(p.panes.every((x) => near(x.left, p.panes[0].left) && near(x.width, p.panes[0].width)), 'one above the other');
         assert.equal(p.dividers[0].cursor, 'row-resize');
+        // Stacked, each pane below another is a Safari window here (web tabs): the gap above it is a band at least as
+        // tall as Safari's full-screen toolbar window (52 pt, resting just above its window), so that toolbar rests in
+        // Margin's opaque ground, never over the pane above; the band names the pane below it; side by side there's none.
+        for (const [i, dv] of p.dividers.entries()) {
+          assert.ok(dv.band && dv.height >= 52 && dv.height <= 60, `the band above pane ${i + 1}: ${dv.height}`);
+          assert.ok(near(p.panes[i].top + p.panes[i].height + dv.height, p.panes[i + 1].top, 1), 'the band is the gap between them');
+          assert.ok(dv.label && dv.label.length > 0, `it names the pane below: ${dv.label}`);
+          assert.ok(dv.labelBox && dv.labelBox.top >= dv.top - 0.5 && dv.labelBox.top + dv.labelBox.height <= dv.top + dv.height + 0.5 && dv.labelBox.left + dv.labelBox.width <= dv.x - 20, `its name inside the band, clear of the grip: ${JSON.stringify(dv.labelBox)} in ${JSON.stringify(dv)}`);
+          assert.ok(dv.labelColor && dv.labelColor !== dv.background, `its name readable: ${dv.labelColor} on ${dv.background}`);
+        }
+        assert.ok(p.panes[0].height > 0 && near(p.layout![1].rect[1] - (p.layout![0].rect[1] + p.layout![0].rect[3]), p.dividers[0].height, 1), `the panes sent with the band between them: ${JSON.stringify(p.layout)}`);
+        // Room for another stacked pane counts the bands: three floors (140) and two plain gaps would fit in 470, not
+        // with two 52 pt bands.
+        await ev((t) => T.rtSplit(t, { axis: 'vertical' }), tabs.slice(0, 2));
+        await frames();
+        const stackedTight = await ev(({ t }) => T.rtSplitAdd(t, 1200, 140 * 3 + 2 * 12 + 10), { t: tabs[2] });
+        assert.equal(stackedTight.toast, 'Not enough room for another pane', 'stacked: the bands counted in the room');
+        const stackedRoomy = await ev(({ t }) => T.rtSplitAdd(t, 1200, 140 * 3 + 2 * 60), { t: tabs[2] });
+        assert.deepEqual(stackedRoomy.sent, ['addToSplit']);
 
         // No split: the page's place as before.
         await ev(() => T.rtNoSplit());

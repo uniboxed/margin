@@ -1177,13 +1177,13 @@
 .peek-backdrop { position: absolute; inset: 0; pointer-events: none; }
 .peek-backdrop > .peek-scrim { position: absolute; inset: 0; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; animation: none; cursor: default; pointer-events: none; }
 .peek-backdrop:is(.loading, .little-arc) > .peek-scrim { pointer-events: auto; }
-.peek-dim, .peek-card { position: absolute; left: clamp(0px, 8%, calc(50% - 210px)); right: clamp(0px, 8%, calc(50% - 210px)); top: clamp(0px, 7%, calc(50% - 182px)); bottom: clamp(0px, 7%, calc(50% - 182px)); border-radius: 12px; }
+.peek-dim, .peek-card { position: absolute; left: clamp(0px, 8%, calc(50% - 210px)); right: clamp(0px, 8%, calc(50% - 210px)); top: clamp(0px, 7%, calc(50% - 186px)); bottom: clamp(0px, 7%, calc(50% - 186px)); border-radius: 12px; }
 .peek-backdrop.little-arc :is(.peek-dim, .peek-card) { bottom: auto; height: 46px; }
 .peek-dim { box-shadow: 0 0 0 100vmax var(--peek-dim); pointer-events: none; animation: arcadia-peek-fade-in 150ms ease-out both; }
 .peek-backdrop.closing .peek-dim { animation: arcadia-peek-fade-out 150ms ease-in both; }
 .peek-card { display: flex; flex-direction: column; overflow: hidden; pointer-events: none; transform-origin: 50% 40%; animation: arcadia-peek-in 150ms cubic-bezier(.2, .8, .2, 1) both; background: transparent; box-shadow: 0 0 0 1px var(--panel-edge), 0 24px 64px rgba(0, 0, 0, 0.32); }
 .peek-backdrop.closing .peek-card { animation: arcadia-peek-out 150ms cubic-bezier(.4, 0, 1, 1) both; }
-.peek-bar { flex: none; box-sizing: border-box; height: 44px; display: flex; align-items: center; gap: 6px; padding: 0 10px; pointer-events: auto; background: var(--panel); color: var(--panel-fg); border-bottom: 1px solid var(--panel-line); }
+.peek-bar { flex: none; box-sizing: border-box; height: 52px; display: flex; align-items: center; gap: 6px; padding: 0 10px; pointer-events: auto; background: var(--panel); color: var(--panel-fg); border-bottom: 1px solid var(--panel-line); }
 .peek-host { flex: 1 1 0; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12.5px; color: var(--panel-muted); }
 .peek-field { flex: 1 1 0; min-width: 0; height: 30px; box-sizing: border-box; padding: 0 10px; font: inherit; outline: none; border: 1px solid var(--panel-line); border-radius: 8px; background: transparent; color: var(--panel-fg); }
 .peek-page { position: relative; flex: 1 1 auto; min-height: 0; background: transparent; }

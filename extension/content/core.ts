@@ -17,6 +17,7 @@ import { SWITCH_GRACE_MS } from '../shared/switching.ts';
 import { startLoads } from './loads.ts';
 import { startMedia } from './media.ts';
 import { PEEK_ANSWER_MS, startCardKeys, startPeek } from './peek.ts';
+import { startKeepFullscreen } from './keep-fullscreen.ts';
 import { fromStorage, onlyMark, openTabsCurrent, readForPage, takesChanges, withChanges } from '../shared/stored.ts';
 import { APP_LINK_KEY, appDraws, drawsWindow } from '../shared/app-link.ts';
 import { startScrollRecord } from './scroll-record.ts';
@@ -443,8 +444,10 @@ export function startCore() {
   // Peek's link clicks (content/peek.ts): only in a window Margin.app draws, never in a copy that stood back; the
   // card asked of the background (which asks the app: background/peek.ts), the link opening as it would have when
   // the app doesn't take it in time.
+  // (This tab's window one Margin.app draws: main's, a card's or a split pane's; never in a copy that stood back.)
+  const drawnHere = () => !dormant && appLink !== undefined && drawsWindow(appLink, windowId ?? helloWindowId);
   startPeek({
-    isDrawn: () => !dormant && appLink !== undefined && drawsWindow(appLink, windowId ?? helloWindowId),
+    isDrawn: drawnHere,
     isPinnedOrFav: () => {
       // (Margin.app's library says so for its items: the copy's own state doesn't have its pins.)
       if (appPinned) return true;
@@ -473,6 +476,9 @@ export function startCore() {
   let appPinned = false;
   // Esc and ⌘↩ in a page of the card's window (the copy says which: hello's `card`, then `cardWindow`).
   const cardKeys = startCardKeys({ send: (key) => { if (!dormant) void send('cardKey', { key }, false); } });
+  // An Esc the page left alone never takes Safari's window out of full screen where Margin.app draws it
+  // (content/keep-fullscreen.ts): decided after the page's listeners and the card's.
+  startKeepFullscreen({ isDrawn: drawnHere });
   const onMessage = (message: any, _: BrowserMessageSender, sendResponse: (response?: any) => void) => {
     // Whether this page was opened from nothing (no referrer, its first
     // history entry), for the note on Safari's "New tabs open with"

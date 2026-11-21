@@ -1446,9 +1446,9 @@ func multiHoleChecks(_ c: MarginWindowController, page: CGRect, main: Int, bound
   _ = await until(3) { c.cardRect != nil }
   let drawn = c.cardRect ?? .zero
   let near = { (a: CGFloat, b: CGFloat) in abs(a - b) <= 3 }
-  check("Peek: the page draws the card and says where its page is (the theme's <m-peek-page>): centred in the page area, 8% each side, 7% and a 44 pt bar above",
+  check("Peek: the page draws the card and says where its page is (the theme's <m-peek-page>): centred in the page area, 8% each side, 7% and a 52 pt bar above (the card window's toolbar rests under it)",
         c.cardRect != nil && near(drawn.minX - page.minX, page.maxX - drawn.maxX) && near(drawn.minX - page.minX, (page.width * 0.08).rounded())
-        && near(drawn.minY - page.minY, (page.height * 0.07).rounded() + 44) && page.contains(drawn), "\(drawn) in \(page)")
+        && near(drawn.minY - page.minY, (page.height * 0.07).rounded() + 52) && page.contains(drawn), "\(drawn) in \(page)")
   let loaderUp = await js(c.webView, "return getComputedStyle(document.querySelector('m-peek-page')).backgroundColor") as? String
   check("Peek: while its window isn't in place the card's page is covered (its own loader), never the page card's loader over main",
         loaderUp != nil && loaderUp != "rgba(0, 0, 0, 0)" && c.pageState == .shown, "\(String(describing: loaderUp)) \(c.pageState)")

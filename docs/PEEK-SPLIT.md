@@ -82,7 +82,7 @@ Expand.
   first open goes the normal first-open path; the card shows its loader meanwhile.
 - **Rect:** the theme's peek part has an `m-peek-page` element; the overlay measures it as it measures `<m-page>`
   and the app places the card window there. Margin's default part: centred, 8% side and 7% top/bottom margins,
-  420×320 minimum, a 44 pt bar for the theme above the page (back, forward, the address, copy, Expand, close).
+  420×320 minimum, a 52 pt bar for the theme above the page (at least: the card window's Safari toolbar rests in those 52 pt) (back, forward, the address, copy, Expand, close).
 - **Look:** the overlay dims the page area (translucent, so main shows through, dimmed), the card's page area is
   clear and its window is in the hole. Open: dim to its level and the card from 0.96 scale and 0 opacity, 150 ms,
   transform and opacity only; the window revealed at the end (it's under the card's loader until it's in place).

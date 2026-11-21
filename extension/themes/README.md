@@ -141,8 +141,11 @@ it in mind:
 - **Where.** While a card is up the root has `--m-page-left`, `--m-page-top`, `--m-page-right`, `--m-page-bottom`
   (px from the window's edges: the page's place) and `--m-page-radius`. Put `<m-peek>` over the page area with them
   (`position: fixed`, those four as its edges, `overflow: hidden`) and the card inside it. The built-in themes centre
-  the card with 8% of the page area beside it and 7% above and below, at least 420×320 for its page, under a 44 pt bar
+  the card with 8% of the page area beside it and 7% above and below, at least 420×320 for its page, under a 52 pt bar
   (`left: clamp(0px, 8%, calc(50% - 210px))` and so on: no transform in its place, which the card's motion owns).
+  **The bar must be opaque and cover at least the 52 pt above `<m-peek-page>` across its width:** the card's Safari
+  window keeps its full-screen toolbar window resting just above its page, and anything of it not under an opaque part
+  of yours shows through the dim (and takes hovers).
 - **The page.** `<m-peek-page>` is measured as laid out (offsets, not the box as drawn: a scale on the card never moves
   the window). While `peek.loading` (its window isn't in place yet) paint it opaque (your panel's colour, a spinner):
   the window is under it. Once `peek.ready`, it must be clear and take no pointer (`pointer-events: none`): the card's
@@ -280,6 +283,8 @@ style them.
 | `m-page[m-split]` | nothing new | `display: flex` (row or column) |
 | `m-pane` | the focused pane's ring (`m-pane[m-focused]`: a `box-shadow` outside the box, in the gap; never a background or anything inside it: the pane's window shows there) | its size: `flex-grow` by the split's ratios, `min-width` / `min-height` at its window's own minimum (never below 200 × 140) |
 | `m-divider` | the gap's colour (paint it as your frame around the page card: the ground Margin draws under the gap is that), a grip (`::after`), its hover, `:focus-visible` and drag (`[m-dragging]`; the root has `m-split-resizing` meanwhile) | the gap's size: `--m-split-gap` (8 px if you set none: set it on your root), the cursor, the pointer, the drag |
+| `m-divider[m-band]` | stacked, above a pane hosted in a Safari window: the band its full-screen toolbar window rests in (Arc's pane header); style it as the gap, and its `<m-band-title>` (the pane's name and host, Margin's text: colour, font, opacity) | its height (52 pt at least, your gap if that's more), its title's text and place |
+| `m-pane[m-loading]` | that pane's loader while its window opens (its `<m-pane-loader>`: Margin's spinner and "Opening …"; colour, font) | when it's shown, its words; the other panes stay shown and usable |
 
 The divider is dragged by Margin (the two panes beside it follow the pointer,
 each stopping at its window's minimum; the hosted windows follow live where
