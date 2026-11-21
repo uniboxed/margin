@@ -565,6 +565,11 @@ img.fav.app { width: 22px; height: 22px; margin: -2px; box-shadow: none; backgro
   background: var(--yellow);
 }
 .favorites.m-drop-into { outline: 2px solid var(--yellow); outline-offset: 2px; }
+/* No favorites yet: a drop target while a tab or pin is dragged, over what follows (nothing moves), none at rest. */
+.favorites-drop { display: none; }
+:is(.m-drag-tab, .m-drag-pin) .favorites-drop { display: block; position: relative; z-index: 5; flex: none; height: 0; margin-bottom: -12px; /* (the column's gap after it, taken back) */ }
+.favorites-drop-zone { position: absolute; left: 3px; right: 3px; top: 2px; height: 36px; box-sizing: border-box; border: 2px dashed var(--yellow); background: var(--deep); }
+.favorites-drop.m-drop-into .favorites-drop-zone { background: var(--hover); }
 
 .folder-head.nested.open .arrow { transform: rotate(90deg); }
 /* Nested folders: a sub-folder's row sits with its parent's pins; each level deeper, 14 px in. */

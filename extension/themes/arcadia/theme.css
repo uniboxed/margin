@@ -1028,6 +1028,11 @@
   background: var(--accent);
 }
 .favorites.m-drop-into { outline: 2px solid var(--drop); outline-offset: -2px; border-radius: 10px; }
+/* No favorites yet: a drop target while a tab or pin is dragged, over what follows (nothing moves), none at rest. */
+.favorites-drop { display: none; }
+:is(.m-drag-tab, .m-drag-pin) .favorites-drop { display: block; position: relative; z-index: 5; flex: none; height: 0; }
+.favorites-drop-zone { position: absolute; left: var(--pad); right: var(--pad); top: 2px; height: 40px; box-sizing: border-box; border: 2px dashed var(--border); border-radius: 10px; background: var(--field); }
+.favorites-drop.m-drop-into .favorites-drop-zone { border-color: var(--drop); background: var(--field-hover); }
 
 /* Nested folders: each level indents by the step a folder's pins have (.pin.nested, 16 px), the rows as they were up to depth 1. */
 .margin-sidebar .pins :is(.pin.nested, .folder) { margin-left: calc(var(--depth, 0) * 16px); }

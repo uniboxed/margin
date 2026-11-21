@@ -485,6 +485,11 @@ img.fav.app, .tab.on img.fav.app { width: 22px; height: 22px; margin: -2px; bord
   background: var(--space);
 }
 .favorites.m-drop-into { outline: 3px dashed var(--ink); outline-offset: 2px; border-radius: 10px; }
+/* No favorites yet: a drop target while a tab or pin is dragged, over what follows (nothing moves), none at rest. */
+.favorites-drop { display: none; }
+:is(.m-drag-tab, .m-drag-pin) .favorites-drop { display: block; position: relative; z-index: 5; flex: none; height: 0; margin-bottom: -12px; /* (the column's gap after it, taken back) */ }
+.favorites-drop-zone { position: absolute; left: 0px; right: 0px; top: 2px; height: 40px; box-sizing: border-box; border: 2.5px dashed var(--ink); border-radius: 10px; background: var(--paper); }
+.favorites-drop.m-drop-into .favorites-drop-zone { background: var(--yellow); }
 
 .folder-head.nested { border-top: 2px solid var(--ink); }
 .folder-head.nested.open .chev { transform: rotate(90deg); }

@@ -55,6 +55,8 @@
             </a>
           </m-for>
         </div>
+        <!-- No favorites yet: an empty drop target, drawn only while a tab or pin is dragged (nothing at rest). -->
+        <m-else><div class="favorites-drop" aria-hidden="true" m-drop="favorites"><span class="favorites-drop-zone"></span></div></m-else>
       </m-if>
 
       <div class="space-head swipes">
