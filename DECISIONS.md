@@ -6910,3 +6910,15 @@ user's choices (the doc's table) as built; what was decided here is marked so.
   rounded card's top corners (radius up to 28 pt in Material) leave the toolbar's square top corners outside the
   card's curve, a few points under the dim. Checked: `tests/theme/peek-card.test.ts` (the bar covers the 52 pt above
   `<m-peek-page>` across its width, opaque), `peek-session-tests.swift`.
+- **A split pane opening: its loader over its own box.** Adding a pane (Notes) covered the whole page area with the page
+  card's loader ("Opening Notes…", 2.2 s on screen) while the other panes were shown. The engine's slow step for a
+  host being laid out as a split's pane beside the panes shown (HostedSession `panesLaying`, set around applyLayout's
+  `engine.setLayout`; main's too when that split is what the window shows already) is now that pane's
+  (`paneLoadingStep`): Margin's window says `paneLoading { item, label, bundleId }` (and in its hello), and the page
+  draws `<m-pane m-loading>` with Margin's loader in it (`<m-pane-loader>`: a spinner, "Opening …" with the app's name
+  or the page's title; Canvas/CanvasText so it reads on any ground; a theme may restyle it), never the page area's. The
+  other panes stay shown and usable (their holes, the pointer); the item's row keeps its loading bar. A switch to one
+  item, a card's first open and the first host of a split are as before. Panes already shown that the engine places
+  again as plain members (no tiles) each get their own box's loader meanwhile. Checked: `split-tests.swift` (no
+  page-area loader, the pane's item and name), `tests/ui-host-app.test.ts` (the message and hello, checked),
+  `tests/theme/split-view.test.ts` (5 themes, both engines: the loader in that pane's box only, readable, gone after).

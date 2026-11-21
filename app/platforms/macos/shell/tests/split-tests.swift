@@ -193,8 +193,19 @@ private func splitSessionTests() {
     run { _ = library.perform("addItem", ["spaceId": home, "windowId": 1, "url": "https://d.example/", "title": "D"]) }
     let d = item("https://d.example/")
     mark = links.asked.count
+    // (The engine's slow step said to the session, as the shell wires it: a pane's first open.)
+    engine.loading = { session.loading($0) }
+    let pageLoadings = window.loadings.count, paneLoadings = window.paneLoadingsSaid.count
     run { _ = library.perform("addToSplit", ["windowId": 1, "tabId": d, "splitId": sp]) }
+    engine.loading = nil
     let pane2 = HostTarget.safariWindow("s-default", .pane(2)).id
+    let paneSaid = Array(window.paneLoadingsSaid.dropFirst(paneLoadings))
+    // (The panes shown placed again around it, each a plain member here, are each under their own box's loader too.)
+    let paneItems = Set([a, edit, b, d])
+    check("split session: a pane's first open beside the panes shown: its loader over its own box only (its item, its name), never the whole page area's",
+          window.loadings.count == pageLoadings && paneSaid.suffix(2).map(\.item) == [d, nil] && paneSaid.suffix(2).first?.label == "D" && paneSaid.suffix(2).first?.app == safariIdentifier
+          && paneSaid.enumerated().allSatisfy { $0.offset % 2 == 0 ? $0.element.item.map(paneItems.contains) == true : $0.element.item == nil },
+          "\(window.loadings.dropFirst(pageLoadings)) \(paneSaid)")
     let openedD = links.asked.dropFirst(mark).first { $0.type == "newWindow" }
     check("split session: a pane never opened: its pane window opened at its page (the keys in its page, never the new-tab page)",
           !d.isEmpty && openedD?.payload["url"] as? String == "https://d.example/" && engine.visible.count == 4 && session.shown[1] == d && bounds(pane2) == panes()[d],

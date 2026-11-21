@@ -235,6 +235,9 @@ protocol HostedWindow: AnyObject {
     // the screen (top left), in the split's order (nil: none); each pane's window's minimum told to it (its item's id).
     var paneLayout: (split: String, panes: [PagePane])? { get }
     func setPaneMinimums(_ minimums: [String: CGSize])
+    // A split's pane whose window is opening beside the panes shown (its item, its name, the app whose icon its loader
+    // shows), nil: none: its page draws a loader over that pane's box only, the others stay shown and usable.
+    func setPaneLoading(_ item: String?, label: String?, app: String?)
 }
 
 extension HostedWindow {
@@ -252,6 +255,7 @@ extension HostedWindow {
     var cardRect: CGRect? { nil }
     var paneLayout: (split: String, panes: [PagePane])? { nil }
     func setPaneMinimums(_ minimums: [String: CGSize]) {}
+    func setPaneLoading(_ item: String?, label: String?, app: String?) {}
 }
 
 // The app whose icon a host's loader shows: an app's own, a Safari window's Safari.
@@ -828,6 +832,13 @@ final class HostedSession: LibraryDelegate {
         var wanted: [HostExtra] = []
         for part in parts.dropFirst() { if let r = part.rect { wanted.append(HostExtra(target: part.target, role: part.role, rect: r)) } }
         let focusPart = focused.flatMap { f in parts.first { $0.item == f } }
+        // (A split's pane opened or placed again beside the panes shown: its loader over its own box, not the page area's;
+        // main's too when this split is what the window shows already. `paneLoadingStep`.)
+        if let split, engine.shown != nil {
+            let again = layout[w.id]?.split == split.id
+            panesLaying[w.id] = Dictionary(parts.enumerated().filter { $0.offset > 0 ? $0.element.role == .pane : again }.map { ($0.element.target.id, $0.element.item) }, uniquingKeysWith: { a, _ in a })
+        }
+        defer { panesLaying[w.id] = nil }
         let results = await engine.setLayout(main: first.target, mainRect: first.rect, extras: wanted, focused: focusPart?.target.id, in: placement, marginWindow: w.number, marginSpace: space)
         var shownItems: [String] = []
         for part in parts {
@@ -951,7 +962,33 @@ final class HostedSession: LibraryDelegate {
         appLoading = id
         defer { refreshLoading() }
         guard let wid = hostingWindow, let w = window(wid) else { return }
+        if paneLoadingStep(id) { w.setLoading(nil); return }
         w.setLoading(id.map { labels[$0] ?? $0.description }, app: id?.iconApp)
+    }
+
+    // The split's panes being laid out in each Margin window now, by their hosts (applyLayout, around the engine's
+    // setLayout), and the pane whose slow step is under way (its window, its host).
+    var panesLaying: [Int: [HostID: String]] = [:]
+    private var paneLoadingAt: (window: Int, host: HostID)?
+    // The engine's slow step for a split's pane opening (or placed again) beside the panes shown (docs/PEEK-SPLIT.md
+    // §4): its loader over its own box (the window's `setPaneLoading`: its item, a web page's title or the app's name,
+    // its icon), the other panes shown and usable; never the page area's loader over all of them (2026-11-21: Notes
+    // added covered the whole page with "Opening Notes…" for 2.2 s). True: it was a pane's (or one just over).
+    func paneLoadingStep(_ id: HostID?) -> Bool {
+        let wid = hostingWindow
+        let item = id.flatMap { id in wid.flatMap { panesLaying[$0]?[id] } }
+        var was = false
+        if let had = paneLoadingAt, item == nil || had.window != wid || had.host != id {
+            window(had.window)?.setPaneLoading(nil, label: nil, app: nil)
+            paneLoadingAt = nil
+            was = id == nil
+        }
+        guard let id, let item, let wid, let w = window(wid) else { return was }
+        paneLoadingAt = (wid, id)
+        let title = (library.items().first { $0.id == item }?.value["title"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        let label = id.raw.hasPrefix("app:") ? labels[id] ?? id.description : title ?? labels[id] ?? "Safari"
+        w.setPaneLoading(item, label: label, app: id.iconApp)
+        return true
     }
 
     // A Safari profile's copy's `loading` push (background/page-loads.ts: its tabs loading in one of its windows): kept

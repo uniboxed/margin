@@ -42,6 +42,12 @@ m-page[m-split="column"]{flex-direction:column}
 m-pane{display:block;box-sizing:border-box;flex:1 1 0px;min-width:0;min-height:0;background:none!important;pointer-events:none!important}
 m-divider{display:block;box-sizing:border-box;flex:0 0 var(--m-split-gap,8px);position:relative;pointer-events:auto!important;cursor:col-resize;touch-action:none;outline:none;-webkit-user-select:none;user-select:none}
 m-page[m-split="column"]>m-divider{cursor:row-resize}
+m-pane{position:relative}
+m-pane>m-pane-loader{position:absolute;inset:0;display:flex;background:Canvas;color:CanvasText;color-scheme:light dark;flex-direction:column;align-items:center;justify-content:center;gap:10px;overflow:hidden;pointer-events:none;font:500 13px/1.3 -apple-system,BlinkMacSystemFont,system-ui,sans-serif;-webkit-user-select:none;user-select:none}
+m-pane-loader>m-pane-spinner{display:block;flex:none;width:20px;height:20px;box-sizing:border-box;border-radius:50%;border:2px solid color-mix(in srgb,currentColor 18%,transparent);border-top-color:color-mix(in srgb,currentColor 70%,transparent);animation:m-pane-spin .9s linear infinite}
+m-pane-loader>m-pane-label{display:block;max-width:90%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;opacity:.72}
+@keyframes m-pane-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){m-pane-loader>m-pane-spinner{animation-duration:2.4s}}
 m-divider>m-band-title{position:absolute;left:12px;right:calc(50% + 34px);top:50%;transform:translateY(-50%);display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font:500 12px/16px -apple-system,BlinkMacSystemFont,system-ui,sans-serif;opacity:.72;pointer-events:none;-webkit-user-select:none;user-select:none}
 m-window-controls,m-drag-region,m-palette,m-notice,m-menu,m-editor,m-launcher,m-prompt,m-settings,m-page-loader,m-toast,m-peek{display:block}
 m-peek-page{display:block}

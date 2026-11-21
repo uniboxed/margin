@@ -100,6 +100,21 @@ for (const [name, engine] of ENGINES) {
         await frames();
         p = await ev(() => T.rtPanes());
 
+        // A pane's window opening beside the one shown (Notes added): its loader over its own box only, the other pane
+        // drawn as it was (its window shows and takes the pointer); gone when it's in place.
+        await ev((item) => T.rtPaneLoading({ item, name: 'Notes' }), String(tabs[1]));
+        await frames();
+        let loaders = await ev(() => T.rtPaneLoaders());
+        assert.deepEqual(loaders.map((l) => l.loading), [false, true], 'only the pane opening is loading');
+        assert.ok(loaders[1].visible && loaders[1].inside && loaders[1].text === 'Opening Notes…' && loaders[1].spinning, `its loader in its box: ${JSON.stringify(loaders)}`);
+        assert.ok(loaders[1].background !== 'rgba(0, 0, 0, 0)' && loaders[1].color !== loaders[1].background, `readable on its own ground: ${loaders[1].color} on ${loaders[1].background}`);
+        assert.equal(loaders[0].text, null, 'the other pane: nothing over it');
+        assert.equal(await ev(() => T.rtComputed('m-pane[m-loading]', 'pointer-events')), 'none', 'never the pointer\'s');
+        await ev(() => T.rtPaneLoading(null));
+        await frames();
+        loaders = await ev(() => T.rtPaneLoaders());
+        assert.deepEqual(loaders.map((l) => [l.loading, l.text]), [[false, null], [false, null]], 'in place: gone');
+
         // A double-click: equal sizes again.
         await ev(() => T.rtSentClear());
         await page.mouse.dblclick(p.dividers[0].x, p.dividers[0].y);

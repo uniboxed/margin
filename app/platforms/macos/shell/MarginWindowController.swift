@@ -612,6 +612,19 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         paneMinimums = m
         push(#"{"type":"paneMin","items":"# + paneMinimumsJSON + "}")
     }
+    // A split's pane whose window is opening beside the panes shown (HostedSession `paneLoadingStep`): its page draws a
+    // loader over that pane's box only (behaviors/split.ts), the others shown. Said when it changes, and in each hello.
+    private(set) var paneLoading: (item: String, label: String, app: String?)?
+    func setPaneLoading(_ item: String?, label: String?, app: String?) {
+        let next = item.map { (item: $0, label: label ?? "", app: app) }
+        guard next?.item != paneLoading?.item || next?.label != paneLoading?.label || next?.app != paneLoading?.app else { return }
+        paneLoading = next
+        push(#"{"type":"paneLoading","pane":"# + paneLoadingJSON + "}")
+    }
+    var paneLoadingJSON: String {
+        guard let p = paneLoading, let item = jsonString(p.item), let label = jsonString(p.label) else { return "null" }
+        return #"{"item":"# + item + #","label":"# + label + #","bundleId":"# + (p.app.flatMap { jsonString($0) } ?? "null") + "}"
+    }
     var paneMinimumsJSON: String {
         let items = paneMinimums.keys.sorted().compactMap { k -> String? in
             guard let v = paneMinimums[k], let key = jsonString(k) else { return nil }
@@ -1715,6 +1728,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         json += #","marginPage":"# + (marginPage.flatMap { jsonString($0) } ?? "null")
         json += #","pageMinWidth":"# + (pageMinimum.map { String(Int($0)) } ?? "null")
         if !paneMinimums.isEmpty { json += #","paneMin":"# + paneMinimumsJSON }
+        if paneLoading != nil { json += #","paneLoading":"# + paneLoadingJSON }
         json += #","pageState":""# + pageState.rawValue + #"","pageOpening":"# + (loaderLabel.flatMap { jsonString($0) } ?? "null")
         json += #","pageOpeningBundleId":"# + (loaderApp.flatMap { jsonString($0) } ?? "null")
         if starting { json += #","pageStarting":true"# }

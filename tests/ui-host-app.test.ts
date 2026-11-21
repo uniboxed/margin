@@ -190,6 +190,31 @@ test("the app host in Margin's own window: the page card's state from the app (h
   assert.equal(over.pageState, undefined, 'over a browser (the Windows shell): no page state');
 });
 
+test("the app host in Margin's own window: a split pane's loader (`paneLoading`): its item and name, checked; none over a browser", () => {
+  const b = bridge();
+  const host = createAppHost({ hello: hello({ host: 'app-window', mode: 'fullscreen' }), post: b.post });
+  let emits = 0;
+  host.onState(() => { emits++; });
+  assert.equal(host.paneLoading, null);
+  host.receive({ type: 'paneLoading', pane: { item: 't-notes1', label: 'Notes', bundleId: 'com.apple.Notes' } });
+  assert.deepEqual(host.paneLoading, { item: 't-notes1', name: 'Notes', bundleId: 'com.apple.Notes' });
+  assert.equal(emits, 1);
+  host.receive({ type: 'paneLoading', pane: { item: 't-notes1', label: 'Notes', bundleId: 'com.apple.Notes' } });
+  assert.equal(emits, 1, 'said again as it is: nothing drawn again');
+  host.receive({ type: 'paneLoading', pane: { item: '<b>', label: 'x', bundleId: 'com.apple.Notes' } });
+  assert.equal(host.paneLoading, null, 'an item id that isn\'t one: none');
+  host.receive({ type: 'paneLoading', pane: { item: 't-a', label: 'x'.repeat(500), bundleId: '../evil' } });
+  const cut = host.paneLoading as { name: string, bundleId: string | null } | null;
+  assert.deepEqual([cut?.name.length, cut?.bundleId], [120, null], 'its name cut, a bundle id checked');
+  host.receive({ type: 'paneLoading', pane: null });
+  assert.equal(host.paneLoading, null);
+  const again = createAppHost({ hello: hello({ host: 'app-window', mode: 'fullscreen', paneLoading: { item: 't-b', label: 'Safari', bundleId: 'com.apple.Safari' } }), post: b.post });
+  assert.deepEqual(again.paneLoading, { item: 't-b', name: 'Safari', bundleId: 'com.apple.Safari' }, 'a page loaded again mid-open: its hello has it');
+  const over = createAppHost({ hello: hello(), post: b.post });
+  over.receive({ type: 'paneLoading', pane: { item: 't-a', label: 'Notes' } });
+  assert.equal(over.paneLoading, null, 'over a browser: none');
+});
+
 test("the app host in Margin's own window: a web item's picture for its card (`pagePicture`), only a picture's data URL, only while `elsewhere`; none over a browser", () => {
   const b = bridge();
   const host = createAppHost({ hello: hello({ host: 'app-window', mode: 'fullscreen' }), post: b.post });

@@ -307,7 +307,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   onMessage?: (msg: any) => void,
   onNotice?: (arg: { id?: string, action?: string }) => void,
   warn?: (...args: any[]) => void,
-}): Host & { readonly platform: Host['platform'] & { app: boolean, features: Record<string, any> }, readonly appWindow: boolean, readonly pageOutside: boolean, readonly pageHosted: boolean, readonly marginPage: 'settings' | null, readonly pageMinWidth: number, readonly paneMinimums: Record<string, [number, number]>, readonly pageStuck: string | null, readonly sidebarDocked: boolean, perform(name: string, arg?: any): boolean | undefined, staysOnScreen: boolean, receive(msg: any): void, readonly windows: any[], readonly layout: Geometry | null, readonly settingsAsked: boolean, readonly pageTabId: number | null, readonly frontTabId: number | null, readonly loading: number[], readonly userThemes: any[], takeFailure(): { type: string, error: string } | null, destroy(): void } {
+}): Host & { readonly platform: Host['platform'] & { app: boolean, features: Record<string, any> }, readonly appWindow: boolean, readonly pageOutside: boolean, readonly pageHosted: boolean, readonly marginPage: 'settings' | null, readonly pageMinWidth: number, readonly paneMinimums: Record<string, [number, number]>, readonly paneLoading: { item: string, name: string, bundleId: string | null } | null, readonly pageStuck: string | null, readonly sidebarDocked: boolean, perform(name: string, arg?: any): boolean | undefined, staysOnScreen: boolean, receive(msg: any): void, readonly windows: any[], readonly layout: Geometry | null, readonly settingsAsked: boolean, readonly pageTabId: number | null, readonly frontTabId: number | null, readonly loading: number[], readonly userThemes: any[], takeFailure(): { type: string, error: string } | null, destroy(): void } {
   const windowId = Number.isInteger(hello?.windowId) ? hello.windowId : null;
   let raw: Record<string, any> | null = hello?.state && typeof hello.state === 'object' ? hello.state : null;
   let state: any = null;
@@ -339,6 +339,13 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
     return out;
   };
   let paneMinimums = paneMinOf(hello?.paneMin);
+  // A split's pane whose window is opening beside the panes shown (its item, its name, its app): its loader over that
+  // pane's box only (behaviors/split.ts), never the page card's over all of them. Margin's own window only.
+  const paneLoadingOf = (v: any): { item: string, name: string, bundleId: string | null } | null => {
+    if (!appWindow || !v || typeof v !== 'object' || typeof v.item !== 'string' || !/^[A-Za-z0-9_.:-]{1,256}$/.test(v.item)) return null;
+    return { item: v.item, name: typeof v.label === 'string' ? v.label.slice(0, 120) : '', bundleId: isBundleId(v.bundleId) ? v.bundleId : null };
+  };
+  let paneLoading = paneLoadingOf(hello?.paneLoading);
   // The page card's state (Margin's own window only), and the name of what's opening while it's `loading`.
   const pageStateOf = (v: unknown) => (v === 'shown' || v === 'loading' || v === 'elsewhere' ? v : 'empty');
   // (Its item's name and app said while it opens, and while it's in another Margin window: its card.)
@@ -442,6 +449,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
     /** The hosted window's own minimum width (0: none): the page area is never dragged narrower (behaviors/resize.ts). */
     get pageMinWidth() { return pageMinWidth; },
     get paneMinimums() { return paneMinimums; },
+    get paneLoading() { return paneLoading; },
     /** The page card's state (Margin's own window; undefined over a browser: its page is always there). */
     get pageState() { return appWindow ? pageState : undefined; },
     get pageOpening() { return pageOpening; },
@@ -636,6 +644,12 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           const next = paneMinOf(msg.items);
           if (JSON.stringify(next) === JSON.stringify(paneMinimums)) return;
           paneMinimums = next;
+          return emit();
+        }
+        case 'paneLoading': {
+          const next = paneLoadingOf(msg.pane);
+          if (JSON.stringify(next) === JSON.stringify(paneLoading)) return;
+          paneLoading = next;
           return emit();
         }
         case 'pageState': {

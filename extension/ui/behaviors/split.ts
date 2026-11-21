@@ -19,6 +19,9 @@
 //   last); in the band it rests under Margin's opaque ground, never in the hole of the pane above. That toolbar window
 //   is never moved or parked (it broke Safari's full screen: DECISIONS.md). Side by side, the toolbars rest under
 //   Margin's top frame, as one window's does: no band.
+// - A pane whose window is opening beside the panes shown (Margin.app's `paneLoading`: its item): `<m-pane m-loading>`
+//   with Margin's loader in it (`<m-pane-loader>`: a spinner, "Opening …"), over that pane's box only; the other panes
+//   stay shown and usable (never the page card's loader over the whole page area).
 // - Adding a pane that can't fit (each pane's minimum and the gaps, bands counted, more than the page area): refused
 //   with a toast (`refusesAdd`, runtime.ts dispatch). The sidebar's edge stops where the panes would no longer fit
 //   (`floor`, behaviors/resize.ts).
@@ -108,7 +111,7 @@ export function installSplit(rt: Rt) {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let laidOut = '';
 
-  const host = () => rt.host as typeof rt.host & { appWindow?: boolean, pageHosted?: boolean, paneMinimums?: Record<string, [number, number]> };
+  const host = () => rt.host as typeof rt.host & { appWindow?: boolean, pageHosted?: boolean, paneMinimums?: Record<string, [number, number]>, paneLoading?: { item: string, name: string } | null };
   const page = () => view.pageEl as HTMLElement | null;
   /** The split shown here now: the item in front a pane of it, a window hosted in the page area. */
   const shown = (vm: ViewModel | null = rt.vm): Split | null => {
@@ -137,6 +140,27 @@ export function installSplit(rt: Rt) {
       held = null;
     }
     return split.panes.map((p) => p.ratio);
+  }
+
+  // A pane's own loader while its window opens (`name`: what's opening; null: none): Margin's elements, its words.
+  function loader(p: HTMLElement, name: string | null) {
+    let el = [...p.children].find((c) => c.localName === 'm-pane-loader') as HTMLElement | undefined;
+    if (name == null) {
+      if (p.hasAttribute('m-loading')) p.removeAttribute('m-loading');
+      el?.remove();
+      return;
+    }
+    if (!p.hasAttribute('m-loading')) p.setAttribute('m-loading', '');
+    if (!el) {
+      el = doc.createElement('m-pane-loader');
+      el.setAttribute('role', 'status');
+      el.appendChild(doc.createElement('m-pane-spinner'));
+      el.appendChild(doc.createElement('m-pane-label'));
+      p.appendChild(el);
+    }
+    const label = el.querySelector('m-pane-label')!;
+    const text = name ? `Opening ${name}…` : 'Opening…';
+    if (label.textContent !== text) label.textContent = text;
   }
 
   // A divider as the band above a Safari pane (stacked): `m-band`, at least the toolbar's height, the pane's name in it
@@ -175,7 +199,8 @@ export function installSplit(rt: Rt) {
     }
     const ratios = ratiosFor(split);
     const floors = paneFloors(split, host().paneMinimums);
-    const key = JSON.stringify([split.id, split.axis, split.panes.map((p) => [p.id, p.active, p.url, p.title, p.host]), ratios, floors]);
+    const opening = host().paneLoading ?? null;
+    const key = JSON.stringify([split.id, split.axis, split.panes.map((p) => [p.id, p.active, p.url, p.title, p.host]), ratios, floors, opening]);
     if (key === laidOut) return;
     laidOut = key;
     const axis = row(split) ? 'row' : 'column';
@@ -210,6 +235,7 @@ export function installSplit(rt: Rt) {
       const id = String(pane.id);
       if (p.getAttribute('m-pane-id') !== id) p.setAttribute('m-pane-id', id);
       if (pane.active) { if (!p.hasAttribute('m-focused')) p.setAttribute('m-focused', ''); } else if (p.hasAttribute('m-focused')) p.removeAttribute('m-focused');
+      loader(p, opening && opening.item === id ? opening.name : null);
       const s = p.style;
       const grow = String(round4(ratios[i] ?? 1 / n));
       if (s.flexGrow !== grow) s.flexGrow = grow;

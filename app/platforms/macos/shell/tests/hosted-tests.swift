@@ -103,6 +103,8 @@ final class FakeHostedWindow: HostedWindow {
         }
         return (s.id, panes)
     }
+    var paneLoadingsSaid: [(item: String?, label: String?, app: String?)] = [] // each setPaneLoading, in order
+    func setPaneLoading(_ item: String?, label: String?, app: String?) { paneLoadingsSaid.append((item, label, app)) }
     var paneMinimumsSaid: [[String: CGSize]] = [] // each setPaneMinimums, in order
     func setPaneMinimums(_ minimums: [String: CGSize]) { paneMinimumsSaid.append(minimums) }
     var visibleSaid: [[HostShownWindow]] = [] // each setVisibleHosts, in order
