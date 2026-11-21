@@ -6671,3 +6671,43 @@ claims hosted apps.
   press on Play/Pause reaching the copy as `hostMedia`, hidden for the item in front, gone with no sources; failing
   first with the route off). Only by hand in real Safari: TESTING.md M2.4.
 
+
+## Several visible hosts per Margin window: the foundation (docs/PEEK-SPLIT.md §1, 2026-11-21)
+
+Step 1 of the plan, on feat/multi-host; not wired to any UI yet (steps 2–3 call it).
+
+- **Identity.** `HostTarget.safariWindow(profile, SafariRole)`, `main` by default (every `.safariWindow(p)` as before);
+  ids `safari:<p>` for main, `#card`, `#pane1`…`#pane3` after it for the others, logged so (`safari:p1234#card`). Routes
+  and the loop guard's app key take a card's or pane's profile's main id (`HostID.main`): its Safari as a whole. The
+  marker needs nothing new (each window by number, copy id and profile): a card's window is given back and closed by its
+  copy at the next launch like main's (checked).
+- **Engine.** `visible` (rect, role, z) beside `shown`, which stays the focused host; kept as `[shown: main]` by `shown`
+  itself whenever no layout is being applied, so every one-host path is the old one. Each host keeps its own role and
+  rect (`Host.rect`, nil: the page area; kept while parked, so a parked card is never sized for the page area); every
+  rect computation and check reads `pageOf(host)` instead of `placement.page`. `setLayout` applies a whole layout in the
+  queue: main first (a switch as today), each extra back to front beside it (`before(id)`: the one shown is parked only
+  when the incoming host and it aren't both in the layout), the ones left out parked, then fronted back to front, the
+  focused one last. A card's or pane's rect below its window's known minimum is refused (never under the sidebar).
+  `open`/`show` with several visible (or a host in another role) are a layout of it alone. Live resize: every visible
+  tile or window-mode host follows its rect in each frame (`follow(_:rects:)`), one change in flight each. Stray, strip
+  (any visible host of the app speaks for its own toolbar), on-screen and front looks per visible host; `FrontRead` is of
+  the frontmost one. `hostedWindows` tells Margin's window every visible window only while more than one is (and `[]`
+  once after): nothing new is said with one host.
+- **Session.** `safariWindows: [SafariKey: Int]` (profile + role; a string literal is main's key), `requestSafariWindow`
+  with a role (the engine's `requestRoleWindow`), `layout[w]` per Margin window, `setLayout(window:main:extras:focused:)`
+  (a profile's first web item uses its main window, a card its card window, other panes `#pane1`…). The sweeps spare
+  every role's window (they take `safariWindows.values`). `live()` marks the other visible items `visible`. Every
+  role's Safari window is `drawn` for its copy.
+- **Margin's window.** `holes` (each visible host's frame inside its rect); the ground cut for all of them, each one less
+  the ones before it so an overlap (a card over panes) is never filled again by the even-odd fill; the pointer's slot
+  through those holes only, a card's content alone while one is open (the page around it caught, a press there
+  `onCaughtPress`, for Peek's close in step 2); a press in another pane focuses its host (`visibleHost(at:)`, `focus`),
+  never main over a card. `hostedFrames` pushed to the page beside `hostedFrame` (unchanged), kept by the overlay
+  (`marginApp.hostedFrames()`).
+- **Extension.** `hostShow` moves an item's tab from another window it showed items in (tabs.move, its page kept),
+  leaving a blank tab behind in a window it would empty.
+- Not done here: the core's `is_strip` still measures against Margin's page area (a pane's or card's toolbar reads as a
+  transient: never acted on); `lookForOthers` (the core's front.rs) takes the focused app only; a card's first open
+  shows the page card's loader over the whole page area (Peek's own loader is step 2). Tests: the stand-in world
+  (multi-host-tests.swift, multi-host-session-tests.swift), Margin's real window off screen (e2e-glue `multiHoleChecks`),
+  the copy's tabs (hosted-tabs.test.ts). Nothing on the real screen yet (step 4).

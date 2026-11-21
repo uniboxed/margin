@@ -103,6 +103,11 @@ final class LateHostEngine: HostedEngine {
     func dragging(_ on: Bool) -> Bool { resolve()?.dragging(on) ?? false }
     func follow(_ placement: HostPlacement) { resolve()?.follow(placement) }
     var shownFillsPage: Bool { resolve()?.shownFillsPage ?? false }
+    func setLayout(main: HostTarget, mainRect: CGRect?, extras: [HostExtra], focused: HostID?, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64) async -> [HostID: HostResult] {
+        await engine.setLayout(main: main, mainRect: mainRect, extras: extras, focused: focused, in: placement, marginWindow: marginWindow, marginSpace: marginSpace)
+    }
+    func focus(_ id: HostID) async -> Bool { await resolve()?.focus(id) ?? false }
+    func visibleHost(at point: CGPoint) -> HostID? { resolve()?.visibleHost(at: point) }
 }
 
 extension Shell {
@@ -110,6 +115,8 @@ extension Shell {
     // session is made with an engine already there, or when the engine starts after the session.
     func wire(_ host: HostEngine, to session: HostedSession) {
         host.requestSafariWindow = { [weak session] profile in await session?.requestSafariWindow(profile) }
+        host.requestRoleWindow = { [weak session] profile, role in await session?.requestSafariWindow(profile, role: role) }
+        host.hostedWindows = { [weak session] list in session?.hostedWindows(list) }
         host.closeSafariWindow = { [weak session] profile, id in await session?.closeSafariWindow(profile, id) ?? false }
         host.safariFullScreen = { [weak session] profile, id, on in await session?.safariFullScreen(profile, id, on) ?? false }
         host.safariLinked = { [weak session] profile in await session?.safariLinked(profile) ?? false }
@@ -221,6 +228,7 @@ extension Shell {
         windows.onLeftFullScreen = { [weak session] controller in session?.leftFullScreen(controller) }
         windows.onEnteredFullScreen = { [weak session] controller in session?.enteredFullScreen(controller) }
         windows.onPagePress = { [weak session] controller, at in session?.pagePressed(controller, at: at) }
+        windows.onCaughtPress = { [weak session] controller, at in session?.caughtPress(controller, at: at) }
         windows.onFieldClosed = { [weak session] controller in session?.fieldClosed(controller) }
         windows.onOpen = { [weak session] controller in session?.resumeLast(controller) }
         windows.onSidebarResizing = { [weak session] controller, on in session?.sidebarResizing(controller, on) }

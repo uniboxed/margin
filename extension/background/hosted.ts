@@ -6,6 +6,8 @@
 //   (still open, in that window) is used again; else a tab of that window at the same address no other item has;
 //   else, in a window Margin made (its lone new-tab page), a new tab at the address, the new-tab page closed after it;
 //   else a new tab. It comes to the front. Answers `{ tabId, created }` (`created`: a tab made or navigated for it).
+//   Its tagged tab in another window the app showed items in (this profile's main window, its card, a split's panes:
+//   docs/PEEK-SPLIT.md §1) is moved into this one first (`tabs.move`: its page kept), answered with `moved: true`.
 //   (Not the new-tab page sent there: Safari opens an empty window with the keys in its address field, and a page
 //   loaded into that tab leaves them there; in full screen Safari keeps its toolbar down while they are, so it showed
 //   half covered over the page until a click in it (Tirth, 2026-11-20 17:34, 17:35, 18:33: each a profile's new
@@ -50,6 +52,22 @@ const plain = (url: unknown) => String(url ?? '').replace(/#.*$/, '').replace(/\
 export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = async (d) => d) {
   const byItem = new Map<string, number>();
   const tagged = (tabId: number) => [...byItem.values()].includes(tabId);
+  // The windows the app has shown items in (its hosted windows of this profile: main, a card, a split's panes; docs/
+  // PEEK-SPLIT.md §1): a tab of an item in one of them, asked for in another, is moved there, never made again.
+  const shownIn = new Set<number>();
+  // The item's tagged tab in another of those windows, moved into `win` (keeps its page: logins, scroll, history). A
+  // tab alone in its window gets a blank one left behind first (a window with no tab closes, and it's Margin's).
+  async function moveHere(itemId: string, win: number): Promise<Tab | null> {
+    const move = tabs().move;
+    if (!move) return null;
+    const tab = await own(itemId, null);
+    if (tab?.id == null || tab.windowId == null || tab.windowId === win || !shownIn.has(tab.windowId)) return null;
+    const left = await tabs().query({ windowId: tab.windowId }).catch(() => [] as Tab[]);
+    if (left.length <= 1) await tabs().create({ windowId: tab.windowId, url: 'about:blank', active: false }).catch(() => null);
+    const moved = await move.call(tabs(), tab.id, { windowId: win, index: -1 }).catch(() => null);
+    if (moved?.id == null) return null;
+    return { ...moved, windowId: moved.windowId ?? win };
+  }
   // The item's tagged tab, if it's still open in `windowId` (any window when null).
   async function own(itemId: string, windowId: number | null) {
     const id = byItem.get(itemId);
@@ -72,8 +90,12 @@ export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = asy
       if (typeof itemId !== 'string' || !ITEM.test(itemId)) throw new Error('no item');
       if (typeof url !== 'string' || !SHOWN.test(url)) throw new Error('not an address');
       const win = windowId as number;
-      let tab: Tab | null = await own(itemId, win);
+      // (Moved first: its tag found in another window is forgotten by `own`.)
+      let tab: Tab | null = await moveHere(itemId, win);
+      const moved = tab != null;
+      tab ??= await own(itemId, win);
       let created = false;
+      shownIn.add(win);
       if (!tab) {
         const list = await tabs().query({ windowId: win });
         tab = list.find((t) => t.id != null && !tagged(t.id) && plain(t.url ?? t.pendingUrl) === plain(url)) ?? null;
@@ -96,7 +118,7 @@ export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = asy
       if (tab?.id == null) throw new Error('no tab');
       byItem.set(itemId, tab.id);
       if (!created) await tabs().update(tab.id, { active: true }); // (one made or sent there is in front already)
-      return { tabId: tab.id, created };
+      return moved ? { tabId: tab.id, created, moved } : { tabId: tab.id, created };
     },
     async picture({ windowId, itemId }: { windowId?: unknown, itemId?: unknown }) {
       if (!Number.isInteger(windowId)) throw new Error('no window');

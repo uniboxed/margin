@@ -23,6 +23,9 @@ struct Slot: Equatable {
     var hits: [CGRect] = []
     // The page asked for the whole window (more over the slot than it could list).
     var captureAll = false
+    // Several visible hosts (docs/PEEK-SPLIT.md §1): the pointer goes through only inside these (each one's hole; a
+    // card's content alone while a card is open), the rest of the slot Margin's. Nil: the whole slot, as before.
+    var holes: [CGRect]? = nil
 }
 
 enum PassThrough {
@@ -30,6 +33,7 @@ enum PassThrough {
     static func pageGets(_ point: CGPoint, _ slot: Slot?) -> Bool {
         guard let slot, !slot.captureAll, slot.rect.contains(point) else { return false }
         if slot.hits.contains(where: { $0.contains(point) }) { return false }
+        if let holes = slot.holes, !holes.contains(where: { $0.contains(point) }) { return false }
         // Outside a rounded corner of the slot: the theme's.
         let r = min(slot.radius, slot.rect.width / 2, slot.rect.height / 2)
         if r > 0 {
@@ -66,13 +70,15 @@ struct CatchRegion: Equatable {
     var hole: CGRect? // the slot, in the frame's coordinates (top left), cut out
     var radius: CGFloat = 0
     var hits: [CGRect] = [] // filled again over the hole
+    var holes: [CGRect]? = nil // (several visible hosts: only these cut out of the hole, the rest of it filled)
 
     // For an overlay at `frame` (top left) with this slot (window server coordinates).
     static func of(frame: CGRect, slot: Slot?) -> CatchRegion {
         guard let slot, !slot.captureAll else { return CatchRegion(all: true, hole: nil) }
         let hole = slot.rect.offsetBy(dx: -frame.minX, dy: -frame.minY).intersection(CGRect(origin: .zero, size: frame.size))
         guard !hole.isNull, hole.width > 0, hole.height > 0 else { return CatchRegion(all: true, hole: nil) }
-        return CatchRegion(all: false, hole: hole, radius: min(slot.radius, hole.width / 2, hole.height / 2), hits: slot.hits.map { $0.offsetBy(dx: -frame.minX, dy: -frame.minY) })
+        return CatchRegion(all: false, hole: hole, radius: min(slot.radius, hole.width / 2, hole.height / 2), hits: slot.hits.map { $0.offsetBy(dx: -frame.minX, dy: -frame.minY) },
+                           holes: slot.holes.map { $0.map { $0.offsetBy(dx: -frame.minX, dy: -frame.minY).intersection(hole) }.filter { !$0.isNull && $0.width > 0 && $0.height > 0 } })
     }
 
     // Whether a point (in the frame, top left) is filled: the same answer as !PassThrough.pageGets.
@@ -80,7 +86,7 @@ struct CatchRegion: Equatable {
         guard CGRect(origin: .zero, size: size).contains(p) else { return false }
         guard !all, let hole else { return true }
         if hits.contains(where: { $0.contains(p) }) { return true }
-        return !PassThrough.pageGets(p, Slot(rect: hole, radius: radius))
+        return !PassThrough.pageGets(p, Slot(rect: hole, radius: radius, holes: holes))
     }
 }
 
@@ -168,7 +174,11 @@ final class CatchView: NSView {
         fill.setFill()
         NSGraphicsContext.current?.compositingOperation = .copy
         let path = NSBezierPath(rect: bounds)
-        if !region.all, let hole = region.hole {
+        if !region.all, let holes = region.holes {
+            // (Several visible hosts: each one's hole cut out, never overlapping; the rest of the slot filled.)
+            for h in holes { path.append(NSBezierPath(rect: h)) }
+            path.windingRule = .evenOdd
+        } else if !region.all, let hole = region.hole {
             path.append(NSBezierPath(roundedRect: hole, xRadius: region.radius, yRadius: region.radius))
             path.windingRule = .evenOdd
         }

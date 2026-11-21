@@ -6,28 +6,94 @@
 import AppKit
 import MarginCore
 
-// What's hosted: an app by its bundle id, or a Safari window (a profile's; nil the default one).
+// What's hosted: an app by its bundle id, or a Safari window (a profile's; nil the default one) in a role
+// (docs/PEEK-SPLIT.md §1): the profile's main window (the item shown, as before), its card (Peek and Little Arc) or a
+// split's pane (1...3: a split's web panes of one profile after the first, which uses the main window).
 nonisolated enum HostTarget: Hashable, Sendable {
     case app(String)
-    case safariWindow(String?)
+    case safariWindow(String?, SafariRole = .main)
 
     var id: HostID {
         switch self {
         case .app(let bundle): return HostID(raw: "app:" + bundle)
-        case .safariWindow(let profile): return HostID(raw: "safari:" + (profile ?? ""))
+        case .safariWindow(let profile, let role): return HostID(raw: "safari:" + (profile ?? "") + role.suffix)
         }
     }
 }
 
-// One host. Logged as its bundle id, or "safari:default" / "safari:p<number>": never a profile's name.
+// Which of a profile's Safari windows: its main one (one per profile, as before), its card, or a split's pane.
+nonisolated enum SafariRole: Hashable, Sendable, CustomStringConvertible {
+    case main, card
+    case pane(Int) // 1...3
+    // In the host's id: nothing for main (its id, markers, routes and logs as before), else `#card`, `#pane1`...
+    var suffix: String {
+        switch self {
+        case .main: return ""
+        case .card: return "#card"
+        case .pane(let n): return "#pane\(n)"
+        }
+    }
+    var description: String { self == .main ? "main" : String(suffix.dropFirst()) }
+    // From an id's suffix (`card`, `pane2`); nil: not a role.
+    init?(suffix s: Substring) {
+        if s == "card" { self = .card; return }
+        if s.hasPrefix("pane"), let n = Int(s.dropFirst(4)), (1...3).contains(n) { self = .pane(n); return }
+        return nil
+    }
+}
+
+// One host. Logged as its bundle id, or "safari:default" / "safari:p<number>" (`#card`, `#pane1`... after it for a
+// window in another role): never a profile's name.
 nonisolated struct HostID: Hashable, Sendable, Codable, CustomStringConvertible {
     let raw: String
     var description: String {
         guard raw.hasPrefix("safari:") else { return raw }
-        let profile = raw.dropFirst("safari:".count)
-        guard !profile.isEmpty else { return "safari:default" }
-        return "safari:p\(profile.utf8.reduce(UInt32(5381)) { ($0 &* 33) &+ UInt32($1) } % 10000)"
+        let (profile, role) = safariParts
+        let suffix = role?.suffix ?? ""
+        guard !profile.isEmpty else { return "safari:default" + suffix }
+        return "safari:p\(profile.utf8.reduce(UInt32(5381)) { ($0 &* 33) &+ UInt32($1) } % 10000)" + suffix
     }
+    // A Safari host's profile (as in its id) and its role (nil: main).
+    private var safariParts: (profile: String, role: SafariRole?) {
+        let rest = raw.dropFirst("safari:".count)
+        guard let hash = rest.lastIndex(of: "#"), let role = SafariRole(suffix: rest[rest.index(after: hash)...]) else { return (String(rest), nil) }
+        return (String(rest[..<hash]), role)
+    }
+    // Its Safari role (main for an app's, and for a main window's id).
+    var safariRole: SafariRole { raw.hasPrefix("safari:") ? safariParts.role ?? .main : .main }
+    // The id of its profile's main window (itself for main and for an app's): what routes are kept by, so a card that
+    // loops demotes its Safari as a whole, as an app's rule does.
+    var main: HostID { raw.hasPrefix("safari:") && safariParts.role != nil ? HostID(raw: "safari:" + safariParts.profile) : self }
+}
+
+// A visible host's role in a Margin window's page area (docs/PEEK-SPLIT.md "Words"): `main` (the item shown, at the
+// page area unless a split gives it a pane's rect), `pane` (a split's other panes), `card` (Peek and Little Arc's,
+// above the rest).
+nonisolated enum HostRole: String, Hashable, Sendable { case main, pane, card }
+
+// A host visible in Margin's page area now, as the engine holds it (docs/PEEK-SPLIT.md §1): its rect (nil: the page
+// area), its role, its place back to front (`z`, 0 the backmost).
+nonisolated struct HostVisible: Equatable, Sendable {
+    var rect: CGRect?
+    var role: HostRole
+    var z: Int
+}
+
+// One of a layout's hosts other than main, as it's asked for (`HostEngine.setLayout`): its target, its role, its rect.
+nonisolated struct HostExtra: Equatable, Sendable {
+    var target: HostTarget
+    var role: HostRole
+    var rect: CGRect
+}
+
+// A visible host's window, as Margin's window is told it (`HostEngine.hostedWindows`): its window, where it should be
+// (its rect), its role, its place back to front, whether it's in place (shown at its rect: its hole may open).
+nonisolated struct HostShownWindow: Equatable, Sendable {
+    var window: Int
+    var rect: CGRect
+    var role: HostRole
+    var z: Int
+    var focused: Bool
 }
 
 nonisolated enum HostStep: String, Sendable, Codable {
