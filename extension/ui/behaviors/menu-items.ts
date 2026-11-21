@@ -108,12 +108,16 @@ export function menuItems(target: MenuTarget | null | undefined, { state, space,
       const isWeb = /^https?:\/\//i.test(url);
       item('Pin Tab', 'tab.pin', tabId);
       if (canAddFav(url)) item('Add to Favorites', 'favorite.add', tabId);
+      // Split View (docs/PEEK-SPLIT.md §4): a pane's own items; any other row (not one of Margin's own pages) is added to
+      // the split of the item in front, or split with it (the row's menu is the chooser of what's added).
       const inSplit = (state.splits ?? []).find((g) => g.panes.includes(String(tabId)) || (live?.mid && g.panes.includes(live.mid)));
       if (inSplit) {
-        item('Break Out of Split', 'split.breakOut', tabId);
-        item('Swap Split Panes', 'split.swap', inSplit.id);
-      } else {
-        item('Open in Split View', 'split.add', tabId);
+        item('Remove from Split View', 'split.remove', tabId);
+        item('Break Out of Split View', 'split.breakOut', tabId);
+        item('Swap Panes', 'split.swap', inSplit.id);
+        item(inSplit.axis === 'vertical' ? 'Side by Side' : 'Stacked', 'split.toggleAxis', inSplit.id);
+      } else if (!/^margin:/i.test(url)) {
+        item('Add to Split View', 'split.add', tabId);
       }
       for (const f of folders) item(`Pin to 📁 ${f.name}`, 'tab.pinAt', { tab: tabId, folder: f.id, before: null });
       item('New Folder with Tab', 'folder.newWithTab', tabId);

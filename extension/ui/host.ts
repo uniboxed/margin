@@ -32,6 +32,10 @@ export type Geometry = {
   mode?: string,
   /** Margin's own window: the colour the theme draws around each of the page's rounded corners (host-app.ts cornerFill). */
   fills?: (string | null)[] | null,
+  /** A split shown in Margin's own window (docs/PEEK-SPLIT.md §4): its id, and each `<m-pane>`'s box in the
+   *  container (x, y, width, height), by its pane's item, in the split's order (ui/render.ts View.measure). */
+  split?: string,
+  panes?: { id: string, rect: number[] }[],
 };
 
 /**

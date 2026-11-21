@@ -31,6 +31,7 @@ import { installPalette } from './behaviors/palette.ts';
 import { installPeek } from './behaviors/peek.ts';
 import { installResize } from './behaviors/resize.ts';
 import { installMenus } from './behaviors/menus.ts';
+import { installSplit } from './behaviors/split.ts';
 import { installRename } from './behaviors/rename.ts';
 import { installEditor } from './behaviors/editor.ts';
 import { installDrag } from './behaviors/drag.ts';
@@ -94,6 +95,8 @@ export type Rt = {
   cancel(id: ReturnType<typeof setTimeout> | null | undefined): void,
   readonly destroyed: boolean,
   spaceView(id: string): ViewModel | null,
+  /** A short note at the top of the window (the `toast` part, or Margin's own). */
+  showToast(text: string, ms?: number): void,
   // Each behavior's own (createRuntime: set before any is installed).
   behaviors: Record<string, any>,
 };
@@ -636,6 +639,11 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     const themeIds = themeChoices((host.platform as any)?.features).map((c) => c.id);
     const verdict = checkAction(name, arg, contextFromState(state, items.map((i) => i.id), { menuIds: menu.filter((i) => !i.separator).map((i) => i.id), colorIds: colors, noticeIds, promptIds, settingIds, themeIds }));
     if (!verdict.ok) return refuse(name, arg, (verdict as any).reason);
+    // A pane that can't fit in Margin's window's page area beside the others (each one's minimum): not added, said.
+    if (name === 'split.add' || name === 'split.addPane') {
+      const why = behaviors.split?.refusesAdd?.(arg);
+      if (why) { showToast(why); return refuse(name, arg, why); }
+    }
     // Margin's own pages over a browser (the launcher) open their Settings in place; Margin's window opens its Settings
     // tab (the host's openLauncher: HostedSession.swift, a margin://settings item).
     if (name === 'settings.open' && host.launcher && !host.appWindow) return local('settings.toggle', undefined, info);
@@ -899,7 +907,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     get ui() { return ui; },
     get state() { return host.getState(); },
     viewState: () => viewState(host.getState()),
-    setUi, render, dispatch, send, refuse, warn, runQuery,
+    setUi, render, dispatch, send, refuse, warn, runQuery, showToast,
     windowId, ownTab, frontTab, recentTabOf, switchSpace,
     /** Space `spaceId` kept shown for `ms`, whatever the state says meanwhile (a swipe's slide coming in). */
     holdSpace(spaceId: string, ms: number) {
@@ -947,6 +955,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     palette: installPalette(rt),
     peek: installPeek(rt),
     resize: installResize(rt),
+    split: installSplit(rt),
     menus: installMenus(rt),
     rename: installRename(rt),
     editor: installEditor(rt),

@@ -266,7 +266,7 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of themesInS
         const row = await shown('.today .tab', 0);
         await page.mouse.click(row.x, row.y, { button: 'right' });
         const labels = (await vm()).menu!;
-        assert.deepEqual(labels.slice(0, 6), ['Pin Tab', 'Add to Favorites', 'Open in Split View', 'Pin to 📁 Reading', 'Pin to 📁 Lisbon', 'New Folder with Tab']);
+        assert.deepEqual(labels.slice(0, 6), ['Pin Tab', 'Add to Favorites', 'Add to Split View', 'Pin to 📁 Reading', 'Pin to 📁 Lisbon', 'New Folder with Tab']);
         assert.ok(labels.includes('Move to 💼 Work') && labels.includes('Close Tab'));
         assert.equal(await ev(() => T.rtCount('m-menu .menu-item')), labels.filter((l) => l).length, 'drawn from the theme\'s part');
         const menuBox = await rect('m-menu');

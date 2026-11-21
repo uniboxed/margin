@@ -224,6 +224,37 @@ the same card is drawn without words by the slot's own `::before` and
 `::after`, and the sidebar draws a few placeholder rows on what's already
 there (backgrounds and pseudo-elements, one soft `opacity` pulse).
 
+### Split View's panes (Margin.app)
+
+While the item in front is a pane of a split and a window is hosted in the page
+area, Margin puts the split's boxes inside your `<m-page>` (docs/PEEK-SPLIT.md
+§4). They're Margin's own elements: a template can't write them (the sanitizer
+drops any `m-pane` or `m-divider` of yours), and you never place them; you
+style them.
+
+```
+<m-page m-split="row" m-split-id="…">        (or m-split="column": stacked)
+  <m-pane m-pane-id="…" m-index="0" m-focused></m-pane>
+  <m-divider m-index="0" role="separator" tabindex="0" aria-orientation="vertical"></m-divider>
+  <m-pane m-pane-id="…" m-index="1"></m-pane>
+</m-page>
+```
+
+| What | Yours to style | Margin's |
+|---|---|---|
+| `m-page[m-split]` | nothing new | `display: flex` (row or column) |
+| `m-pane` | the focused pane's ring (`m-pane[m-focused]`: a `box-shadow` outside the box, in the gap; never a background or anything inside it: the pane's window shows there) | its size: `flex-grow` by the split's ratios, `min-width` / `min-height` at its window's own minimum (never below 200 × 140) |
+| `m-divider` | the gap's colour (paint it as your frame around the page card: the ground Margin draws under the gap is that), a grip (`::after`), its hover, `:focus-visible` and drag (`[m-dragging]`; the root has `m-split-resizing` meanwhile) | the gap's size: `--m-split-gap` (8 px if you set none: set it on your root), the cursor, the pointer, the drag |
+
+The divider is dragged by Margin (the two panes beside it follow the pointer,
+each stopping at its window's minimum; the hosted windows follow live where
+they can), a double-click makes the panes equal, and ←/→ (↑/↓ stacked) move it
+when it has the keys. Margin measures each `m-pane` with the page and places
+each pane's window there: a border, padding or margin on `m-pane` moves the
+window with it, so leave the box alone. Keep any transition on the grip (≤
+150 ms, none with `prefers-reduced-motion`): nothing about the boxes animates.
+All five built-in themes show how (each theme.css, "Split View").
+
 **Settings.** The `settings` part lays out `settingsForm.fields` (Margin's
 words only: it's guarded like a menu). Each field has one of `isNumber`,
 `isToggle`, `isChoice`, `isList`, `isShortcut`, `isColor`, `isButton`,
@@ -409,7 +440,10 @@ else is ignored and logged.
 - Media Mini Player: `media.toggle`, `media.prev`, `media.next`, `media.mute`, `media.focus`.
 - Peek & Little Arc: `peek.open`, `peek.close`, `peek.expand`, `peek.back`, `peek.forward`, `peek.copyUrl`, `littleArc.open`.
 - Air Traffic Control: `airTraffic.add`, `airTraffic.remove`, `airTraffic.toggle`, `airTraffic.alwaysHere`.
-- Split View: `split.create`, `split.addPane`, `split.closePane`, `split.breakOut`, `split.swap`, `split.toggleAxis`, `split.resize`, `split.focus`.
+- Split View: `split.focus` (a pane's tab: the split shown with it focused), `split.add` (also `split.addPane`: a tab into the
+  split of the item in front, or split with it), `split.open` (a split's id: shown), `split.remove` (a pane out, the rest
+  shown), `split.breakOut` (a pane out, shown alone), `split.closePane` (its tab closed: the split goes on), `split.swap`
+  and `split.toggleAxis` (a split's id). `split.resize` is Margin's own (its dividers), never a button's.
 - Spaces: `space.switch`, `space.new`, `space.edit`, `space.rename`,
   `today.clear`.
 - The palette: `palette.open`, `palette.close`, `palette.run` (a row).

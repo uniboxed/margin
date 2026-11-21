@@ -9,7 +9,7 @@ import { themesInScope } from './theme/package.ts';
 const THEME_TESTS = readdirSync(new URL('./theme/', import.meta.url)).filter((n) => n.endsWith('.test.ts')).sort().map((n) => `tests/theme/${n}`);
 const OWN = ['tests/theme/arcadia.test.ts', 'tests/theme/liquid-glass.test.ts', 'tests/theme/material.test.ts', 'tests/theme/neubrutalism.test.ts', 'tests/theme/pixel.test.ts'];
 const AGNOSTIC = THEME_TESTS.filter((f) => !OWN.includes(f));
-const LOOPED = ['tests/theme/behaviors.test.ts', 'tests/theme/page-state.test.ts', 'tests/theme/feedback.test.ts', 'tests/theme/security.test.ts', 'tests/theme/space-settle.test.ts', 'tests/theme/intents.test.ts', 'tests/theme/row-icons.test.ts', 'tests/theme/space-themes.test.ts', 'tests/theme/nested-indent.test.ts', 'tests/theme/favorites-drop.test.ts', 'tests/theme/mini-player.test.ts'];
+const LOOPED = ['tests/theme/behaviors.test.ts', 'tests/theme/page-state.test.ts', 'tests/theme/feedback.test.ts', 'tests/theme/security.test.ts', 'tests/theme/space-settle.test.ts', 'tests/theme/intents.test.ts', 'tests/theme/row-icons.test.ts', 'tests/theme/space-themes.test.ts', 'tests/theme/nested-indent.test.ts', 'tests/theme/favorites-drop.test.ts', 'tests/theme/mini-player.test.ts', 'tests/theme/split-view.test.ts'];
 const kinds = (p: Plan) => p.browsers.include.map((j) => `${j.kind} ${j.shard}${j.themes ? ` ${j.themes}` : ''}`);
 
 test('docs only: nothing heavy runs', () => {

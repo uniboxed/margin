@@ -628,3 +628,15 @@ img.fav.app, .tab.on img.fav.app { width: 22px; height: 22px; margin: -2px; bord
 }
 .peek-host { flex: 1 1 0; min-width: 0; font-size: 13px; font-weight: 700; }
 .peek-btn { flex: none; }
+
+/* Split View (docs/PEEK-SPLIT.md §4): Margin's own <m-pane>s, flexed by the split's ratios, and an <m-divider> between
+   each two, in the page's place while a split is shown (m-split="row" side by side, "column" stacked). The gap is the
+   divider (--m-split-gap); its grip lights on hover and focus and while dragged ([m-dragging]); the focused pane
+   ([m-focused]) has a ring in the gap around it. Nothing here moves a pane: Margin lays them out. */
+.nb { --m-split-gap: 12px; }
+.nb m-divider { background: var(--space); }
+.nb m-divider::after { content: ""; position: absolute; left: 50%; top: 50%; box-sizing: border-box; width: 8px; height: 44px; border: 2px solid var(--ink); border-radius: 4px; transform: translate(-50%, -50%); background: var(--paper); }
+.nb m-page[m-split="column"] > m-divider::after { width: 44px; height: 8px; }
+.nb m-divider:is(:hover, :focus-visible)::after { background: var(--yellow); }
+.nb m-divider[m-dragging]::after { background: var(--ink); }
+.nb m-pane[m-focused] { border-radius: 8px; box-shadow: 0 0 0 3px var(--ink); }

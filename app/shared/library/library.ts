@@ -233,6 +233,43 @@ type Ctx = { s: LibState, p: any, now: number, ids: ReturnType<typeof idMaker>, 
 type Handler = (ctx: Ctx) => { s: LibState, result?: any, error?: string };
 const fail = (s: LibState, error: string) => ({ s, error });
 
+// ---- split view's rules (docs/PEEK-SPLIT.md §4) ----
+// Why `adding` can't join a split of `panes` in `spaceId` (null: it can): 4 panes at most, one space, never Margin's own
+// pages, a Mac app once (its one window is one pane).
+function splitRefusal(s: LibState, panes: string[], adding: string[], spaceId: string): string | null {
+  const all = [...panes, ...adding.filter((id) => !panes.includes(id))];
+  if (all.length > M.MAX_SPLIT_PANES) return `a split has ${M.MAX_SPLIT_PANES} panes at most`;
+  const apps = new Set<string>();
+  for (const id of all) {
+    const k = s.keptTabs[id];
+    if (!k) return 'no such item';
+    if (k.spaceId !== spaceId) return 'a split\'s panes are of one space';
+    const t = targetOfItem(k);
+    if (t.kind === 'margin') return 'Margin\'s own pages aren\'t split';
+    if (t.kind === 'app') {
+      if (apps.has(t.bundleId)) return `${t.name} is in this split already`;
+      apps.add(t.bundleId);
+    }
+  }
+  return null;
+}
+// The hosting's request to show a split: its panes (in order), the one focused (null: the window's own choice).
+function splitShown(s: LibState, group: NonNullable<LibState['splits']>[number], focus: string | null, p: any): Request {
+  return {
+    type: 'showSplit', windowId: p?.windowId ?? null, splitId: group.id, item: focus, axis: group.axis, ratios: group.ratios,
+    panes: group.panes.filter((id) => !!s.keptTabs[id]).map((itemId) => ({ item: itemId, url: s.keptTabs[itemId]?.url ?? '', target: targetOfItem(s.keptTabs[itemId]) })),
+  };
+}
+// The item shown after `id` closes when it's a split's pane: the split's next pane (the one after it, else before it),
+// so the split goes on with the rest (or the one left, alone); null: not a pane.
+function splitNext(s: LibState, id: string): string | null {
+  const group = M.splitForItem(s, id);
+  if (!group) return null;
+  const i = group.panes.indexOf(id);
+  const rest = group.panes.filter((x) => x !== id && !!s.keptTabs[x]);
+  return rest[Math.min(i, rest.length - 1)] ?? null;
+}
+
 const ACTIONS: Record<string, Handler> = {
   // ---- spaces ----
   setSpace({ s, p, requests }) {
@@ -370,9 +407,11 @@ const ACTIONS: Record<string, Handler> = {
     // (A pin of the item's own space, or a favorite: an item moved to another space is no pin's, archived as any.)
     const isSticky = M.boundElsewhere(s, k, k.spaceId);
     const existingSplit = M.splitForItem(s, k.id);
+    // (A split's pane: the split goes on with the rest, its next pane in front; one left: that one, alone.)
+    const paneNext = splitNext(s, k.id);
     let next = existingSplit ? M.removeFromSplit(s, existingSplit.id, k.id) as LibState : s;
     next = isSticky ? M.forgetKept(next, k.id) as LibState : archiveItem(next, k.id, ids.other('a'), now);
-    const after = frontOf(next, k.spaceId);
+    const after = (paneNext ? next.keptTabs[paneNext] : null) ?? frontOf(next, k.spaceId);
     requests.push({ type: 'closeTab', item: k.id, url: k.url, target: targetOfItem(k), spaceId: k.spaceId, next: after?.id ?? null });
     return { s: next };
   },
@@ -615,92 +654,112 @@ const ACTIONS: Record<string, Handler> = {
     if (!rule) return { s, result: null };
     return { s, result: { ruleId: rule.id, pattern: rule.pattern, spaceId: rule.spaceId, target: spaceTarget(s, rule.spaceId) } };
   },
-  // ---- split view (2–4 panes) ----
+  // ---- split view (2–4 panes, docs/PEEK-SPLIT.md §4) ----
+  // A split's panes are items of one space: web pages (any profile) and Mac apps, each app once (its one window can be
+  // one pane only); never one of Margin's own pages. Each change the hosting must show asks for it as `showSplit` with
+  // the pane to focus (`item`; null: the one the window shows, if it's a pane, else the first): the hosting shows the
+  // whole split for it (HostedSession.swift showSplit). A resize asks nothing: the page placed the panes as it was dragged.
   createSplit({ s, p, ids, now, requests }) {
     const raw: string[] = Array.isArray(p?.panes) ? p.panes.filter((x: unknown): x is string => typeof x === 'string' && !!s.keptTabs[x]) : [];
     if (raw.length < 2) return fail(s, 'need at least 2 items');
     const spaceId = hasSpace(s, p?.spaceId) ? p.spaceId : s.keptTabs[raw[0]].spaceId;
+    const why = splitRefusal(s, [], raw, spaceId);
+    if (why) return fail(s, why);
     const id = ids.other('spv');
     let next = M.createSplit(s, { id, spaceId, panes: raw, axis: p?.axis === 'vertical' ? 'vertical' : 'horizontal', ratios: p?.ratios }) as LibState;
-    next = used(next, raw[0], win(p), now);
     const group = (next.splits ?? []).find((g) => g.id === id);
-    if (group) {
-      requests.push({
-        type: 'showSplit',
-        windowId: p?.windowId ?? null,
-        splitId: group.id,
-        axis: group.axis,
-        ratios: group.ratios,
-        panes: group.panes.map((itemId) => ({ item: itemId, url: next.keptTabs[itemId]?.url ?? '', target: targetOfItem(next.keptTabs[itemId]) })),
-      });
-    }
+    if (!group) return fail(s, 'not a split');
+    const focus = typeof p?.focus === 'string' && group.panes.includes(p.focus) ? p.focus : group.panes[group.panes.length - 1];
+    next = used(next, focus, win(p), now);
+    requests.push(splitShown(next, group, focus, p));
     return { s: next, result: { splitId: id } };
   },
+  // `tabId` into the split of the item in front of its space (`nextTo`: that item; `splitId`: that split), or a new
+  // split of the two: Arc's Add to Split View on a row. Refused: a split of 4 already, an app that's in it already, an
+  // item of another space, one of Margin's own pages. Already a pane of it: the split shown, that pane focused.
   addToSplit({ s, p, ids, now, requests }) {
     const k = s.keptTabs[p?.tabId];
     if (!k) return fail(s, 'no such item');
     const w = win(p);
-    const front = frontOf(s, k.spaceId, k.id);
+    const given = typeof p?.nextTo === 'string' && s.keptTabs[p.nextTo] && p.nextTo !== k.id ? s.keptTabs[p.nextTo] : null;
+    const front = given ?? frontOf(s, k.spaceId, k.id);
     const existing = (typeof p?.splitId === 'string' ? (s.splits ?? []).find((g) => g.id === p.splitId) : null)
       ?? (front ? M.splitForItem(s, front.id) : null);
     if (existing) {
+      if (existing.panes.includes(k.id)) {
+        requests.push(splitShown(s, existing, k.id, p));
+        return { s: used(s, k.id, w, now), result: { splitId: existing.id } };
+      }
+      const why = splitRefusal(s, existing.panes, [k.id], existing.spaceId);
+      if (why) return fail(s, why);
       const next = M.addToSplit(s, existing.id, k.id) as LibState;
       const group = (next.splits ?? []).find((g) => g.id === existing.id);
-      if (group) {
-        requests.push({
-          type: 'showSplit',
-          windowId: p?.windowId ?? null,
-          splitId: group.id,
-          axis: group.axis,
-          ratios: group.ratios,
-          panes: group.panes.map((itemId) => ({ item: itemId, url: next.keptTabs[itemId]?.url ?? '', target: targetOfItem(next.keptTabs[itemId]) })),
-        });
-      }
+      if (!group || !group.panes.includes(k.id)) return fail(s, 'not added');
+      requests.push(splitShown(next, group, k.id, p));
       return { s: used(next, k.id, w, now), result: { splitId: existing.id } };
     }
     if (!front) return fail(s, 'no second item to split with');
-    return ACTIONS.createSplit({ s, p: { ...p, panes: [front.id, k.id], spaceId: k.spaceId }, now, ids, requests });
+    return ACTIONS.createSplit({ s, p: { ...p, panes: [front.id, k.id], spaceId: k.spaceId, focus: k.id }, now, ids, requests });
   },
   openSplit({ s, p, now, requests }) {
     const group = (s.splits ?? []).find((g) => g.id === p?.splitId);
     if (!group) return fail(s, 'no such split');
     const first = group.panes.find((id) => !!s.keptTabs[id]);
     if (!first) return fail(s, 'split has no items');
-    const next = used(s, first, win(p), now);
-    requests.push({
-      type: 'showSplit',
-      windowId: p?.windowId ?? null,
-      splitId: group.id,
-      axis: group.axis,
-      ratios: group.ratios,
-      panes: group.panes.filter((id) => !!next.keptTabs[id]).map((itemId) => ({ item: itemId, url: next.keptTabs[itemId]?.url ?? '', target: targetOfItem(next.keptTabs[itemId]) })),
-    });
+    const focus = typeof p?.focus === 'string' && group.panes.includes(p.focus) ? p.focus : first;
+    const next = used(s, focus, win(p), now);
+    requests.push(splitShown(next, group, focus, p));
     return { s: next, result: { splitId: group.id } };
   },
-  breakOutSplit({ s, p }) {
+  // Out of its split, shown alone (the others stay a split, or the split goes with one left).
+  breakOutSplit({ s, p, now, requests }) {
     const group = M.splitForItem(s, p?.tabId);
-    if (!group) return { s };
-    return { s: M.removeFromSplit(s, group.id, p.tabId) as LibState };
+    const k = s.keptTabs[p?.tabId];
+    if (!group || !k) return { s };
+    const next = used(M.removeFromSplit(s, group.id, k.id) as LibState, k.id, win(p), now);
+    requests.push({ type: 'activateTab', windowId: p.windowId ?? null, item: k.id, url: k.url, target: targetOfItem(k), spaceId: k.spaceId });
+    return { s: next };
+  },
+  // Out of its split, the rest of it shown (its next pane focused; one left: that one, alone).
+  removeFromSplit({ s, p, now, requests }) {
+    const group = M.splitForItem(s, p?.tabId);
+    const k = s.keptTabs[p?.tabId];
+    if (!group || !k) return { s };
+    const after = splitNext(s, k.id);
+    let next = M.removeFromSplit(s, group.id, k.id) as LibState;
+    const left = (next.splits ?? []).find((g) => g.id === group.id);
+    if (after && next.keptTabs[after]) {
+      next = used(next, after, win(p), now);
+      const a = next.keptTabs[after];
+      requests.push(left ? splitShown(next, left, after, p) : { type: 'activateTab', windowId: p.windowId ?? null, item: a.id, url: a.url, target: targetOfItem(a), spaceId: a.spaceId });
+    }
+    return { s: next };
   },
   closeSplitPane({ s, p, now, ids, requests }) {
     return ACTIONS.closeTab({ s, p, now, ids, requests });
   },
-  swapSplit({ s, p }) {
+  swapSplit({ s, p, requests }) {
     const group = (s.splits ?? []).find((g) => g.id === p?.splitId);
     if (!group) return fail(s, 'no such split');
     const a = Number.isInteger(p?.a) ? p.a : 0;
     const b = Number.isInteger(p?.b) ? p.b : 1;
-    return { s: M.swapSplitPanes(s, group.id, a, b) as LibState };
+    const next = M.swapSplitPanes(s, group.id, a, b) as LibState;
+    const after = (next.splits ?? []).find((g) => g.id === group.id);
+    if (after && next !== s) requests.push(splitShown(next, after, null, p));
+    return { s: next };
   },
   resizeSplit({ s, p }) {
     const group = (s.splits ?? []).find((g) => g.id === p?.splitId);
     if (!group) return fail(s, 'no such split');
     return { s: M.resizeSplit(s, group.id, p?.ratios) as LibState };
   },
-  toggleSplitAxis({ s, p }) {
+  toggleSplitAxis({ s, p, requests }) {
     const group = (s.splits ?? []).find((g) => g.id === p?.splitId);
     if (!group) return fail(s, 'no such split');
-    return { s: M.toggleSplitAxis(s, group.id) as LibState };
+    const next = M.toggleSplitAxis(s, group.id) as LibState;
+    const after = (next.splits ?? []).find((g) => g.id === group.id);
+    if (after) requests.push(splitShown(next, after, null, p));
+    return { s: next };
   },
   // ---- folders ----
   // In the window's space (or `spaceId`), holding `pinIds`, or the item `tabId` pinned into it (it's the pin then).

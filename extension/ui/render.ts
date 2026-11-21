@@ -37,6 +37,11 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 // never takes clicks: the browser's page is there.
 const BASE_CSS = `
 m-page{display:block;box-sizing:border-box;background:none!important;pointer-events:none!important}
+m-page[m-split]{display:flex!important;flex-direction:row;align-items:stretch}
+m-page[m-split="column"]{flex-direction:column}
+m-pane{display:block;box-sizing:border-box;flex:1 1 0px;min-width:0;min-height:0;background:none!important;pointer-events:none!important}
+m-divider{display:block;box-sizing:border-box;flex:0 0 var(--m-split-gap,8px);position:relative;pointer-events:auto!important;cursor:col-resize;touch-action:none;outline:none;-webkit-user-select:none;user-select:none}
+m-page[m-split="column"]>m-divider{cursor:row-resize}
 m-window-controls,m-drag-region,m-palette,m-notice,m-menu,m-editor,m-launcher,m-prompt,m-settings,m-page-loader,m-toast,m-peek{display:block}
 m-menu{position:fixed;left:var(--m-menu-x,0px);top:var(--m-menu-y,0px);z-index:2147483600;outline:none}
 m-menu:empty,m-editor:empty,m-palette:empty,m-notice:empty,m-launcher:empty,m-prompt:empty,m-settings:empty,m-page-loader:empty,m-toast:empty,m-peek:empty{display:none}
@@ -708,7 +713,11 @@ function collectRows(block: Block, out: Element[]) {
 
 type Edges = { left: number, top: number, right: number, bottom: number };
 // Where the page goes (View.measure).
-export type Layout = { insets: Edges, radius: number, radii: number[], outer: Edges & { radius: number }, container: { width: number, height: number } };
+export type Layout = {
+  insets: Edges, radius: number, radii: number[], outer: Edges & { radius: number }, container: { width: number, height: number },
+  /** A split's panes laid out in `<m-page>` (ui/behaviors/split.ts): the split's id, each `<m-pane>`'s box by its item. */
+  split?: string, panes?: { id: string, rect: number[] }[],
+};
 
 export type ViewOptions = {
   onAction?: (name: string, arg: any, info: { element: Element, event: Event }) => void,
@@ -955,12 +964,22 @@ export class View {
     const corner = (v: string) => px(String(v).split(' ')[0]);
     const radii = [cs.borderTopLeftRadius, cs.borderTopRightRadius, cs.borderBottomRightRadius, cs.borderBottomLeftRadius].map(corner);
     const border = Math.max(px(cs.borderTopWidth), px(cs.borderLeftWidth));
+    // (A split's panes, Margin's own `<m-pane>`s in the page's place: each one's box, by its item, in order.)
+    const paneEls = [...el.children].filter((p) => p.localName === 'm-pane' && p.hasAttribute('m-pane-id'));
+    const split = paneEls.length >= 2 ? el.getAttribute('m-split-id') : null;
     return {
       insets: { left: round(outer.left + bw.left), top: round(outer.top + bw.top), right: round(outer.right + bw.right), bottom: round(outer.bottom + bw.bottom) },
       radius: round(Math.max(0, radii[0] - border)),
       radii: radii.map((v) => round(Math.max(0, v - border))),
       outer: { left: round(outer.left), top: round(outer.top), right: round(outer.right), bottom: round(outer.bottom), radius: round(radii[0]) },
       container: { width: round(c.width), height: round(c.height) },
+      ...(split ? {
+        split,
+        panes: paneEls.map((p) => {
+          const b = p.getBoundingClientRect();
+          return { id: p.getAttribute('m-pane-id') ?? '', rect: [round(b.left - c.left), round(b.top - c.top), round(b.width), round(b.height)] };
+        }),
+      } : {}),
     };
   }
 
@@ -977,7 +996,8 @@ export class View {
 // A layout is new when the page's insets or radius changed, or the
 // container's size did (the window resized: the page's box with it).
 const sameLayout = (a: Layout, b: Layout | null) => b && (['left', 'top', 'right', 'bottom'] as const).every((k) => a.insets[k] === b.insets[k]) && a.radius === b.radius
-  && a.container.width === b.container.width && a.container.height === b.container.height;
+  && a.container.width === b.container.width && a.container.height === b.container.height
+  && a.split === b.split && JSON.stringify(a.panes ?? null) === JSON.stringify(b.panes ?? null);
 
 const bases: WeakMap<Document, CSSStyleSheet> = new WeakMap();
 function baseSheet(doc: Document) {
