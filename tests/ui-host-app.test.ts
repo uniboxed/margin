@@ -215,6 +215,26 @@ test("the app host in Margin's own window: a split pane's loader (`paneLoading`)
   assert.equal(over.paneLoading, null, 'over a browser: none');
 });
 
+test("the app host in Margin's own window: every app's known minimum (`appMin`, `web` for Safari's pages), checked; in its hello; none over a browser", () => {
+  const b = bridge();
+  const host = createAppHost({ hello: hello({ host: 'app-window', mode: 'fullscreen' }), post: b.post });
+  let emits = 0;
+  host.onState(() => { emits++; });
+  assert.deepEqual(host.appMinimums, {});
+  host.receive({ type: 'appMin', apps: { web: [574, 220], 'com.apple.Notes': [700.2, 400] } });
+  assert.deepEqual(host.appMinimums, { web: [574, 220], 'com.apple.Notes': [701, 400] });
+  assert.equal(emits, 1);
+  host.receive({ type: 'appMin', apps: { web: [574, 220], 'com.apple.Notes': [701, 400] } });
+  assert.equal(emits, 1, 'said again as it is: nothing drawn again');
+  host.receive({ type: 'appMin', apps: { '<b>': [1, 1], web: [-5, 1e9], x: 'no' } });
+  assert.deepEqual(host.appMinimums, { web: [0, 0] }, 'a key that isn\'t one, a size that isn\'t sane: dropped or nothing');
+  const again = createAppHost({ hello: hello({ host: 'app-window', mode: 'fullscreen', appMin: { web: [574, 220] } }), post: b.post });
+  assert.deepEqual(again.appMinimums, { web: [574, 220] }, 'a page loaded again: its hello has them');
+  const over = createAppHost({ hello: hello(), post: b.post });
+  over.receive({ type: 'appMin', apps: { web: [574, 220] } });
+  assert.deepEqual(over.appMinimums, {}, 'over a browser: none');
+});
+
 test("the app host in Margin's own window: a web item's picture for its card (`pagePicture`), only a picture's data URL, only while `elsewhere`; none over a browser", () => {
   const b = bridge();
   const host = createAppHost({ hello: hello({ host: 'app-window', mode: 'fullscreen' }), post: b.post });

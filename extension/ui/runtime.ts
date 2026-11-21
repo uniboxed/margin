@@ -645,6 +645,11 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       const why = behaviors.split?.refusesAdd?.(arg);
       if (why) { showToast(why); return refuse(name, arg, why); }
     }
+    // ...nor stacked (or put side by side) when they wouldn't fit along the other axis.
+    if (name === 'split.toggleAxis') {
+      const why = behaviors.split?.refusesAxis?.(arg);
+      if (why) { showToast(why); return refuse(name, arg, why); }
+    }
     // Margin's own pages over a browser (the launcher) open their Settings in place; Margin's window opens its Settings
     // tab (the host's openLauncher: HostedSession.swift, a margin://settings item).
     if (name === 'settings.open' && host.launcher && !host.appWindow) return local('settings.toggle', undefined, info);

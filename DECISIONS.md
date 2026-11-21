@@ -7034,3 +7034,73 @@ its name. Older entries here keep the old names.
   "Quick Tab" now. Comments use the new names where they name the feature.
 - Not renamed (not one of the three names): the theme value `--m-swipe-feel: arc` (Arc's swipe feel) and comments
   that credit Arc's behaviour.
+
+## Split view in real use (fix/split-real-use, 2026-11-21)
+
+From Tirth's real use of Margin.app at 13:25–13:28 (a Safari page split with another, a third Safari pane, divider drags).
+Each fix has a failing-first check on the stand-in world (`split-real-use-tests.swift`, the log's case played: the old code
+reproduced the log's own lines, e.g. `place …#pane1 attempt 1: its window 0,33 1512×949` and one Space switch seen).
+
+- **A pane's or card's first window: macOS's Space switch never shown.** Safari made the pane's window already in full
+  screen (its key window was full screen), in a new Space of its own, and macOS switched the display there and back while
+  nothing was frozen (the Dock's `fullscreened`, `becameCurrent` of the new Space, then Margin's): the screen slid. Why the
+  plain path: the engine found the window already in a Space of its own, so the early path (which watches for a *new*
+  Space after an ask) was skipped and the freeze held only for the 18 ms of "full screen". Now a card's or a pane's window
+  is asked in full screen (`newWindow { fullscreen: true }`: deterministic, one ask instead of a window then
+  `setWindowState`), the freeze is taken at that ask and handed to its placing, Margin's Space is kept current while the
+  window is awaited (macOS's switch undone at once, a Space the person went to left alone), and the window's new Space is
+  taken by the early path (`born`: reserved for the pane's rect, its tile into Margin's Space, the Space destroyed, no
+  wait for a switch already undone). A card's or a pane's freeze is let go as soon as its Space is gone (its window is
+  under its own loader until its layout is done), not after the settle. Decided: a freeze, because the switch's animation
+  starts as the Space is added (before Margin can see it), so nothing short of a freeze from the ask hides it (the woken
+  window's trick, destroying the Space before the switch, can't: the window server lists the window ~0.4 s after the
+  ask). It's as short as it can be: the window's making plus the early path's own steps (stand-in: 409 ms; the card's
+  path on the real screen was 858 ms from its full-screen ask alone). A window that comes up normal anyway goes the card's
+  old way (its ask) under the same freeze. Main windows are unchanged.
+- **Main kept until the new pane is in place.** `applyLayout`: when hosts come in beside the ones shown (a split's new
+  pane, opened or unparked) and the shown ones can be laid out again in place (tiles, window mode), they keep their rects
+  and stay shown; the newcomers come in at their rects (under their own pane loader, held up until the end:
+  `loadingHeld`, revealNow only lets the freeze go), then the shown ones are laid out again in one go (`placeTogether`:
+  every tile's rect sent in one turn, waited for together), then the holes and the loader off. A plain member (tiles
+  off) is placed first, as before (its placing activates its app: done after, it buried the newcomer).
+- **Every app's minimum known before its window exists.** The engine keeps each app's window minimum as its tile said it
+  (`learnMinimum`; Safari's from any Safari window) per app version, in `minimums.json` beside routes.json, loaded at
+  launch (`knownMinimum`, `knownAppMinimums`; another running version: not used, learnt again). The session tells the page
+  (`appMin { web: [w,h], <bundle>: … }`, also in the hello) whenever one changes and whenever it hosts; the page's floors
+  take a pane's own minimum (`paneMin`), else its app's (`web` for Safari's pages), so main, panes not opened yet and a
+  pane being added all count (`paneFloors(split, minimums, apps)`). The room check refuses an add (as before, now with
+  those minimums) and an axis toggle that wouldn't fit (`refusesAxis`: "Not enough room to stack these panes" / "…side
+  by side"); a divider and the sidebar's edge stop at them. The engine refuses an extra whose rect is below its app's
+  known minimum before anything is started or asked (no window made only to be refused).
+- **A failed pane leaves the split.** Decided: out of the split in the library (`removeFromSplit` with Margin.app's
+  `focus`: the pane that had the keys keeps them), not only marked: the page lays out the library's split, so a pane
+  marked failed would stay an empty box and its dividers would drag nothing (the log: three boxes, two drags with "0 page
+  area changes"). The item stays in its space, open; a toast says why ("Not enough room for “B” in Split View", "“B”
+  couldn't open in Split View"). The panes coming in go first: a pane shown before that failed only beside a newcomer
+  stays. The rest is laid out by the show the removal asks for. The engine's rule beside it: a layout that ends with one
+  visible host puts that host at the page area (13:27: main left at 775 wide, the rest blank), and with the deferral main
+  never moved for a newcomer that didn't come.
+- **A new pane's raise.** A window that came into Margin's Space with its tile as part of a layout's first open
+  (`freshFront`) is, when it isn't in front at the first read after its raise, brought in front by the move out to a
+  private Space and back at once (`outAndBack`): no 150 ms waits, no raise again, no copy asked (on the real screen those
+  took ~550 ms and never worked; the move took 19 ms). Other cases keep raise → copy → out and back. The log line says
+  how long from the first raise.
+- **A divider's drag: per window, never in lockstep.** The pump sent every window its rect, then waited until all had
+  landed before the next frame, so the quicker window waited for the slower (two Safari panes: median 26 ms, p95 49 ms,
+  289 of 547 frames coalesced; one window: 4–5 ms). Now each host has its own rect in flight: a host whose rect landed
+  (or was given up after `liveWait`) gets the newest frame at once, hosts free in the same tick are sent in the same
+  tick (tiles first, nothing awaited between them), at most one change a display frame each. The drag's line says the
+  page's cadence, the frames sent to every window, how many sends had more than one window, and each window's sends and
+  landing times. Stand-in (60 Hz page, 60 frames): one window 4 ms and one 30 ms: before 34 and 34 frames sent, the quick
+  one's frames landing at 30 ms; after 60 and 34, the quick one at 4 ms. Two windows alike (8 ms): 60 of 60 frames sent
+  to both in the same tick, before and after. What only the real screen shows: whether two Safari windows' reflows
+  (one Safari process) are slower together than apart, the WindowServer's share, and the page's own frame rate.
+- **The shell's engine forwarded too little.** `LateHostEngine` (the real app's) didn't forward `liveFollowers` and
+  `showsAlone`, so the real app took the protocol's stand-in answers: a divider's drag of two logged "the hosted window
+  follows it live", and an item of main's profile picked with a split up was only a tab switch unless the session had a
+  layout recorded (fix/screen-engine's `showsAlone`). Both forwarded, and `knownAppMinimums`.
+- Checked: `split-real-use-tests.swift` (the session and engine on the stand-in world: born window, freeze, main kept,
+  raise, room, failure, a drag of a quick and a slow window, the glue), `tests/split-view.test.ts` (floors by app,
+  `removeFromSplit`'s focus), `tests/ui-host-app.test.ts` (`appMin`), `tests/theme/split-view.test.ts` (5 themes, both
+  engines: no pane below its app's minimum, a divider stopping there, three Safari panes in 1264 pt refused, side by side
+  refused when it wouldn't fit). Nothing on the real screen: TESTING.md M2.7 step 13.

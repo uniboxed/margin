@@ -625,12 +625,23 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         guard let p = paneLoading, let item = jsonString(p.item), let label = jsonString(p.label) else { return "null" }
         return #"{"item":"# + item + #","label":"# + label + #","bundleId":"# + (p.app.flatMap { jsonString($0) } ?? "null") + "}"
     }
-    var paneMinimumsJSON: String {
-        let items = paneMinimums.keys.sorted().compactMap { k -> String? in
-            guard let v = paneMinimums[k], let key = jsonString(k) else { return nil }
+    var paneMinimumsJSON: String { minimumsJSON(paneMinimums) }
+    func minimumsJSON(_ minimums: [String: CGSize]) -> String {
+        let items = minimums.keys.sorted().compactMap { k -> String? in
+            guard let v = minimums[k], let key = jsonString(k) else { return nil }
             return "\(key):[\(Int(v.width)),\(Int(v.height))]"
         }
         return "{" + items.joined(separator: ",") + "}"
+    }
+    // Every app's windows' known minimum (its bundle id; `web`: the web pages Safari hosts), told to the page whether a
+    // window of it is open or not (docs/PEEK-SPLIT.md §4): no pane laid out below its app's, a pane that can't fit
+    // refused before anything is opened (behaviors/split.ts). Said when it changes, and in each hello.
+    private(set) var appMinimums: [String: CGSize] = [:]
+    func setAppMinimums(_ minimums: [String: CGSize]) {
+        let m = minimums.mapValues { CGSize(width: $0.width.rounded(.up), height: $0.height.rounded(.up)) }
+        guard m != appMinimums else { return }
+        appMinimums = m
+        push(#"{"type":"appMin","apps":"# + minimumsJSON(m) + "}")
     }
     private func readVisible() {
         var frames: [Int: CGRect] = [:]
@@ -1766,6 +1777,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         json += #","marginPage":"# + (marginPage.flatMap { jsonString($0) } ?? "null")
         json += #","pageMinWidth":"# + (pageMinimum.map { String(Int($0)) } ?? "null")
         if !paneMinimums.isEmpty { json += #","paneMin":"# + paneMinimumsJSON }
+        if !appMinimums.isEmpty { json += #","appMin":"# + minimumsJSON(appMinimums) }
         if paneLoading != nil { json += #","paneLoading":"# + paneLoadingJSON }
         json += #","pageState":""# + pageState.rawValue + #"","pageOpening":"# + (loaderLabel.flatMap { jsonString($0) } ?? "null")
         json += #","pageOpeningBundleId":"# + (loaderApp.flatMap { jsonString($0) } ?? "null")

@@ -82,7 +82,9 @@ Expand.
   `ok`). Answer late or refused: the link opens as it would have (same tab, or a new one for `_blank`).
 - **Window:** one card window per profile (`safari:<profile>#card`), made at the first preview, parked while closed, closed
   after 15 minutes unused (and with its profile's main window). Opening a parked one is a switch (~25–36 ms). The
-  first open goes the normal first-open path; the card shows its loader meanwhile.
+  first open asks the window in full screen, under the freeze from that ask, and takes its new Space by the early path
+  (macOS's switch to that Space never seen; a pane's window the same: fix/split-real-use); the card shows its loader
+  meanwhile.
 - **Rect:** the theme's `preview` part has an `m-preview-page` element; the overlay measures it as it measures `<m-page>`
   and the app places the card window there. Margin's default part: centred, 8% side and 7% top/bottom margins,
   420×320 minimum, a 52 pt bar for the theme above the page (at least: the card window's Safari toolbar rests in those 52 pt) (back, forward, the address, copy, Expand, close).
@@ -112,9 +114,13 @@ keeps Safari's toolbar down). Then it's the preview card: Expand puts it in the 
   the profile's main window, the others `#pane1`…`#pane3`, each tab moved into its window by `hostShow`.
 - **Rects:** when the shown item is in a split, Margin's renderer puts `<m-pane>` boxes (one per pane, flex by the
   ratios) and `<m-divider>`s between them inside `<m-page>`; themes style the gap, the divider and the focused pane.
-  The overlay measures each `m-pane` and sends the rects with the page's. Minimums: each pane host's minimum, known to
-  the app, is sent to the page, which never lays a pane below it (a divider stops there; a pane that can't fit isn't
-  added: a notice says so).
+  The overlay measures each `m-pane` and sends the rects with the page's. Minimums: each app's window minimum, known to
+  the app before any window of it exists (kept per app version in minimums.json; Safari's from any of its windows), is
+  sent to the page for every pane (`appMin`), which never lays a pane below it (a divider stops there; a pane that can't
+  fit isn't added, nor an axis toggled that wouldn't fit: a toast says so), and the engine never opens a window for a
+  rect below it. A pane that still fails (open or place) leaves the split at once (a toast), the rest laid out again;
+  one left goes to the page area. A new pane comes in beside the panes shown, which keep their rects until it's in
+  place, then all are laid out at once.
 - **Dividers:** dragged in the page: the ratios change per frame, the panes are measured and sent, the windows follow
   live (tiles and window mode; a plain member re-placed at release under its loader). Release: `split.resize` saves
   the ratios. Double-click a divider: equal sizes.

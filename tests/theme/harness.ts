@@ -783,6 +783,17 @@ const withRuntime = Object.assign(T, {
     };
   },
   rtPaneMin(items: Record<string, readonly [number, number]>) { Object.assign(rt.host, { paneMinimums: items }); rt.host.setState(rt.mock.state); },
+  // Every app's windows' known minimum as Margin.app says them (`appMin`: `web` for the web pages Safari hosts), whether
+  // a window of it is open or not.
+  rtAppMin(apps: Record<string, readonly [number, number]>) { Object.assign(rt.host, { appMinimums: apps }); rt.host.setState(rt.mock.state); },
+  // Stacked ⇄ side by side (the UI's `split.toggleAxis`) with the page area as Margin.app last measured it: what was sent,
+  // and the toast shown.
+  rtSplitAxis(splitId: string, width: number, height = 800) {
+    Object.assign(rt.host, { layout: { container: { width, height }, insets: { left: 0, top: 0, right: 0, bottom: 0 } } });
+    rt.host.sent.length = 0;
+    rt.runtime!.dispatch('split.toggleAxis', splitId, 'behavior');
+    return { sent: rt.host.sent.map((s) => s.type), toast: rt.runtime!.vm?.toast?.text ?? null };
+  },
   // A split pane's window opening (Margin.app's `paneLoading`): its item (the pane's id) and name; null: none. What each
   // pane draws then: whether it's loading, its loader's box, words and spinner.
   rtPaneLoading(pane: { item: string, name: string } | null) { Object.assign(rt.host, { paneLoading: pane ? { ...pane, bundleId: null } : null }); rt.host.setState(rt.mock.state); },

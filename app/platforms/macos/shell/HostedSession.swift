@@ -117,6 +117,8 @@ protocol HostedEngine: AnyObject {
     // The hosted windows visible now, and how many of them follow a drag live (a tile, a window-mode window; a plain
     // member is placed again when it's let go): the log's word for a drag.
     func liveFollowers() -> (follow: Int, visible: Int)
+    // Every app's windows' known minimum by bundle id (HostEngine `knownAppMinimums`): told to the page for every pane.
+    var knownAppMinimums: [String: CGSize] { get }
 }
 
 // One of a profile's hosted Safari windows: its profile and its role (docs/PEEK-SPLIT.md §1).
@@ -168,6 +170,7 @@ extension HostedEngine {
     func minimum(of id: HostID) -> CGSize? { nil }
     func showsAlone(_ id: HostID) -> Bool { true }
     func liveFollowers() -> (follow: Int, visible: Int) { (shownFillsPage ? 1 : 0, shown == nil ? 0 : 1) }
+    var knownAppMinimums: [String: CGSize] { [:] }
     func start(bundleId: String) async -> HostApp? { nil }
     func prepare(_ target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64) async -> HostResult { .failed(.launch, "no engine to prepare it") }
 }
@@ -244,6 +247,9 @@ protocol HostedWindow: AnyObject {
     // the screen (top left), in the split's order (nil: none); each pane's window's minimum told to it (its item's id).
     var paneLayout: (split: String, panes: [PagePane])? { get }
     func setPaneMinimums(_ minimums: [String: CGSize])
+    // Every app's windows' known minimum (its bundle id, `web` for the web pages Safari hosts), whether a window of it is
+    // open or not: its page lays no pane below its app's and refuses a pane that can't fit before anything is opened.
+    func setAppMinimums(_ minimums: [String: CGSize])
     // A split's pane whose window is opening beside the panes shown (its item, its name, the app whose icon its loader
     // shows), nil: none: its page draws a loader over that pane's box only, the others stay shown and usable.
     func setPaneLoading(_ item: String?, label: String?, app: String?)
@@ -264,6 +270,7 @@ extension HostedWindow {
     var cardRect: CGRect? { nil }
     var paneLayout: (split: String, panes: [PagePane])? { nil }
     func setPaneMinimums(_ minimums: [String: CGSize]) {}
+    func setAppMinimums(_ minimums: [String: CGSize]) {}
     func setPaneLoading(_ item: String?, label: String?, app: String?) {}
 }
 
@@ -776,6 +783,15 @@ final class HostedSession: LibraryDelegate {
         for p in pl.panes where l.items.contains(p.item) { if let h = open[p.item]?.host { out[h] = p.rect } }
         return out
     }
+    // Every app's windows' known minimum as the page names their panes: a web page's (Safari's) as `web`, an app's by its
+    // bundle id (behaviors/split.ts `paneFloors`), whether a window of it is open or not.
+    func pageAppMinimums() -> [String: CGSize] {
+        var out: [String: CGSize] = [:]
+        for (bundle, m) in engine.knownAppMinimums { out[bundle == safariIdentifier ? "web" : bundle] = m }
+        return out
+    }
+    // An app's known minimum changed (HostEngine `onAppMinimums`): told to the Margin window hosting.
+    func appMinimumsChanged() { window(hostingWindow)?.setAppMinimums(pageAppMinimums()) }
     // Each pane's window's minimum told to `w`'s page (its divider stops there): the engine's, as learnt.
     private func refreshPaneMinimums(_ w: HostedWindow) {
         var out: [String: CGSize] = [:]
@@ -787,6 +803,8 @@ final class HostedSession: LibraryDelegate {
 
     func applyLayout(_ windowId: Int?, main: String, mainRect: CGRect?, extras: [HostedLayout.Extra], focused: String?, split: (id: String, items: [String])? = nil) async {
         guard let w = window(windowId) else { return note("layout: no Margin window to lay it out in") }
+        let hadItems = Set(layout[w.id]?.items ?? [])
+        let hadFocus = layout[w.id]?.focused
         var parts: [LayoutPart] = []
         var mainUsed: Set<String> = [], panes: [String: Int] = [:]
         let asked: [(item: String, role: HostRole, rect: CGRect?)] = [(main, .main, mainRect)] + extras.map { ($0.item, $0.role, $0.rect) }
@@ -863,6 +881,17 @@ final class HostedSession: LibraryDelegate {
         }
         guard shownItems.contains(main) else { settleHosting(); onChange?(); return }
         let focus = focused.flatMap { shownItems.contains($0) ? $0 : nil } ?? main
+        // (A split's pane that didn't come: out of it, the rest laid out again: `leaveSplit`.)
+        if let split {
+            // (The ones coming in first: a pane shown before that failed only beside a newcomer goes back to its rect once
+            // the newcomer is out.)
+            let failed = parts.dropFirst().filter { $0.role == .pane && !shownItems.contains($0.item) }
+            let new = failed.filter { !hadItems.contains($0.item) }
+            let out = new.isEmpty ? failed : new
+            // (The pane that had the keys before keeps them, when the one asked to have them is what failed.)
+            let keep = focused.map { f in out.contains { $0.item == f } } == true ? hadFocus.flatMap { shownItems.contains($0) ? $0 : nil } ?? focus : focus
+            if !out.isEmpty { leaveSplit(split.id, out.map { ($0.item, results[$0.target.id]) }, focus: keep, in: w) }
+        }
         let others = parts.dropFirst().filter { shownItems.contains($0.item) }
         layout[w.id] = others.isEmpty ? nil : HostedLayout(main: main, mainRect: first.rect, extras: others.map { HostedLayout.Extra(item: $0.item, role: $0.role, rect: $0.rect ?? .zero) }, focused: focus, split: split?.id)
         if split != nil, others.isEmpty { w.setPaneMinimums([:]) }
@@ -873,6 +902,30 @@ final class HostedSession: LibraryDelegate {
         if requested[w.id] == main || requested[w.id] == focus { requested[w.id] = nil }
         onChange?()
         note("layout: \(shownItems.count) item(s) shown in Margin's window \(w.id), \(focus) focused")
+    }
+
+    // Panes of a split shown in `w` that didn't come (their window refused its rect, below its app's minimum; or it
+    // didn't open): out of the split at once, in the library (decided 2026-11-21: the page lays out the library's split,
+    // so a pane only marked failed would stay an empty box, its dividers dragging nothing; the item itself stays in its
+    // space, open, and can be added again), the person told why (a toast), the rest laid out again by the show the
+    // removal asks for, `focus` keeping the keys. The real screen, 2026-11-21 13:26:54: a third Safari pane failed, the
+    // page kept three boxes, one empty, and two drags did nothing.
+    private func leaveSplit(_ split: String, _ failed: [(item: String, result: HostResult?)], focus: String, in w: HostedWindow) {
+        var room = false
+        var names: [String] = []
+        for (item, result) in failed {
+            var why = "not laid out"
+            if case .failed(_, let reason)? = result { why = reason }
+            let noRoom = why.contains("below its window's minimum")
+            room = room || noRoom
+            let title = (library.items().first { $0.id == item }?.value["title"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            names.append(title ?? (noRoom ? "that pane" : "a pane"))
+            note("split \(split): \(item): out of the split (\(noRoom ? "no room for it" : "it didn't open"): \(why)); the rest laid out again")
+            _ = library.perform("removeFromSplit", ["windowId": w.id, "tabId": item, "focus": focus])
+        }
+        let name = names.count == 1 ? "“\(String(names[0].prefix(60)))”" : "\(names.count) panes"
+        let text = room ? "Not enough room for \(name) in Split View" : "\(name) couldn't open in Split View"
+        if let t = jsonString(text) { w.push(#"{"type":"toast","text":"# + t + "}") }
     }
 
     // A host gone, or parked with nothing in its place: out of every layout (one that was main ends that layout).
@@ -919,6 +972,7 @@ final class HostedSession: LibraryDelegate {
         }
         w.setHosting(true)
         hostingWindow = w.id
+        w.setAppMinimums(pageAppMinimums())
         // (Its card, if it had one, goes now that it hosts: straight to the loader, never its launcher for a frame.)
         if elsewhere[w.id] != nil { elsewhere[w.id] = nil; w.setElsewhere(nil, app: nil) }
         // (Asked to measure again at every look: a size the window took may not have been drawn yet.)
@@ -1903,7 +1957,10 @@ final class HostedSession: LibraryDelegate {
         // orders it in, so the window server never lists it (the real Mac, 2026-11-16). The engine unhides it first and
         // keeps Margin's Space current while it's made; Margin is activated again after.)
         if wokenByMenu[p] != nil { engine.stopHidingWoken(bundleId: safariIdentifier) } // (the window asked for now is Margin's own: never parked so)
-        var payload: JSONObject = preparingProfile == p ? ["fullscreen": false, "url": "about:blank"] : ["fullscreen": false]
+        // (A card's or a pane's window in full screen from the start, in a Space of its own, under the engine's freeze from
+        // the ask: Safari made one so anyway while its key window was full screen (the real screen, 2026-11-21), and
+        // macOS's switch to that Space was seen. Its Space is then taken by the early path: HostEngine `openNew`.)
+        var payload: JSONObject = preparingProfile == p ? ["fullscreen": false, "url": "about:blank"] : ["fullscreen": role != .main]
         // (The preview card window: opened at the card's page, never Safari's empty new-tab page, whose address field keeps
         // Safari's toolbar down over the page: background/hosted.ts.)
         if role == .card, let c = cards[p], Self.webAddress(c.url) { payload["url"] = c.url }

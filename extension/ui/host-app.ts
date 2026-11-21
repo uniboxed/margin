@@ -309,7 +309,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   onMessage?: (msg: any) => void,
   onNotice?: (arg: { id?: string, action?: string }) => void,
   warn?: (...args: any[]) => void,
-}): Host & { readonly platform: Host['platform'] & { app: boolean, features: Record<string, any> }, readonly appWindow: boolean, readonly pageOutside: boolean, readonly pageHosted: boolean, readonly marginPage: 'settings' | null, readonly pageMinWidth: number, readonly paneMinimums: Record<string, [number, number]>, readonly paneLoading: { item: string, name: string, bundleId: string | null } | null, readonly pageStuck: string | null, readonly sidebarDocked: boolean, perform(name: string, arg?: any): boolean | undefined, staysOnScreen: boolean, receive(msg: any): void, readonly windows: any[], readonly layout: Geometry | null, readonly settingsAsked: boolean, readonly pageTabId: number | null, readonly frontTabId: number | null, readonly loading: number[], readonly userThemes: any[], takeFailure(): { type: string, error: string } | null, destroy(): void } {
+}): Host & { readonly platform: Host['platform'] & { app: boolean, features: Record<string, any> }, readonly appWindow: boolean, readonly pageOutside: boolean, readonly pageHosted: boolean, readonly marginPage: 'settings' | null, readonly pageMinWidth: number, readonly paneMinimums: Record<string, [number, number]>, readonly appMinimums: Record<string, [number, number]>, readonly paneLoading: { item: string, name: string, bundleId: string | null } | null, readonly pageStuck: string | null, readonly sidebarDocked: boolean, perform(name: string, arg?: any): boolean | undefined, staysOnScreen: boolean, receive(msg: any): void, readonly windows: any[], readonly layout: Geometry | null, readonly settingsAsked: boolean, readonly pageTabId: number | null, readonly frontTabId: number | null, readonly loading: number[], readonly userThemes: any[], takeFailure(): { type: string, error: string } | null, destroy(): void } {
   const windowId = Number.isInteger(hello?.windowId) ? hello.windowId : null;
   let raw: Record<string, any> | null = hello?.state && typeof hello.state === 'object' ? hello.state : null;
   let state: any = null;
@@ -330,10 +330,10 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   let pageMinWidth = minOf(hello?.pageMinWidth);
   // A split's panes' windows' own minimums (item id: [width, height], Margin's points): its page never lays a pane below
   // its own and its divider stops there (behaviors/split.ts). At most 4, each a sane size.
-  const paneMinOf = (v: unknown): Record<string, [number, number]> => {
+  const paneMinOf = (v: unknown, most = 8): Record<string, [number, number]> => {
     if (!appWindow || !v || typeof v !== 'object' || Array.isArray(v)) return {};
     const out: Record<string, [number, number]> = {};
-    for (const [k, m] of Object.entries(v as Record<string, unknown>).slice(0, 8)) {
+    for (const [k, m] of Object.entries(v as Record<string, unknown>).slice(0, most)) {
       if (!/^[A-Za-z0-9_.:-]{1,256}$/.test(k) || !Array.isArray(m) || m.length !== 2) continue;
       const [w, h] = m.map((x) => (typeof x === 'number' && Number.isFinite(x) && x >= 0 && x < 20000 ? Math.ceil(x) : 0));
       out[k] = [w, h];
@@ -341,6 +341,10 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
     return out;
   };
   let paneMinimums = paneMinOf(hello?.paneMin);
+  // Every app's windows' known minimum (its bundle id; `web`: the web pages Safari hosts), whether a window of it is open
+  // or not (docs/PEEK-SPLIT.md §4): no pane laid out below its app's, a pane that can't fit refused before anything is
+  // opened (behaviors/split.ts `paneFloors`). At most 64, each a sane size.
+  let appMinimums = paneMinOf(hello?.appMin, 64);
   // A split's pane whose window is opening beside the panes shown (its item, its name, its app): its loader over that
   // pane's box only (behaviors/split.ts), never the page card's over all of them. Margin's own window only.
   const paneLoadingOf = (v: any): { item: string, name: string, bundleId: string | null } | null => {
@@ -451,6 +455,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
     /** The hosted window's own minimum width (0: none): the page area is never dragged narrower (behaviors/resize.ts). */
     get pageMinWidth() { return pageMinWidth; },
     get paneMinimums() { return paneMinimums; },
+    get appMinimums() { return appMinimums; },
     get paneLoading() { return paneLoading; },
     /** The page card's state (Margin's own window; undefined over a browser: its page is always there). */
     get pageState() { return appWindow ? pageState : undefined; },
@@ -647,6 +652,12 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           const next = paneMinOf(msg.items);
           if (JSON.stringify(next) === JSON.stringify(paneMinimums)) return;
           paneMinimums = next;
+          return emit();
+        }
+        case 'appMin': {
+          const next = paneMinOf(msg.apps, 64);
+          if (JSON.stringify(next) === JSON.stringify(appMinimums)) return;
+          appMinimums = next;
           return emit();
         }
         case 'paneLoading': {

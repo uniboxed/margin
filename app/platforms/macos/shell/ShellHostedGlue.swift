@@ -111,6 +111,12 @@ final class LateHostEngine: HostedEngine {
     func follow(_ placement: HostPlacement, rects: [HostID: CGRect]) { resolve()?.follow(placement, rects: rects) }
     func pageRectChanged(_ placement: HostPlacement, rects: [HostID: CGRect]) async -> Bool { await resolve()?.pageRectChanged(placement, rects: rects) ?? false }
     func minimum(of id: HostID) -> CGSize? { resolve()?.minimum(of: id) }
+    // (Every one the protocol's extension answers for a stand-in, forwarded: missed, the real app took the stand-in's
+    // answer. 2026-11-21: `showsAlone` true with a split up (an item of main's profile only a tab switch), and
+    // `liveFollowers` one window for a divider's drag of two.)
+    func showsAlone(_ id: HostID) -> Bool { resolve()?.showsAlone(id) ?? true }
+    func liveFollowers() -> (follow: Int, visible: Int) { resolve()?.liveFollowers() ?? (0, 0) }
+    var knownAppMinimums: [String: CGSize] { resolve()?.knownAppMinimums ?? [:] }
 }
 
 extension Shell {
@@ -127,6 +133,7 @@ extension Shell {
         host.loading = { [weak session] id in session?.loading(id) }
         host.hostedWindow = { [weak session] number in session?.hosted(number) }
         host.onMinimum = { [weak session] width in session?.minimum(width) }
+        host.onAppMinimums = { [weak session] in session?.appMinimumsChanged() }
         host.cover = { [weak session] number in session?.cover(number) }
         host.others = { [weak session] number in session?.others(number) }
         host.front = { [weak session] read in session?.front(read) }

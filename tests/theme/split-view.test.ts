@@ -98,6 +98,21 @@ for (const [name, engine] of ENGINES) {
         assert.ok(p.panes[0].width >= 499, `the divider stopped at its minimum: ${p.panes[0].width}`);
         await ev((m) => T.rtPaneMin(m), {});
         await frames();
+        // Its app's known minimum alone (Safari's, for every web pane, whether its window is open or not: the real
+        // screen's 574 × 220): no pane laid out below it, the divider stops there (2026-11-21: a pane laid at 481).
+        await ev((m) => T.rtAppMin(m), { web: [500, 0] });
+        await frames();
+        p = await ev(() => T.rtPanes());
+        assert.ok(p.panes.every((x) => x.width >= 499), `every web pane at its app's minimum at least: ${p.panes.map((x) => x.width)}`);
+        await page.mouse.move(p.dividers[0].x, p.dividers[0].y);
+        await page.mouse.down();
+        for (let i = 1; i <= 5; i++) { await page.mouse.move(p.dividers[0].x + 60 * i, p.dividers[0].y); await frames(); }
+        await page.mouse.up();
+        await frames();
+        p = await ev(() => T.rtPanes());
+        assert.ok(p.panes[1].width >= 499, `the divider stopped at the other pane's app minimum: ${p.panes.map((x) => x.width)}`);
+        await ev((m) => T.rtAppMin(m), {});
+        await frames();
         p = await ev(() => T.rtPanes());
 
         // A pane's window opening beside the one shown (Notes added): its loader over its own box only, the other pane
@@ -126,6 +141,16 @@ for (const [name, engine] of ENGINES) {
         const tight = await ev(({ t, w }) => T.rtSplitAdd(t, w), { t: tabs[2], w: 560 });
         assert.deepEqual(tight.sent, [], 'nothing asked of the library');
         assert.equal(tight.toast, 'Not enough room for another pane');
+        // The real screen's (2026-11-21 13:26:54): a third Safari pane beside two in a 1264 pt page area. Safari's minimum
+        // is known for every web pane (`appMin`, from any of its windows), the new one's too before its window exists:
+        // 3 × 574 and the gaps don't fit, refused before anything is opened.
+        await ev((m) => T.rtAppMin(m), { web: [574, 220] });
+        const safariTight = await ev(({ t, w }) => T.rtSplitAdd(t, w), { t: tabs[2], w: 1264 });
+        assert.deepEqual(safariTight.sent, [], 'three Safari panes in 1264 pt: nothing asked of the library');
+        assert.equal(safariTight.toast, 'Not enough room for another pane');
+        const safariRoomy = await ev(({ t, w }) => T.rtSplitAdd(t, w), { t: tabs[2], w: 1760 });
+        assert.deepEqual(safariRoomy.sent, ['addToSplit'], '3 × 574 and the gaps in 1760: added');
+        await ev((m) => T.rtAppMin(m), {});
         const roomy = await ev(({ t, w }) => T.rtSplitAdd(t, w), { t: tabs[2], w: 1200 });
         assert.deepEqual(roomy.sent, ['addToSplit'], 'room for it: added');
 
@@ -158,6 +183,14 @@ for (const [name, engine] of ENGINES) {
         assert.equal(stackedTight.toast, 'Not enough room for another pane', 'stacked: the bands counted in the room');
         const stackedRoomy = await ev(({ t }) => T.rtSplitAdd(t, 1200, 140 * 3 + 2 * 60), { t: tabs[2] });
         assert.deepEqual(stackedRoomy.sent, ['addToSplit']);
+        // Side by side again only where they fit along the width (each web pane's app minimum known): refused, said.
+        await ev((m) => T.rtAppMin(m), { web: [700, 220] });
+        const unstackTight = await ev(() => T.rtSplitAxis('spv-1', 1264));
+        assert.deepEqual(unstackTight.sent, [], 'two 700 pt panes side by side in 1264: not asked');
+        assert.equal(unstackTight.toast, 'Not enough room for these panes side by side');
+        const unstack = await ev(() => T.rtSplitAxis('spv-1', 1500));
+        assert.deepEqual(unstack.sent, ['toggleSplitAxis'], 'room for them: asked');
+        await ev((m) => T.rtAppMin(m), {});
 
         // No split: the page's place as before.
         await ev(() => T.rtNoSplit());
