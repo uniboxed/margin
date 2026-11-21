@@ -117,6 +117,13 @@ export function menuItems(target: MenuTarget | null | undefined, { state, space,
       }
       const spaceId = kept ? kept.spaceId : state.tabSpace?.[tabId as number]; // (not kept: an open tab's id)
       const others = (state.spaces ?? []).filter((sp) => sp.id !== spaceId);
+      if (isWeb && spaceId) {
+        let host = '';
+        try { host = new URL(url).hostname.toLowerCase(); } catch {}
+        if (host && !(state.airTraffic ?? []).some((r) => r.pattern === host && r.spaceId === spaceId && r.enabled !== false)) {
+          item(`Always Open ${host} in This Space`, 'airTraffic.addHost', tabId);
+        }
+      }
       if (others.length) {
         separator();
         for (const sp of others) item(`Move to ${sp.emoji} ${sp.name}`, 'tab.moveToSpace', { tab: tabId, space: sp.id });

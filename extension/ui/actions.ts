@@ -109,6 +109,7 @@ export const ACTIONS = Object.freeze({
   'peek.setSpace': 'space',
   'peek.back': 'none',
   'peek.forward': 'none',
+  'airTraffic.addHost': 'tab',
   'window.close': 'none',
   'window.minimise': 'none',
   'window.fullscreen': 'none',
@@ -442,6 +443,7 @@ export const ACTION_MAP = Object.freeze({
   'peek.setSpace': 'local',
   'peek.back': 'local',
   'peek.forward': 'local',
+  'airTraffic.addHost': 'addAirTrafficRule',
   'window.close': 'host',
   'window.minimise': 'host',
   'window.fullscreen': 'toggleFullscreen | host',
@@ -549,6 +551,13 @@ export function requestFor(name: string, arg: any, { state, ui, platform, row }:
     case 'media.next': return send('mediaControl', { command: 'next' });
     case 'media.mute': return send('mediaControl', { command: 'mute' });
     case 'media.focus': return send('mediaControl', { command: 'focus' });
+    case 'airTraffic.addHost': {
+      const item = typeof arg === 'string' ? state?.keptTabs?.[arg] : state?.tabs?.[arg];
+      let host = '';
+      try { host = new URL(item?.url ?? '').hostname.toLowerCase(); } catch {}
+      const spaceId = typeof arg === 'string' ? state?.keptTabs?.[arg]?.spaceId : state?.tabSpace?.[arg];
+      return send('addAirTrafficRule', { pattern: host, spaceId: spaceId ?? undefined });
+    }
     default: return { kind: 'none', reason: `${name}: no mapping` };
   }
 }

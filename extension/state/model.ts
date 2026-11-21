@@ -8,7 +8,8 @@ import { THEMES, DEFAULT_THEME } from '../themes/index.ts';
 import { PACKAGE_THEMES, USER_THEME_ID } from '../themes/packages.ts';
 import { neverSleeps, oldSleepPage, siteList } from '../shared/sleep.ts';
 import { isAwayPage } from '../shared/away.ts';
-import type { ArchiveEntry, KeptTab, State, TabRecord } from '../../types/margin';
+import { normalizePattern } from '../shared/air-traffic.ts';
+import type { AirTrafficRule, ArchiveEntry, KeptTab, State, TabRecord } from '../../types/margin';
 // A kept tab lost with its window: where it was (a window that comes back takes it back).
 type KeptFrom = KeptTab & { from: NonNullable<KeptTab['from']> };
 
@@ -74,7 +75,7 @@ const DEFAULT_SPACE = Object.freeze({
 // `lostTabs` is the old name of the kept tabs' reclaimable part (Margin 2,
 // Phase 2): read once, moved into `keptTabs`, and written as null so it's
 // never moved again.
-const STATE_KEYS = ['spaces', 'activeSpaceByWindow', 'awayByWindow', 'tabSpace', 'pins', 'favorites', 'folders', 'archive', 'settings', 'tabs', 'keptTabs', 'favicons', 'lostTabs'];
+const STATE_KEYS = ['spaces', 'activeSpaceByWindow', 'awayByWindow', 'tabSpace', 'pins', 'favorites', 'airTraffic', 'folders', 'archive', 'settings', 'tabs', 'keptTabs', 'favicons', 'lostTabs'];
 const FAVICON_CAP = 150;
 
 function defaultState(): State {
@@ -88,6 +89,7 @@ function defaultState(): State {
     tabSpace: {},
     pins: [],
     favorites: [],
+    airTraffic: [],
     // Folders of pins, per space (Arc): { id, spaceId, name, open, pos }.
     folders: [],
     archive: [],
@@ -122,6 +124,7 @@ function normalizeState(raw: any = {}): State {
     tabSpace: { ...raw.tabSpace },
     pins: Array.isArray(raw.pins) ? raw.pins : [],
     favorites: Array.isArray(raw.favorites) ? raw.favorites.filter((f: any) => f && typeof f.id === 'string' && typeof f.url === 'string') : [],
+    airTraffic: Array.isArray(raw.airTraffic) ? raw.airTraffic.filter((r: any) => r && typeof r.id === 'string' && typeof r.pattern === 'string' && typeof r.spaceId === 'string') : [],
     folders: Array.isArray(raw.folders) ? raw.folders.filter((f: any) => f && typeof f.id === 'string' && typeof f.spaceId === 'string') : [],
     archive: Array.isArray(raw.archive) ? raw.archive : [],
     settings: {
@@ -1406,6 +1409,9 @@ function deleteSpace(state: State, spaceId: string) {
   next.archive = state.archive.map((a) => (a.spaceId === spaceId ? { ...a, spaceId: target } : a));
   // Its kept (not open) tabs go there too.
   next.keptTabs = Object.fromEntries(Object.entries(state.keptTabs ?? {}).map(([id, k]) => [id, k.spaceId === spaceId ? { ...k, spaceId: target } : k]));
+  if (state.airTraffic?.length) {
+    next.airTraffic = state.airTraffic.filter((r) => r.spaceId !== spaceId);
+  }
   return next;
 }
 
@@ -1531,6 +1537,34 @@ function unbindFavoriteTab(state: State, favoriteId: string) {
   }
   if (!tabsChanged && !keptChanged) return state;
   return { ...state, ...(tabsChanged ? { tabs } : {}), ...(keptChanged ? { keptTabs } : {}) };
+}
+
+// ---- air traffic control --------------------------------------------------
+const AIR_TRAFFIC_CAP = 100;
+
+function addAirTrafficRule(state: State, { id, pattern, spaceId, enabled = true }: { id: string, pattern: string, spaceId: string, enabled?: boolean }) {
+  const norm = normalizePattern(pattern);
+  if (!norm || !hasSpace(state, spaceId)) return state;
+  const list = state.airTraffic ?? [];
+  if (list.length >= AIR_TRAFFIC_CAP) return state;
+  // Replace existing rule for the exact same pattern so 1-click "Always open in this Space" updates cleanly.
+  const rest = list.filter((r) => normalizePattern(r.pattern) !== norm);
+  const rule: AirTrafficRule = { id, pattern: norm, spaceId, enabled: enabled !== false, order: rest.length };
+  return { ...state, airTraffic: [...rest, rule].map((r, i) => ({ ...r, order: i })) };
+}
+
+function removeAirTrafficRule(state: State, ruleId: string) {
+  const list = state.airTraffic ?? [];
+  if (!list.some((r) => r.id === ruleId)) return state;
+  return { ...state, airTraffic: list.filter((r) => r.id !== ruleId).map((r, i) => ({ ...r, order: i })) };
+}
+
+function toggleAirTrafficRule(state: State, ruleId: string, enabled?: boolean) {
+  const list = state.airTraffic ?? [];
+  const cur = list.find((r) => r.id === ruleId);
+  if (!cur) return state;
+  const nextEnabled = typeof enabled === 'boolean' ? enabled : cur.enabled === false;
+  return { ...state, airTraffic: list.map((r) => (r.id === ruleId ? { ...r, enabled: nextEnabled } : r)) };
 }
 
 // ---- archive --------------------------------------------------------------
@@ -1659,6 +1693,10 @@ export {
   renameFavorite,
   bindTabToFavorite,
   unbindFavoriteTab,
+  AIR_TRAFFIC_CAP,
+  addAirTrafficRule,
+  removeAirTrafficRule,
+  toggleAirTrafficRule,
   archiveTab,
   removeArchived,
   rememberFavicon,

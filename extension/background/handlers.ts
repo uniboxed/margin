@@ -24,6 +24,7 @@ import * as away from './away.ts';
 import { appLink } from './app-link.ts';
 import { createHostedTabs, type HostedTabsApi } from './hosted.ts';
 import { createMediaRegistry } from './media.ts';
+import { matchAirTrafficRule } from '../shared/air-traffic.ts';
 import { shrinkPicture } from './picture.ts';
 import { noticeAnswered } from './notices.ts';
 import { isNoticeAction } from '../shared/notices.ts';
@@ -331,8 +332,14 @@ export const handlers = {
   // openBehind). Margin's new-tab page, or a space's start page, at once.
   async newTab({ windowId, url, spaceId, deadline }: { windowId?: number, url?: string, spaceId?: string, deadline?: number }, sender: BrowserMessageSender) {
     if (/^margin:\/\/settings\/?$/i.test(url ?? '')) return handlers.openLauncher({ windowId: windowId ?? sender?.tab?.windowId, settings: true });
-    if (url && !spaceId && sender?.tab?.id != null) return openBehind({ windowId, url, from: sender.tab, deadline });
-    const tab = await openTab({ windowId, url, spaceId, deadline });
+    let routedSpace = spaceId;
+    if (!routedSpace && url) {
+      const s = await load();
+      const matched = matchAirTrafficRule(url, s.airTraffic, new Set(s.spaces.map((sp) => sp.id)));
+      if (matched) routedSpace = matched.spaceId;
+    }
+    if (url && !routedSpace && sender?.tab?.id != null) return openBehind({ windowId, url, from: sender.tab, deadline });
+    const tab = await openTab({ windowId, url, spaceId: routedSpace, deadline });
     return { tabId: tab.id };
   },
   // `folderId`/`beforeId`: where the pin goes (a folder of the tab's space,
@@ -632,6 +639,28 @@ export const handlers = {
   },
   async moveFavorite({ favoriteId, beforeId = null }: { favoriteId: string, beforeId?: string | null }) {
     await mutate((s) => M.moveFavorite(s, favoriteId, { beforeId }));
+  },
+  async addAirTrafficRule({ pattern, spaceId, windowId }: { pattern: string, spaceId?: string, windowId?: number }, sender: BrowserMessageSender) {
+    const id = newId();
+    let added = false;
+    await mutate((s) => {
+      const targetSpace = spaceId && s.spaces.some((sp) => sp.id === spaceId) ? spaceId : V.activeSpaceId(s, windowId ?? sender?.tab?.windowId);
+      const next = M.addAirTrafficRule(s, { id, pattern, spaceId: targetSpace });
+      if (next !== s) added = true;
+      return next;
+    });
+    return added ? id : null;
+  },
+  async removeAirTrafficRule({ ruleId }: { ruleId: string }) {
+    await mutate((s) => M.removeAirTrafficRule(s, ruleId));
+  },
+  async toggleAirTrafficRule({ ruleId, enabled }: { ruleId: string, enabled?: boolean }) {
+    await mutate((s) => M.toggleAirTrafficRule(s, ruleId, enabled));
+  },
+  async routeUrl({ url }: { url: string }) {
+    const s = await load();
+    const rule = matchAirTrafficRule(url, s.airTraffic, new Set(s.spaces.map((sp) => sp.id)));
+    return rule ? { ruleId: rule.id, pattern: rule.pattern, spaceId: rule.spaceId } : null;
   },
   // A space shown in the window (its tab most used there to the front); `bringTab: false`: only
   // the sidebar's space, the page in front stays. Answers which tab is in front now.

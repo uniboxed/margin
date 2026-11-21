@@ -15,11 +15,12 @@
 // action returns a request (`requests`) for the hosting phase (Library.swift's delegate), with the item and its
 // target resolved.
 import * as M from '../../../extension/state/model.ts';
+import { matchAirTrafficRule } from '../../../extension/shared/air-traffic.ts';
 import { fingerprint } from '../../../extension/shared/data-set.ts';
 import type { State } from '../../../types/margin';
 
 /** The library's collections (the data set's), and `imports`: the import's marker. */
-export const COLLECTIONS = Object.freeze(['spaces', 'pins', 'favorites', 'folders', 'tabs', 'archive', 'windows', 'imports']);
+export const COLLECTIONS = Object.freeze(['spaces', 'pins', 'favorites', 'airTraffic', 'folders', 'tabs', 'archive', 'windows', 'imports']);
 export const FORMAT = 1;
 
 export type WebTarget = { kind: 'web', browser: string, profile: string | null };
@@ -90,6 +91,9 @@ export function stateOf(values: Values): LibState {
     .map(([id, p]) => ({ id, spaceId: p.spaceId, url: p.url, title: str(p.title), ...(typeof p.customTitle === 'string' && p.customTitle ? { customTitle: str(p.customTitle, 200) } : {}), ...(typeof p.folderId === 'string' && p.folderId ? { folderId: p.folderId } : {}), pos: finite(p.pos), target: targetOf(p.target) ?? webTarget('safari', null) }));
   const favorites = sorted(values?.favorites).filter(([, f]) => typeof f.url === 'string')
     .map(([id, f]) => ({ id, scope: typeof f.scope === 'string' && f.scope ? f.scope : 'global', url: f.url, title: str(f.title), ...(typeof f.customTitle === 'string' && f.customTitle ? { customTitle: str(f.customTitle, 200) } : {}), pos: finite(f.pos), target: targetOf(f.target) ?? webTarget('safari', null) }));
+  const airTraffic = sorted(values?.airTraffic).filter(([, r]) => typeof r.pattern === 'string' && typeof r.spaceId === 'string')
+    .sort((a, b) => finite(a[1].order) - finite(b[1].order) || a[0].localeCompare(b[0]))
+    .map(([id, r], i) => ({ id, pattern: str(r.pattern, 200), spaceId: r.spaceId, enabled: r.enabled !== false, order: finite(r.order, i) }));
   const folders = sorted(values?.folders).filter(([, f]) => typeof f.spaceId === 'string')
     .map(([id, f]) => ({ id, spaceId: f.spaceId, name: str(f.name, 200), open: f.open !== false, pos: finite(f.pos), ...(typeof f.parentId === 'string' && f.parentId ? { parentId: f.parentId } : {}) }));
   const archive = sorted(values?.archive).filter(([, a]) => typeof a.url === 'string')
@@ -110,14 +114,15 @@ export function stateOf(values: Values): LibState {
   }
   const activeSpaceByWindow: Record<string, string> = {};
   for (const [w, v] of sorted(values?.windows)) if (typeof v.spaceId === 'string') activeSpaceByWindow[w] = v.spaceId;
-  return { ...base, spaces, pins, favorites, folders, archive, keptTabs, activeSpaceByWindow, tabs: {}, tabSpace: {}, awayByWindow: {}, favicons: {} } as unknown as LibState;
+  return { ...base, spaces, pins, favorites, airTraffic, folders, archive, keptTabs, activeSpaceByWindow, tabs: {}, tabSpace: {}, awayByWindow: {}, favicons: {} } as unknown as LibState;
 }
 
 export function valuesOf(state: LibState, imports: Record<string, any> = {}): Values {
-  const out: Values = { spaces: {}, pins: {}, favorites: {}, folders: {}, tabs: {}, archive: {}, windows: {}, imports: { ...imports } };
+  const out: Values = { spaces: {}, pins: {}, favorites: {}, airTraffic: {}, folders: {}, tabs: {}, archive: {}, windows: {}, imports: { ...imports } };
   state.spaces.forEach((s, i) => { out.spaces[s.id] = { name: s.name ?? '', emoji: s.emoji ?? '', color: s.color ?? '', order: i, browser: s.browser ?? 'safari', profile: s.profile ?? null, ...(M.themeIdOk(s.theme) ? { theme: s.theme } : {}) }; });
   state.pins.forEach((p: any, i) => { out.pins[p.id] = { spaceId: p.spaceId, url: p.url, title: p.title ?? '', ...(p.customTitle ? { customTitle: p.customTitle } : {}), folderId: p.folderId ?? null, pos: finite(p.pos, i), target: targetOf(p.target) ?? webTarget('safari', null) }; });
   (state.favorites ?? []).forEach((f: any, i) => { out.favorites[f.id] = { scope: f.scope || 'global', url: f.url, title: f.title ?? '', ...(f.customTitle ? { customTitle: f.customTitle } : {}), pos: finite(f.pos, i), target: targetOf(f.target) ?? webTarget('safari', null) }; });
+  (state.airTraffic ?? []).forEach((r: any, i) => { out.airTraffic[r.id] = { pattern: r.pattern, spaceId: r.spaceId, enabled: r.enabled !== false, order: finite(r.order, i) }; });
   (state.folders ?? []).forEach((f, i) => { out.folders[f.id] = { spaceId: f.spaceId, name: f.name ?? '', open: f.open !== false, pos: finite(f.pos, i), ...(f.parentId ? { parentId: f.parentId } : {}) }; });
   for (const k of Object.values(state.keptTabs ?? {}) as any[]) {
     out.tabs[k.id] = {
@@ -265,7 +270,10 @@ const ACTIONS: Record<string, Handler> = {
   // The page or app asked for opened in the window's space (or `spaceId`): a new item, shown (the hosting opens it).
   newTab({ s, p, now, ids, requests }) {
     const w = win(p);
-    const spaceId = hasSpace(s, p?.spaceId) ? p.spaceId : windowSpace(s, w);
+    const matched = !hasSpace(s, p?.spaceId) && typeof p?.url === 'string'
+      ? matchAirTrafficRule(p.url, s.airTraffic, new Set(s.spaces.map((sp) => sp.id)))
+      : null;
+    const spaceId = hasSpace(s, p?.spaceId) ? p.spaceId : matched?.spaceId ?? windowSpace(s, w);
     if (!spaceId) return fail(s, 'no space');
     const target = targetOf(p?.target) ?? spaceTarget(s, spaceId);
     const { url, title } = placeOf(target, p?.url, target.kind === 'app' ? '' : p?.title);
@@ -541,6 +549,27 @@ const ACTIONS: Record<string, Handler> = {
   moveFavorite({ s, p }) {
     return { s: M.moveFavorite(s, p?.favoriteId, { beforeId: p?.beforeId ?? null }) as LibState };
   },
+  // ---- air traffic control ----
+  addAirTrafficRule({ s, p, ids }) {
+    const spaceId = hasSpace(s, p?.spaceId) ? p.spaceId : windowSpace(s, win(p));
+    if (!spaceId) return fail(s, 'no space');
+    const id = ids.other('atc');
+    const next = M.addAirTrafficRule(s, { id, pattern: str(p?.pattern, 200), spaceId, enabled: p?.enabled !== false }) as LibState;
+    if (next === s) return fail(s, 'bad pattern');
+    return { s: next, result: id };
+  },
+  removeAirTrafficRule({ s, p }) {
+    return { s: M.removeAirTrafficRule(s, str(p?.ruleId, 128)) as LibState };
+  },
+  toggleAirTrafficRule({ s, p }) {
+    return { s: M.toggleAirTrafficRule(s, str(p?.ruleId, 128), typeof p?.enabled === 'boolean' ? p.enabled : undefined) as LibState };
+  },
+  routeUrl({ s, p }) {
+    const url = str(p?.url);
+    const rule = matchAirTrafficRule(url, s.airTraffic, new Set(s.spaces.map((sp) => sp.id)));
+    if (!rule) return { s, result: null };
+    return { s, result: { ruleId: rule.id, pattern: rule.pattern, spaceId: rule.spaceId, target: spaceTarget(s, rule.spaceId) } };
+  },
   // ---- folders ----
   // In the window's space (or `spaceId`), holding `pinIds`, or the item `tabId` pinned into it (it's the pin then).
   createFolder({ s, p, ids }) {
@@ -611,6 +640,7 @@ export function snapshot(values: Values) {
     spaces: s.spaces,
     pins: s.pins,
     favorites: s.favorites ?? [],
+    airTraffic: s.airTraffic ?? [],
     folders: s.folders,
     archive: s.archive,
     openTabs: { origin: 'margin-app', since: 0, synced: true, tabs: {}, tabSpace: {}, activeSpaceByWindow: s.activeSpaceByWindow, awayByWindow: {}, keptTabs: s.keptTabs },

@@ -350,7 +350,9 @@ test('the action list is PLAN.md §3\'s, plus palette.run and the behaviors\' an
   const arcM24 = ['media.toggle', 'media.prev', 'media.next', 'media.mute', 'media.focus'];
   // Track 2 M2.5 (Peek & Little Arc).
   const arcM25 = ['peek.close', 'peek.expand', 'peek.copyUrl', 'peek.setSpace', 'peek.back', 'peek.forward'];
-  assert.deepEqual(Object.keys(ACTIONS).sort(), [...plan, 'palette.run', ...step2, ...step3, ...step4, ...settingsTab, ...spaceThemes, ...arcQol, ...arcM22, ...arcM23, ...arcM24, ...arcM25].sort());
+  // Track 2 M2.6 (Air Traffic Control).
+  const arcM26 = ['airTraffic.addHost'];
+  assert.deepEqual(Object.keys(ACTIONS).sort(), [...plan, 'palette.run', ...step2, ...step3, ...step4, ...settingsTab, ...spaceThemes, ...arcQol, ...arcM22, ...arcM23, ...arcM24, ...arcM25, ...arcM26].sort());
   assert.ok(isAction('tab.activate'));
   assert.equal(isAction('toString'), false);
   assert.equal(isAction('__proto__'), false);

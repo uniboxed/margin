@@ -38,6 +38,13 @@ export interface Favorite {
   pos?: number;
   target?: { kind: 'web', browser: string, profile: string | null } | { kind: 'app', bundleId: string, name: string } | { kind: 'margin', page: string };
 }
+export interface AirTrafficRule {
+  id: string;
+  pattern: string;
+  spaceId: string;
+  enabled?: boolean;
+  order?: number;
+}
 export interface Folder {
   id: string; spaceId: string; name: string; open: boolean; pos?: number;
   /** parent folder in the same space (nested folders, max depth 4); absent: top level */
@@ -147,6 +154,7 @@ export interface State {
   tabSpace: Record<number, string>;
   pins: Pin[];
   favorites?: Favorite[];
+  airTraffic?: AirTrafficRule[];
   folders: Folder[];
   archive: ArchiveEntry[];
   settings: Settings;
