@@ -441,7 +441,7 @@ export function startCore() {
       if (!dormant) void send('mediaState', report);
     },
   });
-  // Peek's link clicks (content/peek.ts): only in a window Margin.app draws, never in a copy that stood back; the
+  // The preview's link clicks (content/peek.ts): only in a window Margin.app draws, never in a copy that stood back; the
   // card asked of the background (which asks the app: background/peek.ts), the link opening as it would have when
   // the app doesn't take it in time.
   // (This tab's window one Margin.app draws: main's, a card's or a split pane's; never in a copy that stood back.)

@@ -526,7 +526,7 @@ fn kept_behind_kinds() {
     assert!(!Main.kept_behind() && !Auxiliary.kept_behind() && !Dialog.kept_behind());
 }
 
-// Peek's card (docs/PEEK-SPLIT.md §2): Safari's card window full screen at a rect of its own inside the page area; its
+// The preview card (docs/PEEK-SPLIT.md §2): Safari's card window full screen at a rect of its own inside the page area; its
 // full-screen toolbar (as wide as the card, 52 pt) is its strip, never a small window. Against Margin's page area
 // alone it was taken for one (under 100 pt tall: transient), and a split pane's the same.
 #[test]

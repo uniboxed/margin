@@ -1,11 +1,11 @@
-// Peek's card and Little Arc, the session's side (HostedPeek.swift, docs/PEEK-SPLIT.md §2, §3), part of tests.swift's
+// The preview card and Quick Tab, the session's side (HostedPeek.swift, docs/PEEK-SPLIT.md §2, §3), part of tests.swift's
 // run: the library, the real engine on the stand-in world (tiles on) and a stand-in for the profile's copy. A page's
 // click answered at once; the card window made at the card's page (never the new-tab page) in the card's role, laid
-// out over the item at the page's <m-peek-page> (or Margin's default rect), focused, its own loader (never the page
+// out over the item at the page's <m-preview-page> (or Margin's default rect), focused, its own loader (never the page
 // card's); ⌘W, a press around it, Esc in its page and its close parking it, never closing the item under it; a parked
 // card shown again as a layout change (no new window, main never parked); hidden with its opener and shown again on
 // return; Expand making the space's item of its page (its tab moved); a click given up on closing it; refusals; card
-// windows closed after 15 minutes unused and with their profile's main window; Little Arc.
+// windows closed after 15 minutes unused and with their profile's main window; Quick Tab.
 import AppKit
 import Foundation
 
@@ -71,7 +71,7 @@ func peekSessionTests() {
     check("peek session: set up: a web item shown in the profile's main window (the copy's 90)",
           session.shown[1] == bItem && session.safariWindows == [SafariKey("s-default"): 90] && engine.shown == main && page.width > 1000, "\(session.safariWindows) \(page)")
     let itemShow = links.asked.last { $0.type == "hostShow" && $0.payload["itemId"] as? String == bItem }?.payload
-    check("peek session: each item's hostShow says whether it's a pin's or favorite's (Auto-Peek: the copy has no library pins)",
+    check("peek session: each item's hostShow says whether it's a pin's or favorite's (auto-preview: the copy has no library pins)",
           itemShow?["pinned"] as? Bool == false && session.pinnedOrFavorite(bItem) == false, "\(String(describing: itemShow))")
     func peeks(since mark: Int) -> [JSONObject] {
         window.pushed.dropFirst(mark).compactMap { (try? JSONSerialization.jsonObject(with: Data($0.utf8))) as? JSONObject }.filter { $0["type"] as? String == "peek" }
@@ -79,7 +79,7 @@ func peekSessionTests() {
     func asked(_ type: String, since mark: Int) -> [JSONObject] { links.asked.dropFirst(mark).filter { $0.type == type }.map(\.payload) }
     let later = { Date().timeIntervalSince1970 * 1000 + 5000 }
 
-    // ---- a page's Shift+click: answered at once, the card window made at its page, laid out at <m-peek-page> ----
+    // ---- a page's Shift+click: answered at once, the card window made at its page, laid out at <m-preview-page> ----
     window.cardRect = rect
     var mark = links.asked.count, pmark = window.pushed.count, lmark = window.loadings.count
     run { session.peekOpen(profile: "s-default", windowId: 90, msg: ["id": "peek-1", "url": "https://docs.example.org/guide", "source": "shift-click", "notAfter": later()]) }
@@ -94,7 +94,7 @@ func peekSessionTests() {
           cardShows.count == 1 && cardShows[0]["itemId"] as? String == "peek-card" && int(cardShows[0]["windowId"]) == 91 && cardShows[0]["fresh"] as? Bool == true
           && cardShows[0]["url"] as? String == "https://docs.example.org/guide", "\(cardShows)")
     let cardWindow = engine.hosts[cardId]?.window ?? 0
-    check("peek session: the card at the page's <m-peek-page>, focused (its keys), the item under it at the page area, still the one shown",
+    check("peek session: the card at the page's <m-preview-page>, focused (its keys), the item under it at the page area, still the one shown",
           w.bounds(window: cardWindow) == rect && w.spaces(window: cardWindow) == [FakeHostWorld.marginSpace] && engine.shown == cardId && engine.visible.count == 2
           && w.bounds(window: mainWindow) == page && w.spaces(window: mainWindow) == [FakeHostWorld.marginSpace] && session.shown[1] == bItem
           && session.layout[1]?.focused == HostedSession.cardItem("s-default"), "\(String(describing: w.bounds(window: cardWindow))) \(engine.visible) \(String(describing: session.layout[1]))")
@@ -123,7 +123,7 @@ func peekSessionTests() {
           peeks(since: pmark).first?["peek"] is NSNull && !w.calls.dropFirst(callMark).contains { $0.hasPrefix("move \(mainWindow) ") && $0 != "move \(mainWindow) \(FakeHostWorld.marginSpace)" },
           "\(peeks(since: pmark)) \(w.calls.dropFirst(callMark))")
 
-    // ---- a Peek again: the parked card window comes back as a layout change (no new window, main never parked) ----
+    // ---- a preview again: the parked card window comes back as a layout change (no new window, main never parked) ----
     mark = links.asked.count
     callMark = w.calls.count
     run { session.peekOpen(profile: "s-default", windowId: 90, msg: ["id": "peek-2", "url": "https://second.example/", "notAfter": later()]) }
@@ -187,11 +187,11 @@ func peekSessionTests() {
     run { session.peekCancel(profile: "s-default", msg: ["id": "peek-8"]) }
     check("peek session: the copy gave up on the click (its link opened in the page): the card closed again", session.cards.isEmpty && w.spaces(window: cardWindow) == [] && engine.shown == main)
 
-    // ---- Margin's default rect: a theme with no <m-peek-page> ----
+    // ---- Margin's default rect: a theme with no <m-preview-page> ----
     window.cardRect = nil
     run { session.peekOpen(profile: "s-default", windowId: 90, msg: ["id": "peek-9", "url": "https://default.example/", "notAfter": later()]) }
     let dflt = HostedSession.defaultCardRect(page: page)
-    check("peek session: no <m-peek-page>: Margin's default place, centred with 8% and 7% margins under a 52 pt bar (the card window's toolbar rests under it)",
+    check("peek session: no <m-preview-page>: Margin's default place, centred with 8% and 7% margins under a 52 pt bar (the card window's toolbar rests under it)",
           w.bounds(window: cardWindow) == dflt && abs(dflt.minX - page.minX - (page.maxX - dflt.maxX)) <= 1 && abs(dflt.minX - page.minX - (page.width * 0.08).rounded()) <= 1
           && abs(dflt.minY - 52 - page.minY - (page.height * 0.07).rounded()) <= 1, "\(dflt) in \(page), at \(String(describing: w.bounds(window: cardWindow)))")
     let small = HostedSession.defaultCardRect(page: CGRect(x: 0, y: 0, width: 500, height: 400))
@@ -213,22 +213,22 @@ func peekSessionTests() {
     run { session.peekOpen(profile: "s-default", windowId: 90, msg: ["id": "peek-10", "url": "https://fresh.example/", "notAfter": later()]) }
     let card2 = session.safariWindows[SafariKey("s-default", .card)]
     run { _ = session.closeCard(windowId: 1, why: "test") }
-    check("peek session: the next Peek after that makes a card window again", card2 != nil && card2 != 91, "\(String(describing: card2))")
+    check("peek session: the next preview after that makes a card window again", card2 != nil && card2 != 91, "\(String(describing: card2))")
     mark = links.asked.count
     run { await engine.close(main) }
     check("peek session: its profile's main window gone: the card window closed with it", !engine.isHosted(cardId) && asked("closeWindow", since: mark).count >= 1, "\(links.types(since: mark))")
 
-    // ---- Little Arc: its field, then a search's card; with nothing hosted, the space's new tab ----
+    // ---- Quick Tab: its field, then a search's card; with nothing hosted, the space's new tab ----
     run { _ = library.perform("activateTab", ["windowId": 1, "tabId": aItem]) }
     run { session.littleArcOpened(windowId: 1, spaceId: home) }
     mark = links.asked.count
     run { out = source.perform("closeTab", ["windowId": 1]) }
-    check("peek session: Little Arc's field up: ⌘W closes it, never the item shown", out?["ok"] as? Bool == true && session.littleArcs.isEmpty && session.shown[1] == aItem
+    check("peek session: Quick Tab's field up: ⌘W closes it, never the item shown", out?["ok"] as? Bool == true && session.littleArcs.isEmpty && session.shown[1] == aItem
           && library.items(space: home).contains { $0.id == aItem } && asked("hostClose", since: mark).isEmpty)
     run { session.littleArcOpened(windowId: 1, spaceId: home) }
     run { out = source.perform("peek.go", ["windowId": 1, "query": "margin themes", "spaceId": home]) }
     let arc = session.cards["s-default"]
-    check("peek session: Little Arc's search: the card at the engine's search address over the item shown",
+    check("peek session: Quick Tab's search: the card at the engine's search address over the item shown",
           out?["ok"] as? Bool == true && arc?.url.hasPrefix("https://www.google.com/search?") == true && arc?.url.contains("margin%20themes") == true && arc?.opener == aItem
           && engine.isHosted(cardId) && engine.shown == cardId, "\(String(describing: arc))")
     run { _ = session.closeCard(windowId: 1, why: "test") }
@@ -236,6 +236,6 @@ func peekSessionTests() {
     run { session.settleHosting() }
     let before = library.items(space: home).count
     run { session.littleArcGo(windowId: 1, url: "https://nothing-under.example/", spaceId: home) }
-    check("peek session: Little Arc with nothing hosted (the launcher): what's chosen opens as the space's new tab",
+    check("peek session: Quick Tab with nothing hosted (the launcher): what's chosen opens as the space's new tab",
           library.items(space: home).count == before + 1 && library.items(space: home).contains { $0.value["url"] as? String == "https://nothing-under.example/" } && session.cards.isEmpty)
 }

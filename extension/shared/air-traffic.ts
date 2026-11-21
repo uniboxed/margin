@@ -1,4 +1,4 @@
-// Air Traffic Control: URL → Space/Profile routing rules (Track 2 M2.6).
+// Link Rules: URL → Space/Profile routing rules (Track 2 M2.6).
 // Pure pattern normalization and deterministic first-match-wins evaluator.
 // Supported pattern formats:
 //   - exact host:          `linear.app`
@@ -60,7 +60,7 @@ export function patternMatchesUrl(pattern: string, url: string): boolean {
 }
 
 /**
- * Evaluates Air Traffic Control rules in order (first enabled matching rule wins).
+ * Evaluates link rules in order (first enabled matching rule wins).
  * Ignores rules whose target `spaceId` is not in `validSpaceIds` (when provided).
  */
 export function matchAirTrafficRule(

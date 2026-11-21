@@ -783,23 +783,23 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
         if (!/^https?:\/\//i.test(url)) return false;
         return copyText(url, 'Copied URL');
       }
-      // Peek's card and Little Arc (behaviors/card.ts).
-      case 'peek.close': return behaviors.card.close();
-      case 'peek.expand': return behaviors.card.expand();
-      case 'littleArc.open': return behaviors.card.openLittleArc();
-      case 'peek.copyUrl': {
+      // The preview card and Quick Tab (behaviors/card.ts).
+      case 'preview.close': return behaviors.card.close();
+      case 'preview.expand': return behaviors.card.expand();
+      case 'quickTab.open': return behaviors.card.openLittleArc();
+      case 'preview.copyUrl': {
         const url = ui.peek?.url ?? '';
         if (!/^https?:\/\//i.test(url)) return false;
         return copyText(url, 'Copied URL');
       }
-      case 'peek.setSpace':
+      case 'preview.setSpace':
         if (!ui.peek) return false;
         setUi({ peek: { ...ui.peek, spaceId: arg } });
         host.perform?.('peek.setSpace', { spaceId: arg });
         return true;
-      case 'peek.back':
+      case 'preview.back':
         return !!ui.peek && !ui.peek.littleArc && !!host.perform?.('peek.back', {});
-      case 'peek.forward':
+      case 'preview.forward':
         return !!ui.peek && !ui.peek.littleArc && !!host.perform?.('peek.forward', {});
       case 'space.edit': return behaviors.editor.open(arg);
       case 'space.rename': return behaviors.rename.start('space', arg);
@@ -1025,13 +1025,13 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     closePalette: () => { if (ui.palette.open) local('palette.close', undefined, null); },
     get paletteOpen() { return !!ui.palette.open; },
     showToast,
-    /** Peek's card (behaviors/card.ts): the app's word on it (null: gone), Little Arc opened by the app's key. */
+    /** The preview card (behaviors/card.ts): the app's word on it (null: gone), Quick Tab opened by the app's key. */
     card: {
       show: (peek: unknown) => behaviors.card.show(peek),
       openLittleArc: () => behaviors.card.openLittleArc(),
       get open() { return !!ui.peek && !ui.peek.closing; },
     },
-    /** Where the theme's `<m-peek-page>` is now (ui/render.ts View.measurePeekPage): null when no card is drawn. */
+    /** Where the theme's `<m-preview-page>` is now (ui/render.ts View.measurePeekPage): null when no card is drawn. */
     measurePeekPage: () => view.measurePeekPage(),
     /** The new-tab launcher's field focused, by the host's word (its overlay shown over a new window: behaviors/palette.js). */
     focusLauncher: () => !!behaviors.palette?.focusLauncher(),

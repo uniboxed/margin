@@ -1322,7 +1322,7 @@
   .margin-sidebar :is(.tab, .pin, .new-tab-row, .folder) { transition: none; }
 }
 
-/* ---- Track 2: Favorites, nested folders, sticky pin reset, split rows, mini player, peek, toast ---- */
+/* ---- Track 2: Favorites, nested folders, sticky pin reset, split rows, mini player, preview, toast ---- */
 .favorites {
   display: grid;
   grid-template-columns: repeat(var(--fav-cols, 3), minmax(0, 1fr));
@@ -1487,41 +1487,41 @@
   font-weight: 500;
 }
 
-/* ---- Peek's card and Little Arc (docs/PEEK-SPLIT.md §2, §3) ----------------------------------------------
+/* ---- The preview card and Quick Tab (docs/PEEK-SPLIT.md §2, §3) ---------------------------------------
    Laid over the page area alone (Margin's --m-page-* while a card is up): the page dimmed around the card (main shows
-   through, dimmed), the card's page (<m-peek-page>, where Margin.app puts the card's Safari window) clear once that
+   through, dimmed), the card's page (<m-preview-page>, where Margin.app puts the card's Safari window) clear once that
    window is in place (.ready), covered while it loads and as it goes. Open: the dim fades in and the card comes from
    0.96 and nothing in 150 ms; close: the reverse. Transform and opacity only; Reduce Motion: a fade. Once the window is
    in place the dimmed page never takes the pointer (Margin.app catches a press there and closes the card); while it
-   loads, and for Little Arc's field alone, the scrim does (a click there closes it). */
-.peek-slot { position: fixed; left: var(--m-page-left, 0px); top: var(--m-page-top, 0px); right: var(--m-page-right, 0px); bottom: var(--m-page-bottom, 0px); z-index: 50; overflow: hidden; border-radius: var(--m-page-radius, 0px); pointer-events: none; --peek-dim: color-mix(in srgb, var(--scrim) 70%, transparent); }
-@media (prefers-color-scheme: dark) { .peek-slot { --peek-dim: color-mix(in srgb, var(--scrim) 90%, transparent); } }
-.peek-backdrop { position: absolute; inset: 0; pointer-events: none; }
-.peek-backdrop > .peek-scrim { position: absolute; inset: 0; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; animation: none; cursor: default; pointer-events: none; }
-.peek-backdrop:is(.loading, .little-arc) > .peek-scrim { pointer-events: auto; }
-.peek-dim, .peek-card { position: absolute; left: clamp(0px, 8%, calc(50% - 210px)); right: clamp(0px, 8%, calc(50% - 210px)); top: clamp(0px, 7%, calc(50% - 186px)); bottom: clamp(0px, 7%, calc(50% - 186px)); border-radius: 28px; }
-.peek-backdrop.little-arc :is(.peek-dim, .peek-card) { bottom: auto; height: 48px; }
-.peek-dim { box-shadow: 0 0 0 100vmax var(--peek-dim); pointer-events: none; animation: m3-peek-fade-in 150ms ease-out both; }
-.peek-backdrop.closing .peek-dim { animation: m3-peek-fade-out 150ms ease-in both; }
-.peek-card { display: flex; flex-direction: column; overflow: hidden; pointer-events: none; transform-origin: 50% 40%; animation: m3-peek-in 150ms cubic-bezier(.2, .8, .2, 1) both; background: transparent; color: var(--on-surface); box-shadow: var(--elev-3); }
-.peek-backdrop.closing .peek-card { animation: m3-peek-out 150ms cubic-bezier(.4, 0, 1, 1) both; }
-.peek-bar { flex: none; box-sizing: border-box; height: 44px; display: flex; align-items: center; gap: 6px; padding: 0 10px; pointer-events: auto; height: 52px; gap: 8px; padding: 0 14px; background: var(--sc-low); color: var(--on-surface); border-bottom: 1px solid var(--outline-variant); }
-.peek-host { flex: 1 1 0; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13px; color: var(--on-surface-variant); }
-.peek-field { flex: 1 1 0; min-width: 0; height: 30px; box-sizing: border-box; padding: 0 10px; font: inherit; outline: none; height: 34px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--sc-high); color: var(--on-surface); }
-.peek-page { position: relative; flex: 1 1 auto; min-height: 0; background: transparent; }
-.peek-backdrop:not(.ready) .peek-page { background: var(--sc-low); pointer-events: auto; }
-.peek-backdrop.little-arc .peek-page { display: none; }
-.peek-backdrop.loading .peek-page::after { content: ''; position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; box-sizing: border-box; border-radius: 50%; border: 3px solid color-mix(in srgb, var(--primary) 22%, transparent); border-top-color: var(--primary); animation: m3-spin 0.9s linear infinite; }
-@keyframes m3-peek-in { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
-@keyframes m3-peek-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(0.96); } }
-@keyframes m3-peek-fade-in { from { opacity: 0; } to { opacity: 1; } }
-@keyframes m3-peek-fade-out { from { opacity: 1; } to { opacity: 0; } }
+   loads, and for Quick Tab's field alone, the scrim does (a click there closes it). */
+.preview-slot { position: fixed; left: var(--m-page-left, 0px); top: var(--m-page-top, 0px); right: var(--m-page-right, 0px); bottom: var(--m-page-bottom, 0px); z-index: 50; overflow: hidden; border-radius: var(--m-page-radius, 0px); pointer-events: none; --preview-dim: color-mix(in srgb, var(--scrim) 70%, transparent); }
+@media (prefers-color-scheme: dark) { .preview-slot { --preview-dim: color-mix(in srgb, var(--scrim) 90%, transparent); } }
+.preview-backdrop { position: absolute; inset: 0; pointer-events: none; }
+.preview-backdrop > .preview-scrim { position: absolute; inset: 0; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; animation: none; cursor: default; pointer-events: none; }
+.preview-backdrop:is(.loading, .quick-tab) > .preview-scrim { pointer-events: auto; }
+.preview-dim, .preview-card { position: absolute; left: clamp(0px, 8%, calc(50% - 210px)); right: clamp(0px, 8%, calc(50% - 210px)); top: clamp(0px, 7%, calc(50% - 186px)); bottom: clamp(0px, 7%, calc(50% - 186px)); border-radius: 28px; }
+.preview-backdrop.quick-tab :is(.preview-dim, .preview-card) { bottom: auto; height: 48px; }
+.preview-dim { box-shadow: 0 0 0 100vmax var(--preview-dim); pointer-events: none; animation: m3-preview-fade-in 150ms ease-out both; }
+.preview-backdrop.closing .preview-dim { animation: m3-preview-fade-out 150ms ease-in both; }
+.preview-card { display: flex; flex-direction: column; overflow: hidden; pointer-events: none; transform-origin: 50% 40%; animation: m3-preview-in 150ms cubic-bezier(.2, .8, .2, 1) both; background: transparent; color: var(--on-surface); box-shadow: var(--elev-3); }
+.preview-backdrop.closing .preview-card { animation: m3-preview-out 150ms cubic-bezier(.4, 0, 1, 1) both; }
+.preview-bar { flex: none; box-sizing: border-box; height: 44px; display: flex; align-items: center; gap: 6px; padding: 0 10px; pointer-events: auto; height: 52px; gap: 8px; padding: 0 14px; background: var(--sc-low); color: var(--on-surface); border-bottom: 1px solid var(--outline-variant); }
+.preview-host { flex: 1 1 0; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13px; color: var(--on-surface-variant); }
+.preview-field { flex: 1 1 0; min-width: 0; height: 30px; box-sizing: border-box; padding: 0 10px; font: inherit; outline: none; height: 34px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--sc-high); color: var(--on-surface); }
+.preview-page { position: relative; flex: 1 1 auto; min-height: 0; background: transparent; }
+.preview-backdrop:not(.ready) .preview-page { background: var(--sc-low); pointer-events: auto; }
+.preview-backdrop.quick-tab .preview-page { display: none; }
+.preview-backdrop.loading .preview-page::after { content: ''; position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; box-sizing: border-box; border-radius: 50%; border: 3px solid color-mix(in srgb, var(--primary) 22%, transparent); border-top-color: var(--primary); animation: m3-spin 0.9s linear infinite; }
+@keyframes m3-preview-in { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
+@keyframes m3-preview-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(0.96); } }
+@keyframes m3-preview-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes m3-preview-fade-out { from { opacity: 1; } to { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) {
-  .peek-card { animation-name: m3-peek-fade-in; }
-  .peek-backdrop.closing .peek-card { animation-name: m3-peek-fade-out; }
-  .peek-backdrop.loading .peek-page::after { animation: none; }
+  .preview-card { animation-name: m3-preview-fade-in; }
+  .preview-backdrop.closing .preview-card { animation-name: m3-preview-fade-out; }
+  .preview-backdrop.loading .preview-page::after { animation: none; }
 }
-.peek-btn {
+.preview-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1536,9 +1536,9 @@
   font-weight: 500;
   cursor: default;
 }
-.peek-btn:hover { background: var(--sc-highest); }
-.peek-btn.primary { background: var(--primary); color: var(--on-primary); }
-.peek-btn .line-icon { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.preview-btn:hover { background: var(--sc-highest); }
+.preview-btn.primary { background: var(--primary); color: var(--on-primary); }
+.preview-btn .line-icon { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
 /* Split View (docs/PEEK-SPLIT.md §4): Margin's own <m-pane>s, flexed by the split's ratios, and an <m-divider> between
    each two, in the page's place while a split is shown (m-split="row" side by side, "column" stacked). The gap is the

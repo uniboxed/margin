@@ -31,7 +31,7 @@ const sidebarWidth = (settings: any) => settingsOf(settings).sidebarWidth;
 export default Object.freeze({
   id: 'arcadia',
   name: 'Arcadia',
-  description: 'Arc’s look: a frame around the page, space chips, pins and tabs.',
+  description: 'A frame around the page, space chips, pins and tabs.',
   defaults,
   settingsOf,
   // The sidebar's width, from the settings.

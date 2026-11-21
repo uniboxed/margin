@@ -1,7 +1,7 @@
-// Peek's card over a stacked split (docs/PEEK-SPLIT.md §2, §4; the real screen, 2026-11-21: the split's band drawn as
+// The preview card over a stacked split (docs/PEEK-SPLIT.md §2, §4; the real screen, 2026-11-21: the split's band drawn as
 // a dark stripe across the card's page) in all five built-in themes and Margin's default card, in real engines
 // (Playwright's WebKit and Chromium, headless, every network request refused): while the card is up, nothing of
-// Margin's `<m-page>` paints or takes a press inside the card's `<m-peek-page>` (a split's dividers and toolbar bands,
+// Margin's `<m-page>` paints or takes a press inside the card's `<m-preview-page>` (a split's dividers and toolbar bands,
 // a pane's loader, a theme's pane ring), so its see-through page shows only the card's window; outside the card's page
 // the split is drawn as before (under the dim), and once the card's gone, everywhere again. `npm run test:theme`.
 import { test } from 'node:test';
@@ -32,7 +32,7 @@ for (const [name, engine] of ENGINES) {
         await page.addScriptTag({ content: script });
         const ev = <R, const A>(fn: (arg: A) => R | Promise<R>, arg?: A) => page.evaluate(fn as (arg: unknown) => R | Promise<R>, arg);
         const pkg = themeForPage(dir);
-        if (id === 'default') pkg.html = pkg.html.replace(/<template m-part="peek">[\s\S]*?<\/template>/, '');
+        if (id === 'default') pkg.html = pkg.html.replace(/<template m-part="preview">[\s\S]*?<\/template>/, '');
         assert.equal((await ev(({ p, i }) => T.loadBuiltin(p, i), { p: pkg, i: id === 'default' ? 'arcadia' : id })).ok, true);
         await ev(() => T.mountRuntime({ width: 1280, height: 800, container: 'document', mode: 'fullscreen', closed: false, appWindow: true, hosted: true }));
         await page.mouse.move(2, H - 2); // (the pointer out of the way: no hover drawn)

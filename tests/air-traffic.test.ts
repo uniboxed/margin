@@ -17,7 +17,7 @@ function applyChanges(values: L.Values, changes: L.Change[]): L.Values {
   return next;
 }
 
-test('M2.6 Air Traffic Control: exact host, wildcard subdomain, and path-prefix matching with ordering', () => {
+test('M2.6 Link Rules: exact host, wildcard subdomain, and path-prefix matching with ordering', () => {
   assert.equal(normalizePattern('https://Linear.App/'), 'linear.app');
   assert.equal(normalizePattern('*.Figma.com'), '*.figma.com');
   assert.equal(normalizePattern('github.com/my-org/*'), 'github.com/my-org/*');
@@ -43,7 +43,7 @@ test('M2.6 Air Traffic Control: exact host, wildcard subdomain, and path-prefix 
   assert.equal(matchAirTrafficRule('https://github.com/my-org/app', rules, new Set(['personal']))?.spaceId, 'personal', 'deleted target space skipped');
 });
 
-test('M2.6 Air Traffic Control: 1-click context menu, library persistence, newTab auto-routing, and space deletion cascade', () => {
+test('M2.6 Link Rules: 1-click context menu, library persistence, newTab auto-routing, and space deletion cascade', () => {
   let values: L.Values = {
     spaces: {
       personal: { name: 'Personal', order: 0, profile: null },
@@ -82,8 +82,8 @@ test('M2.6 Air Traffic Control: 1-click context menu, library persistence, newTa
   s = M.moveTab(s, 9, 'personal');
   const vm = buildViewModel({ state: s, ui: { windowId: 1, tabId: 9 } });
   const menu = menuItems({ kind: 'tab', id: 9 }, { state: s, space: vm.space });
-  const entry = menu.find((i) => i.action === 'airTraffic.addHost');
+  const entry = menu.find((i) => i.action === 'linkRules.addHost');
   assert.equal(entry?.label, 'Always Open stripe.com in This Space');
-  assert.equal(checkAction('airTraffic.addHost', 9, contextFromState(s)).ok, true);
-  assert.deepEqual(requestFor('airTraffic.addHost', 9, { state: s, ui: { windowId: 1 } }), { kind: 'send', type: 'addAirTrafficRule', payload: { pattern: 'stripe.com', spaceId: 'personal' } });
+  assert.equal(checkAction('linkRules.addHost', 9, contextFromState(s)).ok, true);
+  assert.deepEqual(requestFor('linkRules.addHost', 9, { state: s, ui: { windowId: 1 } }), { kind: 'send', type: 'addAirTrafficRule', payload: { pattern: 'stripe.com', spaceId: 'personal' } });
 });

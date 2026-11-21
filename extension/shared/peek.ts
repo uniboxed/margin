@@ -1,6 +1,6 @@
-// Peek & Little Arc pure helpers (Track 2 M2.5):
-// - External-domain Auto-Peek detection for Pinned tabs & Favorites
-// - OAuth / SSO / Login URL exclusion so auth redirects never get trapped in Peek
+// The preview card and Quick Tab pure helpers (Track 2 M2.5):
+// - External-domain auto-preview detection for Pinned tabs & Favorites
+// - OAuth / SSO / Login URL exclusion so auth redirects never get trapped in preview
 // - Centered floating modal card geometry over the dimmed Space backdrop
 
 const OAUTH_HOSTS = new Set([
@@ -54,7 +54,7 @@ export function isPeekableUrl(url: unknown): url is string {
 }
 
 /**
- * Decides whether a normal click on `href` from `currentUrl` should Auto-Peek.
+ * Decides whether a normal click on `href` from `currentUrl` should auto-preview.
  * Explicit Shift+Click always peeks any `isPeekableUrl(href)`.
  */
 export function shouldAutoPeek({
@@ -80,8 +80,8 @@ export function shouldAutoPeek({
 export type Rect = { x: number, y: number, width: number, height: number };
 
 /**
- * Computes the centered floating modal card rect for Peek / Little Arc within a Space.
- * Reserves a 44px top header strip inside the card for Margin's Peek chrome bar
+ * Computes the centered floating modal card rect for preview / Quick Tab within a Space.
+ * Reserves a 44px top header strip inside the card for Margin's preview chrome bar
  * (URL pill, Back/Forward, Copy URL, Space picker, Expand into Space, Close).
  */
 export function peekCardRect(container: Rect): { card: Rect, content: Rect, headerHeight: number } {

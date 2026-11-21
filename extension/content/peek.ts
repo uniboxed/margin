@@ -1,5 +1,5 @@
-// Peek's link clicks on a web page (docs/PEEK-SPLIT.md §2): Shift+click on any http(s) link, and a plain click on a
-// link to another site from a pinned tab or a favorite (Auto-Peek, `settings.autoPeekPins`; never an auth flow:
+// The preview's link clicks on a web page (docs/PEEK-SPLIT.md §2): Shift+click on any http(s) link, and a plain click on a
+// link to another site from a pinned tab or a favorite (auto-preview, `settings.autoPeekPins`; never an auth flow:
 // shared/peek.ts), open in Margin.app's card instead of where the page would have opened them.
 //
 // What keeps a page working (the click is the page's first):

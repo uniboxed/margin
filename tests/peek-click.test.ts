@@ -1,4 +1,4 @@
-// Peek's link clicks (content/peek.ts), the page's side, against a stand-in window and links: only in a window Margin
+// The preview's link clicks (content/peek.ts), the page's side, against a stand-in window and links: only in a window Margin
 // draws, in the bubble phase after the page's own handlers, never stopping the event; the link's own default done when
 // the app refuses or doesn't answer in time. And the copy's side (background/peek.ts): the app's answer waited for
 // until the click's time only. And the card window's keys (Esc, ⌘↩) only where the page didn't handle them.
@@ -50,14 +50,14 @@ function setup({ drawn = true, pinned = false, auto = true, answer = (async () =
   return { ...s, asked, fell, state, peek };
 }
 
-test('Peek click: heard in the bubble phase on the window (after the page), never in the capture phase', () => {
+test('Preview click: heard in the bubble phase on the window (after the page), never in the capture phase', () => {
   const s = setup();
   assert.deepEqual(s.listeners.map((l) => [l.type, l.capture]), [['click', false]]);
   s.peek.destroy();
   assert.equal(s.listeners.length, 0);
 });
 
-test('Peek click: Shift+click on a link asks for the card and cancels the default, but never stops the event', async () => {
+test('Preview click: Shift+click on a link asks for the card and cancels the default, but never stops the event', async () => {
   const s = setup();
   const e = click(anchor('https://docs.example.org/a'), { shiftKey: true });
   s.fire('click', e);
@@ -68,7 +68,7 @@ test('Peek click: Shift+click on a link asks for the card and cancels the defaul
   assert.deepEqual(s.fell, [], 'the app took it: nothing else opened');
 });
 
-test('Peek click: a click the page handled itself (defaultPrevented) is left alone, as are ⌘/⌃/⌥ clicks, other buttons and untrusted ones', () => {
+test('Preview click: a click the page handled itself (defaultPrevented) is left alone, as are ⌘/⌃/⌥ clicks, other buttons and untrusted ones', () => {
   const s = setup({ pinned: true });
   const link = anchor('https://other.example.net/');
   for (const mods of [{ defaultPrevented: true, shiftKey: true }, { defaultPrevented: true }, { metaKey: true, shiftKey: true }, { ctrlKey: true }, { altKey: true, shiftKey: true }, { button: 1, shiftKey: true }, { isTrusted: false, shiftKey: true }]) {
@@ -80,7 +80,7 @@ test('Peek click: a click the page handled itself (defaultPrevented) is left alo
   assert.deepEqual(s.asked, []);
 });
 
-test('Peek click: nothing intercepted in a window Margin doesn\'t draw (or a dormant copy: isDrawn false)', () => {
+test('Preview click: nothing intercepted in a window Margin doesn\'t draw (or a dormant copy: isDrawn false)', () => {
   const s = setup({ drawn: false, pinned: true });
   const e = click(anchor('https://docs.example.org/a'), { shiftKey: true });
   s.fire('click', e);
@@ -90,7 +90,7 @@ test('Peek click: nothing intercepted in a window Margin doesn\'t draw (or a dor
   assert.equal(e.prevented + f.prevented, 0, 'the browser does what it always does');
 });
 
-test('Peek click: Auto-Peek only from a pinned tab or favorite, to another site, never an auth flow; a download or a same-page anchor never', () => {
+test('Preview click: auto-preview only from a pinned tab or favorite, to another site, never an auth flow; a download or a same-page anchor never', () => {
   const s = setup({ pinned: false });
   s.fire('click', click(anchor('https://other.example.net/')));
   assert.deepEqual(s.asked, [], 'not pinned: a plain click is the page\'s');
@@ -107,7 +107,7 @@ test('Peek click: Auto-Peek only from a pinned tab or favorite, to another site,
   assert.deepEqual(s.asked, ['auto-peek https://other.example.net/']);
 });
 
-test('Peek click: refused by the app: the link opens as the page would have had it, in the same tab or a new one for target=_blank', async () => {
+test('Preview click: refused by the app: the link opens as the page would have had it, in the same tab or a new one for target=_blank', async () => {
   const s = setup({ answer: async () => false });
   s.fire('click', click(anchor('https://docs.example.org/a'), { shiftKey: true }));
   s.fire('click', click(anchor('https://docs.example.org/b', { target: '_blank' }), { shiftKey: true }));
@@ -117,7 +117,7 @@ test('Peek click: refused by the app: the link opens as the page would have had 
   assert.deepEqual(s.asked[1], 'shift-click https://docs.example.org/b new-tab');
 });
 
-test('Peek click: no answer in time: the link opens anyway, once (a late yes changes nothing); a failed ask too', async () => {
+test('Preview click: no answer in time: the link opens anyway, once (a late yes changes nothing); a failed ask too', async () => {
   let late: (v: unknown) => void = () => {};
   const s = setup({ answer: () => new Promise((r) => { late = r; }), timeoutMs: 30 });
   s.fire('click', click(anchor('https://docs.example.org/a'), { shiftKey: true }));
@@ -133,7 +133,7 @@ test('Peek click: no answer in time: the link opens anyway, once (a late yes cha
   assert.equal(PEEK_ANSWER_MS, 400);
 });
 
-test('Peek click: the copy waits for the app\'s answer until the click\'s time only (then no), a late answer is refused', async () => {
+test('Preview click: the copy waits for the app\'s answer until the click\'s time only (then no), a late answer is refused', async () => {
   let clock = 1000;
   const timers: (() => void)[] = [];
   const answers = createPeekAnswers({ now: () => clock, later: (fn) => { timers.push(fn); return timers.length; }, cancel: () => {} });
@@ -151,7 +151,7 @@ test('Peek click: the copy waits for the app\'s answer until the click\'s time o
   assert.equal(answers.pending(), 0);
 });
 
-test('Peek card keys: only in the card\'s window, only what the page didn\'t handle, never in a field', () => {
+test('Preview card keys: only in the card\'s window, only what the page didn\'t handle, never in a field', () => {
   const s = stand();
   const sent: string[] = [];
   let focused: any = { localName: 'body' };

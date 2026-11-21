@@ -134,12 +134,12 @@ export function menuItems(target: MenuTarget | null | undefined, { state, space,
         let host = '';
         try { host = new URL(url).hostname.toLowerCase(); } catch {}
         if (host && !(state.airTraffic ?? []).some((r) => r.pattern === host && r.spaceId === spaceId && r.enabled !== false)) {
-          item(`Always Open ${host} in This Space`, 'airTraffic.addHost', tabId);
+          item(`Always Open ${host} in This Space`, 'linkRules.addHost', tabId);
         }
         // The rule that routes this address now (the first that matches, as links are routed), to take it away. (Every
         // rule, on or off: Settings › Browsing.)
         const routing = matchAirTrafficRule(url, state.airTraffic ?? [], new Set((state.spaces ?? []).map((sp) => sp.id)));
-        if (routing) item(`Remove Rule for ${routing.pattern}`, 'airTraffic.remove', routing.id);
+        if (routing) item(`Remove Rule for ${routing.pattern}`, 'linkRules.remove', routing.id);
       }
       if (others.length) {
         separator();

@@ -1,6 +1,6 @@
 // Esc in a page Margin.app hosts (content/keep-fullscreen.ts): an Escape the page left alone has its default
 // prevented in a window Margin.app draws, so Safari doesn't take that window out of full screen; the page's own Esc
-// (its handlers, a field's, a dialog's, a popover's, a video's full screen), Peek's card's Esc and every other key work
+// (its handlers, a field's, a dialog's, a popover's, a video's full screen), the preview card's Esc and every other key work
 // as before. The same rules in real engines (the DOM's own dispatch order): tests/theme/keep-fullscreen.test.ts.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -98,7 +98,7 @@ test('keep full screen: an element in full screen (a video), a search field, a m
   assert.equal(s.dispatch(key('Escape')).defaultPrevented, true);
 });
 
-test('keep full screen: Peek\'s card still closes on Esc (its listener first), and an Esc it leaves (in a field) is kept from Safari', () => {
+test('keep full screen: the preview card still closes on Esc (its listener first), and an Esc it leaves (in a field) is kept from Safari', () => {
   const s = stand();
   const sent: string[] = [];
   let focused: any = { localName: 'body' };
@@ -114,10 +114,10 @@ test('keep full screen: Peek\'s card still closes on Esc (its listener first), a
   assert.equal(inField.defaultPrevented, true, 'and not Safari\'s either');
 });
 
-test('keep full screen: the page core starts it in every page, with Peek\'s rule for the windows Margin.app draws', async () => {
+test('keep full screen: the page core starts it in every page, with the preview card\'s rule for the windows Margin.app draws', async () => {
   const { readFile } = await import('node:fs/promises');
   const core = await readFile(new URL('../extension/content/core.ts', import.meta.url), 'utf8');
   assert.match(core, /startKeepFullscreen\(\{ isDrawn: drawnHere \}\)/, 'started by the page core');
-  assert.match(core, /startPeek\(\{\s*isDrawn: drawnHere,/, 'the same windows as Peek\'s clicks (main\'s, a card\'s, a pane\'s)');
+  assert.match(core, /startPeek\(\{\s*isDrawn: drawnHere,/, 'the same windows as the preview card\'s clicks (main\'s, a card\'s, a pane\'s)');
   assert.ok(core.indexOf('startKeepFullscreen({') > core.indexOf('const cardKeys = startCardKeys('), 'after the card\'s keys');
 });

@@ -13,7 +13,7 @@
 //   element in full screen (a video's Esc leaves its full screen: Safari's, as before).
 // - Never where the engine's own Esc does something: a search field (clears it), a modal dialog or an open popover
 //   (closes it): their default is the page's.
-// - Peek's card: its Esc (content/peek.ts startCardKeys, a window listener of the card's pages) runs before this one
+// - The preview card: its Esc (content/peek.ts startCardKeys, a window listener of the card's pages) runs before this one
 //   and prevents the default as it closes the card; an Esc it leaves (in a field) is kept from Safari here.
 // Not covered: a key pressed in a frame (this script runs in the top frame only: all_frames is false).
 

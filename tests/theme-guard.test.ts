@@ -36,8 +36,8 @@ const find = (tree: Walked | null, pred: (n: CleanElement) => boolean) => {
 };
 const reasons = (r: { removed: Removed[] }) => r.removed.map((x) => `${x.kind} ${x.name}: ${x.reason}`);
 
-test('guarded parts: menus, notices, prompts, the space editor, Settings, peek, toast and the page card\'s loader', () => {
-  assert.deepEqual([...GUARDED_PARTS].sort(), ['menu', 'menu-item', 'notice', 'page-loader', 'peek', 'prompt', 'settings', 'space-editor', 'toast']);
+test('guarded parts: menus, notices, prompts, the space editor, Settings, the preview card, toast and the page card\'s loader', () => {
+  assert.deepEqual([...GUARDED_PARTS].sort(), ['menu', 'menu-item', 'notice', 'page-loader', 'preview', 'prompt', 'settings', 'space-editor', 'toast']);
   assert.ok(TEXT_ATTRS.includes('title') && TEXT_ATTRS.includes('aria-label') && TEXT_ATTRS.includes('alt') && TEXT_ATTRS.includes('placeholder'));
 });
 

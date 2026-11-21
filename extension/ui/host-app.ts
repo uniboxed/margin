@@ -170,7 +170,7 @@ export function hitRects(root: Element, slot: { left: number, top: number, right
       if (child.localName === 'template') continue;
       if (child.localName === 'm-page') {
         // (Nothing of the page's place takes the pointer but a split's dividers, Margin's own: docs/PEEK-SPLIT.md §4;
-        // none while Peek's card is up over it, `m-card-clip`: its page is the card's, the dim around it Margin's.)
+        // none while the preview card is up over it, `m-card-clip`: its page is the card's, the dim around it Margin's.)
         if (child.hasAttribute?.('m-card-clip')) continue;
         for (const d of (child.children as any) as Element[]) {
           if (d.localName !== 'm-divider') continue;
@@ -533,9 +533,10 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           if (typeof arg?.url !== 'string' || !arg.url) return false;
           void post('perform', { name, arg: { url: arg.url } }).catch(() => {});
           return true;
-        // Peek's card and Little Arc (ui/behaviors/card.ts; app/platforms/macos/shell/HostedPeek.swift): only Margin's
-        // own window has one. Close, back and forward say nothing more; Expand its space; Little Arc's field its
-        // address or search (`peek.go`), and that it's open (`peek.littleArc`: ⌘W and Esc are the card's then).
+        // The preview card and Quick Tab (ui/behaviors/card.ts; app/platforms/macos/shell/HostedPeek.swift): only
+        // Margin's own window has one. Close, back and forward say nothing more; Expand its space; Quick Tab's field its
+        // address or search (`peek.go`), and that it's open (`peek.littleArc`: ⌘W and Esc are the card's then). These
+        // `peek.*` names are the app's (Margin.app's perform), not the theme's `preview.*` actions: kept.
         case 'peek.close':
         case 'peek.back':
         case 'peek.forward':

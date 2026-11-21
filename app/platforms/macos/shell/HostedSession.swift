@@ -138,7 +138,7 @@ struct HostedLayout: Equatable {
     var mainRect: CGRect?
     var extras: [Extra]
     var focused: String
-    // The split it shows (docs/PEEK-SPLIT.md §4: its panes' rects are its page's `<m-pane>`s), nil: none (Peek's card).
+    // The split it shows (docs/PEEK-SPLIT.md §4: its panes' rects are its page's `<m-pane>`s), nil: none (the preview card).
     var split: String? = nil
     var items: [String] { [main] + extras.map(\.item) }
 }
@@ -238,7 +238,7 @@ protocol HostedWindow: AnyObject {
     func push(_ json: String)
     // Every visible host's window while more than one is (docs/PEEK-SPLIT.md §1: its holes), [] when one is again.
     func setVisibleHosts(_ list: [HostShownWindow])
-    // Where its page draws Peek's card page (the theme's <m-peek-page>, top-left screen points), nil: none drawn.
+    // Where its page draws the preview card page (the theme's <m-preview-page>, top-left screen points), nil: none drawn.
     var cardRect: CGRect? { get }
     // A split shown (docs/PEEK-SPLIT.md §4): the panes its page laid out in `<m-page>`, each by its item with its box on
     // the screen (top left), in the split's order (nil: none); each pane's window's minimum told to it (its item's id).
@@ -361,7 +361,7 @@ final class HostedSession: LibraryDelegate {
     private(set) var open: [String: OpenItem] = [:]
     // (Each profile's hosted windows by role, docs/PEEK-SPLIT.md §1: its main one, its card, a split's panes.)
     private(set) var safariWindows: [SafariKey: Int] = [:]
-    // Each Margin window's layout while more than its item shown is visible (Peek's card, a split's panes): main, the
+    // Each Margin window's layout while more than its item shown is visible (the preview card, a split's panes): main, the
     // others with their roles and rects, the focused one (`shown[w]`). None: one item shown, as before.
     private(set) var layout: [Int: HostedLayout] = [:]
     private(set) var hostingWindow: Int?
@@ -398,8 +398,8 @@ final class HostedSession: LibraryDelegate {
     // What was done, newest last (the tests read it; numbers, item ids and bundle ids only).
     private(set) var done: [String] = []
     private var tail: Task<Void, Never>?
-    // Peek's cards and Little Arc (HostedPeek.swift, docs/PEEK-SPLIT.md §2, §3): each profile's card, when each card
-    // window was last used (closed after `cardIdle` unused), the Margin windows with Little Arc's field up, the card
+    // The preview cards and Quick Tab (HostedPeek.swift, docs/PEEK-SPLIT.md §2, §3): each profile's card, when each card
+    // window was last used (closed after `cardIdle` unused), the Margin windows with Quick Tab's field up, the card
     // whose window's first open is under way (its own loader, never the page card's).
     var cards: [String: PeekCard] = [:]
     var cardUsedAt: [String: Double] = [:]
@@ -577,7 +577,7 @@ final class HostedSession: LibraryDelegate {
     // and for a web item its tab in front there.
     func show(_ item: String, url: String?, target: ItemTarget?, windowId: Int?) async {
         guard let w = window(windowId) else { return note("\(item): no Margin window to show it in") }
-        // (Peek's card there hides with its opener: this show lays the item out alone. HostedPeek.swift.)
+        // (The preview card there hides with its opener: this show lays the item out alone. HostedPeek.swift.)
         cardLeaving(w, for: item)
         // (Shown or not, it's no longer one asked for: a failure draws the item shown before in front again.)
         var drawn = false
@@ -707,8 +707,8 @@ final class HostedSession: LibraryDelegate {
     // ---- several visible items (docs/PEEK-SPLIT.md §1) ----
 
     // A whole layout of a Margin window's page area at once: `main` (at the page area, or `mainRect`: a split's pane),
-    // each of `extras` at its rect in its role (back to front), `focused` with the keys (nil: main). The API Peek, Little
-    // Arc and split view call (§2-§4); not wired to the UI yet. A web item's window is its profile's in its role: the
+    // each of `extras` at its rect in its role (back to front), `focused` with the keys (nil: main). The API the preview card,
+    // Quick Tab and split view call (§2-§4); not wired to the UI yet. A web item's window is its profile's in its role: the
     // layout's first web item of a profile uses its main window, a card its card window, the other panes `#pane1`…`#pane3`
     // (asked of its copy by the engine, `requestSafariWindow(role:)`); its tab shown there by the copy's `hostShow`,
     // which moves it from another of the profile's windows. In the session's queue, after what was asked before it.
@@ -791,7 +791,7 @@ final class HostedSession: LibraryDelegate {
         var mainUsed: Set<String> = [], panes: [String: Int] = [:]
         let asked: [(item: String, role: HostRole, rect: CGRect?)] = [(main, .main, mainRect)] + extras.map { ($0.item, $0.role, $0.rect) }
         for (i, a) in asked.enumerated() {
-            // (Peek's card: its profile's card window at the card's page, HostedPeek.swift.)
+            // (The preview card: its profile's card window at the card's page, HostedPeek.swift.)
             if i > 0, let card = cardPart(a.item, rect: a.rect) { parts.append(card); continue }
             guard let t = library.target(ofItem: a.item) else { note("layout: \(a.item): no target"); if i == 0 { return }; continue }
             let url = (library.items().first { $0.id == a.item }?.value["url"] as? String) ?? ""
@@ -838,7 +838,7 @@ final class HostedSession: LibraryDelegate {
                 settleHosting()
                 return
             }
-            // (Peek's card over the split keeps its own rect, its <m-peek-page>'s: it's no pane. HostedPeek.swift.)
+            // (The preview card over the split keeps its own rect, its <m-preview-page>'s: it's no pane. HostedPeek.swift.)
             for i in parts.indices where parts[i].role != .card { parts[i].rect = rects[parts[i].item] }
             guard parts.allSatisfy({ $0.rect != nil }) else { note("layout: split \(split.id): a pane with no rect from the page: not shown"); settleHosting(); return }
         }
@@ -1165,7 +1165,7 @@ final class HostedSession: LibraryDelegate {
         Task { await self.engine.activateShown(at: point) }
     }
 
-    // A card open in Margin's window `w`: a press on the page area around its content (Margin's window caught it). Peek
+    // A card open in Margin's window `w`: a press on the page area around its content (Margin's window caught it). Preview
     // closes the card then (docs/PEEK-SPLIT.md §2: `onCardDismiss`); nothing else is done here.
     var onCardDismiss: ((Int) -> Void)?
     func caughtPress(_ w: HostedWindow, at point: CGPoint) {
@@ -1904,7 +1904,7 @@ final class HostedSession: LibraryDelegate {
         // keeps Margin's Space current while it's made; Margin is activated again after.)
         if wokenByMenu[p] != nil { engine.stopHidingWoken(bundleId: safariIdentifier) } // (the window asked for now is Margin's own: never parked so)
         var payload: JSONObject = preparingProfile == p ? ["fullscreen": false, "url": "about:blank"] : ["fullscreen": false]
-        // (Peek's card window: opened at the card's page, never Safari's empty new-tab page, whose address field keeps
+        // (The preview card window: opened at the card's page, never Safari's empty new-tab page, whose address field keeps
         // Safari's toolbar down over the page: background/hosted.ts.)
         if role == .card, let c = cards[p], Self.webAddress(c.url) { payload["url"] = c.url }
         // (A split's pane window: opened at its pane's page, docs/PEEK-SPLIT.md §4; never the new-tab page.)
@@ -2036,7 +2036,7 @@ final class HostedSession: LibraryDelegate {
         // (A drag the one shown follows live: each page area of it to the engine at once; Margin's own once it's over.)
         if following, resizing == window.id, window.id == hostingWindow, let p = window.hostedPlacement {
             // (A split's panes too, each at its `<m-pane>` in this frame: docs/PEEK-SPLIT.md §4.)
-            // (Peek's card too, at its <m-peek-page> in this frame: HostedPeek.swift.)
+            // (The preview card too, at its <m-preview-page> in this frame: HostedPeek.swift.)
             let rects = paneHostRects(window).merging(cardHostRects(window)) { a, _ in a }
             return rects.isEmpty ? engine.follow(p) : engine.follow(p, rects: rects) // (a window-mode window's hole read again as it moves: the engine says so)
         }
@@ -2059,7 +2059,7 @@ final class HostedSession: LibraryDelegate {
     private func placeAgain(_ window: HostedWindow) async {
         guard window.id == hostingWindow, let id = engine.shown, let placement = window.hostedPlacement else { return }
         // (A split shown: each pane's window at its `<m-pane>` as laid out now, its rects kept with the layout.)
-        // (Peek's card over it too, at its <m-peek-page> as laid out now: kept in the layout with the panes.)
+        // (The preview card over it too, at its <m-preview-page> as laid out now: kept in the layout with the panes.)
         let rects = paneHostRects(window).merging(cardHostRects(window)) { a, _ in a }
         cardPlaced(window, rects: rects)
         if !rects.isEmpty, var l = layout[window.id] {
@@ -2358,7 +2358,7 @@ final class LibraryWindowSource: MarginWindowSource {
             let settings = profileSource.snapshot()["settings"] as? JSONObject
             payload["favoritesScope"] = settings?["favoritesScope"] as? String == "profile" ? "profile" : "global"
             payload["scope"] = nil
-        // Peek's card and Little Arc (ui/behaviors/card.ts → HostedPeek.swift).
+        // The preview card and Quick Tab (ui/behaviors/card.ts → HostedPeek.swift).
         case "peek.close":
             session.closeCard(windowId: windowId, why: "its close", tellPage: false)
             return ["ok": true, "result": true]
@@ -2380,7 +2380,7 @@ final class LibraryWindowSource: MarginWindowSource {
             session.littleArcGo(windowId: windowId, url: url, spaceId: payload["spaceId"] as? String)
             return ["ok": true, "result": true]
         case "closeTab" where payload["tabId"] == nil:
-            // ⌘W: the card in that window (or Little Arc's field), never the item under it; else the item shown there.
+            // ⌘W: the card in that window (or Quick Tab's field), never the item under it; else the item shown there.
             if session.closeCardForKey(windowId: windowId) { return ["ok": true, "result": true] }
             guard let w = windowId, let item = session.shown[w] else { return nil }
             payload["tabId"] = item

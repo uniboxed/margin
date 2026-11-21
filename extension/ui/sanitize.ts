@@ -57,7 +57,7 @@ type Ctx = {
   files: string[], assetUrl: (path: string) => string, removed: Removed[], errors: string[], stats: { pages: number, nodes: number },
   parts: Set<string>, slots: Set<string>, ns: string, forDepth: number, inTemplate: boolean, inIf: boolean, guard: string | null, part?: string,
   inLoader?: boolean, // inside the `page-loader` part or the <m-page-loader> slot
-  peekPages?: { n: number }, // the <m-peek-page>s of the `peek` part so far (one: where the card's window goes)
+  previewPages?: { n: number }, // the <m-preview-page>s of the `preview` part so far (one: where the card's window goes)
 };
 // The files a style sheet may point to, and how their addresses are written.
 type CssOptions = { files?: string[], assetUrl?: (path: string) => string };
@@ -317,7 +317,7 @@ const HTML_ELEMENTS = new Set([
 // Margin's own elements: control flow and slots.
 const MARGIN_ELEMENTS = new Set([
   'm-for', 'm-if', 'm-else', 'm-page', 'm-window-controls', 'm-drag-region', 'm-palette', 'm-notice', 'm-menu', 'm-editor',
-  'm-launcher', 'm-prompt', 'm-settings', 'm-page-loader', 'm-toast', 'm-peek', 'm-peek-page',
+  'm-launcher', 'm-prompt', 'm-settings', 'm-page-loader', 'm-toast', 'm-preview', 'm-preview-page',
 ]);
 // Dropped with everything inside them. (Raw-text elements never get this far.)
 const DROP = new Set([
@@ -386,7 +386,7 @@ const BEHAVIORS: Record<string, string[]> = {
   'm-rename': ['space', 'folder', 'tab', 'pin', 'favorite'],
   'm-scroll': ['tabs', 'palette', 'archive'],
   'm-swipe': ['spaces'],
-  'm-input': ['palette', 'space-name', 'space-emoji', 'launcher', 'peek', ...['number', 'toggle', 'choice', 'list', 'shortcut', 'color'].map((k) => `setting-${k}`)],
+  'm-input': ['palette', 'space-name', 'space-emoji', 'launcher', 'preview', ...['number', 'toggle', 'choice', 'list', 'shortcut', 'color'].map((k) => `setting-${k}`)],
 };
 // Which element each of Margin's inputs is: a Settings list is a <textarea>,
 // a choice a <select> (Margin draws its options), the rest <input>s (Margin
@@ -397,7 +397,7 @@ const INPUT_ELEMENT = (value: string) => (value === 'setting-list' ? 'textarea' 
 // in <m-palette>, `notice` in <m-notice>, `launcher` in <m-launcher>,
 // `prompt` in <m-prompt>, `settings` in <m-settings>, `page-loader` in
 // <m-page-loader> (the page card while an item opens: Margin.app's window).
-const PARTS = new Set(['palette-row', 'notice', 'menu-item', 'window-controls', 'menu', 'space-editor', 'palette', 'launcher', 'prompt', 'settings', 'page-loader', 'toast', 'peek']);
+const PARTS = new Set(['palette-row', 'notice', 'menu-item', 'window-controls', 'menu', 'space-editor', 'palette', 'launcher', 'prompt', 'settings', 'page-loader', 'toast', 'preview']);
 
 // Margin's own words (PLAN.md §4: "a theme can still draw misleading text"):
 // the parts that show Margin's menus, notices, prompts and confirmations
@@ -407,10 +407,10 @@ const PARTS = new Set(['palette-row', 'notice', 'menu-item', 'window-controls', 
 // the theme wrote there is removed and reported, and so is a static value of
 // an attribute that shows or speaks text. Icons (svg shapes), images and
 // decoration stay. ui/render.ts applies the same rule again as it compiles.
-export const GUARDED_PARTS = Object.freeze(['menu', 'menu-item', 'notice', 'space-editor', 'prompt', 'settings', 'page-loader', 'toast', 'peek']);
+export const GUARDED_PARTS = Object.freeze(['menu', 'menu-item', 'notice', 'space-editor', 'prompt', 'settings', 'page-loader', 'toast', 'preview']);
 // The elements a part is put in.
-const SLOT_ELEMENTS = new Set(['m-palette', 'm-notice', 'm-menu', 'm-editor', 'm-launcher', 'm-prompt', 'm-settings', 'm-page-loader', 'm-toast', 'm-peek']);
-export const GUARDED_SLOTS = Object.freeze(['m-menu', 'm-notice', 'm-editor', 'm-prompt', 'm-settings', 'm-page-loader', 'm-toast', 'm-peek']);
+const SLOT_ELEMENTS = new Set(['m-palette', 'm-notice', 'm-menu', 'm-editor', 'm-launcher', 'm-prompt', 'm-settings', 'm-page-loader', 'm-toast', 'm-preview']);
+export const GUARDED_SLOTS = Object.freeze(['m-menu', 'm-notice', 'm-editor', 'm-prompt', 'm-settings', 'm-page-loader', 'm-toast', 'm-preview']);
 // Attributes whose value is shown (a tooltip, a placeholder, an image's
 // stand-in) or spoken (a screen reader's label).
 export const TEXT_ATTRS = Object.freeze(['title', 'alt', 'placeholder', 'aria-label', 'aria-description', 'aria-roledescription',
@@ -542,7 +542,7 @@ function cleanNode(node: ParsedNode, ctx: Ctx): CleanNode | CleanNode[] | null {
       if (ctx.parts.has(part)) { report(ctx.removed, 'element', `template m-part="${part}"`, 'a second template for this part (the first is the one used)', at); return null; }
       ctx.parts.add(part);
       sub.part = part;
-      if (part === 'peek') sub.peekPages = { n: 0 };
+      if (part === 'preview') sub.previewPages = { n: 0 };
     }
     if (GUARDED_PART_SET.has(part)) sub.guard = `"${part}" part`;
   }
@@ -555,13 +555,13 @@ function cleanNode(node: ParsedNode, ctx: Ctx): CleanNode | CleanNode[] | null {
   }
   if (lname === 'm-else' && !ctx.inIf) { report(ctx.removed, 'element', 'm-else', 'outside <m-if>', at); return null; }
   sub.inIf = lname === 'm-if';
-  // Where Peek's card window goes (docs/PEEK-SPLIT.md §2): the `peek` part's own element, one, outside any list, with
+  // Where the preview card's window goes (docs/PEEK-SPLIT.md §2): the `preview` part's own element, one, outside any list, with
   // nothing in it (the card's page shows through it). Anywhere else it means nothing: removed.
-  if (lname === 'm-peek-page') {
-    if (ctx.part !== 'peek' || !sub.peekPages) { report(ctx.removed, 'element', 'm-peek-page', 'only in the "peek" part (where the card\'s page goes)', at); return null; }
-    if (ctx.forDepth > 0) { report(ctx.removed, 'element', 'm-peek-page', 'inside <m-for> (there\'s one card page)', at); return null; }
-    if (sub.peekPages.n++ > 0) { report(ctx.removed, 'element', 'm-peek-page', 'a second one in the "peek" part (the first is where the card\'s page goes)', at); return null; }
-    if (node.children.some((c) => c.type === 'el' || (c.type === 'text' && c.value.trim()))) report(ctx.removed, 'element', 'm-peek-page', 'its content (the card\'s page goes there)', at);
+  if (lname === 'm-preview-page') {
+    if (ctx.part !== 'preview' || !sub.previewPages) { report(ctx.removed, 'element', 'm-preview-page', 'only in the "preview" part (where the card\'s page goes)', at); return null; }
+    if (ctx.forDepth > 0) { report(ctx.removed, 'element', 'm-preview-page', 'inside <m-for> (there\'s one card page)', at); return null; }
+    if (sub.previewPages.n++ > 0) { report(ctx.removed, 'element', 'm-preview-page', 'a second one in the "preview" part (the first is where the card\'s page goes)', at); return null; }
+    if (node.children.some((c) => c.type === 'el' || (c.type === 'text' && c.value.trim()))) report(ctx.removed, 'element', 'm-preview-page', 'its content (the card\'s page goes there)', at);
   }
   if (lname === 'm-page') {
     if (ctx.forDepth > 0 || ctx.inTemplate) { ctx.errors.push('template: <m-page> inside <m-for> or <template>'); return null; }
@@ -578,7 +578,7 @@ function cleanNode(node: ParsedNode, ctx: Ctx): CleanNode | CleanNode[] | null {
   if (lname === 'button' && !attrs.some(([n]) => n === 'type')) attrs.push(['type', 'button']);
   ctx.stats.nodes++;
   // (A <select>'s options and a <textarea>'s text are Margin's.)
-  const children = lname === 'm-page' || lname === 'm-peek-page' || lname === 'select' || lname === 'textarea' ? [] : cleanChildren(node.children, sub);
+  const children = lname === 'm-page' || lname === 'm-preview-page' || lname === 'select' || lname === 'textarea' ? [] : cleanChildren(node.children, sub);
   return { type: 'el', ns: HTML, name: lname, attrs, children };
 }
 
