@@ -1,8 +1,9 @@
 // Pure view derivation shared by the content script and the new-tab page.
 // No browser APIs: also importable from node for tests.
-import type { Pin, State } from '../../types/margin';
+import type { Favorite, Pin, State } from '../../types/margin';
 import { appIcon, appOfItem } from './apps.ts';
 import type { InstalledApp } from './apps.ts';
+import { favoriteScopeOf } from '../state/model.ts';
 
 // A pin's or folder's order (state/model.ts): saved, or its place in the list.
 const posOf = (item: { pos?: number } | null | undefined, i: number): number => (Number.isFinite(item?.pos) ? item!.pos! : i);
@@ -105,6 +106,46 @@ function sidebar(state: State, windowId: number | null, currentTabId: number | n
     }
     return f.parentId;
   };
+  // Favorites in the active scope (global across Spaces by default, or scoped per profile):
+  // bound to live tabs via `favoriteId` first (surviving sub-navigation), else URL match.
+  const favScope = favoriteScopeOf(state, spaceId);
+  const allOpenTabs = shown;
+  const allKeptTabs = Object.values(state.keptTabs ?? {});
+  type ShownFavorite = Favorite & {
+    pos: number, tabId: number | null, active: boolean, behind: boolean, away: boolean,
+    drifted: boolean, rootUrl: string, favIconUrl: string,
+  };
+  const boundFavTabIds = new Set<number>();
+  const boundFavKeptIds = new Set<string>();
+  const favorites: ShownFavorite[] = (state.favorites ?? [])
+    .filter((f) => (f.scope || 'global') === favScope)
+    .map((f, i) => ({ f, i }))
+    .sort((a, b) => posOf(a.f, a.i) - posOf(b.f, b.i))
+    .map(({ f, i }) => {
+      const key = normalizeUrl(f.url);
+      const sticky = allOpenTabs.filter((t) => t.favoriteId === f.id);
+      const matches = sticky.length
+        ? sticky
+        : allOpenTabs.filter((t) => !t.favoriteId && !t.pinnedBy && normalizeUrl(t.url) === key);
+      const tab = matches.find((t) => t.active) ?? matches.find((t) => t.behind) ?? matches.find((t) => t.windowId === windowId) ?? matches[0];
+      if (tab?.id != null) boundFavTabIds.add(tab.id);
+      for (const k of allKeptTabs) if (k.favoriteId === f.id) boundFavKeptIds.add(k.id);
+      const drifted = Boolean(tab && normalizeUrl(tab.url) !== key);
+      return {
+        ...f,
+        url: tab?.url || f.url,
+        pos: posOf(f, i),
+        tabId: tab?.id ?? null,
+        active: !!tab?.active || !!(goingKept && (goingKept.favoriteId === f.id || normalizeUrl(goingKept.url) === key)),
+        behind: !!tab?.behind,
+        away: !!tab?.away,
+        drifted,
+        rootUrl: f.url,
+        favIconUrl: tab?.favIconUrl ?? '',
+      };
+    });
+  const favUrls = new Set(favorites.map((f) => normalizeUrl(f.rootUrl)));
+
   // A pin as shown: in its folder (if that's still there), bound to the tab it's open in, if any.
   // Sticky pin binding: match tabs with `pinnedBy === p.id` first (even if navigated away from root URL),
   // falling back to URL match for tabs not bound to another pin.
@@ -113,15 +154,15 @@ function sidebar(state: State, windowId: number | null, currentTabId: number | n
     drifted: boolean, rootUrl: string, favIconUrl: string,
   };
   const bound = new Map<string, ShownPin>(); // pin id → the pin as shown
-  const boundTabIds = new Set<number>();
-  const boundKeptIds = new Set<string>();
+  const boundTabIds = new Set<number>(boundFavTabIds);
+  const boundKeptIds = new Set<string>(boundFavKeptIds);
   state.pins.forEach((p, i) => {
     if (p.spaceId !== spaceId) return;
     const key = normalizeUrl(p.url);
     const sticky = spaceTabs.filter((t) => t.pinnedBy === p.id);
     const matches = sticky.length
       ? sticky
-      : spaceTabs.filter((t) => !t.pinnedBy && normalizeUrl(t.url) === key);
+      : spaceTabs.filter((t) => !t.pinnedBy && !t.favoriteId && normalizeUrl(t.url) === key);
     const tab = matches.find((t) => t.active) ?? matches.find((t) => t.behind) ?? matches.find((t) => t.windowId === windowId) ?? matches[0];
     if (tab?.id != null) boundTabIds.add(tab.id);
     for (const k of kept) if (k.pinnedBy === p.id) boundKeptIds.add(k.id);
@@ -204,6 +245,7 @@ function sidebar(state: State, windowId: number | null, currentTabId: number | n
   return {
     spaceId,
     spaces: state.spaces,
+    favorites,
     pins,
     pinned,
     pinnedFlat,
@@ -211,15 +253,26 @@ function sidebar(state: State, windowId: number | null, currentTabId: number | n
     newTab: { active: targetIsNewTab || (target == null && pinFirst == null && !openingRow && (newTabPending || !!shownNewTab)), behind: false }, // behind: never now (kept for the row's class)
     // Reversed here, not sorted that way above: a pin binds to the oldest tab
     // with its URL (unless another is shown or being switched to). Open and
-    // not open, in their places (sticky-bound tabs stay attached to their pin even after navigating away).
+    // not open, in their places (sticky-bound tabs stay attached to their pin/favorite even after navigating away).
     tabs: [...spaceTabs, ...kept].sort(byPlace).filter((t: any) => {
       if (isPlaceholderPage(t.url)) return false;
       if (!t.kept && boundTabIds.has(t.id)) return false;
       if (t.kept && boundKeptIds.has(t.id)) return false;
-      if (!t.pinnedBy && pinnedUrls.has(normalizeUrl(t.url))) return false;
+      if (!t.pinnedBy && !t.favoriteId && (pinnedUrls.has(normalizeUrl(t.url)) || favUrls.has(normalizeUrl(t.url)))) return false;
       return true;
     }).reverse(),
   };
+}
+
+// The tab a favorite opens: one bound via `favoriteId` first, else URL match, in this window first.
+function favoriteTabId(state: State, favoriteId: string, windowId: number) {
+  const fav = (state.favorites ?? []).find((f) => f.id === favoriteId);
+  if (!fav) return null;
+  const sticky = Object.values(state.tabs ?? {}).filter((t) => t.favoriteId === favoriteId);
+  if (sticky.length) return (sticky.find((t) => t.windowId === windowId) ?? sticky[0])?.id ?? null;
+  const key = normalizeUrl(fav.url);
+  const matches = Object.values(state.tabs ?? {}).filter((t) => !t.favoriteId && !t.pinnedBy && normalizeUrl(t.url) === key);
+  return (matches.find((t) => t.windowId === windowId) ?? matches[0])?.id ?? null;
 }
 
 // A tab's place in the list (state/model.ts "places in the list"): its Margin
@@ -388,4 +441,4 @@ function letterAvatar(label: string): { letter: string, color: string } {
 }
 
 
-export { normalizeUrl, activeSpaceId, sidebar, pinTabId, isNewTabPage, isLauncherPage, isPlaceholderPage, liveTabId, guessWindow, revealZone, cycleTab, cycleSpace, originOf, pickIconHref, iconFor, hue, letterAvatar };
+export { normalizeUrl, activeSpaceId, sidebar, pinTabId, favoriteTabId, isNewTabPage, isLauncherPage, isPlaceholderPage, liveTabId, guessWindow, revealZone, cycleTab, cycleSpace, originOf, pickIconHref, iconFor, hue, letterAvatar };

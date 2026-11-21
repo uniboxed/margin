@@ -152,10 +152,19 @@ final class DataSetWindowSource: MarginWindowSource {
         let pins: [JSONObject] = objects("pins").map { id, p in
             var pin: JSONObject = ["id": id, "spaceId": p["spaceId"] as? String ?? "", "url": p["url"] as? String ?? "", "title": p["title"] as? String ?? "", "pos": number(p["pos"])]
             if let folder = p["folderId"] as? String { pin["folderId"] = folder }
+            if let custom = p["customTitle"] as? String, !custom.isEmpty { pin["customTitle"] = custom }
             return pin
         }
+        let favorites: [JSONObject] = objects("favorites").map { id, f in
+            var fav: JSONObject = ["id": id, "scope": f["scope"] as? String ?? "global", "url": f["url"] as? String ?? "", "title": f["title"] as? String ?? "", "pos": number(f["pos"])]
+            if let custom = f["customTitle"] as? String, !custom.isEmpty { fav["customTitle"] = custom }
+            if let target = f["target"] { fav["target"] = target }
+            return fav
+        }
         let folders: [JSONObject] = objects("folders").map { id, f in
-            ["id": id, "spaceId": f["spaceId"] as? String ?? "", "name": f["name"] as? String ?? "", "open": f["open"] as? Bool ?? true, "pos": number(f["pos"])]
+            var folder: JSONObject = ["id": id, "spaceId": f["spaceId"] as? String ?? "", "name": f["name"] as? String ?? "", "open": f["open"] as? Bool ?? true, "pos": number(f["pos"])]
+            if let parent = f["parentId"] as? String, !parent.isEmpty { folder["parentId"] = parent }
+            return folder
         }
         let archive: [JSONObject] = objects("archive").sorted { number($0.value["closedAt"]) > number($1.value["closedAt"]) }.map { id, a in
             ["id": id, "url": a["url"] as? String ?? "", "title": a["title"] as? String ?? "", "spaceId": a["spaceId"] as? String ?? "", "favIconUrl": a["icon"] as? String ?? "", "closedAt": number(a["closedAt"])]
@@ -171,7 +180,7 @@ final class DataSetWindowSource: MarginWindowSource {
         var shown: JSONObject = [:]
         for (window, space) in active where known.contains(space) { shown[String(window)] = space }
         return [
-            "spaces": spaces, "pins": pins, "folders": folders, "archive": archive, "settings": settings,
+            "spaces": spaces, "pins": pins, "favorites": favorites, "folders": folders, "archive": archive, "settings": settings,
             "favicons": values("siteIcons"), "keptTabs": kept, "tabs": JSONObject(), "tabSpace": JSONObject(),
             "activeSpaceByWindow": shown, "awayByWindow": JSONObject(), "lostTabs": NSNull(),
         ]

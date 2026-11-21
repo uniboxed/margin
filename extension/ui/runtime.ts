@@ -54,9 +54,9 @@ const JUST_SHOWN_MS = 2000;
 // (content/palette.js newTabCloser).
 const NEW_TAB_HOLD_MS = 1500;
 const SHOWS_ANOTHER_TAB = new Set(['activateTab', 'newTab', 'openPin', 'restoreArchive', 'search', 'openLauncher']);
-const SWITCH_REQUESTS = new Set(['activateTab', 'openPin', 'setSpace']);
+const SWITCH_REQUESTS = new Set(['activateTab', 'openPin', 'openFavorite', 'setSpace']);
 // Rows a ⌃-click opens the menu on rather than runs (the Mac's right-click).
-const ROW_ACTIONS = new Set(['tab.activate', 'pin.open', 'folder.toggle']);
+const ROW_ACTIONS = new Set(['tab.activate', 'pin.open', 'favorite.open', 'folder.toggle']);
 
 // The UI's own state (always with a palette: closed, or as it's open).
 type Ui = UiState & { palette: NonNullable<UiState['palette']> } & Record<string, any>;
@@ -548,6 +548,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     const state = (host.getState() as any);
     const target = type === 'activateTab' ? payload.tabId
       : type === 'openPin' && state ? V.pinTabId(state, payload.pinId, payload.windowId ?? windowId())
+      : type === 'openFavorite' && state ? V.favoriteTabId(state, payload.favoriteId, payload.windowId ?? windowId())
       : opensNewTab(type, payload) ? NEW_TAB : null;
     if (Number.isInteger(target) || typeof target === 'string') {
       // Back to the tab in front: a switch away still under way ends, or, in
@@ -627,7 +628,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     const now = fullUi();
     // (The palette's rows as drawn: from the state as the UI shows it, a row closed a moment ago not among them.)
     const items = ui.palette.open ? paletteItems(viewState(state), now, host.platform) : [];
-    const menu = ui.menu && vm ? menuItems((ui.menu as any), { state: viewState(state), space: vm.space, features: (host.platform as any)?.features ?? null }) : [];
+    const menu = ui.menu && vm ? menuItems((ui.menu as any), { state: viewState(state), space: vm.space, favorites: vm.favorites, features: (host.platform as any)?.features ?? null }) : [];
     const colors = vm?.editor ? vm.editor.colors.map((c) => c.id) : [];
     const noticeIds = vm?.notice?.actions.map((a) => a.id) ?? [];
     const promptIds = vm?.prompt?.actions.map((a) => a.id) ?? [];
@@ -758,6 +759,12 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
         if (!/^https?:\/\//i.test(url)) return false;
         return copyText(url, 'Copied URL');
       }
+      case 'favorite.copyUrl': {
+        const fav = host.getState()?.favorites?.find((f: { id: string }) => f.id === arg);
+        const url = fav?.url ?? '';
+        if (!/^https?:\/\//i.test(url)) return false;
+        return copyText(url, 'Copied URL');
+      }
       case 'toast.close':
         clearTimeout(toastTimer);
         toastTimer = null;
@@ -768,6 +775,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       case 'folder.rename': return behaviors.rename.start('folder', arg);
       case 'tab.rename': return behaviors.rename.start('tab', arg);
       case 'pin.rename': return behaviors.rename.start('pin', arg);
+      case 'favorite.rename': return behaviors.rename.start('favorite', arg);
       case 'menu.open': {
         const box = info?.element?.getBoundingClientRect?.();
         return behaviors.menus.open({ kind: arg, id: null }, box ? { x: box.left, y: box.top } : { x: 0, y: 0 }, { above: true });

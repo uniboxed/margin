@@ -28,6 +28,16 @@ export interface Pin {
   /** order within its level (folder, or the space's top level); missing: its place in the list */
   pos?: number;
 }
+export interface Favorite {
+  id: string;
+  /** 'global' (default across Spaces) or a browser profile id when favoritesScope === 'profile' */
+  scope: string;
+  url: string;
+  title: string;
+  customTitle?: string;
+  pos?: number;
+  target?: { kind: 'web', browser: string, profile: string | null } | { kind: 'app', bundleId: string, name: string } | { kind: 'margin', page: string };
+}
 export interface Folder {
   id: string; spaceId: string; name: string; open: boolean; pos?: number;
   /** parent folder in the same space (nested folders, max depth 4); absent: top level */
@@ -69,6 +79,8 @@ export interface TabRecord {
   going?: { url: string; title: string; from: string; at: number };
   /** sticky pin binding: pin id this live tab belongs to (survives sub-navigation) */
   pinnedBy?: string;
+  /** sticky favorite binding: favorite id this live tab belongs to (survives sub-navigation) */
+  favoriteId?: string;
   /** user-given custom title (inline rename) */
   customTitle?: string;
 }
@@ -90,6 +102,8 @@ export interface KeptTab {
   scroll?: { y: number; url: string };
   /** sticky pin binding: pin id this item belongs to */
   pinnedBy?: string;
+  /** sticky favorite binding: favorite id this item belongs to */
+  favoriteId?: string;
   /** user-given custom title (inline rename) */
   customTitle?: string;
   /** view.sidebar only: not open */
@@ -118,6 +132,8 @@ export interface Settings {
   fullscreenOnly: boolean;
   shortcuts: Shortcuts;
   shortcutDefaults: string;
+  /** Favorites bar scope: 'global' across all Spaces (default) or 'profile' scoped per browser profile */
+  favoritesScope?: 'global' | 'profile';
   theme: string; // extension/themes/index.ts
   themes: Record<string, Record<string, unknown>>; // each theme's own settings
 }
@@ -128,6 +144,7 @@ export interface State {
   awayByWindow?: Record<number, number>;
   tabSpace: Record<number, string>;
   pins: Pin[];
+  favorites?: Favorite[];
   folders: Folder[];
   archive: ArchiveEntry[];
   settings: Settings;

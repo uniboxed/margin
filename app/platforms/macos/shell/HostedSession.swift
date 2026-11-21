@@ -309,7 +309,7 @@ final class HostedSession: LibraryDelegate {
     private(set) var loadingSaid: [Int: [Int]] = [:]
     // Each Margin window's item asked to be shown and not shown yet (the newest): drawn in front at once.
     private(set) var requested: [Int: String] = [:]
-    static let showRequests: Set<String> = ["activateTab", "newTab", "restoreArchive", "setSpace", "openPin"]
+    static let showRequests: Set<String> = ["activateTab", "newTab", "restoreArchive", "setSpace", "openPin", "openFavorite"]
     // The first run's space (the library was empty), for the UI's editor once a window's page is drawn.
     var firstSpace: String?
     // The UI's numbers for open items (it takes only numbers for open tabs), this session's.
@@ -404,6 +404,36 @@ final class HostedSession: LibraryDelegate {
                 if let w = r.windowId { payload["windowId"] = w }
                 if let target = r.target { payload["target"] = target.json }
                 if let pin = r.body["pin"] as? String { payload["pinnedBy"] = pin }
+                let out = library.perform("addItem", payload)
+                guard out.ok, let item = (out.result as? JSONObject)?["tabId"] as? String else { return }
+                await show(item, url: url, target: r.target, windowId: r.windowId)
+            }
+        case "openFavorite":
+            if let item = r.item {
+                if overtaken(item, windowId: r.windowId) { return }
+                return await show(item, url: r.url, target: r.target, windowId: r.windowId)
+            }
+            var payload: JSONObject = ["url": r.url ?? "", "front": true]
+            if let space = r.spaceId { payload["spaceId"] = space }
+            if let w = r.windowId { payload["windowId"] = w }
+            if let target = r.target { payload["target"] = target.json }
+            if let fav = r.body["favorite"] as? String { payload["favoriteId"] = fav }
+            let out = library.perform("addItem", payload)
+            guard out.ok, let item = (out.result as? JSONObject)?["tabId"] as? String else { return note("openFavorite: no item made (\(out.error ?? "?"))") }
+            await show(item, url: r.url, target: r.target, windowId: r.windowId)
+        case "resetFavorite":
+            guard let url = r.url else { return }
+            if let item = r.item {
+                if let entry = open[item], let profile = entry.profile {
+                    _ = await links.request(profile: profile, "hostNavigate", ["itemId": item, "url": url])
+                }
+                await show(item, url: url, target: r.target, windowId: r.windowId)
+            } else {
+                var payload: JSONObject = ["url": url, "front": true]
+                if let space = r.spaceId { payload["spaceId"] = space }
+                if let w = r.windowId { payload["windowId"] = w }
+                if let target = r.target { payload["target"] = target.json }
+                if let fav = r.body["favorite"] as? String { payload["favoriteId"] = fav }
                 let out = library.perform("addItem", payload)
                 guard out.ok, let item = (out.result as? JSONObject)?["tabId"] as? String else { return }
                 await show(item, url: url, target: r.target, windowId: r.windowId)

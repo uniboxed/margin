@@ -49,6 +49,15 @@ export const ACTIONS = Object.freeze({
   'pin.setTitle': Object.freeze({ pin: 'pin', name: 'name' }),
   'pin.copyUrl': 'pin',
   'pin.move': Object.freeze({ pin: 'pin', folder: 'folder?', before: 'pin-or-folder?' }),
+  'favorite.open': 'favorite',
+  'favorite.add': 'tab',
+  'favorite.addPin': 'pin',
+  'favorite.remove': 'favorite',
+  'favorite.reset': 'favorite',
+  'favorite.rename': 'favorite',
+  'favorite.setTitle': Object.freeze({ favorite: 'favorite', name: 'name' }),
+  'favorite.move': Object.freeze({ favorite: 'favorite', before: 'favorite?' }),
+  'favorite.copyUrl': 'favorite',
   'folder.toggle': 'folder',
   'folder.new': 'none',
   'folder.newIn': 'folder',
@@ -136,7 +145,7 @@ const isId = (value: unknown) => (typeof value === 'number' && Number.isSafeInte
  */
 export type ActionContext = {
   hasTab(id: any): boolean, hasSpace(id: any): boolean, hasFolder(id: any): boolean,
-  hasPin(id: any): boolean, hasArchived(id: any): boolean, hasPaletteRow(id: any): boolean,
+  hasPin(id: any): boolean, hasFavorite?(id: any): boolean, hasArchived(id: any): boolean, hasPaletteRow(id: any): boolean,
   hasMenuItem?(id: any): boolean, hasColor?(id: any): boolean,
   hasNoticeItem?(id: any): boolean, hasPromptItem?(id: any): boolean,
   hasSettingItem?(id: any): boolean,
@@ -161,6 +170,7 @@ function valueOk(kind: string | readonly unknown[], v: any, ctx: ActionContext) 
     case 'space': return isId(v) && ctx.hasSpace(v);
     case 'folder': return isId(v) && ctx.hasFolder(v);
     case 'pin': return isId(v) && ctx.hasPin(v);
+    case 'favorite': return isId(v) && !!ctx.hasFavorite?.(v);
     case 'pin-or-folder': return isId(v) && (ctx.hasPin(v) || ctx.hasFolder(v));
     case 'name': return plainText(v, NAME_MAX);
     case 'emoji': return plainText(v, EMOJI_MAX);
@@ -185,7 +195,7 @@ export function checkAction(name: string, arg: any, ctx: ActionContext): { ok: t
     return { ok: true };
   }
   const has: Record<string, (id: any) => boolean> = {
-    tab: ctx.hasTab, space: ctx.hasSpace, folder: ctx.hasFolder, pin: ctx.hasPin, archive: ctx.hasArchived, row: ctx.hasPaletteRow,
+    tab: ctx.hasTab, space: ctx.hasSpace, folder: ctx.hasFolder, pin: ctx.hasPin, favorite: ctx.hasFavorite ?? (() => false), archive: ctx.hasArchived, row: ctx.hasPaletteRow,
     item: ctx.hasMenuItem ?? (() => false), color: ctx.hasColor ?? (() => false),
     'notice-item': ctx.hasNoticeItem ?? (() => false), 'prompt-item': ctx.hasPromptItem ?? (() => false),
     'setting-item': ctx.hasSettingItem ?? (() => false), theme: ctx.hasTheme ?? (() => false),
@@ -239,6 +249,7 @@ export function contextFromState(state: any, paletteIds: Iterable<string> = [], 
   const spaces = ids(state?.spaces);
   const folders = ids(state?.folders);
   const pins = ids(state?.pins);
+  const favorites = ids(state?.favorites);
   const archived = ids(state?.archive);
   const rows = new Set(paletteIds);
   const items = new Set(menuIds);
@@ -255,6 +266,7 @@ export function contextFromState(state: any, paletteIds: Iterable<string> = [], 
     hasSpace: (id) => spaces.has(id),
     hasFolder: (id) => folders.has(id),
     hasPin: (id) => pins.has(id),
+    hasFavorite: (id) => favorites.has(id),
     hasArchived: (id) => archived.has(id),
     hasPaletteRow: (id) => rows.has(id),
     hasMenuItem: (id) => items.has(id),
@@ -361,6 +373,15 @@ export const ACTION_MAP = Object.freeze({
   'pin.setTitle': 'renamePin',
   'pin.copyUrl': 'local',
   'pin.move': 'movePin',
+  'favorite.open': 'openFavorite',
+  'favorite.add': 'addFavorite',
+  'favorite.addPin': 'addFavorite',
+  'favorite.remove': 'removeFavorite',
+  'favorite.reset': 'resetFavorite',
+  'favorite.rename': 'local',
+  'favorite.setTitle': 'renameFavorite',
+  'favorite.move': 'moveFavorite',
+  'favorite.copyUrl': 'local',
   'folder.toggle': 'setFolderOpen',
   'folder.new': 'createFolder',
   'folder.newIn': 'createFolder',
@@ -412,8 +433,8 @@ export const ACTION_MAP = Object.freeze({
   'settings.category': 'local',
 });
 
-const LOCAL = new Set(['space.edit', 'space.rename', 'folder.rename', 'tab.rename', 'pin.rename', 'palette.open', 'palette.close', 'menu.open', 'menu.run', 'menu.close', 'editor.save', 'editor.cancel', 'editor.delete', 'editor.color', 'editor.theme',
-  'notice.run', 'notice.close', 'prompt.run', 'prompt.close', 'launcher.more', 'settings.run', 'settings.category', 'tab.copyUrl', 'pin.copyUrl', 'toast.close']);
+const LOCAL = new Set(['space.edit', 'space.rename', 'folder.rename', 'tab.rename', 'pin.rename', 'favorite.rename', 'palette.open', 'palette.close', 'menu.open', 'menu.run', 'menu.close', 'editor.save', 'editor.cancel', 'editor.delete', 'editor.color', 'editor.theme',
+  'notice.run', 'notice.close', 'prompt.run', 'prompt.close', 'launcher.more', 'settings.run', 'settings.category', 'tab.copyUrl', 'pin.copyUrl', 'favorite.copyUrl', 'toast.close']);
 const NAV = { 'nav.back': 'goBack', 'nav.forward': 'goForward', 'nav.reload': 'reload' };
 
 /**
@@ -453,6 +474,13 @@ export function requestFor(name: string, arg: any, { state, ui, platform, row }:
     case 'pin.reset': return send('resetPin', { pinId: arg, windowId, ...show });
     case 'pin.setTitle': return send('renamePin', { pinId: arg.pin, title: arg.name });
     case 'pin.move': return send('movePin', { pinId: arg.pin, folderId: arg.folder, beforeId: arg.before });
+    case 'favorite.open': return send('openFavorite', { favoriteId: arg, windowId, ...show });
+    case 'favorite.add': return send('addFavorite', { tabId: arg, windowId });
+    case 'favorite.addPin': return send('addFavorite', { pinId: arg, windowId });
+    case 'favorite.remove': return send('removeFavorite', { favoriteId: arg });
+    case 'favorite.reset': return send('resetFavorite', { favoriteId: arg, windowId, ...show });
+    case 'favorite.setTitle': return send('renameFavorite', { favoriteId: arg.favorite, title: arg.name });
+    case 'favorite.move': return send('moveFavorite', { favoriteId: arg.favorite, beforeId: arg.before });
     case 'folder.toggle': {
       const folder = (state?.folders ?? []).find((f) => f.id === arg);
       return send('setFolderOpen', { folderId: arg, open: folder?.open === false });

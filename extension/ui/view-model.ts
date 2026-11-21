@@ -43,7 +43,7 @@ export type UiState = {
   palette?: { open?: boolean, query?: string, selected?: number, newTab?: boolean, selectAll?: boolean },
   toast?: { id: string, text: string } | null,
   menu?: { kind: MenuTarget['kind'], id?: string | number | null, x?: number, y?: number, above?: boolean, confirming?: string | null } | null,
-  editing?: { kind: 'space' | 'folder' | 'tab' | 'pin', id: string | number } | null,
+  editing?: { kind: 'space' | 'folder' | 'tab' | 'pin' | 'favorite', id: string | number } | null,
   // (`fresh`: a space just made, switched to as its editor closes.)
   editor?: { spaceId?: string, name: string, emoji: string, color: string, theme?: string, confirmDelete?: boolean, fresh?: boolean } | null,
   newTabPending?: boolean,
@@ -108,6 +108,13 @@ export type PinRow = Face & {
   drifted: boolean, rootUrl: string, hasCustomTitle: boolean,
   audible: boolean, muted: boolean, asleep: boolean, loading: boolean, pinned: true,
 };
+export type FavoriteRow = Face & {
+  kind: 'favorite', id: string, scope: string,
+  tabId: number | null, open: boolean, active: boolean, behind: boolean, away: boolean,
+  drifted: boolean, rootUrl: string, hasCustomTitle: boolean,
+  audible: boolean, muted: boolean, asleep: boolean, loading: boolean,
+};
+export type FavoritesView = { items: FavoriteRow[], hasItems: boolean, columns: number };
 export type FolderRow = {
   kind: 'folder', isFolder: true, id: string, name: string, open: boolean,
   parentFolderId: string | null, depth: number,
@@ -172,12 +179,13 @@ export type ViewModel = {
   },
   space: SpaceView,
   spaces: SpaceChip[],
+  favorites: FavoritesView,
   tab: ActiveTab | null,
   archive: ArchiveRow[],
   hasArchive: boolean,
   palette: { open: boolean, query: string, newTab: boolean, rows: PaletteRow[], hasRows: boolean, selected: string | null },
   menu: { kind: string, id: string | number | null, x: number, y: number, label: string, items: MenuRow[], hasItems: boolean } | null,
-  editing: { kind: 'space' | 'folder' | 'tab' | 'pin', id: string | number } | null,
+  editing: { kind: 'space' | 'folder' | 'tab' | 'pin' | 'favorite', id: string | number } | null,
   editor: EditorView | null,
   notice: NoticeView | null,
   prompt: PromptView | null,
@@ -293,6 +301,37 @@ function pinRow(state: State, p: any, nested: boolean, depth: number = nested ? 
   };
 }
 
+function favoriteRow(state: State, f: any): FavoriteRow {
+  const live = ((f.tabId != null ? state.tabs[f.tabId] : null) as any);
+  const custom = typeof f.customTitle === 'string' && f.customTitle.trim() ? f.customTitle.trim() : '';
+  return {
+    kind: 'favorite',
+    id: f.id,
+    scope: f.scope ?? 'global',
+    ...face(state, live ?? f, custom || f.title || live?.title || f.rootUrl || f.url),
+    tabId: f.tabId ?? null,
+    open: f.tabId != null,
+    active: !!f.active,
+    behind: !!f.behind,
+    away: !!f.away,
+    drifted: !!f.drifted,
+    rootUrl: f.rootUrl ?? f.url ?? '',
+    hasCustomTitle: !!custom,
+    audible: !!live?.audible,
+    muted: !!live?.muted,
+    asleep: !!live?.sleeping,
+    loading: isLoading(live),
+  };
+}
+
+function favoriteColumns(count: number): number {
+  if (count <= 0) return 3;
+  if (count <= 3) return count;
+  if (count === 4) return 4;
+  if (count <= 6) return 3;
+  return 4;
+}
+
 // ---------------------------------------------------------------------------
 // The model, fresh (every object new), then shared with the last one.
 
@@ -343,7 +382,7 @@ function fresh(input: ViewModelInput): ViewModel {
     return {
       version: VM_VERSION, ready: false, window: win,
       space: { id: '', name: '', emoji: '', color: '', abbr: '', index: 0, number: 1, active: true, tabCount: 0, label: '', pinned: [], pinnedFlat: [], folders: [], pins: [], today: [], hasToday: false, hasPinned: false, newTab: { active: false } },
-      spaces: [], tab: null, archive: [], hasArchive: false,
+      spaces: [], favorites: { items: [], hasItems: false, columns: 3 }, tab: null, archive: [], hasArchive: false,
       palette: { open: !!paletteUi.open, query: paletteUi.query ?? '', newTab: !!paletteUi.newTab, rows: [], hasRows: false, selected: null },
       menu: null, editing, editor: null, notice, prompt, toast, gesture, launcher: null, pageLoader, settingsForm: null, settingsTab: null, settings, platform,
     };
@@ -393,6 +432,8 @@ function fresh(input: ViewModelInput): ViewModel {
     return folder;
   });
   const today = view.tabs.map((t) => tabRow(state, t));
+  const favItems = (view.favorites ?? []).map((f: any) => favoriteRow(state, f));
+  const favorites: FavoritesView = { items: favItems, hasItems: favItems.length > 0, columns: favoriteColumns(favItems.length) };
 
   // A space's tab count: its tabs open in any window of the profile (pinned or not: a space's list is the
   // space's, docs/BROWSER-WINDOWS.md §9), and its tabs that aren't open (shown in every window).
@@ -492,7 +533,7 @@ function fresh(input: ViewModelInput): ViewModel {
   // A context menu (ui/behaviors/menus.ts): its rows, from what it's for.
   let menu: ViewModel['menu'] = null;
   if (ui.menu) {
-    const items = menuItems((ui.menu as any), { state, space, features: input.platform?.features ?? null });
+    const items = menuItems((ui.menu as any), { state, space, favorites, features: input.platform?.features ?? null });
     if (items.length) {
       menu = {
         kind: String(ui.menu.kind), id: ui.menu.id ?? null, x: Number(ui.menu.x) || 0, y: Number(ui.menu.y) || 0,
@@ -580,6 +621,7 @@ function fresh(input: ViewModelInput): ViewModel {
     window: win,
     space,
     spaces,
+    favorites,
     tab,
     archive,
     hasArchive: !ui.settingsPage && archive.length > 0,
@@ -634,7 +676,7 @@ function ago(ts: number, now: number) {
 const LAUNCHER_ARCHIVE = 12;
 // The words of Margin's own parts (the menu's and the editor's), which a
 // theme binds rather than writes (ui/sanitize.ts GUARDED_PARTS).
-const MENU_LABELS = Object.freeze({ tab: 'Tab', pin: 'Pin', folder: 'Folder', space: 'Space', add: 'New' });
+const MENU_LABELS = Object.freeze({ tab: 'Tab', pin: 'Pin', favorite: 'Favorite', folder: 'Folder', space: 'Space', add: 'New' });
 const EDITOR_LABELS = Object.freeze({ title: 'Edit space', name: 'Space name', emoji: 'Space emoji', colors: 'Space color', theme: 'Space theme', save: 'Save', cancel: 'Cancel' });
 
 // Rows that go somewhere (Arcadia's arrow button).

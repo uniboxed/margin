@@ -252,7 +252,7 @@ export const handlers = {
     if (typeof tabId === 'string') {
       await mutate((s) => {
         const k = s.keptTabs[tabId];
-        if (k?.pinnedBy && s.pins.some((p) => p.id === k.pinnedBy)) return M.forgetKept(s, tabId);
+        if ((k?.pinnedBy && s.pins.some((p) => p.id === k.pinnedBy)) || (k?.favoriteId && (s.favorites ?? []).some((f) => f.id === k.favoriteId))) return M.forgetKept(s, tabId);
         return M.archiveKept(s, tabId, { id: newId(), closedAt: now() });
       });
       return;
@@ -260,7 +260,7 @@ export const handlers = {
     await mutate((s) => {
       const tab = s.tabs[tabId];
       if (!tab) return s;
-      if (tab.pinnedBy && s.pins.some((p) => p.id === tab.pinnedBy)) return s;
+      if ((tab.pinnedBy && s.pins.some((p) => p.id === tab.pinnedBy)) || (tab.favoriteId && (s.favorites ?? []).some((f) => f.id === tab.favoriteId))) return s;
       return /^https?:/i.test(tab.url) ? M.archiveTab(s, M.archiveEntryForTab(s, tab, { id: newId(), closedAt: now() })) : s;
     });
     const closing = await api.tabs.get(tabId).catch(() => null);
@@ -563,6 +563,73 @@ export const handlers = {
   },
   async renameTab({ tabId, title }: { tabId: number | string, title: string }) {
     await mutate((s) => M.renameTab(s, tabId, title));
+  },
+  async addFavorite({ tabId, pinId, windowId, beforeId = null }: { tabId?: number | string, pinId?: string, windowId?: number, beforeId?: string | null }, sender: BrowserMessageSender) {
+    const s = await load();
+    const kept = typeof tabId === 'string' ? s.keptTabs?.[tabId] : null;
+    const tab = kept ?? (typeof tabId === 'number' ? s.tabs[tabId] ?? (await api.tabs.get(tabId).catch(() => null)) : null);
+    const pin = !tab && typeof pinId === 'string' ? s.pins.find((p) => p.id === pinId) : null;
+    const url = tab?.url ?? pin?.url;
+    if (!url) return null;
+    const id = newId();
+    let added = false;
+    await mutate((st) => {
+      const spaceId = kept ? kept.spaceId : pin ? pin.spaceId : typeof tabId === 'number' ? st.tabSpace[tabId] : V.activeSpaceId(st, windowId ?? sender?.tab?.windowId);
+      const scope = M.favoriteScopeOf(st, spaceId);
+      let next = M.addFavorite(st, { id, scope, url, title: tab?.title ?? pin?.title ?? url, customTitle: (tab as TabRecord | undefined)?.customTitle ?? pin?.customTitle, beforeId });
+      if (next === st) return st;
+      added = true;
+      if (pin) next = M.removePin(next, pin.id);
+      if (kept) next = M.bindTabToFavorite(next, kept.id, id);
+      else if (typeof tabId === 'number') next = M.bindTabToFavorite(next, tabId, id);
+      return next;
+    });
+    return added ? id : null;
+  },
+  async removeFavorite({ favoriteId }: { favoriteId: string }) {
+    await mutate((s) => M.removeFavorite(s, favoriteId));
+  },
+  async openFavorite({ favoriteId, windowId, deadline }: { favoriteId: string, windowId?: number, deadline?: number }, sender: BrowserMessageSender) {
+    const s = await load();
+    const fav = (s.favorites ?? []).find((f) => f.id === favoriteId);
+    if (!fav) return null;
+    const bound = Object.values(s.tabs).filter((t) => t.favoriteId === fav.id);
+    const key = M.normalizeUrl(fav.url);
+    const matches = bound.length ? bound : Object.values(s.tabs).filter((t) => !t.favoriteId && !t.pinnedBy && M.normalizeUrl(t.url) === key);
+    const existing = matches.find((t) => t.windowId === windowId) ?? matches[0];
+    if (existing) {
+      if (existing.favoriteId !== fav.id) await mutate((st) => M.bindTabToFavorite(st, existing.id, fav.id));
+      await away.showTab(existing.id, windowId ?? sender?.tab?.windowId, { source: 'openFavorite', deadline });
+      return { shown: existing.id };
+    }
+    const win = windowId ?? sender?.tab?.windowId;
+    const spaceId = V.activeSpaceId(s, win);
+    const tab = await openTab({ windowId: win, url: fav.url, spaceId, deadline });
+    if (tab?.id != null) await mutate((st) => M.bindTabToFavorite(st, tab.id, fav.id));
+    return { shown: tab.id };
+  },
+  async resetFavorite({ favoriteId, windowId, deadline }: { favoriteId: string, windowId?: number, deadline?: number }, sender: BrowserMessageSender) {
+    const s = await load();
+    const fav = (s.favorites ?? []).find((f) => f.id === favoriteId);
+    if (!fav) return null;
+    const bound = Object.values(s.tabs).filter((t) => t.favoriteId === fav.id);
+    const existing = bound.find((t) => t.windowId === windowId) ?? bound[0];
+    if (existing) {
+      await api.tabs.update(existing.id, { url: fav.url, active: true }).catch(() => null);
+      await away.showTab(existing.id, windowId ?? sender?.tab?.windowId, { source: 'resetFavorite', deadline });
+      return { shown: existing.id };
+    }
+    const win = windowId ?? sender?.tab?.windowId;
+    const spaceId = V.activeSpaceId(s, win);
+    const tab = await openTab({ windowId: win, url: fav.url, spaceId, deadline });
+    if (tab?.id != null) await mutate((st) => M.bindTabToFavorite(st, tab.id, fav.id));
+    return { shown: tab.id };
+  },
+  async renameFavorite({ favoriteId, title }: { favoriteId: string, title: string }) {
+    await mutate((s) => M.renameFavorite(s, favoriteId, title));
+  },
+  async moveFavorite({ favoriteId, beforeId = null }: { favoriteId: string, beforeId?: string | null }) {
+    await mutate((s) => M.moveFavorite(s, favoriteId, { beforeId }));
   },
   // A space shown in the window (its tab most used there to the front); `bringTab: false`: only
   // the sidebar's space, the page in front stays. Answers which tab is in front now.

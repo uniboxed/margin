@@ -20,13 +20,17 @@ import { MAX_FOLDER_DEPTH } from '../../state/model.ts';
 /**
  * What a drag holds: a row's kind and id.
  */
-export type Drag = { kind: 'tab' | 'pin' | 'folder' | 'space', id: number | string };
+export type Drag = { kind: 'tab' | 'pin' | 'folder' | 'space' | 'favorite', id: number | string };
 export type Over = { zone: 'space', spaceId: string }
   | { zone: 'tabs', rows: number[], tab: number | null, y: number }
   | { zone: 'pins', row: { kind: 'pin' | 'folder', id: string, folder: string | null } | null, y: number }
-  | { zone: 'folder', folder: string };
+  | { zone: 'folder', folder: string }
+  | { zone: 'favorites', rows: string[], favorite: string | null, x: number };
 export type Target = { space: string }
   | { unpin: true }
+  | { unfavorite: true }
+  | { favoriteAdd: true }
+  | { favoriteBefore: string | null }
   | { tab: number, side: 'before' | 'after' }
   | { into: string }
   | { folderId: string | null, beforeId: string | null, row?: { kind: 'pin' | 'folder', id: string }, side?: 'before' | 'after' };
@@ -129,6 +133,28 @@ export function stays(space: SpaceView | null | undefined, drag: Drag, level: st
  * */
 export function dropTarget(drag: Drag, over: Over | null, space: SpaceView | null | undefined): Target | null {
   if (!drag || !over || drag.kind === 'space') return null; // spaces don't move (no handler)
+  if (over.zone === 'favorites') {
+    if (drag.kind === 'tab' || drag.kind === 'pin') return { favoriteAdd: true };
+    if (drag.kind !== 'favorite') return null;
+    if (!over.favorite) {
+      const last = over.rows.at(-1);
+      return last === String(drag.id) ? null : { favoriteBefore: null };
+    }
+    const id = String(drag.id);
+    if (over.favorite === id) return null;
+    const at = over.rows.indexOf(over.favorite);
+    const own = over.rows.indexOf(id);
+    if (over.x < 0.5) {
+      if (at === own + 1) return null;
+      return { favoriteBefore: over.favorite };
+    }
+    const next = over.rows[at + 1] ?? null;
+    if (next === id) return null;
+    return { favoriteBefore: next };
+  }
+  if (drag.kind === 'favorite') {
+    return over.zone === 'tabs' ? { unfavorite: true } : null;
+  }
   if (over.zone === 'space') return drag.kind === 'tab' && over.spaceId !== space?.id ? { space: over.spaceId } : null;
   if (over.zone === 'tabs') {
     if (drag.kind === 'pin') return { unpin: true };
@@ -190,6 +216,9 @@ export function dropAction(drag: Drag, where: Target): { name: string, arg: any 
   const w = (where as any);
   if (w.space) return { name: 'tab.moveToSpace', arg: { tab: drag.id, space: w.space } };
   if (w.unpin) return { name: 'tab.unpin', arg: String(drag.id) };
+  if (w.unfavorite) return { name: 'favorite.remove', arg: String(drag.id) };
+  if (w.favoriteAdd) return drag.kind === 'pin' ? { name: 'favorite.addPin', arg: String(drag.id) } : { name: 'favorite.add', arg: drag.id };
+  if ('favoriteBefore' in w) return { name: 'favorite.move', arg: { favorite: String(drag.id), before: w.favoriteBefore ?? null } };
   if (w.tab != null) return { name: 'tab.move', arg: { tab: drag.id, nextTo: w.tab, side: w.side } };
   const folder = w.into ?? w.folderId ?? null;
   const before = w.into ? null : w.beforeId ?? null;

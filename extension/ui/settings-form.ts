@@ -98,6 +98,18 @@ export function settingsFields(settings: any, features: any = {}, ui: { recordin
   list.push(field({ id: 'theme', kind: 'choice', label: spaced ? 'Theme of this space' : 'Theme', help: spaced ? 'Each space has its own theme. New spaces start with the theme of the space they’re made from.' : '', options: options.map((o) => ({ ...o, selected: o.id === theme })), value: theme, status: status.theme?.text ?? '', error: !!status.theme?.error }));
   list.push(...importFields(f, status, imported));
   list.push(field({ id: 'engine', kind: 'info', label: engineText(s, f) }));
+  const favScope = s.favoritesScope === 'profile' ? 'profile' : 'global';
+  list.push(field({
+    id: 'favoritesScope',
+    kind: 'choice',
+    label: 'Favorites scope',
+    help: 'Show the same Favorites across all Spaces, or keep separate Favorites per browser profile.',
+    value: favScope,
+    options: [
+      { id: 'global', label: 'Global across Spaces', selected: favScope === 'global' },
+      { id: 'profile', label: 'Per browser profile', selected: favScope === 'profile' },
+    ],
+  }));
   list.push(field({ id: 'archiveAfterHours', kind: 'number', label: 'Archive tabs not used for (hours, 0 = never)', value: String(s.archiveAfterHours ?? 12), min: 0, max: 720, step: '1' }));
   if (f.sleepTabs) {
     list.push(field({ id: 'sleepAfterHours', kind: 'number', label: 'Put tabs to sleep after not using them for (hours, 0 = never). A sleeping tab frees its memory and loads again when you go back to it', value: String(s.sleepAfterHours ?? 4), min: 0, max: 720, step: 'any' }));
@@ -148,7 +160,7 @@ export const SETTINGS_CATEGORIES = Object.freeze([
 export type SettingsCategory = typeof SETTINGS_CATEGORIES[number]['id'];
 export { SETTINGS_CATEGORY_IDS } from './actions.ts'; // (the same ids, in this order: tests/settings-form.test.ts)
 export const DEFAULT_CATEGORY: SettingsCategory = 'appearance';
-const TABS_FIELDS = new Set(['archiveAfterHours', 'sleepAfterHours', 'neverSleepSites', 'wakeAll']);
+const TABS_FIELDS = new Set(['favoritesScope', 'archiveAfterHours', 'sleepAfterHours', 'neverSleepSites', 'wakeAll']);
 const BROWSING_FIELDS = new Set(['engine', 'blockGestures', 'swipeNavigation', 'pullToRefresh', 'marginFullscreenAuto', 'fullscreenOnly', 'frameWhenHidden', 'newTabHint']);
 const KEYBOARD_FIELDS = new Set(['shortcuts', ...Object.keys(SHORTCUT_FIELDS), 'resetShortcuts']);
 

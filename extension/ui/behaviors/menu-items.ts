@@ -6,15 +6,15 @@
 // the runtime keeps the action. Pure: runs in Node.
 
 import type { State } from '../../../types/margin';
-import type { FolderRow, PinRow, SpaceView } from '../view-model.ts';
-import { MAX_FOLDER_DEPTH, folderDepth } from '../../state/model.ts';
+import type { FavoriteRow, FolderRow, PinRow, SpaceView } from '../view-model.ts';
+import { FAVORITES_CAP, MAX_FOLDER_DEPTH, favoriteScopeOf, folderDepth, normalizeUrl } from '../../state/model.ts';
 import { themeChoices, spaceThemeId, spaceThemesOn } from '../space-theme.ts';
 
 // The space editor's swatches (Arcadia's).
 export const SPACE_COLORS = Object.freeze(['#6c5ce7', '#0984e3', '#00b894', '#fdcb6e', '#e17055', '#d63031', '#e84393', '#636e72']);
 
 export type MenuItem = { id: string, label: string, separator: boolean, danger: boolean, confirm: boolean, action: string | null, arg?: any };
-export type MenuTarget = { kind: 'tab' | 'pin' | 'folder' | 'space' | 'add', id?: string | number | null };
+export type MenuTarget = { kind: 'tab' | 'pin' | 'favorite' | 'folder' | 'space' | 'add', id?: string | number | null };
 
 /**
  * The items of the menu for `target`, from the stored state and the space
@@ -23,7 +23,7 @@ export type MenuTarget = { kind: 'tab' | 'pin' | 'folder' | 'space' | 'add', id?
  * */
 // (`features`: the host's (Margin.app's imported themes: a space's menu offers them too). Every caller gives the same,
 // so the items and their ids are the same where they're drawn and where one is run.)
-export function menuItems(target: MenuTarget | null | undefined, { state, space, features = null }: { state: (Omit<Partial<State>, 'settings'> & { settings?: Partial<State['settings']> } & Record<string, any>) | null, space: SpaceView | null | undefined, features?: Record<string, any> | null }): MenuItem[] {
+export function menuItems(target: MenuTarget | null | undefined, { state, space, favorites = null, features = null }: { state: (Omit<Partial<State>, 'settings'> & { settings?: Partial<State['settings']> } & Record<string, any>) | null, space: SpaceView | null | undefined, favorites?: { items: FavoriteRow[] } | null, features?: Record<string, any> | null }): MenuItem[] {
   if (!target || !state) return [];
   const list: MenuItem[] = [];
   let n = 0;
@@ -38,7 +38,28 @@ export function menuItems(target: MenuTarget | null | undefined, { state, space,
   const shownPins: PinRow[] = flat
     ? flat.filter((p): p is PinRow => !p.isFolder)
     : pinned.flatMap((p) => (p.isFolder ? p.pins : [p]));
+  const scope = favoriteScopeOf(state as State, space?.id ?? null);
+  const scopeFavs = (state.favorites ?? []).filter((f) => (f.scope || 'global') === scope);
+  const canAddFav = (url: string) => !!url && scopeFavs.length < FAVORITES_CAP && !scopeFavs.some((f) => normalizeUrl(f.url) === normalizeUrl(url));
   switch (target.kind) {
+    case 'favorite': {
+      const fav = (state.favorites ?? []).find((f) => f.id === target.id);
+      if (!fav) return [];
+      const shown = favorites?.items?.find((f) => f.id === fav.id) ?? null;
+      const isWeb = /^https?:\/\//i.test(fav.url ?? '');
+      const liveTab = shown?.tabId != null ? state.tabs?.[shown.tabId] : null;
+      if (shown?.drifted) item('Reset to Favorite URL', 'favorite.reset', fav.id);
+      item('Remove from Favorites', 'favorite.remove', fav.id);
+      item('Rename Favorite', 'favorite.rename', fav.id);
+      if (isWeb) item('Copy URL', 'favorite.copyUrl', fav.id);
+      if (liveTab && shown?.tabId != null) {
+        separator();
+        if (isWeb) item(liveTab.muted ? 'Unmute Tab' : 'Mute Tab', 'tab.mute', shown.tabId);
+        item(isWeb ? 'Sleep Tab' : 'Unload App', 'tab.unload', shown.tabId);
+        item('Close Tab', 'tab.close', shown.tabId);
+      }
+      break;
+    }
     case 'folder': {
       const folder = (state.folders ?? []).find((f) => f.id === target.id);
       if (!folder) return [];
@@ -59,6 +80,7 @@ export function menuItems(target: MenuTarget | null | undefined, { state, space,
       const liveTab = shown?.tabId != null ? state.tabs?.[shown.tabId] : null;
       if (shown?.drifted) item('Reset to Pinned URL', 'pin.reset', pin.id);
       item('Unpin', 'tab.unpin', pin.id);
+      if (canAddFav(pin.url)) item('Add to Favorites', 'favorite.addPin', pin.id);
       item('Rename Pin', 'pin.rename', pin.id);
       if (isWeb) item('Copy URL', 'pin.copyUrl', pin.id);
       separator();
@@ -83,6 +105,7 @@ export function menuItems(target: MenuTarget | null | undefined, { state, space,
       const url = (live?.url ?? kept?.url ?? '');
       const isWeb = /^https?:\/\//i.test(url);
       item('Pin Tab', 'tab.pin', tabId);
+      if (canAddFav(url)) item('Add to Favorites', 'favorite.add', tabId);
       for (const f of folders) item(`Pin to 📁 ${f.name}`, 'tab.pinAt', { tab: tabId, folder: f.id, before: null });
       item('New Folder with Tab', 'folder.newWithTab', tabId);
       item('Rename Tab', 'tab.rename', tabId);

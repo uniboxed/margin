@@ -24,7 +24,7 @@ const byId = (fields: SettingsField[]) => Object.fromEntries(fields.map((f) => [
 test('Settings covers today\'s form: theme, search engine, archive, sleep, never-sleep sites, gestures, frame, the ⌘T hint, shortcuts; Wake all where sleeping tabs are discarded', () => {
   const fields = settingsFields({ theme: 'arcadia', archiveAfterHours: 12, sleepAfterHours: 4, neverSleepSites: ['mail.example.com'] }, SAFARI);
   assert.deepEqual(fields.map((f) => `${f.id}:${f.kind}`), [
-    'theme:choice', 'engine:info', 'archiveAfterHours:number', 'sleepAfterHours:number', 'neverSleepSites:list',
+    'theme:choice', 'engine:info', 'favoritesScope:choice', 'archiveAfterHours:number', 'sleepAfterHours:number', 'neverSleepSites:list',
     'blockGestures:toggle', 'swipeNavigation:toggle', 'pullToRefresh:toggle', 'frameWhenHidden:toggle', 'newTabHint:toggle',
     'shortcuts:group', 'sidebarShortcut:shortcut', 'nextTab:shortcut', 'prevTab:shortcut', 'nextSpace:shortcut', 'prevSpace:shortcut', 'resetShortcuts:button',
   ]);
@@ -137,7 +137,7 @@ test('the Settings page\'s categories (Tirth, 2026-11-20): Appearance, Tabs, Bro
   const all = settingsFields({ theme: 'arcadia' }, { ...DISCARDS, marginFullscreen: true, importThemes: true, userThemes: [{ id: 'mine', name: 'Mine', version: '1.0.0' }] }, { theme });
   const ids = (category: Parameters<typeof fieldsIn>[1]) => fieldsIn(all, category).map((f) => f.id);
   assert.deepEqual(ids('appearance'), ['theme', 'themeImport', 'userTheme:mine', 'removeTheme:mine', 'themeSettings', 'themeSetting:sidebarWidth']);
-  assert.deepEqual(ids('tabs'), ['archiveAfterHours', 'sleepAfterHours', 'neverSleepSites', 'wakeAll']);
+  assert.deepEqual(ids('tabs'), ['favoritesScope', 'archiveAfterHours', 'sleepAfterHours', 'neverSleepSites', 'wakeAll']);
   assert.deepEqual(ids('browsing'), ['engine', 'blockGestures', 'swipeNavigation', 'pullToRefresh', 'marginFullscreenAuto', 'fullscreenOnly', 'frameWhenHidden', 'newTabHint']);
   assert.deepEqual(ids('keyboard'), ['sidebarShortcut', 'nextTab', 'prevTab', 'nextSpace', 'prevSpace', 'resetShortcuts'], 'its own heading goes: the page says Keyboard');
   const shown = new Set(SETTINGS_CATEGORY_IDS.flatMap((c) => fieldsIn(all, c as any).map((f) => f.id)));

@@ -107,7 +107,7 @@ final class DataStore {
 
     // Margin's own collections (docs/DATA.md), which differ in more than case, by
     // their names; any other (a later format's) written out after `x-`.
-    static let knownCollections: Set<String> = ["spaces", "pins", "folders", "tabs", "archive", "settings", "themeSettings", "siteIcons", "userThemes"]
+    static let knownCollections: Set<String> = ["spaces", "pins", "favorites", "folders", "tabs", "archive", "settings", "themeSettings", "siteIcons", "userThemes"]
 
     static func collectionFileName(_ name: String) -> String {
         knownCollections.contains(name) ? name : "x-" + fileName(name)

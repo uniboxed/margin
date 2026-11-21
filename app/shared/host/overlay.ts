@@ -791,11 +791,13 @@ function onMessage(msg: any) {
       } else if (msg.name === 'item-index' && Number.isInteger(msg.index)) {
         const idx = msg.index - 1;
         const rows = [
+          ...(runtime?.vm?.favorites?.items ?? []).map((f: { id: string }) => ({ kind: 'favorite' as const, id: f.id })),
           ...(runtime?.vm?.space?.pins ?? []).map((p: { id: string }) => ({ kind: 'pin' as const, id: p.id })),
           ...(runtime?.vm?.space?.today ?? []).map((t: { id: number | string }) => ({ kind: 'tab' as const, id: t.id })),
         ];
         const target = rows[idx];
-        if (target?.kind === 'pin') runtime?.dispatch('pin.open', target.id, 'behavior');
+        if (target?.kind === 'favorite') runtime?.dispatch('favorite.open', target.id, 'behavior');
+        else if (target?.kind === 'pin') runtime?.dispatch('pin.open', target.id, 'behavior');
         else if (target?.kind === 'tab') runtime?.dispatch('tab.activate', target.id, 'behavior');
       }
       return;

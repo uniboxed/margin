@@ -14,7 +14,7 @@ import type { Rt } from '../runtime.ts';
 import { NAME_MAX } from '../actions.ts';
 
 const UNDO_TOGGLE_MS = 800;
-type RenameKind = 'folder' | 'space' | 'tab' | 'pin';
+type RenameKind = 'folder' | 'space' | 'tab' | 'pin' | 'favorite';
 
 export function installRename(rt: Rt) {
   const { view, doc, container } = rt;
@@ -44,10 +44,14 @@ export function installRename(rt: Rt) {
       const p = state.pins?.find((x) => x.id === id);
       return p ? { name: (p.customTitle || p.title || ''), hadCustom: !!p.customTitle } : null;
     }
+    if (kind === 'favorite') {
+      const fav = state.favorites?.find((x) => x.id === id);
+      return fav ? { name: (fav.customTitle || fav.title || ''), hadCustom: !!fav.customTitle } : null;
+    }
     const t = typeof id === 'string' ? state.keptTabs?.[id] : state.tabs?.[id];
     return t ? { name: (t.customTitle || t.title || ''), hadCustom: !!t.customTitle } : null;
   };
-  const labelFor = (kind: RenameKind) => (kind === 'folder' ? 'Folder name' : kind === 'space' ? 'Space name' : kind === 'pin' ? 'Pin name' : 'Tab name');
+  const labelFor = (kind: RenameKind) => (kind === 'folder' ? 'Folder name' : kind === 'space' ? 'Space name' : kind === 'pin' ? 'Pin name' : kind === 'favorite' ? 'Favorite name' : 'Tab name');
 
   function start(kind: RenameKind, id: string | number) {
     if (editing) commit();
@@ -107,6 +111,10 @@ export function installRename(rt: Rt) {
       if (name === e.was && (!e.hadCustom || name !== '')) return;
       if (!name && !e.hadCustom) return;
       rt.dispatch('pin.setTitle', { pin: e.id, name }, 'behavior');
+    } else if (e.kind === 'favorite') {
+      if (name === e.was && (!e.hadCustom || name !== '')) return;
+      if (!name && !e.hadCustom) return;
+      rt.dispatch('favorite.setTitle', { favorite: e.id, name }, 'behavior');
     } else {
       if (name === e.was && (!e.hadCustom || name !== '')) return;
       if (!name && !e.hadCustom) return;
@@ -135,7 +143,7 @@ export function installRename(rt: Rt) {
       const item = view.subjectOf(own.el);
       const kind = own.value;
       const id = kind === 'space' ? item?.id ?? rt.vm?.space?.id : item?.id;
-      if ((kind === 'folder' || kind === 'space' || kind === 'tab' || kind === 'pin') && id != null) {
+      if ((kind === 'folder' || kind === 'space' || kind === 'tab' || kind === 'pin' || kind === 'favorite') && id != null) {
         e.stopPropagation();
         if (kind === 'folder') undoToggle(id);
         start(kind, id);

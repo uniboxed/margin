@@ -54,6 +54,8 @@ const DEFAULT_SETTINGS = Object.freeze({
   shortcuts: Object.freeze({ ...(capabilities?.navigation ?? LEGACY_SHORTCUTS) }),
   // Which profile's defaults `shortcuts` started from (see normalizeShortcuts).
   shortcutDefaults: capabilities?.navigationId ?? capabilities?.name ?? 'chrome',
+  // Favorites bar scope: 'global' across Spaces (default) or 'profile' per browser profile.
+  favoritesScope: 'global' as 'global' | 'profile',
   // What Margin looks like (themes/index.ts), and each theme's own settings
   // ({ [themeId]: {...} }; Arcadia: sidebarWidth).
   theme: DEFAULT_THEME,
@@ -70,7 +72,7 @@ const DEFAULT_SPACE = Object.freeze({
 // `lostTabs` is the old name of the kept tabs' reclaimable part (Margin 2,
 // Phase 2): read once, moved into `keptTabs`, and written as null so it's
 // never moved again.
-const STATE_KEYS = ['spaces', 'activeSpaceByWindow', 'awayByWindow', 'tabSpace', 'pins', 'folders', 'archive', 'settings', 'tabs', 'keptTabs', 'favicons', 'lostTabs'];
+const STATE_KEYS = ['spaces', 'activeSpaceByWindow', 'awayByWindow', 'tabSpace', 'pins', 'favorites', 'folders', 'archive', 'settings', 'tabs', 'keptTabs', 'favicons', 'lostTabs'];
 const FAVICON_CAP = 150;
 
 function defaultState(): State {
@@ -83,6 +85,7 @@ function defaultState(): State {
     awayByWindow: {},
     tabSpace: {},
     pins: [],
+    favorites: [],
     // Folders of pins, per space (Arc): { id, spaceId, name, open, pos }.
     folders: [],
     archive: [],
@@ -116,6 +119,7 @@ function normalizeState(raw: any = {}): State {
     awayByWindow: Object.fromEntries(Object.entries(raw.awayByWindow ?? {}).filter(([w, t]) => /^\d+$/.test(w) && Number.isInteger(t))) as Record<number, number>, // (whole numbers: filtered)
     tabSpace: { ...raw.tabSpace },
     pins: Array.isArray(raw.pins) ? raw.pins : [],
+    favorites: Array.isArray(raw.favorites) ? raw.favorites.filter((f: any) => f && typeof f.id === 'string' && typeof f.url === 'string') : [],
     folders: Array.isArray(raw.folders) ? raw.folders.filter((f: any) => f && typeof f.id === 'string' && typeof f.spaceId === 'string') : [],
     archive: Array.isArray(raw.archive) ? raw.archive : [],
     settings: {
@@ -220,6 +224,7 @@ function keptRecord(r: TabRecord, spaceId: string, { why, now, from = null, wasT
     // back there once (linkKept, takeScroll).
     ...(r.scroll != null && r.scroll > 0 ? { scroll: { y: r.scroll, url: r.url } } : {}),
     ...(typeof r.pinnedBy === 'string' && r.pinnedBy ? { pinnedBy: r.pinnedBy } : {}),
+    ...(typeof r.favoriteId === 'string' && r.favoriteId ? { favoriteId: r.favoriteId } : {}),
     ...(typeof r.customTitle === 'string' && r.customTitle ? { customTitle: r.customTitle } : {}),
     keptAt: now,
     why,
@@ -650,6 +655,7 @@ function tabRecord(tab: BrowserTab, prev: TabRecord | null | undefined, now: num
     ...(seen.asleep ? { sleeping: { at: prev?.sleeping?.at ?? now, how: seen.asleep } } : {}),
     ...(!seen.asleep && prev?.sleeping ? { wokeAt: now } : prev?.wokeAt != null ? { wokeAt: prev.wokeAt } : {}),
     ...(typeof prev?.pinnedBy === 'string' && prev.pinnedBy ? { pinnedBy: prev.pinnedBy } : {}),
+    ...(typeof prev?.favoriteId === 'string' && prev.favoriteId ? { favoriteId: prev.favoriteId } : {}),
     ...(typeof prev?.customTitle === 'string' && prev.customTitle ? { customTitle: prev.customTitle } : {}),
   };
 }
@@ -1401,6 +1407,130 @@ function deleteSpace(state: State, spaceId: string) {
   return next;
 }
 
+// ---- favorites ------------------------------------------------------------
+// Top-of-sidebar Favorites grid (Arc): global across Spaces by default ('global'),
+// or scoped per profile when settings.favoritesScope === 'profile'. Cap 12 per scope.
+const FAVORITES_CAP = 12;
+
+function favoriteScopeOf(state: State, spaceId?: string | null): string {
+  if (state.settings?.favoritesScope !== 'profile') return 'global';
+  const sp: any = spaceId ? state.spaces.find((s) => s.id === spaceId) : null;
+  const profile = typeof sp?.profile === 'string' && sp.profile ? sp.profile : 'default';
+  return `profile:${profile}`;
+}
+
+function favoriteForUrl(state: State, url: string | undefined, scope = 'global') {
+  const key = normalizeUrl(url);
+  if (!key) return undefined;
+  return (state.favorites ?? []).find((f) => (f.scope || 'global') === scope && normalizeUrl(f.url) === key);
+}
+
+function renumberFavorites(list: NonNullable<State['favorites']>, scope: string) {
+  let i = 0;
+  return list.map((f) => ((f.scope || 'global') === scope ? { ...f, pos: i++ } : f));
+}
+
+function addFavorite(state: State, { id, scope = 'global', url, title, customTitle, target, beforeId = null }: {
+  id: string, scope?: string, url: string, title?: string, customTitle?: string,
+  target?: NonNullable<State['favorites']>[number]['target'], beforeId?: string | null,
+}) {
+  if (!url) return state;
+  const list = state.favorites ?? [];
+  const inScope = list.filter((f) => (f.scope || 'global') === scope).sort((a, b) => posOf(a, 0) - posOf(b, 0));
+  if (inScope.length >= FAVORITES_CAP) return state;
+  if (inScope.some((f) => normalizeUrl(f.url) === normalizeUrl(url))) return state;
+  const fav = {
+    id, scope, url, title: title || url,
+    ...(typeof customTitle === 'string' && customTitle.trim() ? { customTitle: customTitle.trim().slice(0, FOLDER_NAME_MAX) } : {}),
+    ...(target ? { target } : {}),
+    pos: inScope.length,
+  };
+  const nextScope = [...inScope];
+  const at = beforeId ? nextScope.findIndex((f) => f.id === beforeId) : -1;
+  if (at >= 0) nextScope.splice(at, 0, fav);
+  else nextScope.push(fav);
+  const others = list.filter((f) => (f.scope || 'global') !== scope);
+  return { ...state, favorites: renumberFavorites([...others, ...nextScope], scope) };
+}
+
+function removeFavorite(state: State, favoriteId: string) {
+  const list = state.favorites ?? [];
+  const target = list.find((f) => f.id === favoriteId);
+  if (!target) return state;
+  const scope = target.scope || 'global';
+  let next: State = { ...state, favorites: renumberFavorites(list.filter((f) => f.id !== favoriteId), scope) };
+  next = unbindFavoriteTab(next, favoriteId);
+  return next;
+}
+
+function moveFavorite(state: State, favoriteId: string, { beforeId = null }: { beforeId?: string | null } = {}) {
+  const list = state.favorites ?? [];
+  const fav = list.find((f) => f.id === favoriteId);
+  if (!fav) return state;
+  const scope = fav.scope || 'global';
+  const inScope = list.filter((f) => (f.scope || 'global') === scope).sort((a, b) => posOf(a, 0) - posOf(b, 0));
+  const rest = inScope.filter((f) => f.id !== favoriteId);
+  const at = beforeId ? rest.findIndex((f) => f.id === beforeId) : -1;
+  if (at >= 0) rest.splice(at, 0, fav);
+  else rest.push(fav);
+  if (rest.every((f, i) => f.id === inScope[i]?.id)) return state;
+  const others = list.filter((f) => (f.scope || 'global') !== scope);
+  return { ...state, favorites: renumberFavorites([...others, ...rest], scope) };
+}
+
+function renameFavorite(state: State, favoriteId: string, customTitle: string | null | undefined) {
+  const list = state.favorites ?? [];
+  const fav = list.find((f) => f.id === favoriteId);
+  if (!fav) return state;
+  const clean = typeof customTitle === 'string' ? customTitle.replace(/\s+/g, ' ').trim().slice(0, FOLDER_NAME_MAX) : '';
+  if ((fav.customTitle ?? '') === clean) return state;
+  return {
+    ...state,
+    favorites: list.map((f) => {
+      if (f.id !== favoriteId) return f;
+      if (!clean) { const { customTitle: _, ...rest } = f; return rest; }
+      return { ...f, customTitle: clean };
+    }),
+  };
+}
+
+function bindTabToFavorite(state: State, tabId: number | string, favoriteId: string) {
+  if (!(state.favorites ?? []).some((f) => f.id === favoriteId)) return state;
+  if (typeof tabId === 'string') {
+    const k = state.keptTabs?.[tabId];
+    if (!k || k.favoriteId === favoriteId) return state;
+    const { pinnedBy: _, ...clean } = k;
+    return { ...state, keptTabs: { ...state.keptTabs, [tabId]: { ...clean, favoriteId } } };
+  }
+  const t = state.tabs[tabId];
+  if (!t || t.favoriteId === favoriteId) return state;
+  const { pinnedBy: _, ...clean } = t;
+  return { ...state, tabs: { ...state.tabs, [tabId]: { ...clean, favoriteId } } };
+}
+
+function unbindFavoriteTab(state: State, favoriteId: string) {
+  let tabsChanged = false;
+  const tabs: Record<number, TabRecord> = {};
+  for (const [k, t] of Object.entries(state.tabs)) {
+    if (t.favoriteId === favoriteId) {
+      const { favoriteId: _, ...rest } = t;
+      tabs[Number(k)] = rest;
+      tabsChanged = true;
+    } else tabs[Number(k)] = t;
+  }
+  let keptChanged = false;
+  const keptTabs: Record<string, KeptTab> = {};
+  for (const [k, item] of Object.entries(state.keptTabs ?? {})) {
+    if (item.favoriteId === favoriteId) {
+      const { favoriteId: _, ...rest } = item;
+      keptTabs[k] = rest;
+      keptChanged = true;
+    } else keptTabs[k] = item;
+  }
+  if (!tabsChanged && !keptChanged) return state;
+  return { ...state, ...(tabsChanged ? { tabs } : {}), ...(keptChanged ? { keptTabs } : {}) };
+}
+
 // ---- archive --------------------------------------------------------------
 
 // Newest first, one entry per URL, capped.
@@ -1518,6 +1648,15 @@ export {
   deleteFolder,
   FOLDER_NAME_MAX,
   deleteSpace,
+  FAVORITES_CAP,
+  favoriteScopeOf,
+  favoriteForUrl,
+  addFavorite,
+  removeFavorite,
+  moveFavorite,
+  renameFavorite,
+  bindTabToFavorite,
+  unbindFavoriteTab,
   archiveTab,
   removeArchived,
   rememberFavicon,
