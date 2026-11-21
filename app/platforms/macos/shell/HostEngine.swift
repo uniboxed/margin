@@ -658,11 +658,30 @@ final class HostEngine {
         _ = await front(top)
         // (A Safari window made a moment ago that Accessibility can't raise, seen on the real screen 2026-11-21: Safari
         // itself asked to put it in front, through its copy, then read again.)
-        guard let copyId = top.safariWindow, let safariFocus else { return }
-        if await wait(options.orderWait, every: options.memberEvery, { self.serverOrder(of: wanted).map { $0.last == top.window } ?? true }) { return }
-        let asked = await safariFocus(top.profile, copyId)
-        let inFront = await wait(options.orderWait, every: options.memberEvery, { self.serverOrder(of: wanted).map { $0.last == top.window } ?? true })
-        Diagnostics.note("host: \(top.id): still not in front after its raise: its copy asked to bring it in front (\(asked ? "asked" : "not asked")), \(inFront ? "in front now" : "still not in front")")
+        func inFront() async -> Bool { await wait(options.orderWait, every: options.memberEvery, { self.serverOrder(of: wanted).map { $0.last == top.window } ?? true }) }
+        if await inFront() { return }
+        if let copyId = top.safariWindow, let safariFocus {
+            let asked = await safariFocus(top.profile, copyId)
+            let now = await inFront()
+            Diagnostics.note("host: \(top.id): still not in front after its raise: its copy asked to bring it in front (\(asked ? "asked" : "not asked")), \(now ? "in front now" : "still not in front")")
+            if now { return }
+        }
+        // Last way: its window out to a private Space and straight back in. A window moved into Margin's Space comes in
+        // front of the others there (the real screen, 2026-11-21: a card window that came in with its tile stayed behind
+        // main whatever raised it; the same window parked and switched in, a move, was in front). Done under its own
+        // loader (a card's or a pane's opening: the window isn't revealed yet), so no freeze.
+        guard sys.spaces(window: top.window) == [marginSpace], let priv = sys.createPrivateSpace() else { return }
+        let t0 = sys.now()
+        var out = false, back = false
+        if sys.move(window: top.window, to: priv) { out = await wait(options.parkWait, every: options.memberEvery) { self.sys.spaces(window: top.window) == [] } }
+        if out || sys.spaces(window: top.window) != [marginSpace] {
+            if sys.move(window: top.window, to: marginSpace) { back = await wait(options.memberWait, every: options.memberEvery) { self.sys.spaces(window: top.window) == [self.marginSpace] } }
+        }
+        retirePrivate(priv)
+        _ = await front(top)
+        if top.tile != nil, let b = sys.bounds(window: top.window), !HostLayout.near(b, frame(top), within: options.tolerance) { await reapplyTiles(first: top) }
+        let now = await inFront()
+        Diagnostics.note("host: \(top.id): out to a private Space and back into Margin's (\(out ? "out" : "not out"), \(back ? "back" : "not back")) in \(ms(since: t0)) ms: \(now ? "in front now" : "still not in front")")
     }
     // These hosts' windows in the window server's order now, back to front (its on-screen list is front to back); nil:
     // unread, or one of them not in it.

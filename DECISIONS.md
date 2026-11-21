@@ -6994,6 +6994,9 @@ once fronted … raised again`): a window Safari made a moment ago and the bridg
 later opens were ordered right. Now, when the retry still leaves the focused Safari window (a card or a pane) behind,
 the engine asks its copy to bring it in front (`hostFocusWindow`: `windows.update(id, { focused: true })`, the app's
 request only, a windows call with `notAfter` and one per window at a time) and reads the order again, one log line
-either way. The name `focusWindow` stays refused: it was the overlay era's request, removed with it. Checks: the stand-in
+either way. On the real screen that didn't take either (`asked, still not in front`), so the last way is the move
+that does: the window out to a private Space and straight back into Margin's (a window moved into Margin's Space comes
+in front of the others there, as a parked card's switch showed), under the card's or pane's own loader (not revealed
+yet), so no freeze; its rect set again if its tile was laid out meanwhile. The name `focusWindow` stays refused: it was the overlay era's request, removed with it. Checks: the stand-in
 world's new window behind main and unraisable (screen-card-tests.swift, failing without the hook), the copy's handler
 (tests/handoff-copy.test.ts), the app requests list (tests/link.test.ts).

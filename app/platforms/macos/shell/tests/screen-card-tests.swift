@@ -64,8 +64,8 @@ private func screenCardOrderTests() {
         w.applyFullScreen(pid: pid, window: n, on)
     }
     links.onCloseWindow = { id in if let n = copyWindows.removeValue(forKey: id) { w.closeWindow(n) } }
-    // (Safari putting its own window in front: what Accessibility couldn't.)
-    links.onFocusWindow = { id in if let n = copyWindows[id] { w.raised.removeAll { $0 == n }; w.raised.insert(n, at: 0) } }
+    // (Safari asked to put its own window in front: on the real screen that didn't take either, 2026-11-21.)
+    links.onFocusWindow = { _ in }
     window.splitShown = {
         guard let front = session.requested[1] ?? session.shown[1], let s = library.split(ofItem: front) else { return nil }
         return (s.id, s.panes, s.vertical, [])
@@ -128,9 +128,11 @@ private func screenCardOrderTests() {
     clock += HostedSession.cardIdle + 1
     run { session.closeIdleCards() }
     newBehind = true
+    w.moveFronts = true
     let focusAsked = links.asked.filter { $0.type == "hostFocusWindow" }.count
     run { session.peekOpen(profile: "s-default", windowId: 90, msg: ["id": "sc-2", "url": "https://docs.example.org/two", "notAfter": later()]) }
-    check("screen card: a card's new window behind main that Accessibility can't raise: its copy asked to bring it in front (hostFocusWindow), and it's in front of both panes",
-          links.asked.filter { $0.type == "hostFocusWindow" }.count > focusAsked && engine.shown == cardId && w.inFront(win(cardId), of: win(safari)) == true && w.inFront(win(cardId), of: win(notes)) == true,
+    check("screen card: a card's new window behind main that neither Accessibility nor its copy can raise: its copy asked first (hostFocusWindow), then out to a private Space and back: in front of both panes, at its rect",
+          links.asked.filter { $0.type == "hostFocusWindow" }.count > focusAsked && engine.shown == cardId && w.inFront(win(cardId), of: win(safari)) == true && w.inFront(win(cardId), of: win(notes)) == true
+          && w.spaces(window: win(cardId)) == [FakeHostWorld.marginSpace] && engine.visible.count == 3,
           "card \(win(cardId)) main \(win(safari)) notes \(win(notes)); front to back \(w.raised); asked \(links.types())")
 }

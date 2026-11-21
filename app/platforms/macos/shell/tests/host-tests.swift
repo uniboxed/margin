@@ -648,6 +648,9 @@ final class FakeHostWorld: HostSystem {
     // made a moment ago and moved between Spaces by the bridge): its app activated, nothing reordered.
     var byRaise = false
     var unraisable: Set<Int> = []
+    // `moveFronts`: a window moved into Margin's Space from a private Space comes in front of the others there and can
+    // be raised from then on (the real screen's: a parked window switched in), as `raised` has it.
+    var moveFronts = false
     // Whether window `a` is in front of window `b` by that order (nil: either never raised).
     func inFront(_ a: Int, of b: Int) -> Bool? {
         guard let ia = raised.firstIndex(of: a), let ib = raised.firstIndex(of: b) else { return nil }
@@ -912,6 +915,9 @@ final class FakeHostWorld: HostSystem {
     func move(window: Int, to space: UInt64) -> Bool {
         calls.append("move \(window) \(space)")
         if let h = toolbarHost(window) { return move(window: h, to: space) }
+        if moveFronts, space == Self.marginSpace, let w = wins[window], w.priv != nil || w.spaces.contains(where: { privates.contains($0) }) {
+            unraisable.remove(window); raised.removeAll { $0 == window }; raised.insert(window, at: 0)
+        }
         guard var w = wins[window], !(fail.contains("moveIn") && space == Self.marginSpace), !(noMoveIn.contains(window) && space == Self.marginSpace) else { return false }
         let before = spaces(window: window) ?? []
         if let from = pending[window]?.space ?? w.priv ?? w.spaces.first(where: { $0 != space && tiles[$0] != nil }) { movedOut[window] = (from, clock) }
