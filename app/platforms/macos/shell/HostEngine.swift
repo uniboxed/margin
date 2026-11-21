@@ -2773,7 +2773,41 @@ final class HostEngine {
     // first). Margin's page area shows the loading animation meanwhile; the freeze holds only from the full-screen ask
     // until macOS's jump to the new Space is undone (and, for an app's member placed again, its exit before it, which is
     // seen on the current Space).
+    // Several visible (a split's pane, main under a card): the layout held while it's placed again on its own (a
+    // correction, a route's change, a window brought back), each one's rect kept, the focus put back after. Its placing
+    // goes out of full screen and in, its window parked on the way: the one shown changing outside a layout's change made
+    // it the layout alone, the others still on screen and its rect still its pane's (the real screen, 2026-11-21:
+    // "placed again … reserved 240/8/8/635", the old pane's rect, the engine's layout saying main at the page area).
     private func placeFullScreen(_ host: Host, isNew: Bool, retrying: Bool) async -> HostResult {
+        guard let release = holdLayout(for: host) else { return await placeFullScreenNow(host, isNew: isNew, retrying: retrying) }
+        let r = await placeFullScreenNow(host, isNew: isNew, retrying: retrying)
+        await release()
+        return r
+    }
+
+    // The layout as it is, held while `host` (visible, beside others) is placed on its own, outside a whole layout's
+    // change (`applyingLayout`); nil: nothing to hold (one visible host, or a layout being applied already). The release
+    // puts back each one still shown at its rect, the focus where it was asked, fronts them back to front and tells
+    // Margin's window.
+    private func holdLayout(for host: Host) -> (() async -> Void)? {
+        guard !applyingLayout, visible.count > 1, visible[host.id] != nil else { return nil }
+        let kept = visible, focus = focusWanted ?? shown
+        applyingLayout = true
+        return { [self] in
+            applyingLayout = false
+            visible = kept.filter { hosts[$0.key]?.phase == .shown }
+            for (id, v) in visible { hosts[id]?.role = v.role; hosts[id]?.rect = v.rect }
+            if let f = focus, isVisible(f) { if focusWanted == nil, visible.count > 1 { focusWanted = f }; if shown != f { shown = f } }
+            else if shown.map({ visible[$0] == nil }) ?? true { shown = visibleHosts.last?.id }
+            settleVisible()
+            if visible.count > 1 { await frontVisible() }
+            hostedSaid = nil
+            hostedWindowsSaid = []
+            announceHosted()
+        }
+    }
+
+    private func placeFullScreenNow(_ host: Host, isNew: Bool, retrying: Bool) async -> HostResult {
         let started = sys.now()
         revealed = nil
         var times: [String] = []
@@ -4001,7 +4035,9 @@ final class HostEngine {
     private func followShown(_ was: HostID?) {
         guard !applyingLayout else { return }
         if let id = shown {
-            if visible[id] == nil { visible = [id: HostVisible(rect: nil, role: .main, z: 0)] }
+            // (Alone at the page area from now: its rect and role as the layout says, never a pane's rect kept on it,
+            // which every placing reads: `pageOf`.)
+            if visible[id] == nil { visible = [id: HostVisible(rect: nil, role: .main, z: 0)]; hosts[id]?.rect = nil; hosts[id]?.role = .main }
         } else if let was {
             visible[was] = nil
         }
