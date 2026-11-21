@@ -42,6 +42,7 @@ m-page[m-split="column"]{flex-direction:column}
 m-pane{display:block;box-sizing:border-box;flex:1 1 0px;min-width:0;min-height:0;background:none!important;pointer-events:none!important}
 m-divider{display:block;box-sizing:border-box;flex:0 0 var(--m-split-gap,8px);position:relative;pointer-events:auto!important;cursor:col-resize;touch-action:none;outline:none;-webkit-user-select:none;user-select:none}
 m-page[m-split="column"]>m-divider{cursor:row-resize}
+m-divider>m-band-title{position:absolute;left:12px;right:calc(50% + 34px);top:50%;transform:translateY(-50%);display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font:500 12px/16px -apple-system,BlinkMacSystemFont,system-ui,sans-serif;opacity:.72;pointer-events:none;-webkit-user-select:none;user-select:none}
 m-window-controls,m-drag-region,m-palette,m-notice,m-menu,m-editor,m-launcher,m-prompt,m-settings,m-page-loader,m-toast,m-peek{display:block}
 m-peek-page{display:block}
 m-peek[m-default]{position:fixed;left:var(--m-page-left,0px);top:var(--m-page-top,0px);right:var(--m-page-right,0px);bottom:var(--m-page-bottom,0px);z-index:2147483630;overflow:hidden;border-radius:var(--m-page-radius,0px);pointer-events:none;color-scheme:light dark;font:13px/1.3 -apple-system,BlinkMacSystemFont,system-ui,sans-serif}

@@ -6889,3 +6889,15 @@ user's choices (the doc's table) as built; what was decided here is marked so.
   search field, a modal dialog and an open popover (the engine's own Esc closes or clears them), a key the page stopped.
   Not covered: a key in a frame (the content script is the top frame's). Checked: `tests/keep-fullscreen.test.ts`
   (stand-in), `tests/theme/keep-fullscreen.test.ts` (WebKit and Chromium: the order, the dialog closing, the popover).
+- **Stacked split: a band above each Safari pane for its toolbar.** Safari's full-screen toolbar window rests just
+  above its window (on screen: 1264×52 at the pane's top − 52) and is drawn whenever that window was raised after the
+  pane above it (the focused pane is raised last): it showed inside the upper pane's hole. It's never moved or parked
+  (that broke Safari's full screen, 2026-11-07), so the fix is geometry: stacked, the divider above a pane hosted in a
+  Safari window (a web item's; not a Mac app's) is a band at least `SAFARI_TOOLBAR` (52 pt) tall (`<m-divider m-band>`,
+  `flex-basis: max(--m-split-gap, 52px)`), and the toolbar rests in Margin's opaque ground there. The band carries the
+  pane's name and host (`<m-band-title>`, Margin's text; base CSS, each theme's divider colour and grip) like Arc's pane
+  header. The room check for another pane counts the bands (`dividerSizes`, `panesFit` with each divider's size); a
+  pane's own minimum is unchanged (the band is the divider's). Side by side nothing changes (the toolbars rest under
+  Margin's top frame, as one window's does). The app doesn't read the toolbar's height (only the engine knows that
+  window): 52 is the measured one. Checked: `tests/split-view.test.ts`, `tests/theme/split-view.test.ts` (5 themes, both
+  engines: the band's height, place, name; the stacked room check).
