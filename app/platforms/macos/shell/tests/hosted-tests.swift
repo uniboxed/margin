@@ -120,6 +120,7 @@ final class FakeHostedLinks: HostedLinks {
     var nextWindow = 90, nextTab = 500
     var onNewWindow: ((Int, JSONObject) -> Void)? // the copy's id for the window it makes, and what it was asked
     var onSetWindowState: ((Int, Bool) -> Void)? // the copy's id, full screen or not
+    var onFocusWindow: ((Int) -> Void)? // the copy's id of a window brought in front by Safari (hostFocusWindow)
     var onCloseWindow: ((Int) -> Void)?
     var onHostShow: (() -> Void)? // (as the copy is asked for an item's tab)
     var refuse: Set<String> = []
@@ -170,6 +171,10 @@ final class FakeHostedLinks: HostedLinks {
         case "closeWindow":
             if let id = int(payload["windowId"]) { onCloseWindow?(id) }
             return ([:], nil)
+        case "hostFocusWindow":
+            guard let id = int(payload["windowId"]) else { return (nil, "no window") }
+            onFocusWindow?(id)
+            return (["windowId": id, "focused": true], nil)
         case "hostPicture":
             if pictureDelay > 0 { try? await Task.sleep(for: .seconds(pictureDelay)) }
             return (["data": picture ?? NSNull()], nil)

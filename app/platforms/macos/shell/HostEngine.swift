@@ -388,6 +388,9 @@ final class HostEngine {
     // Wired by the shell to the copy's `setWindowState` (the profile, the copy's id, full screen or normal): a Safari
     // window's full screen, which Accessibility can't set while it's on another Space. True: the copy asked Safari.
     var safariFullScreen: ((String?, Int, Bool) async -> Bool)?
+    // Wired by the shell to the copy's `hostFocusWindow` (the profile, the copy's id): a Safari window brought in front of
+    // its app's others by Safari itself, when Accessibility's raise didn't take (frontVisible). True: done.
+    var safariFocus: ((String?, Int) async -> Bool)?
     // Wired by the shell: waits until that profile's extension copy is linked (true), before Safari's windows are read
     // and a window asked for, so windows a Safari just started restores meanwhile are never taken for Margin's own.
     var safariLinked: ((String?) async -> Bool)?
@@ -653,6 +656,13 @@ final class HostEngine {
         if await wait(options.orderWait, every: options.memberEvery, { self.serverOrder(of: wanted).map { $0.last == top.window } ?? true }) { return }
         Diagnostics.note("host: \(top.id), focused, not in front of the other visible hosts once fronted (back to front \(serverOrder(of: wanted).map { $0.map(String.init).joined(separator: ", ") } ?? "unread"), wanted \(wanted.map { String($0.window) }.joined(separator: ", "))): raised again")
         _ = await front(top)
+        // (A Safari window made a moment ago that Accessibility can't raise, seen on the real screen 2026-11-21: Safari
+        // itself asked to put it in front, through its copy, then read again.)
+        guard let copyId = top.safariWindow, let safariFocus else { return }
+        if await wait(options.orderWait, every: options.memberEvery, { self.serverOrder(of: wanted).map { $0.last == top.window } ?? true }) { return }
+        let asked = await safariFocus(top.profile, copyId)
+        let inFront = await wait(options.orderWait, every: options.memberEvery, { self.serverOrder(of: wanted).map { $0.last == top.window } ?? true })
+        Diagnostics.note("host: \(top.id): still not in front after its raise: its copy asked to bring it in front (\(asked ? "asked" : "not asked")), \(inFront ? "in front now" : "still not in front")")
     }
     // These hosts' windows in the window server's order now, back to front (its on-screen list is front to back); nil:
     // unread, or one of them not in it.

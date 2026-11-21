@@ -6985,3 +6985,15 @@ From Margin's log on the real screen (split view and Peek with real Safari). UI 
   held button kept), `tests/theme/card-over-split.test.ts` (5 themes and the default card, both engines: nothing of
   `<m-page>` at the band inside the card's page, its pixels as with no `<m-page>`, a pane's loader too, whole again
   after), `tests/ui-host-app.test.ts` (no divider hits while the card clips). Nothing on the real screen yet.
+
+## A card's new window Accessibility can't raise: Safari brings it in front (2026-11-21)
+
+On the real screen, Peek's card window opened for the first time over a split (main Safari focused) landed behind main,
+and Accessibility's raise of it didn't take, also when tried again (`… focused, not in front of the other visible hosts
+once fronted … raised again`): a window Safari made a moment ago and the bridge moved between Spaces. The parked card's
+later opens were ordered right. Now, when the retry still leaves the focused Safari window (a card or a pane) behind,
+the engine asks its copy to bring it in front (`hostFocusWindow`: `windows.update(id, { focused: true })`, the app's
+request only, a windows call with `notAfter` and one per window at a time) and reads the order again, one log line
+either way. The name `focusWindow` stays refused: it was the overlay era's request, removed with it. Checks: the stand-in
+world's new window behind main and unraisable (screen-card-tests.swift, failing without the hook), the copy's handler
+(tests/handoff-copy.test.ts), the app requests list (tests/link.test.ts).

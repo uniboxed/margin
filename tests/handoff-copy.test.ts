@@ -490,3 +490,13 @@ test('the page\'s part: its scroll said as it\'s hidden (once a second, the last
   assert.equal(t.html.scrollTop, 70);
   void rec;
 });
+
+test('hostFocusWindow (Margin.app bringing a card\'s or pane\'s window in front, docs/PEEK-SPLIT.md): the app\'s request only, that window focused, never past notAfter', async () => {
+  fresh();
+  await assert.rejects(handlers.hostFocusWindow({ windowId: 2, notAfter: Date.now() + 2000 }, {} as any), /the app's request only/);
+  assert.equal(fake.windowUpdates.length, 0, 'not from the app: nothing called');
+  assert.deepEqual(await handlers.hostFocusWindow({ windowId: 2, notAfter: Date.now() + 2000 }, { app: true } as any), { windowId: 2, focused: true });
+  assert.deepEqual(fake.windowUpdates.at(-1), { id: 2, focused: true });
+  assert.equal(((await handlers.hostFocusWindow({ windowId: 2, notAfter: Date.now() - 50 }, { app: true } as any)) as Refused).refused, 'late');
+  assert.equal(fake.windowUpdates.length, 1, 'late: not called');
+});

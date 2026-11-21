@@ -122,6 +122,7 @@ extension Shell {
         host.hostedWindows = { [weak session] list in session?.hostedWindows(list) }
         host.closeSafariWindow = { [weak session] profile, id in await session?.closeSafariWindow(profile, id) ?? false }
         host.safariFullScreen = { [weak session] profile, id, on in await session?.safariFullScreen(profile, id, on) ?? false }
+        host.safariFocus = { [weak session] profile, id in await session?.safariFocus(profile, id) ?? false }
         host.safariLinked = { [weak session] profile in await session?.safariLinked(profile) ?? false }
         host.loading = { [weak session] id in session?.loading(id) }
         host.hostedWindow = { [weak session] number in session?.hosted(number) }

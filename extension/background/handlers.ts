@@ -859,6 +859,16 @@ export const handlers = {
       ? { left: win.left, top: win.top, width: win.width, height: win.height } : null;
     return { windowId: win.id, state: win.state ?? 'normal', ...(bounds ? { bounds } : {}) };
   },
+  // Margin.app bringing a window it hosts in front of its app's others (HostedSession.safariFocus): a card's or pane's
+  // window Safari made a moment ago, which Accessibility can't raise yet (docs/PEEK-SPLIT.md, the real screen
+  // 2026-11-21). Safari orders its own window in front; never past `notAfter`, one windows call per window at a time.
+  async hostFocusWindow(message: { windowId: number, notAfter?: number }, sender: BrowserMessageSender) {
+    if (!sender?.app) throw new Error('the app\'s request only');
+    return windowCall('hostFocusWindow', message, async () => {
+      await api.windows.update(message.windowId, { focused: true });
+      return { windowId: message.windowId, focused: true };
+    });
+  },
   // Margin.app closing a window of this profile it hosts or made (its tabs are kept, not open: a window closing).
   // Never past `notAfter`, and not while another windows call for it is pending (handoff.ts).
   async closeWindow(message: { windowId: number, notAfter?: number }) {

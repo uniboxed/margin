@@ -36,6 +36,7 @@ private func screenCardOrderTests() {
     engine.requestRoleWindow = { await session.requestSafariWindow($0, role: $1) }
     engine.closeSafariWindow = { await session.closeSafariWindow($0, $1) }
     engine.safariFullScreen = { await session.safariFullScreen($0, $1, $2) }
+    engine.safariFocus = { await session.safariFocus($0, $1) }
     engine.safariLinked = { await session.safariLinked($0) }
     engine.onEvent = { session.hostEvent($0) }
     engine.hostedWindow = { session.hosted($0) }
@@ -45,6 +46,7 @@ private func screenCardOrderTests() {
     library.delegate = session
     var copyWindows: [Int: Int] = [:]
     var newUnraisable = false
+    var newBehind = false // (a window Safari makes lands behind the others: the real screen's, 2026-11-21)
     links.onNewWindow = { id, _ in
         guard let pid = w.running(bundleId: "com.apple.Safari").first?.pid else { return }
         let n = w.nextWindow
@@ -53,7 +55,7 @@ private func screenCardOrderTests() {
         w.apps[pid]?.windows.append(n)
         // (A window Safari makes is in front of every other: key, as the copy asks it focused. From the split's set-up on,
         // its raise by Accessibility doesn't take: made a moment ago and moved between Spaces by the bridge.)
-        w.raised.insert(n, at: 0)
+        if newBehind { w.raised.append(n) } else { w.raised.insert(n, at: 0) }
         if newUnraisable { w.unraisable.insert(n) }
         copyWindows[id] = n
     }
@@ -62,6 +64,8 @@ private func screenCardOrderTests() {
         w.applyFullScreen(pid: pid, window: n, on)
     }
     links.onCloseWindow = { id in if let n = copyWindows.removeValue(forKey: id) { w.closeWindow(n) } }
+    // (Safari putting its own window in front: what Accessibility couldn't.)
+    links.onFocusWindow = { id in if let n = copyWindows[id] { w.raised.removeAll { $0 == n }; w.raised.insert(n, at: 0) } }
     window.splitShown = {
         guard let front = session.requested[1] ?? session.shown[1], let s = library.split(ofItem: front) else { return nil }
         return (s.id, s.panes, s.vertical, [])
@@ -114,4 +118,19 @@ private func screenCardOrderTests() {
           engine.visible.count == 3 && engine.shown == pane1 && w.inFront(win(pane1), of: win(safari)) == true && w.inFront(win(pane1), of: win(notes)) == true
           && activations().last?.hasSuffix(" \(win(pane1))") == true,
           "pane \(win(pane1)) notes \(win(notes)) main \(win(safari)); front to back \(w.raised); \(activations()) \(engine.visible)")
+
+    // ---- the real screen's case: the card's new window lands BEHIND main and Accessibility can't raise it ----
+    run { _ = library.perform("removeFromSplit", ["windowId": 1, "tabId": b]) }
+    run { _ = library.perform("activateTab", ["windowId": 1, "tabId": a]) }
+    // (The card window closed as idle: its next open makes a new one.)
+    var clock = 1000.0
+    session.now = { clock }
+    clock += HostedSession.cardIdle + 1
+    run { session.closeIdleCards() }
+    newBehind = true
+    let focusAsked = links.asked.filter { $0.type == "hostFocusWindow" }.count
+    run { session.peekOpen(profile: "s-default", windowId: 90, msg: ["id": "sc-2", "url": "https://docs.example.org/two", "notAfter": later()]) }
+    check("screen card: a card's new window behind main that Accessibility can't raise: its copy asked to bring it in front (hostFocusWindow), and it's in front of both panes",
+          links.asked.filter { $0.type == "hostFocusWindow" }.count > focusAsked && engine.shown == cardId && w.inFront(win(cardId), of: win(safari)) == true && w.inFront(win(cardId), of: win(notes)) == true,
+          "card \(win(cardId)) main \(win(safari)) notes \(win(notes)); front to back \(w.raised); asked \(links.types())")
 }

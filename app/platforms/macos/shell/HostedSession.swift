@@ -1983,6 +1983,14 @@ final class HostedSession: LibraryDelegate {
         return answer.called
     }
 
+    // A Safari window Margin hosts brought in front of its app's others by its copy (hostFocusWindow: windows.update focused): the engine's
+    // last way when Accessibility can't raise a window Safari made a moment ago (HostEngine.frontVisible). True: done.
+    func safariFocus(_ profile: String?, _ windowId: Int) async -> Bool {
+        let (result, error) = await links.request(profile: resolve(profile), "hostFocusWindow", ["windowId": windowId, "notAfter": (Date().timeIntervalSince1970 + 2) * 1000])
+        note("Safari window \(windowId) brought in front by its copy: \(result != nil ? "done" : error ?? "no answer")")
+        return result?["focused"] as? Bool == true
+    }
+
     // What the engine says happened outside Margin: an app or its window gone, its items have no page any more.
     func hostEvent(_ event: HostEvent) {
         switch event {

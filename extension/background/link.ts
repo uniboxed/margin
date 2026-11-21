@@ -151,7 +151,7 @@ export const APP_REQUESTS = new Set([
   'noticeAction',
   // Margin.app's host (app/platforms/macos/shell/HostedSession.swift): a window it made closed, a window's state
   // without taking focus.
-  'closeWindow', 'setWindowState',
+  'closeWindow', 'setWindowState', 'hostFocusWindow',
   // Margin.app's index of the person's imported themes (app/platforms/macos/shell/ShellThemes.swift).
   'userThemes',
   // Margin.app hosting this profile's window in its page area (background/hosted.ts): an item's tab shown, closed, muted, navigated, promoted from Peek.
@@ -163,7 +163,7 @@ export const APP_REQUESTS = new Set([
 ]);
 // The requests that call windows.update or windows.remove for one window: each carries `notAfter`
 // from the app, and only one runs per window at a time (background/handoff.ts).
-export const WINDOW_CALLS = new Set(['setWindowState', 'closeWindow']);
+export const WINDOW_CALLS = new Set(['setWindowState', 'closeWindow', 'hostFocusWindow']);
 
 // A windows call that mustn't run, and its answer: past its `notAfter` (milliseconds since 1970, the
 // app's clock and this copy's being the same), `{ refused: 'late', pastMs }`; another windows call for
