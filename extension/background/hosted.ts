@@ -22,6 +22,8 @@
 import { isNewTabPage } from '../shared/view.ts';
 
 type Tab = { id?: number, windowId?: number, url?: string, pendingUrl?: string, active?: boolean, mutedInfo?: { muted: boolean } };
+/** The mini player's buttons on a hosted item's page (`hostMedia`; content/media.ts). */
+const MEDIA_COMMANDS = new Set(['toggle', 'prev', 'next', 'mute']);
 /** What of the browser's tabs API this uses (the extension's `api.tabs`, a test's stand-in). */
 export type HostedTabsApi = {
   get(id: number): Promise<Tab>,
@@ -30,6 +32,7 @@ export type HostedTabsApi = {
   update(id: number, props: { url?: string, active?: boolean, muted?: boolean }): Promise<Tab>,
   move?(id: number, props: { windowId: number, index: number }): Promise<Tab>,
   remove(id: number): Promise<void>,
+  sendMessage?(id: number, message: unknown): Promise<any>,
   captureVisibleTab?(windowId: number, options: { format: 'jpeg', quality: number }): Promise<string>,
 };
 /** A picture made smaller (background/picture.ts; a test's stand-in), or as it was when it can't be. */
@@ -59,6 +62,11 @@ export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = asy
   return {
     /** For the tests: the item each tab is tagged with. */
     tags: () => new Map(byItem),
+    /** The item a tab is tagged with (the mini player's sources name it: background/media.ts), null: none. */
+    itemOf(tabId: number): string | null {
+      for (const [item, id] of byItem) if (id === tabId) return item;
+      return null;
+    },
     async show({ windowId, itemId, url }: { windowId?: unknown, itemId?: unknown, url?: unknown }) {
       if (!Number.isInteger(windowId)) throw new Error('no window');
       if (typeof itemId !== 'string' || !ITEM.test(itemId)) throw new Error('no item');
@@ -117,6 +125,26 @@ export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = asy
       const next = typeof muted === 'boolean' ? muted : !tab.mutedInfo?.muted;
       const updated = await tabs().update(tab.id, { muted: next });
       return { muted: updated?.mutedInfo?.muted ?? next, ok: true };
+    },
+    // The mini player's button for an item's page (Margin.app's `hostMedia`): play or pause, the previous or next
+    // track, done by its page (content/media.ts `mediaCommand`); mute as `hostMute`. `tabId`: the tab the copy's
+    // `media` push named for it, used when the item's tag is gone (this copy started again since it was shown) and
+    // that tab is no other item's.
+    async media({ itemId, command, tabId }: { itemId?: unknown, command?: unknown, tabId?: unknown }) {
+      if (typeof itemId !== 'string' || !ITEM.test(itemId)) throw new Error('no item');
+      if (typeof command !== 'string' || !MEDIA_COMMANDS.has(command)) throw new Error('not a media command');
+      let tab = await own(itemId, null);
+      if (!tab && Number.isInteger(tabId) && !tagged(tabId as number)) {
+        tab = await tabs().get(tabId as number).catch(() => null);
+        if (tab && tab.id === tabId) byItem.set(itemId, tabId as number); else tab = null;
+      }
+      if (tab?.id == null) return { ok: false };
+      if (command === 'mute') {
+        const updated = await tabs().update(tab.id, { muted: !tab.mutedInfo?.muted });
+        return { ok: true, muted: updated?.mutedInfo?.muted ?? !tab.mutedInfo?.muted };
+      }
+      const answer = await tabs().sendMessage?.(tab.id, { type: 'mediaCommand', command }).catch(() => null);
+      return { ok: answer?.ok === true };
     },
     async navigate({ itemId, url }: { itemId?: unknown, url?: unknown }) {
       if (typeof itemId !== 'string' || !ITEM.test(itemId)) throw new Error('no item');

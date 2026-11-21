@@ -824,6 +824,55 @@ func hostedTests() {
     check("hosted: a request the library doesn't take: refused, said to the page", unsupported?["ok"] as? Bool == false)
     check("hosted: the UI's own bookkeeping requests: answered quietly", source.perform("sidebarScroll", ["windowId": 1])?["ok"] as? Bool == true)
 
+    // ---- the copy's pushes for its UI (UIPush.swift): the mini player's `media`, by the UI's numbers ----
+    session.windowIds = { [1] }
+    let png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+    func lastPush() -> JSONObject? { window.pushed.last.flatMap { (try? JSONSerialization.jsonObject(with: Data($0.utf8))) as? JSONObject } }
+    var pushes = window.pushed.count
+    let bTab = session.safariTabs[bItem] ?? -1 // (its tab as the last hostShow answered)
+    session.copyPush(profile: "s-default", windowId: 90, msg: ["type": "media", "evil": "<script>", "sources": [
+        ["tabId": 500, "itemId": aItem, "url": "https://a.example/", "title": String(repeating: "S", count: 300), "subtitle": "Band", "artwork": png, "playing": true, "muted": false,
+         "canPrev": true, "canNext": "yes", "updatedAt": 1700000000000.0, "pausedAt": NSNull(), "extra": ["x": 1]],
+        ["tabId": 999, "itemId": "t-not-ours", "url": "https://elsewhere.example/", "title": "Not Margin's", "playing": true],
+        ["tabId": bTab, "title": "By its tab", "artwork": "https://img.example/a.jpg", "playing": false, "pausedAt": 1700000000000.0],
+        "not an object",
+    ]])
+    let media = lastPush() ?? [:]
+    let sources = media["sources"] as? [JSONObject] ?? []
+    check("hosted: a copy's `media` push for the window Margin hosts: to Margin's window, its tabs by the UI's numbers (one not Margin's left out), only its fields, each cut and checked",
+          window.pushed.count == pushes + 1 && media["type"] as? String == "media" && media["evil"] == nil && sources.count == 2
+          && int(sources[0]["tabId"]) == aNumber && sources[0]["itemId"] == nil && sources[0]["url"] == nil && sources[0]["extra"] == nil
+          && (sources[0]["title"] as? String)?.count == 140 && sources[0]["artwork"] as? String == png && sources[0]["canPrev"] as? Bool == true && sources[0]["canNext"] as? Bool == false
+          && sources[0]["pausedAt"] is NSNull && int(sources[1]["tabId"]) == bNumber && sources[1]["artwork"] is NSNull && num(sources[1]["pausedAt"]) == 1700000000000,
+          "\(window.pushed.last ?? "none")")
+    pushes = window.pushed.count
+    session.copyPush(profile: "s-default", windowId: 3, msg: ["type": "media", "sources": [["tabId": 500, "itemId": aItem, "playing": true]]])
+    session.copyPush(profile: "s-work", windowId: 90, msg: ["type": "media", "sources": [["tabId": 500, "itemId": aItem, "playing": true]]])
+    session.copyPush(profile: "s-default", windowId: 90, msg: ["type": "peekOpen", "url": "https://x.example/"])
+    session.copyPush(profile: "s-default", windowId: 90, msg: ["type": "state", "state": [:]])
+    check("hosted: the person's own window's push, another profile's, and a type not passed on: nothing to Margin's window", window.pushed.count == pushes, "\(window.pushed.suffix(2))")
+    session.copyPush(profile: "s-default", windowId: 90, msg: ["type": "media", "sources": [["tabId": 777, "url": "https://b.example/#t=3", "playing": true]]])
+    check("hosted: a tab the session doesn't know (a copy started again, Safari's ids changed): its item found by its address; that tab kept as the item's",
+          int((lastPush()?["sources"] as? [JSONObject])?.first?["tabId"]) == bNumber && session.safariTabs[bItem] == 777, "\(window.pushed.last ?? "")")
+    session.copyPush(profile: "s-default", windowId: 90, msg: ["type": "toast", "text": String(repeating: "t", count: 500), "html": "<b>"])
+    check("hosted: a `toast` push: its words only, cut to 140", lastPush()?["type"] as? String == "toast" && (lastPush()?["text"] as? String)?.count == 140 && lastPush()?["html"] == nil)
+    // (Back as before: the item's tab as hostShow said.)
+    session.copyPush(profile: "s-default", windowId: 90, msg: ["type": "media", "sources": [["tabId": bTab, "itemId": bItem, "playing": true]]])
+    // The mini player's buttons: the library's mediaControl, the copy's hostMedia for the item, with its tab.
+    let mediaMark = links.asked.count
+    run { _ = source.perform("mediaControl", ["windowId": 1, "tabId": aNumber, "command": "toggle", "source": "tab"]) }
+    let mediaAsk = links.asked.dropFirst(mediaMark).first
+    check("hosted: the mini player's Play/Pause (the UI's number for the item): the copy's hostMedia for that item, its tab named", links.types(since: mediaMark) == ["hostMedia"]
+          && mediaAsk?.profile == "s-default" && mediaAsk?.payload["itemId"] as? String == aItem && mediaAsk?.payload["command"] as? String == "toggle" && int(mediaAsk?.payload["tabId"]) == 500,
+          "\(links.types(since: mediaMark)) \(String(describing: mediaAsk?.payload))")
+    run { _ = source.perform("mediaControl", ["windowId": 1, "tabId": bNumber, "command": "next"]) }
+    check("hosted: …and Next", links.asked.last?.type == "hostMedia" && links.asked.last?.payload["command"] as? String == "next" && int(links.asked.last?.payload["tabId"]) == bTab)
+    let refused = source.perform("mediaControl", ["windowId": 1, "tabId": aNumber, "command": "eval"])
+    run {}
+    check("hosted: …a command that isn't one: refused, nothing asked", refused?["ok"] as? Bool == false && links.types(since: mediaMark).count == 2)
+    check("hosted: UIPush: an empty standing push for a window no longer given it; none for an event's",
+          UIPush.empty("media").map { ($0["sources"] as? [Any])?.isEmpty == true && $0["type"] as? String == "media" } == true && UIPush.empty("toast") == nil)
+
     // ---- the app's item again: an instant switch ----
     let setStates = links.types().filter { $0 == "setWindowState" }.count
     let loadingsBefore = window.loadings.count

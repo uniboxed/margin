@@ -6,7 +6,8 @@
 //
 //  - The links to Margin's extension copies (ExtensionLink.swift, one per browser profile) stay up as the tabs'
 //    drivers: each copy's state is mirrored (StateMirror.swift), its lasting data kept (DataSync.swift), its theme
-//    package and its shortcuts heard; its `loading` pushes are the Margin window's loading bar.
+//    package and its shortcuts heard; its `loading` pushes are the Margin window's loading bar, and the pushes for
+//    its UI that UIPush.swift passes on (the mini player's `media`, `toast`) go to the Margin window they belong in.
 //  - Each read (`track`): Margin's keys held while Margin or an app it hosts is in front (Shortcuts.swift
 //    ShortcutSet.hostedActive), the host polled, Safari's restored windows swept; again every `restPoll` while
 //    something is hosted or a copy is linked.
@@ -274,11 +275,17 @@ final class Shell: ExtensionLinkDelegate {
         case .data(let kind, let body):
             data.received(connection, kind, body)
         case .push(_, let windowId, let msg):
+            guard connection.hello.browser == "safari", let type = msg["type"] as? String else { return }
             // A Safari copy's tabs loading in the window Margin hosts for its profile, drawn as Margin's window's
             // loading bar (HostedSession.copyLoading).
-            guard msg["type"] as? String == "loading", connection.hello.browser == "safari" else { return }
-            let ids = (msg["tabIds"] as? [Any] ?? []).compactMap { int($0) }
-            hosted?.copyLoading(profile: connection.hello.profile, windowId: windowId, tabIds: ids)
+            if type == "loading" {
+                let ids = (msg["tabIds"] as? [Any] ?? []).compactMap { int($0) }
+                hosted?.copyLoading(profile: connection.hello.profile, windowId: windowId, tabIds: ids)
+                return
+            }
+            // What its UI shows for that window (UIPush.swift: only the types passed on, checked there), to the Margin
+            // window it belongs in (HostedSession.copyPush). Any other push: not the page's.
+            if UIPush.forwarded[type] != nil { hosted?.copyPush(profile: connection.hello.profile, windowId: windowId, msg: msg) }
         case .keys(let epoch, let bindings):
             guard epoch == connection.epoch else { return }
             entry.keys = bindings

@@ -810,8 +810,11 @@ function onMessage(msg: any) {
     case 'toast':
       if (typeof msg.text === 'string' && msg.text) runtime?.showToast(msg.text);
       return;
+    // The background mini player's sources for this window (the copy's `media` push, checked and given the UI's
+    // numbers for its tabs by the app: app/platforms/macos/shell/UIPush.swift): the view model picks the one shown.
     case 'media':
-      runtime?.setUi({ media: msg.media ?? null });
+      // (Each a tab's: Safari's pages are the mini player's only sources so far.)
+      runtime?.setUi({ media: Array.isArray(msg.sources) ? msg.sources.filter((m: any) => !!m && typeof m === 'object' && Number.isInteger(m.tabId)).slice(0, 8).map((m: any) => ({ ...m, id: `tab:${m.tabId}`, source: 'tab' })) : null });
       return;
     case 'peek':
       runtime?.setUi({ peek: msg.peek ?? null });

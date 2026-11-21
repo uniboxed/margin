@@ -14,7 +14,7 @@ import * as restore from './background/restore.ts';
 import { ensureCurrent, focusTab, forgetCurrent, handingOff, injectIntoOpenTabs, keepHandedOff, pageChanged, resolveTab, setActivationHook, shownAt, switchAsked, tabClosed, tabLeft, tabShown, userSwitched } from './background/tabs.ts';
 import { switchLog, switchLogTo } from './background/switch-log.ts';
 import { learnSearchEngine } from './background/search-engine.ts';
-import { handlers, newTabHandOff, newTabKey } from './background/handlers.ts';
+import { handlers, mediaHub, newTabHandOff, newTabKey } from './background/handlers.ts';
 // This engine's own modules (Safari's set-up messages and new-tab note, Chromium's full screen), or null.
 import { engine } from '#engine';
 import { storeActiveTheme } from './background/theme-package.ts';
@@ -426,10 +426,19 @@ api.windows?.onRemoved?.addListener((windowId) => handoff.windowClosed(windowId)
 // What's loading in each window, for its overlay (background/page-loads.ts):
 // a tab gone or moved, and every window again when the link comes.
 api.tabs.onRemoved.addListener((tabId) => pageLoads.tabMoved(tabId));
+// The background mini player's sources (background/media.ts): a tab closed, or its page left (a new document in its
+// main frame), goes at once; Safari's `audible` and mute for a tab, as they change. (In memory only: no storage.)
+api.tabs.onRemoved.addListener((tabId) => mediaHub.remove(tabId));
+api.webNavigation?.onCommitted.addListener((details) => { if (details.frameId === 0) mediaHub.remove(details.tabId); });
+api.tabs.onUpdated.addListener((tabId, change, tab) => {
+  if ('audible' in change && tab) mediaHub.audible({ id: tabId, windowId: tab.windowId, url: tab.url, title: tab.title, audible: !!change.audible, mutedInfo: tab.mutedInfo });
+  if (change.mutedInfo) mediaHub.muted(tabId, !!change.mutedInfo.muted);
+});
 api.tabs.onAttached.addListener((tabId, info) => pageLoads.tabMoved(tabId, info?.newWindowId ?? null));
 appLink.onPageState((state) => {
   // The notices decided while the link was down, said now (background/notices.ts).
   if (state === 'linked') void linkedAgain().catch(() => {});
+  if (state === 'linked') mediaHub.tellAll(); // (what plays, told again: Margin.app may have started since)
   if (state === 'linked') void Promise.resolve(api.windows?.getAll?.()).then((wins) => pageLoads.tellAll((wins ?? []).map((w) => w.id)), () => pageLoads.tellAll());
 });
 // Whether the app draws over a window (its `drawn`): its page in front is told at once (the

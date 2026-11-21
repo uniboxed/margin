@@ -316,7 +316,7 @@ host. Immutable: rows that didn't change are the same objects.
   `today` (the other tabs, newest first), `hasToday`, `hasPinned`,
   `newTab.active`.
 - `favorites`: `items[]` (web tabs & hosted apps, up to 12, sticky `open`/`active`/`drifted`/`rootUrl`/`audible`/`muted`), `hasItems`, `columns` (1–4).
-- `media` (null unless a background tab or hosted app is playing or within its 30 s pause grace period): `title`, `subtitle`, `artwork`, `icon`, `letter`, `color`, `playing`, `paused`, `muted`, `canPrev`, `canNext`.
+- `media` (the background mini player: null unless a tab not in front of this window is playing, or paused within the last 30 s; hosted Mac apps later): `title`, `subtitle`, `artwork` (a data URL, or null), `icon`, `letter`, `color`, `playing`, `paused`, `muted`, `canPrev`, `canNext`.
 - `toast` (null unless showing; guarded): `id`, `text`.
 - `peek` (null unless open; guarded): `url`, `host`, `title`, `canGoBack`, `canGoForward`, `isLittleArc`, `labels` (`expand`, `copyUrl`, `close`, `back`, `forward`).
 - `split` (null unless the active tab is inside a Split View): `id`, `axis`, `isHorizontal`, `isVertical`, `panes[]`, `dividers[]`, `canAddPane`, `labels`.

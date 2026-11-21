@@ -28,7 +28,7 @@ import type { InstalledApp } from '../shared/apps.ts';
 import { CONFIRM_LABEL, SPACE_COLORS, menuItems } from './behaviors/menu-items.ts';
 import type { MenuTarget } from './behaviors/menu-items.ts';
 import { SETTINGS_CATEGORIES, categoryNamed, fieldsIn, settingsFields } from './settings-form.ts';
-import { selectBackgroundMedia, type MediaSource } from '../background/media.ts';
+import { selectBackgroundMedia, type MediaSource } from '../shared/media.ts';
 
 /** The view model's version: a theme reads what this version documents. */
 export const VM_VERSION = 1;
@@ -43,7 +43,8 @@ export type UiState = {
   sidebar?: SidebarState | null,
   palette?: { open?: boolean, query?: string, selected?: number, newTab?: boolean, selectAll?: boolean },
   toast?: { id: string, text: string } | null,
-  media?: MediaSource | null,
+  /** The background mini player's sources (Margin.app's `media` push: overlay.ts), or one. */
+  media?: MediaSource[] | MediaSource | null,
   peek?: { url: string, title?: string, spaceId?: string | null, littleArc?: boolean } | null,
   menu?: { kind: MenuTarget['kind'], id?: string | number | null, x?: number, y?: number, above?: boolean, confirming?: string | null } | null,
   editing?: { kind: 'space' | 'folder' | 'tab' | 'pin' | 'favorite', id: string | number } | null,
@@ -703,14 +704,15 @@ function fresh(input: ViewModelInput): ViewModel {
     settingsForm = { fields, hasFields: fields.length > 0 };
   }
 
-  // Mini Player (M2.4): exact Arc visibility — shown ONLY when a background tab or hosted app is playing
-  // (or within 8s pause grace via ui.media). Never shown for the currently visible foreground tab/app.
+  // The background mini player (M2.4, shared/media.ts): only what plays in the background (or paused, within its
+  // 30 s grace), never the tab or app in front of this window. Its sources: Margin.app's `media` push (ui.media),
+  // and a tab the state says is audible that none of them is.
   const activeBundleId = current ? appOfItem(current) : null;
-  const mediaSources: MediaSource[] = [];
-  if (ui.media) mediaSources.push(ui.media);
+  const mediaSources: MediaSource[] = (Array.isArray(ui.media) ? ui.media : ui.media ? [ui.media] : []).filter((m) => !!m && typeof m === 'object');
+  const reported = new Set(mediaSources.filter((m) => m.source === 'tab').map((m) => m.tabId));
   for (const t of Object.values(state.tabs)) {
     if (!t.audible) continue;
-    if (ui.media && ui.media.source === 'tab' && ui.media.tabId === t.id) continue;
+    if (reported.has(t.id)) continue;
     mediaSources.push({
       id: `tab:${t.id}`,
       source: 'tab',

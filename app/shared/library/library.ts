@@ -405,6 +405,22 @@ const ACTIONS: Record<string, Handler> = {
     requests.push({ type: 'muteTab', windowId: p?.windowId ?? null, item: k.id, url: k.url, target: targetOfItem(k), spaceId: k.spaceId });
     return { s, result: { item: k.id } };
   },
+  // The background mini player's buttons (M2.4) for a web item's page: play or pause, the previous or next track,
+  // done by the hosting (HostedSession.swift: the copy's `hostMedia`); mute as muteTab; `focus` shows it as
+  // activateTab does. Nothing of the library changes.
+  mediaControl(ctx) {
+    const { s, p, requests } = ctx;
+    const k = s.keptTabs[p?.tabId];
+    if (!k) return fail(s, 'no such item');
+    const command = p?.command;
+    if (command === 'focus') return ACTIONS.activateTab(ctx);
+    if (command === 'mute') return ACTIONS.muteTab(ctx);
+    if (command !== 'toggle' && command !== 'prev' && command !== 'next') return fail(s, 'not a media command');
+    const target = targetOfItem(k);
+    if (target.kind !== 'web') return fail(s, 'only a web item plays in the mini player');
+    requests.push({ type: 'mediaControl', windowId: p?.windowId ?? null, item: k.id, url: k.url, target, spaceId: k.spaceId, command });
+    return { s, result: { item: k.id } };
+  },
   // Its page closed outside Margin (the browser's own tab bar, the app quit): archived as closeTab, nothing asked.
   itemClosed({ s, p, now, ids }) {
     if (!s.keptTabs[p?.tabId]) return fail(s, 'no such item');

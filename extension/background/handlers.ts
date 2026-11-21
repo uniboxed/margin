@@ -23,7 +23,7 @@ import { closeTabs, noteClosing } from './closing.ts';
 import * as away from './away.ts';
 import { appLink } from './app-link.ts';
 import { createHostedTabs, type HostedTabsApi } from './hosted.ts';
-import { createMediaRegistry } from './media.ts';
+import { createMediaHub, type MediaReportInput } from './media.ts';
 import { matchAirTrafficRule } from '../shared/air-traffic.ts';
 import { shrinkPicture } from './picture.ts';
 import { noticeAnswered } from './notices.ts';
@@ -178,7 +178,8 @@ const appState = (windowId: number | null) => {
 const launcherOpening = new Map<string, Promise<{ tabId: number, shown: number }>>();
 // Margin.app hosting this profile's window in its page area (background/hosted.ts): its items' tabs.
 const hostedTabs = createHostedTabs(() => api.tabs as unknown as HostedTabsApi, shrinkPicture);
-const mediaRegistry = createMediaRegistry();
+// The background mini player's sources (background/media.ts): each tab's, told to Margin.app for its window.
+export const mediaHub = createMediaHub({ push: (windowId, msg) => appLink.push(windowId, msg), itemOf: (tabId) => hostedTabs.itemOf(tabId) });
 
 // A favorite's tab (openFavorite): the open one bound to it (in `windowId` first), else an open one at its address no
 // pin or other favorite has; if none is open, its kept one (bound to it: asleep, or lost with its window; else one of
@@ -1007,37 +1008,33 @@ export const handlers = {
     const tab = await openTab({ windowId: win ?? undefined, url, spaceId: spaceId ?? undefined });
     return { ok: true, hosted: false, tabId: tab?.id ?? null };
   },
-  async mediaState(report: { playing: boolean, muted?: boolean, title?: string, artist?: string, artworkUrl?: string }, sender: BrowserMessageSender) {
-    const tabId = sender?.tab?.id;
-    if (tabId == null) return null;
-    const artwork = typeof report?.artworkUrl === 'string' && /^data:image\/(png|jpeg|webp);base64,/i.test(report.artworkUrl) ? report.artworkUrl : null;
-    const entry = mediaRegistry.report(tabId, {
-      playing: !!report?.playing,
-      muted: !!report?.muted,
-      title: report?.title,
-      artist: report?.artist,
-      artwork,
-      url: sender.tab?.url ?? '',
-    });
-    if (sender.tab?.windowId != null) {
-      appLink.push(sender.tab.windowId, { type: 'media', media: mediaRegistry.current(null) });
-    }
-    return entry;
+  // What a page plays (content/media.ts): the mini player's sources (background/media.ts).
+  async mediaState(report: MediaReportInput, sender: BrowserMessageSender) {
+    const tab = sender?.tab;
+    if (sender?.app || !tab || !Number.isInteger(tab.id)) return null;
+    mediaHub.report({ id: tab.id, windowId: tab.windowId, url: tab.url, title: tab.title, mutedInfo: tab.mutedInfo }, report && typeof report === 'object' ? report : { playing: false });
+    return true;
   },
-  async mediaControl({ command, tabId }: { command: 'toggle' | 'prev' | 'next' | 'mute' | 'focus', tabId?: number | string | null }, sender: BrowserMessageSender) {
-    const targetId = Number.isInteger(tabId) ? (tabId as number) : (mediaRegistry.current(sender?.tab?.id ?? null)?.tabId as number | null);
-    if (!Number.isInteger(targetId)) return false;
-    const id = targetId as number;
+  // The mini player's buttons in the extension's own UI (a tab of this copy's: its id). Margin.app's are `hostMedia`.
+  async mediaControl({ command, tabId }: { command?: string, tabId?: number | string | null }, sender: BrowserMessageSender) {
+    const id = Number.isInteger(tabId) ? tabId as number : mediaHub.current(sender?.tab?.id ?? null)?.tabId;
+    if (!Number.isInteger(id)) return false;
     if (command === 'focus') {
-      await focusTab(id, { source: 'mediaFocus' }).catch(() => null);
+      await focusTab(id as number, { source: 'mediaFocus' }).catch(() => null);
       return true;
     }
     if (command === 'mute') {
-      await handlers.muteTab({ tabId: id });
+      await handlers.muteTab({ tabId: id as number });
       return true;
     }
-    await api.tabs.sendMessage?.(id, { type: 'mediaCommand', command }).catch(() => null);
-    return true;
+    if (command !== 'toggle' && command !== 'prev' && command !== 'next') return false;
+    const answer = await api.tabs.sendMessage?.(id as number, { type: 'mediaCommand', command }).catch(() => null);
+    return answer?.ok === true;
+  },
+  // Margin.app's mini player's button for one of its items' pages (background/hosted.ts media).
+  async hostMedia(message: { itemId?: string, command?: string, tabId?: number }, sender: BrowserMessageSender) {
+    if (!sender?.app) throw new Error('the app\'s request only');
+    return hostedTabs.media(message);
   },
   async duplicateTab({ tabId, windowId }: { tabId: number | string, windowId?: number }, sender: BrowserMessageSender) {
     const s = await load();

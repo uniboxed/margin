@@ -621,6 +621,53 @@ func glueScenario() async {
   await session.idle()
   check("a second web item of the profile: only its tab, the engine not asked", world.calls.count == calls && fake.all("req", since: since2).count == 1, "\(world.calls.dropFirst(calls))")
 
+  // ---- the background mini player (M2.4): the copy's `media` push drawn in Margin's window, its buttons back to the copy ----
+  do {
+    let firstTab = session.safariTabs[web] ?? -1
+    let source: JSONObject = ["tabId": firstTab, "itemId": web, "url": "https://example.com/", "title": "Background Song", "subtitle": "The Band", "playing": true, "muted": false,
+                              "canPrev": true, "canNext": true, "updatedAt": Date().timeIntervalSince1970 * 1000, "pausedAt": NSNull()]
+    let pushesBefore = c.pushes
+    fake.tell(["do": "send", "id": "S", "msg": ["k": "push", "windowId": 90, "msg": ["type": "media", "sources": [source]]]])
+    let drawn = await waitJS(c.webView, "const p = document.querySelector('.mini-player'); return !!p && p.querySelector('.mini-title')?.textContent.trim() === 'Background Song' && p.querySelector('.mini-sub')?.textContent.trim() === 'The Band' && !!p.querySelector('[aria-label=\"Next track\"]')")
+    let pushed = c.pushed.suffix(c.pushes - pushesBefore).first { $0.contains(#""type":"media""#) } ?? ""
+    let player = await js(c.webView, "return (document.querySelector('.mini-player')?.outerHTML ?? 'no mini player').slice(0, 600)") as? String ?? "?"
+    check("mini player: the copy's `media` push for its hosted window reaches Margin's window (its tab by the UI's number, no item id or address) and the theme draws it, the playing item in the background",
+          drawn && pushed.contains(#""tabId":\#(session.number(ofItem: web))"#) && !pushed.contains("itemId") && !pushed.contains("example.com"), "\(pushed) \(player)")
+    // (Its Play/Pause, pressed: a real press on the theme's button, as the UI takes only those.)
+    let reqsBefore = fake.events.count
+    let at = await js(c.webView, "const r = document.querySelector('.mini-player [aria-label=\"Play or pause\"]')?.getBoundingClientRect(); return r ? [r.left + r.width / 2, r.top + r.height / 2] : null") as? [Double]
+    if let at, at.count == 2 {
+      let spot = CGPoint(x: at[0], y: at[1])
+      c.pointerMoved(CGPoint(x: display.minX + spot.x, y: display.minY + spot.y), buttonsDown: false)
+      press(c.panel, at: spot)
+    }
+    let asked = await until(5) { fake.first("req", since: reqsBefore) { ($0["msg"] as? JSONObject)?["type"] as? String == "hostMedia" } != nil }
+    let media = (fake.first("req", since: reqsBefore) { ($0["msg"] as? JSONObject)?["type"] as? String == "hostMedia" }?["msg"] as? JSONObject)?["payload"] as? JSONObject ?? [:]
+    check("mini player: its Play/Pause: the copy asked hostMedia for that item's tab (the library's mediaControl, the session)",
+          asked && media["itemId"] as? String == web && media["command"] as? String == "toggle" && int(media["tabId"]) == firstTab, "\(media) \(session.done.suffix(3))")
+    // The playing item in front: the mini player goes; another in front: it's back.
+    _ = library.perform("activateTab", ["windowId": c.id, "tabId": web])
+    await session.idle()
+    let hiddenInFront = await waitJS(c.webView, "return !document.querySelector('.mini-player')")
+    let second = library.items(space: first).first { $0.value["url"] as? String == "https://second.example/" }?.id ?? ""
+    _ = library.perform("activateTab", ["windowId": c.id, "tabId": second])
+    await session.idle()
+    let backInBackground = await waitJS(c.webView, "return !!document.querySelector('.mini-player')")
+    check("mini player: never for the item in front (its page shows it), back once another is", hiddenInFront && backInBackground)
+    // A push of a type not passed on, from the person's own window, and the copy's sources gone (a tab closed): nothing, then none.
+    let before = c.pushes
+    let sentBefore = fake.all("sent").count
+    let none: [JSONObject] = []
+    fake.tell(["do": "send", "id": "S", "msg": ["k": "push", "windowId": 90, "msg": ["type": "peekOpen", "url": "https://x.example/"]]])
+    fake.tell(["do": "send", "id": "S", "msg": ["k": "push", "windowId": 1, "msg": ["type": "media", "sources": [source]]]])
+    fake.tell(["do": "send", "id": "S", "msg": ["k": "push", "windowId": 90, "msg": ["type": "media", "sources": none]]])
+    _ = await until(3) { fake.all("sent").count >= sentBefore + 3 }
+    let gone = await waitJS(c.webView, "return !document.querySelector('.mini-player')")
+    let passed = c.pushed.suffix(c.pushes - before)
+    check("mini player: gone once the copy has no sources; a push not passed on, or for the person's own window, never reaches the page",
+          gone && passed.count == 1 && passed.first.map { $0.contains(#""type":"media""#) && $0.contains(#""sources":[]"#) } == true, "\(passed) sent \(fake.all("sent").count - sentBefore)")
+  }
+
   // ---- an app that can't go full screen (Calculator): window mode, Margin's window its whole width below it ----
   let since3 = world.calls.count
   _ = await js(c.webView, "window.webkit.messageHandlers.margin.postMessage({ op: 'perform', name: 'app.open', arg: { bundleId: '\(GlueHostWorld.calculator)' } }); return true")

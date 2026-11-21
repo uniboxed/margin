@@ -271,8 +271,9 @@ final class HostedSession: LibraryDelegate {
     let library: Library
     let engine: HostedEngine
     let links: HostedLinks
-    // A Margin window by its id, or (nil) the one in front.
+    // A Margin window by its id, or (nil) the one in front; every Margin window's id.
     var window: (Int?) -> HostedWindow? = { _ in nil }
+    var windowIds: () -> [Int] = { [] }
     // An installed app's name (the catalog's), for a new app item.
     var appName: (String) -> String? = { _ in nil }
     // The live state changed (what's open, what's shown): the windows draw again.
@@ -458,6 +459,14 @@ final class HostedSession: LibraryDelegate {
                 if let heard = safariAudio[item] { safariAudio[item] = (audible: heard.audible, muted: muted) }
                 onChange?()
             }
+        case "mediaControl":
+            // The mini player's play or pause, previous or next for a web item's page (M2.4): its copy's `hostMedia`,
+            // with the tab its `media` push named (the item's tag may be gone from a copy started again).
+            guard let item = r.item, let entry = open[item], let profile = entry.profile, let command = r.body["command"] as? String else { return }
+            var payload: JSONObject = ["itemId": item, "command": command]
+            if let tab = safariTabs[item] { payload["tabId"] = tab }
+            let answer = await links.request(profile: profile, "hostMedia", payload)
+            note("\(item): the mini player's \(command): \(answer.result?["ok"] as? Bool == true ? "done" : "not done (\(answer.error ?? "its page didn't"))")")
         case "clearToday":
             for item in r.body["items"] as? [String] ?? [] { await close(item, target: nil) }
         default:
@@ -688,6 +697,55 @@ final class HostedSession: LibraryDelegate {
         refreshLoading()
     }
 
+    // A push of a Safari profile's copy for its UI (UIPush.swift: only the types passed on, checked and cut there), for
+    // the window Margin hosts for that profile (the person's own windows: not Margin's), to the Margin window it
+    // belongs in. Its tabs named by the UI's numbers for their items (`uiNumber`); one that isn't an item open in
+    // Margin is left out. Which window (DECISIONS.md, the mini player): the Margin window showing the space of the
+    // item it's about (the first source: the copy lists playing ones first, the newest first), the hosting one or
+    // the one in front first among several; none showing it: the hosting window, else the one in front. A standing
+    // push (`media`) is taken back from the window that had it when another gets it (its empty one).
+    func copyPush(profile: String, windowId: Int?, msg: JSONObject) {
+        guard let windowId, safariWindows[profile] == windowId, let type = msg["type"] as? String else { return }
+        var items: [String] = []
+        guard let page = UIPush.page(msg, tab: { entry in
+            guard let (item, n) = self.uiNumber(profile: profile, entry: entry) else { return nil }
+            items.append(item)
+            return n
+        }) else { return }
+        let ids = windowIds()
+        let showing = items.first.flatMap { library.space(ofItem: $0) }.map { space in ids.filter { library.space(ofWindow: $0) == space } } ?? []
+        let front = window(nil)?.id
+        let pick = showing.first { $0 == hostingWindow } ?? showing.first { $0 == front } ?? showing.min() ?? hostingWindow ?? front
+        guard let pick, let target = window(pick), let json = jsonString(page) else { return }
+        if UIPush.standing.contains(type) {
+            if let had = standingTo[type], had != pick, let empty = UIPush.empty(type).flatMap({ jsonString($0) }) { window(had)?.push(empty) }
+            let isEmpty = (page.values.compactMap { $0 as? [Any] }.allSatisfy { $0.isEmpty })
+            standingTo[type] = isEmpty ? nil : pick
+        }
+        target.push(json)
+    }
+    // The Margin window each standing push was last given to (with something in it).
+    private var standingTo: [String: Int] = [:]
+
+    // The item a copy's tab shows, and the UI's number for it: the item the copy names (its tag: background/hosted.ts),
+    // else the item whose tab it is (hostShow's answer), else the open item of that profile at its address (a copy
+    // started again knows no tags until the next hostShow, and Safari's tab ids change as it restarts). The tab is
+    // kept as that item's (`hostMedia` names it). Nil: not one of Margin's items open in that profile.
+    private func uiNumber(profile: String, entry: JSONObject) -> (String, Int)? {
+        let tab = int(entry["tabId"])
+        let ofProfile = { (item: String) in self.open[item]?.profile == profile }
+        var item = (entry["itemId"] as? String).flatMap { ofProfile($0) ? $0 : nil }
+        if item == nil, let tab { item = safariTabs.first { $0.value == tab && ofProfile($0.key) }?.key }
+        if item == nil, let url = entry["url"] as? String, !url.isEmpty {
+            let plain = { (u: String) in u.replacingOccurrences(of: #"#.*$"#, with: "", options: .regularExpression).replacingOccurrences(of: #"/$"#, with: "", options: .regularExpression) }
+            let values = Dictionary(library.items().map { ($0.id, $0.value) }, uniquingKeysWith: { a, _ in a })
+            item = open.keys.sorted().first { ofProfile($0) && (values[$0]?["url"] as? String).map(plain) == plain(url) }
+        }
+        guard let item else { return nil }
+        if let tab { safariTabs[item] = tab }
+        return (item, number(ofItem: item))
+    }
+
     // The items loading now, by the UI's numbers, told to the hosting Margin window when they change: the item an app is
     // being opened (or placed again) for while the engine's slow step runs, and every web item whose tab its copy says
     // is loading. Nothing hosted: none.
@@ -871,6 +929,7 @@ final class HostedSession: LibraryDelegate {
         marginPages[id] = nil
         resume[id] = nil
         cycledAt[id] = nil
+        standingTo = standingTo.filter { $0.value != id }
         if hostingWindow == id {
             hostingWindow = nil
             if engine.shown != nil { Task { await self.engine.parkShown(why: "its Margin window closed") } }
