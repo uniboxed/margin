@@ -214,6 +214,16 @@ function used(s: LibState, id: string, w: string | null, now: number): LibState 
 }
 
 // A new item, in the list's newest place.
+// The item `k` pinned as `pinId` (pinTab, createFolder with an item): the pin takes its address, title, given name and
+// target; the item stays, bound to it (`pinnedBy`). Unchanged when the space has a pin at that address already.
+function pinOfItem(s: LibState, k: any, pinId: string, folderId: string | null, beforeId: string | null): LibState {
+  let next = M.addPin(s, { id: pinId, spaceId: k.spaceId, url: k.url, title: k.title, folderId, beforeId }) as LibState;
+  if (next === s) return s;
+  if (k.customTitle) next = M.renamePin(next, pinId, k.customTitle) as LibState;
+  next = { ...next, pins: next.pins.map((pin) => (pin.id === pinId ? { ...pin, target: targetOfItem(k) } : pin)) } as LibState;
+  return M.bindTabToPin(next, k.id, pinId) as LibState;
+}
+
 function addItem(s: LibState, id: string, { spaceId, url, title, icon, target, now, pinnedBy, favoriteId }: { spaceId: string, url: string, title: string, icon: string, target: Target, now: number, pinnedBy?: string | null, favoriteId?: string | null }): LibState {
   const item = { id, url, title, favIconUrl: icon, spaceId, order: lastPlace(s) + 1, lastActive: now, wasActive: false, keptAt: now, why: 'library', target, ...(pinnedBy ? { pinnedBy } : {}), ...(favoriteId ? { favoriteId } : {}) };
   return { ...s, keptTabs: { ...s.keptTabs, [id]: item } } as LibState;
@@ -510,17 +520,18 @@ const ACTIONS: Record<string, Handler> = {
     return ACTIONS.restoreArchive({ s, p: { ...p, archiveId: entry.id }, now, ids, requests });
   },
   // ---- pins ----
-  // An item pinned in its space: the item becomes the pin (as a kept tab does in the extension), its target the pin's.
+  // An item pinned in its space: a pin at its address with its target and given name, and the item stays as the pin's
+  // tab (sticky pins: `pinnedBy`, as an open tab pinned in the extension), so the page shown stays shown with its row
+  // (the pin's, open and active) and its address; hidden from Today as a pin's tab. Its close then isn't an archive
+  // (closeTab), the pin opens it (openPin), and unpinned it's Today's again (unpin: removePin unbinds it).
   pinTab({ s, p, ids }) {
     const k: any = s.keptTabs[p?.tabId];
     if (!k) return fail(s, 'no such item');
     const id = ids.other('p');
-    const next = M.addPin(s, { id, spaceId: k.spaceId, url: k.url, title: k.title, folderId: p.folderId ?? null, beforeId: p.beforeId ?? null }) as LibState;
-    if (next === s) return { s, result: null };
-    const withTarget = { ...next, pins: next.pins.map((pin) => (pin.id === id ? { ...pin, target: targetOfItem(k) } : pin)) } as LibState;
-    return { s: M.forgetKept(withTarget, k.id) as LibState, result: id };
+    const next = pinOfItem(s, k, id, p.folderId ?? null, p.beforeId ?? null);
+    return next === s ? { s, result: null } : { s: next, result: id };
   },
-  // Unpinned: the pin goes; the hosting keeps its page open as an item if it has one open (addItem).
+  // Unpinned: the pin goes; its item (open or not) stays, unbound: Today's again.
   unpin({ s, p, requests }) {
     const pin: any = s.pins.find((x) => x.id === p?.pinId);
     if (!pin) return fail(s, 'no such pin');
@@ -773,11 +784,7 @@ const ACTIONS: Record<string, Handler> = {
     const firstPin = s.pins.find((x) => x.id === pinIds[0] && x.spaceId === spaceId);
     const before = p?.beforeId ?? (firstPin && !firstPin.folderId ? firstPin.id : null);
     let next = M.createFolder(s, { id, spaceId, name: p?.name, pinIds, parentId: parentFolder?.id ?? null, beforeId: before }) as LibState;
-    if (k && next !== s) {
-      const pinId = ids.other('p');
-      const pinned = M.addPin(next, { id: pinId, spaceId, url: k.url, title: k.title, folderId: id }) as LibState;
-      if (pinned !== next) next = M.forgetKept({ ...pinned, pins: pinned.pins.map((pin) => (pin.id === pinId ? { ...pin, target: targetOfItem(k) } : pin)) }, k.id) as LibState;
-    }
+    if (k && next !== s) next = pinOfItem(next, k, ids.other('p'), id, null);
     return { s: next, result: next === s ? null : id };
   },
   renameFolder({ s, p }) { return { s: M.renameFolder(s, p?.folderId, p?.name) as LibState }; },

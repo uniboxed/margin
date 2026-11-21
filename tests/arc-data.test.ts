@@ -138,7 +138,8 @@ test('arc data: library: closing a sticky pin\'s item keeps the pin, not open, n
   const lib = library();
   const item = lib.act('newTab', { windowId: 1, url: 'https://linear.example/inbox', title: 'Inbox' }).result.tabId;
   const pin = lib.act('pinTab', { tabId: item }).result;
-  const live = lib.act('addItem', { spaceId: 'a', windowId: 1, url: 'https://linear.example/issue/9', title: 'Issue', front: true, pinnedBy: pin }).result.tabId;
+  const live = item; // (the item pinned stays, the pin's tab, here navigated away from the pin's address)
+  lib.act('updateItem', { tabId: live, url: 'https://linear.example/issue/9', title: 'Issue' });
   const closed = lib.act('closeTab', { tabId: live });
   assert.deepEqual(closed.requests.map((r) => [r.type, r.item]), [['closeTab', live]], 'the hosting closes its page');
   assert.ok(lib.values.pins[pin], 'the pin record stays');
@@ -152,6 +153,72 @@ test('arc data: library: closing a sticky pin\'s item keeps the pin, not open, n
   assert.equal(sb.tabs.length, 0);
   const opened = lib.act('openPin', { pinId: pin, windowId: 1 });
   assert.deepEqual([opened.requests[0].type, opened.requests[0].item, opened.requests[0].url], ['openPin', null, 'https://linear.example/inbox'], 'opened again at its own address');
+});
+
+// ---- 12. an item pinned stays, the pin's tab (sticky pins in Margin.app's library) --------------------------------
+
+// What the UI draws in Margin.app: the library's snapshot with the open items as tabs (HostedSession.live/liveTab).
+function drawn(values: L.Values, open: string[], front: string | null) {
+  const snap = L.snapshot(values) as any;
+  const kept = { ...snap.openTabs.keptTabs };
+  const tabs: Record<number, any> = {}, tabSpace: Record<number, string> = {};
+  open.forEach((item, i) => {
+    const k = kept[item];
+    if (!k) return;
+    const n = i + 1;
+    tabs[n] = { id: n, windowId: 1, index: i, title: k.title, url: k.url, favIconUrl: '', active: item === front, lastActive: k.lastActive, mid: item, order: k.order,
+      ...(k.pinnedBy ? { pinnedBy: k.pinnedBy } : {}), ...(k.favoriteId ? { favoriteId: k.favoriteId } : {}) };
+    tabSpace[n] = k.spaceId;
+    delete kept[item];
+  });
+  return M.normalizeState({ ...snap, tabs, tabSpace, keptTabs: kept, activeSpaceByWindow: snap.openTabs.activeSpaceByWindow });
+}
+
+test('arc data: library: pinTab keeps the item as the new pin\'s tab (pinnedBy): not in Today, the pin open and active, its address shown', () => {
+  const lib = library();
+  const item = lib.act('newTab', { windowId: 1, url: 'https://linear.example/inbox', title: 'Inbox' }).result.tabId;
+  lib.act('renameTab', { tabId: item, title: 'My Inbox' });
+  const out = lib.act('pinTab', { tabId: item });
+  const pin = out.result;
+  assert.ok(lib.values.pins[pin], 'pinned');
+  assert.equal(lib.values.tabs[item]?.pinnedBy, pin, 'the item stays, bound to its new pin');
+  assert.equal(lib.values.pins[pin].customTitle, 'My Inbox', 'the name given to the tab goes with it to the pin');
+  assert.deepEqual(out.requests, [], 'nothing asked of the hosting: the page stays shown');
+  const state = drawn(lib.values, [item], item);
+  const sb = V.sidebar(state, 1, 1);
+  assert.deepEqual(sb.pins.map((p) => [p.id, p.tabId, p.active]), [[pin, 1, true]], 'the pin is open and active (its row highlighted)');
+  assert.equal(sb.tabs.length, 0, 'not in Today: it\'s the pin\'s tab');
+  const vm = buildViewModel({ state, ui: { windowId: 1, tabId: 1 } });
+  assert.equal(vm.tab?.url, 'https://linear.example/inbox', 'the address field has its page');
+  // Asleep (not open), it's still hidden from Today, and openPin shows that same item.
+  const asleep = V.sidebar(drawn(lib.values, [], null), 1, null);
+  assert.deepEqual([asleep.tabs.length, asleep.pins[0].tabId], [0, null]);
+  const opened = lib.act('openPin', { pinId: pin, windowId: 1 });
+  assert.deepEqual([opened.requests[0].type, opened.requests[0].item], ['openPin', item], 'openPin shows its own item');
+  // Pinned into a new folder: the same.
+  const other = lib.act('newTab', { windowId: 1, url: 'https://docs.example/', title: 'Docs' }).result.tabId;
+  const folder = lib.act('createFolder', { windowId: 1, tabId: other }).result;
+  const folderPin = Object.entries(lib.values.pins).find(([, p]: any) => p.folderId === folder)?.[0];
+  assert.ok(folderPin);
+  assert.equal(lib.values.tabs[other]?.pinnedBy, folderPin, 'createFolder with a tab: the item stays, its pin\'s');
+});
+
+test('arc data: library: a pinned item\'s close isn\'t archived (the pin stays, not open); unpinned, the item is Today\'s again', () => {
+  const lib = library();
+  const item = lib.act('newTab', { windowId: 1, url: 'https://linear.example/inbox', title: 'Inbox' }).result.tabId;
+  const pin = lib.act('pinTab', { tabId: item }).result;
+  const unpinned = lib.act('unpin', { pinId: pin });
+  assert.equal(unpinned.requests[0].type, 'unpin');
+  assert.equal(lib.values.pins[pin], undefined);
+  assert.equal(lib.values.tabs[item]?.pinnedBy, undefined, 'unbound');
+  const sb = V.sidebar(drawn(lib.values, [item], item), 1, 1);
+  assert.deepEqual(sb.tabs.map((t: any) => t.mid ?? t.id), [item], 'back in Today, still open');
+  const again = lib.act('pinTab', { tabId: item }).result;
+  const closed = lib.act('closeTab', { tabId: item });
+  assert.deepEqual(closed.requests.map((r) => [r.type, r.item]), [['closeTab', item]]);
+  assert.equal(lib.values.tabs[item], undefined, 'its item goes');
+  assert.equal(Object.keys(lib.values.archive).length, 0, 'not archived');
+  assert.ok(lib.values.pins[again], 'the pin stays');
 });
 
 // ---- 8. a pin's search by address never takes another's tab -------------------------------------------------------
@@ -176,6 +243,8 @@ test('arc data: openPin by address skips a tab or item another pin or a favorite
   assert.equal(lib.values.tabs[t1].favoriteId, fav);
   const t2 = lib.act('newTab', { windowId: 1, url: 'https://cal.example/', title: 'Cal' }).result.tabId;
   const pin = lib.act('pinTab', { tabId: t2 }).result;
+  assert.equal(lib.values.tabs[t2].pinnedBy, pin, 'the item pinned is the pin\'s');
+  lib.act('closeTab', { tabId: t2 }); // (its own item gone: the pin searches by its address)
   const opened = lib.act('openPin', { pinId: pin, windowId: 1 });
   assert.equal(opened.requests[0].item, null, 'the favorite\'s item isn\'t the pin\'s');
   assert.equal(lib.values.tabs[t1].favoriteId, fav, 'still the favorite\'s');
