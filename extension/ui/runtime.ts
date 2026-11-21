@@ -29,6 +29,7 @@ import * as V from '../shared/view.ts';
 import { createSwitching, NEW_TAB, opensNewTab } from '../shared/switching.ts';
 import { installPalette } from './behaviors/palette.ts';
 import { installPeek } from './behaviors/peek.ts';
+import { installCard } from './behaviors/card.ts';
 import { installResize } from './behaviors/resize.ts';
 import { installMenus } from './behaviors/menus.ts';
 import { installRename } from './behaviors/rename.ts';
@@ -270,7 +271,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     sheets: [theme.sheet, theme.settingsSheet].filter(Boolean),
     onAction: (name, arg, info) => { themeClick(name, arg, info); },
     onInput: (name, value) => { for (const b of list) b.onInput?.(name, value); },
-    onLayout: (geometry) => { placeLoader(); host.reportLayout({ ...geometry, windowId: windowId(), mode: host.mode ?? 'inpage' }); },
+    onLayout: (geometry) => { placeLoader(); behaviors.card?.layout?.(); host.reportLayout({ ...geometry, windowId: windowId(), mode: host.mode ?? 'inpage' }); },
     onWarn: (message) => warn(message),
   });
   drawsSettingsNav = view.reads('settingsTab');
@@ -774,18 +775,10 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
         if (!/^https?:\/\//i.test(url)) return false;
         return copyText(url, 'Copied URL');
       }
-      case 'peek.close':
-        setUi({ peek: null });
-        host.perform?.('peek.close');
-        return true;
-      case 'peek.expand': {
-        const cur = ui.peek;
-        if (!cur) return false;
-        setUi({ peek: null });
-        if (host.perform?.('peek.expand', { url: cur.url, spaceId: cur.spaceId ?? vm?.space?.id ?? null })) return true;
-        void send('newTab', { windowId: windowId() ?? undefined, url: cur.url, spaceId: cur.spaceId ?? vm?.space?.id ?? undefined });
-        return true;
-      }
+      // Peek's card and Little Arc (behaviors/card.ts).
+      case 'peek.close': return behaviors.card.close();
+      case 'peek.expand': return behaviors.card.expand();
+      case 'littleArc.open': return behaviors.card.openLittleArc();
       case 'peek.copyUrl': {
         const url = ui.peek?.url ?? '';
         if (!/^https?:\/\//i.test(url)) return false;
@@ -797,9 +790,9 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
         host.perform?.('peek.setSpace', { spaceId: arg });
         return true;
       case 'peek.back':
-        return !!host.perform?.('peek.back');
+        return !!ui.peek && !ui.peek.littleArc && !!host.perform?.('peek.back', {});
       case 'peek.forward':
-        return !!host.perform?.('peek.forward');
+        return !!ui.peek && !ui.peek.littleArc && !!host.perform?.('peek.forward', {});
       case 'space.edit': return behaviors.editor.open(arg);
       case 'space.rename': return behaviors.rename.start('space', arg);
       case 'folder.rename': return behaviors.rename.start('folder', arg);
@@ -946,6 +939,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     press: installPress(rt),
     palette: installPalette(rt),
     peek: installPeek(rt),
+    card: installCard(rt),
     resize: installResize(rt),
     menus: installMenus(rt),
     rename: installRename(rt),
@@ -1022,6 +1016,14 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     closePalette: () => { if (ui.palette.open) local('palette.close', undefined, null); },
     get paletteOpen() { return !!ui.palette.open; },
     showToast,
+    /** Peek's card (behaviors/card.ts): the app's word on it (null: gone), Little Arc opened by the app's key. */
+    card: {
+      show: (peek: unknown) => behaviors.card.show(peek),
+      openLittleArc: () => behaviors.card.openLittleArc(),
+      get open() { return !!ui.peek && !ui.peek.closing; },
+    },
+    /** Where the theme's `<m-peek-page>` is now (ui/render.ts View.measurePeekPage): null when no card is drawn. */
+    measurePeekPage: () => view.measurePeekPage(),
     /** The new-tab launcher's field focused, by the host's word (its overlay shown over a new window: behaviors/palette.js). */
     focusLauncher: () => !!behaviors.palette?.focusLauncher(),
     /** The tab list's scroll: saved now (before a switch), or set (a page prepared for a show). */

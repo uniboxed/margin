@@ -38,6 +38,27 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 const BASE_CSS = `
 m-page{display:block;box-sizing:border-box;background:none!important;pointer-events:none!important}
 m-window-controls,m-drag-region,m-palette,m-notice,m-menu,m-editor,m-launcher,m-prompt,m-settings,m-page-loader,m-toast,m-peek{display:block}
+m-peek-page{display:block}
+m-peek[m-default]{position:fixed;left:var(--m-page-left,0px);top:var(--m-page-top,0px);right:var(--m-page-right,0px);bottom:var(--m-page-bottom,0px);z-index:2147483630;overflow:hidden;border-radius:var(--m-page-radius,0px);pointer-events:none;color-scheme:light dark;font:13px/1.3 -apple-system,BlinkMacSystemFont,system-ui,sans-serif}
+m-peek[m-default]:is([m-loading],[m-little-arc]){pointer-events:auto}
+m-peek[m-default]>[m-peek-card]{position:absolute;left:clamp(0px,8%,calc(50% - 210px));right:clamp(0px,8%,calc(50% - 210px));top:clamp(0px,7%,calc(50% - 182px));bottom:clamp(0px,7%,calc(50% - 182px));display:flex;flex-direction:column;border-radius:12px;overflow:hidden;background:Canvas;color:CanvasText;box-shadow:0 0 0 100vmax rgba(0,0,0,.32),0 18px 48px rgba(0,0,0,.3);animation:m-peek-in .15s cubic-bezier(.2,.8,.2,1) both}
+m-peek[m-default][m-little-arc]>[m-peek-card]{bottom:auto;height:44px}
+m-peek[m-default][m-closing]>[m-peek-card]{animation:m-peek-out .15s cubic-bezier(.4,0,1,1) both}
+m-peek[m-default] [m-peek-bar]{flex:none;height:44px;box-sizing:border-box;display:flex;align-items:center;gap:6px;padding:0 10px;pointer-events:auto;border-bottom:1px solid color-mix(in srgb,CanvasText 12%,transparent)}
+m-peek[m-default] [m-peek-bar] button{font:inherit;color:inherit;height:28px;min-width:28px;padding:0 9px;border-radius:7px;border:1px solid color-mix(in srgb,CanvasText 16%,transparent);background:transparent;cursor:default}
+m-peek[m-default] [m-peek-bar] button:hover{background:color-mix(in srgb,CanvasText 8%,transparent)}
+m-peek[m-default] [m-peek-host]{flex:1 1 0;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;opacity:.7}
+m-peek[m-default] [m-peek-field]{display:none;flex:1 1 0;min-width:0;height:30px;box-sizing:border-box;padding:0 10px;border-radius:8px;border:1px solid color-mix(in srgb,CanvasText 18%,transparent);background:transparent;color:inherit;font:inherit;outline:none}
+m-peek[m-default][m-little-arc] [m-peek-field]{display:block}
+m-peek[m-default][m-little-arc] :is([m-peek-host],[m-peek-button="peek.back"],[m-peek-button="peek.forward"],[m-peek-button="peek.copyUrl"],[m-peek-button="peek.expand"]){display:none}
+m-peek[m-default][m-little-arc] m-peek-page{display:none}
+m-peek[m-default] m-peek-page{flex:1 1 auto;min-height:0;background:transparent}
+m-peek[m-default]:is([m-loading],[m-closing]) m-peek-page{background:Canvas}
+@keyframes m-peek-in{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
+@keyframes m-peek-out{from{opacity:1;transform:none}to{opacity:0;transform:scale(.96)}}
+@keyframes m-peek-fade-in{from{opacity:0}to{opacity:1}}
+@keyframes m-peek-fade-out{from{opacity:1}to{opacity:0}}
+@media (prefers-reduced-motion:reduce){m-peek[m-default]>[m-peek-card]{animation-name:m-peek-fade-in}m-peek[m-default][m-closing]>[m-peek-card]{animation-name:m-peek-fade-out}}
 m-menu{position:fixed;left:var(--m-menu-x,0px);top:var(--m-menu-y,0px);z-index:2147483600;outline:none}
 m-menu:empty,m-editor:empty,m-palette:empty,m-notice:empty,m-launcher:empty,m-prompt:empty,m-settings:empty,m-page-loader:empty,m-toast:empty,m-peek:empty{display:none}
 m-toast[m-default]{position:fixed;left:50%;top:18px;transform:translateX(-50%);z-index:2147483640;padding:7px 14px;border-radius:999px;background:rgba(28,28,32,.9);color:#f5f5f7;font:500 12.5px/1.3 -apple-system,BlinkMacSystemFont,system-ui,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.28),0 0 0 1px rgba(255,255,255,.12);pointer-events:none;white-space:nowrap;max-width:min(80vw,360px);overflow:hidden;text-overflow:ellipsis;animation:m-toast-in .14s ease-out}
@@ -961,6 +982,39 @@ export class View {
       radii: radii.map((v) => round(Math.max(0, v - border))),
       outer: { left: round(outer.left), top: round(outer.top), right: round(outer.right), bottom: round(outer.bottom), radius: round(radii[0]) },
       container: { width: round(c.width), height: round(c.height) },
+    };
+  }
+
+  /**
+   * Where Peek's card window goes (docs/PEEK-SPLIT.md §2): the theme's `<m-peek-page>` (in its `peek` part) as the
+   * page's own box is measured, its content box in the container's coordinates, and its inner corner radius. Laid out,
+   * not as drawn: the card's open (a scale) and close never move it (offsets ignore transforms). Null with no card drawn
+   * (none in the theme, Little Arc's field alone, the element hidden).
+   */
+  measurePeekPage(): { x: number, y: number, width: number, height: number, radius: number } | null {
+    const root = this.rootElement();
+    const el = root?.querySelector('m-peek-page') as HTMLElement | null;
+    if (!el || !el.isConnected || typeof el.offsetWidth !== 'number') return null;
+    const win = this.doc.defaultView!;
+    const cs = win.getComputedStyle(el);
+    if (cs.display === 'none' || cs.visibility === 'hidden' || el.offsetWidth <= 0 || el.offsetHeight <= 0) return null;
+    let x = 0, y = 0;
+    // (Each offset is from its offset parent's padding edge: that parent's border added.)
+    for (let n: HTMLElement | null = el; n; n = n.offsetParent as HTMLElement | null) {
+      x += n.offsetLeft;
+      y += n.offsetTop;
+      const p = n.offsetParent as HTMLElement | null;
+      if (p) { x += p.clientLeft; y += p.clientTop; }
+    }
+    const c = this.container.nodeType === 9 ? { left: 0, top: 0 } : (this.container as ShadowRoot).host.getBoundingClientRect();
+    const px = (v: string) => parseFloat(v) || 0;
+    const left = px(cs.borderLeftWidth) + px(cs.paddingLeft), top = px(cs.borderTopWidth) + px(cs.paddingTop);
+    const right = px(cs.borderRightWidth) + px(cs.paddingRight), bottom = px(cs.borderBottomWidth) + px(cs.paddingBottom);
+    const round = (v: number) => Math.round(v * 100) / 100;
+    return {
+      x: round(x - c.left + left), y: round(y - c.top + top),
+      width: round(Math.max(0, el.offsetWidth - left - right)), height: round(Math.max(0, el.offsetHeight - top - bottom)),
+      radius: round(Math.max(0, px(String(cs.borderBottomLeftRadius).split(' ')[0]) - Math.max(px(cs.borderTopWidth), px(cs.borderLeftWidth)))),
     };
   }
 

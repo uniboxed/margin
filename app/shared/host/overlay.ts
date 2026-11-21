@@ -263,10 +263,22 @@ function reportHits() {
   const bar = preview.bar.rect();
   if (bar && !all) rects.push(bar);
   reportChrome(root);
+  reportPeekPage();
   const key = JSON.stringify([rects, all]);
   if (key === lastHits) return;
   lastHits = key;
   void post('hits', { rects, all }).catch(() => {});
+}
+// Where the theme's `<m-peek-page>` is (Peek's card: Margin.app places the card's window there, docs/PEEK-SPLIT.md §2):
+// said as it changes, null once there's none. Measured as laid out, never mid-animation (ui/render.ts measurePeekPage).
+let lastPeekPage = 'null';
+function reportPeekPage() {
+  if (!host?.appWindow || !runtime) return;
+  const r = runtime.measurePeekPage();
+  const said = r ? JSON.stringify([[r.x, r.y, r.width, r.height], r.radius]) : 'null';
+  if (said === lastPeekPage) return;
+  lastPeekPage = said;
+  void post('peekRect', r ? { rect: [r.x, r.y, r.width, r.height], radius: r.radius } : { rect: null }).catch(() => {});
 }
 // Margin's own window: where the theme draws its buttons and where a drag moves it (host-app.ts chromeRects).
 let lastChrome = '';
@@ -303,6 +315,7 @@ function measureNow() {
   lastLayout = key;
   // (Said as none when the theme draws nothing there: a report that leaves them out keeps the last ones, host-app.ts.)
   host.reportLayout({ ...g, windowId: host.windowId, mode: host.mode, ...(host.appWindow ? { fills } : {}) });
+  reportPeekPage();
 }
 // Which pointer positions the app hands in (runtime.pointer: only peek uses
 // them): none while the sidebar is docked (nothing to bring out), those in
@@ -804,7 +817,8 @@ function onMessage(msg: any) {
         host?.takeFailure(); // (an earlier request's failure isn't this one's)
         if (runtime) void togglePin(runtime.vm, runtime, () => host?.takeFailure() != null);
       } else if (msg.name === 'reopen-archived') runtime?.dispatch('archive.restoreLast', undefined, 'behavior');
-      else if (msg.name === 'little-arc') openPaletteTimed({ newTab: true }, '⌥⌘N Little Arc');
+      // Little Arc (⌥⌘N): Peek's card with Margin's own address field (ui/behaviors/card.ts).
+      else if (msg.name === 'little-arc') runtime?.card.openLittleArc();
       else if (msg.name === 'add-split') {
         const next = runtime?.vm?.space?.today?.find((t: { active?: boolean }) => !t.active);
         if (next) runtime?.dispatch('split.add', next.id, 'behavior');
@@ -828,8 +842,11 @@ function onMessage(msg: any) {
       // (Each a tab's: Safari's pages are the mini player's only sources so far.)
       runtime?.setUi({ media: Array.isArray(msg.sources) ? msg.sources.filter((m: any) => !!m && typeof m === 'object' && Number.isInteger(m.tabId)).slice(0, 8).map((m: any) => ({ ...m, id: `tab:${m.tabId}`, source: 'tab' })) : null });
       return;
+    // Peek's card as Margin.app has it (app/platforms/macos/shell/HostedPeek.swift): drawn, or (null) closed, animated
+    // out (ui/behaviors/card.ts).
     case 'peek':
-      runtime?.setUi({ peek: msg.peek ?? null });
+      runtime?.card.show(msg.peek ?? null);
+      queueMicrotask(reportPeekPage);
       return;
     case 'link':
       // (Margin's own window has no copy's link to lose.)

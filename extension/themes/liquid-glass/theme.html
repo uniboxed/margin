@@ -327,17 +327,24 @@
   </template>
 
   <template m-part="peek">
-    <div class="peek-backdrop">
+    <div class="peek-backdrop" m-class:loading="{{peek.loading}}" m-class:ready="{{peek.ready}}" m-class:closing="{{peek.closing}}" m-class:little-arc="{{peek.isLittleArc}}">
       <button class="btn scrim" m-attr:aria-label="{{peek.labels.close}}" m-action="peek.close"></button>
+      <div class="peek-dim" aria-hidden="true"></div>
       <div class="peek-card" role="dialog" m-attr:aria-label="{{peek.title}}">
         <div class="peek-bar">
-          <button class="btn round peek-btn" m-attr:aria-label="{{peek.labels.back}}" m-action="peek.back"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 5.5 8 12l6.5 6.5"></path></svg></button>
-          <button class="btn round peek-btn" m-attr:aria-label="{{peek.labels.forward}}" m-action="peek.forward"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 5.5 16 12l-6.5 6.5"></path></svg></button>
-          <span class="peek-host ellipsis">{{peek.host}}</span>
-          <button class="btn pill peek-btn" m-attr:title="{{peek.labels.copyUrl}}" m-attr:aria-label="{{peek.labels.copyUrl}}" m-action="peek.copyUrl">{{peek.labels.copyUrl}}</button>
-          <button class="btn pill primary peek-btn" m-action="peek.expand">{{peek.labels.expand}}</button>
-          <button class="btn round peek-btn close" m-attr:aria-label="{{peek.labels.close}}" m-action="peek.close"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 7.5l9 9M16.5 7.5l-9 9"></path></svg></button>
+          <m-if test="peek.isLittleArc">
+            <input class="peek-field" type="text" m-input="peek" m-attr:placeholder="{{peek.labels.search}}" m-attr:aria-label="{{peek.labels.search}}" spellcheck="false" autocomplete="off">
+            <m-else>
+              <button class="btn round peek-btn" m-attr:aria-label="{{peek.labels.back}}" m-action="peek.back"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 5.5 8 12l6.5 6.5"></path></svg></button>
+              <button class="btn round peek-btn" m-attr:aria-label="{{peek.labels.forward}}" m-action="peek.forward"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 5.5 16 12l-6.5 6.5"></path></svg></button>
+              <span class="peek-host ellipsis">{{peek.host}}</span>
+              <button class="btn pill peek-btn" m-attr:title="{{peek.labels.copyUrl}}" m-attr:aria-label="{{peek.labels.copyUrl}}" m-action="peek.copyUrl">{{peek.labels.copyUrl}}</button>
+              <button class="btn pill primary peek-btn" m-action="peek.expand">{{peek.labels.expand}}</button>
+            </m-else>
+          </m-if>
+          <button class="btn round peek-btn peek-close" m-attr:aria-label="{{peek.labels.close}}" m-action="peek.close"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 7.5l9 9M16.5 7.5l-9 9"></path></svg></button>
         </div>
+        <m-peek-page class="peek-page"></m-peek-page>
       </div>
     </div>
   </template>

@@ -106,3 +106,38 @@ test('M2.5 Peek: hostedTabs.promotePeek moves the live Safari tab into the main 
   assert.equal(hosted.tags().get('t-expanded'), 501);
   assert.equal(hosted.tags().has('peek-1'), false);
 });
+
+test('M2.5 Peek: <m-peek-page> only in the peek part, once, empty; anywhere else it\'s removed and said', () => {
+  const ok = sanitizeTemplate('<div><m-page></m-page><m-peek></m-peek><template m-part="peek"><div class="card"><div class="bar"><button m-action="peek.close" m-attr:aria-label="{{peek.labels.close}}"></button></div><m-peek-page class="peek-page"></m-peek-page></div></template></div>');
+  assert.deepEqual(ok.errors, []);
+  assert.deepEqual(ok.removed, []);
+  assert.match(JSON.stringify(ok.tree), /"m-peek-page"/);
+  const outside = sanitizeTemplate('<div><m-page></m-page><m-peek-page></m-peek-page><template m-part="toast"><m-peek-page></m-peek-page></template></div>');
+  assert.equal(outside.removed.filter((r) => r.name === 'm-peek-page').length, 2, 'outside the peek part: removed');
+  assert.doesNotMatch(JSON.stringify(outside.tree), /m-peek-page/);
+  const twice = sanitizeTemplate('<div><m-page></m-page><template m-part="peek"><m-peek-page></m-peek-page><m-peek-page></m-peek-page></template></div>');
+  assert.equal((JSON.stringify(twice.tree).match(/"m-peek-page"/g) ?? []).length, 1, 'one card page');
+  assert.ok(twice.removed.some((r) => r.name === 'm-peek-page' && /second/.test(r.reason)));
+  const filled = sanitizeTemplate('<div><m-page></m-page><template m-part="peek"><m-peek-page><span>x</span></m-peek-page></template></div>');
+  assert.doesNotMatch(JSON.stringify(filled.tree), /"span"/, 'nothing inside it: the card\'s page goes there');
+  const inFor = sanitizeTemplate('<div><m-page></m-page><template m-part="peek"><m-for each="space.today" as="t"><m-peek-page></m-peek-page></m-for></template></div>');
+  assert.doesNotMatch(JSON.stringify(inFor.tree), /m-peek-page/, 'never in a list');
+});
+
+test('M2.5 Peek: the view model\'s card: loading until its window is in place, then ready; closing; Little Arc with no address', () => {
+  const s = M.defaultState();
+  const vm = (peek: any) => buildViewModel({ state: s, ui: { windowId: 1, peek } }).peek;
+  const loading = vm({ url: 'https://docs.example.org/a', loading: true })!;
+  assert.deepEqual([loading.loading, loading.ready, loading.closing, loading.littleArc, loading.isLittleArc, loading.host], [true, false, false, false, false, 'docs.example.org']);
+  const ready = vm({ url: 'https://docs.example.org/a', loading: false })!;
+  assert.deepEqual([ready.loading, ready.ready], [false, true]);
+  assert.equal(vm({ url: 'https://docs.example.org/a', loading: false, closing: true })!.ready, false, 'going: covered again');
+  const arc = vm({ url: '', littleArc: true, query: 'exa' })!;
+  assert.deepEqual([arc.littleArc, arc.isLittleArc, arc.loading, arc.ready, arc.query, arc.host], [true, true, false, false, 'exa', '']);
+  assert.equal(arc.labels.search, 'Search or enter address');
+  assert.equal(vm({ url: '', loading: true })?.loading, true, 'a search on its way: its card loading with no address yet');
+  assert.equal(vm({ url: '', loading: false }), null);
+  assert.equal(vm(null), null);
+  const ctx = contextFromState(s);
+  assert.equal(checkAction('littleArc.open', undefined, ctx).ok, true);
+});
