@@ -6869,3 +6869,23 @@ user's choices (the doc's table) as built; what was decided here is marked so.
   dark), Swift (`peek-session-tests.swift`, `multi-host-tests.swift`), Rust (`kinds/tests.rs`, `front.rs`), the app's
   e2e (`e2e-glue.swift`: the real page's `peekRect` in Margin's off-screen window, covered then clear, gone; the hello's
   frames). Nothing on the real screen with real Safari yet: TESTING.md M2.5.
+
+## Fixes from the real screen of Peek and split view (fix/screen-ui, 2026-11-21)
+
+- **An item pinned in Margin.app stays, the pin's tab.** The library's `pinTab` (and `createFolder` with an item) forgot
+  the item, so the page stayed shown with no item behind it: no highlighted row, an empty address field until the pin
+  was clicked again. Now (sticky pins, M2.2) the item stays, bound to the new pin (`pinnedBy`; the pin takes its address,
+  title, given name and target): the pin shows open and active, the item isn't in Today, nothing is asked of the
+  hosting (the page stays shown, `shown` unchanged). Its close isn't an archive (closeTab's rule for a pin's tab), the
+  pin opens that item (openPin finds it by its binding), and unpinned it's Today's again, still open (removePin unbinds
+  it). The extension already bound an open tab this way. Checked: `tests/arc-data.test.ts` (12), `hosted-tests.swift`.
+- **Esc in a hosted page never takes Safari's window out of full screen** (`content/keep-fullscreen.ts`). Safari's own
+  action for an Escape keydown no page took is leaving its window's full screen, which the engine then had to undo
+  (about a second, the page area empty). In a window Margin.app draws (the copy's `appDrawn`: main's, a card's, a pane's
+  windows), an Escape the page left alone has its default prevented. Decided last: a bubble listener is added on the
+  window as the key's capture phase passes it, so it runs after every listener the page has there (the DOM takes each
+  target's listeners as the event reaches it) and after Peek's card's Esc (which closes the card and prevents it
+  itself). Left alone: ⌘/⌃/⌥/⇧ held, a key being composed, an element in full screen (a video's Esc is Safari's), a
+  search field, a modal dialog and an open popover (the engine's own Esc closes or clears them), a key the page stopped.
+  Not covered: a key in a frame (the content script is the top frame's). Checked: `tests/keep-fullscreen.test.ts`
+  (stand-in), `tests/theme/keep-fullscreen.test.ts` (WebKit and Chromium: the order, the dialog closing, the popover).
