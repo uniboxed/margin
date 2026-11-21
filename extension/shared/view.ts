@@ -3,7 +3,7 @@
 import type { Favorite, Pin, State } from '../../types/margin';
 import { appIcon, appOfItem } from './apps.ts';
 import type { InstalledApp } from './apps.ts';
-import { favoriteScopeOf } from '../state/model.ts';
+import { favoriteScopeOf } from './pinned-rules.ts';
 
 // A pin's or folder's order (state/model.ts): saved, or its place in the list.
 const posOf = (item: { pos?: number } | null | undefined, i: number): number => (Number.isFinite(item?.pos) ? item!.pos! : i);

@@ -7,7 +7,8 @@
 
 import type { State } from '../../../types/margin';
 import type { FavoriteRow, FolderRow, PinRow, SpaceView } from '../view-model.ts';
-import { FAVORITES_CAP, MAX_FOLDER_DEPTH, favoriteScopeOf, folderDepth, normalizeUrl } from '../../state/model.ts';
+import { FAVORITES_CAP, MAX_FOLDER_DEPTH, favoriteScopeOf, folderDepth } from '../../shared/pinned-rules.ts';
+import { normalizeUrl } from '../../shared/view.ts';
 import { themeChoices, spaceThemeId, spaceThemesOn } from '../space-theme.ts';
 
 // The space editor's swatches (Arcadia's).
