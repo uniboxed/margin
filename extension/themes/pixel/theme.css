@@ -566,9 +566,9 @@ img.fav.app { width: 22px; height: 22px; margin: -2px; box-shadow: none; backgro
 }
 .favorites.m-drop-into { outline: 2px solid var(--yellow); outline-offset: 2px; }
 
-.folder-head.nested { padding-left: calc(6px + var(--depth, 1) * 14px); }
 .folder-head.nested.open .arrow { transform: rotate(90deg); }
-.folder .pin { padding-left: calc(6px + var(--depth, 1) * 14px); }
+/* Nested folders: a sub-folder's row sits with its parent's pins; each level deeper, 14 px in. */
+.folder :is(.pin, .folder-head.nested) { --indent: calc(max(var(--depth, 1) - 1, 0) * 14px); margin-left: var(--indent); width: calc(100% - var(--indent)); }
 .pin .reset {
   display: grid;
   place-items: center;

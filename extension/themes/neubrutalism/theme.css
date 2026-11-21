@@ -486,9 +486,10 @@ img.fav.app, .tab.on img.fav.app { width: 22px; height: 22px; margin: -2px; bord
 }
 .favorites.m-drop-into { outline: 3px dashed var(--ink); outline-offset: 2px; border-radius: 10px; }
 
-.folder-head.nested { padding-left: calc(10px + var(--depth, 1) * 14px); border-top: 2px solid var(--ink); }
+.folder-head.nested { border-top: 2px solid var(--ink); }
 .folder-head.nested.open .chev { transform: rotate(90deg); }
-.folder-tabs .pin { padding-left: calc(10px + var(--depth, 1) * 14px); }
+/* Nested folders: a sub-folder's row sits with its parent's pins (inside the folder's box); each level deeper, 14 px in. */
+.folder-tabs :is(.pin, .folder-head.nested) { --indent: calc(max(var(--depth, 1) - 1, 0) * 14px); margin-left: var(--indent); width: calc(100% - var(--indent)); }
 .pin .reset {
   display: grid;
   place-items: center;

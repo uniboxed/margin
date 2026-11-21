@@ -882,6 +882,16 @@ const withRuntime = Object.assign(T, {
     // (The icon's drawn size: its computed width, inside any padding a theme gives it.)
     return { row: r(el), icon: r(icon), size: icon ? parseFloat(getComputedStyle(icon).width) : null, app: !!icon?.classList.contains('app'), title: r(title) };
   },
+  // A folder's row (its folder.toggle control), its glyph and its name: where each is drawn.
+  rtFolderParts(id: string) {
+    const view = rt.runtime!.view;
+    const el = [...rt.target.querySelectorAll<HTMLElement>('[m-drag], a, button')].find((e) => { const a = view.actionOf(e); return a?.name === 'folder.toggle' && a.arg === id; });
+    if (!el) return null;
+    const icon = el.querySelector('svg:not(.chev):not(.arrow), .folder-icon, .folder-ico') ?? el.querySelector('svg');
+    const title = [...el.querySelectorAll('span, div')].find((e) => e.childElementCount === 0 && /\S/.test(e.textContent ?? ''));
+    const r = (x: Element | null | undefined) => { const b = x?.getBoundingClientRect(); return b ? { left: b.left, top: b.top, width: b.width, height: b.height } : null; };
+    return { row: r(el), icon: r(icon), title: r(title) };
+  },
   // Where to click an element (the shadow root is closed: clicks go by
   // position), scrolled into view in its list first.
   rtBox(selector: string, nth = 0) {

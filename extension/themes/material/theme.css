@@ -1358,8 +1358,8 @@
 }
 .favorites.m-drop-into { outline: 2px solid var(--primary); outline-offset: -2px; border-radius: 16px; }
 
-.pins .folder { padding-left: calc(14px + var(--depth, 0) * 14px); }
-.pins .pin { padding-left: calc(14px + var(--depth, 0) * 14px); }
+/* Nested folders: each level indents by the step a folder's pins have (.pin.nested, 20 px), the rows as they were up to depth 1. */
+.margin-sidebar .pins :is(.pin.nested, .folder) { margin-left: calc(var(--depth, 0) * 20px); }
 .pin .icon.reset {
   display: grid;
   place-items: center;
