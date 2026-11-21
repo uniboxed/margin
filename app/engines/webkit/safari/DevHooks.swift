@@ -53,6 +53,14 @@ protocol DevHookWorld: AnyObject {
 
 // DEV-HOOK: the hook itself.
 final class DevHooks {
+    // A `ui` action's argument as the page takes it: a number, or an open item's row number for its library id (the UI
+    // names an open item by its row's number: a pane's id from `say: state` was refused, 2026-11-21), else the id.
+    static func uiArgument(_ arg: String?, row: (String) -> Int?) -> Any {
+        guard let arg else { return NSNull() }
+        if let n = Int(arg) { return n }
+        return row(arg) ?? arg
+    }
+
     static let retainedLineLimit = 128
     static let prefix = "com.unibox.margin.dev."
     static let defaultsKey = "MarginDevHooks"
@@ -291,7 +299,7 @@ extension Shell: DevHookWorld {
 
     func devUI(_ action: String, arg: String?, done: @escaping (String) -> Void) {
         guard let w = marginWindows?.front else { return done("no Margin window") }
-        let value: Any = arg.flatMap { Int($0) }.map { $0 as Any } ?? (arg as Any? ?? NSNull())
+        let value = DevHooks.uiArgument(arg, row: { [weak self] in self?.hosted?.openRow(ofItem: $0) })
         w.webView.callAsyncJavaScript("return window.marginApp && window.marginApp.devDispatch ? String(window.marginApp.devDispatch(action, arg === null ? undefined : arg)) : 'no hook'",
                                       arguments: ["action": action, "arg": value], in: nil, in: .page) { result in
             if case .success(let v) = result { done("dispatched: \(v as? String ?? "?")") } else { done("no answer from the page") }

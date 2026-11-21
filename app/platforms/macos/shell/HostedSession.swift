@@ -2150,6 +2150,8 @@ final class HostedSession: LibraryDelegate {
         return n
     }
     func item(ofTab number: Int) -> String? { items[number] }
+    // An open item's row number, as the UI has it (nil: not open, or never numbered). DEV-HOOK: the dev hook's `ui`.
+    func openRow(ofItem item: String) -> Int? { open[item] != nil || marginOpen.contains(item) ? numbers[item] : nil }
 
     // The library's snapshot (stored values' shape) with the items that have a page as open tabs of the Margin
     // window hosting them, the one shown active there.

@@ -125,4 +125,22 @@ func glueSplitScenario() async {
   await divider("dblclick")
   _ = await until(5) { ratios() == [0.5, 0.5] }
   check("a double-click on the divider: equal sizes saved", ratios() == [0.5, 0.5], "\(ratios())")
+
+  // Remove from Split View on TextEdit's pane (an app's pane of a split of two), as its row's menu runs it: the action
+  // with the row's number (the UI names an open item by its number; the library's item id is refused, as the on-screen
+  // dev hook's dispatch with a pane's id was, 2026-11-21). The split ends, Notes shown alone at the page area, TextEdit's
+  // window parked.
+  await session.idle()
+  let row = session.number(ofItem: editItem)
+  let menu = await js(c.webView, "return JSON.stringify((window.marginApp.devState && JSON.parse(window.marginApp.devState()).split?.panes) || [])") as? String ?? ""
+  let byId = await js(c.webView, "return String(window.marginApp.devDispatch('split.remove', '\(editItem)'))") as? String ?? ""
+  let byRow = await js(c.webView, "return String(window.marginApp.devDispatch('split.remove', \(row)))") as? String ?? ""
+  let ended = await until(10) { library.split(sp) == nil && engine.visible.count == 1 && session.layout[c.id] == nil && session.shown[c.id] == notesItem }
+  await session.idle()
+  _ = await until(5) { world.bounds(window: notesWindow) == c.window.pageRect }
+  check("Remove from Split View on an app's pane of two, by its row's number (the pane menu's way): the split ends, the other shown alone at the page area, the removed one's window parked",
+        byId == "false" && byRow == "true" && ended && world.bounds(window: notesWindow) == c.window.pageRect && !world.inMargin.contains(editWindow) && engine.shown == notes
+        && library.items(space: space).contains { $0.id == editItem },
+        "byId \(byId) byRow \(byRow) \(ended) \(String(describing: library.split(sp))) \(engine.visible) \(String(describing: world.bounds(window: notesWindow))) \(world.inMargin) \(menu) \(session.done.suffix(4))")
+  check("…the page's state names each pane by its row's number too (what an on-screen check dispatches with)", menu.contains("\"tabId\":\(row)"), menu)
 }

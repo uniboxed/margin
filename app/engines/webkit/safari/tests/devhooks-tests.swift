@@ -22,6 +22,9 @@ final class FakeDevWorld: DevHookWorld {
 }
 
 func devHooksTests() {
+    check("dev hook: a ui action's argument: a number as one, an open item's id as its row's number (the UI's name for it), any other id as it is, none as null",
+          DevHooks.uiArgument("12", row: { _ in 99 }) as? Int == 12 && DevHooks.uiArgument("t-abc", row: { $0 == "t-abc" ? 7 : nil }) as? Int == 7
+          && DevHooks.uiArgument("sp-1", row: { _ in nil }) as? String == "sp-1" && DevHooks.uiArgument(nil, row: { _ in 1 }) is NSNull)
     func setup(_ on: Bool = true) -> (FakeDevWorld, DevHooks) {
         let w = FakeDevWorld()
         return (w, DevHooks(world: w, isOn: { on }))

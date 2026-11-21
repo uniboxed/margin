@@ -1037,7 +1037,8 @@ document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) s
     return JSON.stringify({ space: vm.space?.name, tab: vm.tab ? { id: vm.tab.id, title: String(vm.tab.title ?? '').slice(0, 24) } : null,
       today: (vm.space?.today ?? []).map((t: any) => ({ id: t.id, title: String(t.title ?? '').slice(0, 24), active: !!t.active })),
       peek: vm.peek ? { host: vm.peek.host, littleArc: !!vm.peek.isLittleArc, loading: !!vm.peek.loading } : null,
-      split: vm.split ? { axis: vm.split.axis, panes: (vm.split.panes ?? []).map((p: any) => ({ id: p.id, title: name(p.id), focused: !!(p.focused ?? p.active) })) } : null,
+      // (Each pane's `tabId`: its row's number while it's open, what an action on it takes; `id` the split's own name for it.)
+      split: vm.split ? { axis: vm.split.axis, panes: (vm.split.panes ?? []).map((p: any) => ({ id: p.id, tabId: p.tabId ?? p.id, title: name(p.tabId ?? p.id), focused: !!(p.focused ?? p.active) })) } : null,
       splits: (vm.space?.splits ?? []).map((sp: any) => ({ id: sp.id, count: sp.count })),
       hostedFrames: hostedBoxes.length });
   },
