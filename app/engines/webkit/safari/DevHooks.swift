@@ -343,12 +343,12 @@ extension MarginWindowController {
     func devResize(to width: Int) -> String? {
         guard let state = owner?.source.snapshot(), let theme = (state["settings"] as? JSONObject)?["theme"] as? String ?? Optional("arcadia") else { return "no theme" }
         let before = layout?.left
-        owner?.onSidebarResizing?(self, true)
+        owner?.onSidebarResizing?(self, true, false)
         ask("updateThemeSettings", ["themeId": theme, "patch": ["sidebarWidth": width]])
         let started = Date()
         func finish() {
             if layout?.left == before, Date().timeIntervalSince(started) < 0.6 { return DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { finish() } }
-            self.owner?.onSidebarResizing?(self, false)
+            self.owner?.onSidebarResizing?(self, false, false)
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { finish() }
         return nil

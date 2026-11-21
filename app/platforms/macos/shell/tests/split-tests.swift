@@ -265,7 +265,15 @@ private func splitSessionTests() {
 
     // ---- a divider dragged (tiles off: each a plain member, placed again at the release) ----
     window.followingPage = false
-    session.sidebarResizing(window, true)
+    var dragSaid: [String] = []
+    Diagnostics.echo = { dragSaid.append($0) }
+    session.sidebarResizing(window, true, divider: true)
+    Diagnostics.echo = { _ in }
+    // (The real screen's log, 2026-11-21, said "the sidebar's edge dragged … the hosted window follows it live" for a
+    // divider's drag.)
+    check("split session: a divider's drag said as one, with how many windows follow it (here none live: plain members, placed again at the release)",
+          dragSaid.contains { $0.contains("a split's divider dragged in Margin's window 1: the page area's changes held until it's let go (3 hosted windows placed again then)") }
+          && !dragSaid.contains { $0.contains("sidebar's edge") }, "\(dragSaid)")
     dragged = [1, 2, 1]
     session.pageRectChanged(window) // (each frame's layout: held while it's dragged)
     run {}

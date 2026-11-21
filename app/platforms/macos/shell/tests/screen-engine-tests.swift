@@ -13,6 +13,19 @@ import Foundation
 func screenEngineTests() {
     screenLayoutHeldTests()
     screenLeftFullScreenTests()
+    screenDragLineTests()
+}
+
+// ---- the log's line for a drag (bug D): what's dragged, and how many hosted windows follow it ----
+private func screenDragLineTests() {
+    check("screen: a drag's line: the sidebar's edge, one window following live (as before)",
+          HostedSession.dragLine(divider: false, window: 1, following: true, (1, 1)) == "the sidebar's edge dragged in Margin's window 1: the hosted window follows it live")
+    check("screen: a drag's line: a split's divider, every pane following live, counted",
+          HostedSession.dragLine(divider: true, window: 2, following: true, (3, 3)) == "a split's divider dragged in Margin's window 2: 3 hosted windows follow it live")
+    check("screen: a drag's line: some follow live, the plain members placed again at the release",
+          HostedSession.dragLine(divider: true, window: 1, following: true, (1, 3)) == "a split's divider dragged in Margin's window 1: 1 of 3 hosted windows follow it live, the others placed again when it's let go")
+    check("screen: a drag's line: none follow (held until it's let go)",
+          HostedSession.dragLine(divider: false, window: 1, following: false, (0, 1)) == "the sidebar's edge dragged in Margin's window 1: the page area's changes held until it's let go (1 hosted window placed again then)")
 }
 
 // ---- a visible host placed again on its own: the layout held (bug C) ----

@@ -558,6 +558,10 @@ final class HostEngine {
 
     // (The session's word: a show of `id` is today's one-host way, else a layout of it alone. HostedEngine.)
     func showsAlone(_ id: HostID) -> Bool { alone(id) }
+    func liveFollowers() -> (follow: Int, visible: Int) {
+        let list = visible.count > 1 ? visibleHosts : shown.flatMap { hosts[$0] }.map { [$0] } ?? []
+        return (list.filter { $0.tile != nil || $0.mode == .window }.count, list.count)
+    }
 
     // `setLayout`'s steps, in the engine's queue.
     private func applyLayout(main: HostTarget, mainRect: CGRect?, extras: [HostExtra], focused: HostID?) async -> [HostID: HostResult] {
