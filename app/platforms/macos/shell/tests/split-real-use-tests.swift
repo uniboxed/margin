@@ -7,7 +7,7 @@
 // 2. a pane that can't fit (Safari's minimum known from its main window, before the pane's window exists): refused
 //    before any window is made, out of the split, a toast; the minimum kept per app version in minimums.json;
 // 3. a pane whose window never comes: out of the split, the rest laid out again; one left goes to the page area;
-// 4. a new pane's window that its raise can't bring in front: out and back at once, no raise again, no copy asked;
+// 4. a new pane's window that its raise can't bring in front, side by side: nothing chased (they don't overlap), its keys;
 // 5. a divider dragged between two windows, one slower than the other: each sent its frames on its own (none waiting);
 // 6. the shell's engine forwards what the session asks of it (the drag's followers, showsAlone).
 import AppKit
@@ -148,19 +148,15 @@ private func splitRealUseSessionTests() {
           "\(rects) \(String(describing: bounds(safari))) \(String(describing: bounds(pane1)))")
     check("split real use 1: …said as one change: main laid out again with the pane once it was in",
           lines.contains { $0.contains("host: layout: \(safari) laid out again with \(pane1)") }, "\(lines.filter { $0.contains("layout") })")
-    check("split real use 4: the pane's new window, unraisable: in front by the move out and back at once (no raise again, no copy asked)",
-          w.inFront(win(pane1), of: win(safari)) == true && lines.contains { $0.contains("host: \(pane1): out to a private Space and back") && $0.contains("just came in with its tile") }
-          && !lines.contains { $0.contains("\(pane1), focused, not in front") } && !links.asked.contains { $0.type == "hostFocusWindow" },
-          "\(w.raised) \(lines.filter { $0.contains("front") })")
-    let fronted = lines.first { $0.contains("host: \(pane1): out to a private Space and back") }
-    let firstRaise = fronted.flatMap { l -> Int? in
-        guard let m = l.range(of: #"(\d+) ms from its first raise"#, options: .regularExpression) else { return nil }
-        return Int(l[m].split(separator: " ").first ?? "")
-    }
-    check("split real use 4: …in front within 60 ms of its first raise (the real screen: ~570 ms of raises that never took, then 19 ms)",
-          (firstRaise ?? 999) <= 60, "\(String(describing: fronted))")
+    // (Side by side the panes don't overlap: their order isn't chased, fix/pane-fronting. The move out and back for a
+    // new window that overlaps another: pane-fronting-tests.swift's stacked case, screen-card-tests.swift's card.)
+    let paneActivations = w.calls.filter { $0.hasPrefix("activate") }
+    check("split real use 4: the pane's new window, unraisable, side by side: never moved out and back, never raised again, no copy asked; it has the keys",
+          !lines.contains { $0.contains("host: \(pane1): out to a private Space and back") } && !lines.contains { $0.contains("\(pane1), focused, not in front") }
+          && !links.asked.contains { $0.type == "hostFocusWindow" } && paneActivations.last?.hasSuffix(" \(win(pane1))") == true && engine.shown == pane1,
+          "\(w.raised) \(paneActivations.suffix(3)) \(lines.filter { $0.contains("front") })")
     Diagnostics.echo = echo
-    print("  (split real use: the split opened in \(Int(opened * 1000)) ms on the stand-in clock; frozen \(frozen.map { Int($0 * 1000) }) ms; the pane in front \(firstRaise.map(String.init) ?? "?") ms after its first raise)")
+    print("  (split real use: the split opened in \(Int(opened * 1000)) ms on the stand-in clock; frozen \(frozen.map { Int($0 * 1000) }) ms)")
     Diagnostics.echo = { lines.append($0) }
 
     // ---- 2. a third Safari pane that can't fit: Safari's minimum known (its tiles said it), refused before any window ----

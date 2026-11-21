@@ -144,9 +144,9 @@ Manual verification checklist in real Safari + Margin.app (automated unit, Rust,
         `host: safari:p…#pane1 opened (…): window … (by the window server, under the freeze from its ask)` (maybe
         `1 Space change undone under the freeze`); `host: safari:p…#pane1: full screen by the early path in … ms (born in
         full screen, listed …, reserved …, …, the freeze let go …, in place, its Space gone …), under the freeze`;
-        `host: layout: safari:p… laid out again with safari:p…#pane1 in … ms, once it was in place`. If B's window came in
-        behind A: `host: safari:p…#pane1: out to a private Space and back into Margin's (its window just came in with its
-        tile …) in … ms, … ms from its first raise: in front now` (under ~60 ms). Never: `place safari:p…#pane1 attempt`,
+        `host: layout: safari:p… laid out again with safari:p…#pane1 in … ms, once it was in place`. Side by side, never
+        `out to a private Space and back` for pane1 (fix/pane-fronting: panes that don't overlap aren't ordered; step g).
+        Never: `place safari:p…#pane1 attempt`,
         `its tile sized to the page area 240,41 628×933` before pane1's lines, `pane1, focused, not in front`, `its copy
         asked to bring it in front`. The Dock's log (`/usr/bin/log show --last 2m --predicate 'process == "Dock"' | grep
         becameCurrent`): a `becameCurrent` of the new Space, if any, is never seen on screen (it falls between pane1's
@@ -172,6 +172,20 @@ Manual verification checklist in real Safari + Margin.app (automated unit, Rust,
         with the pane's name above the lower Safari pane), ⌘W in each pane, an item outside the split then a pane again
         (the whole split back, no `made for hosting`), a sidebar drag with the split up (both follow), a single item
         shown alone (as before).
+     g. **A new pane fronted once, its toolbar never over it (fix/pane-fronting).** As a: A shown alone (B's tab open in
+        A's window, as at 14:29:59), Add to Split View for B, side by side. Seen: B's box keeps "Opening …" a little longer
+        (until its page is in), then B appears with **no Safari toolbar over its top** at any moment; A untouched. Log
+        (one first open): `host: safari:p…#pane1: full screen by the early path … born in full screen …`, `host: layout:
+        safari:p… laid out again with safari:p…#pane1 …`, `host: layout: safari:p… main shown, safari:p…#pane1 pane shown,
+        focused safari:p…#pane1 in … ms`, `hosted: layout: 2 item(s) shown …`, then `hosted: page area changed: 1264×933`
+        with nothing between them about pane1's order. If its toolbar was still out when its tab came in: `host:
+        safari:p…#pane1: its full-screen toolbar out over its page by 52 pt at its reveal: resting after … ms` (under
+        ~150 ms; `still out (revealed anyway)` after 500 ms means it didn't go back up: send the log). The toolbar trace
+        (`its full-screen toolbar 2xxxx (first seen)`) should say `resting above its window` at its first read, never `OUT
+        over its window` after the reveal. Never, for pane1: `out to a private Space and back`, `focused, not in front of
+        the other visible hosts`, `its copy asked to bring it in front`, `brought in front by its copy`. Typing goes to B
+        right away (its keys). Then Stacked from the pane menu, and a card over the split (Shift+click a link in A): the
+        card in front of both panes on its first open (its out and back may still show for the card: that's expected).
 - [ ] **M2.8 All 5 Built-in Themes:** Switch Spaces through **Arcadia**, **Liquid Glass**, **Material**, **Neubrutalism**, and **Pixel** and inspect Favorites grid, nested folders, drifted pin reset, combined Split View row, background Mini Player, Peek modal, and Toast pill in light and dark appearance (and macOS 26 system glass for Liquid Glass).
 
 ## Safari startup (2026-11-10)

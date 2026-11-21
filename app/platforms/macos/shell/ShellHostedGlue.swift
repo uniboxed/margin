@@ -117,6 +117,7 @@ final class LateHostEngine: HostedEngine {
     func showsAlone(_ id: HostID) -> Bool { resolve()?.showsAlone(id) ?? true }
     func liveFollowers() -> (follow: Int, visible: Int) { resolve()?.liveFollowers() ?? (0, 0) }
     var knownAppMinimums: [String: CGSize] { resolve()?.knownAppMinimums ?? [:] }
+    func toolbarsRest(_ ids: [HostID]) async -> String? { await resolve()?.toolbarsRest(ids) }
 }
 
 extension Shell {

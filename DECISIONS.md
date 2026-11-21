@@ -7104,3 +7104,46 @@ reproduced the log's own lines, e.g. `place …#pane1 attempt 1: its window 0,33
   `removeFromSplit`'s focus), `tests/ui-host-app.test.ts` (`appMin`), `tests/theme/split-view.test.ts` (5 themes, both
   engines: no pane below its app's minimum, a divider stopping there, three Safari panes in 1264 pt refused, side by side
   refused when it wouldn't fit). Nothing on the real screen: TESTING.md M2.7 step 13.
+
+## A split pane's first open: fronted once, revealed once its toolbar rests (fix/pane-fronting, 2026-11-21)
+
+The real screen at 14:29:59–14:30:00 (a Safari page B added beside A, side by side; main window 23758, the pane's new
+window 23774): the pane was fronted twice and its toolbar showed over its page. Read from Margin's and the copy's logs:
+
+- **The second fronting's cause.** After the layout (00.215, the pane in front after one move out and back), the
+  session showed the pane's item in its window (`hostShow`, 00.215–00.375): its tab moved in from main's window, the
+  blank page closed, and Safari put main's window back in front of the pane's, unasked. Then the page's next report of
+  its panes' rects (the session's `placeAgain`, `hosted: page area changed: 1264×933` at 00.975) ran the engine's
+  `pageRectChanged`, whose `frontVisible` read main in front of the focused pane: main raised (the copy heard window 414
+  focused at 00.399), the pane raised (heard 549 at 00.445; its raise never takes for a new window, before or after a
+  move), then `raised again`, its copy asked, and out to a private Space and back (00.970): ~590 ms and a second move
+  between Spaces. (The keys given back at 59.962, "its Space shown again", came from macOS's undone switch; not the cause.)
+- **Decided: only the order that shows is kept.** Two visible hosts need an order only when they overlap: their windows
+  (each as it is and where the layout puts it), a full-screen window counted with its toolbar's room above it
+  (`toolbarRoom`, 52 pt: Safari's toolbar window rests just above its window, measured on the real screen). A card over
+  the panes: kept as before (the card last, out and back for its new window). Panes side by side never overlap, and a
+  stacked split's band above a Safari pane is 52 pt, as tall as its toolbar (it meets the pane above, never overlaps
+  it): their order isn't chased, whatever Safari does to its own windows. The focused one only gets the keys (its app
+  made active, its window made its app's main one: that takes even when the raise doesn't). The focused one in front of
+  every host it overlaps: none of those raised over it; two others out of order between them only when neither overlaps
+  it. Only when the focused one is behind a host it overlaps: the raises, its copy, out and back, as before.
+  So a side-by-side pane's first open has no move out and back at all (the stand-in: the split 30 ms sooner) and the
+  page's next report costs nothing (stand-in: 494 ms → 0).
+- **The pane's loader until its tab is in and its toolbar rests.** Safari keeps its full-screen toolbar down while the
+  keys are in a new window's address field (its blank first page): at 00.298 it was out over the new pane (876,41
+  628×52), resting at 00.368, once the copy had moved the tab in; the pane's loader had been lifted at 00.215 (the
+  engine's end), so up to ~150 ms of Safari's toolbar over the new pane. Now a pane whose window is made in that layout
+  keeps its own loader (`revealHeld`, HostedSession) after the engine's slow step, through its tab's `hostShow`, then
+  the engine reads its toolbar (`toolbarsRest`: the toolbar trace's rule, its own strip at its window's top edge in its
+  window's Spaces, out when its bottom is below its window's top; from the window server, read every 10 ms only while
+  one is out, at most `toolbarRestWait` 0.5 s, never moved or parked) and the loader goes. Said when it waited: `host:
+  <id>: its full-screen toolbar out over its page by N pt at its reveal: resting after … ms` (or `still out (revealed
+  anyway)`). A pane shown before (its tab shown before the layout) and a card are unchanged.
+- Kept: born in full screen under the freeze, main kept until the pane is in, the per-pane loader, the card's first
+  open over a split, the stacked band, ⌘W per pane.
+- Checked: `pane-fronting-tests.swift` (the log's case on the stand-in world: the new window unraisable after a move
+  too, born with its toolbar out, the copy's `hostShow` putting main back in front; failing without the fix: out and
+  back twice, raised again, its copy asked, the loader lifted with the toolbar out; side by side, stacked across an
+  8 pt gap (order kept), stacked across the 52 pt band (not chased), a toolbar that stays out (revealed after 0.5 s)),
+  `split-real-use-tests.swift` 4 (no out and back side by side, the keys the pane's), `screen-card-tests.swift`
+  (unchanged: the card's order). Nothing on the real screen: TESTING.md M2.7 step 13g.

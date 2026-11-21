@@ -90,9 +90,10 @@ final class FakeHostedWindow: HostedWindow {
     // A split as its page lays it out (docs/PEEK-SPLIT.md §4): `splitShown` says which (its id, items in order, stacked or
     // not, ratios; a test sets it as the page would for the item in front), laid out in the page area with an 8 pt gap.
     var splitShown: (() -> (id: String, items: [String], vertical: Bool, ratios: [CGFloat])?)?
+    var stackedGap: CGFloat = 8 // (stacked: the real page's band above a Safari pane is 52 pt, `SAFARI_TOOLBAR`)
     var paneLayout: (split: String, panes: [PagePane])? {
         guard hosting, let s = splitShown?(), let page = hostedPlacement?.page, s.items.count >= 2 else { return nil }
-        let gap: CGFloat = 8, n = CGFloat(s.items.count)
+        let gap: CGFloat = s.vertical ? stackedGap : 8, n = CGFloat(s.items.count)
         let room = (s.vertical ? page.height : page.width) - gap * (n - 1)
         let sum = s.ratios.count == s.items.count ? s.ratios.reduce(0, +) : n
         var at = s.vertical ? page.minY : page.minX
@@ -104,7 +105,8 @@ final class FakeHostedWindow: HostedWindow {
         return (s.id, panes)
     }
     var paneLoadingsSaid: [(item: String?, label: String?, app: String?)] = [] // each setPaneLoading, in order
-    func setPaneLoading(_ item: String?, label: String?, app: String?) { paneLoadingsSaid.append((item, label, app)) }
+    var onPaneLoading: (() -> Void)? // (as each is said)
+    func setPaneLoading(_ item: String?, label: String?, app: String?) { paneLoadingsSaid.append((item, label, app)); onPaneLoading?() }
     var paneMinimumsSaid: [[String: CGSize]] = [] // each setPaneMinimums, in order
     func setPaneMinimums(_ minimums: [String: CGSize]) { paneMinimumsSaid.append(minimums) }
     var appMinimums: [String: CGSize] = [:] // setAppMinimums: every app's known minimum, as the page names them
