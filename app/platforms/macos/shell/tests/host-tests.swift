@@ -127,9 +127,10 @@ final class FakeHostWorld: HostSystem {
     // (`pageFocusRests` later, as Safari's ~70 ms slide); the window made key (raised, unless its raise doesn't take).
     var pageFocused: [Int] = []
     var pageFocusRests = 0.07
+    var pageListedAt: [Int: Double] = [:] // a new window's page listed to Accessibility only from then (its page not there yet)
     func focusPage(pid: pid_t, window: Int) async -> Bool {
         calls.append("focusPage \(pid) \(window)")
-        guard wins[window]?.pid == pid else { return false }
+        guard wins[window]?.pid == pid, pageListedAt[window].map({ clock >= $0 }) ?? true else { return false }
         pageFocused.append(window)
         if toolbarOut.contains(window) { toolbarRestsAt[window] = min(toolbarRestsAt[window] ?? .infinity, clock + pageFocusRests) }
         if !unraisable.contains(window) { raised.removeAll { $0 == window }; raised.insert(window, at: 0) }

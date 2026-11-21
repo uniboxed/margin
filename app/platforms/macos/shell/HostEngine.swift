@@ -153,6 +153,8 @@ final class HostEngine {
         var toolbarRoom: CGFloat = 52
         // A new pane's toolbar out over its page at its reveal: waited for this long at most, read this often.
         var toolbarRestWait = 0.5
+        var pageFocusWait = 0.8 // a new window's page given its keys: tried this long at most (its page listed late)
+        var pageFocusEvery = 0.03
         var toolbarEvery = 0.01
         var destroyWait = 1.5
         var placeWait = 1.5 // its own Space's reservation taking effect
@@ -1256,7 +1258,17 @@ final class HostEngine {
         guard !list.isEmpty else { return nil }
         let t0 = sys.now()
         var taken: [String] = []
-        for h in list { taken.append("\(h.id) \(await sys.focusPage(pid: h.pid, window: h.window) ? "taken" : "not taken")") }
+        // (A window Safari made a moment ago lists its page to Accessibility only once its page is there: tried again every
+        // `pageFocusEvery` for `pageFocusWait` at most, under its loader.)
+        for h in list {
+            var ok = await sys.focusPage(pid: h.pid, window: h.window)
+            let t1 = sys.now()
+            while !ok, sys.now() - t1 < options.pageFocusWait {
+                await sys.sleep(options.pageFocusEvery)
+                ok = await sys.focusPage(pid: h.pid, window: h.window)
+            }
+            taken.append("\(h.id) \(ok ? "taken" : "not taken") after \(ms(since: t1)) ms")
+        }
         // (Each focus made its window key: the layout's order and keys as they should be again, the focused one last.)
         if visible.count > 1 { await frontVisible() } else if let s = shown.flatMap({ hosts[$0] }) { _ = await front(s) }
         let line = "host: new windows' pages given their keys (\(taken.joined(separator: ", "))), the keys back to \(shown.map(\.description) ?? "none") in \(ms(since: t0)) ms"

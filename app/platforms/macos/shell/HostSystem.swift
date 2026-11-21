@@ -312,13 +312,16 @@ nonisolated final class HostAX: @unchecked Sendable {
                 guard let w = self.element(pid, window) else { return c.resume(returning: false) }
                 // (Its web area: window → split group → tab group → groups → scroll area → AXWebArea, a few levels; walked
                 // breadth first, at most 64 elements read.)
+                // (The toolbar's own items skipped: the page is under the window's split group.)
                 var queue: [AXUIElement] = [w], read = 0
                 while !queue.isEmpty, read < 64 {
                     let e = queue.removeFirst()
                     read += 1
-                    if self.attr(e, kAXRoleAttribute) as? String == "AXWebArea" {
+                    let role = self.attr(e, kAXRoleAttribute) as? String
+                    if role == "AXWebArea" {
                         return c.resume(returning: AXUIElementSetAttributeValue(e, kAXFocusedAttribute as CFString, kCFBooleanTrue) == .success)
                     }
+                    if role == "AXToolbar" { continue }
                     queue.append(contentsOf: (self.attr(e, kAXChildrenAttribute) as? [AXUIElement]) ?? [])
                 }
                 c.resume(returning: false)

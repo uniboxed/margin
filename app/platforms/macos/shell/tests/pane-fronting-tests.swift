@@ -80,6 +80,7 @@ private func paneFrontingCase(stacked: Bool, restsAfter: Double?, band: Bool = f
             w.raised.append(n)
             w.unraisable.insert(n)
             w.toolbarOut.insert(n)
+            w.pageListedAt[n] = w.clock + 0.2 // (its page listed to Accessibility a little after the window: the real screen)
         } else {
             w.raised.insert(n, at: 0)
         }
