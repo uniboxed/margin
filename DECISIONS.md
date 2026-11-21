@@ -7261,3 +7261,16 @@ another window there (window 36, pid 874, layer 2147483628)", a keep-awake app's
 shielding level, over the whole display and letting the pointer through. Windows at the assistive-technology level
 (1500) and above (screen dimmers, keep-awake and zoom overlays, shielding, cursor) are never covers now
 (`PaneClick.overlay`); a menu, a sheet or panel, the Dock or a system dialog still is.
+
+## Row slides under Reduce Motion: asked afresh, a running one stopped (2026-11-21)
+
+The theme suite's "reduced motion: a close is drawn at once, nothing slides" check failed now and then in WebKit (Pixel
+most), on base 93722290 too (3 in 8). The cause was in `ui/row-motion.ts`, not the test: it kept the
+`prefers-reduced-motion` MediaQueryList made at its start, and WebKit's kept list still said no-preference for a moment
+after Reduce Motion came on (a fresh `matchMedia` already said reduce), so that change slid its rows 34–42 px. It's now
+asked afresh at each change of the rows (only at a click, a close or an open: never per frame). And when rows change
+with no slide this time (Reduce Motion, a hidden page, a drag), a slide still running from the change before is stopped,
+so the rows are at their own places instead of sliding on toward old ones. (Found with the rows' own animations: the
+sidebar is in a shadow tree, which `document.getAnimations()` doesn't list.) Check: tests/theme/intents.test.ts "a slide
+still running when a change is drawn with reduced motion" (failing in all 5 themes × 2 engines before; 6 of 6 and 3 of 3
+whole-file runs green after).

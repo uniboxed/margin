@@ -133,13 +133,29 @@ for (const [name, engine] of ENGINES) {
           assert.equal(await ev((i) => T.rtRowActive(i), pin), false);
         });
 
+        // (A slide still running when a change is drawn with no slide (reduced motion, a hidden page, a drag): stopped at
+        // once, the rows at their own places. Before, it ran on toward the old places: the reduced-motion check below
+        // read a row still mid-slide whenever the step before's slide outlasted its wait, 2026-11-21.)
+        await t.test('a slide still running when a change is drawn with reduced motion: stopped at once, the rows at their places', async () => {
+          await page.waitForTimeout(300);
+          const ids = await ev(() => T.rtTodayIds(8));
+          await ev((i) => T.rtDispatch('tab.close', i), ids[1]); // (a slide starts)
+          await page.emulateMedia({ reducedMotion: 'reduce' });
+          await ev((i) => T.rtDispatch('tab.close', i), ids[3]);
+          // (By the next frame, what's drawn: WebKit's computed style shows a cancelled slide's last value until then.)
+          await ev(() => new Promise((r) => requestAnimationFrame(() => r(null))));
+          assert.deepEqual(still(await ev(() => T.rtTodayTransforms(1, 4))), ['none', 'none', 'none', 'none']);
+          await page.emulateMedia({ reducedMotion: 'no-preference' });
+        });
+
         await t.test('reduced motion: a close is drawn at once, nothing slides', async () => {
           await page.waitForTimeout(300); // (any slide of the last step over)
           await page.emulateMedia({ reducedMotion: 'reduce' });
           const ids = await ev(() => T.rtTodayIds(6));
           await ev((i) => T.rtDispatch('tab.close', i), ids[1]);
           assert.equal(await ev((i) => T.rtRow(i) != null, ids[1]), false);
-          assert.deepEqual(await ev(() => T.rtTodayTransforms(1, 3)), ['none', 'none', 'none']);
+          await ev(() => new Promise((r) => requestAnimationFrame(() => r(null))));
+          assert.deepEqual(still(await ev(() => T.rtTodayTransforms(1, 3))), ['none', 'none', 'none']);
           await page.emulateMedia({ reducedMotion: 'no-preference' });
         });
 
@@ -162,6 +178,10 @@ for (const [name, engine] of ENGINES) {
 
 // The frame budget: a close over 50 rows (its click's work, the slide set up included) and the frames while the rows
 // slide. Arcadia, the reference theme.
+// A row not moved: no transform, or the identity matrix (WebKit's computed style can read a just-cancelled slide's row
+// as `matrix(1, 0, 0, 1, 0, 0)` for that moment: the same place). Any offset still shows.
+function still(list: (string | null)[]) { return list.map((v) => (v === 'matrix(1, 0, 0, 1, 0, 0)' ? 'none' : v)); }
+
 for (const [name, engine] of ENGINES) {
   test(`a close over 50 rows stays within a frame, in ${name}`, async () => {
     const { browser, page, ev, errors } = await open(engine, ARCADIA, 'arcadia');

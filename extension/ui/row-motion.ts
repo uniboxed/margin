@@ -49,7 +49,10 @@ type Box = { left: number, top: number, bottom: number };
  * @param skip  true: nothing slides this time (a row being dragged)
  */
 export function createRowMotion(view: View, win: Window & typeof globalThis, { skip = () => false, duration = MOTION_MS }: { skip?: () => boolean, duration?: number } = {}) {
-  const reduced = win.matchMedia?.('(prefers-reduced-motion: reduce)') ?? null;
+  // (Asked afresh at each change of the rows, never a list kept from the start: WebKit's kept MediaQueryList still said
+  // no-preference for a moment after Reduce Motion came on, while a fresh one said reduce, and that change slid,
+  // 2026-11-21. Rows change at a click, a close or an open: never per frame.)
+  const reduced = () => win.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
   let before: Map<Element, Box> | null = null;
   const running = new Set<Animation>();
   // The boxes on screen before the last change, until its first frame is drawn: a change again before then (a
@@ -70,7 +73,10 @@ export function createRowMotion(view: View, win: Window & typeof globalThis, { s
     /** Called with the model on screen and the one about to be drawn: true when the rows' boxes were read (call after()). */
     before(prev: ViewModel | null, next: ViewModel | null) {
       before = null;
-      if (!rowsChanged(prev, next) || reduced?.matches || view.doc.hidden || skip()) return false;
+      if (!rowsChanged(prev, next)) return false;
+      // (Rows changed with no slide this time (reduced motion, a hidden page, a drag): a slide still running from the
+      // last change stopped at once, so the rows are at their own places, never sliding on toward old ones.)
+      if (reduced() || view.doc.hidden || skip()) { for (const a of [...running]) a.cancel(); unpainted = null; return false; }
       before = new Map();
       if (unpainted) {
         // (A row drawn by the last change only, never on screen: new here too.)
