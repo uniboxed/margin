@@ -495,6 +495,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             hosted = nil
             hostedFrame = nil
             sayHostedFrame()
+            if !visibleHosts.isEmpty { visibleHosts = []; visibleFrames = [:]; sayHostedFrames() }
             setPageMinimum(nil)
             loadingLabel = nil
             showingLabel = nil
@@ -555,8 +556,118 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // bounds read again, the hole and the pointer's slot with them.
     func hostedMoved() {
         readHosted()
+        if !visibleHosts.isEmpty { readVisible() }
         updateHole()
     }
+
+    // ---- several visible hosts (docs/PEEK-SPLIT.md §1: Peek's card, a split's panes) ----
+
+    // Every visible host's window while more than one is (HostEngine `hostedWindows`), back to front, each at its rect;
+    // empty: one host, `hosted` alone, as before.
+    private(set) var visibleHosts: [HostShownWindow] = []
+    private var visibleFrames: [Int: CGRect] = [:] // their bounds by the window server, read as they're told or moved
+    // The holes: each visible host's frame inside its rect, once it's in place (one host: `hole` alone).
+    private(set) var holes: [CGRect] = []
+    // A card open: the press's place each time one landed on the page area outside the card's content (the dimmed page
+    // around it, caught: Peek closes the card then, §2).
+    private(set) var caughtPresses: [CGPoint] = []
+    var catchRegion: CatchRegion { catcher.region } // (what the catch fill fills now: the tests read it)
+    func setVisibleHosts(_ list: [HostShownWindow]) {
+        let changed = list != visibleHosts
+        visibleHosts = list
+        readVisible()
+        if changed { Diagnostics.note("Margin's window \(id): \(list.isEmpty ? "one hosted window again" : "\(list.count) hosted windows visible (\(list.map { "\($0.window) \($0.role.rawValue)\($0.focused ? " focused" : "")" }.joined(separator: ", ")))")") }
+        sayHostedFrames()
+        updateHole()
+        if changed { keepFront() }
+    }
+    private func readVisible() {
+        var frames: [Int: CGRect] = [:]
+        for v in visibleHosts { if let b = hostedBounds(v.window) { frames[v.window] = b } }
+        visibleFrames = frames
+    }
+    // The frontmost visible host's window (the focused one, fronted last): what this window is ordered above.
+    private var frontVisible: Int? { visibleHosts.first { $0.focused }?.window ?? visibleHosts.max { $0.z < $1.z }?.window }
+    // ...said to the page as they change (`hostedFrames`, in its coordinates), and once ([]) when it's one again.
+    private var hostedFramesSent: String?
+    private func sayHostedFrames() {
+        let c = contentFrame
+        let items = visibleHosts.map { v -> String in
+            let f = visibleFrames[v.window] ?? v.rect
+            return #"{"role":"\#(v.role.rawValue)","focused":\#(v.focused),"z":\#(v.z),"rect":[\#(Int((f.minX - c.minX).rounded())),\#(Int((f.minY - c.minY).rounded())),\#(Int(f.width.rounded())),\#(Int(f.height.rounded()))]}"#
+        }
+        let json = "[" + items.joined(separator: ",") + "]"
+        guard asked, json != hostedFramesSent, hostedFramesSent != nil || !visibleHosts.isEmpty else { return }
+        hostedFramesSent = json
+        push(#"{"type":"hostedFrames","frames":"# + json + "}")
+    }
+    // A hole's corners: rounded (as the theme rounds the page card) only where it meets the page card's.
+    private func holeRadii(_ r: CGRect, page: CGRect) -> [CGFloat] {
+        let corners = [CGPoint(x: page.minX, y: page.minY), CGPoint(x: page.maxX, y: page.minY), CGPoint(x: page.maxX, y: page.maxY), CGPoint(x: page.minX, y: page.maxY)]
+        let mine = [CGPoint(x: r.minX, y: r.minY), CGPoint(x: r.maxX, y: r.minY), CGPoint(x: r.maxX, y: r.maxY), CGPoint(x: r.minX, y: r.maxY)]
+        return (0..<4).map { i -> CGFloat in
+            guard abs(corners[i].x - mine[i].x) <= 2, abs(corners[i].y - mine[i].y) <= 2, let layout, i < layout.radii.count else { return 0 }
+            return CGFloat(layout.radii[i])
+        }
+    }
+    // `r` less `cut`: up to four rects (above, below, left, right of it).
+    nonisolated static func subtract(_ r: CGRect, _ cut: CGRect) -> [CGRect] {
+        let i = r.intersection(cut)
+        guard !i.isNull, i.width > 0, i.height > 0 else { return [r] }
+        return [CGRect(x: r.minX, y: r.minY, width: r.width, height: i.minY - r.minY), CGRect(x: r.minX, y: i.maxY, width: r.width, height: r.maxY - i.maxY),
+                CGRect(x: r.minX, y: i.minY, width: i.minX - r.minX, height: i.height), CGRect(x: i.maxX, y: i.minY, width: r.maxX - i.maxX, height: i.height)]
+            .filter { $0.width > 0.5 && $0.height > 0.5 }
+    }
+    // The ground's cut-outs for holes that may overlap (a card over panes): each one less the ones before it, so the
+    // even-odd fill never fills an overlap; a hole kept whole keeps its corners, a piece of one is square.
+    nonisolated static func groundHoles(_ list: [(rect: CGRect, radii: [CGFloat])]) -> [WindowGroundView.Hole] {
+        var out: [WindowGroundView.Hole] = []
+        var before: [CGRect] = []
+        for h in list {
+            var pieces = [h.rect]
+            for b in before { pieces = pieces.flatMap { subtract($0, b) } }
+            out += pieces.map { WindowGroundView.Hole(rect: $0, radii: $0 == h.rect ? h.radii : []) }
+            before.append(h.rect)
+        }
+        return out
+    }
+    // updateHole with several visible hosts: each one's hole, the ground drawn around all of them, the pointer through
+    // them (only a card's content while a card is open, the rest of the page area caught).
+    private func updateHoles() {
+        let content = contentFrame
+        var list: [(rect: CGRect, host: HostShownWindow)] = []
+        if pageState == .shown, let page = window.pageRect {
+            for v in visibleHosts {
+                let bounds = followingPage ? v.rect : visibleFrames[v.window] ?? v.rect
+                let r = bounds.intersection(v.rect).intersection(page)
+                if !r.isNull, r.width >= 1, r.height >= 1 { list.append((r, v)) }
+            }
+        }
+        let said = (0..<4).map { i in i < (layout?.fills.count ?? 0) ? PageFill.color(layout?.fills[i] ?? "") : nil }
+        pageGround = hosting ? PageFill.common(said.compactMap { $0 }) : nil
+        let fill = pageGround ?? .windowBackgroundColor
+        holes = list.map(\.rect)
+        let next = list.first { $0.host.focused }?.rect ?? list.last?.rect
+        if !list.isEmpty, let page = window.pageRect {
+            let cut = Self.groundHoles(list.map { ($0.rect.offsetBy(dx: -content.minX, dy: -content.minY), holeRadii($0.rect, page: page)) })
+            ground.show(color: fill, holes: cut)
+            if panel.backgroundColor != .clear { panel.backgroundColor = .clear }
+        } else {
+            if panel.backgroundColor != fill { panel.backgroundColor = fill }
+            ground.clear()
+        }
+        hole = next
+        slot = nil
+        if !list.isEmpty, let layout {
+            var s = PassThrough.slot(in: content, layout: layout, hits: hits, captureAll: captureAll)
+            // (A card open: its content only; the dimmed page around it Margin's.)
+            s.holes = list.last { $0.host.role == .card }.map { [$0.rect] } ?? list.map(\.rect)
+            if !s.rect.isNull, !s.rect.isEmpty { slot = s }
+        }
+        catcher.region = CatchRegion.of(frame: content, slot: slot)
+    }
+    // A card open (one of the visible hosts is one): its content's hole, nil: none.
+    private var cardHole: CGRect? { visibleHosts.contains { $0.role == .card } ? slot?.holes?.first : nil }
 
     // The hosted window follows a drag of the sidebar's edge live (the engine's tiles): the hole is the page area as it
     // is meanwhile (its window a frame behind at most), its bounds read again once it's over.
@@ -616,7 +727,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             levelSets += 1
             changedAt = now()
         }
-        if up, mechanism == .order || reorder, let target = hosted ?? covering {
+        if up, mechanism == .order || reorder, let target = frontVisible ?? hosted ?? covering {
             orderAbove(target)
             frontOrders += 1
             changedAt = now()
@@ -664,7 +775,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     //   held at the next read at rest, back to it (said once).
     static let settle = 0.5, missApart = 1.0, probeEvery = 5.0
     func frontRead(_ read: HostEngine.FrontRead) {
-        guard !isClosed, isFullScreen, yieldingTo == nil, hosted == read.hosted, onCurrentSpace() else { return }
+        guard !isClosed, isFullScreen, yieldingTo == nil, hosted == read.hosted || visibleHosts.contains(where: { $0.window == read.hosted }), onCurrentSpace() else { return }
         let t = now()
         let atRest = t - changedAt >= Self.settle - 1e-9 && t - spaceChangedAt >= Self.settle - 1e-9
         if !read.marginAbove {
@@ -837,6 +948,8 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // page says none); the corners rounded where the hole's meet the page card's. Nowhere else, and in no other state, is anything of this
     // window see-through. The pointer's slot and the catch fill follow it.
     private func updateHole() {
+        if visibleHosts.count > 1 { return updateHoles() }
+        defer { holes = hole.map { [$0] } ?? [] }
         let content = contentFrame
         var next: CGRect?
         if pageState == .shown, let page = window.pageRect {
@@ -1012,7 +1125,17 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // gives that app the keyboard. Only while this window is on screen in the current Space (the monitor hears every
     // app's presses).
     func pressed(_ at: CGPoint) {
-        if hosted != nil, pageState == .shown, !pageWantsKeyboard, options.harness || (window.isVisible && window.isOnActiveSpace), let page = window.pageRect, page.contains(at) {
+        // (Several visible: a card open catches a press on the page around its content; else the press's host is found
+        // by its rect, HostedSession `pagePressed`, and focused.)
+        if visibleHosts.count > 1, pageState == .shown, !pageWantsKeyboard, options.harness || (window.isVisible && window.isOnActiveSpace), let page = window.pageRect, page.contains(at) {
+            if let card = cardHole, !card.contains(at) {
+                caughtPresses.append(at)
+                if caughtPresses.count > 50 { caughtPresses.removeFirst() }
+                owner?.onCaughtPress?(self, at)
+            } else {
+                owner?.onPagePress?(self, at)
+            }
+        } else if hosted != nil, pageState == .shown, !pageWantsKeyboard, options.harness || (window.isVisible && window.isOnActiveSpace), let page = window.pageRect, page.contains(at) {
             owner?.onPagePress?(self, at)
         }
         // (Kept in front by its order: a press on the hosted window raised it over this one; above it again, once the
@@ -1710,6 +1833,7 @@ final class MarginWindows {
     var onLeftFullScreen: ((MarginWindowController) -> Void)? // left full screen while hosting
     var onEnteredFullScreen: ((MarginWindowController) -> Void)? // in full screen (again)
     var onPagePress: ((MarginWindowController, CGPoint) -> Void)? // a press in its page area around a window-mode host's window
+    var onCaughtPress: ((MarginWindowController, CGPoint) -> Void)? // a card open: a press on the page area around its content (docs/PEEK-SPLIT.md §2)
     // A window closing while it hosts: what it shows parked, then the closure called (it closes then).
     var onClosing: ((MarginWindowController, @escaping () -> Void) -> Void)?
     var onClosed: ((Int) -> Void)? // a window closed (its id): gone from `controllers`

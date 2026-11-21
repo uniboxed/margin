@@ -54,6 +54,27 @@ func multiHostTests() {
               && HostID(raw: "app:com.apple.Notes").main.raw == "app:com.apple.Notes" && HostID(raw: "safari:odd#name").safariRole == .main, "\(cardId.main)")
     }
 
+    // ---- Margin's window's side: the pointer's slot with several holes, the ground's cut-outs never overlapping ----
+    do {
+        let slot = Slot(rect: page, radius: 10, hits: [CGRect(x: 300, y: 50, width: 20, height: 20)], holes: [left, right])
+        check("multi-host: the pointer through each pane's hole, not the gap between them, nor a hit over one",
+              PassThrough.pageGets(CGPoint(x: 500, y: 500), slot) && PassThrough.pageGets(CGPoint(x: 1000, y: 500), slot) && !PassThrough.pageGets(CGPoint(x: 890, y: 500), slot)
+              && !PassThrough.pageGets(CGPoint(x: 305, y: 55), slot) && PassThrough.pageGets(CGPoint(x: 500, y: 500), Slot(rect: page, radius: 10)))
+        let cardOnly = Slot(rect: page, radius: 10, holes: [card])
+        let region = CatchRegion.of(frame: FakeHostWorld.display, slot: cardOnly)
+        check("multi-host: a card open: the pointer through its content only, the page around it caught (the catch fill there)",
+              PassThrough.pageGets(CGPoint(x: card.midX, y: card.midY), cardOnly) && !PassThrough.pageGets(CGPoint(x: 300, y: 500), cardOnly)
+              && region.contains(CGPoint(x: 300, y: 500 - 33), in: FakeHostWorld.display.size) && !region.contains(CGPoint(x: card.midX, y: card.midY - 33), in: FakeHostWorld.display.size),
+              "\(region)")
+        let r: [CGFloat] = [10, 0, 0, 10]
+        let whole = MarginWindowController.groundHoles([(page, [10, 10, 10, 10]), (card, [])])
+        let split = MarginWindowController.groundHoles([(left, r), (right, [0, 10, 10, 0]), (card, [])])
+        let gapPiece = CGRect(x: left.maxX, y: card.minY, width: right.minX - left.maxX, height: card.height)
+        check("multi-host: the ground's cut-outs: a card inside main's hole adds none; over two panes, only the gap between them, square (never an overlap filled again)",
+              whole == [WindowGroundView.Hole(rect: page, radii: [10, 10, 10, 10])]
+              && split == [WindowGroundView.Hole(rect: left, radii: r), WindowGroundView.Hole(rect: right, radii: [0, 10, 10, 0]), WindowGroundView.Hole(rect: gapPiece, radii: [])], "\(split)")
+    }
+
     // ---- two visible hosts (tiles): main and a pane, each at its rect, held through polls ----
     do {
         let (w, e) = world()

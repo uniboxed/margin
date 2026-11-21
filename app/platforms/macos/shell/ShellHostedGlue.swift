@@ -227,6 +227,7 @@ extension Shell {
         windows.onLeftFullScreen = { [weak session] controller in session?.leftFullScreen(controller) }
         windows.onEnteredFullScreen = { [weak session] controller in session?.enteredFullScreen(controller) }
         windows.onPagePress = { [weak session] controller, at in session?.pagePressed(controller, at: at) }
+        windows.onCaughtPress = { [weak session] controller, at in session?.caughtPress(controller, at: at) }
         windows.onFieldClosed = { [weak session] controller in session?.fieldClosed(controller) }
         windows.onOpen = { [weak session] controller in session?.resumeLast(controller) }
         windows.onSidebarResizing = { [weak session] controller, on in session?.sidebarResizing(controller, on) }

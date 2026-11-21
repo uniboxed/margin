@@ -514,6 +514,8 @@ func glueScenario() async {
         holeAlpha?.allSatisfy { $0 == 0 } == true, "\(String(describing: holeAlpha))")
   check("shown, as the window server pictures it: painted (alpha 255) on the sidebar, on the theme's frame at each side of the page area and outside the curve of its rounded corners",
         solidAlpha?.allSatisfy { $0 == 255 } == true, "\(String(describing: solidAlpha))")
+  // Several visible hosts (docs/PEEK-SPLIT.md §1): holes for each, the pointer through them, a card's content alone.
+  await multiHoleChecks(c, page: page, main: editWindow, bounds: { world.bounds(window: $0) }, check: check)
   // The pointer: through the hole to the app, Margin's on its sidebar, its frame and the card's rounded corners; a drag keeps who had it.
   let middle = CGPoint(x: page.midX, y: page.midY)
   check("the pointer's slot is the hole (its radius the card's); the catch fill everywhere but there", c.slot?.rect == page && c.slot?.radius == radius && c.slot?.captureAll == false, "\(String(describing: c.slot))")
@@ -1327,6 +1329,74 @@ func glueScenario() async {
 // `loading` with its name, so the first frame is the loader, never the launcher; its app is opened once Margin's
 // window is in full screen with its page area; then `shown`.
 @MainActor
+// Several visible hosts in Margin's real window and page (docs/PEEK-SPLIT.md §1), told as the engine tells them
+// (`setVisibleHosts`), two stand-in windows beside the hosted one (their bounds given here): a split's two panes, each a
+// hole of its own in the ground (its corners rounded only where they meet the page card's), the pointer through both and
+// not the gap; a card over main: the pointer only through the card's content, the page around it caught (a press there
+// reported), never see-through for the window server; then one host again, as it was.
+func multiHoleChecks(_ c: MarginWindowController, page: CGRect, main: Int, bounds: @escaping (Int) -> CGRect?, check: (String, Bool, @autoclosure () -> String) -> Void) async {
+  let content = c.contentFrame
+  func local(_ p: CGPoint) -> CGPoint { CGPoint(x: p.x - content.minX, y: p.y - content.minY) }
+  func mid(_ r: CGRect) -> CGPoint { CGPoint(x: r.midX, y: r.midY) }
+  let radius = CGFloat(c.layout?.radii.first ?? 0)
+  let half = ((page.width - 8) / 2).rounded(.down)
+  let left = CGRect(x: page.minX, y: page.minY, width: half, height: page.height)
+  let right = CGRect(x: page.maxX - half, y: page.minY, width: half, height: page.height)
+  let gap = CGPoint(x: (left.maxX + right.minX) / 2, y: page.midY)
+  let pane = 99901, card = 99902
+  let cardRect = page.insetBy(dx: (page.width * 0.08).rounded(), dy: (page.height * 0.07).rounded())
+  let was = c.hostedBounds
+  c.hostedBounds = { n in n == pane ? right : n == card ? cardRect : bounds(n) }
+  defer { c.hostedBounds = was }
+  let pushedBefore = c.pushed.count
+
+  // ---- a split of two ----
+  c.setVisibleHosts([HostShownWindow(window: main, rect: left, role: .main, z: 0, focused: true), HostShownWindow(window: pane, rect: right, role: .pane, z: 1, focused: false)])
+  check("several hosts: a split's two holes, each its window's frame inside its rect; the focused one's is `hole`",
+        c.holes == [left, right] && c.hole == left && c.pageState == .shown, "\(c.holes) \(String(describing: c.hole))")
+  check("several hosts: the ground cut for both (its corners rounded only where they meet the page card's), drawn in the gap between them",
+        !c.ground.fills(local(mid(left))) && !c.ground.fills(local(mid(right))) && c.ground.fills(local(gap)) && c.ground.extras.count == 1
+        && c.ground.radii == [radius, 0, 0, radius] && c.ground.extras.first?.radii == [0, radius, radius, 0] && radius > 0,
+        "\(c.ground.radii) \(String(describing: c.ground.extras)) gap \(c.ground.fills(local(gap)))")
+  check("several hosts: the pointer through each hole to its window, Margin's in the gap (caught there)",
+        PassThrough.pageGets(mid(left), c.slot) && PassThrough.pageGets(mid(right), c.slot) && !PassThrough.pageGets(gap, c.slot) && c.catchRegion.contains(local(gap), in: content.size)
+        && !c.catchRegion.contains(local(mid(right)), in: content.size), "\(String(describing: c.slot))")
+  let points = [local(mid(left)), local(mid(right)), local(gap)]
+  _ = await until(3) { windowAlpha(c.panel, at: points).map { $0[0] == 0 && $0[1] == 0 && $0[2] == 255 } == true }
+  let alpha = windowAlpha(c.panel, at: points)
+  check("several hosts: as the window server pictures Margin's window: see-through in both holes, painted in the gap", alpha.map { $0[0] == 0 && $0[1] == 0 && $0[2] == 255 } == true, "\(String(describing: alpha))")
+  let frames = c.pushed.dropFirst(pushedBefore).filter { $0.contains(#""type":"hostedFrames""#) }
+  let seen = await js(c.webView, "return marginApp.hostedFrames().map(f => f.role + (f.focused ? '*' : '')).join(',')") as? String
+  check("several hosts: their frames pushed to the page beside `hostedFrame` (unchanged), back to front, the page keeping them",
+        frames.count == 1 && frames.first?.contains(#""role":"main","focused":true"#) == true && frames.first?.contains(#""role":"pane","focused":false"#) == true && seen == "main*,pane",
+        "\(frames) \(String(describing: seen))")
+
+  // ---- a card over main ----
+  c.setVisibleHosts([HostShownWindow(window: main, rect: page, role: .main, z: 0, focused: false), HostShownWindow(window: card, rect: cardRect, role: .card, z: 1, focused: true)])
+  let around = CGPoint(x: page.minX + 20, y: page.midY)
+  check("several hosts: a card open: main's hole and the card's, the card's the focused one; the ground cut for the page area (the card's inside it)",
+        c.holes == [page, cardRect] && c.hole == cardRect && !c.ground.fills(local(mid(cardRect))) && !c.ground.fills(local(around)) && c.ground.extras.isEmpty, "\(c.holes) \(c.ground.extras)")
+  check("several hosts: a card open: the pointer only through its content, the page around it caught",
+        PassThrough.pageGets(mid(cardRect), c.slot) && !PassThrough.pageGets(around, c.slot) && c.catchRegion.contains(local(around), in: content.size)
+        && !c.catchRegion.contains(local(mid(cardRect)), in: content.size), "\(String(describing: c.slot?.holes))")
+  _ = await until(3) { windowAlpha(c.panel, at: [local(around)]).map { $0[0] > 0 } == true }
+  let caughtAlpha = windowAlpha(c.panel, at: [local(around), local(mid(cardRect))])
+  check("several hosts: a card open: the page around it never see-through to the window server (the pointer can't pass), the card's content is",
+        caughtAlpha.map { $0[0] > 0 && $0[1] == 0 } == true, "\(String(describing: caughtAlpha))")
+  let caught = c.caughtPresses.count
+  c.pressed(around)
+  let afterAround = c.caughtPresses.count
+  c.pressed(mid(cardRect))
+  check("several hosts: a card open: a press on the page around it reported as caught (Peek closes the card then), one on the card's content not",
+        afterAround == caught + 1 && c.caughtPresses.count == afterAround && c.caughtPresses.last == around, "\(c.caughtPresses)")
+
+  // ---- one host again ----
+  c.setVisibleHosts([])
+  check("several hosts: one again: the hole the hosted window's alone, the ground and the pointer as before, the page told none",
+        c.holes == [page] && c.hole == page && c.ground.extras.isEmpty && c.ground.hole == CGRect(origin: local(page.origin), size: page.size) && c.slot?.holes == nil && c.slot?.rect == page
+        && c.pushed.last == #"{"type":"hostedFrames","frames":[]}"#, "\(c.holes) \(String(describing: c.slot)) \(String(describing: c.pushed.last))")
+}
+
 func glueResumeScenario() async {
   func check(_ label: String, _ ok: Bool, _ detail: @autoclosure () -> String = "") { e2eCheck("glue: at launch: \(label)", ok, detail()) }
   let root = FileManager.default.temporaryDirectory.appendingPathComponent("margin-e2e-resume-\(UUID().uuidString)")

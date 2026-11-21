@@ -921,6 +921,15 @@ final class HostedSession: LibraryDelegate {
         Task { await self.engine.activateShown(at: point) }
     }
 
+    // A card open in Margin's window `w`: a press on the page area around its content (Margin's window caught it). Peek
+    // closes the card then (docs/PEEK-SPLIT.md §2: `onCardDismiss`); nothing else is done here.
+    var onCardDismiss: ((Int) -> Void)?
+    func caughtPress(_ w: HostedWindow, at point: CGPoint) {
+        guard w.id == hostingWindow, layout[w.id]?.extras.contains(where: { $0.role == .card }) == true else { return }
+        note("Margin's window \(w.id): a press on the page around the card")
+        onCardDismiss?(w.id)
+    }
+
     // A visible host pressed in Margin's window `w` (its window's own press, or one in its pane around a smaller window):
     // focused, its item the window's item shown (the sidebar's highlight).
     func pressedHost(_ id: HostID, in w: HostedWindow) {

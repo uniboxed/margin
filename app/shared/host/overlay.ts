@@ -540,6 +540,18 @@ function hostedFrameSaid(rect: unknown) {
     ? { left: rect[0], top: rect[1], right: rect[0] + rect[2], bottom: rect[1] + rect[3] } : null;
   for (const wake of [...hostedWaiters]) wake();
 }
+/** Every visible host's window in this page while more than one is (docs/PEEK-SPLIT.md §1: a card, a split's panes),
+ *  as the app last said them (`hostedFrames`), back to front; empty: one host (its frame is `hostedBox`). */
+type HostedFrame = { role: 'main' | 'pane' | 'card', focused: boolean, box: Box };
+let hostedBoxes: HostedFrame[] = [];
+function hostedFramesSaid(list: unknown) {
+  hostedBoxes = (Array.isArray(list) ? list : []).flatMap((f): HostedFrame[] => {
+    const r = f?.rect;
+    if (!Array.isArray(r) || r.length !== 4 || !r.every((v) => Number.isFinite(v)) || r[2] <= 0 || r[3] <= 0) return [];
+    const role = f.role === 'pane' || f.role === 'card' ? f.role : 'main';
+    return [{ role, focused: f.focused === true, box: { left: r[0], top: r[1], right: r[0] + r[2], bottom: r[1] + r[3] } }];
+  });
+}
 /** The page slot as the theme drawn now lays it out (the layout reported to the app). */
 function slotBox(): Box | null {
   const g = host?.layout;
@@ -935,6 +947,9 @@ document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) s
     // The hosted window's bounds in this page, as they change (MarginWindowController.readHosted): a theme with a bigger
     // page area waits for them (swapTheme).
     if (msg?.type === 'hostedFrame') { hostedFrameSaid(msg.rect); return; }
+    // Every visible host's window while several are (MarginWindowController.sayHostedFrames): kept for Peek's card and
+    // split view's panes (docs/PEEK-SPLIT.md §2-§4).
+    if (msg?.type === 'hostedFrames') { hostedFramesSaid(msg.frames); return; }
     // The trackpad's phases over Margin's UI (MarginWindowController.wheelPhase): for the space swipe (ui/behaviors/
     // swipe.ts), which web pages' wheel events don't tell.
     if (msg?.type === 'wheelPhase') {
@@ -965,6 +980,8 @@ document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) s
   },
   // The counts above (the app's tests read them).
   stats: () => JSON.parse(JSON.stringify(stats)),
+  // The visible hosts' windows as the app last said them (`hostedFrames`), empty with one host. The app's tests read it.
+  hostedFrames: () => hostedBoxes.map((f) => ({ ...f, box: { ...f.box } })),
   // The window this page draws for. The app's tests read it.
   windowId: () => host?.windowId ?? null,
   // Drawn in Margin's own window, in which mode, and whether its palette is open (the app's tests read them).
