@@ -174,7 +174,9 @@ final class DevHooks {
         var out: [String: String] = [:]
         func take(_ k: AnyHashable, _ v: Any) {
             guard let key = k as? String, key.count <= 16 else { return }
-            if let s = v as? String, s.count <= 64 { out[key] = s } else if let n = v as? NSNumber { out[key] = n.stringValue }
+            // (`apps`: the screen suite's test copies, comma-separated, several bundle ids: up to 512 characters, else 64.
+            // At 64 its three copies (71) were dropped and their items left in the person's library, 2026-11-21.)
+            if let s = v as? String, s.count <= (key == "apps" ? 512 : 64) { out[key] = s } else if let n = v as? NSNumber { out[key] = n.stringValue }
         }
         if let text = object as? String, text.count <= 1024, let data = text.data(using: .utf8),
            let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
