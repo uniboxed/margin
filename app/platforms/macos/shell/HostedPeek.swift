@@ -217,7 +217,8 @@ extension HostedSession {
         let base = layout[w.id]
         let main = base?.main ?? c.opener
         let extras = (base?.extras ?? []).filter { $0.role != .card } + [HostedLayout.Extra(item: Self.cardItem(profile), role: .card, rect: rect)]
-        await applyLayout(w.id, main: main, mainRect: base?.mainRect, extras: extras, focused: Self.cardItem(profile))
+        // (Over a split: the split's own layout kept, its panes at their <m-pane>s, the card above them.)
+        await applyLayout(w.id, main: main, mainRect: base?.mainRect, extras: extras, focused: Self.cardItem(profile), split: splitOf(base))
         guard let after = cards[profile], after.open, after.window == w.id else { return }
         guard layout[w.id]?.extras.contains(where: { $0.item == Self.cardItem(profile) }) == true else {
             note("Peek: the card wasn't shown (refused or failed: see the layout's line)")
@@ -278,6 +279,26 @@ extension HostedSession {
         enqueue { await self.placeCard(p) }
     }
 
+    // The split a window's layout shows, for laying it out again with or without the card (its panes as the library
+    // has them, the page's `<m-pane>` order: HostedSession.paneRects). Nil: no split there.
+    func splitOf(_ l: HostedLayout?) -> (id: String, items: [String])? {
+        guard let id = l?.split, let split = library.split(id) else { return nil }
+        return (id, split.panes)
+    }
+
+    // The card's window at its <m-peek-page> as the page lays it out now (a page area's change, a drag's frame), by its
+    // host; empty: no card in place there.
+    func cardHostRects(_ w: HostedWindow) -> [HostID: CGRect] {
+        guard let c = openCard(in: w.id), c.ready, let r = w.cardRect else { return [:] }
+        return [HostTarget.safariWindow(c.profile, .card).id: r]
+    }
+    // ...placed there by the page area's change: its rect kept (its own <m-peek-page> report then changes nothing).
+    func cardPlaced(_ w: HostedWindow, rects: [HostID: CGRect]) {
+        guard var c = openCard(in: w.id), let r = rects[HostTarget.safariWindow(c.profile, .card).id] else { return }
+        c.rect = r
+        cards[c.profile] = c
+    }
+
     // ---- close, expand, history ----
 
     // The card in window `windowId` closed (or Little Arc's field): the page told first (it covers the card's page area
@@ -299,9 +320,11 @@ extension HostedSession {
         enqueue {
             await self.sleep(Self.cardCoverWait)
             if let base = self.layout[w.id], base.extras.contains(where: { $0.item == Self.cardItem(p) }) {
+                // (The rest as it was: a split goes on, its focused pane (the window's item shown) focused again.)
                 let extras = base.extras.filter { $0.item != Self.cardItem(p) }
                 let main = base.main
-                await self.applyLayout(w.id, main: main, mainRect: base.mainRect, extras: extras, focused: extras.contains { $0.item == base.focused } ? base.focused : main)
+                let under = self.shown[w.id].flatMap { s in s == main || extras.contains { $0.item == s } ? s : nil } ?? main
+                await self.applyLayout(w.id, main: main, mainRect: base.mainRect, extras: extras, focused: under, split: self.splitOf(base))
             }
             _ = await self.links.request(profile: p, "hostCardClose", [:])
         }
@@ -345,12 +368,8 @@ extension HostedSession {
                     _ = await self.links.request(profile: p, "hostCardClose", [:])
                 }
             }
-            let extras = (self.layout[w.id]?.extras ?? []).filter { $0.role != .card }
-            if extras.isEmpty {
-                await self.show(item, url: c.url, target: nil, windowId: w.id)
-            } else {
-                await self.applyLayout(w.id, main: item, mainRect: self.layout[w.id]?.mainRect, extras: extras, focused: item)
-            }
+            // (Shown alone, as any item picked outside a split: a split under the card stays, for its next pick.)
+            await self.show(item, url: c.url, target: nil, windowId: w.id)
             self.settleHosting()
         }
     }

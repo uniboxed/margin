@@ -100,7 +100,41 @@ Manual verification checklist in real Safari + Margin.app (automated unit, Rust,
   - [ ] **Its window:** never Safari's empty new-tab page with its toolbar down in the card; Safari's own full-screen toolbar of the card window never shows over the page or moves (log: no `park strip` for it; `host: … its full-screen toolbar` lines only). Leave the card closed 15 minutes → its Safari window is closed (log `the card window unused for 15 minutes: closed`); quitting the item's Safari window (closing its last tab from Safari) closes the card window too.
   - [ ] **Resize:** with the card open, drag the sidebar's edge or change theme → the card's window follows its new place (or is placed once the drag ends).
 - [ ] **M2.6 Air Traffic Control:** Right-click a tab → `Always Open <host> in This Space` adds an Air Traffic rule. Open a link matching that host from another Space → tab auto-routes and switches to the target Space. Edit/disable/remove rules in library/settings.
-- [ ] **M2.7 Universal Split View:** Right-click a tab → `Add to Split View` (or press `⌃⇧=`) to tile 2–4 Safari tabs and/or macOS apps side-by-side or stacked. Verify combined capsule `.split-row` in the sidebar, swap panes, drag dividers to resize ratios, break out a pane, and close a pane.
+- [ ] **M2.7 Split View in Margin.app (docs/PEEK-SPLIT.md §4, feat/split).** Read Margin's log alongside:
+  `/usr/bin/log show --last 10m --style compact --predicate 'subsystem == "com.unibox.margin"'` (or `scripts/margin-log.sh 10`).
+  Each step says what the log should have; "nothing" lines must not appear.
+  1. **Two Safari tabs.** In a space with two web items A and B (same profile), right-click B → **Add to Split View**.
+     A and B side by side, an 8–12 pt gap between them with the theme's grip, B focused (ring). Log: `hosted: layout: 2
+     item(s) shown in Margin's window <n>, <B> focused`, `Safari window <id> made for hosting (its pane1)` the first time,
+     `host: layout: safari:p… main shown, safari:p…#pane1 pane shown`, `Margin's window <n>: 2 hosted windows visible`.
+     The pane window shows B's page from its first frame; **Safari's toolbar never comes down over either pane** (no
+     address field focused). Never: `didn't lay its panes out`, `not laid out`, `below its window's minimum`.
+  2. **An app pane.** Right-click a Mac app item (TextEdit, Notes) → **Add to Split View**: three panes, the app at the
+     right (`host: layout: … app:com.apple.TextEdit pane shown`). Typing goes to the app.
+  3. **Keys and focus.** Click in A: the ring moves to A, the sidebar's capsule lights A, typing goes to A. Click in the
+     app: the same for it. ⌘L, ⌘T, the palette closed with Escape: the keys go back to the pane that had them, never
+     another.
+  4. **Divider.** Drag the divider between A and B: with tiles on, both windows follow live (`host: live resize: …
+     followed …`), the holes follow without a black gap; with tiles off (a plain member), the windows stay put, then
+     jump to the new sizes under the loader at release (`hosted: page area changed`). A divider stops where a pane would
+     go below its window's minimum (Weather, Maps have one). Double-click: equal sizes. Quit and relaunch: the ratios kept.
+  5. **Sidebar drag.** Drag the sidebar's edge: every pane follows (live with tiles), the sidebar stops where the panes
+     wouldn't fit.
+  6. **Stacked.** Right-click a pane's row in the capsule → **Stacked**: the panes one above the other; **Side by Side**
+     back. **Swap Panes**: the first two change places (in a split of two, each window keeps its tab: no page reloads).
+  7. **Leaving and coming back.** Pick an item outside the split in the sidebar: it alone, the panes' windows gone from
+     sight (not in Mission Control, not on the Desktop). Click a pane in the capsule: the whole split again, that pane
+     focused, no new Safari window (`made for hosting` not said again).
+  8. **⌘W.** With three panes, ⌘W in the focused pane: its tab closes, the other two stay split, the next pane focused.
+     ⌘W again: one item left, shown alone (in the profile's main window; `Safari window … made` not said). The pane
+     window, unused, is closed 15 minutes later (`Safari window of …'s pane1 unused for 15 minutes: closed`).
+  9. **Remove / Break Out.** On a pane: **Remove from Split View** shows the rest; **Break Out of Split View** shows that
+     pane alone.
+  10. **⌃⇧=.** With a tab in front and another used before: ⌃⇧= splits them (the one used last added). In a space with
+     only one item: the palette opens; the tab picked there is added beside the one in front.
+  11. **No room.** In a small window (or with 3 panes), add a pane that can't fit: a toast "Not enough room for another
+     pane", nothing changes.
+  12. **All 5 themes**, light and dark: the gap, the grip (hover, drag), the focused ring, the capsule row.
 - [ ] **M2.8 All 5 Built-in Themes:** Switch Spaces through **Arcadia**, **Liquid Glass**, **Material**, **Neubrutalism**, and **Pixel** and inspect Favorites grid, nested folders, drifted pin reset, combined Split View row, background Mini Player, Peek modal, and Toast pill in light and dark appearance (and macOS 26 system glass for Liquid Glass).
 
 ## Safari startup (2026-11-10)

@@ -70,7 +70,8 @@ export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = asy
     push(tab.windowId, { type: 'cardPage', url: tab.url || tab.pendingUrl || '', title: String(tab.title ?? '').slice(0, 300) });
   };
   // A tab left in a window that would have none (a window with no tab closes, and it's Margin's): a blank one.
-  // (Its creation heard by `tabCreated` is Margin's own: never taken for the card's page.)
+  // (One helper for every move, close and Expand that would empty one of Margin's windows: a split's pane window, the
+  // card's, main's. Its creation heard by `tabCreated` is Margin's own: never taken for the card's page.)
   const blanking = new Map<number, number>();
   async function leaveBlank(windowId: number) {
     const left = await tabs().query({ windowId }).catch(() => [] as Tab[]);
@@ -90,8 +91,7 @@ export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = asy
     if (!move) return null;
     const tab = await own(itemId, null);
     if (tab?.id == null || tab.windowId == null || tab.windowId === win || !shownIn.has(tab.windowId)) return null;
-    const left = await tabs().query({ windowId: tab.windowId }).catch(() => [] as Tab[]);
-    if (left.length <= 1) await tabs().create({ windowId: tab.windowId, url: 'about:blank', active: false }).catch(() => null);
+    await leaveBlank(tab.windowId);
     const moved = await move.call(tabs(), tab.id, { windowId: win, index: -1 }).catch(() => null);
     if (moved?.id == null) return null;
     return { ...moved, windowId: moved.windowId ?? win };
@@ -148,6 +148,14 @@ export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = asy
       // (Moved first: its tag found in another window is forgotten by `own`.)
       let tab: Tab | null = await moveHere(itemId, win);
       const moved = tab != null;
+      // (Moved into a window Margin made that had only its first page (a blank page, the new-tab page): that page goes,
+      // the moved tab alone there, the keys in its page: docs/PEEK-SPLIT.md §4.)
+      if (tab?.id != null) {
+        const movedId = tab.id;
+        const rest = (await tabs().query({ windowId: win }).catch(() => [] as Tab[])).filter((t) => t.id != null && t.id !== movedId);
+        const blank = (t: Tab) => isNewTabPage(t.url || t.pendingUrl) || !(t.url || t.pendingUrl) || t.url === 'about:blank';
+        if (rest.length === 1 && !tagged(rest[0].id!) && blank(rest[0])) await tabs().remove(rest[0].id!).catch(() => {});
+      }
       tab ??= await own(itemId, win);
       let created = false;
       shownIn.add(win);
@@ -192,6 +200,9 @@ export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = asy
       const tab = await own(itemId, null);
       byItem.delete(itemId);
       if (tab?.id == null) return { closed: false };
+      // (The last tab of a window the app shows items in (a split's pane window, its card): a blank one left first, as
+      // a move does, so that window, Margin's, isn't closed with it; the app shows what comes next there, or parks it.)
+      if (tab.windowId != null && shownIn.has(tab.windowId)) await leaveBlank(tab.windowId);
       await tabs().remove(tab.id);
       return { closed: true };
     },

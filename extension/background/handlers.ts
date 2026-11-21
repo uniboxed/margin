@@ -725,6 +725,13 @@ export const handlers = {
       return g ? M.removeFromSplit(s, g.id, tabId) : s;
     });
   },
+  // (Margin.app's library shows the rest of the split; here, as breakOutSplit: the browser's own tabs stay as they are.)
+  async removeFromSplit({ tabId }: { tabId: number | string }) {
+    await mutate((s) => {
+      const g = M.splitForItem(s, tabId);
+      return g ? M.removeFromSplit(s, g.id, tabId) : s;
+    });
+  },
   async closeSplitPane({ tabId }: { tabId: number | string }) {
     await mutate((s) => {
       const g = M.splitForItem(s, tabId);
@@ -825,10 +832,11 @@ export const handlers = {
     const from = Number.isInteger(fromWindowId) ? await api.windows.get(fromWindowId as number).catch(() => null) : null;
     const spaceId = from ? M.activeSpaceId(await load(), from.id) : null;
     const full = fullscreen ?? from?.state === 'fullscreen';
-    // (A web address only from Margin.app: its Peek card window, opened at the card's page, never Safari's empty new-tab
-    // page. Any other address asked is ignored, as before.)
-    const page = url === 'about:blank' || (!!sender?.app && typeof url === 'string' && url.length <= 4096 && /^https?:\/\//i.test(url));
-    const props = { focused: true, ...(page ? { url } : {}) };
+    // (A web page's address only from Margin.app: its Peek card window or a split's pane window, opened at its page
+    // (docs/PEEK-SPLIT.md §2, §4), never Safari's empty new-tab page, whose address field keeps the toolbar down over
+    // the page. Any other address, or one asked by anything else, is ignored, as before.)
+    const page = !!sender?.app && typeof url === 'string' && /^https?:\/\//i.test(url) && url.length <= 8192;
+    const props = { focused: true, ...(url === 'about:blank' || page ? { url } : {}) };
     markMarginOpening();
     let win;
     try {

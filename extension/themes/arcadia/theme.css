@@ -1216,3 +1216,18 @@
 .peek-btn:hover { background: var(--panel-hover); }
 .peek-btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 500; }
 .peek-btn .line-icon { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Split View (docs/PEEK-SPLIT.md §4): Margin's own <m-pane>s, flexed by the split's ratios, and an <m-divider> between
+   each two, in the page's place while a split is shown (m-split="row" side by side, "column" stacked). The gap is the
+   divider (--m-split-gap); its grip lights on hover and focus and while dragged ([m-dragging]); the focused pane
+   ([m-focused]) has a ring in the gap around it. Nothing here moves a pane: Margin lays them out. */
+.arcadia { --m-split-gap: 8px; }
+.arcadia m-divider { background: var(--frame); }
+.arcadia m-divider::after { content: ""; position: absolute; left: 50%; top: 50%; width: 4px; height: 36px; border-radius: 2px; transform: translate(-50%, -50%); background: color-mix(in srgb, currentColor 22%, transparent); transition: background-color .12s, transform .12s; }
+.arcadia m-page[m-split="column"] > m-divider::after { width: 36px; height: 4px; }
+.arcadia m-divider:hover::after, .arcadia m-divider:focus-visible::after { background: color-mix(in srgb, var(--accent) 70%, transparent); }
+.arcadia m-page[m-split="row"] > m-divider:is(:hover, :focus-visible, [m-dragging])::after { transform: translate(-50%, -50%) scaleY(1.55); }
+.arcadia m-page[m-split="column"] > m-divider:is(:hover, :focus-visible, [m-dragging])::after { transform: translate(-50%, -50%) scaleX(1.55); }
+.arcadia m-divider[m-dragging]::after { background: var(--accent); }
+.arcadia m-pane[m-focused] { border-radius: 6px; box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 70%, transparent); }
+@media (prefers-reduced-motion: reduce) { .arcadia m-divider::after { transition: none; } }

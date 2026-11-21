@@ -116,12 +116,18 @@ export const ACTIONS = Object.freeze({
   'airTraffic.remove': 'rule',
   'airTraffic.toggle': 'rule',
   'split.add': 'tab',
+  // (Its name in themes/README.md: the same action.)
+  'split.addPane': 'tab',
   'split.open': 'split',
   'split.focus': 'tab',
   'split.breakOut': 'tab',
+  // Out of its split, the rest of it shown (split.breakOut: shown alone).
+  'split.remove': 'tab',
   'split.closePane': 'tab',
   'split.swap': 'split',
   'split.toggleAxis': 'split',
+  // A divider let go (ui/split-panes.ts): the split's panes' ratios, one each, saved.
+  'split.resize': Object.freeze({ split: 'split', ratios: 'ratios' }),
   'window.close': 'none',
   'window.minimise': 'none',
   'window.fullscreen': 'none',
@@ -201,6 +207,8 @@ function valueOk(kind: string | readonly unknown[], v: any, ctx: ActionContext) 
     case 'name': return plainText(v, NAME_MAX);
     case 'emoji': return plainText(v, EMOJI_MAX);
     case 'hex': return typeof v === 'string' && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v);
+    // A split's ratios: 2–4 positive numbers (normalized where they're saved).
+    case 'ratios': return Array.isArray(v) && v.length >= 2 && v.length <= 4 && v.every((r) => typeof r === 'number' && Number.isFinite(r) && r > 0 && r <= 1);
     case 'theme': return isId(v) && !!ctx.hasTheme?.(v);
     default: return false;
   }
@@ -465,12 +473,15 @@ export const ACTION_MAP = Object.freeze({
   'airTraffic.remove': 'removeAirTrafficRule',
   'airTraffic.toggle': 'toggleAirTrafficRule',
   'split.add': 'addToSplit',
+  'split.addPane': 'addToSplit',
   'split.open': 'openSplit',
   'split.focus': 'activateTab',
   'split.breakOut': 'breakOutSplit',
+  'split.remove': 'removeFromSplit',
   'split.closePane': 'closeSplitPane',
   'split.swap': 'swapSplit',
   'split.toggleAxis': 'toggleSplitAxis',
+  'split.resize': 'resizeSplit',
   'window.close': 'host',
   'window.minimise': 'host',
   'window.fullscreen': 'toggleFullscreen | host',
@@ -587,13 +598,16 @@ export function requestFor(name: string, arg: any, { state, ui, platform, row }:
     }
     case 'airTraffic.remove': return send('removeAirTrafficRule', { ruleId: arg });
     case 'airTraffic.toggle': return send('toggleAirTrafficRule', { ruleId: arg });
-    case 'split.add': return send('addToSplit', { tabId: arg, windowId });
+    case 'split.add':
+    case 'split.addPane': return send('addToSplit', { tabId: arg, windowId });
     case 'split.open': return send('openSplit', { splitId: arg, windowId, ...show });
     case 'split.focus': return send('activateTab', { tabId: arg, ...(typeof arg === 'string' && windowId != null ? { windowId } : {}), ...show });
     case 'split.breakOut': return send('breakOutSplit', { tabId: arg, windowId });
+    case 'split.remove': return send('removeFromSplit', { tabId: arg, windowId });
     case 'split.closePane': return send('closeSplitPane', { tabId: arg, windowId });
     case 'split.swap': return send('swapSplit', { splitId: arg, windowId });
     case 'split.toggleAxis': return send('toggleSplitAxis', { splitId: arg, windowId });
+    case 'split.resize': return send('resizeSplit', { splitId: arg.split, ratios: arg.ratios, windowId });
     default: return { kind: 'none', reason: `${name}: no mapping` };
   }
 }

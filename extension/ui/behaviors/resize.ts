@@ -70,7 +70,8 @@ export function installResize(rt: Rt) {
   };
   // The widest the sidebar may be for a width `from` with the page area `page` wide: Infinity with no floor.
   const widest = (from: number, page: number | null) => {
-    const floor = rt.host?.pageMinWidth ?? 0;
+    // (A split shown side by side: its panes' floors and gaps too, behaviors/split.ts.)
+    const floor = Math.max(rt.host?.pageMinWidth ?? 0, rt.behaviors?.split?.floor?.() ?? 0);
     if (!(floor > 0) || page == null) return Infinity;
     return from + Math.max(0, page - floor);
   };
