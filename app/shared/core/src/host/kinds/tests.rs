@@ -525,3 +525,28 @@ fn kept_behind_kinds() {
     assert!(Helper.kept_behind() && Transient.kept_behind() && Strip.kept_behind() && Leftover.kept_behind());
     assert!(!Main.kept_behind() && !Auxiliary.kept_behind() && !Dialog.kept_behind());
 }
+
+// Peek's card (docs/PEEK-SPLIT.md §2): Safari's card window full screen at a rect of its own inside the page area; its
+// full-screen toolbar (as wide as the card, 52 pt) is its strip, never a small window. Against Margin's page area
+// alone it was taken for one (under 100 pt tall: transient), and a split pane's the same.
+#[test]
+fn a_cards_or_panes_own_toolbar_is_a_strip_of_its_own_rect() {
+    let card = r(360.0, 106.0, 1044.0, 803.0);
+    let pane = r(260.0, 41.0, 618.0, 933.0);
+    let windows = vec![
+        s(1, PAGE, Margin),
+        s(2, card, Margin),
+        unread(3, r(360.0, 54.0, 1044.0, 52.0), Margin, Some(true)),
+        unread(4, r(260.0, -11.0, 618.0, 52.0), Margin, Some(true)),
+    ];
+    let alone = classify(&windows, &app(true, &[1, 2]), &placement());
+    assert_eq!(alone[&3].kind, Transient, "against the page area alone: {alone:?}");
+    let facts = AppFacts { host_rects: vec![card, pane], ..app(true, &[1, 2]) };
+    let got = classify(&windows, &facts, &placement());
+    assert_eq!(got[&3].kind, Strip, "the card's toolbar: {got:?}");
+    assert_eq!(got[&4].kind, Strip, "a pane's toolbar: {got:?}");
+    // (Still never a window taller than a toolbar, nor a narrower one.)
+    assert!(!is_strip_of_any(&r(360.0, 54.0, 1044.0, 200.0), &placement(), &[card]));
+    assert!(!is_strip_of_any(&r(360.0, 54.0, 700.0, 52.0), &placement(), &[card]));
+    assert!(is_strip_of_any(&r(260.0, 0.0, 1244.0, 52.0), &placement(), &[]), "main's, as before");
+}

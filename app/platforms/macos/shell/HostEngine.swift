@@ -1429,6 +1429,8 @@ final class HostEngine {
             t.hosted[host.window] = host.id.description
             if host.phase == .parked, let priv = host.privateSpace { t.parked[host.window] = priv }
             t.launchWindows.formUnion(host.launchWindows)
+            // (A card's or a pane's own rect: its full-screen toolbar is a strip of that width, never a small window.)
+            if let r = host.rect, !t.hostRects.contains(r) { t.hostRects.append(r) }
             out[host.pid] = t
         }
         for (pid, app) in launched where out[pid] == nil {
@@ -1614,15 +1616,20 @@ final class HostEngine {
         guard let list = steadyScreen() else { return core.frontUnsteady() }
         let hosted = Set(hosts.values.map(\.window))
         let shownPid = shown.flatMap { hosts[$0] }.flatMap { $0.phase == .shown ? $0.pid : nil }
-        // (The Spaces read only for the shown app's own windows: no other's can be let in front.)
+        // (Several visible, docs/PEEK-SPLIT.md §1: every visible host's app counts as the shown one's, and each one's own
+        // rect is where its toolbar strip is measured.)
+        let visible = visibleHosts.filter { $0.phase == .shown }
+        let visiblePids = Set(visible.map(\.pid)).union(shownPid.map { [$0] } ?? [])
+        let rects = visible.compactMap(\.rect)
+        // (The Spaces read only for the visible apps' own windows: no other's can be let in front.)
         let windows: [[String: Any]] = list.map { w in
             var d = w.coreJSON
             d["keptBehind"] = keptBehind(w)
-            d["marginOnly"] = w.pid == shownPid && w.layer == 0 && !hosted.contains(w.number) && sys.spaces(window: w.number) == [marginSpace]
+            d["marginOnly"] = visiblePids.contains(w.pid) && w.layer == 0 && !hosted.contains(w.number) && sys.spaces(window: w.number) == [marginSpace]
             return d
         }
         say(other: core.front(now: sys.now(), windows: windows, ownPid: ownPid, marginWindow: marginWindow, hosted: Array(hosted),
-                              shownPid: shownPid, placement: placement, fresh: fresh))
+                              shownPid: shownPid, visiblePids: visible.count > 1 ? Array(visiblePids).sorted() : [], rects: rects, placement: placement, fresh: fresh))
     }
 
     // What Margin's window checks at each poll at rest (`front`): the poll's on-screen list (front to back) has both
@@ -3003,7 +3010,7 @@ final class HostEngine {
         }
         func strips() -> [ServerWindow] {
             (serverList(pid: host.pid) ?? []).filter { w in
-                w.number != host.window && !host.windowsBeforeAsk.contains(w.number) && !isHosted(window: w.number) && w.layer == 0 && isStrip(w.bounds)
+                w.number != host.window && !host.windowsBeforeAsk.contains(w.number) && !isHosted(window: w.number) && w.layer == 0 && isStrip(w.bounds, of: host)
                     && !(sys.spaces(window: w.number) ?? []).isEmpty
             }
         }
@@ -3016,8 +3023,9 @@ final class HostEngine {
 
     // A full-screen window's toolbar strip: as wide as the page area at least (the display's whole width for one that
     // went full screen on its own), at most `stripMaxHeight` tall.
-    private func isStrip(_ b: CGRect) -> Bool {
-        b.height > 0 && b.height <= options.stripMaxHeight && b.width >= min(placement.area.width * 0.9, placement.page.width - 2) && b.width > 0
+    // (Measured against the host's own rect: a card's or a pane's toolbar is as wide as its own window.)
+    private func isStrip(_ b: CGRect, of host: Host) -> Bool {
+        b.height > 0 && b.height <= options.stripMaxHeight && b.width >= min(placement.area.width * 0.9, pageOf(host).width - 2) && b.width > 0
     }
 
     // Margin's sidebar: the display's area left of the page area (none narrower than 40 pt: the sidebar hidden).

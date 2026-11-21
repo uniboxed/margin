@@ -225,6 +225,9 @@ pub struct AppFacts {
     /// Its windows Accessibility said were destroyed that the window server still lists.
     pub closed: BTreeSet<i64>,
     pub resized: Option<Resized>,
+    /// The rects of its hosts laid out at a rect of their own (docs/PEEK-SPLIT.md §1: a card's, a split pane's, a
+    /// split's main pane's): each one's own full-screen toolbar is a strip of that rect's width, not the page area's.
+    pub host_rects: Vec<Rect>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -258,6 +261,12 @@ pub fn is_strip(b: &Rect, p: &Placement) -> bool {
         (false, false) => return false,
     };
     b.width >= wide
+}
+
+/// A strip for the placement's page area, or for one of the app's hosts' own rects (a card's or a pane's full-screen
+/// toolbar is as wide as its own window: `is_strip` against Margin's page area alone took it for a small window).
+pub fn is_strip_of_any(b: &Rect, p: &Placement, rects: &[Rect]) -> bool {
+    is_strip(b, p) || rects.iter().any(|r| is_strip(b, &Placement { page: *r, ..*p }))
 }
 
 fn size(b: &Rect) -> String {
@@ -320,7 +329,7 @@ pub fn classify(windows: &[Window], app: &AppFacts, placement: &Placement) -> BT
             );
             continue;
         }
-        if is_strip(&w.bounds, placement) {
+        if is_strip_of_any(&w.bounds, placement, &app.host_rects) {
             out.insert(
                 w.number,
                 verdict(

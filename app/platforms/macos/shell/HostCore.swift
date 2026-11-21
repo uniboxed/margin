@@ -224,9 +224,13 @@ nonisolated extension HostCore {
 nonisolated extension HostCore {
     // The shown app's window let in front of Margin's window now (nil: none), from a look at rest: the window server's
     // list front to back (`ServerWindow.coreJSON`, with `keptBehind` and `marginOnly`).
-    func front(now: Double, windows: [[String: Any]], ownPid: pid_t, marginWindow: Int, hosted: [Int], shownPid: pid_t?, placement: HostPlacement, fresh: Bool) -> Int? {
+    // `visiblePids`, `rects`: several visible (docs/PEEK-SPLIT.md §1): every visible host's app, each one's own rect.
+    func front(now: Double, windows: [[String: Any]], ownPid: pid_t, marginWindow: Int, hosted: [Int], shownPid: pid_t?, visiblePids: [pid_t] = [], rects: [CGRect] = [],
+               placement: HostPlacement, fresh: Bool) -> Int? {
         var look: [String: Any] = ["now": now, "windows": windows, "ownPid": Int(ownPid), "marginWindow": marginWindow, "hosted": hosted,
                                    "placement": placement.coreJSON, "fresh": fresh]
+        if !visiblePids.isEmpty { look["visiblePids"] = visiblePids.map { Int($0) } }
+        if !rects.isEmpty { look["rects"] = rects.map(\.coreJSON) }
         if let shownPid { look["shownPid"] = Int(shownPid) }
         return (call(["type": "front", "look": look])["front"] as? NSNumber)?.intValue
     }

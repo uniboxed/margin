@@ -101,6 +101,7 @@ nonisolated struct HostModelApp: Equatable, Sendable {
     var closed: Set<Int> = []
     var launchWindows: Set<Int> = [] // its windows as the first show of a window of it ended (an app Margin started)
     var resized: WindowKinds.Resized? = nil // Margin's last sizing of one of its windows (a helper answers it)
+    var hostRects: [CGRect] = [] // its hosts' own rects (a card's, a pane's): their toolbars are strips of them
     var since: Double // when the observer started following it
     var axMain: Int? = nil
     var axFocused: Int? = nil
@@ -130,7 +131,7 @@ nonisolated struct HostModelApp: Equatable, Sendable {
     mutating func classify(in placement: HostPlacement, at now: Double) {
         let helpers = Set(windows.values.filter { $0.kind == .helper }.map(\.number))
         let app = WindowKinds.App(launchedByMargin: launchedByMargin, hosted: Set(hosted.keys), woken: woken, previousMains: Set(mains), previousHelpers: helpers,
-                                  launchWindows: launchWindows, closed: closed, resized: resized)
+                                  launchWindows: launchWindows, closed: closed, resized: resized, hostRects: hostRects)
         let input = ClassifyInput(windows: windows.values.map(\.classified).sorted { $0.number < $1.number }, app: app, placement: placement)
         if input == classifiedFrom { return }
         classifiedFrom = input
