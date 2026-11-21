@@ -1006,7 +1006,13 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // the theme's frame colour (around a smaller window, in a gap, under the loader; the window's own colour when the
     // page says none); the corners rounded where the hole's meet the page card's. Nowhere else, and in no other state, is anything of this
     // window see-through. The pointer's slot and the catch fill follow it.
+    // The pointer's way looked at again whenever the slot changes (`pointerAgain`).
     private func updateHole() {
+        let was = slot
+        placeHole()
+        if slot != was { pointerAgain() }
+    }
+    private func placeHole() {
         if visibleHosts.count > 1 { return updateHoles() }
         defer { holes = hole.map { [$0] } ?? [] }
         let content = contentFrame
@@ -1108,13 +1114,35 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
 
     // ---- the pointer (Margin's mouse monitors, the window server's coordinates: top left) ----
 
+    // Whether the pointer at `at` goes through Margin's panel (to what it hosts). Windowed, the window's buttons are the
+    // base's, under the panel where the theme draws its window controls.
+    private func passes(_ at: CGPoint) -> Bool {
+        let content = contentFrame
+        let overButtons = !isFullScreen && controls?.contains(CGPoint(x: at.x - content.minX, y: at.y - content.minY)) == true
+        return overButtons || PassThrough.pageGets(at, slot)
+    }
+    // The pointer as the last move left it (with whether a button was held): the harness's pointer (its moves are
+    // the tests' own); the real one is read from the window server (`NSEvent.mouseLocation`).
+    private var lastPointer: (at: CGPoint, buttonsDown: Bool)?
+    // The slot changed under a pointer that may be still (a card or a pane opening or closing, a layout's change, the
+    // page's hits, the loader): where it is looked at again at once, so a still pointer over what's Margin's now is
+    // Margin's without a move (the real screen, 2026-11-21: Peek's card opened under a still pointer, which was last
+    // over the page's hole, and Safari's toolbar resting under Margin's card bar showed its tooltip there). Only when
+    // the slot changes, never in a drag's frames (the page area followed live) nor with a button held (a drag keeps its
+    // way); nothing said to the page.
+    private func pointerAgain() {
+        guard !followingPage, window.isVisible || options.harness else { return }
+        let now = options.harness ? lastPointer : (at: PointerWatch.location, buttonsDown: PointerWatch.buttonsDown)
+        guard let now, !now.buttonsDown else { return }
+        setIgnoring(passes(now.at))
+    }
+
     func pointerMoved(_ at: CGPoint, buttonsDown: Bool = PointerWatch.buttonsDown) {
         guard window.isVisible || options.harness else { return }
+        lastPointer = (at, buttonsDown)
         let content = contentFrame
         let local = CGPoint(x: at.x - content.minX, y: at.y - content.minY)
-        // (Windowed, the window's buttons are the base's, under the panel where the theme draws its window controls.)
-        let overButtons = !isFullScreen && controls?.contains(local) == true
-        setIgnoring(buttonsDown ? ignoring : overButtons || PassThrough.pageGets(at, slot))
+        setIgnoring(buttonsDown ? ignoring : passes(at))
         hover(at, inside: content.contains(at), buttonsDown: buttonsDown)
         if content.contains(at) {
             pointerInside = true
