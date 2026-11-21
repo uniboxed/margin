@@ -699,6 +699,13 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
         behaviors.peek?.reset();
         ui = { ...ui, sidebar: null };
         break;
+      case 'media.toggle': case 'media.prev': case 'media.next': case 'media.mute': case 'media.focus': {
+        const m = vm?.media;
+        if (!m) return false;
+        if (name === 'media.focus' && m.tabId != null) return send('activateTab', { tabId: m.tabId, windowId: windowId() ?? undefined });
+        if (name === 'media.mute' && m.tabId != null) return send('muteTab', { tabId: m.tabId, windowId: windowId() ?? undefined });
+        return send(type, { ...payload, tabId: m.tabId, source: m.source });
+      }
       case 'folder.toggle':
         lastToggle = { folderId: arg, wasOpen: !payload.open, at: Date.now() };
         break;

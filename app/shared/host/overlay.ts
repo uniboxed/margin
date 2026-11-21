@@ -804,6 +804,9 @@ function onMessage(msg: any) {
     case 'toast':
       if (typeof msg.text === 'string' && msg.text) runtime?.showToast(msg.text);
       return;
+    case 'media':
+      runtime?.setUi({ media: msg.media ?? null });
+      return;
     case 'link':
       // (Margin's own window has no copy's link to lose.)
       if (host?.appWindow) return;

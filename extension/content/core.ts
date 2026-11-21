@@ -15,6 +15,7 @@ import { watchEdits } from './edits.ts';
 import { startTrackpad } from './trackpad.ts';
 import { SWITCH_GRACE_MS } from '../shared/switching.ts';
 import { startLoads } from './loads.ts';
+import { startMedia } from './media.ts';
 import { fromStorage, onlyMark, openTabsCurrent, readForPage, takesChanges, withChanges } from '../shared/stored.ts';
 import { APP_LINK_KEY, appDraws, drawsWindow } from '../shared/app-link.ts';
 import { startScrollRecord } from './scroll-record.ts';
@@ -431,12 +432,20 @@ export function startCore() {
   else reportIcon();
   addEventListener('load', reportIcon, { once: true });
 
+  const mediaWatcher = startMedia({
+    send: (report) => {
+      if (!dormant) void send('mediaState', report);
+    },
+  });
   const onMessage = (message: any, _: BrowserMessageSender, sendResponse: (response?: any) => void) => {
     // Whether this page was opened from nothing (no referrer, its first
     // history entry), for the note on Safari's "New tabs open with"
     // (extension/engines/webkit/safari/newtab-hint.ts: Margin.app's overlay says it).
     if (message?.type === 'newtab-hint') return sendResponse({ fromNothing: !document.referrer && history.length === 1 });
     if (message?.type === 'windowState') return setFullscreen(!!message.fullscreen);
+    if (message?.type === 'mediaCommand' && typeof message.command === 'string') {
+      return sendResponse({ ok: mediaWatcher.command(message.command) });
+    }
     // Whether Margin.app draws over this window, as it changes (background.ts appLink.onDrawn).
     if (message?.type === 'appDrawn' && Number.isInteger(message.windowId) && typeof message.drawn === 'boolean') {
       if (!appLink) return;

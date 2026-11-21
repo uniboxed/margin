@@ -28,6 +28,7 @@ import type { InstalledApp } from '../shared/apps.ts';
 import { CONFIRM_LABEL, SPACE_COLORS, menuItems } from './behaviors/menu-items.ts';
 import type { MenuTarget } from './behaviors/menu-items.ts';
 import { SETTINGS_CATEGORIES, categoryNamed, fieldsIn, settingsFields } from './settings-form.ts';
+import { selectBackgroundMedia, type MediaSource } from '../background/media.ts';
 
 /** The view model's version: a theme reads what this version documents. */
 export const VM_VERSION = 1;
@@ -42,6 +43,7 @@ export type UiState = {
   sidebar?: SidebarState | null,
   palette?: { open?: boolean, query?: string, selected?: number, newTab?: boolean, selectAll?: boolean },
   toast?: { id: string, text: string } | null,
+  media?: MediaSource | null,
   menu?: { kind: MenuTarget['kind'], id?: string | number | null, x?: number, y?: number, above?: boolean, confirming?: string | null } | null,
   editing?: { kind: 'space' | 'folder' | 'tab' | 'pin' | 'favorite', id: string | number } | null,
   // (`fresh`: a space just made, switched to as its editor closes.)
@@ -155,6 +157,12 @@ export type NoticeAction = { id: string, label: string, primary: boolean, danger
 export type NoticeView = { id: string, text: string, actions: NoticeAction[], hasActions: boolean };
 export type PromptView = NoticeView & { title: string };
 export type ToastView = { id: string, text: string };
+export type MediaView = {
+  id: string, source: 'tab' | 'app', tabId: number | string | null,
+  title: string, subtitle: string, artwork: string | null, icon: string | null,
+  letter: string, color: string, playing: boolean, paused: boolean, muted: boolean,
+  canPrev: boolean, canNext: boolean,
+};
 export type GestureView = { pull: boolean, swipe: boolean, back: boolean, forward: boolean, armed: boolean, done: boolean, leaving: boolean, progress: number, percent: number };
 export type LauncherView = {
   pins: PinRow[], hasPins: boolean, archive: ArchiveRow[], hasArchive: boolean, emptyArchive: boolean,
@@ -190,6 +198,7 @@ export type ViewModel = {
   notice: NoticeView | null,
   prompt: PromptView | null,
   toast: ToastView | null,
+  media: MediaView | null,
   gesture: GestureView | null,
   launcher: LauncherView | null,
   /** The page card's loader (the `page-loader` part), while an item opens in the page area: Margin's words for it. */
@@ -384,7 +393,7 @@ function fresh(input: ViewModelInput): ViewModel {
       space: { id: '', name: '', emoji: '', color: '', abbr: '', index: 0, number: 1, active: true, tabCount: 0, label: '', pinned: [], pinnedFlat: [], folders: [], pins: [], today: [], hasToday: false, hasPinned: false, newTab: { active: false } },
       spaces: [], favorites: { items: [], hasItems: false, columns: 3 }, tab: null, archive: [], hasArchive: false,
       palette: { open: !!paletteUi.open, query: paletteUi.query ?? '', newTab: !!paletteUi.newTab, rows: [], hasRows: false, selected: null },
-      menu: null, editing, editor: null, notice, prompt, toast, gesture, launcher: null, pageLoader, settingsForm: null, settingsTab: null, settings, platform,
+      menu: null, editing, editor: null, notice, prompt, toast, media: null, gesture, launcher: null, pageLoader, settingsForm: null, settingsTab: null, settings, platform,
     };
   }
 
@@ -615,6 +624,55 @@ function fresh(input: ViewModelInput): ViewModel {
     settingsForm = { fields, hasFields: fields.length > 0 };
   }
 
+  // Mini Player (M2.4): exact Arc visibility — shown ONLY when a background tab or hosted app is playing
+  // (or within 8s pause grace via ui.media). Never shown for the currently visible foreground tab/app.
+  const activeBundleId = current ? appOfItem(current) : null;
+  const mediaSources: MediaSource[] = [];
+  if (ui.media) mediaSources.push(ui.media);
+  for (const t of Object.values(state.tabs)) {
+    if (!t.audible) continue;
+    if (ui.media && ui.media.source === 'tab' && ui.media.tabId === t.id) continue;
+    mediaSources.push({
+      id: `tab:${t.id}`,
+      source: 'tab',
+      tabId: t.id,
+      title: t.customTitle || t.title || hostOf(t.url) || 'Playing audio',
+      subtitle: hostOf(t.url) || '',
+      url: t.url,
+      playing: true,
+      muted: !!t.muted,
+      canPrev: false,
+      canNext: false,
+      updatedAt: Number(t.lastActive) || now,
+      pausedAt: null,
+    });
+  }
+  const pickedMedia = selectBackgroundMedia(mediaSources, { activeTabId: current?.id ?? null, activeBundleId, now });
+  let media: MediaView | null = null;
+  if (pickedMedia) {
+    const liveTab = pickedMedia.source === 'tab' && Number.isInteger(pickedMedia.tabId) ? state.tabs[pickedMedia.tabId as number] : null;
+    const rawIcon = pickedMedia.icon ?? (liveTab ? V.iconFor(state, liveTab) : pickedMedia.bundleId ? appIcon((state as any).apps, pickedMedia.bundleId) : null);
+    const validArt = checkIconUrl(pickedMedia.artwork) ? pickedMedia.artwork : null;
+    const validIcon = checkIconUrl(rawIcon) ? rawIcon : null;
+    const { letter, color } = V.letterAvatar(pickedMedia.subtitle || pickedMedia.title || 'M');
+    media = {
+      id: pickedMedia.id,
+      source: pickedMedia.source,
+      tabId: pickedMedia.tabId ?? null,
+      title: String(pickedMedia.title || 'Media').slice(0, 140),
+      subtitle: String(pickedMedia.subtitle || '').slice(0, 100),
+      artwork: validArt,
+      icon: validIcon,
+      letter,
+      color,
+      playing: !!pickedMedia.playing,
+      paused: !pickedMedia.playing,
+      muted: !!pickedMedia.muted,
+      canPrev: !!pickedMedia.canPrev,
+      canNext: !!pickedMedia.canNext,
+    };
+  }
+
   return {
     version: VM_VERSION,
     ready: true,
@@ -632,6 +690,7 @@ function fresh(input: ViewModelInput): ViewModel {
     notice,
     prompt,
     toast,
+    media,
     gesture,
     launcher,
     pageLoader,

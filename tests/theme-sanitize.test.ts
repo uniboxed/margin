@@ -346,7 +346,9 @@ test('the action list is PLAN.md §3\'s, plus palette.run and the behaviors\' an
   const arcM22 = ['tab.rename', 'tab.setTitle', 'pin.reset', 'pin.rename', 'pin.setTitle', 'folder.newIn', 'folder.nest'];
   // Track 2 M2.3 (Favorites Grid).
   const arcM23 = ['favorite.open', 'favorite.add', 'favorite.addPin', 'favorite.remove', 'favorite.reset', 'favorite.rename', 'favorite.setTitle', 'favorite.move', 'favorite.copyUrl'];
-  assert.deepEqual(Object.keys(ACTIONS).sort(), [...plan, 'palette.run', ...step2, ...step3, ...step4, ...settingsTab, ...spaceThemes, ...arcQol, ...arcM22, ...arcM23].sort());
+  // Track 2 M2.4 (Mini Player).
+  const arcM24 = ['media.toggle', 'media.prev', 'media.next', 'media.mute', 'media.focus'];
+  assert.deepEqual(Object.keys(ACTIONS).sort(), [...plan, 'palette.run', ...step2, ...step3, ...step4, ...settingsTab, ...spaceThemes, ...arcQol, ...arcM22, ...arcM23, ...arcM24].sort());
   assert.ok(isAction('tab.activate'));
   assert.equal(isAction('toString'), false);
   assert.equal(isAction('__proto__'), false);

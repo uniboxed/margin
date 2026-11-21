@@ -98,6 +98,11 @@ export const ACTIONS = Object.freeze({
   'archive.restore': 'archive',
   'archive.restoreLast': 'none',
   'toast.close': 'none',
+  'media.toggle': 'none',
+  'media.prev': 'none',
+  'media.next': 'none',
+  'media.mute': 'none',
+  'media.focus': 'none',
   'window.close': 'none',
   'window.minimise': 'none',
   'window.fullscreen': 'none',
@@ -420,6 +425,11 @@ export const ACTION_MAP = Object.freeze({
   'archive.restore': 'restoreArchive',
   'archive.restoreLast': 'restoreLastArchive',
   'toast.close': 'local',
+  'media.toggle': 'mediaControl',
+  'media.prev': 'mediaControl',
+  'media.next': 'mediaControl',
+  'media.mute': 'mediaControl',
+  'media.focus': 'mediaControl',
   'window.close': 'host',
   'window.minimise': 'host',
   'window.fullscreen': 'toggleFullscreen | host',
@@ -522,6 +532,11 @@ export function requestFor(name: string, arg: any, { state, ui, platform, row }:
     case 'settings.open': return send('openLauncher', { windowId, settings: true });
     case 'archive.restore': return send('restoreArchive', { archiveId: arg, windowId });
     case 'archive.restoreLast': return send('restoreLastArchive', { windowId });
+    case 'media.toggle': return send('mediaControl', { command: 'toggle' });
+    case 'media.prev': return send('mediaControl', { command: 'prev' });
+    case 'media.next': return send('mediaControl', { command: 'next' });
+    case 'media.mute': return send('mediaControl', { command: 'mute' });
+    case 'media.focus': return send('mediaControl', { command: 'focus' });
     default: return { kind: 'none', reason: `${name}: no mapping` };
   }
 }

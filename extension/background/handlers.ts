@@ -23,6 +23,7 @@ import { closeTabs, noteClosing } from './closing.ts';
 import * as away from './away.ts';
 import { appLink } from './app-link.ts';
 import { createHostedTabs, type HostedTabsApi } from './hosted.ts';
+import { createMediaRegistry } from './media.ts';
 import { shrinkPicture } from './picture.ts';
 import { noticeAnswered } from './notices.ts';
 import { isNoticeAction } from '../shared/notices.ts';
@@ -176,6 +177,7 @@ const appState = (windowId: number | null) => {
 const launcherOpening = new Map<string, Promise<{ tabId: number, shown: number }>>();
 // Margin.app hosting this profile's window in its page area (background/hosted.ts): its items' tabs.
 const hostedTabs = createHostedTabs(() => api.tabs as unknown as HostedTabsApi, shrinkPicture);
+const mediaRegistry = createMediaRegistry();
 
 export const handlers = {
   // A page starting: which tab and window it is, this copy, whether the window is in Margin's
@@ -889,6 +891,38 @@ export const handlers = {
   async hostNavigate(message: { itemId?: string, url?: string }, sender: BrowserMessageSender) {
     if (!sender?.app) throw new Error('the app\'s request only');
     return hostedTabs.navigate(message);
+  },
+  async mediaState(report: { playing: boolean, muted?: boolean, title?: string, artist?: string, artworkUrl?: string }, sender: BrowserMessageSender) {
+    const tabId = sender?.tab?.id;
+    if (tabId == null) return null;
+    const artwork = typeof report?.artworkUrl === 'string' && /^data:image\/(png|jpeg|webp);base64,/i.test(report.artworkUrl) ? report.artworkUrl : null;
+    const entry = mediaRegistry.report(tabId, {
+      playing: !!report?.playing,
+      muted: !!report?.muted,
+      title: report?.title,
+      artist: report?.artist,
+      artwork,
+      url: sender.tab?.url ?? '',
+    });
+    if (sender.tab?.windowId != null) {
+      appLink.push(sender.tab.windowId, { type: 'media', media: mediaRegistry.current(null) });
+    }
+    return entry;
+  },
+  async mediaControl({ command, tabId }: { command: 'toggle' | 'prev' | 'next' | 'mute' | 'focus', tabId?: number | string | null }, sender: BrowserMessageSender) {
+    const targetId = Number.isInteger(tabId) ? (tabId as number) : (mediaRegistry.current(sender?.tab?.id ?? null)?.tabId as number | null);
+    if (!Number.isInteger(targetId)) return false;
+    const id = targetId as number;
+    if (command === 'focus') {
+      await focusTab(id, { source: 'mediaFocus' }).catch(() => null);
+      return true;
+    }
+    if (command === 'mute') {
+      await handlers.muteTab({ tabId: id });
+      return true;
+    }
+    await api.tabs.sendMessage?.(id, { type: 'mediaCommand', command }).catch(() => null);
+    return true;
   },
   async duplicateTab({ tabId, windowId }: { tabId: number | string, windowId?: number }, sender: BrowserMessageSender) {
     const s = await load();

@@ -153,6 +153,8 @@ export const APP_REQUESTS = new Set([
   'userThemes',
   // Margin.app hosting this profile's window in its page area (background/hosted.ts): an item's tab shown, closed, muted, navigated.
   'hostShow', 'hostClose', 'hostPicture', 'hostMute', 'hostNavigate',
+  // Mini Player (M2.4): remote playback controls.
+  'mediaControl',
 ]);
 // The requests that call windows.update or windows.remove for one window: each carries `notAfter`
 // from the app, and only one runs per window at a time (background/handoff.ts).
