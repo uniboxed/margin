@@ -166,6 +166,32 @@ enum ShortcutSet {
 }
 
 extension ShortcutSet {
+    /// A hosted window that is a browser's (the keys only a browser has, `browserOnly`, are Margin's there): Safari's
+    /// window a copy made, or an app item that is one of the browsers Margin links with (Safari, Chrome, Edge, their
+    /// channels: `bundles`, HostedSession.isChromium).
+    static func hostIsBrowser(target: HostTarget, safariWindow: Int?, bundles: Set<String>) -> Bool {
+        if safariWindow != nil { return true }
+        switch target {
+        case .safariWindow: return true
+        case .app(let bundle): return bundles.contains(bundle) || HostedSession.isChromium(bundle)
+        }
+    }
+
+    /// The keys Margin holds now: a hosted app in front (`marginInFront` false) keeps its sidebar key, and its own
+    /// ⌘L, ⌘D, ⌘1–9… unless it's a browser (`browserOnly`); a numbered key with nothing behind it (more than the
+    /// window's spaces, `spaces`, or the sidebar's rows, `items`: its page says them) isn't held at all, so the press
+    /// reaches the app in front (Carbon's hot keys can't pass one on). Counts not said yet: every number held.
+    static func held(_ bindings: [Combo: AppCommand], marginInFront: Bool, browser: Bool, spaces: Int?, items: Int?) -> [Combo: AppCommand] {
+        bindings.filter { _, command in
+            if !marginInFront, command == .toggleSidebar || (command.browserOnly && !browser) { return false }
+            if let n = command.spaceNumber, let spaces, n > spaces { return false }
+            if let n = command.itemNumber, let items, n > items { return false }
+            return true
+        }
+    }
+}
+
+extension ShortcutSet {
     /// Margin hosting apps in its own window: its keys are the app's
     /// while Margin itself is the active app (one of its windows open), or while an app it hosts is (Safari's hosted
     /// window's included) with a Margin window on the current Space; let go otherwise, so other apps keep their keys.

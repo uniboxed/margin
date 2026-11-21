@@ -98,7 +98,6 @@ export const ACTIONS = Object.freeze({
   'archive.open': 'none',
   'archive.restore': 'archive',
   'archive.restoreLast': 'none',
-  'toast.close': 'none',
   'media.toggle': 'none',
   'media.prev': 'none',
   'media.next': 'none',
@@ -448,7 +447,6 @@ export const ACTION_MAP = Object.freeze({
   'archive.open': 'openLauncher',
   'archive.restore': 'restoreArchive',
   'archive.restoreLast': 'restoreLastArchive',
-  'toast.close': 'local',
   'media.toggle': 'mediaControl',
   'media.prev': 'mediaControl',
   'media.next': 'mediaControl',
@@ -484,7 +482,7 @@ export const ACTION_MAP = Object.freeze({
 });
 
 const LOCAL = new Set(['space.edit', 'space.rename', 'folder.rename', 'tab.rename', 'pin.rename', 'favorite.rename', 'palette.open', 'palette.close', 'menu.open', 'menu.run', 'menu.close', 'editor.save', 'editor.cancel', 'editor.delete', 'editor.color', 'editor.theme',
-  'notice.run', 'notice.close', 'prompt.run', 'prompt.close', 'launcher.more', 'settings.run', 'settings.category', 'tab.copyUrl', 'pin.copyUrl', 'favorite.copyUrl', 'toast.close', 'peek.close', 'peek.expand', 'peek.copyUrl', 'peek.setSpace', 'peek.back', 'peek.forward']);
+  'notice.run', 'notice.close', 'prompt.run', 'prompt.close', 'launcher.more', 'settings.run', 'settings.category', 'tab.copyUrl', 'pin.copyUrl', 'favorite.copyUrl', 'peek.close', 'peek.expand', 'peek.copyUrl', 'peek.setSpace', 'peek.back', 'peek.forward']);
 const NAV = { 'nav.back': 'goBack', 'nav.forward': 'goForward', 'nav.reload': 'reload' };
 
 /**

@@ -70,6 +70,7 @@
 import { browserName, linksApp, capabilities } from '../shared/capabilities.ts';
 import { APP_LINK_KEY } from '../shared/app-link.ts';
 import { navigationFor } from '../shared/shortcuts.ts';
+import { appKeyBindings } from '../shared/app-keys.ts';
 import { DATA_FORMAT, isName } from '../shared/data-merge.ts';
 import { switchLog } from './switch-log.ts';
 
@@ -199,6 +200,8 @@ export function keyBindings(settings: any, commandKeys = {}) {
   }
   add('palette', 'Meta+KeyT');
   add('toggle-sidebar', settings?.sidebarShortcut ?? 'Alt+KeyS');
+  // Margin.app's own keys (Settings' appKeys): every one named, [] when off, so the app never falls back to its default.
+  Object.assign(out, appKeyBindings(settings));
   return out;
 }
 

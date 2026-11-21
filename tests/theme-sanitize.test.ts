@@ -340,8 +340,8 @@ test('the action list is PLAN.md §3\'s, plus palette.run and the behaviors\' an
   const settingsTab = ['settings.category'];
   // A theme per space (2026-11-20): the editor's theme, a space's menu's and Settings' Theme.
   const spaceThemes = ['editor.theme', 'space.setTheme'];
-  // Track 2 M2.1 (Arc QoL): copy URL, duplicate, mute, unload/sleep, reopen last archived, toast close.
-  const arcQol = ['tab.copyUrl', 'pin.copyUrl', 'tab.duplicate', 'tab.mute', 'tab.unload', 'archive.restoreLast', 'toast.close'];
+  // Track 2 M2.1 (Arc QoL): copy URL, duplicate, mute, unload/sleep, reopen last archived (a toast goes by itself: no close).
+  const arcQol = ['tab.copyUrl', 'pin.copyUrl', 'tab.duplicate', 'tab.mute', 'tab.unload', 'archive.restoreLast'];
   // Track 2 M2.2 (Sticky Pins, Inline Rename, Nested Folders).
   const arcM22 = ['tab.rename', 'tab.setTitle', 'pin.reset', 'pin.rename', 'pin.setTitle', 'folder.newIn', 'folder.nest'];
   // Track 2 M2.3 (Favorites Grid).

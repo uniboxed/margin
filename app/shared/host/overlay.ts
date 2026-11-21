@@ -34,6 +34,7 @@ import { createAppNotices, createGestureFeedback } from '../../../extension/ui/a
 import { backgroundSwitches, describeSwitchRun, OVERLAY_SWITCH_PREFIX, pickNavTab } from '../../../extension/shared/switching.ts';
 import { cycleSpace, cycleTab } from '../../../extension/shared/view.ts';
 import { pickBridge } from '../../../extension/ui/overlay-bridge.ts';
+import { numberedAction, numberedRows, togglePin } from '../../../extension/ui/shortcut-targets.ts';
 
 // WebKit's handler on the Mac, WebView2's on Windows (ui/overlay-bridge.ts).
 const bridge = pickBridge(globalThis);
@@ -339,10 +340,23 @@ function reportSpace() {
   spaceTold = told;
   void post('shownSpace', { windowId: host?.windowId ?? null, space: vm.space.id ?? null }).catch(() => {});
 }
+// How many spaces and numbered rows (⌘1–9: ui/shortcut-targets.ts) the sidebar has, told to the app when it changes: it
+// holds only the numbered keys with something behind them, so a press of another reaches the app in front
+// (Shortcuts.swift ShortcutSet.held: Carbon's hot keys can't pass one on).
+let countsTold = '';
+function reportCounts() {
+  const vm = runtime?.vm;
+  if (!vm?.space) return;
+  const counts = { spaces: vm.spaces?.length ?? 0, items: numberedRows(vm).length };
+  const told = JSON.stringify(counts);
+  if (told === countsTold) return;
+  countsTold = told;
+  void post('counts', counts).catch(() => {});
+}
 const watcher = new MutationObserver((records) => {
   // (The page's own hover marks change nothing measured: m-hover alone, nothing to do.)
   if (records.every((r) => r.type === 'attributes' && (r.attributeName === HOVER_ATTR || r.attributeName === HOVER_OFF))) return;
-  hitsSoon(); hitsAfter(400); queueMicrotask(measureNow); queueMicrotask(reportWant); queueMicrotask(reportSpace); queueMicrotask(followPopup);
+  hitsSoon(); hitsAfter(400); queueMicrotask(measureNow); queueMicrotask(reportWant); queueMicrotask(reportSpace); queueMicrotask(reportCounts); queueMicrotask(followPopup);
 });
 // A menu or prompt of Margin's opened or closed: the keys taken or given back with it (`popupOpen`, as a field's).
 function followPopup() { const want = stillHasKeys(); if (want !== hasKeys) setKeys(want); }
@@ -786,16 +800,9 @@ function onMessage(msg: any) {
         const url = cur?.url && /^https?:\/\//i.test(cur.url) ? cur.url : '';
         openPaletteTimed({ newTab: false, query: url, selectAll: true }, '⌘L');
       } else if (msg.name === 'toggle-pin') {
-        const cur = runtime?.vm?.tab;
-        if (!cur) return;
-        const pin = runtime?.vm?.space?.pins?.find((p: { active?: boolean, tabId?: number | null }) => p.active || p.tabId === cur.id);
-        if (pin) {
-          runtime?.dispatch('tab.unpin', pin.id, 'behavior');
-          runtime?.showToast('Unpinned Tab');
-        } else {
-          runtime?.dispatch('tab.pin', cur.id, 'behavior');
-          runtime?.showToast('Pinned Tab');
-        }
+        // The pin bound to the row in front, in a folder or not; the toast once the request has come back.
+        host?.takeFailure(); // (an earlier request's failure isn't this one's)
+        if (runtime) void togglePin(runtime.vm, runtime, () => host?.takeFailure() != null);
       } else if (msg.name === 'reopen-archived') runtime?.dispatch('archive.restoreLast', undefined, 'behavior');
       else if (msg.name === 'little-arc') openPaletteTimed({ newTab: true }, '⌥⌘N Little Arc');
       else if (msg.name === 'add-split') {
@@ -807,16 +814,9 @@ function onMessage(msg: any) {
         const sp = runtime?.vm?.spaces?.[msg.index - 1];
         if (sp) runtime?.dispatch('space.switch', sp.id, 'behavior');
       } else if (msg.name === 'item-index' && Number.isInteger(msg.index)) {
-        const idx = msg.index - 1;
-        const rows = [
-          ...(runtime?.vm?.favorites?.items ?? []).map((f: { id: string }) => ({ kind: 'favorite' as const, id: f.id })),
-          ...(runtime?.vm?.space?.pins ?? []).map((p: { id: string }) => ({ kind: 'pin' as const, id: p.id })),
-          ...(runtime?.vm?.space?.today ?? []).map((t: { id: number | string }) => ({ kind: 'tab' as const, id: t.id })),
-        ];
-        const target = rows[idx];
-        if (target?.kind === 'favorite') runtime?.dispatch('favorite.open', target.id, 'behavior');
-        else if (target?.kind === 'pin') runtime?.dispatch('pin.open', target.id, 'behavior');
-        else if (target?.kind === 'tab') runtime?.dispatch('tab.activate', target.id, 'behavior');
+        // Favorites, the pins as the sidebar shows them (folders included), today's rows.
+        const target = numberedAction(runtime?.vm, msg.index);
+        if (target) runtime?.dispatch(target.name, target.arg, 'behavior');
       }
       return;
     case 'toast':

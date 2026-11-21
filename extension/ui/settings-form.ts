@@ -10,6 +10,7 @@
 // log (development diagnostics). Pure: runs in Node.
 import * as S from '../shared/search.ts';
 import * as shortcuts from '../shared/shortcuts.ts';
+import { APP_KEYS, appKeysFor, appKeyValue, combosOf, formatAppKey, isAppKey, isDigitKey } from '../shared/app-keys.ts';
 import { siteList } from '../shared/sleep.ts';
 import { PACKAGE_THEMES, PACKAGE_THEME_NAMES, USER_THEME_ID } from '../themes/packages.ts';
 import { settingValueOk } from './theme-schema.ts';
@@ -41,8 +42,20 @@ export const SHORTCUT_FIELDS = Object.freeze({
   nextSpace: 'Next space',
   prevSpace: 'Previous space',
 });
-const SHORTCUT_NAMES = Object.freeze({ newTab: 'New tab (the command palette)', ...SHORTCUT_FIELDS });
-export const SHORTCUT_HELP = 'Click a field, then press a key with ⌘, ⌥, ⌃ or ⇧. Esc cancels. If a combination shows nothing when you press it, Safari or macOS keeps it for itself (⌘⌥← / ⌘⌥→ switch Safari\'s tabs), so pick another.';
+// Margin.app's own keys (shared/app-keys.ts: Settings' `appKeys`), under their own heading; each can be turned off.
+// The numbered ones: a combination with a digit, its modifiers for 1 to 9.
+export const APP_SHORTCUT_FIELDS = Object.freeze({
+  focusAddress: 'Edit the address',
+  copyUrl: 'Copy the address',
+  togglePin: 'Pin or unpin the tab',
+  reopenArchived: 'Reopen the last archived tab',
+  littleArc: 'Quick new tab',
+  addSplit: 'Add a split view',
+  spaceDigits: 'Go to space 1–9',
+  itemDigits: 'Go to favorite, pin or tab 1–9',
+});
+const SHORTCUT_NAMES = Object.freeze({ newTab: 'New tab (the command palette)', ...SHORTCUT_FIELDS, ...APP_SHORTCUT_FIELDS });
+export const SHORTCUT_HELP = 'Click a field, then press a key with ⌘, ⌥, ⌃ or ⇧. Esc cancels; Delete turns off one of Margin.app’s keys. If a combination shows nothing when you press it, Safari or macOS keeps it for itself (⌘⌥← / ⌘⌥→ switch Safari\'s tabs), so pick another.';
 
 /** Every shortcut now: the palette's fixed ⌘T and the ones from Settings. */
 export function currentShortcuts(settings: any) {
@@ -142,6 +155,13 @@ export function settingsFields(settings: any, features: any = {}, ui: { recordin
     const recording = ui.recording === id;
     list.push(field({ id, kind: 'shortcut', label, value: recording ? '' : shortcuts.format(keys[id]), recording, placeholder: 'Press keys…' }));
   }
+  list.push(field({ id: 'appShortcuts', kind: 'group', label: 'Margin.app' }));
+  const app = appKeysFor(s);
+  for (const [id, label] of Object.entries(APP_SHORTCUT_FIELDS)) {
+    const recording = ui.recording === id;
+    const combo = app[id as keyof typeof app];
+    list.push(field({ id, kind: 'shortcut', label, value: recording ? '' : formatAppKey(id, combo), recording, placeholder: recording ? (isDigitKey(id) ? 'Press keys with a digit…' : 'Press keys…') : 'Off' }));
+  }
   list.push(field({ id: 'resetShortcuts', kind: 'button', label: 'Reset shortcuts', status: status.shortcuts?.text ?? SHORTCUT_HELP, error: !!status.shortcuts?.error }));
   return list;
 }
@@ -164,7 +184,7 @@ export { SETTINGS_CATEGORY_IDS } from './actions.ts'; // (the same ids, in this 
 export const DEFAULT_CATEGORY: SettingsCategory = 'appearance';
 const TABS_FIELDS = new Set(['favoritesScope', 'archiveAfterHours', 'sleepAfterHours', 'neverSleepSites', 'wakeAll']);
 const BROWSING_FIELDS = new Set(['engine', 'blockGestures', 'swipeNavigation', 'pullToRefresh', 'marginFullscreenAuto', 'fullscreenOnly', 'frameWhenHidden', 'autoPeekPins', 'newTabHint']);
-const KEYBOARD_FIELDS = new Set(['shortcuts', ...Object.keys(SHORTCUT_FIELDS), 'resetShortcuts']);
+const KEYBOARD_FIELDS = new Set(['shortcuts', ...Object.keys(SHORTCUT_FIELDS), 'appShortcuts', ...Object.keys(APP_SHORTCUT_FIELDS), 'resetShortcuts']);
 
 /** The category a field is in (one of SETTINGS_CATEGORIES'): Appearance for the themes' fields and any field not listed. */
 export function categoryOf(id: string): SettingsCategory {
@@ -328,6 +348,11 @@ export function saveField(f: SettingsField | null | undefined, value: any, setti
     case 'list': return f.id === 'neverSleepSites' ? patch({ neverSleepSites: siteList(String(value ?? '')) }) : null;
     case 'shortcut': {
       const combo = String(value ?? '');
+      // Margin.app's keys: '' turns one off; a numbered one's digit stands for 1–9.
+      if (isAppKey(f.id)) {
+        const v = appKeyValue(f.id, combo);
+        return v == null ? null : patch({ appKeys: { ...appKeysFor(settings), [f.id]: v } });
+      }
       if (!shortcuts.parse(combo) || !Object.hasOwn(SHORTCUT_FIELDS, f.id)) return null;
       if (f.id === 'sidebarShortcut') return patch({ sidebarShortcut: combo });
       return patch({ shortcuts: { ...shortcuts.navigationFor(settings), [f.id]: combo } });
@@ -342,14 +367,20 @@ export function saveField(f: SettingsField | null | undefined, value: any, setti
  * what's wrong, or null
  */
 export function shortcutTaken(id: string, combo: string, settings: any): string | null {
-  const taken = Object.entries(currentShortcuts(settings)).find(([other, value]) => other !== id && value === combo);
+  // (A numbered key stands for nine combinations: any of them taken is.)
+  const mine = isAppKey(id) ? combosOf(id, appKeyValue(id, combo) ?? '') : [combo];
+  const all: [string, string[]][] = [
+    ...(Object.entries(currentShortcuts(settings)) as [string, string][]).map(([k, v]): [string, string[]] => [k, [v]]),
+    ...(Object.entries(appKeysFor(settings)) as [string, string][]).map(([k, v]): [string, string[]] => [k, combosOf(k, v)]),
+  ];
+  const taken = all.find(([other, values]) => other !== id && values.some((v) => mine.includes(v)));
   return taken ? `${shortcuts.format(combo)} is already used for “${(SHORTCUT_NAMES as Record<string, string>)[taken[0]]}”.` : null;
 }
 
 /** What a button asks the background for. */
 export function runField(f: SettingsField | null | undefined) {
   if (f?.id === 'wakeAll') return { type: 'wakeSleeping', payload: {} };
-  if (f?.id === 'resetShortcuts') return { type: 'updateSettings', payload: { patch: { sidebarShortcut: 'Alt+KeyS', shortcuts: { ...shortcuts.NAVIGATION } } } };
+  if (f?.id === 'resetShortcuts') return { type: 'updateSettings', payload: { patch: { sidebarShortcut: 'Alt+KeyS', shortcuts: { ...shortcuts.NAVIGATION }, appKeys: { ...APP_KEYS } } } };
   if (f?.isButton && f.id.startsWith(AIR_TRAFFIC_REMOVE)) {
     const ruleId = f.id.slice(AIR_TRAFFIC_REMOVE.length);
     return RULE_ID.test(ruleId) ? { type: 'removeAirTrafficRule', payload: { ruleId } } : null;

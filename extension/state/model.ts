@@ -9,6 +9,7 @@ import { PACKAGE_THEMES, USER_THEME_ID } from '../themes/packages.ts';
 import { neverSleeps, oldSleepPage, siteList } from '../shared/sleep.ts';
 import { isAwayPage } from '../shared/away.ts';
 import { normalizePattern } from '../shared/air-traffic.ts';
+import { FAVORITES_CAP, MAX_FOLDER_DEPTH, boundElsewhere, favoriteScopeOf, folderDepth } from '../shared/pinned-rules.ts';
 import type { AirTrafficRule, ArchiveEntry, KeptTab, SplitGroup, State, TabRecord } from '../../types/margin';
 // A kept tab lost with its window: where it was (a window that comes back takes it back).
 type KeptFrom = KeptTab & { from: NonNullable<KeptTab['from']> };
@@ -619,15 +620,6 @@ function pinForUrl(state: State, url: string | undefined, spaceId?: string) {
 const pinOfSpace = (state: State, pinId: unknown, spaceId: string | null | undefined) => typeof pinId === 'string' && !!pinId && state.pins.some((p) => p.id === pinId && p.spaceId === spaceId);
 const hasFavorite = (state: State, favoriteId: unknown) => typeof favoriteId === 'string' && !!favoriteId && (state.favorites ?? []).some((f) => f.id === favoriteId);
 
-// Whether a tab of `spaceId` belongs to a pin other than `pinId` or a favorite other than `favoriteId`
-// (a pin's or favorite's search by address never takes another's tab).
-function boundElsewhere(state: State, r: { pinnedBy?: string, favoriteId?: string } | null | undefined, spaceId: string | null | undefined, { pinId = null, favoriteId = null }: { pinId?: string | null, favoriteId?: string | null } = {}) {
-  if (!r) return false;
-  if (r.pinnedBy && r.pinnedBy !== pinId && pinOfSpace(state, r.pinnedBy, spaceId)) return true;
-  if (r.favoriteId && r.favoriteId !== favoriteId && hasFavorite(state, r.favoriteId)) return true;
-  return false;
-}
-
 // A record without a binding that no longer holds in `spaceId` (its pin gone or in another space, its favorite gone).
 function heldBindings<T extends { pinnedBy?: string, favoriteId?: string }>(state: State, r: T, spaceId: string | null | undefined): T {
   const dropPin = !!r.pinnedBy && !pinOfSpace(state, r.pinnedBy, spaceId);
@@ -1166,7 +1158,6 @@ function updateSpace(state: State, spaceId: string, patch: { name?: string; emoj
 // Pins saved before folders existed have no `pos`: their order in the list
 // stands in (shared/view.ts does the same). Every change renumbers the
 // lists it touches 0, 1, 2…
-const MAX_FOLDER_DEPTH = 4;
 const posOf = (item: any, i: number) => (Number.isFinite(item?.pos) ? item.pos : i);
 const folderIn = (state: State, folderId: string | null | undefined, spaceId: string) => (state.folders ?? []).find((f) => f.id === folderId && f.spaceId === spaceId) ?? null;
 // A pin's folder, if that folder exists in the pin's space (else it's loose).
@@ -1185,19 +1176,6 @@ function folderParent(state: State, folder: { id: string, parentId?: string | nu
     cur = cur.parentId ? folderIn(state, cur.parentId, folder.spaceId) : null;
   }
   return parent;
-}
-function folderDepth(state: State, folderId: string | null | undefined, spaceId: string): number {
-  let depth = 0;
-  const seen = new Set<string>();
-  let cur = folderId ? folderIn(state, folderId, spaceId) : null;
-  while (cur && !seen.has(cur.id)) {
-    seen.add(cur.id);
-    const parent = cur.parentId ? folderIn(state, cur.parentId, spaceId) : null;
-    if (!parent) break;
-    depth++;
-    cur = parent;
-  }
-  return depth;
 }
 function folderSubtreeHeight(state: State, folderId: string, spaceId: string, seen = new Set<string>()): number {
   if (seen.has(folderId)) return 0;
@@ -1477,14 +1455,7 @@ function deleteSpace(state: State, spaceId: string) {
 // ---- favorites ------------------------------------------------------------
 // Top-of-sidebar Favorites grid (Arc): global across Spaces by default ('global'),
 // or scoped per profile when settings.favoritesScope === 'profile'. Cap 12 per scope.
-const FAVORITES_CAP = 12;
 
-function favoriteScopeOf(state: State, spaceId?: string | null): string {
-  if (state.settings?.favoritesScope !== 'profile') return 'global';
-  const sp: any = spaceId ? state.spaces.find((s) => s.id === spaceId) : null;
-  const profile = typeof sp?.profile === 'string' && sp.profile ? sp.profile : 'default';
-  return `profile:${profile}`;
-}
 
 function favoriteForUrl(state: State, url: string | undefined, scope = 'global') {
   const key = normalizeUrl(url);

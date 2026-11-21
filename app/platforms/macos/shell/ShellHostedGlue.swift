@@ -232,6 +232,7 @@ extension Shell {
         windows.onFieldClosed = { [weak session] controller in session?.fieldClosed(controller) }
         windows.onOpen = { [weak session] controller in session?.resumeLast(controller) }
         windows.onSidebarResizing = { [weak session] controller, on in session?.sidebarResizing(controller, on) }
+        windows.onCounts = { [weak self] _ in self?.updateHostedKeys() }
         windows.onNarrowed = { [weak self] _ in self?.host?.marginNarrowed() }
         windows.apps = { [weak self] in self?.appsJSON ?? "null" }
         windows.holdsMenu = { [weak session] in session?.startupShown == true }
@@ -256,13 +257,15 @@ extension Shell {
         let active = ShortcutSet.hostedActive(frontPid: apps.frontPid, ownPid: own, hostedPids: hostedPids, marginWindowOpen: !windows.isEmpty, marginOnCurrentSpace: here)
         if active {
             let said = links.keys.sorted().lazy.compactMap { self.links[$0] }.first { $0.connection.isUp && $0.keys != nil }?.keys
-            var bindings = ShortcutSet.bindings(from: said ?? [:])
-            // (A hosted app in front: the sidebar key stays with it; browser-only shortcuts like ⌘L/⌘D/⌘1-9 stay with native apps.)
-            if apps.frontPid != own {
-                let isBrowser = host?.hosts.values.first(where: { $0.pid == apps.frontPid })?.safariWindow != nil
-                bindings = bindings.filter { $0.value != .toggleSidebar && (isBrowser || !$0.value.browserOnly) }
-            }
-            shortcuts.rebind(bindings)
+            // (A hosted app in front: the sidebar key stays with it, and ⌘L, ⌘D, ⌘1–9… unless it's a browser (Safari's
+            // window, Chrome's or Edge's); a numbered key with no space or row behind it in the window the keys go to
+            // (runHosted's) isn't held, so the app in front gets the press.)
+            let front = host?.hosts.values.first { $0.pid == apps.frontPid }
+            let browser = front.map { ShortcutSet.hostIsBrowser(target: $0.target, safariWindow: $0.safariWindow, bundles: Set(options.bundleIds.values)) } ?? false
+            let target = hosted?.hostingWindow.flatMap { id in windows.first { $0.id == id } } ?? marginWindows?.front
+            let counts = target?.rowCounts
+            shortcuts.rebind(ShortcutSet.held(ShortcutSet.bindings(from: said ?? [:]), marginInFront: apps.frontPid == own, browser: browser,
+                                              spaces: counts?.spaces, items: counts?.items))
         }
         // (Which app took the front is said by its bundle id: 2026-11-17's log let go and held the keys again and again
         // and couldn't say which app came between.)

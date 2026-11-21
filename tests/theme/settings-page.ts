@@ -38,7 +38,8 @@ export async function settingsPageChecks(page: Page) {
   await page.click('.settings-category[data-category="keyboard"]');
   assert.deepEqual(await text('.pane-title'), ['Keyboard']);
   assert.deepEqual(await text('.settings-category.selected .category-label'), ['Keyboard']);
-  assert.equal(await count('.settings-form input.shortcut'), 5);
+  assert.equal(await count('.settings-form input.shortcut'), 13, 'the five, and Margin.app\'s eight');
+  assert.deepEqual(await text('.settings-form .setting-group'), ['Margin.app'], 'Margin.app\'s under their own heading');
   assert.equal(await count('.settings-form select'), 0);
   await page.click('.settings-category[data-category="tabs"]');
   assert.equal(await count('.settings-form input.number'), 2, 'archive and sleep');

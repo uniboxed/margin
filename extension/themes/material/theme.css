@@ -1357,9 +1357,14 @@
   background: var(--primary);
 }
 .favorites.m-drop-into { outline: 2px solid var(--primary); outline-offset: -2px; border-radius: 16px; }
+/* No favorites yet: a drop target while a tab or pin is dragged, over what follows (nothing moves), none at rest. */
+.favorites-drop { display: none; }
+:is(.m-drag-tab, .m-drag-pin) .favorites-drop { display: block; position: relative; z-index: 5; flex: none; height: 0; }
+.favorites-drop-zone { position: absolute; left: var(--pad); right: var(--pad); top: 2px; height: 44px; box-sizing: border-box; border: 2px dashed var(--outline); border-radius: 16px; background: var(--sc-low); }
+.favorites-drop.m-drop-into .favorites-drop-zone { border-color: var(--primary); background: var(--sc-high); }
 
-.pins .folder { padding-left: calc(14px + var(--depth, 0) * 14px); }
-.pins .pin { padding-left: calc(14px + var(--depth, 0) * 14px); }
+/* Nested folders: each level indents by the step a folder's pins have (.pin.nested, 20 px), the rows as they were up to depth 1. */
+.margin-sidebar .pins :is(.pin.nested, .folder) { margin-left: calc(var(--depth, 0) * 20px); }
 .pin .icon.reset {
   display: grid;
   place-items: center;

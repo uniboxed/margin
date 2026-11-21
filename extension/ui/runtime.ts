@@ -718,6 +718,8 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     for (const id of closing) intents.close(id, before, windowId(), request);
     if (name === 'tab.move') return request;
     render();
+    // (⌘D's toast waits for the answer: the new pin's id, or null, ui/shortcut-targets.ts togglePin.)
+    if (name === 'tab.pin' || name === 'tab.unpin') return request;
     return true;
   }
 
@@ -772,11 +774,6 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
         if (!/^https?:\/\//i.test(url)) return false;
         return copyText(url, 'Copied URL');
       }
-      case 'toast.close':
-        clearTimeout(toastTimer);
-        toastTimer = null;
-        if (ui.toast) setUi({ toast: null });
-        return true;
       case 'peek.close':
         setUi({ peek: null });
         host.perform?.('peek.close');

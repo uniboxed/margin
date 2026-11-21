@@ -119,6 +119,9 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     private(set) var controls: CGRect?
     private(set) var ignoring = false
     private(set) var pointerWant = PointerWant.all
+    // What its sidebar has behind the numbered keys (overlay.ts reportCounts): its spaces, and its rows ⌘1–9 reach
+    // (favorites, pins, today's). Nil until its page says: then every numbered key is held (Shell.updateHostedKeys).
+    private(set) var rowCounts: (spaces: Int, items: Int)?
     private(set) var pageWantsKeyboard = false
     private var pointerInside = false
     private var lastPointerPush: TimeInterval = 0
@@ -1759,6 +1762,11 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             // It let go (the palette closed, Escape): the panel lets go of them, the keys back to the hosted app shown.
             letGoKeys()
             keysBack("a field of Margin's let go")
+        case "counts":
+            guard let spaces = body["spaces"] as? Int, let items = body["items"] as? Int, spaces >= 0, items >= 0 else { return }
+            guard rowCounts?.spaces != spaces || rowCounts?.items != items else { return }
+            rowCounts = (spaces, items)
+            owner?.onCounts?(self)
         case "pointerWant":
             pointerWant = PointerWant(body)
         case "perform":
@@ -1842,6 +1850,7 @@ final class MarginWindows {
     var onFieldClosed: ((MarginWindowController) -> Void)?
     var onOpen: ((MarginWindowController) -> Void)? // a window made, before its page loads (the session: the item it showed last)
     var onSidebarResizing: ((MarginWindowController, Bool) -> Void)? // a change of its sidebar's width began (a drag), or is over
+    var onCounts: ((MarginWindowController) -> Void)? // its sidebar's spaces or numbered rows changed in number (its rowCounts)
     var onNarrowed: ((MarginWindowController) -> Void)? // in full screen while hosting and narrower than its screen (a tile change in its Space)
     var browser = "safari" // the engine hosted pages are in (Settings offers its features)
     private(set) var controllers: [MarginWindowController] = []

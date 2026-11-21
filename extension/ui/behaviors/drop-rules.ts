@@ -15,7 +15,7 @@
 //   is pinned in that place, a pin moves there, folders stay at the top level;
 // - nowhere a row already is (a drop that wouldn't move it is no target).
 import type { FolderRow, SpaceView } from '../view-model.ts';
-import { MAX_FOLDER_DEPTH } from '../../state/model.ts';
+import { MAX_FOLDER_DEPTH } from '../../shared/pinned-rules.ts';
 
 /**
  * What a drag holds: a row's kind and id.

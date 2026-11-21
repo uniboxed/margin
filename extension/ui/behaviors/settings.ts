@@ -12,6 +12,7 @@ import { spaceThemesOn } from '../space-theme.ts';
 import type { Rt } from '../runtime.ts';
 import { saveField, saveThemeField, runField, removePrompt, shortcutTaken, wokeText, SHORTCUT_HELP } from '../settings-form.ts';
 import * as shortcuts from '../../shared/shortcuts.ts';
+import { appKeyValue, isAppKey } from '../../shared/app-keys.ts';
 
 const NAMES: Set<string | undefined> = new Set(['setting-number', 'setting-toggle', 'setting-choice', 'setting-list', 'setting-shortcut', 'setting-color']); // (asked of any element's)
 // A colour well shows #rrggbb only: a theme's other colours show as their nearest it can.
@@ -119,10 +120,17 @@ export function installSettings(rt: Rt) {
     e.preventDefault();
     e.stopImmediatePropagation();
     if (e.key === 'Escape') return void el.blur();
-    const combo = shortcuts.fromEvent(e);
-    if (!combo || !shortcuts.parse(combo)) return;
     const f = fieldOf(el);
     if (!f) return;
+    // Delete (or Backspace), alone: one of Margin.app's keys off.
+    if ((e.key === 'Backspace' || e.key === 'Delete') && !e.metaKey && !e.ctrlKey && !e.altKey && isAppKey(f.id)) {
+      status('shortcuts', SHORTCUT_HELP);
+      save(el, '');
+      return void el.blur();
+    }
+    const combo = shortcuts.fromEvent(e);
+    if (!combo || !shortcuts.parse(combo)) return;
+    if (isAppKey(f.id) && appKeyValue(f.id, combo) == null) return void status('shortcuts', 'This one takes a digit with ⌘, ⌥ or ⌃: it stands for 1 to 9.', true);
     const taken = shortcutTaken(f.id, combo, rt.state?.settings);
     if (taken) return void status('shortcuts', taken, true);
     status('shortcuts', SHORTCUT_HELP);
