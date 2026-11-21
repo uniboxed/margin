@@ -110,6 +110,13 @@ protocol HostedEngine: AnyObject {
     func follow(_ placement: HostPlacement, rects: [HostID: CGRect])
     func pageRectChanged(_ placement: HostPlacement, rects: [HostID: CGRect]) async -> Bool
     func minimum(of id: HostID) -> CGSize?
+    // `id` would be shown today's one-host way: no other host visible, it (if visible) main at the page area (HostEngine
+    // `alone`). False: a layout of several is up (a split, a card), or it's at a rect of its own: a show of it is a
+    // layout of it alone, never only a tab switch in its window.
+    func showsAlone(_ id: HostID) -> Bool
+    // The hosted windows visible now, and how many of them follow a drag live (a tile, a window-mode window; a plain
+    // member is placed again when it's let go): the log's word for a drag.
+    func liveFollowers() -> (follow: Int, visible: Int)
 }
 
 // One of a profile's hosted Safari windows: its profile and its role (docs/PEEK-SPLIT.md §1).
@@ -159,6 +166,8 @@ extension HostedEngine {
     func follow(_ placement: HostPlacement, rects: [HostID: CGRect]) { follow(placement) }
     func pageRectChanged(_ placement: HostPlacement, rects: [HostID: CGRect]) async -> Bool { await pageRectChanged(placement) }
     func minimum(of id: HostID) -> CGSize? { nil }
+    func showsAlone(_ id: HostID) -> Bool { true }
+    func liveFollowers() -> (follow: Int, visible: Int) { (shownFillsPage ? 1 : 0, shown == nil ? 0 : 1) }
     func start(bundleId: String) async -> HostApp? { nil }
     func prepare(_ target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64) async -> HostResult { .failed(.launch, "no engine to prepare it") }
 }
@@ -603,7 +612,12 @@ final class HostedSession: LibraryDelegate {
             // made yet: the engine's first open (behind the loader), then its tab. A tab switch in the window shown
             // is Safari's own, in sight: nothing said.
             defer { w.setShowing(nil) }
-            let comes = engine.shown != id || hostingWindow != w.id
+            // (Its window in a layout of several (a split's main pane, a card's opener): never a tab switch only. The
+            // engine lays it out alone at the page area, the others parked (docs/PEEK-SPLIT.md §4 "Leaving"; the real
+            // screen, 2026-11-21: an item of main's own profile picked while main was focused showed in its pane's rect,
+            // the other panes left on screen).
+            let laidOut = layout[w.id] != nil || !engine.showsAlone(id)
+            let comes = engine.shown != id || hostingWindow != w.id || laidOut
             let there = safariWindows[SafariKey(p)] != nil && engine.isHosted(id)
             if comes {
                 let title = (library.items().first { $0.id == item }?.value["title"] as? String).flatMap { $0.isEmpty ? nil : $0 }
@@ -2035,7 +2049,7 @@ final class HostedSession: LibraryDelegate {
     // are held from now on; the sidebar slides over the hosted window as it is (Margin's window is in front of it).
     // Over: the hosted window placed once, at the page area as it is now (a window by Accessibility; a full-screen
     // member out of full screen and in, behind the loader). Nothing shown: nothing to place.
-    func sidebarResizing(_ window: HostedWindow, _ on: Bool) {
+    func sidebarResizing(_ window: HostedWindow, _ on: Bool, divider: Bool = false) {
         if on {
             guard resizing == nil else { return }
             resizing = window.id
@@ -2043,7 +2057,7 @@ final class HostedSession: LibraryDelegate {
             following = engine.dragging(true)
             // (A split's panes follow too: the holes are their rects meanwhile, the engine says them each frame.)
             window.followsPage(following && (engine.shownFillsPage || layout[window.id]?.split != nil))
-            note("the sidebar's edge dragged in Margin's window \(window.id): \(following ? "the hosted window follows it live" : "the page area's changes held until it's let go")")
+            note(Self.dragLine(divider: divider, window: window.id, following: following, engine.liveFollowers()))
             return
         }
         guard resizing == window.id else { return }
@@ -2055,6 +2069,23 @@ final class HostedSession: LibraryDelegate {
         }
         guard window.id == hostingWindow, engine.shown != nil else { return }
         enqueue { await self.placeAgain(window) }
+    }
+
+    // A drag's line in the log: what's dragged (a split's divider, the sidebar's edge) and how many hosted windows follow
+    // it live, the others (plain members) placed again when it's let go.
+    static func dragLine(divider: Bool, window: Int, following: Bool, _ counts: (follow: Int, visible: Int)) -> String {
+        let what = divider ? "a split's divider" : "the sidebar's edge"
+        let all = counts.visible
+        func windows(_ n: Int) -> String { "\(n) hosted window\(n == 1 ? "" : "s")" }
+        let how: String
+        if !following || counts.follow == 0 {
+            how = "the page area's changes held until it's let go (\(windows(all)) placed again then)"
+        } else if counts.follow >= all {
+            how = all == 1 ? "the hosted window follows it live" : "\(windows(all)) follow it live"
+        } else {
+            how = "\(counts.follow) of \(windows(all)) follow it live, the other\(all - counts.follow == 1 ? "" : "s") placed again when it's let go"
+        }
+        return "\(what) dragged in Margin's window \(window): \(how)"
     }
 
     // ---- the palette ----
@@ -2119,6 +2150,8 @@ final class HostedSession: LibraryDelegate {
         return n
     }
     func item(ofTab number: Int) -> String? { items[number] }
+    // An open item's row number, as the UI has it (nil: not open, or never numbered). DEV-HOOK: the dev hook's `ui`.
+    func openRow(ofItem item: String) -> Int? { open[item] != nil || marginOpen.contains(item) ? numbers[item] : nil }
 
     // The library's snapshot (stored values' shape) with the items that have a page as open tabs of the Margin
     // window hosting them, the one shown active there.

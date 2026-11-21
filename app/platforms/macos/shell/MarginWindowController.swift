@@ -1841,7 +1841,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             if name == "sidebar.resizing" { return sidebarResizing((body["arg"] as? JSONObject)?["on"] as? Bool == true) }
             // (A split's divider dragged, or let go (ui/behaviors/split.ts): the same hold or live follow as the sidebar's
             // edge, every pane's window following its rect.)
-            if name == "split.resizing" { return sidebarResizing((body["arg"] as? JSONObject)?["on"] as? Bool == true) }
+            if name == "split.resizing" { return sidebarResizing((body["arg"] as? JSONObject)?["on"] as? Bool == true, divider: true) }
             if name == "haptic.alignment" { return alignmentTick() }
             guard !name.isEmpty else { return }
             ask(name, body["arg"] as? JSONObject ?? [:])
@@ -1855,10 +1855,11 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
 
     // Its page's word that a change of the sidebar's width began or is over, passed on once each way. A page that
     // goes (closed, its process ended, loaded again) mid-drag: over.
-    private func sidebarResizing(_ on: Bool) {
+    // `divider`: a split's divider dragged (docs/PEEK-SPLIT.md §4), not the sidebar's edge: the same hold or live follow.
+    private func sidebarResizing(_ on: Bool, divider: Bool = false) {
         guard on != pageResizing else { return }
         pageResizing = on
-        owner?.onSidebarResizing?(self, on)
+        owner?.onSidebarResizing?(self, on, divider)
     }
 
     static func rect(_ r: [Any]) -> CGRect? {
@@ -1918,7 +1919,7 @@ final class MarginWindows {
     // item of Margin's ran): that app activated again, which it already is (it never stopped being the active app).
     var onFieldClosed: ((MarginWindowController) -> Void)?
     var onOpen: ((MarginWindowController) -> Void)? // a window made, before its page loads (the session: the item it showed last)
-    var onSidebarResizing: ((MarginWindowController, Bool) -> Void)? // a change of its sidebar's width began (a drag), or is over
+    var onSidebarResizing: ((MarginWindowController, Bool, Bool) -> Void)? // a change of its sidebar's width (or a split's divider: true) began (a drag), or is over
     var onCounts: ((MarginWindowController) -> Void)? // its sidebar's spaces or numbered rows changed in number (its rowCounts)
     var onNarrowed: ((MarginWindowController) -> Void)? // in full screen while hosting and narrower than its screen (a tile change in its Space)
     var browser = "safari" // the engine hosted pages are in (Settings offers its features)

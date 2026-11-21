@@ -6869,3 +6869,32 @@ user's choices (the doc's table) as built; what was decided here is marked so.
   dark), Swift (`peek-session-tests.swift`, `multi-host-tests.swift`), Rust (`kinds/tests.rs`, `front.rs`), the app's
   e2e (`e2e-glue.swift`: the real page's `peekRect` in Margin's off-screen window, covered then clear, gone; the hello's
   frames). Nothing on the real screen with real Safari yet: TESTING.md M2.5.
+
+## The real screen's engine finds of 2026-11-21 (fix/screen-engine)
+
+From Margin's log on the real screen (split view and Peek with real Safari). UI and page-side finds are another branch's.
+
+- **An item outside a split, same profile as main, main focused** (a sidebar pick, the keys, a new tab, a pin or
+  favorite, a card's Expand: every show goes through `HostedSession.show`): a web item whose window is in a layout of
+  several is never only a tab switch (the copy's `hostShow`): the engine lays it out alone (`showsAlone`), the other
+  panes parked, the split kept. Before, msu.edu showed in the split's top pane's rect with the other panes on screen.
+- **A visible host placed again on its own** (the reconciler's `placeAgain`, a route moved down, a window brought
+  back): the layout is held through its out-of-full-screen-and-in (`holdLayout`), each host at its own rect, the focus
+  put back. Before, the one shown changing on the way made it the layout alone while it was placed at its old pane's
+  rect ("reserved 240/8/8/635" with the engine saying main at the page area), the other panes left on screen. A host
+  made the layout alone keeps no pane's rect (`followShown`).
+- **A hosted window out of full screen by itself** (Safari's own Esc in its page): a "left full screen" event, not a
+  tile's fight. Taken so in the reconciler's turn before a tile's sizing or a member's placing when the window is still
+  in Margin's Space and its tile holds no window of its, or every toolbar window of its own is gone, or Accessibility
+  reads it out of full screen; a window full screen in its tile that doesn't take the rect is still the loop guard's.
+  Put back into full screen at its rect behind the loader (its empty tile out), Margin's own operation: no try counted,
+  its route kept, nothing saved in routes.json; `returnsMax` times in `returnsWithin`, then left to the reconciler.
+  A routes.json that already holds Safari's demotion keeps it until Safari's next version (or the entry is removed).
+- **The log's drag line** says what's dragged (a split's divider or the sidebar's edge) and how many hosted windows
+  follow it live, the rest placed again at the release.
+- **Remove from Split View** works end to end by the row's number (the pane menu's way): the UI names an open item by
+  its number, so a dispatch with the library's item id is refused (the on-screen dev hook's `false`). The dev hook now
+  maps an open item's id to its row's number, and its `say: state` gives each pane's `tabId`.
+- Checked: `split-tests.swift` (every show path out of a split with main focused), `screen-engine-tests.swift` (the
+  layout held; out of full screen by itself, alone, in a split, as a plain member; a real tile fight still demoted; the
+  drag line), `devhooks-tests.swift`, the app's e2e (`e2e-split.swift`: Remove from Split View on an app's pane of two).
