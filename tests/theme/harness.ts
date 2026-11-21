@@ -750,6 +750,8 @@ const withRuntime = Object.assign(T, {
   rtText(selector: string) { return [...rt.target.querySelectorAll(selector)].map((e) => e.textContent!.trim()); },
   rtTodayIds(n = 3) { return rt.runtime!.vm!.space.today.slice(0, n).map((t) => t.id); },
   rtDispatch(name: string, arg?: unknown) { return rt.runtime!.dispatch(name, arg); },
+  // As Margin's own behaviors run it (the overlay's keys): its answer, awaited when it's a request's.
+  rtBehavior(name: string, arg?: unknown) { return rt.runtime!.dispatch(name, arg, 'behavior'); },
   // --- Rows by what they are (every theme: their classes differ), for the pending intents and the rows' motion ----
   // A tab's or a pin's row: the element whose click activates or opens it (tab.activate, pin.open) with this id.
   rtRow(id: number | string) { return rowEl(id); },

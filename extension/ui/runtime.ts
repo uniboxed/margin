@@ -718,6 +718,8 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     for (const id of closing) intents.close(id, before, windowId(), request);
     if (name === 'tab.move') return request;
     render();
+    // (⌘D's toast waits for the answer: the new pin's id, or null, ui/shortcut-targets.ts togglePin.)
+    if (name === 'tab.pin' || name === 'tab.unpin') return request;
     return true;
   }
 
