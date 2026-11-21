@@ -15,7 +15,6 @@ use super::front::{Look, Others};
 use super::guard::Verdict;
 use super::kinds::{self, AppFacts, Window};
 use super::layout::Placement;
-use super::panes::{self, Axis, PaneSpec};
 use super::reconciler::{self, Correction, Desired, Situation};
 use super::routes::{Route, Routes};
 use crate::geometry::Rect;
@@ -195,32 +194,6 @@ pub enum Request {
     /// Nothing hosted (`FrontReset`); Margin's Space not at rest (`FrontUnsteady`).
     FrontReset,
     FrontUnsteady,
-    /// Multi-pane Split View geometry for 1–4 hosted panes (panes.rs).
-    #[serde(rename_all = "camelCase")]
-    LayoutPanes {
-        placement: Placement,
-        #[serde(default)]
-        axis: Axis,
-        panes: Vec<PaneSpec>,
-        #[serde(default = "default_gutter")]
-        gutter: f64,
-    },
-    /// Live divider drag ratio update clamped by per-pane minimum sizes (panes.rs).
-    #[serde(rename_all = "camelCase")]
-    ResizeDivider {
-        panes: Vec<PaneSpec>,
-        divider_index: usize,
-        delta_px: f64,
-        total_px: f64,
-        #[serde(default = "default_gutter")]
-        gutter: f64,
-        #[serde(default)]
-        axis: Axis,
-    },
-}
-
-fn default_gutter() -> f64 {
-    panes::DEFAULT_GUTTER_PX
 }
 
 /// The hosting core's state across calls: the loop (its guard, the routes, the corrections' tries) and the causes.
@@ -335,16 +308,6 @@ impl HostCore {
             Request::FrontUnsteady => {
                 self.others.unsteady();
                 json!({})
-            }
-            Request::LayoutPanes { placement, axis, panes, gutter } => {
-                match panes::layout_panes(&placement, axis, &panes, gutter) {
-                    Some(layout) => serde_json::to_value(layout).unwrap_or(Value::Null),
-                    None => json!({ "error": "invalid pane layout" }),
-                }
-            }
-            Request::ResizeDivider { panes, divider_index, delta_px, total_px, gutter, axis } => {
-                let ratios = panes::resize_divider(&panes, divider_index, delta_px, total_px, gutter, axis);
-                json!({ "ratios": ratios })
             }
             Request::Constants => {
                 use reconciler::{Correction as C, Forward};
