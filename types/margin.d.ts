@@ -49,7 +49,7 @@ export interface SplitGroup {
   id: string;
   spaceId: string;
   axis: 'horizontal' | 'vertical';
-  /** 2–4 member tab/item ids (numbers stored as strings or Margin `t-...` item ids) */
+  /** 2–4 Margin tab ids (`t-…`: an open tab's `mid`, a kept tab's or library item's id; never a browser tab id: state/model.ts "split view") */
   panes: string[];
   /** Relative size ratios summing to 1.0 (length === panes.length) */
   ratios: number[];

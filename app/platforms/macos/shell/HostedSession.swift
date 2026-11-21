@@ -305,6 +305,8 @@ final class HostedSession: LibraryDelegate {
     private var showing: [HostID: String] = [:]
     private(set) var safariTabs: [String: Int] = [:]
     private(set) var safariMuted: Set<String> = []
+    // Each web item's tab's sound, as its profile's copy says (copyTabs): playing, muted. (None: not heard yet.)
+    private(set) var safariAudio: [String: (audible: Bool, muted: Bool)] = [:]
     private var copyLoading: [String: Set<Int>] = [:]
     private(set) var loadingSaid: [Int: [Int]] = [:]
     // Each Margin window's item asked to be shown and not shown yet (the newest): drawn in front at once.
@@ -443,7 +445,7 @@ final class HostedSession: LibraryDelegate {
             let windows = shown.filter { $0.value == item }.map(\.key)
             let next = r.body["next"] as? String
             if let next, let window = windows.first, requested[window] == nil { requested[window] = next } // (in front at once)
-            safariMuted.remove(item)
+            safariMuted.remove(item); safariAudio[item] = nil
             await close(item, target: r.target)
             if let next, let window = windows.first {
                 await show(next, url: nil, target: library.target(ofItem: next), windowId: window)
@@ -453,6 +455,7 @@ final class HostedSession: LibraryDelegate {
             let answer = await links.request(profile: profile, "hostMute", ["itemId": item])
             if let muted = answer.result?["muted"] as? Bool {
                 if muted { safariMuted.insert(item) } else { safariMuted.remove(item) }
+                if let heard = safariAudio[item] { safariAudio[item] = (audible: heard.audible, muted: muted) }
                 onChange?()
             }
         case "clearToday":
@@ -1118,6 +1121,7 @@ final class HostedSession: LibraryDelegate {
         let target = target ?? library.target(ofItem: item)
         let had = open.removeValue(forKey: item)
         safariTabs[item] = nil
+        safariAudio[item] = nil
         let showing = shown.filter { $0.value == item }.map(\.key)
         for w in showing { shown[w] = nil }
         defer { refreshLoading() }
@@ -1547,7 +1551,7 @@ final class HostedSession: LibraryDelegate {
             return
         case .quitByUser(let id), .windowClosed(let id), .closed(let id):
             let items = open.filter { $0.value.host == id }.map(\.key)
-            for item in items { open[item] = nil; safariTabs[item] = nil }
+            for item in items { open[item] = nil; safariTabs[item] = nil; safariAudio[item] = nil }
             for (w, i) in shown where items.contains(i) { shown[w] = nil }
             for p in safariWindows.keys where HostTarget.safariWindow(p).id == id { safariWindows[p] = nil; copyLoading[p] = nil }
             refreshLoading()
@@ -1712,10 +1716,9 @@ final class HostedSession: LibraryDelegate {
         for item in listed.sorted() {
             guard let k = kept[item] as? JSONObject, let space = k["spaceId"] as? String else { continue }
             let n = number(ofItem: item)
-            tabs[String(n)] = [
-                "id": n, "windowId": windowId, "index": index, "title": k["title"] ?? "", "url": k["url"] ?? "", "favIconUrl": k["favIconUrl"] ?? "",
-                "active": front == item, "muted": safariMuted.contains(item), "lastActive": k["lastActive"] ?? 0, "mid": item, "order": k["order"] ?? 0,
-            ]
+            let audio = safariAudio[item]
+            tabs[String(n)] = Self.liveTab(k, number: n, item: item, windowId: windowId, index: index, active: front == item,
+                                           audible: audio?.audible ?? false, muted: audio?.muted ?? safariMuted.contains(item))
             tabSpace[String(n)] = space
             kept[item] = nil
             index += 1
@@ -1726,6 +1729,39 @@ final class HostedSession: LibraryDelegate {
         var out = snapshot
         out["openTabs"] = openTabs
         return out
+    }
+
+    // An open item's tab as the UI takes it (state/model.ts tabRecord's shape): its page (`k`, the library's item as a
+    // kept tab), and what binds it, as the item has it: the pin or favorite it's the tab of (sticky pins, favorites:
+    // their rows find it by them, and its close isn't an archive) and the name the person gave it; whether it plays
+    // sound and is muted (the mini player, the Mute/Unmute row: the copy's, `safariAudio`). Only fields with a value.
+    static func liveTab(_ k: JSONObject, number n: Int, item: String, windowId: Int, index: Int, active: Bool, audible: Bool, muted: Bool) -> JSONObject {
+        var tab: JSONObject = [
+            "id": n, "windowId": windowId, "index": index, "title": k["title"] ?? "", "url": k["url"] ?? "", "favIconUrl": k["favIconUrl"] ?? "",
+            "active": active, "lastActive": k["lastActive"] ?? 0, "mid": item, "order": k["order"] ?? 0,
+        ]
+        for key in ["pinnedBy", "favoriteId", "customTitle"] {
+            if let value = k[key] as? String, !value.isEmpty { tab[key] = value }
+        }
+        if audible { tab["audible"] = true }
+        if muted { tab["muted"] = true }
+        return tab
+    }
+
+    // A Safari copy's tabs, as its state says them now (`openTabs.tabs`, the shell's mirror of it: Shell.linkReceived):
+    // for each item with a tab in that profile's hosted window (`safariTabs`), whether it plays sound and is muted. The
+    // windows draw again when that changed.
+    func copyTabs(profile: String, tabs: JSONObject) {
+        var changed = false
+        for (item, tab) in safariTabs where open[item]?.profile == profile {
+            let record = tabs[String(tab)] as? JSONObject
+            let now = record.map { (audible: $0["audible"] as? Bool == true, muted: $0["muted"] as? Bool == true) }
+            if now?.audible != safariAudio[item]?.audible || now?.muted != safariAudio[item]?.muted {
+                safariAudio[item] = now
+                changed = true
+            }
+        }
+        if changed { onChange?() }
     }
 
     // ---- helpers ----
@@ -1816,6 +1852,12 @@ final class LibraryWindowSource: MarginWindowSource {
         case "openLauncher":
             session.openLauncher(windowId: windowId, settings: payload["settings"] as? Bool == true)
             return nil
+        case "addFavorite":
+            // Which favorites it joins: the person's setting (the profile's settings), whatever the page sent; the library
+            // takes the scope from it and the window's space (library.ts addFavorite), never a scope a page names.
+            let settings = profileSource.snapshot()["settings"] as? JSONObject
+            payload["favoritesScope"] = settings?["favoritesScope"] as? String == "profile" ? "profile" : "global"
+            payload["scope"] = nil
         case "closeTab" where payload["tabId"] == nil:
             // ⌘W: the item shown in that window.
             guard let w = windowId, let item = session.shown[w] else { return nil }

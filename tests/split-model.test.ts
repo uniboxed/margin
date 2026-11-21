@@ -32,19 +32,20 @@ test('M2.7 Split View: 2–4 pane lifecycle, swap, resize, toggleAxis, and autom
 
   s = M.createSplit(s, { id: 'sp-1', spaceId: 'personal', panes: [1, 2], axis: 'horizontal' });
   assert.equal(s.splits?.length, 1);
-  assert.deepEqual(s.splits![0].panes, ['1', '2']);
+  const mid = (id: number) => s.tabs[id].mid!;
+  assert.deepEqual(s.splits![0].panes, [mid(1), mid(2)], 'Margin tab ids (they outlive the browser renumbering its tabs)');
   assert.deepEqual(s.splits![0].ratios, [0.5, 0.5]);
 
   // Add panes 3 & 4; 5th pane is refused (MAX_SPLIT_PANES = 4).
   s = M.addToSplit(s, 'sp-1', 3);
   s = M.addToSplit(s, 'sp-1', 4);
   s = M.addToSplit(s, 'sp-1', 5);
-  assert.deepEqual(s.splits![0].panes, ['1', '2', '3', '4']);
+  assert.deepEqual(s.splits![0].panes, [1, 2, 3, 4].map(mid));
   assert.equal(s.splits![0].ratios.length, 4);
 
   // Swap pane 0 and pane 1; toggle axis; resize ratios.
   s = M.swapSplitPanes(s, 'sp-1', 0, 1);
-  assert.deepEqual(s.splits![0].panes, ['2', '1', '3', '4']);
+  assert.deepEqual(s.splits![0].panes, [2, 1, 3, 4].map(mid));
   s = M.toggleSplitAxis(s, 'sp-1');
   assert.equal(s.splits![0].axis, 'vertical');
   s = M.resizeSplit(s, 'sp-1', [0.4, 0.2, 0.2, 0.2]);
@@ -102,8 +103,10 @@ test('M2.7 Split View: library supports Web+App and Web+Web splits, showSplit re
   assert.equal(values.splits[splitId], undefined);
 
   // Context menu & action validation on split tabs.
+  const web3 = act('newTab', { windowId: 1, url: 'https://linear.example/', title: 'Linear' }, ['t004']).result.tabId;
   const s = L.stateOf(values);
-  const s2 = M.createSplit(s, { id: 'sp-test', spaceId: 'a', panes: [web1, 't-ghost'] });
+  assert.equal(M.createSplit(s, { id: 'x', spaceId: 'a', panes: [web1, 't-ghost'] }), s, 'a pane of no item: no split');
+  const s2 = M.createSplit(s, { id: 'sp-test', spaceId: 'a', panes: [web1, web3] });
   const ctx = contextFromState(s2);
   assert.equal(checkAction('split.open', 'sp-test', ctx).ok, true);
   assert.equal(checkAction('split.swap', 'sp-test', ctx).ok, true);

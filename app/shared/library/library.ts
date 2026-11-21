@@ -94,15 +94,24 @@ export function stateOf(values: Values): LibState {
   const airTraffic = sorted(values?.airTraffic).filter(([, r]) => typeof r.pattern === 'string' && typeof r.spaceId === 'string')
     .sort((a, b) => finite(a[1].order) - finite(b[1].order) || a[0].localeCompare(b[0]))
     .map(([id, r], i) => ({ id, pattern: str(r.pattern, 200), spaceId: r.spaceId, enabled: r.enabled !== false, order: finite(r.order, i) }));
-  const splits = sorted(values?.splits).filter(([, g]) => typeof g.spaceId === 'string' && Array.isArray(g.panes) && g.panes.length >= 2)
-    .map(([id, g]) => ({
+  // A split's panes as stored: item ids (strings), each once, at most MAX_SPLIT_PANES, each with the ratio stored at its
+  // own place (one per pane: the ratios of those left kept relative to each other); fewer than 2: no split. (Panes whose
+  // item is gone leave in perform: state/model.ts settleSplits.)
+  const splits = sorted(values?.splits).filter(([, g]) => typeof g.spaceId === 'string' && Array.isArray(g.panes)).flatMap(([id, g]) => {
+    const given: unknown[] = g.panes;
+    const at = given.flatMap((x, i) => (typeof x === 'string' && x && given.indexOf(x) === i ? [i] : [])).slice(0, M.MAX_SPLIT_PANES);
+    if (at.length < 2) return [];
+    const ratios = Array.isArray(g.ratios) && g.ratios.length === given.length ? at.map((i) => { const r = finite(g.ratios[i], 1); return r > 0 ? r : 1; }) : at.map(() => 1);
+    const sum = ratios.reduce((a, b) => a + b, 0);
+    return [{
       id, spaceId: g.spaceId, axis: g.axis === 'vertical' ? 'vertical' as const : 'horizontal' as const,
-      panes: g.panes.filter((x: unknown): x is string => typeof x === 'string' && !!x).slice(0, M.MAX_SPLIT_PANES),
-      ratios: Array.isArray(g.ratios) ? g.ratios.map((n: unknown) => finite(n, 1)) : g.panes.map(() => 1 / g.panes.length),
+      panes: at.map((i) => given[i] as string),
+      ratios: ratios.map((r) => Math.round((r / sum) * 10000) / 10000),
       ...(g.pinned ? { pinned: true } : {}),
       ...(typeof g.folderId === 'string' && g.folderId ? { folderId: g.folderId } : {}),
       ...(Number.isFinite(g.pos) ? { pos: g.pos } : {}),
-    }));
+    }];
+  });
   const folders = sorted(values?.folders).filter(([, f]) => typeof f.spaceId === 'string')
     .map(([id, f]) => ({ id, spaceId: f.spaceId, name: str(f.name, 200), open: f.open !== false, pos: finite(f.pos), ...(typeof f.parentId === 'string' && f.parentId ? { parentId: f.parentId } : {}) }));
   const archive = sorted(values?.archive).filter(([, a]) => typeof a.url === 'string')
@@ -353,12 +362,13 @@ const ACTIONS: Record<string, Handler> = {
     return { s: used(s, k.id, win(p), now), result: { shown: k.id } };
   },
   // Closed from Margin (its ×, ⌘W): to the archive (a web page), and the hosting closes its page.
-  // A sticky-pinned item resets to unloaded at its root URL instead of archiving.
+  // A sticky pin's or a favorite's item isn't archived: the item goes (an item is a pin's open tab here) and the pin
+  // or favorite stays, not open; opened again, it opens at its own address.
   closeTab({ s, p, now, ids, requests }) {
     const k: any = s.keptTabs[p?.tabId];
     if (!k) return fail(s, 'no such item');
-    const isSticky = (typeof k.pinnedBy === 'string' && s.pins.some((pin) => pin.id === k.pinnedBy))
-      || (typeof k.favoriteId === 'string' && (s.favorites ?? []).some((fav) => fav.id === k.favoriteId));
+    // (A pin of the item's own space, or a favorite: an item moved to another space is no pin's, archived as any.)
+    const isSticky = M.boundElsewhere(s, k, k.spaceId);
     const existingSplit = M.splitForItem(s, k.id);
     let next = existingSplit ? M.removeFromSplit(s, existingSplit.id, k.id) as LibState : s;
     next = isSticky ? M.forgetKept(next, k.id) as LibState : archiveItem(next, k.id, ids.other('a'), now);
@@ -468,7 +478,8 @@ const ACTIONS: Record<string, Handler> = {
     if (!pin) return fail(s, 'no such pin');
     const w = win(p);
     const bound = Object.values(s.keptTabs ?? {}).find((k) => k.pinnedBy === pin.id && k.spaceId === pin.spaceId) ?? null;
-    const item = bound ?? M.keptForUrl(s, pin.url, pin.spaceId);
+    // (By its address: never an item another pin or a favorite has.)
+    const item = bound ?? M.keptForUrl(s, pin.url, pin.spaceId, { pinId: pin.id });
     let next = w != null ? M.setActiveSpace(s, w as any, pin.spaceId) as LibState : s;
     if (item) {
       if (item.pinnedBy !== pin.id) next = M.bindTabToPin(next, item.id, pin.id) as LibState;
@@ -483,7 +494,7 @@ const ACTIONS: Record<string, Handler> = {
     if (!pin) return fail(s, 'no such pin');
     const w = win(p);
     const item = Object.values(s.keptTabs ?? {}).find((k) => k.pinnedBy === pin.id && k.spaceId === pin.spaceId)
-      ?? M.keptForUrl(s, pin.url, pin.spaceId);
+      ?? M.keptForUrl(s, pin.url, pin.spaceId, { pinId: pin.id });
     let next = w != null ? M.setActiveSpace(s, w as any, pin.spaceId) as LibState : s;
     if (item) {
       next = { ...next, keptTabs: { ...next.keptTabs, [item.id]: { ...next.keptTabs[item.id], url: pin.url, title: pin.title || next.keptTabs[item.id].title } } } as LibState;
@@ -508,7 +519,12 @@ const ACTIONS: Record<string, Handler> = {
     const k: any = typeof p?.tabId === 'string' ? s.keptTabs[p.tabId] : null;
     const pin: any = !k && typeof p?.pinId === 'string' ? s.pins.find((x) => x.id === p.pinId) : null;
     const spaceId = k?.spaceId ?? pin?.spaceId ?? windowSpace(s, win(p));
-    const scope = typeof p?.scope === 'string' && p.scope ? p.scope : 'global';
+    // Its scope, as the sidebar shows favorites (shared/view.ts sidebar: state/model.ts favoriteScopeOf): the person's
+    // setting `favoritesScope`, which the app gives (LibraryWindowSource, from the profile's settings, over anything the
+    // page sent), and the profile of the space the window shows (else the item's): never a scope a page names.
+    const w = win(p);
+    const shown = w != null && hasSpace(s, s.activeSpaceByWindow[w as any]) ? s.activeSpaceByWindow[w as any] : spaceId;
+    const scope = M.favoriteScopeOf({ ...s, settings: { ...s.settings, favoritesScope: p?.favoritesScope === 'profile' ? 'profile' : 'global' } } as LibState, shown);
     const target = k ? targetOfItem(k) : pin ? targetOf(pin.target) ?? webTarget('safari', null) : targetOf(p?.target) ?? (spaceId ? spaceTarget(s, spaceId) : webTarget('safari', null));
     const url = k?.url ?? pin?.url ?? str(p?.url);
     const title = k?.title ?? pin?.title ?? str(p?.title) ?? url;
@@ -530,8 +546,9 @@ const ACTIONS: Record<string, Handler> = {
     if (!fav) return fail(s, 'no such favorite');
     const w = win(p);
     const spaceId = windowSpace(s, w) ?? s.spaces[0]?.id ?? null;
-    const bound = Object.values(s.keptTabs ?? {}).find((k) => k.favoriteId === fav.id) ?? null;
-    const item = bound ?? Object.values(s.keptTabs ?? {}).find((k) => !k.favoriteId && !k.pinnedBy && M.normalizeUrl(k.url) === M.normalizeUrl(fav.url)) ?? null;
+    // Its item (the one used last, if it has more), else one at its address no pin or other favorite has.
+    const bound = M.keptOfFavorite(s, fav.id)[0] ?? null;
+    const item = bound ?? Object.values(s.keptTabs ?? {}).find((k) => M.normalizeUrl(k.url) === M.normalizeUrl(fav.url) && !M.boundElsewhere(s, k, k.spaceId, { favoriteId: fav.id })) ?? null;
     let next = s;
     if (item) {
       if (item.favoriteId !== fav.id) next = M.bindTabToFavorite(next, item.id, fav.id) as LibState;
@@ -545,7 +562,7 @@ const ACTIONS: Record<string, Handler> = {
     if (!fav) return fail(s, 'no such favorite');
     const w = win(p);
     const spaceId = windowSpace(s, w) ?? s.spaces[0]?.id ?? null;
-    const item = Object.values(s.keptTabs ?? {}).find((k) => k.favoriteId === fav.id) ?? null;
+    const item = M.keptOfFavorite(s, fav.id)[0] ?? null;
     let next = s;
     if (item) {
       next = { ...next, keptTabs: { ...next.keptTabs, [item.id]: { ...next.keptTabs[item.id], url: fav.url, title: fav.title || next.keptTabs[item.id].title } } } as LibState;
@@ -724,7 +741,9 @@ export function perform(values: Values, action: string, payload: any = {}, env: 
     return { ok: false, error: `failed: ${(e as Error)?.message ?? e}`, changes: [], requests: [] };
   }
   if (out.error) return { ok: false, error: out.error, changes: [], requests: [] };
-  return { ok: true, result: out.result ?? null, changes: diff(before, valuesOf(out.s, values?.imports ?? {})), requests };
+  // Splits checked against the items left (an item archived, forgotten, closed outside Margin leaves its split).
+  const after = M.settleSplits(out.s) as LibState;
+  return { ok: true, result: out.result ?? null, changes: diff(before, valuesOf(after, values?.imports ?? {})), requests };
 }
 
 /**

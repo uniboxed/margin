@@ -433,7 +433,8 @@ export function mutate(fn: (state: State) => State | void | Promise<State | void
     const prev = await load();
     if (role !== 'owner') return prev;
     const wait = within?.(prev) ?? null;
-    const next = (((await fn(prev)) ?? prev) as State);
+    // (Splits checked against the Margin tabs left after every change: state/model.ts settleSplits.)
+    const next = M.settleSplits(((await fn(prev)) ?? prev) as State);
     // Changed by value: a tab event with nothing new (a page that finished
     // loading again, the same title) rebuilds its records, but isn't written.
     // A real change still goes through flush, which asks first whether this

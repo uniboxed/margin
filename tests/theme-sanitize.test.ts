@@ -351,7 +351,7 @@ test('the action list is PLAN.md §3\'s, plus palette.run and the behaviors\' an
   // Track 2 M2.5 (Peek & Little Arc).
   const arcM25 = ['peek.close', 'peek.expand', 'peek.copyUrl', 'peek.setSpace', 'peek.back', 'peek.forward'];
   // Track 2 M2.6 (Air Traffic Control).
-  const arcM26 = ['airTraffic.addHost'];
+  const arcM26 = ['airTraffic.addHost', 'airTraffic.remove', 'airTraffic.toggle'];
   // Track 2 M2.7 (Universal Split View).
   const arcM27 = ['split.add', 'split.open', 'split.focus', 'split.breakOut', 'split.closePane', 'split.swap', 'split.toggleAxis'];
   assert.deepEqual(Object.keys(ACTIONS).sort(), [...plan, 'palette.run', ...step2, ...step3, ...step4, ...settingsTab, ...spaceThemes, ...arcQol, ...arcM22, ...arcM23, ...arcM24, ...arcM25, ...arcM26, ...arcM27].sort());

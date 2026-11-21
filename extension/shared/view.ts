@@ -3,7 +3,7 @@
 import type { Favorite, Pin, State } from '../../types/margin';
 import { appIcon, appOfItem } from './apps.ts';
 import type { InstalledApp } from './apps.ts';
-import { favoriteScopeOf } from '../state/model.ts';
+import { boundElsewhere, favoriteScopeOf } from '../state/model.ts';
 
 // A pin's or folder's order (state/model.ts): saved, or its place in the list.
 const posOf = (item: { pos?: number } | null | undefined, i: number): number => (Number.isFinite(item?.pos) ? item!.pos! : i);
@@ -294,7 +294,7 @@ function pinTabId(state: State, pinId: string, windowId: number) {
   const sticky = Object.values(state.tabs ?? {}).filter((t) => t.pinnedBy === pinId && state.tabSpace?.[t.id] === pin.spaceId);
   if (sticky.length) return (sticky.find((t) => t.windowId === windowId) ?? sticky[0])?.id ?? null;
   const key = normalizeUrl(pin.url);
-  const matches = Object.values(state.tabs ?? {}).filter((t) => !t.pinnedBy && normalizeUrl(t.url) === key && state.tabSpace?.[t.id] === pin.spaceId);
+  const matches = Object.values(state.tabs ?? {}).filter((t) => normalizeUrl(t.url) === key && state.tabSpace?.[t.id] === pin.spaceId && !boundElsewhere(state, t, pin.spaceId, { pinId }));
   return (matches.find((t) => t.windowId === windowId) ?? matches[0])?.id ?? null;
 }
 

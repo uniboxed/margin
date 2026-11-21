@@ -789,6 +789,37 @@ func hostedTests() {
     check("hosted: a search typed in the palette: a web item at the engine's address", searched?["ok"] as? Bool == true
           && library.items(space: home).contains { ($0.value["url"] as? String)?.hasPrefix("https://www.google.com/search?") == true && ($0.value["url"] as? String)?.contains("q=margin%20app") == true })
     run {}
+
+    // ---- an open item's row: what binds it (its pin or favorite, its own name) and its sound, as the UI takes them ----
+    _ = library.perform("renameTab", ["tabId": aItem, "title": "Renamed A"])
+    let faved = source.perform("addFavorite", ["windowId": 1, "tabId": session.number(ofItem: aItem), "scope": "profile:evil", "favoritesScope": "profile"])
+    let favId = faved?["result"] as? String ?? ""
+    check("hosted: addFavorite from the page: the scope the person's settings say (none here: global), never one the page sent",
+          !favId.isEmpty && (library.dataSet.liveValues("favorites")[favId] as? JSONObject)?["scope"] as? String == "global", "\(String(describing: faved))")
+    func liveTab(_ item: String) -> JSONObject? {
+        ((session.live(library.snapshot())["openTabs"] as? JSONObject)?["tabs"] as? JSONObject ?? [:]).values.compactMap { $0 as? JSONObject }.first { $0["mid"] as? String == item }
+    }
+    let aRow = liveTab(aItem)
+    check("hosted: an open item's tab carries its own name and the favorite it's the tab of", aRow?["customTitle"] as? String == "Renamed A" && aRow?["favoriteId"] as? String == favId
+          && aRow?["audible"] == nil && aRow?["muted"] == nil, "\(String(describing: aRow))")
+    let aSafariTab = session.safariTabs[aItem] ?? -1
+    var heardChange = 0
+    let beforeChange = session.onChange
+    session.onChange = { heardChange += 1; beforeChange?() }
+    session.copyTabs(profile: "s-default", tabs: [String(aSafariTab): ["id": aSafariTab, "audible": true, "muted": true]])
+    let playing = liveTab(aItem)
+    check("hosted: its copy says its tab plays, muted: the row says so (the mini player, Unmute), the windows drawn again",
+          playing?["audible"] as? Bool == true && playing?["muted"] as? Bool == true && heardChange == 1, "\(String(describing: playing)) \(heardChange)")
+    session.copyTabs(profile: "s-default", tabs: [String(aSafariTab): ["id": aSafariTab, "audible": true, "muted": true]])
+    session.copyTabs(profile: "s-work", tabs: [String(aSafariTab): ["id": aSafariTab]])
+    check("hosted: …the same again, or another profile's tab of that number: nothing drawn again", heardChange == 1 && liveTab(aItem)?["audible"] as? Bool == true)
+    session.copyTabs(profile: "s-default", tabs: [String(aSafariTab): ["id": aSafariTab]])
+    check("hosted: …stopped: no sound marks", liveTab(aItem)?["audible"] == nil && liveTab(aItem)?["muted"] == nil && heardChange == 2)
+    session.onChange = beforeChange
+    let pinned = HostedSession.liveTab(["title": "T", "url": "https://p.example/", "pinnedBy": "p-1", "favoriteId": "", "customTitle": "Mine"], number: 7, item: "t-x", windowId: 1, index: 0, active: false, audible: false, muted: false)
+    check("hosted: a pin's open item: its pinnedBy carried (an empty binding not)", pinned["pinnedBy"] as? String == "p-1" && pinned["customTitle"] as? String == "Mine"
+          && pinned["favoriteId"] == nil && pinned["audible"] == nil && pinned["mid"] as? String == "t-x" && int(pinned["id"]) == 7)
+
     let unsupported = source.perform("renameProfile", ["windowId": 1])
     check("hosted: a request the library doesn't take: refused, said to the page", unsupported?["ok"] as? Bool == false)
     check("hosted: the UI's own bookkeeping requests: answered quietly", source.perform("sidebarScroll", ["windowId": 1])?["ok"] as? Bool == true)

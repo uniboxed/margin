@@ -180,6 +180,19 @@ const launcherOpening = new Map<string, Promise<{ tabId: number, shown: number }
 const hostedTabs = createHostedTabs(() => api.tabs as unknown as HostedTabsApi, shrinkPicture);
 const mediaRegistry = createMediaRegistry();
 
+// A favorite's tab (openFavorite): the open one bound to it (in `windowId` first), else an open one at its address no
+// pin or other favorite has; if none is open, its kept one (bound to it: asleep, or lost with its window; else one of
+// the window's space at its address no other has), which it opens again: one tab per favorite, never a pile of them.
+function favoriteTabs(s: State, fav: NonNullable<State['favorites']>[number], windowId: number | undefined) {
+  const key = M.normalizeUrl(fav.url);
+  const bound = Object.values(s.tabs).filter((t) => t.favoriteId === fav.id);
+  const matches = bound.length ? bound : Object.values(s.tabs).filter((t) => M.normalizeUrl(t.url) === key && !M.boundElsewhere(s, t, s.tabSpace[t.id], { favoriteId: fav.id }));
+  const open = matches.find((t) => t.windowId === windowId) ?? matches[0] ?? null;
+  const spaceId = V.activeSpaceId(s, windowId as number);
+  const kept = M.keptOfFavorite(s, fav.id)[0] ?? M.keptForUrl(s, fav.url, spaceId, { favoriteId: fav.id });
+  return { open, kept };
+}
+
 export const handlers = {
   // A page starting: which tab and window it is, this copy, whether the window is in Margin's
   // full screen (Chrome), Margin.app's word on the link and the window's layout.
@@ -250,12 +263,13 @@ export const handlers = {
   },
   // Closing from Margin archives the tab, like Arc. One that isn't open (a
   // string id: state/model.ts keptTabs) goes to the archive as it is.
-  // A sticky-pinned tab unloads & resets without archiving.
+  // A sticky-pinned tab unloads & resets without archiving (its pin, or favorite, stays: not open). Only a pin of the
+  // tab's own space counts (a tab moved to another space is no pin's: it's archived as any).
   async closeTab({ tabId }: { tabId: number | string }) {
     if (typeof tabId === 'string') {
       await mutate((s) => {
         const k = s.keptTabs[tabId];
-        if ((k?.pinnedBy && s.pins.some((p) => p.id === k.pinnedBy)) || (k?.favoriteId && (s.favorites ?? []).some((f) => f.id === k.favoriteId))) return M.forgetKept(s, tabId);
+        if (k && M.boundElsewhere(s, k, k.spaceId)) return M.forgetKept(s, tabId);
         return M.archiveKept(s, tabId, { id: newId(), closedAt: now() });
       });
       return;
@@ -263,7 +277,7 @@ export const handlers = {
     await mutate((s) => {
       const tab = s.tabs[tabId];
       if (!tab) return s;
-      if ((tab.pinnedBy && s.pins.some((p) => p.id === tab.pinnedBy)) || (tab.favoriteId && (s.favorites ?? []).some((f) => f.id === tab.favoriteId))) return s;
+      if (M.boundElsewhere(s, tab, s.tabSpace[tabId])) return s;
       return /^https?:/i.test(tab.url) ? M.archiveTab(s, M.archiveEntryForTab(s, tab, { id: newId(), closedAt: now() })) : s;
     });
     const closing = await api.tabs.get(tabId).catch(() => null);
@@ -536,7 +550,8 @@ export const handlers = {
     // Only a tab of the pin's space (as the sidebar shows it): sticky pinnedBy match first, then normalized URL fallback.
     const key = M.normalizeUrl(pin.url);
     const bound = Object.values(s.tabs).filter((t) => t.pinnedBy === pin.id && s.tabSpace[t.id] === pin.spaceId);
-    const matches = bound.length ? bound : Object.values(s.tabs).filter((t) => M.normalizeUrl(t.url) === key && s.tabSpace[t.id] === pin.spaceId);
+    // (Never a tab another pin or a favorite has, at the same address.)
+    const matches = bound.length ? bound : Object.values(s.tabs).filter((t) => M.normalizeUrl(t.url) === key && s.tabSpace[t.id] === pin.spaceId && !M.boundElsewhere(s, t, pin.spaceId, { pinId: pin.id }));
     // The window asking first.
     const existing = matches.find((t) => t.windowId === windowId) ?? matches[0];
     if (existing) {
@@ -547,7 +562,7 @@ export const handlers = {
     }
     // Its tab that isn't open, if the space has one (kept from before it was
     // pinned): opened as that Margin tab.
-    const kept = Object.values(s.keptTabs ?? {}).find((k) => k.pinnedBy === pin.id && k.spaceId === pin.spaceId) ?? M.keptForUrl(s, pin.url, pin.spaceId);
+    const kept = Object.values(s.keptTabs ?? {}).find((k) => k.pinnedBy === pin.id && k.spaceId === pin.spaceId) ?? M.keptForUrl(s, pin.url, pin.spaceId, { pinId: pin.id });
     const tab = await openTab({ windowId, url: kept?.url ?? pin.url, spaceId: pin.spaceId, deadline, ...(kept ? { keptId: kept.id } : {}) });
     if (tab?.id != null) await mutate((st) => M.bindTabToPin(st, tab.id, pin.id));
     return { shown: tab.id };
@@ -602,36 +617,37 @@ export const handlers = {
     const s = await load();
     const fav = (s.favorites ?? []).find((f) => f.id === favoriteId);
     if (!fav) return null;
-    const bound = Object.values(s.tabs).filter((t) => t.favoriteId === fav.id);
-    const key = M.normalizeUrl(fav.url);
-    const matches = bound.length ? bound : Object.values(s.tabs).filter((t) => !t.favoriteId && !t.pinnedBy && M.normalizeUrl(t.url) === key);
-    const existing = matches.find((t) => t.windowId === windowId) ?? matches[0];
+    const win = windowId ?? sender?.tab?.windowId;
+    const { open: existing, kept } = favoriteTabs(s, fav, win);
     if (existing) {
-      if (existing.favoriteId !== fav.id) await mutate((st) => M.bindTabToFavorite(st, existing.id, fav.id));
-      await away.showTab(existing.id, windowId ?? sender?.tab?.windowId, { source: 'openFavorite', deadline });
+      await mutate((st) => M.settleFavorite(existing.favoriteId === fav.id ? st : M.bindTabToFavorite(st, existing.id, fav.id), fav.id, st.tabs[existing.id]?.mid));
+      await away.showTab(existing.id, win, { source: 'openFavorite', deadline });
       return { shown: existing.id };
     }
-    const win = windowId ?? sender?.tab?.windowId;
+    // Its tab asleep or lost with its window (kept, not open): opened again as that Margin tab, in the space the window
+    // shows (a favorite is no space's), never a new tab beside it.
     const spaceId = V.activeSpaceId(s, win);
-    const tab = await openTab({ windowId: win, url: fav.url, spaceId, deadline });
-    if (tab?.id != null) await mutate((st) => M.bindTabToFavorite(st, tab.id, fav.id));
+    const tab = await openTab({ windowId: win, url: kept?.url ?? fav.url, spaceId, deadline, ...(kept ? { keptId: kept.id } : {}) });
+    if (tab?.id != null) await mutate((st) => M.settleFavorite(M.bindTabToFavorite(st, tab.id, fav.id), fav.id, st.tabs[tab.id]?.mid ?? kept?.id));
     return { shown: tab.id };
   },
   async resetFavorite({ favoriteId, windowId, deadline }: { favoriteId: string, windowId?: number, deadline?: number }, sender: BrowserMessageSender) {
     const s = await load();
     const fav = (s.favorites ?? []).find((f) => f.id === favoriteId);
     if (!fav) return null;
+    const win = windowId ?? sender?.tab?.windowId;
     const bound = Object.values(s.tabs).filter((t) => t.favoriteId === fav.id);
-    const existing = bound.find((t) => t.windowId === windowId) ?? bound[0];
+    const existing = bound.find((t) => t.windowId === win) ?? bound[0];
     if (existing) {
       await api.tabs.update(existing.id, { url: fav.url, active: true }).catch(() => null);
-      await away.showTab(existing.id, windowId ?? sender?.tab?.windowId, { source: 'resetFavorite', deadline });
+      await away.showTab(existing.id, win, { source: 'resetFavorite', deadline });
       return { shown: existing.id };
     }
-    const win = windowId ?? sender?.tab?.windowId;
+    // Its kept tab, if it has one, opened at the favorite's address (as that Margin tab).
+    const kept = M.keptOfFavorite(s, fav.id)[0] ?? null;
     const spaceId = V.activeSpaceId(s, win);
-    const tab = await openTab({ windowId: win, url: fav.url, spaceId, deadline });
-    if (tab?.id != null) await mutate((st) => M.bindTabToFavorite(st, tab.id, fav.id));
+    const tab = await openTab({ windowId: win, url: fav.url, spaceId, deadline, ...(kept ? { keptId: kept.id } : {}) });
+    if (tab?.id != null) await mutate((st) => M.settleFavorite(M.bindTabToFavorite(st, tab.id, fav.id), fav.id, st.tabs[tab.id]?.mid ?? kept?.id));
     return { shown: tab.id };
   },
   async renameFavorite({ favoriteId, title }: { favoriteId: string, title: string }) {
@@ -689,10 +705,12 @@ export const handlers = {
     const s = await load();
     const g = (s.splits ?? []).find((x) => x.id === splitId);
     if (!g) return null;
-    const first = g.panes[0];
+    // Its first pane's Margin tab (state/model.ts "split view"): its open tab (in this window first), else the kept one.
+    const first = g.panes.find((p) => s.keptTabs?.[p] || Object.values(s.tabs).some((t) => t.mid === p));
     if (!first) return null;
-    if (/^\d+$/.test(first)) return handlers.activateTab({ tabId: Number(first), windowId }, {} as BrowserMessageSender);
-    return handlers.activateTab({ tabId: first, windowId }, {} as BrowserMessageSender);
+    const open = Object.values(s.tabs).filter((t) => t.mid === first);
+    const tab = open.find((t) => t.windowId === windowId) ?? open[0];
+    return handlers.activateTab({ tabId: tab ? tab.id : first, windowId }, {} as BrowserMessageSender);
   },
   async breakOutSplit({ tabId }: { tabId: number | string }) {
     await mutate((s) => {

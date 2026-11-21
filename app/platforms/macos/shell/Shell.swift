@@ -240,6 +240,13 @@ final class Shell: ExtensionLinkDelegate {
                 entry.resyncTimer?.invalidate()
                 if case .snapshot = message { profilesSoon(); themesTellCopy(entry) }
                 if case .delta(_, _, let changes, _) = message, changes["spaces"] != nil { profilesSoon() }
+                // A Safari copy's tabs: the hosted items' sound (playing, muted), for the UI's rows (HostedSession.copyTabs).
+                var tabsChanged = false
+                if case .snapshot = message { tabsChanged = true }
+                if case .delta(_, _, let changes, _) = message, changes["openTabs"] != nil { tabsChanged = true }
+                if tabsChanged, connection.hello.browser == "safari", let tabs = (entry.mirror.value("openTabs") as? JSONObject)?["tabs"] as? JSONObject {
+                    hosted?.copyTabs(profile: connection.hello.profile, tabs: tabs)
+                }
                 tellDrawn(entry)
                 soon()
             case .gap(let expected, let got):
