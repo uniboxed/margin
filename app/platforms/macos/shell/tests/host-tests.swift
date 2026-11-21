@@ -640,10 +640,27 @@ final class FakeHostWorld: HostSystem {
         await onSetFrame?()
         return true
     }
+    // The window server's order of the windows raised (front to back): a window raised (its app activated with it) goes
+    // in front of every other one; a window never raised isn't listed. Read by the order checks (screen-card-tests.swift).
+    var raised: [Int] = []
+    // `byRaise`: the on-screen list (`autoOnScreen`) in that order, front to back (the windows never raised behind, by
+    // number). `unraisable`: windows whose raise doesn't take (their app's Accessibility doesn't list them yet: a window
+    // made a moment ago and moved between Spaces by the bridge): its app activated, nothing reordered.
+    var byRaise = false
+    var unraisable: Set<Int> = []
+    // Whether window `a` is in front of window `b` by that order (nil: either never raised).
+    func inFront(_ a: Int, of b: Int) -> Bool? {
+        guard let ia = raised.firstIndex(of: a), let ib = raised.firstIndex(of: b) else { return nil }
+        return ia < ib
+    }
     func activate(pid: pid_t, window: Int) async -> Bool {
         calls.append("activate \(pid) \(window)")
         if activateLag > 0 { await sleep(activateLag) }
         activated.insert(pid)
+        if !unraisable.contains(window) {
+            raised.removeAll { $0 == window }
+            raised.insert(window, at: 0)
+        }
         if activateShowsDesktop, let w = wins[window], w.pid == pid, w.priv == nil, w.spaces == [Self.desktop], current != Self.desktop {
             current = Self.desktop
             currentSince = clock
@@ -815,7 +832,8 @@ final class FakeHostWorld: HostSystem {
         if blank { return [] }
         let dropped = Set(listDrops.filter { $0.value > 0 }.keys)
         for n in dropped { listDrops[n]? -= 1 }
-        return wins.keys.sorted().filter { n in shows(n) && !dropped.contains(n) }
+        let rank = { (n: Int) in self.byRaise ? self.raised.firstIndex(of: n) ?? Int.max : 0 }
+        return wins.keys.sorted { (rank($0), $0) < (rank($1), $1) }.filter { n in shows(n) && !dropped.contains(n) }
             .compactMap { n in bounds(window: n).map { ServerWindow(number: n, pid: wins[n]?.pid ?? 0, layer: n == Self.marginWindow ? 1 : 0, bounds: $0) } }
     }
     func windowOnScreen(_ number: Int) -> (onScreen: Bool, alpha: Double)? {
