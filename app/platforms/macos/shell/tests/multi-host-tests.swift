@@ -1,0 +1,234 @@
+// Several visible hosts per Margin window (docs/PEEK-SPLIT.md §1), part of tests.swift's run: the host engine against
+// the stand-in world (host-tests.swift `FakeHostWorld`, its tiles on and off) with a layout of two and three hosts at
+// rects of their own: main and a split's pane, a card over them (a Safari window in the card's role, made by the
+// stand-in for its profile's copy). With one visible host nothing changes: every older check is that.
+import AppKit
+import Foundation
+
+func multiHostTests() {
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent("margin-multi-host-tests-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    var made = 0
+    func world(tiles: Bool = true) -> (FakeHostWorld, HostEngine) {
+        made += 1
+        let w = FakeHostWorld()
+        w.tilesOn = tiles
+        let e = HostEngine(system: w, marker: folder.appendingPathComponent("\(made)/\(HostMarker.fileName)"), pid: 1)
+        e.options.privateRetire = 0
+        e.options.earlyFullScreen = false
+        return (w, e)
+    }
+    let page = CGRect(x: 276, y: 41, width: 1228, height: 933)
+    let placement = HostPlacement(page: page, area: FakeHostWorld.display)
+    // A split's two panes in the page area (an 8 pt gap), and a card in the middle of it.
+    let left = CGRect(x: 276, y: 41, width: 610, height: 933), right = CGRect(x: 894, y: 41, width: 610, height: 933)
+    let card = CGRect(x: 374, y: 106, width: 1032, height: 803)
+    let textEdit = HostTarget.app("com.apple.TextEdit"), notes = HostTarget.app("com.apple.Notes"), faceTime = HostTarget.app("com.apple.FaceTime")
+    func open(_ e: HostEngine, _ t: HostTarget) -> HostResult? {
+        hostRun { await e.open(app: t, in: placement, marginWindow: FakeHostWorld.marginWindow, marginSpace: FakeHostWorld.marginSpace) }
+    }
+    func layout(_ e: HostEngine, _ main: HostTarget, _ mainRect: CGRect? = nil, _ extras: [HostExtra], focused: HostID? = nil) -> [HostID: HostResult] {
+        hostRun { await e.setLayout(main: main, mainRect: mainRect, extras: extras, focused: focused, in: placement, marginWindow: FakeHostWorld.marginWindow, marginSpace: FakeHostWorld.marginSpace) } ?? [:]
+    }
+    func window(_ w: FakeHostWorld, _ bundle: String) -> Int { w.running(bundleId: bundle).first.flatMap { w.apps[$0.pid]?.windows.first } ?? 0 }
+    func inMargin(_ w: FakeHostWorld, _ n: Int) -> Bool { w.spaces(window: n) == [FakeHostWorld.marginSpace] }
+    func shown(_ r: HostResult?) -> Bool { if case .shown? = r { return true }; return false }
+    // Polls with the clock moving (a quarter second each), each one's queued work waited for.
+    func polls(_ w: FakeHostWorld, _ e: HostEngine, _ n: Int = 12) {
+        for _ in 0..<n { w.clock += 0.25; e.poll(); _ = hostRun { await e.activateShown(at: nil); return true }; _ = hostRun { await w.sleep(0.001); return true } }
+    }
+    // The bridge's moves of a window into anything but Margin's Space since `mark` (a park of it).
+    func parked(_ w: FakeHostWorld, _ n: Int, since mark: Int) -> Bool { w.calls.dropFirst(mark).contains { $0.hasPrefix("move \(n) ") && $0 != "move \(n) \(FakeHostWorld.marginSpace)" } }
+
+    // ---- identity: a card's and a pane's ids, logged with their role; main's as before ----
+    do {
+        let main = HostTarget.safariWindow("Work").id, cardId = HostTarget.safariWindow("Work", .card).id, pane = HostTarget.safariWindow(nil, .pane(2)).id
+        check("multi-host: main's id unchanged (safari:<profile>), a card's and a pane's with their role after it",
+              main.raw == "safari:Work" && cardId.raw == "safari:Work#card" && pane.raw == "safari:#pane2" && HostTarget.safariWindow("Work", .main) == .safariWindow("Work"),
+              "\(main.raw) \(cardId.raw) \(pane.raw)")
+        check("multi-host: logged as safari:p<number>#card, never the profile's name; the default profile's as safari:default#pane2",
+              cardId.description == main.description + "#card" && cardId.description.hasPrefix("safari:p") && !cardId.description.contains("Work") && pane.description == "safari:default#pane2",
+              "\(cardId.description) \(pane.description)")
+        check("multi-host: a card's role read back from its id, and its profile's main window (routes are its Safari's)",
+              cardId.safariRole == .card && pane.safariRole == .pane(2) && main.safariRole == .main && cardId.main == main && pane.main == HostTarget.safariWindow(nil).id
+              && HostID(raw: "app:com.apple.Notes").main.raw == "app:com.apple.Notes" && HostID(raw: "safari:odd#name").safariRole == .main, "\(cardId.main)")
+    }
+
+    // ---- two visible hosts (tiles): main and a pane, each at its rect, held through polls ----
+    do {
+        let (w, e) = world()
+        var told: [[HostShownWindow]] = []
+        e.hostedWindows = { told.append($0) }
+        _ = open(e, textEdit)
+        let edit = window(w, "com.apple.TextEdit")
+        check("multi-host: one host opened: nothing said of several (the holes are today's one)", told.isEmpty && e.visible == [textEdit.id: HostVisible(rect: nil, role: .main, z: 0)], "\(told) \(e.visible)")
+        let mark = w.calls.count
+        let r = layout(e, textEdit, left, [HostExtra(target: notes, role: .pane, rect: right)])
+        let n = window(w, "com.apple.Notes")
+        check("multi-host: a split of two: both shown, main at its pane's rect, the other at its own, both in Margin's Space",
+              shown(r[textEdit.id]) && shown(r[notes.id]) && w.bounds(window: edit) == left && w.bounds(window: n) == right && inMargin(w, edit) && inMargin(w, n),
+              "\(r) \(String(describing: w.bounds(window: edit))) \(String(describing: w.bounds(window: n)))")
+        check("multi-host: …main never parked for the pane's first open (it comes in beside main, never in its place)", !parked(w, edit, since: mark), "\(w.calls.dropFirst(mark))")
+        check("multi-host: …the layout held as it was asked: main focused, both visible, back to front",
+              e.shown == textEdit.id && e.visible[textEdit.id]?.role == .main && e.visible[notes.id] == HostVisible(rect: right, role: .pane, z: 1) && e.shownWindow == edit,
+              "\(e.visible) \(String(describing: e.shown))")
+        check("multi-host: …Margin's window told both windows, each at its rect (its holes)",
+              told.last == [HostShownWindow(window: edit, rect: left, role: .main, z: 0, focused: true), HostShownWindow(window: n, rect: right, role: .pane, z: 1, focused: false)], "\(told)")
+        polls(w, e)
+        check("multi-host: two visible hosts held at their rects through polls (desired keeps both: neither parked nor placed again)",
+              w.bounds(window: edit) == left && w.bounds(window: n) == right && inMargin(w, edit) && inMargin(w, n) && e.hosts[notes.id]?.phase == .shown
+              && e.hosts[textEdit.id]?.phase == .shown && e.visible.count == 2 && !parked(w, n, since: mark) && w.listsMarginOnly,
+              "\(String(describing: w.bounds(window: edit))) \(String(describing: w.bounds(window: n))) \(e.visible)")
+        // A tile change Margin didn't make puts the pane off its rect: put back at its own rect, never the page area.
+        if let t = w.tileOf(n) { w.tileRects[t] = CGRect(x: 0, y: 0, width: 750, height: 982) }
+        polls(w, e)
+        check("multi-host: a pane's tile laid out again by something else: sized back to its own rect (not the page area's), main left as it is",
+              w.bounds(window: n) == right && w.bounds(window: edit) == left && inMargin(w, n), "\(String(describing: w.bounds(window: n)))")
+        // A press in the pane: it's focused (the keys), main stays where it is.
+        let focused = hostRun { await e.focus(notes.id) } ?? false
+        check("multi-host: a pane focused: it's the one shown (the keys), fronted last; main still visible at its rect",
+              focused && e.shown == notes.id && e.shownWindow == n && w.calls.last?.hasPrefix("activate") == true && w.calls.last?.hasSuffix(" \(n)") == true
+              && w.bounds(window: edit) == left && inMargin(w, edit), "\(w.calls.suffix(3))")
+        check("multi-host: the press's host found by its rect", e.visibleHost(at: CGPoint(x: 1000, y: 500)) == notes.id && e.visibleHost(at: CGPoint(x: 300, y: 500)) == textEdit.id
+              && e.visibleHost(at: CGPoint(x: 100, y: 500)) == nil)
+
+        // ---- live resize: every visible tile follows its rect in each frame of the drag ----
+        let left2 = CGRect(x: 316, y: 41, width: 590, height: 933), right2 = CGRect(x: 914, y: 41, width: 590, height: 933)
+        let on = e.dragging(true)
+        var p2 = placement
+        p2.page = CGRect(x: 316, y: 41, width: 1188, height: 933)
+        e.follow(p2, rects: [textEdit.id: left2, notes.id: right2])
+        _ = hostRun { await w.sleep(0.05); return true }
+        let followedBoth = w.bounds(window: edit) == left2 && w.bounds(window: n) == right2
+        _ = e.dragging(false)
+        check("multi-host: a drag: both tiles follow their rects live (each one change in flight), Margin's Space told a live resize",
+              on && followedBoth && w.liveResizing[FakeHostWorld.marginSpace] == false && w.calls.contains("liveResizing \(FakeHostWorld.marginSpace) true"),
+              "\(on) \(String(describing: w.bounds(window: edit))) \(String(describing: w.bounds(window: n)))")
+        _ = hostRun { await e.pageRectChanged(p2, rects: [textEdit.id: left2, notes.id: right2]) }
+        check("multi-host: the drag's end: each at its rect as Margin's from now", w.bounds(window: edit) == left2 && w.bounds(window: n) == right2 && e.visible[notes.id]?.rect == right2,
+              "\(String(describing: w.bounds(window: edit))) \(String(describing: w.bounds(window: n)))")
+
+        // ---- three visible: a window-mode app as a card over the split ----
+        let mark3 = w.calls.count
+        let r3 = layout(e, textEdit, left2, [HostExtra(target: notes, role: .pane, rect: right2), HostExtra(target: faceTime, role: .card, rect: card)], focused: faceTime.id)
+        let ft = window(w, "com.apple.FaceTime")
+        check("multi-host: three visible: a card (window mode) over two panes, each at its rect, the card focused",
+              shown(r3[faceTime.id]) && w.bounds(window: ft) == card && inMargin(w, ft) && w.bounds(window: edit) == left2 && w.bounds(window: n) == right2 && inMargin(w, edit) && inMargin(w, n)
+              && e.shown == faceTime.id && e.visible.count == 3, "\(r3) \(String(describing: w.bounds(window: ft)))")
+        check("multi-host: …a card never parks main or a pane", !parked(w, edit, since: mark3) && !parked(w, n, since: mark3), "\(w.calls.dropFirst(mark3))")
+        polls(w, e)
+        check("multi-host: three visible hosts held at their rects through polls", w.bounds(window: ft) == card && w.bounds(window: edit) == left2 && w.bounds(window: n) == right2
+              && inMargin(w, ft) && inMargin(w, edit) && inMargin(w, n) && e.visible.count == 3 && e.shown == faceTime.id, "\(e.visible) \(String(describing: e.shown))")
+        let refused = hostRun { await e.focus(notes.id) } ?? true
+        check("multi-host: a card open keeps the focus: a pane isn't focused over it (never main raised over the card)", !refused && e.shown == faceTime.id)
+
+        // ---- the card closed: it alone parked, the others left as they are ----
+        let mark4 = w.calls.count
+        let r4 = layout(e, textEdit, left2, [HostExtra(target: notes, role: .pane, rect: right2)])
+        check("multi-host: a park of one (the card) leaves the others where they are, main focused again",
+              shown(r4[textEdit.id]) && w.spaces(window: ft) == [] && e.hosts[faceTime.id]?.phase == .parked && inMargin(w, edit) && inMargin(w, n)
+              && w.bounds(window: edit) == left2 && w.bounds(window: n) == right2 && !parked(w, edit, since: mark4) && !parked(w, n, since: mark4) && e.shown == textEdit.id && e.visible.count == 2,
+              "\(r4) \(e.visible) \(w.calls.dropFirst(mark4))")
+
+        // ---- the split left: main alone at the page area, the pane parked, one host again ----
+        told = []
+        let back = open(e, textEdit)
+        check("multi-host: back to one: main at the page area, the pane parked, Margin's window told [] once (one hole again)",
+              back == .shown(textEdit.id, placed: true) && w.bounds(window: edit) == page && w.spaces(window: n) == [] && e.visible == [textEdit.id: HostVisible(rect: nil, role: .main, z: 0)]
+              && told == [[]] && e.hosts[textEdit.id]?.rect == nil, "\(String(describing: back)) \(String(describing: w.bounds(window: edit))) \(told) \(e.visible)")
+        let mark5 = w.calls.count
+        told = []
+        check("multi-host: …and then today's switch, nothing said of several", open(e, notes) == .shown(notes.id, placed: true) && w.bounds(window: n) == page && w.spaces(window: edit) == [] && told.isEmpty,
+              "\(w.calls.dropFirst(mark5)) \(told)")
+        check("multi-host: nothing left behind (Mission Control lists Margin's Space only)", w.listsMarginOnly && w.ownerlessFullScreenSpaces() == [] && w.dropped == 0 && !w.frozen)
+    }
+
+    // ---- a card (Safari's window in the card's role) over an app: main never parked, the stray rule leaves it alone ----
+    do {
+        let (w, e) = world()
+        let safariPid = w.start("com.apple.Safari", policy: .regular, windows: 1)
+        let copy = FakeSafariCopy(w) { safariPid }
+        copy.wire(e)
+        var roles: [String] = []
+        e.requestRoleWindow = { p, role in roles.append("\(p ?? "default") \(role)"); return copy.request(p) }
+        var events: [HostEvent] = []
+        e.onEvent = { events.append($0) }
+        _ = open(e, textEdit)
+        let edit = window(w, "com.apple.TextEdit")
+        let peek = HostTarget.safariWindow(nil, .card)
+        let mark = w.calls.count
+        let r = layout(e, textEdit, nil, [HostExtra(target: peek, role: .card, rect: card)], focused: peek.id)
+        let cw = e.hosts[peek.id]?.window ?? 0
+        check("multi-host: a card's first open: its window asked of the copy in the card's role, never the main one's ask",
+              roles == ["default card"] && copy.asked == [nil] && shown(r[peek.id]) && e.hosts[peek.id]?.safariWindow != nil, "\(roles) \(copy.asked) \(r)")
+        check("multi-host: …at its rect in Margin's Space, focused; main at the page area, never parked for it",
+              w.bounds(window: cw) == card && inMargin(w, cw) && e.shown == peek.id && w.bounds(window: edit) == page && inMargin(w, edit) && !parked(w, edit, since: mark),
+              "\(String(describing: w.bounds(window: cw))) \(w.calls.dropFirst(mark))")
+        polls(w, e, 16)
+        let parkedCard = events.contains { if case .parked(peek.id) = $0 { return true }; if case .unshown(peek.id) = $0 { return true }; return false }
+        check("multi-host: the stray rule leaves a visible card's window alone through polls (in Margin's Space, shown: no stray, no park)",
+              inMargin(w, cw) && w.bounds(window: cw) == card && e.hosts[peek.id]?.phase == .shown && !parkedCard && inMargin(w, edit) && e.shown == peek.id,
+              "\(events) \(String(describing: w.spaces(window: cw)))")
+        // Margin's window leaving full screen: every visible host parked, nothing left in a user Space.
+        _ = hostRun { await e.parkShown(why: "test") }
+        check("multi-host: parked with nothing shown: the card and main both out of Margin's Space", w.spaces(window: cw) == [] && w.spaces(window: edit) == [] && e.shown == nil && e.visible.isEmpty,
+              "\(String(describing: w.spaces(window: cw))) \(String(describing: w.spaces(window: edit))) \(e.visible)")
+    }
+
+    // ---- Margin crashed with a card and a Safari main window shown: the next launch gives both back (closed by their copy) ----
+    do {
+        let (w, e) = world()
+        let markerURL = folder.appendingPathComponent("\(made)/\(HostMarker.fileName)")
+        let safariPid = w.start("com.apple.Safari", policy: .regular, windows: 1)
+        let copy = FakeSafariCopy(w) { safariPid }
+        copy.wire(e)
+        e.requestRoleWindow = { p, _ in copy.request(p) }
+        _ = open(e, .safariWindow("Work"))
+        let peek = HostTarget.safariWindow("Work", .card)
+        let r = layout(e, .safariWindow("Work"), nil, [HostExtra(target: peek, role: .card, rect: card)], focused: peek.id)
+        let mainWindow = e.hosts[HostTarget.safariWindow("Work").id]?.window ?? 0, cardWindow = e.hosts[peek.id]?.window ?? 0
+        let m = HostMarker.read(markerURL)
+        check("multi-host: the marker has both of the profile's windows (main's and the card's), each with its copy's id and its profile",
+              shown(r[peek.id]) && Set(m?.windows.map(\.number) ?? []) == [mainWindow, cardWindow] && Set(m?.windows.compactMap(\.safariWindow) ?? []) == [7914, 7915]
+              && m?.windows.allSatisfy { $0.profile == "Work" } == true, "\(String(describing: m))")
+        w.onAppQuit = nil
+        let next = HostEngine(system: w, marker: markerURL, pid: 2)
+        let later = FakeSafariCopy(w) { safariPid }
+        later.windowOf = copy.windowOf
+        later.wire(next)
+        hostRun { await next.recover() }
+        check("multi-host: recovery: both windows given back and closed by their copy, the marker gone, Safari left running",
+              w.wins[mainWindow] == nil && w.wins[cardWindow] == nil && Set(later.closed) == [7914, 7915] && !FileManager.default.fileExists(atPath: markerURL.path) && w.apps[safariPid] != nil,
+              "\(later.closed) \(next.leftSafariWindows)")
+    }
+
+    // ---- a pane below its window's minimum: refused, never laid out under the sidebar ----
+    do {
+        let (w, e) = world()
+        w.minSize["com.apple.Notes"] = CGSize(width: 700, height: 400)
+        _ = open(e, notes)
+        _ = open(e, textEdit)
+        let n = window(w, "com.apple.Notes")
+        let mark = w.calls.count
+        let r = layout(e, textEdit, left, [HostExtra(target: notes, role: .pane, rect: right)])
+        let failed: Bool = { if case .failed(.place, _)? = r[notes.id] { return true }; return false }()
+        check("multi-host: a pane narrower than its window's minimum isn't laid out (refused, said), its window left parked",
+              failed && w.spaces(window: n) == [] && w.belowMinimum == 0 && !w.calls.dropFirst(mark).contains { $0.hasPrefix("tileRect \(w.tileOf(n) ?? 0) ") }, "\(r)")
+    }
+
+    // ---- tiles off: a pane as a plain member, placed at its rect by its own Space's reservation ----
+    do {
+        let (w, e) = world(tiles: false)
+        _ = open(e, textEdit)
+        let edit = window(w, "com.apple.TextEdit")
+        let mark = w.calls.count
+        let r = layout(e, textEdit, nil, [HostExtra(target: notes, role: .card, rect: card)], focused: notes.id)
+        let n = window(w, "com.apple.Notes")
+        check("multi-host: tiles off: a card's first open as a member at its rect, main at the page area, never parked",
+              shown(r[notes.id]) && w.bounds(window: n) == card && inMargin(w, n) && w.bounds(window: edit) == page && inMargin(w, edit) && !parked(w, edit, since: mark) && e.shown == notes.id,
+              "\(r) \(String(describing: w.bounds(window: n)))")
+        polls(w, e)
+        check("multi-host: tiles off: both held through polls", w.bounds(window: n) == card && inMargin(w, n) && w.bounds(window: edit) == page && inMargin(w, edit) && e.visible.count == 2,
+              "\(String(describing: w.bounds(window: n))) \(e.visible)")
+    }
+}
