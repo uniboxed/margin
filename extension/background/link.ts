@@ -156,7 +156,7 @@ export const APP_REQUESTS = new Set([
   'userThemes',
   // Margin.app hosting this profile's window in its page area (background/hosted.ts): an item's tab shown, closed, muted, navigated, promoted from Peek.
   'hostShow', 'hostClose', 'hostPicture', 'hostMute', 'hostNavigate', 'hostPromotePeek',
-  // Peek's card (background/peek.ts, hosted.ts): the app's answer to a page's click, the card's page closed.
+  // The preview card (background/peek.ts, hosted.ts): the app's answer to a page's click, the card's page closed.
   'peekAnswer', 'hostCardClose',
   // The mini player's buttons for an item's page (M2.4, background/hosted.ts media).
   'hostMedia',

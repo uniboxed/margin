@@ -348,10 +348,10 @@ test('the action list is PLAN.md §3\'s, plus palette.run and the behaviors\' an
   const arcM23 = ['favorite.open', 'favorite.add', 'favorite.addPin', 'favorite.remove', 'favorite.reset', 'favorite.rename', 'favorite.setTitle', 'favorite.move', 'favorite.copyUrl'];
   // Track 2 M2.4 (Mini Player).
   const arcM24 = ['media.toggle', 'media.prev', 'media.next', 'media.mute', 'media.focus'];
-  // Track 2 M2.5 (Peek & Little Arc).
-  const arcM25 = ['peek.close', 'peek.expand', 'peek.copyUrl', 'peek.setSpace', 'peek.back', 'peek.forward', 'littleArc.open'];
-  // Track 2 M2.6 (Air Traffic Control).
-  const arcM26 = ['airTraffic.addHost', 'airTraffic.remove', 'airTraffic.toggle'];
+  // Track 2 M2.5 (The preview card and Quick Tab).
+  const arcM25 = ['preview.close', 'preview.expand', 'preview.copyUrl', 'preview.setSpace', 'preview.back', 'preview.forward', 'quickTab.open'];
+  // Track 2 M2.6 (Link Rules).
+  const arcM26 = ['linkRules.addHost', 'linkRules.remove', 'linkRules.toggle'];
   // Track 2 M2.7 (Universal Split View).
   const arcM27 = ['split.add', 'split.open', 'split.focus', 'split.breakOut', 'split.closePane', 'split.swap', 'split.toggleAxis',
     // (feat/split, docs/PEEK-SPLIT.md §4: split.add's README name, a pane out with the rest shown, a divider let go.)

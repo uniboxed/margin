@@ -1,7 +1,7 @@
-// Peek's card in the copy (background/hosted.ts, docs/PEEK-SPLIT.md §2): the card's page is a tab of the profile's card
+// The preview card in the copy (background/hosted.ts, docs/PEEK-SPLIT.md §2): the card's page is a tab of the profile's card
 // window, tagged as the card's (never one of the app's items) until Expand moves it into main's window as the new
 // item's; a new tab in the card window becomes the card's page; closing it leaves the window (a blank tab) for the
-// next Peek; the page there is told it's the card's (its Esc and ⌘↩).
+// next preview; the page there is told it's the card's (its Esc and ⌘↩).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { CARD_ITEM, createHostedTabs } from '../extension/background/hosted.ts';
@@ -37,7 +37,7 @@ function fake(list: T[]) {
   return { api, tabs, calls, told };
 }
 
-test('Peek card: shown in its own window only (role card), which is the card\'s from then; never an item\'s page there', async () => {
+test('Preview card: shown in its own window only (role card), which is the card\'s from then; never an item\'s page there', async () => {
   // (The card window as Margin asked it of the copy: opened at the card's address, never Safari's empty new-tab page.)
   const f = fake([{ id: 1, windowId: 9, url: 'https://a.example/', active: true }, { id: 2, windowId: 12, url: 'https://peek.example/doc', active: true }]);
   const pushed: [number, any][] = [];
@@ -54,7 +54,7 @@ test('Peek card: shown in its own window only (role card), which is the card\'s 
   await assert.rejects(h.show({ windowId: 12, itemId: 't-aaaa', url: 'https://a.example/' }), /card only/, 'an item never goes into the card window');
 });
 
-test('Peek card: a new tab in the card window becomes the card\'s page (the one before closed); its address and title go to the app', async () => {
+test('Preview card: a new tab in the card window becomes the card\'s page (the one before closed); its address and title go to the app', async () => {
   const f = fake([{ id: 2, windowId: 12, url: 'https://peek.example/doc', active: true }]);
   const pushed: [number, any][] = [];
   const h = createHostedTabs(() => f.api, undefined, (w, m) => pushed.push([w, m]));
@@ -70,7 +70,7 @@ test('Peek card: a new tab in the card window becomes the card\'s page (the one 
   assert.equal(h.tabUpdated(60, { url: 'https://x.example/' }, { id: 60, windowId: 9, url: 'https://x.example/' } as any), false);
 });
 
-test('Peek card: close leaves the window with a blank tab (parked for the next Peek); that blank is never taken for a page', async () => {
+test('Preview card: close leaves the window with a blank tab (parked for the next preview); that blank is never taken for a page', async () => {
   const f = fake([{ id: 2, windowId: 12, url: 'https://peek.example/doc', active: true }]);
   const h = createHostedTabs(() => f.api);
   await h.show({ windowId: 12, itemId: CARD_ITEM, url: 'https://peek.example/doc', role: 'card' });
@@ -80,14 +80,14 @@ test('Peek card: close leaves the window with a blank tab (parked for the next P
   const blank = [...f.tabs.values()].find((t) => t.windowId === 12)!;
   assert.equal(await h.tabCreated({ ...blank } as any), false, 'Margin\'s own blank: not the card\'s page');
   assert.equal(h.tags().has(CARD_ITEM), false);
-  // The next Peek: a new tab at its address in the window, the blank one closed after it.
+  // The next preview: a new tab at its address in the window, the blank one closed after it.
   f.calls.length = 0;
   await h.show({ windowId: 12, itemId: CARD_ITEM, url: 'https://second.example/', role: 'card' });
   assert.deepEqual(f.calls, ['create 12 https://second.example/', `remove ${blank.id}`]);
   assert.deepEqual(await createHostedTabs(() => f.api).closeCard(), { closed: false }, 'nothing tagged: nothing closed');
 });
 
-test('Peek card: Expand moves its tab into main\'s window as the new item\'s (its page kept), a blank left behind; the page told it\'s not the card\'s', async () => {
+test('Preview card: Expand moves its tab into main\'s window as the new item\'s (its page kept), a blank left behind; the page told it\'s not the card\'s', async () => {
   const f = fake([{ id: 1, windowId: 9, url: 'https://a.example/', active: true }, { id: 2, windowId: 12, url: 'https://peek.example/doc', active: true }]);
   const h = createHostedTabs(() => f.api);
   await h.show({ windowId: 9, itemId: 't-aaaa', url: 'https://a.example/' });
@@ -107,7 +107,7 @@ test('Peek card: Expand moves its tab into main\'s window as the new item\'s (it
   assert.equal(h.isCard(12), false);
 });
 
-test('Auto-Peek in Margin.app: a pin\'s or favorite\'s item is said so by the app with each hostShow, and its page told (the copy\'s own state has no library pins)', async () => {
+test('Auto-preview in Margin.app: a pin\'s or favorite\'s item is said so by the app with each hostShow, and its page told (the copy\'s own state has no library pins)', async () => {
   const f = fake([{ id: 1, windowId: 9, url: 'https://mail.example/', active: true }]);
   const h = createHostedTabs(() => f.api);
   const shown = await h.show({ windowId: 9, itemId: 't-pin1', url: 'https://mail.example/', pinned: true });

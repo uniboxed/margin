@@ -283,7 +283,7 @@ final class Shell: ExtensionLinkDelegate {
                 hosted?.copyLoading(profile: connection.hello.profile, windowId: windowId, tabIds: ids)
                 return
             }
-            // Peek's card (HostedPeek.swift): a page's click (answered at once), the copy giving up on one, the card's
+            // The preview card (HostedPeek.swift): a page's click (answered at once), the copy giving up on one, the card's
             // page as it changes, Esc and ⌘↩ in it. The session's own, never passed to a page as they come.
             let profile = connection.hello.profile
             switch type {

@@ -1,7 +1,7 @@
 // The Arc features' data, as the extension's model (state/model.ts) and Margin.app's library (app/shared/library) keep
 // it: what binds a Margin tab (customTitle, pinnedBy, favoriteId) through every way it goes, a binding that no longer
 // holds once its tab changes space, splits by Margin tab ids (cleaned up as their tabs go), favorites' scope and what a
-// favorite can be, a pin's search by address never taking another's tab, Air Traffic rules removed and turned off.
+// favorite can be, a pin's search by address never taking another's tab, link rules removed and turned off.
 // The background's side (the handlers, against a fake Safari) is in tests/arc-data-background.test.ts.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -372,29 +372,29 @@ test('arc data: library splits: ratios read to match the panes, panes of items g
   assert.deepEqual(L.stateOf({ spaces: { a: { name: 'A' } }, splits: { g: { spaceId: 'a', panes: ['t-1', 7], ratios: [1, 1] } } }).splits, [], 'fewer than 2 ids: none');
 });
 
-// ---- 7. Air Traffic: removing and turning off rules -------------------------------------------------------------
+// ---- 7. Link Rules: removing and turning off rules -------------------------------------------------------------
 
-test('arc data: airTraffic.remove and airTraffic.toggle: checked, sent, done by the library; the tab menu removes the rule routing it', () => {
+test('arc data: linkRules.remove and linkRules.toggle: checked, sent, done by the library; the tab menu removes the rule routing it', () => {
   let s = twoSpaces();
   s = M.addAirTrafficRule(s, { id: 'r1', pattern: '*.figma.example', spaceId: 'work' });
   s = M.upsertTab(s, tab(9, 1, 'https://www.figma.example/file/1', { index: 0, active: true }), NOW);
   s = M.moveTab(s, 9, 'personal');
   const ctx = contextFromState(s);
-  assert.equal(checkAction('airTraffic.remove', 'r1', ctx).ok, true);
-  assert.equal(checkAction('airTraffic.toggle', 'r1', ctx).ok, true);
-  assert.equal(checkAction('airTraffic.remove', 'nope', ctx).ok, false, 'a rule that isn\'t there');
-  assert.equal(checkAction('airTraffic.toggle', 9, ctx).ok, false);
-  assert.deepEqual(requestFor('airTraffic.remove', 'r1', { state: s, ui: { windowId: 1 } }), { kind: 'send', type: 'removeAirTrafficRule', payload: { ruleId: 'r1' } });
-  assert.deepEqual(requestFor('airTraffic.toggle', 'r1', { state: s, ui: { windowId: 1 } }), { kind: 'send', type: 'toggleAirTrafficRule', payload: { ruleId: 'r1' } });
+  assert.equal(checkAction('linkRules.remove', 'r1', ctx).ok, true);
+  assert.equal(checkAction('linkRules.toggle', 'r1', ctx).ok, true);
+  assert.equal(checkAction('linkRules.remove', 'nope', ctx).ok, false, 'a rule that isn\'t there');
+  assert.equal(checkAction('linkRules.toggle', 9, ctx).ok, false);
+  assert.deepEqual(requestFor('linkRules.remove', 'r1', { state: s, ui: { windowId: 1 } }), { kind: 'send', type: 'removeAirTrafficRule', payload: { ruleId: 'r1' } });
+  assert.deepEqual(requestFor('linkRules.toggle', 'r1', { state: s, ui: { windowId: 1 } }), { kind: 'send', type: 'toggleAirTrafficRule', payload: { ruleId: 'r1' } });
   const vm = buildViewModel({ state: s, ui: { windowId: 1, tabId: 9 } });
   const items = menuItems({ kind: 'tab', id: 9 }, { state: s, space: vm.space });
-  const remove = items.find((i) => i.action === 'airTraffic.remove');
+  const remove = items.find((i) => i.action === 'linkRules.remove');
   assert.deepEqual([remove?.label, remove?.arg], ['Remove Rule for *.figma.example', 'r1']);
   assert.equal(checkAction(remove!.action!, remove!.arg, ctx).ok, true);
   // Turned off: it routes nothing, so the menu has nothing to remove.
   const off = M.toggleAirTrafficRule(s, 'r1');
   assert.equal(off.airTraffic![0].enabled, false);
-  assert.equal(menuItems({ kind: 'tab', id: 9 }, { state: off, space: vm.space }).some((i) => i.action === 'airTraffic.remove'), false);
+  assert.equal(menuItems({ kind: 'tab', id: 9 }, { state: off, space: vm.space }).some((i) => i.action === 'linkRules.remove'), false);
   // The library does both.
   const lib = library();
   const rule = lib.act('addAirTrafficRule', { pattern: 'linear.example', spaceId: 'b' }).result;
@@ -407,13 +407,13 @@ test('arc data: airTraffic.remove and airTraffic.toggle: checked, sent, done by 
   assert.equal(lib.values.airTraffic[rule], undefined);
 });
 
-test('arc data: Settings › Browsing lists every Air Traffic rule: a toggle and Remove each; they send the rule\'s own requests', () => {
+test('arc data: Settings › Browsing lists every link rule: a toggle and Remove each; they send the rule\'s own requests', () => {
   const rules = [{ id: 'r2', pattern: 'b.example', spaceId: 'gone', enabled: false, order: 1 }, { id: 'r1', pattern: '*.a.example', spaceId: 'work', order: 0 }];
   const spaces = [{ id: 'work', name: 'Work', emoji: '💼' }];
   const fields = fieldsIn(settingsFields({}, {}, { airTraffic: { rules, spaces } }), 'browsing');
-  const ours = fields.filter((f) => /airTraffic|AirTraffic/.test(f.id));
+  const ours = fields.filter((f) => /linkRule|LinkRule/.test(f.id));
   assert.deepEqual(ours.map((f) => [f.kind, f.label, f.checked]), [
-    ['group', 'Air Traffic Control', false],
+    ['group', 'Link Rules', false],
     ['toggle', 'Open *.a.example in 💼 Work', true],
     ['button', 'Remove rule for *.a.example', false],
     ['toggle', 'Open b.example in a space that’s gone', false],
@@ -422,13 +422,13 @@ test('arc data: Settings › Browsing lists every Air Traffic rule: a toggle and
   assert.deepEqual(saveField(ours[3], true, {}), { type: 'toggleAirTrafficRule', payload: { ruleId: 'r2', enabled: true } });
   assert.equal(saveField(ours[3], 'yes', {}), null, 'a toggle\'s value only');
   assert.deepEqual(runField(ours[2]), { type: 'removeAirTrafficRule', payload: { ruleId: 'r1' } });
-  const none = fieldsIn(settingsFields({}, {}, { airTraffic: { rules: [], spaces } }), 'browsing').filter((f) => /airTraffic/.test(f.id));
+  const none = fieldsIn(settingsFields({}, {}, { airTraffic: { rules: [], spaces } }), 'browsing').filter((f) => /linkRule/.test(f.id));
   assert.deepEqual(none.map((f) => f.kind), ['group', 'info'], 'none yet: where they\'re made');
   // From the state (the view model passes them).
   let s = twoSpaces();
   s = M.addAirTrafficRule(s, { id: 'r9', pattern: 'c.example', spaceId: 'work' });
   const vm = buildViewModel({ state: s, ui: { windowId: 1, launcherPage: true, settingsOpen: true }, platform: { browser: 'safari', os: 'mac', features: {} } as any });
-  assert.ok(vm.settingsForm?.fields.some((f) => f.id === 'airTraffic:r9'), 'drawn in Settings');
+  assert.ok(vm.settingsForm?.fields.some((f) => f.id === 'linkRule:r9'), 'drawn in Settings');
 });
 
 test('arc data: addAirTrafficRule at the cap of 100: a rule for a pattern already there is replaced; a new one is refused', () => {

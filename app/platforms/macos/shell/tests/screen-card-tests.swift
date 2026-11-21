@@ -1,4 +1,4 @@
-// What the real screen found on 2026-11-21 with Peek's card over a split (fix/screen-card), part of tests.swift's run,
+// What the real screen found on 2026-11-21 with the preview card over a split (fix/screen-card), part of tests.swift's run,
 // against the stand-in world (host-tests.swift `FakeHostWorld`, its window server's order: `raised`) and the session:
 // - the card's FIRST open over a split, the split's main pane focused: the card window in front of every pane's window
 //   (the real screen had main's window above the new card window, the card showing main's page in its top half);

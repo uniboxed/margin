@@ -605,7 +605,7 @@ test('hitRects: what takes the pointer over the slot, boxes inside others left o
   assert.deepEqual(hitRects((many as unknown as Element), slot, { getStyle }), { rects: [], all: true });
 });
 
-test('hitRects: a split\'s dividers take the pointer, none while Peek\'s card is up over the split (its page the card\'s)', () => {
+test('hitRects: a split\'s dividers take the pointer, none while the preview card is up over the split (its page the card\'s)', () => {
   type FakeEl = { localName: string, children: FakeEl[], attrs: Set<string>, hasAttribute: (n: string) => boolean, getBoundingClientRect: () => { left: number, top: number, right: number, bottom: number, width: number, height: number }, style: HitStyle };
   const el = (name: string, r: number[], children: FakeEl[] = [], attrs: string[] = []): FakeEl => {
     const set = new Set(attrs);

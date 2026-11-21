@@ -1,19 +1,20 @@
-// Peek's card and Little Arc in Margin's UI (docs/PEEK-SPLIT.md §2, §3). (Not behaviors/peek.ts: that's the sidebar's
-// hover reveal, an older use of the name; native code calls this one the card.)
+// The preview card and Quick Tab in Margin's UI (docs/PEEK-SPLIT.md §2, §3). (Not behaviors/peek.ts: that's the
+// sidebar's hover reveal, an older use of the word; native code calls this one the card, and the runtime's own state,
+// `ui.peek`, keeps its old name: neither is seen by a person or a theme.)
 //
-// The theme draws it: its guarded `<template m-part="peek">` in `<m-peek>` while `peek` is set, with an
-// `<m-peek-page>` where the card's page goes (Margin.app places the card's Safari window exactly there: the element is
-// measured as `<m-page>` is, ui/render.ts View.measurePeekPage, and sent with the page's layout) and a bar for its
-// buttons (`peek.back`, `peek.forward`, `peek.copyUrl`, `peek.expand`, `peek.close`). The dimmed page around it and its
-// frame are the theme's CSS; the theme sees `peek.loading` (its window not in place yet: `<m-peek-page>` covered),
-// `peek.ready` (in place: `<m-peek-page>` clear, the page showing through) and `peek.closing` (going: its open
-// reversed, then gone after CARD_MOTION_MS).
+// The theme draws it: its guarded `<template m-part="preview">` in `<m-preview>` while `preview` is set, with an
+// `<m-preview-page>` where the card's page goes (Margin.app places the card's Safari window exactly there: the element
+// is measured as `<m-page>` is, ui/render.ts View.measurePeekPage, and sent with the page's layout) and a bar for its
+// buttons (`preview.back`, `preview.forward`, `preview.copyUrl`, `preview.expand`, `preview.close`). The dimmed page
+// around it and its frame are the theme's CSS; the theme sees `preview.loading` (its window not in place yet:
+// `<m-preview-page>` covered), `preview.ready` (in place: `<m-preview-page>` clear, the page showing through) and
+// `preview.closing` (going: its open reversed, then gone after CARD_MOTION_MS).
 //
 // What comes from where:
 // - Margin.app says what the card is (`show`: its `peek` push; null: it closed it, animated out here).
-// - Its buttons go to the app (host.perform `peek.*`); Close and Expand also start the card's going here at once, so
-//   the window under `<m-peek-page>` is covered before the app parks or moves it.
-// - Little Arc (⌥⌘N, `littleArc.open`): the card with Margin's own field (`m-input="peek"`) and no page yet. Return
+// - Its buttons go to the app (host.perform `peek.*`, the app's own names); Close and Expand also start the card's
+//   going here at once, so the window under `<m-preview-page>` is covered before the app parks or moves it.
+// - Quick Tab (⌥⌘N, `quickTab.open`): the card with Margin's own field (`m-input="preview"`) and no page yet. Return
 //   takes what's typed as the palette does (shared/search.ts resolveInput: an address, else a search) and asks the app
 //   for the card at it (`peek.go`); Escape closes it. A host with no card (no Margin.app): a new tab at it.
 // - Escape anywhere in Margin's UI while the card is open (no menu, palette or field of another kind in the way)
@@ -28,7 +29,7 @@ export function installCard(rt: Rt) {
   const { view, container } = rt;
   let closing: ReturnType<typeof setTimeout> | null = null;
   let focusField = false;
-  const isField = (el: EventTarget | null) => !!el && view.inputs.get(el as Element) === 'peek';
+  const isField = (el: EventTarget | null) => !!el && view.inputs.get(el as Element) === 'preview';
   const spaceNow = () => rt.vm?.space?.id ?? null;
 
   function stopClosing() { if (closing) { rt.cancel(closing); closing = null; } }
@@ -41,7 +42,7 @@ export function installCard(rt: Rt) {
     const url = typeof next.url === 'string' ? next.url : '';
     const littleArc = next.littleArc === true;
     if (!url && !littleArc && next.loading === false) return close({ tell: false });
-    // (Little Arc's field keeps what's typed while the app's word comes.)
+    // (Quick Tab's field keeps what's typed while the app's word comes.)
     const query = littleArc && cur?.littleArc ? cur.query ?? '' : '';
     if (littleArc && !cur?.littleArc) focusField = true;
     rt.setUi({
@@ -88,7 +89,7 @@ export function installCard(rt: Rt) {
     return true;
   }
 
-  /** Little Arc's field taken (Return): the card at that address or search. */
+  /** Quick Tab's field taken (Return): the card at that address or search. */
   function go(text: string) {
     const cur = rt.ui.peek;
     const target = resolveInput(text);
@@ -123,7 +124,7 @@ export function installCard(rt: Rt) {
   // ---- the page area, for the theme's CSS (and Margin's default card) ----
   // While a card is up, the page's place (`<m-page>`'s content box, as the view measures it) is on the theme's root as
   // `--m-page-left`, `--m-page-top`, `--m-page-right`, `--m-page-bottom` (px from the window's edges) and
-  // `--m-page-radius`: a theme's `<m-peek>` lays its dim over the page area alone with them.
+  // `--m-page-radius`: a theme's `<m-preview>` lays its dim over the page area alone with them.
   let placedKey = '';
   function placePage() {
     const root = view.rootElement() as HTMLElement | null;
@@ -140,7 +141,7 @@ export function installCard(rt: Rt) {
   }
 
   // ---- nothing of the page's place painted inside the card's page ----
-  // `<m-peek-page>` is see-through once the card's window is in place, so whatever Margin's page draws in `<m-page>`
+  // `<m-preview-page>` is see-through once the card's window is in place, so whatever Margin's page draws in `<m-page>`
   // under it (a split's dividers and toolbar bands, a pane's loader, a theme's pane ring) would show across the card's
   // page (the real screen, 2026-11-21: a stacked split's band drawn as a stripe through the card). While a card is up,
   // `<m-page>` is clipped to everything but the card's page box (`m-card-clip`, an even-odd path in its own border box,
@@ -173,37 +174,37 @@ export function installCard(rt: Rt) {
     }
   }
 
-  // ---- Margin's default card (a theme with no `peek` part of its own) ----
+  // ---- Margin's default card (a theme with no `preview` part of its own) ----
   // Centred in the page area, 8% of it each side and 7% above and below (at least 420×320), a 52 pt bar over its page
-  // (back, forward, the address, Copy URL, Open in Space, Close; Little Arc: the field), the page area around it dimmed
-  // (ui/render.ts BASE_CSS `m-peek[m-default]`, which a theme's CSS can restyle). Margin's own elements, its own words.
+  // (back, forward, the address, Copy URL, Open in Space, Close; Quick Tab: the field), the page area around it dimmed
+  // (ui/render.ts BASE_CSS `m-preview[m-default]`, which a theme's CSS can restyle). Margin's own elements, its own words.
   let dflt: { el: HTMLElement, host: HTMLElement, field: HTMLInputElement } | null = null;
-  function ownPeek(root: Element) {
-    const slot = root.querySelector('m-peek:not([m-default])');
+  function ownPreview(root: Element) {
+    const slot = root.querySelector('m-preview:not([m-default])');
     return !!slot && slot.childElementCount > 0;
   }
   function makeDefault() {
     const doc = rt.doc;
-    const el = doc.createElement('m-peek');
+    const el = doc.createElement('m-preview');
     el.setAttribute('m-default', '');
     const card = doc.createElement('div');
-    card.setAttribute('m-peek-card', '');
+    card.setAttribute('m-preview-card', '');
     card.setAttribute('role', 'dialog');
     const bar = doc.createElement('div');
-    bar.setAttribute('m-peek-bar', '');
+    bar.setAttribute('m-preview-bar', '');
     const button = (action: string, label: string, text: string) => {
       const b = doc.createElement('button');
       b.type = 'button';
-      b.setAttribute('m-peek-button', action);
+      b.setAttribute('m-preview-button', action);
       b.setAttribute('aria-label', label);
       b.textContent = text;
       b.addEventListener('click', (e) => { e.preventDefault(); if (e.isTrusted) rt.dispatch(action, undefined, 'behavior'); });
       return b;
     };
     const host = doc.createElement('span');
-    host.setAttribute('m-peek-host', '');
+    host.setAttribute('m-preview-host', '');
     const field = doc.createElement('input');
-    field.setAttribute('m-peek-field', '');
+    field.setAttribute('m-preview-field', '');
     field.type = 'text';
     field.spellcheck = false;
     field.autocomplete = 'off';
@@ -212,35 +213,35 @@ export function installCard(rt: Rt) {
       if (e.isComposing) return;
       if (e.key === 'Enter') { e.preventDefault(); go(field.value); } else if (e.key === 'Escape') { e.preventDefault(); close(); }
     });
-    bar.append(button('peek.back', 'Back', '\u2039'), button('peek.forward', 'Forward', '\u203a'), host, field,
-      button('peek.copyUrl', 'Copy URL', 'Copy URL'), button('peek.expand', 'Open in Space', 'Open in Space'), button('peek.close', 'Close', '\u2715'));
-    const page = doc.createElement('m-peek-page');
+    bar.append(button('preview.back', 'Back', '\u2039'), button('preview.forward', 'Forward', '\u203a'), host, field,
+      button('preview.copyUrl', 'Copy URL', 'Copy URL'), button('preview.expand', 'Open in Space', 'Open in Space'), button('preview.close', 'Close', '\u2715'));
+    const page = doc.createElement('m-preview-page');
     card.append(bar, page);
     el.append(card);
-    // (A press on the dimmed page around it while it takes the pointer, Little Arc's or one loading: closed. Once its
+    // (A press on the dimmed page around it while it takes the pointer, Quick Tab's or one loading: closed. Once its
     // window is in place, Margin.app catches that press itself: docs/PEEK-SPLIT.md §2.)
     el.addEventListener('click', (e) => { if (e.isTrusted && e.target === el) close(); });
     return { el, host, field };
   }
   function followDefault() {
     const root = view.rootElement() as HTMLElement | null;
-    const cur = rt.vm?.peek ?? null;
-    if (!root || !cur || ownPeek(root)) { dflt?.el.remove(); if (!cur) dflt = null; return; }
+    const cur = rt.vm?.preview ?? null;
+    if (!root || !cur || ownPreview(root)) { dflt?.el.remove(); if (!cur) dflt = null; return; }
     dflt ??= makeDefault();
     const { el, host, field } = dflt;
     el.toggleAttribute('m-loading', cur.loading);
     el.toggleAttribute('m-closing', cur.closing);
-    el.toggleAttribute('m-little-arc', cur.littleArc);
+    el.toggleAttribute('m-quick-tab', cur.quickTab);
     if (host.textContent !== cur.host) host.textContent = cur.host;
-    el.querySelector('[m-peek-card]')?.setAttribute('aria-label', cur.title);
+    el.querySelector('[m-preview-card]')?.setAttribute('aria-label', cur.title);
     if (el.parentNode !== root) root.appendChild(el);
-    if (cur.littleArc && focusField) { focusField = false; field.value = cur.query; field.focus(); }
+    if (cur.quickTab && focusField) { focusField = false; field.value = cur.query; field.focus(); }
   }
 
   return {
     show, close, expand, openLittleArc, go,
     onInput(name: string, value: string) {
-      if (name !== 'peek' || !rt.ui.peek?.littleArc) return;
+      if (name !== 'preview' || !rt.ui.peek?.littleArc) return;
       // (Kept without drawing again: the field shows it already.)
       (rt.ui.peek as any).query = String(value).slice(0, 2048);
     },
@@ -249,7 +250,7 @@ export function installCard(rt: Rt) {
       followDefault();
       clipPage();
       if (!focusField || !rt.ui.peek?.littleArc) return;
-      const field = view.input('peek');
+      const field = view.input('preview');
       if (!field) return;
       focusField = false;
       field.focus();

@@ -1,6 +1,6 @@
-# Peek, Little Arc and split view in Margin.app (design, 2026-11-21)
+# The preview card, Quick Tab and split view in Margin.app (design, 2026-11-21)
 
-Margin.app showed one hosted window per Margin window. Peek, Little Arc and split view need several at once, each at a
+Margin.app showed one hosted window per Margin window. The preview card, Quick Tab and split view need several at once, each at a
 rect of its own, in one page area. This is the plan they're built from. Track 2's UI pieces (feat/arc-suite, M2.5 and
 M2.7) are kept where they fit; their missing native half is this.
 
@@ -8,22 +8,25 @@ M2.7) are kept where they fit; their missing native half is this.
 
 | Topic | Decision |
 |---|---|
-| Peek motion | Quick and light: the backdrop dims and the card fades and scales in, about 150 ms, compositor only; closing reverses it. Reduce Motion: a fade. |
-| Little Arc | A quick card from ⌥⌘N over the current space, on Peek's machinery: an address or search first, then the page; Expand into the space, or close. No default-browser change. |
+| Preview motion | Quick and light: the backdrop dims and the card fades and scales in, about 150 ms, compositor only; closing reverses it. Reduce Motion: a fade. |
+| Quick Tab | A quick card from ⌥⌘N over the current space, on the preview's machinery: an address or search first, then the page; Expand into the space, or close. No default-browser change. |
 | Split view | 2–4 panes, any mix of Safari tabs and hosted Mac apps, side by side or stacked, dividers dragged live. Each Safari pane is a Safari window of its own in the space's profile. |
 | Mini player | Safari tabs now; hosted apps later (MediaRemote is closed to other apps since macOS 15.4). |
-| Shift+click, Auto-Peek | On by default while this is a test branch. |
+| Shift+click, auto-preview | On by default while this is a test branch. |
 
 ## Words
 
 - **Visible hosts:** the hosted windows a Margin window shows now, each with its **rect** (in the page area) and its
-  **role**: `main` (the item shown, as before), `pane` (a split's other panes) or `float` (Peek and Little Arc's card,
+  **role**: `main` (the item shown, as before), `pane` (a split's other panes) or `float` (the preview card, Quick Tab's too,
   above the rest).
 - **Focused host:** the visible host with the keys: the card while it's open, else the pane last clicked, else main.
   Today's `shown` becomes this.
-- Peek's name was already taken by the sidebar's hover reveal (`m-peek` attribute, `window.sidebar === 'peek'`). The
-  card's things are named `card` in native code; the UI keeps Track 2's `peek` names (`vm.peek`, `peek.*` actions,
-  `<m-peek>` slot), apart from the old attribute.
+- Names (2026-11-21: never Arc's in the product): the card is the **preview card** (Arc's Peek), the card with an
+  address field first **Quick Tab** (Arc's Little Arc). Themes see `vm.preview`, the `preview.*` and `quickTab.open`
+  actions, the `<m-preview>` slot, the `preview` part and `<m-preview-page>`. "Peek" stays the sidebar's hover reveal
+  (`m-peek` attribute, `window.sidebar === 'peek'`). Native code calls the card `card`; the wire names between the
+  copy, the page and the app keep their first names (`peekOpen`, `peekAnswer`, `peek.*` performs, the `peek` push,
+  `little-arc`), and so does this file's name.
 
 ## 1. Foundation: several visible hosts per Margin window
 
@@ -71,16 +74,16 @@ window: a tab Margin knows in another of Margin's windows is moved there (`tabs.
 measured) before it's made active. Tabs in a card window aren't the space's (not in the sidebar, not archived) until
 Expand.
 
-## 2. Peek
+## 2. The preview card
 
-- **Open:** Shift+click on a link, or a click on a link to another site from a pinned tab or favorite (Auto-Peek), in a
+- **Open:** Shift+click on a link, or a click on a link to another site from a pinned tab or favorite (auto-preview), in a
   window Margin draws (the copy knows: `appDrawn`). Anywhere else, and in a dormant copy, nothing is intercepted. The
   page asks the background, which asks the app; the click is cancelled only once the app accepts (`peekOpen` answered
   `ok`). Answer late or refused: the link opens as it would have (same tab, or a new one for `_blank`).
-- **Window:** one card window per profile (`safari:<profile>#card`), made at the first Peek, parked while closed, closed
+- **Window:** one card window per profile (`safari:<profile>#card`), made at the first preview, parked while closed, closed
   after 15 minutes unused (and with its profile's main window). Opening a parked one is a switch (~25–36 ms). The
   first open goes the normal first-open path; the card shows its loader meanwhile.
-- **Rect:** the theme's peek part has an `m-peek-page` element; the overlay measures it as it measures `<m-page>`
+- **Rect:** the theme's `preview` part has an `m-preview-page` element; the overlay measures it as it measures `<m-page>`
   and the app places the card window there. Margin's default part: centred, 8% side and 7% top/bottom margins,
   420×320 minimum, a 52 pt bar for the theme above the page (at least: the card window's Safari toolbar rests in those 52 pt) (back, forward, the address, copy, Expand, close).
 - **Look:** the overlay dims the page area (translucent, so main shows through, dimmed), the card's page area is
@@ -93,13 +96,13 @@ Expand.
 - **Expand (bar button, ⌘↩):** the tab moves into the space's main window and becomes the space's tab, shown; the card
   closes. **Close:** the card's tab closes; the window stays, parked.
 - **Attached to its opener:** switching away hides the card (parked, kept); coming back to the opener shows it again.
-  One card per profile: a new Peek elsewhere replaces it.
+  One card per profile: a new preview elsewhere replaces it.
 
-## 3. Little Arc
+## 3. Quick Tab
 
-⌥⌘N: the card opens with Margin's address field instead of a page (the theme's peek part, `peek.isLittleArc`, no
+⌥⌘N: the card opens with Margin's address field instead of a page (the theme's `preview` part, `preview.isQuickTab`, no
 window yet). A search or address chosen opens the card window at it (never Safari's own empty page: its address field
-keeps Safari's toolbar down). Then it's Peek: Expand puts it in the current space. Esc or a click outside closes it.
+keeps Safari's toolbar down). Then it's the preview card: Expand puts it in the current space. Esc or a click outside closes it.
 
 ## 4. Split view
 
@@ -123,7 +126,7 @@ keeps Safari's toolbar down). Then it's Peek: Expand puts it in the current spac
 ## 5. Order of work
 
 1. Foundation (§1), with tests proving one-host behaviour unchanged and two visible hosts held at their rects.
-2. Peek and Little Arc (§2, §3), the extension's click safety first.
+2. The preview card and Quick Tab (§2, §3), the extension's click safety first.
 3. Split view (§4).
 4. On the real screen with real Safari (Tirth's one-time permission, 2026-11-21): card open/close/expand, splits of
    2–4 with tabs and apps, divider drags, sidebar drags, switches in and out, ⌘W, Esc, keys after a sidebar click.
@@ -134,7 +137,7 @@ keeps Safari's toolbar down). Then it's Peek: Expand puts it in the current spac
 - Engine: the stand-in world (behaviour-world.swift) hosts two and three windows at once; desired keeps them; a park
   of one leaves the others; live resize moves all; a card never parks main; the stray rule leaves a card alone.
 - Overlay (real WKWebView, tools/app-tests): several holes; slot only the card's content while a card is open; a
-  press in the dim closes it; `m-pane` and `m-peek-page` measured and sent.
+  press in the dim closes it; `m-pane` and `m-preview-page` measured and sent.
 - Extension: click interception only after the app accepts; `hostShow` moves a tab between Margin's windows; card
   tabs out of the sidebar until Expand.
 - Themes: all 5 draw the card bar, the dim, panes and dividers, in both engines.

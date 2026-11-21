@@ -6,7 +6,7 @@
 //
 // A new one is one line of `forwarded`: its type and its fields (and, for a push that says what is now rather than
 // that something happened, its type in `standing` too: taken back from a window that no longer gets it).
-// Peek's pushes (`peekOpen`, `peekCancel`, `cardPage`, `cardKey`) are not UI pushes: the session acts on them
+// The preview's pushes (`peekOpen`, `peekCancel`, `cardPage`, `cardKey`) are not UI pushes: the session acts on them
 // (Shell.linkReceived → HostedPeek.swift), answers a click at once, and tells the page what the card is itself.
 
 import Foundation

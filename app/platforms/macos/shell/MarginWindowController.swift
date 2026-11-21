@@ -140,7 +140,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // Its bounds by the window server (top left; nil: unread), read when it's shown or placed. A test's stand-in reads its own.
     var hostedBounds: (Int) -> CGRect? = { MarginWindowController.serverBounds($0) }
     private var hostedFrame: CGRect?
-    // Peek's card page as its page draws it (the theme's <m-peek-page>, top-left screen points), nil: none drawn.
+    // The preview card page as its page draws it (the theme's <m-preview-page>, top-left screen points), nil: none drawn.
     private(set) var cardRect: CGRect?
     // The engine's slow step (a first open, a placing again): the app's name; an item the session is showing that
     // isn't ready yet: its name. Either: the page card is `loading` (the second only after `loaderGrace`).
@@ -565,7 +565,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         updateHole()
     }
 
-    // ---- several visible hosts (docs/PEEK-SPLIT.md §1: Peek's card, a split's panes) ----
+    // ---- several visible hosts (docs/PEEK-SPLIT.md §1: the preview card, a split's panes) ----
 
     // Every visible host's window while more than one is (HostEngine `hostedWindows`), back to front, each at its rect;
     // empty: one host, `hosted` alone, as before.
@@ -574,7 +574,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // The holes: each visible host's frame inside its rect, once it's in place (one host: `hole` alone).
     private(set) var holes: [CGRect] = []
     // A card open: the press's place each time one landed on the page area outside the card's content (the dimmed page
-    // around it, caught: Peek closes the card then, §2).
+    // around it, caught: preview closes the card then, §2).
     private(set) var caughtPresses: [CGPoint] = []
     var catchRegion: CatchRegion { catcher.region } // (what the catch fill fills now: the tests read it)
     func setVisibleHosts(_ list: [HostShownWindow]) {
@@ -1136,7 +1136,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     private var lastPointer: (at: CGPoint, buttonsDown: Bool)?
     // The slot changed under a pointer that may be still (a card or a pane opening or closing, a layout's change, the
     // page's hits, the loader): where it is looked at again at once, so a still pointer over what's Margin's now is
-    // Margin's without a move (the real screen, 2026-11-21: Peek's card opened under a still pointer, which was last
+    // Margin's without a move (the real screen, 2026-11-21: the preview card opened under a still pointer, which was last
     // over the page's hole, and Safari's toolbar resting under Margin's card bar showed its tooltip there). Only when
     // the slot changes, never in a drag's frames (the page area followed live) nor with a button held (a drag keeps its
     // way); nothing said to the page.
@@ -1849,7 +1849,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             // changed. The session places the panes' windows, docs/PEEK-SPLIT.md §4.)
             if hosting, panesWere?.0 != layout.split || panesWere?.1 != layout.panes { owner?.onPanes?(self) }
         case "peekRect":
-            // Where the theme draws Peek's card page (overlay.ts reportPeekPage), in its page: the card's window goes there.
+            // Where the theme draws the preview card page (overlay.ts reportPeekPage), in its page: the card's window goes there.
             let next = (body["rect"] as? [Any]).flatMap { Self.rect($0) }.flatMap { r -> CGRect? in
                 guard r.width >= 1, r.height >= 1 else { return nil }
                 let c = contentFrame
@@ -1962,7 +1962,7 @@ final class MarginWindows {
     var onEnteredFullScreen: ((MarginWindowController) -> Void)? // in full screen (again)
     var onPagePress: ((MarginWindowController, CGPoint) -> Void)? // a press in its page area around a window-mode host's window
     var onCaughtPress: ((MarginWindowController, CGPoint) -> Void)? // a card open: a press on the page area around its content (docs/PEEK-SPLIT.md §2)
-    var onCardRect: ((MarginWindowController) -> Void)? // its page's <m-peek-page> moved, came or went (`cardRect`)
+    var onCardRect: ((MarginWindowController) -> Void)? // its page's <m-preview-page> moved, came or went (`cardRect`)
     var onPanes: ((MarginWindowController) -> Void)? // a split's panes laid out again by its page (docs/PEEK-SPLIT.md §4)
     // A window closing while it hosts: what it shows parked, then the closure called (it closes then).
     var onClosing: ((MarginWindowController, @escaping () -> Void) -> Void)?

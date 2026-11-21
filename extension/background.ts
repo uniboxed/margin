@@ -138,7 +138,7 @@ api.permissions?.onRemoved?.addListener(owned(() => void engine.onboarding?.repo
 api.tabs.onCreated.addListener(owned(async (tab) => {
   // Margin's stand-in for a tab shown in another window is never a Margin tab (background/away.ts).
   if (away.isStandIn(tab.id, tab.windowId, tab)) return;
-  // A new tab in Margin.app's Peek card window: the card's page now (background/hosted.ts).
+  // A new tab in Margin.app's preview card window: the card's page now (background/hosted.ts).
   void hostedTabs.tabCreated(tab);
   // ⌘T (a new tab showing the new-tab page, in front): handed back to the
   // page the user was on at once (handlers.ts newTabHandOff); a new tab
@@ -168,7 +168,7 @@ api.tabs.onUpdated.addListener(owned((tabId, change, tab) => {
   if (change.status || change.url) pageChanged(tabId);
   // Into the state; a hidden tab's written a moment later (background/tab-updates.ts).
   tabUpdated(tabId, change, tab);
-  // Peek's card page's address or title, for Margin.app's card bar (background/hosted.ts).
+  // The preview card page's address or title, for Margin.app's card bar (background/hosted.ts).
   hostedTabs.tabUpdated(tabId, change, tab);
   // Loading or done, for Margin.app's sidebar (background/page-loads.ts: not stored).
   if (change.status) pageLoads.statusChanged(tab, change.status);

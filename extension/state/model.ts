@@ -1590,7 +1590,7 @@ function unbindFavoriteTab(state: State, favoriteId: string) {
   return { ...state, ...(tabsChanged ? { tabs } : {}), ...(keptChanged ? { keptTabs } : {}) };
 }
 
-// ---- air traffic control --------------------------------------------------
+// ---- Link rules --------------------------------------------------
 const AIR_TRAFFIC_CAP = 100;
 
 function addAirTrafficRule(state: State, { id, pattern, spaceId, enabled = true }: { id: string, pattern: string, spaceId: string, enabled?: boolean }) {

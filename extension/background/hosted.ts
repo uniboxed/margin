@@ -49,7 +49,7 @@ const SHOWN = /^(https?:\/\/|about:blank$)/i;
 
 const plain = (url: unknown) => String(url ?? '').replace(/#.*$/, '').replace(/\/$/, '');
 
-// Peek's card (docs/PEEK-SPLIT.md §2): its page is the tab tagged CARD_ITEM in the profile's card window (`hostShow`
+// The preview card (docs/PEEK-SPLIT.md §2): its page is the tab tagged CARD_ITEM in the profile's card window (`hostShow`
 // with `role: 'card'`, which marks that window the card's). Never one of the app's library items: not in Margin's
 // sidebar, not archived, not counted by its keys, until Expand (`promotePeek`, which tags it with the new item). A new
 // tab in the card window (a link the page opens in one) becomes the card's page (`tabCreated`), the one before closed.
@@ -61,7 +61,7 @@ export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = asy
   const byItem = new Map<string, number>();
   const cards = new Set<number>(); // the card windows (one per copy: its profile's)
   // Tabs of items that are a pin's or a favorite's in Margin.app's library (`hostShow`'s `pinned`): their pages'
-  // links to other sites open in Peek's card (Auto-Peek). The copy's own state doesn't have the library's pins.
+  // links to other sites open in the preview card (auto-preview). The copy's own state doesn't have the library's pins.
   const pinnedTabs = new Set<number>();
   const tellPinned = (tabId: number, on: boolean) => { void tabs().sendMessage?.(tabId, { type: 'peekPinned', on })?.catch?.(() => {}); };
   const tellPage = (tabId: number, on: boolean) => { void tabs().sendMessage?.(tabId, { type: 'cardWindow', on })?.catch?.(() => {}); };
@@ -113,11 +113,11 @@ export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = asy
       for (const [item, id] of byItem) if (id === tabId) return item;
       return null;
     },
-    /** Whether `windowId` is the card's window (Peek's, Margin.app's `hostShow` with `role: 'card'`). */
+    /** Whether `windowId` is the card's window (the preview card's, Margin.app's `hostShow` with `role: 'card'`). */
     isCard: (windowId: number) => cards.has(windowId),
-    /** Whether a tab shows a pin's or favorite's item in Margin.app (Auto-Peek). */
+    /** Whether a tab shows a pin's or favorite's item in Margin.app (auto-preview). */
     isPinned: (tabId: number) => pinnedTabs.has(tabId),
-    // `fresh` (the card's only): a new Peek's page: the card's tab sent there if it shows another one.
+    // `fresh` (the card's only): a new preview's page: the card's tab sent there if it shows another one.
     async show({ windowId, itemId, url, role, fresh, pinned }: { windowId?: unknown, itemId?: unknown, url?: unknown, role?: unknown, fresh?: unknown, pinned?: unknown }) {
       if (!Number.isInteger(windowId)) throw new Error('no window');
       if (typeof itemId !== 'string' || !ITEM.test(itemId)) throw new Error('no item');
@@ -137,7 +137,7 @@ export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = asy
       }
       if (cards.has(win)) throw new Error('the card\'s window shows the card only');
       const out = await this.showIn(win, itemId, url);
-      // (Said to its page when it changes: its clicks decide Auto-Peek at once, with no question asked.)
+      // (Said to its page when it changes: its clicks decide auto-preview at once, with no question asked.)
       if (typeof pinned === 'boolean' && pinned !== pinnedTabs.has(out.tabId)) {
         if (pinned) pinnedTabs.add(out.tabId); else pinnedTabs.delete(out.tabId);
         tellPinned(out.tabId, pinned);
@@ -242,7 +242,7 @@ export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = asy
       await tabs().update(tab.id, { url, active: true });
       return { ok: true, tabId: tab.id };
     },
-    /** Promote a Peek / Little Arc Safari tab into the main hosted Space window (preserving logins, cookies, scroll). */
+    /** Promote a preview / Quick Tab Safari tab into the main hosted Space window (preserving logins, cookies, scroll). */
     async promotePeek({ fromItemId, toWindowId, toItemId }: { fromItemId?: unknown, toWindowId?: unknown, toItemId?: unknown }) {
       if (typeof fromItemId !== 'string' || !ITEM.test(fromItemId)) throw new Error('no source item');
       if (typeof toItemId !== 'string' || !ITEM.test(toItemId)) throw new Error('no target item');
@@ -251,7 +251,7 @@ export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = asy
       if (tab?.id == null) return { ok: false };
       const move = tabs().move;
       if (move) {
-        // (Its window keeps a tab: the card's window is Margin's, parked for the next Peek.)
+        // (Its window keeps a tab: the card's window is Margin's, parked for the next preview.)
         if (tab.windowId != null && tab.windowId !== toWindowId) await leaveBlank(tab.windowId);
         const moved = await move.call(tabs(), tab.id, { windowId: toWindowId as number, index: -1 }).catch(() => null);
         if (moved?.id != null) {
@@ -265,7 +265,7 @@ export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = asy
       }
       return { ok: false, url: tab.url ?? '' };
     },
-    /** Peek's card closed (Margin.app's `hostCardClose`): its tab closed, a blank one left so its window stays (parked). */
+    /** The preview card closed (Margin.app's `hostCardClose`): its tab closed, a blank one left so its window stays (parked). */
     async closeCard() {
       const tab = await own(CARD_ITEM, null);
       byItem.delete(CARD_ITEM);

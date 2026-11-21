@@ -129,7 +129,7 @@ final class DevHooks {
                 return say("dev hook: host drag \(parts[0]),\(parts[1]) \(asked)")
             }
             if fields["say"] == "front" { return say("dev hook: front: \(world.devFront()) \(asked)") }
-            // A theme action in the front window's page (the on-screen checks of Peek and split view): `ui` its name,
+            // A theme action in the front window's page (the on-screen checks of the preview card and split view): `ui` its name,
             // `arg` a number or a short id; `say: state` what the page shows of the tab, card and split; `say: layout`
             // the window's visible hosts as the session and the engine have them.
             if let action = fields["ui"] {

@@ -7,7 +7,7 @@ import AppKit
 import MarginCore
 
 // What's hosted: an app by its bundle id, or a Safari window (a profile's; nil the default one) in a role
-// (docs/PEEK-SPLIT.md §1): the profile's main window (the item shown, as before), its card (Peek and Little Arc) or a
+// (docs/PEEK-SPLIT.md §1): the profile's main window (the item shown, as before), its card (the preview card and Quick Tab) or a
 // split's pane (1...3: a split's web panes of one profile after the first, which uses the main window).
 nonisolated enum HostTarget: Hashable, Sendable {
     case app(String)
@@ -69,7 +69,7 @@ nonisolated struct HostID: Hashable, Sendable, Codable, CustomStringConvertible 
 }
 
 // A visible host's role in a Margin window's page area (docs/PEEK-SPLIT.md "Words"): `main` (the item shown, at the
-// page area unless a split gives it a pane's rect), `pane` (a split's other panes), `card` (Peek and Little Arc's,
+// page area unless a split gives it a pane's rect), `pane` (a split's other panes), `card` (the preview card's and Quick Tab's,
 // above the rest).
 nonisolated enum HostRole: String, Hashable, Sendable { case main, pane, card }
 

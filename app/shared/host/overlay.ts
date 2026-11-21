@@ -293,7 +293,7 @@ function reportHits() {
   lastHits = key;
   void post('hits', { rects, all }).catch(() => {});
 }
-// Where the theme's `<m-peek-page>` is (Peek's card: Margin.app places the card's window there, docs/PEEK-SPLIT.md §2):
+// Where the theme's `<m-preview-page>` is (the preview card: Margin.app places the card's window there, docs/PEEK-SPLIT.md §2):
 // said as it changes, null once there's none. Measured as laid out, never mid-animation (ui/render.ts measurePeekPage).
 let lastPeekPage = 'null';
 function reportPeekPage() {
@@ -847,7 +847,8 @@ function onMessage(msg: any) {
         host?.takeFailure(); // (an earlier request's failure isn't this one's)
         if (runtime) void togglePin(runtime.vm, runtime, () => host?.takeFailure() != null);
       } else if (msg.name === 'reopen-archived') runtime?.dispatch('archive.restoreLast', undefined, 'behavior');
-      // Little Arc (⌥⌘N): Peek's card with Margin's own address field (ui/behaviors/card.ts).
+      // Quick Tab (⌥⌘N): the preview card with Margin's own address field (ui/behaviors/card.ts; `little-arc`, the
+      // app's command, keeps its first name).
       else if (msg.name === 'little-arc') runtime?.card.openLittleArc();
       else if (msg.name === 'add-split') addSplitPane();
       else if (msg.name === 'space-index' && Number.isInteger(msg.index)) {
@@ -868,7 +869,7 @@ function onMessage(msg: any) {
       // (Each a tab's: Safari's pages are the mini player's only sources so far.)
       runtime?.setUi({ media: Array.isArray(msg.sources) ? msg.sources.filter((m: any) => !!m && typeof m === 'object' && Number.isInteger(m.tabId)).slice(0, 8).map((m: any) => ({ ...m, id: `tab:${m.tabId}`, source: 'tab' })) : null });
       return;
-    // Peek's card as Margin.app has it (app/platforms/macos/shell/HostedPeek.swift): drawn, or (null) closed, animated
+    // The preview card as Margin.app has it (app/platforms/macos/shell/HostedPeek.swift): drawn, or (null) closed, animated
     // out (ui/behaviors/card.ts).
     case 'peek':
       runtime?.card.show(msg.peek ?? null);
@@ -993,7 +994,7 @@ document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) s
     // The hosted window's bounds in this page, as they change (MarginWindowController.readHosted): a theme with a bigger
     // page area waits for them (swapTheme).
     if (msg?.type === 'hostedFrame') { hostedFrameSaid(msg.rect); return; }
-    // Every visible host's window while several are (MarginWindowController.sayHostedFrames): kept for Peek's card and
+    // Every visible host's window while several are (MarginWindowController.sayHostedFrames): kept for the preview card and
     // split view's panes (docs/PEEK-SPLIT.md §2-§4).
     if (msg?.type === 'hostedFrames') { hostedFramesSaid(msg.frames); return; }
     // The trackpad's phases over Margin's UI (MarginWindowController.wheelPhase): for the space swipe (ui/behaviors/
@@ -1026,7 +1027,7 @@ document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) s
   },
   // The counts above (the app's tests read them).
   stats: () => JSON.parse(JSON.stringify(stats)),
-  // DEV-HOOK: an action run as a theme's behaviour would (DevHooks.swift `host { ui }`, the on-screen checks of Peek
+  // DEV-HOOK: an action run as a theme's behaviour would (DevHooks.swift `host { ui }`, the on-screen checks of the preview card
   // and split view), and what the page shows of them: its tab in front, its card, its split. Never addresses.
   devDispatch: (action: string, arg?: unknown) => (runtime ? !!runtime.dispatch(action, arg, 'behavior') : false), // DEV-HOOK
   devState: () => { // DEV-HOOK
@@ -1036,7 +1037,7 @@ document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) s
     const name = (id: unknown) => { const r = rows.find((x: any) => x.id === id || x.tabId === id); return r ? String(r.title ?? '').slice(0, 24) : String(id); };
     return JSON.stringify({ space: vm.space?.name, tab: vm.tab ? { id: vm.tab.id, title: String(vm.tab.title ?? '').slice(0, 24) } : null,
       today: (vm.space?.today ?? []).map((t: any) => ({ id: t.id, title: String(t.title ?? '').slice(0, 24), active: !!t.active })),
-      peek: vm.peek ? { host: vm.peek.host, littleArc: !!vm.peek.isLittleArc, loading: !!vm.peek.loading } : null,
+      preview: vm.preview ? { host: vm.preview.host, quickTab: !!vm.preview.isQuickTab, loading: !!vm.preview.loading } : null,
       // (Each pane's `tabId`: its row's number while it's open, what an action on it takes; `id` the split's own name for it.)
       split: vm.split ? { axis: vm.split.axis, panes: (vm.split.panes ?? []).map((p: any) => ({ id: p.id, tabId: p.tabId ?? p.id, title: name(p.tabId ?? p.id), focused: !!(p.focused ?? p.active) })) } : null,
       splits: (vm.space?.splits ?? []).map((sp: any) => ({ id: sp.id, count: sp.count })),
@@ -1103,7 +1104,7 @@ async function start() {
   if (!hello) return log('warn', 'no window for this overlay');
   host = createAppHost({ hello, post, onMessage, onNotice: (arg) => notices.run(arg), warn: (...args) => log('warn', ...args) });
   hostedFrameSaid(hello?.hostedFrame);
-  // (Several visible as it starts: Peek's card, a split's panes. `hostedFrames` pushes keep it as they change.)
+  // (Several visible as it starts: the preview card, a split's panes. `hostedFrames` pushes keep it as they change.)
   hostedFramesSaid(hello?.hostedFrames);
   host.onState(() => { followPage(); followSplitPick(); });
   // What the copy pushed for this window before this page was there (a

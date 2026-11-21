@@ -92,10 +92,10 @@ final class FakeRegistrar: HotKeyRegistrar {
     liveResizeTests() // live-resize-tests.swift: the hosted windows' tiles in Margin's Space, sized live (docs/HOSTING-CORE.md)
     multiHostTests() // multi-host-tests.swift: several visible hosts per Margin window, each at its rect (docs/PEEK-SPLIT.md §1)
     multiHostSessionTests() // multi-host-session-tests.swift: a Margin window's layout of library items, each web item's window in its role
-    peekSessionTests() // peek-session-tests.swift: Peek's card and Little Arc, the session's side (docs/PEEK-SPLIT.md §2, §3)
-    peekSplitTests() // peek-split-tests.swift: Peek's card over a split, both kept (docs/PEEK-SPLIT.md §2, §4)
+    peekSessionTests() // peek-session-tests.swift: the preview card and Quick Tab, the session's side (docs/PEEK-SPLIT.md §2, §3)
+    peekSplitTests() // peek-split-tests.swift: the preview card over a split, both kept (docs/PEEK-SPLIT.md §2, §4)
     splitTests() // split-tests.swift: a split shown whole by the session, its panes at the page's rects, ⌘W, a drag, idle pane windows (docs/PEEK-SPLIT.md §4)
-    screenCardTests() // screen-card-tests.swift: the real screen's finds of 2026-11-21 with Peek's card over a split (the window server's order)
+    screenCardTests() // screen-card-tests.swift: the real screen's finds of 2026-11-21 with the preview card over a split (the window server's order)
     screenEngineTests() // screen-engine-tests.swift: the real screen's finds of 2026-11-21 (a layout held through a lone placing, a window out of full screen by itself, Remove from Split View)
     loopGuardTests() // loop-guard-tests.swift: the hosting core's loop guard against Weather's loop (docs/ARCHITECTURE-PLAN.md)
     print(failures == 0 ? "all \(passed) checks passed" : "\(failures) of \(passed + failures) checks failed", String(format: "(%.2f s)", Date().timeIntervalSince(started)))

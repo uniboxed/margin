@@ -644,7 +644,7 @@ const ACTIONS: Record<string, Handler> = {
   moveFavorite({ s, p }) {
     return { s: M.moveFavorite(s, p?.favoriteId, { beforeId: p?.beforeId ?? null }) as LibState };
   },
-  // ---- air traffic control ----
+  // ---- Link rules ----
   addAirTrafficRule({ s, p, ids }) {
     const spaceId = hasSpace(s, p?.spaceId) ? p.spaceId : windowSpace(s, win(p));
     if (!spaceId) return fail(s, 'no space');

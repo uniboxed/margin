@@ -87,7 +87,7 @@ test('hostShow: an item\'s tab gone or in another window: found by its address, 
   assert.deepEqual((await h.show({ windowId: 7, itemId: 't-aaaa', url: 'https://a.example/' })).created, true);
 });
 
-// Several hosted windows per profile (docs/PEEK-SPLIT.md §1: a split's panes, Peek's card): an item's tab in another of
+// Several hosted windows per profile (docs/PEEK-SPLIT.md §1: a split's panes, the preview card): an item's tab in another of
 // the app's windows is moved where it's shown (its page kept), never made again.
 function withMove(f: ReturnType<typeof fakeTabs>) {
   return {

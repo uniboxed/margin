@@ -1,9 +1,9 @@
-// Peek's card over a split (docs/PEEK-SPLIT.md §2 and §4 together), part of tests.swift's run: the library, the real
+// The preview card over a split (docs/PEEK-SPLIT.md §2 and §4 together), part of tests.swift's run: the library, the real
 // engine on the stand-in world and a stand-in copy. A split of a web page and TextEdit shown whole; a page's click opens
 // a card over it: three visible (main, the pane, the card), the split's layout kept, the focused pane still the
 // window's item shown. ⌘W with the card focused closes only the card (the split goes on, nothing of it closed); a
 // change of the page area places all three again, each at its own rect (the panes at their new <m-pane>s, the card at
-// its new <m-peek-page>); a press on the dimmed page closes the card, the split left as it was.
+// its new <m-preview-page>); a press on the dimmed page closes the card, the split left as it was.
 import AppKit
 import Foundation
 
@@ -105,7 +105,7 @@ func peekSplitTests() {
     window.cardRect = card2
     run { session.pageRectChanged(window) }
     rects = panes()
-    check("peek over a split: the page area changed: all three placed again, the panes at their new <m-pane>s, the card at its new <m-peek-page>, still three visible, the card focused",
+    check("peek over a split: the page area changed: all three placed again, the panes at their new <m-pane>s, the card at its new <m-preview-page>, still three visible, the card focused",
           engine.visible.count == 3 && bounds(safari) == rects[a] && bounds(editId) == rects[edit] && bounds(cardId) == card2 && rects[a]?.minX == window.hostedPlacement?.page.minX
           && engine.shown == cardId && session.layout[1]?.split == sp && session.layout[1]?.extras.first { $0.role == .card }?.rect == card2,
           "\(rects) \(String(describing: bounds(safari))) \(String(describing: bounds(editId))) \(String(describing: bounds(cardId))) \(engine.visible)")

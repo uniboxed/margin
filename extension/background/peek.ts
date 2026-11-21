@@ -1,4 +1,4 @@
-// A page's Peek click (content/peek.ts) asked of Margin.app (docs/PEEK-SPLIT.md §2): the copy pushes
+// A page's preview click (content/peek.ts) asked of Margin.app (docs/PEEK-SPLIT.md §2): the copy pushes
 // `peekOpen { id, url, source, tabId, notAfter }` for the page's window, and Margin.app answers with the request
 // `peekAnswer { id, ok }` (accepted: it shows the card; refused: not a window it hosts, nothing hosted there, ...).
 // The page's click waits for this answer only until `notAfter` (its own time, a little under the page's own wait):

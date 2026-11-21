@@ -1,6 +1,6 @@
 // Several visible hosts, the session's side (HostedSession `setLayout`, docs/PEEK-SPLIT.md §1), part of tests.swift's
 // run (called from multi-host-tests.swift): a Margin window's layout of library items on the real engine and the
-// stand-in world, each web item's window its profile's in its role (main's for the first, a card's for Peek's), its tab
+// stand-in world, each web item's window its profile's in its role (main's for the first, a card's for the preview's), its tab
 // shown there by the copy; the restored-window sweep sparing every role's window; a plain show after it: one item again.
 import AppKit
 import Foundation
@@ -89,7 +89,7 @@ func multiHostSessionTests() {
     check("multi-host session: what the UI draws: the focused item active, the other visible one marked visible",
           tab(aItem)?["active"] as? Bool == true && tab(editItem)?["visible"] as? Bool == true && tab(editItem)?["active"] as? Bool == false && tab(bItem)?["visible"] == nil, "\(tabs)")
 
-    // Peek's card: the other web item in the profile's card window (asked in the card's role), focused, over main.
+    // The preview card: the other web item in the profile's card window (asked in the card's role), focused, over main.
     mark = links.asked.count
     run { await session.setLayout(window: 1, main: aItem, extras: [HostedLayout.Extra(item: bItem, role: .card, rect: card)], focused: bItem) }
     let cardWindow = engine.hosts[peek]?.window ?? 0

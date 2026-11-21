@@ -14,7 +14,7 @@ import type { State } from '../../types/margin';
 //            string: state/model.ts keptTabs; activating it opens it);
 //   space — the id of an existing space;
 //   folder — an existing folder's id;   pin — an existing pin's id;
-//   rule — an existing Air Traffic rule's id (state.airTraffic);
+//   rule — an existing link rule's id (Link Rules, state.airTraffic);
 //   archive — an archived entry's id;   row — a row of the open palette;
 //   item   — an item of the open menu;  color — a swatch of the space editor;
 //   notice-item, prompt-item — a button of the notice or prompt shown;
@@ -103,18 +103,18 @@ export const ACTIONS = Object.freeze({
   'media.next': 'none',
   'media.mute': 'none',
   'media.focus': 'none',
-  'peek.close': 'none',
-  'peek.expand': 'none',
-  'peek.copyUrl': 'none',
-  'peek.setSpace': 'space',
-  'peek.back': 'none',
-  'peek.forward': 'none',
-  // Little Arc (⌥⌘N): the card with Margin's own address field (docs/PEEK-SPLIT.md §3).
-  'littleArc.open': 'none',
-  'airTraffic.addHost': 'tab',
-  // An Air Traffic rule (state.airTraffic): removed, or turned off and on again (a tab's menu, Settings).
-  'airTraffic.remove': 'rule',
-  'airTraffic.toggle': 'rule',
+  'preview.close': 'none',
+  'preview.expand': 'none',
+  'preview.copyUrl': 'none',
+  'preview.setSpace': 'space',
+  'preview.back': 'none',
+  'preview.forward': 'none',
+  // Quick Tab (⌥⌘N): the preview card with Margin's own address field first (docs/PEEK-SPLIT.md §3).
+  'quickTab.open': 'none',
+  'linkRules.addHost': 'tab',
+  // A link rule (Link Rules, state.airTraffic): removed, or turned off and on again (a tab's menu, Settings).
+  'linkRules.remove': 'rule',
+  'linkRules.toggle': 'rule',
   'split.add': 'tab',
   // (Its name in themes/README.md: the same action.)
   'split.addPane': 'tab',
@@ -462,16 +462,16 @@ export const ACTION_MAP = Object.freeze({
   'media.next': 'mediaControl',
   'media.mute': 'mediaControl',
   'media.focus': 'mediaControl',
-  'peek.close': 'local',
-  'peek.expand': 'local',
-  'peek.copyUrl': 'local',
-  'peek.setSpace': 'local',
-  'peek.back': 'local',
-  'peek.forward': 'local',
-  'littleArc.open': 'local',
-  'airTraffic.addHost': 'addAirTrafficRule',
-  'airTraffic.remove': 'removeAirTrafficRule',
-  'airTraffic.toggle': 'toggleAirTrafficRule',
+  'preview.close': 'local',
+  'preview.expand': 'local',
+  'preview.copyUrl': 'local',
+  'preview.setSpace': 'local',
+  'preview.back': 'local',
+  'preview.forward': 'local',
+  'quickTab.open': 'local',
+  'linkRules.addHost': 'addAirTrafficRule',
+  'linkRules.remove': 'removeAirTrafficRule',
+  'linkRules.toggle': 'toggleAirTrafficRule',
   'split.add': 'addToSplit',
   'split.addPane': 'addToSplit',
   'split.open': 'openSplit',
@@ -496,7 +496,7 @@ export const ACTION_MAP = Object.freeze({
 });
 
 const LOCAL = new Set(['space.edit', 'space.rename', 'folder.rename', 'tab.rename', 'pin.rename', 'favorite.rename', 'palette.open', 'palette.close', 'menu.open', 'menu.run', 'menu.close', 'editor.save', 'editor.cancel', 'editor.delete', 'editor.color', 'editor.theme',
-  'notice.run', 'notice.close', 'prompt.run', 'prompt.close', 'launcher.more', 'settings.run', 'settings.category', 'tab.copyUrl', 'pin.copyUrl', 'favorite.copyUrl', 'peek.close', 'peek.expand', 'peek.copyUrl', 'peek.setSpace', 'peek.back', 'peek.forward', 'littleArc.open']);
+  'notice.run', 'notice.close', 'prompt.run', 'prompt.close', 'launcher.more', 'settings.run', 'settings.category', 'tab.copyUrl', 'pin.copyUrl', 'favorite.copyUrl', 'preview.close', 'preview.expand', 'preview.copyUrl', 'preview.setSpace', 'preview.back', 'preview.forward', 'quickTab.open']);
 const NAV = { 'nav.back': 'goBack', 'nav.forward': 'goForward', 'nav.reload': 'reload' };
 
 /**
@@ -589,15 +589,15 @@ export function requestFor(name: string, arg: any, { state, ui, platform, row }:
     case 'media.next': return send('mediaControl', { command: 'next' });
     case 'media.mute': return send('mediaControl', { command: 'mute' });
     case 'media.focus': return send('mediaControl', { command: 'focus' });
-    case 'airTraffic.addHost': {
+    case 'linkRules.addHost': {
       const item = typeof arg === 'string' ? state?.keptTabs?.[arg] : state?.tabs?.[arg];
       let host = '';
       try { host = new URL(item?.url ?? '').hostname.toLowerCase(); } catch {}
       const spaceId = typeof arg === 'string' ? state?.keptTabs?.[arg]?.spaceId : state?.tabSpace?.[arg];
       return send('addAirTrafficRule', { pattern: host, spaceId: spaceId ?? undefined });
     }
-    case 'airTraffic.remove': return send('removeAirTrafficRule', { ruleId: arg });
-    case 'airTraffic.toggle': return send('toggleAirTrafficRule', { ruleId: arg });
+    case 'linkRules.remove': return send('removeAirTrafficRule', { ruleId: arg });
+    case 'linkRules.toggle': return send('toggleAirTrafficRule', { ruleId: arg });
     case 'split.add':
     case 'split.addPane': return send('addToSplit', { tabId: arg, windowId });
     case 'split.open': return send('openSplit', { splitId: arg, windowId, ...show });

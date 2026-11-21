@@ -1454,35 +1454,35 @@ func multiHoleChecks(_ c: MarginWindowController, page: CGRect, main: Int, bound
   c.pressed(around)
   let afterAround = c.caughtPresses.count
   c.pressed(mid(cardRect))
-  check("several hosts: a card open: a press on the page around it reported as caught (Peek closes the card then), one on the card's content not",
+  check("several hosts: a card open: a press on the page around it reported as caught (Preview closes the card then), one on the card's content not",
         afterAround == caught + 1 && c.caughtPresses.count == afterAround && c.caughtPresses.last == around, "\(c.caughtPresses)")
   let hello = c.pageHello()
   check("several hosts: a page's hello has every visible host's frame (a page started again while a card is open knows them at once)",
         hello.contains(#""hostedFrames":[{"role":"main","focused":false"#) && hello.contains(#"{"role":"card","focused":true"#), String(hello.prefix(0)))
 
-  // ---- Peek's card drawn by the real page (Arcadia): where its <m-peek-page> is, for the card's window ----
+  // ---- The preview card drawn by the real page (Arcadia): where its <m-preview-page> is, for the card's window ----
   let rectsBefore = c.pushed.count
   c.push(#"{"type":"peek","peek":{"url":"https://docs.example.org/guide","title":"The Guide","loading":true}}"#)
   _ = await until(3) { c.cardRect != nil }
   let drawn = c.cardRect ?? .zero
   let near = { (a: CGFloat, b: CGFloat) in abs(a - b) <= 3 }
-  check("Peek: the page draws the card and says where its page is (the theme's <m-peek-page>): centred in the page area, 8% each side, 7% and a 52 pt bar above (the card window's toolbar rests under it)",
+  check("Preview: the page draws the card and says where its page is (the theme's <m-preview-page>): centred in the page area, 8% each side, 7% and a 52 pt bar above (the card window's toolbar rests under it)",
         c.cardRect != nil && near(drawn.minX - page.minX, page.maxX - drawn.maxX) && near(drawn.minX - page.minX, (page.width * 0.08).rounded())
         && near(drawn.minY - page.minY, (page.height * 0.07).rounded() + 52) && page.contains(drawn), "\(drawn) in \(page)")
-  let loaderUp = await js(c.webView, "return getComputedStyle(document.querySelector('m-peek-page')).backgroundColor") as? String
-  check("Peek: while its window isn't in place the card's page is covered (its own loader), never the page card's loader over main",
+  let loaderUp = await js(c.webView, "return getComputedStyle(document.querySelector('m-preview-page')).backgroundColor") as? String
+  check("Preview: while its window isn't in place the card's page is covered (its own loader), never the page card's loader over main",
         loaderUp != nil && loaderUp != "rgba(0, 0, 0, 0)" && c.pageState == .shown, "\(String(describing: loaderUp)) \(c.pageState)")
   c.push(#"{"type":"peek","peek":{"url":"https://docs.example.org/guide","title":"The Guide","loading":false}}"#)
   var clear: String?
   for _ in 0..<60 {
-    clear = await js(c.webView, "return getComputedStyle(document.querySelector('m-peek-page')).backgroundColor") as? String
+    clear = await js(c.webView, "return getComputedStyle(document.querySelector('m-preview-page')).backgroundColor") as? String
     if clear == "rgba(0, 0, 0, 0)" { break }
     try? await Task.sleep(nanoseconds: 50_000_000)
   }
-  check("Peek: in place: the card's page clear (its window shows through), at the same place", clear == "rgba(0, 0, 0, 0)" && c.cardRect == drawn, "\(String(describing: clear)) \(String(describing: c.cardRect))")
+  check("Preview: in place: the card's page clear (its window shows through), at the same place", clear == "rgba(0, 0, 0, 0)" && c.cardRect == drawn, "\(String(describing: clear)) \(String(describing: c.cardRect))")
   c.push(#"{"type":"peek","peek":null}"#)
   _ = await until(3) { c.cardRect == nil }
-  check("Peek: closed by the app: animated out, then no card page any more (said once)", c.cardRect == nil && c.pushed.count > rectsBefore, "\(String(describing: c.cardRect))")
+  check("Preview: closed by the app: animated out, then no card page any more (said once)", c.cardRect == nil && c.pushed.count > rectsBefore, "\(String(describing: c.cardRect))")
 
   // ---- one host again ----
   c.setVisibleHosts([])

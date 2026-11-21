@@ -308,7 +308,7 @@ test('newWindow made ready out of sight (Margin.app at its launch): a blank page
   assert.equal(fake.tabs.get(blank.windowId * 10)?.url, 'about:blank', 'nothing loaded in it');
   const app = { app: true, tab: { windowId: null } } as any;
   const page = (await handlers.newWindow({ fullscreen: false, url: 'https://a.example/' }, app))!;
-  assert.deepEqual(fake.createdWith[1], { focused: true, url: 'https://a.example/' }, 'a web page: a split\'s pane window or Peek\'s card window opened at its page (docs/PEEK-SPLIT.md §2, §4)');
+  assert.deepEqual(fake.createdWith[1], { focused: true, url: 'https://a.example/' }, 'a web page: a split\'s pane window or the preview card window opened at its page (docs/PEEK-SPLIT.md §2, §4)');
   const other = (await handlers.newWindow({ fullscreen: false, url: 'file:///etc/hosts' }, app))!;
   assert.deepEqual(fake.createdWith[2], { focused: true }, 'any other address ignored');
   const notApp = (await handlers.newWindow({ fullscreen: false, url: 'https://a.example/' }))!;

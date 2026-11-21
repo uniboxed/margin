@@ -90,8 +90,8 @@ func glueSplitScenario() async {
   check("a drag's frame: the holes follow the rects the engine says at once (the windows' bounds not read meanwhile), and go back with them",
         list.count == 2 && liveHoles == moved.map(\.rect) && c.holes == panes.map(\.rect), "\(liveHoles) \(c.holes)")
 
-  // Peek's card over the split (the real screen, 2026-11-21: the split's gap drawn as a stripe across the card's page):
-  // the page draws the card, its window is told visible at its <m-peek-page>, and in the card's page nothing of
+  // The preview card over the split (the real screen, 2026-11-21: the split's gap drawn as a stripe across the card's page):
+  // the page draws the card, its window is told visible at its <m-preview-page>, and in the card's page nothing of
   // Margin's window paints (its ground cut there, its page's divider clipped out), while the gap beside the card is
   // still Margin's ground; the card's page is cut out of the ground even while its window's frame reads elsewhere.
   if panes.count == 2 {
@@ -109,7 +109,7 @@ func glueSplitScenario() async {
     c.hostedBounds = { n in n == cardWindow ? cardFrame : was(n) }
     let withCard = list + [HostShownWindow(window: cardWindow, rect: cardRect, role: .card, z: 2, focused: true)]
     c.setVisibleHosts(withCard)
-    check("Peek's card over the split: drawn across the gap between the panes (set up)",
+    check("The preview card over the split: drawn across the gap between the panes (set up)",
           cardRect.width > 0 && cardRect.minX < gapX && cardRect.maxX > gapX && cardRect.minY < page.midY && cardRect.maxY > page.midY && cardRect.minY > page.minY + 4, "\(cardRect) gap at \(gapX)")
     let onPage = await js(c.webView, "const p = document.querySelector('m-page'); const r = p.getBoundingClientRect(); return [p.hasAttribute('m-card-clip'), document.elementsFromPoint(\(Double(local(under).x)), \(Double(local(under).y))).map(e => e.localName).filter(n => n.startsWith('m-')).join(',')].join('|')") as? String ?? ""
     check("…the page's <m-page> clipped out of the card's page: nothing of it (the divider) there",

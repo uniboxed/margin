@@ -45,8 +45,9 @@ export type UiState = {
   toast?: { id: string, text: string } | null,
   /** The background mini player's sources (Margin.app's `media` push: overlay.ts), or one. */
   media?: MediaSource[] | MediaSource | null,
-  // Peek's card and Little Arc (docs/PEEK-SPLIT.md §2, §3; Margin.app's `peek` push, ui/behaviors/card.ts): `loading`
-  // until its window is in place, `closing` as it goes, `query` Little Arc's field.
+  // The preview card and Quick Tab (docs/PEEK-SPLIT.md §2, §3; Margin.app's `peek` push, ui/behaviors/card.ts; the
+  // runtime's own names, `peek` and `littleArc`, kept): `loading` until its window is in place, `closing` as it goes,
+  // `query` Quick Tab's field. Themes see it as `preview` (PreviewView).
   peek?: { url: string, title?: string, spaceId?: string | null, littleArc?: boolean, loading?: boolean, closing?: boolean, canGoBack?: boolean | null, canGoForward?: boolean | null, query?: string } | null,
   menu?: { kind: MenuTarget['kind'], id?: string | number | null, x?: number, y?: number, above?: boolean, confirming?: string | null } | null,
   editing?: { kind: 'space' | 'folder' | 'tab' | 'pin' | 'favorite', id: string | number } | null,
@@ -180,10 +181,10 @@ export type MediaView = {
   letter: string, color: string, playing: boolean, paused: boolean, muted: boolean,
   canPrev: boolean, canNext: boolean,
 };
-export type PeekView = {
+export type PreviewView = {
   url: string, host: string, title: string, spaceId: string, spaceName: string, spaceEmoji: string,
-  /** Little Arc's address field first, no page yet (`isLittleArc`: the same, the name themes read). */
-  littleArc: boolean, isLittleArc: boolean,
+  /** Quick Tab: its address field first, no page yet (`isQuickTab`: the same, the name themes read). */
+  quickTab: boolean, isQuickTab: boolean,
   /** Its window not in place yet (its page area covered, a loader there); `ready`: in place, its page showing through. */
   loading: boolean, ready: boolean,
   /** Going away (the reverse of its open, then gone). */
@@ -228,7 +229,7 @@ export type ViewModel = {
   prompt: PromptView | null,
   toast: ToastView | null,
   media: MediaView | null,
-  peek: PeekView | null,
+  preview: PreviewView | null,
   split: ActiveSplitView | null,
   gesture: GestureView | null,
   launcher: LauncherView | null,
@@ -424,7 +425,7 @@ function fresh(input: ViewModelInput): ViewModel {
       space: { id: '', name: '', emoji: '', color: '', abbr: '', index: 0, number: 1, active: true, tabCount: 0, label: '', pinned: [], pinnedFlat: [], folders: [], pins: [], splits: [], hasSplits: false, today: [], hasToday: false, hasPinned: false, newTab: { active: false } },
       spaces: [], favorites: { items: [], hasItems: false, columns: 3 }, tab: null, archive: [], hasArchive: false,
       palette: { open: !!paletteUi.open, query: paletteUi.query ?? '', newTab: !!paletteUi.newTab, rows: [], hasRows: false, selected: null },
-      menu: null, editing, editor: null, notice, prompt, toast, media: null, peek: null, split: null, gesture, launcher: null, pageLoader, settingsForm: null, settingsTab: null, settings, platform,
+      menu: null, editing, editor: null, notice, prompt, toast, media: null, preview: null, split: null, gesture, launcher: null, pageLoader, settingsForm: null, settingsTab: null, settings, platform,
     };
   }
 
@@ -769,23 +770,23 @@ function fresh(input: ViewModelInput): ViewModel {
     };
   }
 
-  let peek: PeekView | null = null;
+  let preview: PreviewView | null = null;
   if (ui.peek && typeof ui.peek.url === 'string' && (ui.peek.url || ui.peek.littleArc || ui.peek.loading)) {
     const targetSpace = spaces.find((s) => s.id === ui.peek?.spaceId) ?? chip;
     const url = ui.peek.url.slice(0, 2048);
-    const littleArc = !!ui.peek.littleArc;
-    const loading = !littleArc && ui.peek.loading !== false;
-    peek = {
+    const quickTab = !!ui.peek.littleArc;
+    const loading = !quickTab && ui.peek.loading !== false;
+    preview = {
       url,
       host: url ? hostOf(url) || url : '',
       title: String(ui.peek.title || (url ? hostOf(url) || url : '')).slice(0, 140),
       spaceId: targetSpace?.id ?? '',
       spaceName: targetSpace?.name ?? '',
       spaceEmoji: targetSpace?.emoji ?? '',
-      littleArc,
-      isLittleArc: littleArc,
+      quickTab,
+      isQuickTab: quickTab,
       loading,
-      ready: !littleArc && !loading && !ui.peek.closing,
+      ready: !quickTab && !loading && !ui.peek.closing,
       closing: !!ui.peek.closing,
       canGoBack: ui.peek.canGoBack !== false,
       canGoForward: ui.peek.canGoForward !== false,
@@ -833,7 +834,7 @@ function fresh(input: ViewModelInput): ViewModel {
     prompt,
     toast,
     media,
-    peek,
+    preview,
     split,
     gesture,
     launcher,

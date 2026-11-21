@@ -340,7 +340,7 @@ extension Shell {
             var done: String
             switch (key, target) {
             case (.closeTab, .hosted(let id)) where id.safariRole == .card:
-                // (Peek's card has the keys: the card closes, never the item under it, HostedPeek.swift.)
+                // (The preview card has the keys: the card closes, never the item under it, HostedPeek.swift.)
                 let w = self.hosted?.hostingWindow ?? self.marginWindows?.front?.id
                 done = self.hosted?.closeCardForKey(windowId: w) == true ? "the card closed in Margin's window \(w ?? 0)" : "the card's window, no card open: nothing"
             case (.closeTab, .hosted(let id)):

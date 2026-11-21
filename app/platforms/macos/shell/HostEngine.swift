@@ -527,7 +527,7 @@ final class HostEngine {
         }
     }
 
-    // A whole layout of Margin's page area at once (docs/PEEK-SPLIT.md §1: Peek's card, Little Arc, a split's panes):
+    // A whole layout of Margin's page area at once (docs/PEEK-SPLIT.md §1: the preview card, Quick Tab, a split's panes):
     // `main` at the page area (`mainRect`: a split's pane of its own), each of `extras` at its rect in its role, back to
     // front, `focused` with the keys (nil: main). Hosts newly visible are brought in (opened, or unparked) at their rect,
     // the ones visible already placed at theirs, the ones no longer visible parked, then each fronted back to front, the
@@ -640,7 +640,7 @@ final class HostEngine {
     // one once it's in front: the window server's order read first; the focused one in front of the others already (a
     // host newly brought in: a window its app just made is its front one), only its app made active (its keys); else
     // the hosts from the first one out of place raised, back to front. The real screen, 2026-11-21: main raised over
-    // Peek's new card window, whose own raise then didn't take (its app's Accessibility doesn't list a window made a
+    // The preview's new card window, whose own raise then didn't take (its app's Accessibility doesn't list a window made a
     // moment ago and moved between Spaces by the bridge), so main's page showed in the card. Then read again until the
     // focused one is in front, else it alone raised once more (raising another would bury it again).
     private func frontVisible() async {
