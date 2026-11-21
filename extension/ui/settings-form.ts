@@ -130,6 +130,7 @@ export function settingsFields(settings: any, features: any = {}, ui: { recordin
     list.push(field({ id: 'fullscreenOnly', kind: 'toggle', label: 'Use Margin only in full screen (in a window, it offers full screen instead)', checked: s.fullscreenOnly !== false }));
   }
   list.push(field({ id: 'frameWhenHidden', kind: 'toggle', label: 'With the sidebar hidden, keep the frame around pages', checked: s.frameWhenHidden !== false }));
+  list.push(field({ id: 'autoPeekPins', kind: 'toggle', label: 'Open external links from Pinned tabs and Favorites in Peek', checked: s.autoPeekPins !== false }));
   if (f.newTabHint) list.push(field({ id: 'newTabHint', kind: 'toggle', label: 'Tell me when a new tab seems to open Safari’s homepage instead of Margin (Safari Settings › General › “New tabs open with” should be Margin)', checked: s.newTabHint !== false }));
   // The active theme's own settings: after Margin's, under their own heading, so they don't read as Margin's.
   list.push(...themeOwnFields(s, ui.theme ?? null));
@@ -161,7 +162,7 @@ export type SettingsCategory = typeof SETTINGS_CATEGORIES[number]['id'];
 export { SETTINGS_CATEGORY_IDS } from './actions.ts'; // (the same ids, in this order: tests/settings-form.test.ts)
 export const DEFAULT_CATEGORY: SettingsCategory = 'appearance';
 const TABS_FIELDS = new Set(['favoritesScope', 'archiveAfterHours', 'sleepAfterHours', 'neverSleepSites', 'wakeAll']);
-const BROWSING_FIELDS = new Set(['engine', 'blockGestures', 'swipeNavigation', 'pullToRefresh', 'marginFullscreenAuto', 'fullscreenOnly', 'frameWhenHidden', 'newTabHint']);
+const BROWSING_FIELDS = new Set(['engine', 'blockGestures', 'swipeNavigation', 'pullToRefresh', 'marginFullscreenAuto', 'fullscreenOnly', 'frameWhenHidden', 'autoPeekPins', 'newTabHint']);
 const KEYBOARD_FIELDS = new Set(['shortcuts', ...Object.keys(SHORTCUT_FIELDS), 'resetShortcuts']);
 
 /** The category a field is in (one of SETTINGS_CATEGORIES'): Appearance for the themes' fields and any field not listed. */

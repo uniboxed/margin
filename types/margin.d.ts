@@ -134,6 +134,8 @@ export interface Settings {
   shortcutDefaults: string;
   /** Favorites bar scope: 'global' across all Spaces (default) or 'profile' scoped per browser profile */
   favoritesScope?: 'global' | 'profile';
+  /** Auto-open external-domain links from Pinned tabs and Favorites in Peek (default true) */
+  autoPeekPins?: boolean;
   theme: string; // extension/themes/index.ts
   themes: Record<string, Record<string, unknown>>; // each theme's own settings
 }

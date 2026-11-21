@@ -892,6 +892,20 @@ export const handlers = {
     if (!sender?.app) throw new Error('the app\'s request only');
     return hostedTabs.navigate(message);
   },
+  async hostPromotePeek(message: { fromItemId?: string, toWindowId?: number, toItemId?: string }, sender: BrowserMessageSender) {
+    if (!sender?.app) throw new Error('the app\'s request only');
+    return hostedTabs.promotePeek(message);
+  },
+  async openPeek({ url, source = 'shift-click', spaceId = null }: { url: string, source?: string, spaceId?: string | null }, sender: BrowserMessageSender) {
+    if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return null;
+    const win = sender?.tab?.windowId ?? null;
+    if (appLink.linked() && win != null && appLink.push(win, { type: 'peekOpen', url, source, spaceId })) {
+      return { ok: true, hosted: true };
+    }
+    // Unlinked fallback: open in a new tab in the current space.
+    const tab = await openTab({ windowId: win ?? undefined, url, spaceId: spaceId ?? undefined });
+    return { ok: true, hosted: false, tabId: tab?.id ?? null };
+  },
   async mediaState(report: { playing: boolean, muted?: boolean, title?: string, artist?: string, artworkUrl?: string }, sender: BrowserMessageSender) {
     const tabId = sender?.tab?.id;
     if (tabId == null) return null;

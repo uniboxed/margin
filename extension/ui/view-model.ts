@@ -44,6 +44,7 @@ export type UiState = {
   palette?: { open?: boolean, query?: string, selected?: number, newTab?: boolean, selectAll?: boolean },
   toast?: { id: string, text: string } | null,
   media?: MediaSource | null,
+  peek?: { url: string, title?: string, spaceId?: string | null, littleArc?: boolean } | null,
   menu?: { kind: MenuTarget['kind'], id?: string | number | null, x?: number, y?: number, above?: boolean, confirming?: string | null } | null,
   editing?: { kind: 'space' | 'folder' | 'tab' | 'pin' | 'favorite', id: string | number } | null,
   // (`fresh`: a space just made, switched to as its editor closes.)
@@ -163,6 +164,11 @@ export type MediaView = {
   letter: string, color: string, playing: boolean, paused: boolean, muted: boolean,
   canPrev: boolean, canNext: boolean,
 };
+export type PeekView = {
+  url: string, host: string, title: string, spaceId: string, spaceName: string, spaceEmoji: string,
+  littleArc: boolean,
+  labels: { expand: string, copyUrl: string, close: string, back: string, forward: string },
+};
 export type GestureView = { pull: boolean, swipe: boolean, back: boolean, forward: boolean, armed: boolean, done: boolean, leaving: boolean, progress: number, percent: number };
 export type LauncherView = {
   pins: PinRow[], hasPins: boolean, archive: ArchiveRow[], hasArchive: boolean, emptyArchive: boolean,
@@ -199,6 +205,7 @@ export type ViewModel = {
   prompt: PromptView | null,
   toast: ToastView | null,
   media: MediaView | null,
+  peek: PeekView | null,
   gesture: GestureView | null,
   launcher: LauncherView | null,
   /** The page card's loader (the `page-loader` part), while an item opens in the page area: Margin's words for it. */
@@ -393,7 +400,7 @@ function fresh(input: ViewModelInput): ViewModel {
       space: { id: '', name: '', emoji: '', color: '', abbr: '', index: 0, number: 1, active: true, tabCount: 0, label: '', pinned: [], pinnedFlat: [], folders: [], pins: [], today: [], hasToday: false, hasPinned: false, newTab: { active: false } },
       spaces: [], favorites: { items: [], hasItems: false, columns: 3 }, tab: null, archive: [], hasArchive: false,
       palette: { open: !!paletteUi.open, query: paletteUi.query ?? '', newTab: !!paletteUi.newTab, rows: [], hasRows: false, selected: null },
-      menu: null, editing, editor: null, notice, prompt, toast, media: null, gesture, launcher: null, pageLoader, settingsForm: null, settingsTab: null, settings, platform,
+      menu: null, editing, editor: null, notice, prompt, toast, media: null, peek: null, gesture, launcher: null, pageLoader, settingsForm: null, settingsTab: null, settings, platform,
     };
   }
 
@@ -673,6 +680,21 @@ function fresh(input: ViewModelInput): ViewModel {
     };
   }
 
+  let peek: PeekView | null = null;
+  if (ui.peek && typeof ui.peek.url === 'string' && ui.peek.url) {
+    const targetSpace = spaces.find((s) => s.id === ui.peek?.spaceId) ?? chip;
+    peek = {
+      url: ui.peek.url,
+      host: hostOf(ui.peek.url) || ui.peek.url,
+      title: String(ui.peek.title || hostOf(ui.peek.url) || ui.peek.url).slice(0, 140),
+      spaceId: targetSpace?.id ?? '',
+      spaceName: targetSpace?.name ?? '',
+      spaceEmoji: targetSpace?.emoji ?? '',
+      littleArc: !!ui.peek.littleArc,
+      labels: { expand: 'Open in Space', copyUrl: 'Copy URL', close: 'Close', back: 'Back', forward: 'Forward' },
+    };
+  }
+
   return {
     version: VM_VERSION,
     ready: true,
@@ -691,6 +713,7 @@ function fresh(input: ViewModelInput): ViewModel {
     prompt,
     toast,
     media,
+    peek,
     gesture,
     launcher,
     pageLoader,

@@ -497,6 +497,12 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           void post('perform', { name, arg: arg ?? null }).catch(() => {});
           return true;
         case 'copyUrl':
+        case 'peek.open':
+        case 'peek.close':
+        case 'peek.expand':
+        case 'peek.setSpace':
+        case 'peek.back':
+        case 'peek.forward':
           if (typeof arg?.url !== 'string' || !arg.url) return false;
           void post('perform', { name, arg: { url: arg.url } }).catch(() => {});
           return true;

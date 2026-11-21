@@ -26,6 +26,7 @@ enum AppCommand: String, CaseIterable {
     case focusAddress = "focus-address"
     case togglePin = "toggle-pin"
     case reopenArchived = "reopen-archived"
+    case littleArc = "little-arc"
     case space1 = "space-1", space2 = "space-2", space3 = "space-3", space4 = "space-4", space5 = "space-5"
     case space6 = "space-6", space7 = "space-7", space8 = "space-8", space9 = "space-9"
     case item1 = "item-1", item2 = "item-2", item3 = "item-3", item4 = "item-4", item5 = "item-5"
@@ -132,6 +133,7 @@ enum ShortcutSet {
         .focusAddress: "Meta+KeyL",
         .togglePin: "Meta+KeyD",
         .reopenArchived: "Shift+Meta+KeyT",
+        .littleArc: "Alt+Meta+KeyN",
         .space1: "Ctrl+Digit1", .space2: "Ctrl+Digit2", .space3: "Ctrl+Digit3",
         .space4: "Ctrl+Digit4", .space5: "Ctrl+Digit5", .space6: "Ctrl+Digit6",
         .space7: "Ctrl+Digit7", .space8: "Ctrl+Digit8", .space9: "Ctrl+Digit9",

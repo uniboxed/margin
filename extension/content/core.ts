@@ -16,6 +16,7 @@ import { startTrackpad } from './trackpad.ts';
 import { SWITCH_GRACE_MS } from '../shared/switching.ts';
 import { startLoads } from './loads.ts';
 import { startMedia } from './media.ts';
+import { startPeek } from './peek.ts';
 import { fromStorage, onlyMark, openTabsCurrent, readForPage, takesChanges, withChanges } from '../shared/stored.ts';
 import { APP_LINK_KEY, appDraws, drawsWindow } from '../shared/app-link.ts';
 import { startScrollRecord } from './scroll-record.ts';
@@ -435,6 +436,22 @@ export function startCore() {
   const mediaWatcher = startMedia({
     send: (report) => {
       if (!dormant) void send('mediaState', report);
+    },
+  });
+  startPeek({
+    isPinnedOrFav: () => {
+      const s = state;
+      if (!s) return false;
+      const t = tabId != null ? s.tabs?.[tabId] : null;
+      if (t?.pinnedBy || t?.favoriteId) return true;
+      const key = V.normalizeUrl(location.href);
+      const sp = tabId != null ? s.tabSpace?.[tabId] : null;
+      if (sp && (s.pins ?? []).some((p: any) => p.spaceId === sp && V.normalizeUrl(p.url) === key)) return true;
+      return (s.favorites ?? []).some((f: any) => V.normalizeUrl(f.url) === key);
+    },
+    autoPeekEnabled: () => state?.settings?.autoPeekPins !== false,
+    onPeek: (url, source) => {
+      if (!dormant) void send('openPeek', { url, source });
     },
   });
   const onMessage = (message: any, _: BrowserMessageSender, sendResponse: (response?: any) => void) => {

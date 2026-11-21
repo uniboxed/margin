@@ -56,6 +56,8 @@ const DEFAULT_SETTINGS = Object.freeze({
   shortcutDefaults: capabilities?.navigationId ?? capabilities?.name ?? 'chrome',
   // Favorites bar scope: 'global' across Spaces (default) or 'profile' per browser profile.
   favoritesScope: 'global' as 'global' | 'profile',
+  // Auto-open external-domain links from Pinned tabs and Favorites in Peek (OAuth/SSO excluded).
+  autoPeekPins: true,
   // What Margin looks like (themes/index.ts), and each theme's own settings
   // ({ [themeId]: {...} }; Arcadia: sidebarWidth).
   theme: DEFAULT_THEME,

@@ -777,6 +777,32 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
         toastTimer = null;
         if (ui.toast) setUi({ toast: null });
         return true;
+      case 'peek.close':
+        setUi({ peek: null });
+        host.perform?.('peek.close');
+        return true;
+      case 'peek.expand': {
+        const cur = ui.peek;
+        if (!cur) return false;
+        setUi({ peek: null });
+        if (host.perform?.('peek.expand', { url: cur.url, spaceId: cur.spaceId ?? vm?.space?.id ?? null })) return true;
+        void send('newTab', { windowId: windowId() ?? undefined, url: cur.url, spaceId: cur.spaceId ?? vm?.space?.id ?? undefined });
+        return true;
+      }
+      case 'peek.copyUrl': {
+        const url = ui.peek?.url ?? '';
+        if (!/^https?:\/\//i.test(url)) return false;
+        return copyText(url, 'Copied URL');
+      }
+      case 'peek.setSpace':
+        if (!ui.peek) return false;
+        setUi({ peek: { ...ui.peek, spaceId: arg } });
+        host.perform?.('peek.setSpace', { spaceId: arg });
+        return true;
+      case 'peek.back':
+        return !!host.perform?.('peek.back');
+      case 'peek.forward':
+        return !!host.perform?.('peek.forward');
       case 'space.edit': return behaviors.editor.open(arg);
       case 'space.rename': return behaviors.rename.start('space', arg);
       case 'folder.rename': return behaviors.rename.start('folder', arg);

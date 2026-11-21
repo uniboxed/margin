@@ -151,8 +151,8 @@ export const APP_REQUESTS = new Set([
   'closeWindow', 'setWindowState',
   // Margin.app's index of the person's imported themes (app/platforms/macos/shell/ShellThemes.swift).
   'userThemes',
-  // Margin.app hosting this profile's window in its page area (background/hosted.ts): an item's tab shown, closed, muted, navigated.
-  'hostShow', 'hostClose', 'hostPicture', 'hostMute', 'hostNavigate',
+  // Margin.app hosting this profile's window in its page area (background/hosted.ts): an item's tab shown, closed, muted, navigated, promoted from Peek.
+  'hostShow', 'hostClose', 'hostPicture', 'hostMute', 'hostNavigate', 'hostPromotePeek', 'openPeek',
   // Mini Player (M2.4): remote playback controls.
   'mediaControl',
 ]);

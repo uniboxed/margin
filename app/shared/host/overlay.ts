@@ -785,6 +785,7 @@ function onMessage(msg: any) {
           runtime?.showToast('Pinned Tab');
         }
       } else if (msg.name === 'reopen-archived') runtime?.dispatch('archive.restoreLast', undefined, 'behavior');
+      else if (msg.name === 'little-arc') openPaletteTimed({ newTab: true }, '⌥⌘N Little Arc');
       else if (msg.name === 'space-index' && Number.isInteger(msg.index)) {
         const sp = runtime?.vm?.spaces?.[msg.index - 1];
         if (sp) runtime?.dispatch('space.switch', sp.id, 'behavior');
@@ -806,6 +807,9 @@ function onMessage(msg: any) {
       return;
     case 'media':
       runtime?.setUi({ media: msg.media ?? null });
+      return;
+    case 'peek':
+      runtime?.setUi({ peek: msg.peek ?? null });
       return;
     case 'link':
       // (Margin's own window has no copy's link to lose.)

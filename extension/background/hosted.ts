@@ -28,6 +28,7 @@ export type HostedTabsApi = {
   query(info: { windowId?: number }): Promise<Tab[]>,
   create(props: { windowId: number, url: string, active: boolean }): Promise<Tab>,
   update(id: number, props: { url?: string, active?: boolean, muted?: boolean }): Promise<Tab>,
+  move?(id: number, props: { windowId: number, index: number }): Promise<Tab>,
   remove(id: number): Promise<void>,
   captureVisibleTab?(windowId: number, options: { format: 'jpeg', quality: number }): Promise<string>,
 };
@@ -124,6 +125,25 @@ export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = asy
       if (tab?.id == null) return { ok: false };
       await tabs().update(tab.id, { url, active: true });
       return { ok: true, tabId: tab.id };
+    },
+    /** Promote a Peek / Little Arc Safari tab into the main hosted Space window (preserving logins, cookies, scroll). */
+    async promotePeek({ fromItemId, toWindowId, toItemId }: { fromItemId?: unknown, toWindowId?: unknown, toItemId?: unknown }) {
+      if (typeof fromItemId !== 'string' || !ITEM.test(fromItemId)) throw new Error('no source item');
+      if (typeof toItemId !== 'string' || !ITEM.test(toItemId)) throw new Error('no target item');
+      if (!Number.isInteger(toWindowId)) throw new Error('no target window');
+      const tab = await own(fromItemId, null);
+      if (tab?.id == null) return { ok: false };
+      const move = tabs().move;
+      if (move) {
+        const moved = await move.call(tabs(), tab.id, { windowId: toWindowId as number, index: -1 }).catch(() => null);
+        if (moved?.id != null) {
+          byItem.delete(fromItemId);
+          byItem.set(toItemId, moved.id);
+          await tabs().update(moved.id, { active: true }).catch(() => null);
+          return { ok: true, tabId: moved.id, moved: true };
+        }
+      }
+      return { ok: false, url: tab.url ?? '' };
     },
   };
 }
