@@ -801,7 +801,7 @@ final class HostEngine {
     private var toolbarSaid: [Int: String] = [:]
     private func traceToolbars() {
         guard let id = shown, let host = hosts[id], host.phase == .shown, host.mode == .fullScreen, let app = observer.model.apps[host.pid],
-              let mine = app.windows[host.window], let spaces = mine.spaces, !spaces.isEmpty else { toolbarSaid = [:]; return }
+              let mine = app.windows[host.window], let spaces = mine.spaces, !spaces.isEmpty else { return }
         let f = mine.bounds
         var seen: [Int: String] = [:]
         for w in app.windows.values where w.kind == .strip && w.spaces == spaces && Self.toolbarOf(w.bounds, window: f) {
@@ -811,8 +811,11 @@ final class HostEngine {
             let front = sys.frontApp().map { $0 == host.pid ? "its app" : $0 == ownPid ? "Margin" : "pid \($0)" } ?? "unread"
             let at = sys.pointer().map { "\(Int($0.x)),\(Int($0.y))" } ?? "unread"
             Diagnostics.note("host: \(host.id): its full-screen toolbar \(n)\(toolbarSaid[n] == nil ? " (first seen)" : ""): \(state); its window \(Int(f.minX)),\(Int(f.minY)) \(Int(f.width))×\(Int(f.height)); front: \(front); pointer \(at)")
+            toolbarSaid[n] = state
         }
-        toolbarSaid = seen
+        // (Each host's toolbars remembered while it's parked: shown again as it was, nothing said. A few dozen at most:
+        // forgotten all at once past 64.)
+        if toolbarSaid.count > 64 { toolbarSaid = seen }
     }
 
     // A strip at a full-screen window's top edge: its left edge and width the window's, from just above its top to inside it.

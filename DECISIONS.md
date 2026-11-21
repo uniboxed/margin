@@ -6538,3 +6538,18 @@ editor lacks the row still work).
   window's space theme, and the glue run: a space made with Pixel draws Pixel, back draws Arcadia, Material set on the
   shown space draws at once, none again draws Arcadia, a theme come mid-swipe waits for it to land.
 Not changed: Import Theme in Margin's own window isn't wired yet (its `theme.save` goes nowhere there, as before).
+
+## Safari's toolbar over the page: a new window's address field (2026-11-20)
+
+Found with the toolbar trace (DECISIONS "Safari's toolbar over Margin: traced"): at each time Tirth saw it (17:34,
+17:35, 18:33) the Safari window had just been made by Margin for a profile (an empty space's first search; a
+profile's first window after a restart), and its toolbar was out over the page (y 41, 52 pt) from its first read
+until a click 5–14 s later; windows Margin already had never showed it through dozens of switches. Safari opens an
+empty window with the keys in its address field; hostShow then sent that new-tab page to the item's address, which
+leaves them there; in full screen Safari keeps its toolbar down while they are (and brings it down again each time the
+window becomes key: likely the earlier "back from another app" sightings, inferred). Now, in a window Margin made,
+hostShow opens a new tab at the address (the keys in its page, as a link opened in a new tab) and closes the new-tab
+page after it (made first: never a window without a tab; a closed blank tab is never archived: only web pages are).
+A blank item keeps the new-tab page (blank either way); a tab Safari refuses to make: the page sent there, as before.
+The trace no longer says "first seen" at every switch between two hosts (each host's toolbars kept while parked).
+To check by hand: the trace's line for the next new profile window should say "resting" at its first read.
