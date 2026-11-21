@@ -319,10 +319,11 @@ final class Shell: ExtensionLinkDelegate {
     func tellDrawn(_ entry: Link) {
         guard entry.connection.isUp, entry.mirror.hasState else { return }
         let hello = entry.connection.hello
-        let hostedId = hello.browser == "safari" ? hosted?.safariWindows[hello.profile] : nil
+        // (Every role's: its main window, its card, a split's panes, docs/PEEK-SPLIT.md §1.)
+        let hostedIds = hello.browser == "safari" ? Set((hosted?.safariWindows ?? [:]).filter { $0.key.profile == hello.profile }.values) : []
         let ids = windows(of: entry.connection.key).map(\.id)
         for id in ids {
-            let on = id == hostedId
+            let on = hostedIds.contains(id)
             guard entry.drawnSent[id] != on else { continue }
             entry.drawnSent[id] = on
             entry.connection.send(.drawn(epoch: entry.connection.epoch, windowId: id, on: on))

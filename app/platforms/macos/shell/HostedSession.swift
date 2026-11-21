@@ -99,6 +99,34 @@ protocol HostedEngine: AnyObject {
     // The one shown fills the page area as it follows (a tile): the hole is the page area meanwhile. Not (a window-mode
     // window, which can be smaller, centred): the hole its bounds, read again as it moves.
     var shownFillsPage: Bool { get }
+    // Several visible hosts (docs/PEEK-SPLIT.md §1, HostEngine `setLayout`, `focus`, `visibleHost`): a whole layout at
+    // once (main, the others at their rects in their roles, the focused one); the keys to one of them; the one under a
+    // press.
+    func setLayout(main: HostTarget, mainRect: CGRect?, extras: [HostExtra], focused: HostID?, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64) async -> [HostID: HostResult]
+    func focus(_ id: HostID) async -> Bool
+    func visibleHost(at point: CGPoint) -> HostID?
+}
+
+// One of a profile's hosted Safari windows: its profile and its role (docs/PEEK-SPLIT.md §1).
+struct SafariKey: Hashable {
+    let profile: String
+    var role: SafariRole
+    init(_ profile: String, _ role: SafariRole = .main) { (self.profile, self.role) = (profile, role) }
+}
+// (A profile's name alone: its main window, as the map was keyed before.)
+extension SafariKey: ExpressibleByStringLiteral {
+    init(stringLiteral profile: String) { self.init(profile) }
+}
+
+// A Margin window's layout while more than one item is visible (docs/PEEK-SPLIT.md §1): its main item (at the page
+// area, or `mainRect`: a split's pane), the others with their roles and rects back to front, the focused one.
+struct HostedLayout: Equatable {
+    struct Extra: Equatable { var item: String; var role: HostRole; var rect: CGRect }
+    var main: String
+    var mainRect: CGRect?
+    var extras: [Extra]
+    var focused: String
+    var items: [String] { [main] + extras.map(\.item) }
 }
 
 extension HostedEngine {
@@ -113,6 +141,14 @@ extension HostedEngine {
     func follow(_ placement: HostPlacement) {}
     var shownFillsPage: Bool { false }
     var preparesOutOfSight: Bool { false }
+    // (A stand-in with one host at a time: main alone, the others not laid out.)
+    func setLayout(main: HostTarget, mainRect: CGRect?, extras: [HostExtra], focused: HostID?, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64) async -> [HostID: HostResult] {
+        var out = [main.id: await open(app: main, in: placement, marginWindow: marginWindow, marginSpace: marginSpace, wanted: nil)]
+        for x in extras { out[x.target.id] = .failed(.place, "one host at a time") }
+        return out
+    }
+    func focus(_ id: HostID) async -> Bool { false }
+    func visibleHost(at point: CGPoint) -> HostID? { nil }
     func start(bundleId: String) async -> HostApp? { nil }
     func prepare(_ target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64) async -> HostResult { .failed(.launch, "no engine to prepare it") }
 }
@@ -181,6 +217,8 @@ protocol HostedWindow: AnyObject {
     // launcher. Its page draws it (ui/host-app.ts `marginPage`); hosting covers it, as it covers the launcher.
     func setMarginPage(_ page: String?)
     func push(_ json: String)
+    // Every visible host's window while more than one is (docs/PEEK-SPLIT.md §1: its holes), [] when one is again.
+    func setVisibleHosts(_ list: [HostShownWindow])
 }
 
 extension HostedWindow {
@@ -194,6 +232,7 @@ extension HostedWindow {
     func setElsewhere(_ label: String?, app: String?) { setElsewhere(label, app: app, picture: nil) }
     func setStartupStuck(_ why: String?) {}
     func setMarginPage(_ page: String?) {}
+    func setVisibleHosts(_ list: [HostShownWindow]) {}
 }
 
 // The app whose icon a host's loader shows: an app's own, a Safari window's Safari.
@@ -286,7 +325,11 @@ final class HostedSession: LibraryDelegate {
     // Each Margin window's item shown; each item with a page; each Safari profile's hosted window (the copy's id).
     private(set) var shown: [Int: String] = [:]
     private(set) var open: [String: OpenItem] = [:]
-    private(set) var safariWindows: [String: Int] = [:]
+    // (Each profile's hosted windows by role, docs/PEEK-SPLIT.md §1: its main one, its card, a split's panes.)
+    private(set) var safariWindows: [SafariKey: Int] = [:]
+    // Each Margin window's layout while more than its item shown is visible (Peek's card, a split's panes): main, the
+    // others with their roles and rects, the focused one (`shown[w]`). None: one item shown, as before.
+    private(set) var layout: [Int: HostedLayout] = [:]
     private(set) var hostingWindow: Int?
     // Each Margin window's own page shown (ItemTarget.margin's page: Settings), drawn by the window itself, and the items
     // of Margin's pages shown this session (open tabs in the UI, as items with a page are: `live`).
@@ -504,13 +547,13 @@ final class HostedSession: LibraryDelegate {
             // is Safari's own, in sight: nothing said.
             defer { w.setShowing(nil) }
             let comes = engine.shown != id || hostingWindow != w.id
-            let there = safariWindows[p] != nil && engine.isHosted(id)
+            let there = safariWindows[SafariKey(p)] != nil && engine.isHosted(id)
             if comes {
                 let title = (library.items().first { $0.id == item }?.value["title"] as? String).flatMap { $0.isEmpty ? nil : $0 }
                 w.setShowing(title ?? "Safari", app: safariIdentifier)
                 if !there { guard await host(.safariWindow(p), in: w, for: item) else { return } }
             }
-            guard let windowId = safariWindows[p] else { return note("\(item): no Safari window of its profile") }
+            guard let windowId = safariWindows[SafariKey(p)] else { return note("\(item): no Safari window of its profile") }
             let (result, error) = await links.request(profile: p, "hostShow", ["windowId": windowId, "itemId": item, "url": address.isEmpty ? "about:blank" : address])
             guard let result else { return note("\(item): its tab wasn't shown (\(error ?? "no answer"))") }
             open[item] = OpenItem(host: id, profile: p)
@@ -534,6 +577,7 @@ final class HostedSession: LibraryDelegate {
             w.setMarginPage(nil)
         }
         shown[w.id] = item
+        layout[w.id] = nil // (one item shown: the engine laid it out alone)
         if requested[w.id] == item { requested[w.id] = nil }
         drawn = true
         onChange?()
@@ -581,6 +625,98 @@ final class HostedSession: LibraryDelegate {
             note("\(target.id): \(step.rawValue) failed: \(why)")
             settleHosting()
             return false
+        }
+    }
+
+    // ---- several visible items (docs/PEEK-SPLIT.md §1) ----
+
+    // A whole layout of a Margin window's page area at once: `main` (at the page area, or `mainRect`: a split's pane),
+    // each of `extras` at its rect in its role (back to front), `focused` with the keys (nil: main). The API Peek, Little
+    // Arc and split view call (§2-§4); not wired to the UI yet. A web item's window is its profile's in its role: the
+    // layout's first web item of a profile uses its main window, a card its card window, the other panes `#pane1`…`#pane3`
+    // (asked of its copy by the engine, `requestSafariWindow(role:)`); its tab shown there by the copy's `hostShow`,
+    // which moves it from another of the profile's windows. In the session's queue, after what was asked before it.
+    func setLayout(window windowId: Int?, main: String, mainRect: CGRect? = nil, extras: [HostedLayout.Extra], focused: String? = nil) async {
+        await withCheckedContinuation { (k: CheckedContinuation<Void, Never>) in
+            enqueue { await self.applyLayout(windowId, main: main, mainRect: mainRect, extras: extras, focused: focused); k.resume() }
+        }
+    }
+
+    private struct LayoutPart { let item: String; let target: HostTarget; let profile: String?; let url: String; let role: HostRole; let rect: CGRect? }
+
+    private func applyLayout(_ windowId: Int?, main: String, mainRect: CGRect?, extras: [HostedLayout.Extra], focused: String?) async {
+        guard let w = window(windowId) else { return note("layout: no Margin window to lay it out in") }
+        var parts: [LayoutPart] = []
+        var mainUsed: Set<String> = [], panes: [String: Int] = [:]
+        let asked: [(item: String, role: HostRole, rect: CGRect?)] = [(main, .main, mainRect)] + extras.map { ($0.item, $0.role, $0.rect) }
+        for (i, a) in asked.enumerated() {
+            guard let t = library.target(ofItem: a.item) else { note("layout: \(a.item): no target"); if i == 0 { return }; continue }
+            let url = (library.items().first { $0.id == a.item }?.value["url"] as? String) ?? ""
+            switch t {
+            case .app(let bundle, let name):
+                labels[HostTarget.app(bundle).id] = appName(bundle) ?? (name.isEmpty ? nil : name) ?? bundle
+                parts.append(LayoutPart(item: a.item, target: .app(bundle), profile: nil, url: url, role: a.role, rect: a.rect))
+            case .web(let browser, let profile):
+                guard browser == "safari" else { note("layout: \(a.item): \(browser) isn't hosted yet"); if i == 0 { return }; continue }
+                let p = await profileFallback(resolve(profile), space: library.space(ofItem: a.item))
+                let role: SafariRole
+                if a.role == .card { role = .card } else if !mainUsed.contains(p) { role = .main; mainUsed.insert(p) } else {
+                    let n = (panes[p] ?? 0) + 1
+                    guard n <= 3 else { note("layout: \(a.item): a profile's fourth pane: not laid out (three at most)"); continue }
+                    panes[p] = n
+                    role = .pane(n)
+                }
+                labels[HostTarget.safariWindow(p, role).id] = "Safari"
+                parts.append(LayoutPart(item: a.item, target: .safariWindow(p, role), profile: p, url: url, role: a.role, rect: a.rect))
+            case .margin:
+                note("layout: \(a.item): Margin's own page isn't laid out beside others")
+                if i == 0 { return }
+            }
+        }
+        guard let first = parts.first, first.item == main else { return }
+        // (A web item whose window is there already: its tab in front first, out of sight, as a show does.)
+        func showTab(_ part: LayoutPart) async -> Bool {
+            guard let p = part.profile, case .safariWindow(_, let role) = part.target, let windowId = safariWindows[SafariKey(p, role)] else { return false }
+            let (result, error) = await links.request(profile: p, "hostShow", ["windowId": windowId, "itemId": part.item, "url": part.url.isEmpty ? "about:blank" : part.url])
+            guard let result else { note("layout: \(part.item): its tab wasn't shown (\(error ?? "no answer"))"); return false }
+            open[part.item] = OpenItem(host: part.target.id, profile: p)
+            if let tab = int(result["tabId"]) { safariTabs[part.item] = tab }
+            return true
+        }
+        var tabbed: Set<String> = []
+        for part in parts where part.profile != nil && engine.isHosted(part.target.id) { if await showTab(part) { tabbed.insert(part.item) } }
+        guard let (placement, space) = await prepare(w, for: first.target) else { settleHosting(); return }
+        var wanted: [HostExtra] = []
+        for part in parts.dropFirst() { if let r = part.rect { wanted.append(HostExtra(target: part.target, role: part.role, rect: r)) } }
+        let focusPart = focused.flatMap { f in parts.first { $0.item == f } }
+        let results = await engine.setLayout(main: first.target, mainRect: first.rect, extras: wanted, focused: focusPart?.target.id, in: placement, marginWindow: w.number, marginSpace: space)
+        var shownItems: [String] = []
+        for part in parts {
+            guard case .shown? = results[part.target.id] else { note("layout: \(part.item): not shown (\(results[part.target.id].map { "\($0)" } ?? "not laid out"))"); continue }
+            if part.profile != nil, !tabbed.contains(part.item) { guard await showTab(part) else { continue } }
+            if part.profile == nil { open[part.item] = OpenItem(host: part.target.id, profile: nil) }
+            shownItems.append(part.item)
+        }
+        guard shownItems.contains(main) else { settleHosting(); onChange?(); return }
+        let focus = focused.flatMap { shownItems.contains($0) ? $0 : nil } ?? main
+        let others = parts.dropFirst().filter { shownItems.contains($0.item) }
+        layout[w.id] = others.isEmpty ? nil : HostedLayout(main: main, mainRect: first.rect, extras: others.map { HostedLayout.Extra(item: $0.item, role: $0.role, rect: $0.rect ?? .zero) }, focused: focus)
+        if marginPages[w.id] != nil { marginPages[w.id] = nil; w.setMarginPage(nil) }
+        shown[w.id] = focus
+        if requested[w.id] == main || requested[w.id] == focus { requested[w.id] = nil }
+        onChange?()
+        note("layout: \(shownItems.count) item(s) shown in Margin's window \(w.id), \(focus) focused")
+    }
+
+    // A host gone, or parked with nothing in its place: out of every layout (one that was main ends that layout).
+    private func forgetInLayouts(_ id: HostID) {
+        for (wid, var l) in layout {
+            if open[l.main]?.host == id { layout[wid] = nil; continue }
+            let before = l.extras.count
+            l.extras.removeAll { open[$0.item]?.host == id }
+            guard l.extras.count != before else { continue }
+            if !l.items.contains(l.focused) { l.focused = l.main }
+            layout[wid] = l.extras.isEmpty ? nil : l
         }
     }
 
@@ -678,7 +814,7 @@ final class HostedSession: LibraryDelegate {
     // A Safari profile's copy's `loading` push (background/page-loads.ts: its tabs loading in one of its windows): kept
     // for the window Margin hosts for that profile, the bar drawn for its items' tabs.
     func copyLoading(profile: String, windowId: Int?, tabIds: [Int]) {
-        guard let windowId, safariWindows[profile] == windowId else { return }
+        guard let windowId, safariWindows[SafariKey(profile)] == windowId else { return }
         let next = Set(tabIds)
         guard next != copyLoading[profile] ?? [] else { return }
         copyLoading[profile] = next
@@ -719,6 +855,12 @@ final class HostedSession: LibraryDelegate {
     func hosted(_ number: Int?) {
         guard let id = hostingWindow, let w = window(id) else { return }
         w.setHosted(number)
+    }
+
+    // Every visible host's window (HostEngine `hostedWindows`), while more than one is: told to the Margin window hosting.
+    func hostedWindows(_ list: [HostShownWindow]) {
+        guard let id = hostingWindow, let w = window(id) else { return }
+        w.setVisibleHosts(list)
     }
 
     // The one shown's own minimum width (HostEngine `onMinimum`; nil: none): told to the Margin window hosting it.
@@ -772,7 +914,24 @@ final class HostedSession: LibraryDelegate {
     // `point`: where (top-left coordinates): a press on the hosted window itself is the app's already.
     func pagePressed(_ w: HostedWindow, at point: CGPoint? = nil) {
         guard w.id == hostingWindow, engine.shownWindow != nil else { return }
+        // (Several visible: a press in another one's pane focuses it, docs/PEEK-SPLIT.md §1; never main raised over a card.)
+        if let point, layout[w.id] != nil, let id = engine.visibleHost(at: point), id != engine.shown {
+            return pressedHost(id, in: w)
+        }
         Task { await self.engine.activateShown(at: point) }
+    }
+
+    // A visible host pressed in Margin's window `w` (its window's own press, or one in its pane around a smaller window):
+    // focused, its item the window's item shown (the sidebar's highlight).
+    func pressedHost(_ id: HostID, in w: HostedWindow) {
+        guard w.id == hostingWindow, var l = layout[w.id], let item = l.items.first(where: { open[$0]?.host == id }) else { return }
+        Task {
+            guard await self.engine.focus(id), self.layout[w.id] != nil else { return }
+            l.focused = item
+            self.layout[w.id] = l
+            self.shown[w.id] = item
+            self.onChange?()
+        }
     }
 
     // ---- at launch: the item the window showed last ----
@@ -813,7 +972,7 @@ final class HostedSession: LibraryDelegate {
     // not linked, no picture, or none within `pictureWait` (the move doesn't wait longer: the card alone then).
     private func pagePicture(of item: String) async -> String? {
         guard options.pictureWait > 0, let open = open[item], let p = open.profile, open.host == HostTarget.safariWindow(p).id,
-              let windowId = safariWindows[p] else { return nil }
+              let windowId = safariWindows[SafariKey(p)] else { return nil }
         let first = FirstOf<String?>()
         let links = links
         return await withCheckedContinuation { (k: CheckedContinuation<String?, Never>) in
@@ -1243,7 +1402,7 @@ final class HostedSession: LibraryDelegate {
         for p in links.safariProfiles() where !requesting.contains(p) {
             guard let epoch = links.linkEpoch(of: p), swept[p] != epoch, let restored = links.restoredWindowIds(of: p) else { continue }
             swept[p] = epoch
-            let ours = Set(safariWindows.values).union(made_).union(wokenByMenu[p] ?? [])
+            let ours = Set(safariWindows.values).union(made_).union(wokenByMenu[p] ?? []) // (every role's window: main's, a card's, a pane's)
             let close = restored.filter { !ours.contains($0) }
             guard !close.isEmpty else { continue }
             note("Safari started by Margin: \(close.count) window(s) it restored from its last session closed")
@@ -1449,7 +1608,7 @@ final class HostedSession: LibraryDelegate {
     }
     private var wokenHeld = false
 
-    func requestSafariWindow(_ profile: String?) async -> HostSafariWindow? {
+    func requestSafariWindow(_ profile: String?, role: SafariRole = .main) async -> HostSafariWindow? {
         let p = resolve(profile)
         requesting.insert(p) // (the restored-window sweep leaves this profile alone meanwhile)
         defer { requesting.remove(p) }
@@ -1487,9 +1646,9 @@ final class HostedSession: LibraryDelegate {
             note("Safari window for a profile: not made (\(error ?? "no answer"))")
             return nil
         }
-        safariWindows[p] = made.windowId
+        safariWindows[SafariKey(p, role)] = made.windowId
         made_.insert(made.windowId)
-        note("Safari window \(made.windowId) made for hosting")
+        note("Safari window \(made.windowId) made for hosting\(role == .main ? "" : " (its \(role))")")
         // The window opened only to wake the profile's copy: closed again (Margin opened it; it has no page of the person's).
         await closeWoken(p, except: made.windowId)
         return HostSafariWindow(id: made.windowId, bounds: made.bounds)
@@ -1504,7 +1663,7 @@ final class HostedSession: LibraryDelegate {
     // A window a profile's copy made for Margin, closed by that copy (by the copy's id). True: the copy asked Safari.
     func closeSafariWindow(_ profile: String?, _ windowId: Int) async -> Bool {
         let p = resolve(profile)
-        if safariWindows[p] == windowId { safariWindows[p] = nil }
+        for (k, id) in safariWindows where k.profile == p && id == windowId { safariWindows[k] = nil }
         let (result, error) = await links.request(profile: p, "closeWindow", ["windowId": windowId])
         guard let result, WindowCallAnswer(result).called else {
             note("Safari window \(windowId): not closed by its copy (\(error ?? "busy"))")
@@ -1540,6 +1699,7 @@ final class HostedSession: LibraryDelegate {
             // Parked with nothing in its place (Margin's window left full screen, its window strayed): its items keep
             // their page, none is shown.
             for (w, i) in shown where open[i]?.host == id { shown[w] = nil }
+            forgetInLayouts(id)
         case .revealed(let id):
             // (Its window in place mid-way through its show: the item's name off the page card now, not when the show
             // returns; the engine has told the window which window to open onto.)
@@ -1549,7 +1709,8 @@ final class HostedSession: LibraryDelegate {
             let items = open.filter { $0.value.host == id }.map(\.key)
             for item in items { open[item] = nil; safariTabs[item] = nil }
             for (w, i) in shown where items.contains(i) { shown[w] = nil }
-            for p in safariWindows.keys where HostTarget.safariWindow(p).id == id { safariWindows[p] = nil; copyLoading[p] = nil }
+            for k in safariWindows.keys where HostTarget.safariWindow(k.profile, k.role).id == id { safariWindows[k] = nil; if k.role == .main { copyLoading[k.profile] = nil } }
+            forgetInLayouts(id)
             refreshLoading()
         default:
             return
@@ -1679,7 +1840,7 @@ final class HostedSession: LibraryDelegate {
     func navigate(_ type: String, windowId: Int?) {
         guard let w = window(windowId), let item = shown[w.id], let o = open[item], let p = o.profile else { return }
         enqueue {
-            let (result, _) = await self.links.request(profile: p, "hostShow", ["windowId": self.safariWindows[p] ?? -1, "itemId": item, "url": (self.library.items().first { $0.id == item }?.value["url"] as? String) ?? "about:blank"])
+            let (result, _) = await self.links.request(profile: p, "hostShow", ["windowId": self.safariWindows[SafariKey(p, o.host.safariRole)] ?? -1, "itemId": item, "url": (self.library.items().first { $0.id == item }?.value["url"] as? String) ?? "about:blank"])
             guard let tab = int(result?["tabId"]) else { return }
             _ = await self.links.request(profile: p, type, ["tabId": tab])
         }
@@ -1719,6 +1880,10 @@ final class HostedSession: LibraryDelegate {
             tabSpace[String(n)] = space
             kept[item] = nil
             index += 1
+        }
+        // (Several visible in that window, docs/PEEK-SPLIT.md §1: the others marked `visible`, the focused one `active`.)
+        for item in layout[windowId]?.items ?? [] where item != front {
+            if let n = numbers[item], var t = tabs[String(n)] as? JSONObject { t["visible"] = true; tabs[String(n)] = t }
         }
         openTabs["tabs"] = tabs
         openTabs["tabSpace"] = tabSpace
