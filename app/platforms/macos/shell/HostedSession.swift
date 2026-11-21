@@ -387,9 +387,27 @@ final class HostedSession: LibraryDelegate {
             if let space = r.spaceId { payload["spaceId"] = space }
             if let w = r.windowId { payload["windowId"] = w }
             if let target = r.target { payload["target"] = target.json }
+            if let pin = r.body["pin"] as? String { payload["pinnedBy"] = pin }
             let out = library.perform("addItem", payload)
             guard out.ok, let item = (out.result as? JSONObject)?["tabId"] as? String else { return note("openPin: no item made (\(out.error ?? "?"))") }
             await show(item, url: r.url, target: r.target, windowId: r.windowId)
+        case "resetPin":
+            guard let url = r.url else { return }
+            if let item = r.item {
+                if let entry = open[item], let profile = entry.profile {
+                    _ = await links.request(profile: profile, "hostNavigate", ["itemId": item, "url": url])
+                }
+                await show(item, url: url, target: r.target, windowId: r.windowId)
+            } else {
+                var payload: JSONObject = ["url": url, "front": true]
+                if let space = r.spaceId { payload["spaceId"] = space }
+                if let w = r.windowId { payload["windowId"] = w }
+                if let target = r.target { payload["target"] = target.json }
+                if let pin = r.body["pin"] as? String { payload["pinnedBy"] = pin }
+                let out = library.perform("addItem", payload)
+                guard out.ok, let item = (out.result as? JSONObject)?["tabId"] as? String else { return }
+                await show(item, url: url, target: r.target, windowId: r.windowId)
+            }
         case "closeTab", "unloadTab":
             guard let item = r.item else { return }
             let windows = shown.filter { $0.value == item }.map(\.key)

@@ -342,7 +342,9 @@ test('the action list is PLAN.md §3\'s, plus palette.run and the behaviors\' an
   const spaceThemes = ['editor.theme', 'space.setTheme'];
   // Track 2 M2.1 (Arc QoL): copy URL, duplicate, mute, unload/sleep, reopen last archived, toast close.
   const arcQol = ['tab.copyUrl', 'pin.copyUrl', 'tab.duplicate', 'tab.mute', 'tab.unload', 'archive.restoreLast', 'toast.close'];
-  assert.deepEqual(Object.keys(ACTIONS).sort(), [...plan, 'palette.run', ...step2, ...step3, ...step4, ...settingsTab, ...spaceThemes, ...arcQol].sort());
+  // Track 2 M2.2 (Sticky Pins, Inline Rename, Nested Folders).
+  const arcM22 = ['tab.rename', 'tab.setTitle', 'pin.reset', 'pin.rename', 'pin.setTitle', 'folder.newIn', 'folder.nest'];
+  assert.deepEqual(Object.keys(ACTIONS).sort(), [...plan, 'palette.run', ...step2, ...step3, ...step4, ...settingsTab, ...spaceThemes, ...arcQol, ...arcM22].sort());
   assert.ok(isAction('tab.activate'));
   assert.equal(isAction('toString'), false);
   assert.equal(isAction('__proto__'), false);

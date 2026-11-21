@@ -153,7 +153,7 @@ export function installDrag(rt: Rt) {
       const item = view.subjectOf(row);
       const kind = kindOf(row);
       const box = row.getBoundingClientRect();
-      return { zone: 'pins', row: { kind, id: item.id, folder: kind === 'pin' ? item.folderId ?? null : null }, y: (y - box.top) / (box.height || 1), el: pins.el, rowEl: row };
+      return { zone: 'pins', row: { kind, id: item.id, folder: kind === 'pin' ? item.folderId ?? null : item.parentFolderId ?? null }, y: (y - box.top) / (box.height || 1), el: pins.el, rowEl: row };
     }
     if (folderZone) {
       const f = view.subjectOf(folderZone.el);
@@ -237,7 +237,9 @@ export function installDrag(rt: Rt) {
     const { name, arg } = dropAction({ kind: d.kind, id: d.id }, where);
     const from = d.el.getBoundingClientRect();
     const space = rt.vm?.space;
-    const pins = (space?.pinned ?? []).flatMap((p) => (p.isFolder ? p.pins : [p]));
+    const pins = space?.pinnedFlat
+      ? space.pinnedFlat.filter((p) => !p.isFolder)
+      : (space?.pinned ?? []).flatMap((p) => (p.isFolder ? p.pins : [p]));
     let find: () => Element | null = () => rowEl(d.kind, d.id);
     let same = true; // the row it lands in is the dragged one (else a new one)
     if (where.space) {

@@ -14,42 +14,57 @@ import type { Rt } from '../runtime.ts';
 import { NAME_MAX } from '../actions.ts';
 
 const UNDO_TOGGLE_MS = 800;
+type RenameKind = 'folder' | 'space' | 'tab' | 'pin';
 
 export function installRename(rt: Rt) {
   const { view, doc, container } = rt;
-  let editing: { kind: 'folder' | 'space', id: string, el: HTMLElement, saved: Node[], was: string, ending: boolean } | null = null;
-  let wanted: { kind: 'folder' | 'space', id: string, until: number } | null = null; // one to edit once it's drawn (a folder just made)
+  let editing: { kind: RenameKind, id: string | number, el: HTMLElement, saved: Node[], was: string, hadCustom: boolean, ending: boolean } | null = null;
+  let wanted: { kind: RenameKind, id: string | number, until: number } | null = null; // one to edit once it's drawn (a folder just made)
 
-  // The m-rename element for a folder or space, if it's drawn.
-  function elementFor(kind: 'folder' | 'space', id: string) {
+  // The m-rename element for a folder, space, tab or pin, if it's drawn.
+  function elementFor(kind: RenameKind, id: string | number) {
     for (const el of view.marked('m-rename', kind)) {
       const item = view.subjectOf(el);
-      if (kind === 'folder' ? item?.id === id : (item?.id ?? rt.vm?.space?.id) === id) return (el as HTMLElement);
+      if (kind === 'space' ? (item?.id ?? rt.vm?.space?.id) === id : item?.id === id) return (el as HTMLElement);
     }
     return null;
   }
-  const nameOf = (kind: 'folder' | 'space', id: string) => {
+  const infoOf = (kind: RenameKind, id: string | number): { name: string, hadCustom: boolean } | null => {
     const state = rt.viewState();
-    const list = kind === 'folder' ? state?.folders : state?.spaces;
-    return list?.find((x) => x.id === id)?.name ?? null;
+    if (!state) return null;
+    if (kind === 'folder') {
+      const f = state.folders?.find((x) => x.id === id);
+      return f ? { name: f.name ?? '', hadCustom: false } : null;
+    }
+    if (kind === 'space') {
+      const sp = state.spaces?.find((x) => x.id === id);
+      return sp ? { name: sp.name ?? '', hadCustom: false } : null;
+    }
+    if (kind === 'pin') {
+      const p = state.pins?.find((x) => x.id === id);
+      return p ? { name: (p.customTitle || p.title || ''), hadCustom: !!p.customTitle } : null;
+    }
+    const t = typeof id === 'string' ? state.keptTabs?.[id] : state.tabs?.[id];
+    return t ? { name: (t.customTitle || t.title || ''), hadCustom: !!t.customTitle } : null;
   };
+  const labelFor = (kind: RenameKind) => (kind === 'folder' ? 'Folder name' : kind === 'space' ? 'Space name' : kind === 'pin' ? 'Pin name' : 'Tab name');
 
-  function start(kind: 'folder' | 'space', id: string) {
+  function start(kind: RenameKind, id: string | number) {
     if (editing) commit();
     const el = elementFor(kind, id);
-    const name = nameOf(kind, id);
-    if (name == null) return false;
+    const info = infoOf(kind, id);
+    if (info == null) return false;
     if (!el) { wanted = { kind, id, until: Date.now() + 3000 }; return true; }
     wanted = null;
     rt.behaviors.menus?.close();
     const saved = [...el.childNodes];
-    editing = { kind, id, el, saved, was: name, ending: false };
-    el.replaceChildren(doc.createTextNode(name));
+    editing = { kind, id, el, saved, was: info.name, hadCustom: info.hadCustom, ending: false };
+    el.replaceChildren(doc.createTextNode(info.name));
     try { el.contentEditable = 'plaintext-only'; } catch { el.contentEditable = 'true'; }
     if (el.contentEditable !== 'plaintext-only') el.contentEditable = 'true';
     el.spellcheck = false;
     el.setAttribute('role', 'textbox');
-    el.setAttribute('aria-label', kind === 'folder' ? 'Folder name' : 'Space name');
+    el.setAttribute('aria-label', labelFor(kind));
     el.classList.add('m-renaming');
     el.addEventListener('keydown', onKey);
     el.addEventListener('blur', onBlur);
@@ -82,9 +97,21 @@ export function installRename(rt: Rt) {
     const e = stop();
     if (!e) return;
     const name = e.typed.replace(/\s+/g, ' ').trim().slice(0, NAME_MAX);
-    if (!name || name === e.was) return;
-    if (e.kind === 'folder') rt.dispatch('folder.setName', { folder: e.id, name }, 'behavior');
-    else rt.dispatch('space.setName', { space: e.id, name }, 'behavior');
+    if (e.kind === 'folder') {
+      if (!name || name === e.was) return;
+      rt.dispatch('folder.setName', { folder: e.id, name }, 'behavior');
+    } else if (e.kind === 'space') {
+      if (!name || name === e.was) return;
+      rt.dispatch('space.setName', { space: e.id, name }, 'behavior');
+    } else if (e.kind === 'pin') {
+      if (name === e.was && (!e.hadCustom || name !== '')) return;
+      if (!name && !e.hadCustom) return;
+      rt.dispatch('pin.setTitle', { pin: e.id, name }, 'behavior');
+    } else {
+      if (name === e.was && (!e.hadCustom || name !== '')) return;
+      if (!name && !e.hadCustom) return;
+      rt.dispatch('tab.setTitle', { tab: e.id, name }, 'behavior');
+    }
   }
   const cancel = () => { stop(); };
   function onKey(event: KeyboardEvent) {
@@ -108,7 +135,7 @@ export function installRename(rt: Rt) {
       const item = view.subjectOf(own.el);
       const kind = own.value;
       const id = kind === 'space' ? item?.id ?? rt.vm?.space?.id : item?.id;
-      if ((kind === 'folder' || kind === 'space') && id != null) {
+      if ((kind === 'folder' || kind === 'space' || kind === 'tab' || kind === 'pin') && id != null) {
         e.stopPropagation();
         if (kind === 'folder') undoToggle(id);
         start(kind, id);
@@ -137,8 +164,8 @@ export function installRename(rt: Rt) {
   return {
     start,
     /** Edit it once it's drawn (a folder just made: sidebar.js pendingRename). */
-    startWhenThere(kind: 'folder' | 'space', id: string) {
-      if (nameOf(kind, id) != null && elementFor(kind, id)) return start(kind, id);
+    startWhenThere(kind: RenameKind, id: string | number) {
+      if (infoOf(kind, id) != null && elementFor(kind, id)) return start(kind, id);
       wanted = { kind, id, until: Date.now() + 3000 };
       return true;
     },
@@ -147,10 +174,10 @@ export function installRename(rt: Rt) {
     editingContains: (node: EventTarget | null | undefined) => !!editing && !!node && editing.el.contains(node as Node),
     active: () => editing != null,
     afterRender() {
-      if (editing && (!editing.el.isConnected || nameOf(editing.kind, editing.id) == null)) { cancel(); return; }
+      if (editing && (!editing.el.isConnected || infoOf(editing.kind, editing.id) == null)) { cancel(); return; }
       if (wanted && !editing) {
         if (Date.now() > wanted.until) wanted = null;
-        else if (nameOf(wanted.kind, wanted.id) != null && elementFor(wanted.kind, wanted.id)) start(wanted.kind, wanted.id);
+        else if (infoOf(wanted.kind, wanted.id) != null && elementFor(wanted.kind, wanted.id)) start(wanted.kind, wanted.id);
       }
     },
     busy: () => editing != null || wanted != null,

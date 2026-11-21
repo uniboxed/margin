@@ -15,6 +15,7 @@
 //   is pinned in that place, a pin moves there, folders stay at the top level;
 // - nowhere a row already is (a drop that wouldn't move it is no target).
 import type { FolderRow, SpaceView } from '../view-model.ts';
+import { MAX_FOLDER_DEPTH } from '../../state/model.ts';
 
 /**
  * What a drag holds: a row's kind and id.
@@ -30,11 +31,77 @@ export type Target = { space: string }
   | { into: string }
   | { folderId: string | null, beforeId: string | null, row?: { kind: 'pin' | 'folder', id: string }, side?: 'before' | 'after' };
 
+function allFlat(space: SpaceView | null | undefined) {
+  if (space?.pinnedFlat) return space.pinnedFlat;
+  const out: (FolderRow | SpaceView['pinned'][number])[] = [];
+  for (const item of space?.pinned ?? []) {
+    out.push(item);
+    if (item.isFolder) out.push(...item.pins);
+  }
+  return out;
+}
+
+function folderMap(space: SpaceView | null | undefined) {
+  const byId = new Map<string, FolderRow>();
+  for (const item of allFlat(space)) if (item.isFolder) byId.set(item.id, item);
+  return byId;
+}
+
+function depthOf(byId: Map<string, FolderRow>, id: string): number {
+  let d = 0;
+  let cur: string | null = id;
+  const seen = new Set<string>();
+  while (cur && !seen.has(cur)) {
+    seen.add(cur);
+    const parent: string | null = byId.get(cur)?.parentFolderId ?? null;
+    if (!parent) break;
+    d++;
+    cur = parent;
+  }
+  return d;
+}
+
+function hasAncestor(byId: Map<string, FolderRow>, id: string, ancestorId: string): boolean {
+  let cur: string | null = id;
+  const seen = new Set<string>();
+  while (cur && !seen.has(cur)) {
+    if (cur === ancestorId) return true;
+    seen.add(cur);
+    cur = byId.get(cur)?.parentFolderId ?? null;
+  }
+  return false;
+}
+
+function subtreeHeight(byId: Map<string, FolderRow>, id: string, seen = new Set<string>()): number {
+  if (seen.has(id)) return 0;
+  seen.add(id);
+  let best = 0;
+  for (const f of byId.values()) {
+    if (f.parentFolderId === id) best = Math.max(best, 1 + subtreeHeight(byId, f.id, seen));
+  }
+  return best;
+}
+
+function canNestFolder(space: SpaceView | null | undefined, folderId: string, parentId: string | null): boolean {
+  if (!parentId) return true;
+  if (folderId === parentId) return false;
+  const byId = folderMap(space);
+  if (!byId.has(parentId)) return false;
+  if (hasAncestor(byId, parentId, folderId)) return false;
+  return depthOf(byId, parentId) + 1 + subtreeHeight(byId, folderId) < MAX_FOLDER_DEPTH;
+}
+
 /**
  * The ids at one level of the pinned area, in order: the top level (folders
- * and loose pins) for `folderId` null, else that folder's pins.
- * @param space the view model's space (`pinned`) */
+ * and loose pins) for `folderId` null, else that folder's direct children
+ * (subfolders and pins).
+ * @param space the view model's space (`pinned` / `pinnedFlat`) */
 export function levelIds(space: SpaceView | null | undefined, folderId: string | null): string[] {
+  if (space?.pinnedFlat) {
+    return space.pinnedFlat
+      .filter((item) => (item.isFolder ? (item.parentFolderId ?? null) : (item.folderId ?? null)) === (folderId ?? null))
+      .map((item) => item.id);
+  }
   const pinned = space?.pinned ?? [];
   if (!folderId) return pinned.map((item) => item.id);
   return pinned.find((item): item is FolderRow => item.isFolder && item.id === folderId)?.pins.map((p) => p.id) ?? [];
@@ -58,7 +125,7 @@ export function stays(space: SpaceView | null | undefined, drag: Drag, level: st
 
 /**
  * Where a drop at `over` would go, or null (nowhere: it glides back).
- * @param space the view model's space (`id`, `pinned`)
+ * @param space the view model's space (`id`, `pinned`, `pinnedFlat`)
  * */
 export function dropTarget(drag: Drag, over: Over | null, space: SpaceView | null | undefined): Target | null {
   if (!drag || !over || drag.kind === 'space') return null; // spaces don't move (no handler)
@@ -74,30 +141,41 @@ export function dropTarget(drag: Drag, over: Over | null, space: SpaceView | nul
     return { tab: over.tab, side };
   }
   if (over.zone === 'folder') {
-    if (drag.kind === 'folder') return null;
+    if (drag.kind === 'folder') {
+      const id = String(drag.id);
+      if (!canNestFolder(space, id, over.folder)) return null;
+      return levelIds(space, over.folder).includes(id) ? null : { into: over.folder };
+    }
     return drag.kind === 'pin' && levelIds(space, over.folder).includes(String(drag.id)) ? null : { into: over.folder };
   }
   if (over.zone !== 'pins') return null;
   const row = over.row;
-  if (!row) return { folderId: null, beforeId: null };
+  if (!row) return stays(space, drag, null, null) ? null : { folderId: null, beforeId: null };
   const y = over.y;
   if (row.kind === 'folder') {
     const folderId = row.id;
+    const level = row.folder || null;
     const at = { kind: ('folder' as 'folder'), id: folderId };
     if (drag.kind === 'folder') {
-      if (folderId === drag.id) return null;
-      if (y < 0.5) return stays(space, drag, null, folderId) ? null : { folderId: null, beforeId: folderId, row: at, side: 'before' };
-      // After an open folder: after its pins (the line under its last one).
-      const beforeId = after(space, drag, null, folderId);
-      return stays(space, drag, null, beforeId) ? null : { folderId: null, beforeId, row: at, side: 'after' };
+      const id = String(drag.id);
+      if (folderId === id) return null;
+      // Middle band nests into the target folder (when valid and not already a direct child); edges place before/after at its level.
+      if (y >= 0.25 && y <= 0.75 && canNestFolder(space, id, folderId)) {
+        return levelIds(space, folderId).includes(id) ? null : { into: folderId };
+      }
+      if (!canNestFolder(space, id, level)) return null;
+      if (y < 0.5) return stays(space, drag, level, folderId) ? null : { folderId: level, beforeId: folderId, row: at, side: 'before' };
+      // After an open folder: after its children (the line under its last one).
+      const beforeId = after(space, drag, level, folderId);
+      return stays(space, drag, level, beforeId) ? null : { folderId: level, beforeId, row: at, side: 'after' };
     }
     // Its top edge: before it; the rest: into it (Arc).
-    if (y < 0.25) return stays(space, drag, null, folderId) ? null : { folderId: null, beforeId: folderId, row: at, side: 'before' };
+    if (y < 0.25) return stays(space, drag, level, folderId) ? null : { folderId: level, beforeId: folderId, row: at, side: 'before' };
     return drag.kind === 'pin' && levelIds(space, folderId).includes(String(drag.id)) ? null : { into: folderId };
   }
   const pinId = row.id;
   const level = row.folder || null;
-  if (drag.kind === 'folder' && level) return null; // folders stay at the top level
+  if (drag.kind === 'folder' && !canNestFolder(space, String(drag.id), level)) return null;
   if (drag.kind === 'pin' && pinId === drag.id) return null;
   const at = { kind: ('pin' as 'pin'), id: pinId };
   const place: Target = y < 0.5 ? { folderId: level, beforeId: pinId, row: at, side: 'before' } : { folderId: level, beforeId: after(space, drag, level, pinId), row: at, side: 'after' };
@@ -106,7 +184,7 @@ export function dropTarget(drag: Drag, over: Over | null, space: SpaceView | nul
 
 /**
  * The action a drop at `where` runs (ui/actions.ts), as today's drop sends:
- * moveTabToSpace, unpin, moveTab, pinTab, movePin, moveFolder.
+ * moveTabToSpace, unpin, moveTab, pinTab, movePin, moveFolder / nestFolder.
  * */
 export function dropAction(drag: Drag, where: Target): { name: string, arg: any } {
   const w = (where as any);
@@ -117,6 +195,7 @@ export function dropAction(drag: Drag, where: Target): { name: string, arg: any 
   const before = w.into ? null : w.beforeId ?? null;
   if (drag.kind === 'tab') return { name: 'tab.pinAt', arg: { tab: drag.id, folder, before } };
   if (drag.kind === 'pin') return { name: 'pin.move', arg: { pin: String(drag.id), folder, before } };
+  if (folder != null) return { name: 'folder.nest', arg: { folder: String(drag.id), parent: folder, before } };
   return { name: 'folder.move', arg: { folder: String(drag.id), before } };
 }
 

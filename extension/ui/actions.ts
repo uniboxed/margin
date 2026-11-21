@@ -38,19 +38,26 @@ export const ACTIONS = Object.freeze({
   'tab.duplicate': 'tab',
   'tab.mute': 'tab',
   'tab.unload': 'tab',
+  'tab.rename': 'tab',
+  'tab.setTitle': Object.freeze({ tab: 'tab', name: 'name' }),
   'tab.moveToSpace': Object.freeze({ tab: 'tab', space: 'space' }),
   'tab.move': Object.freeze({ tab: 'tab', nextTo: 'tab', side: Object.freeze(['before', 'after']) }),
   'tab.pinAt': Object.freeze({ tab: 'tab', folder: 'folder?', before: 'pin-or-folder?' }),
   'pin.open': 'pin',
+  'pin.reset': 'pin',
+  'pin.rename': 'pin',
+  'pin.setTitle': Object.freeze({ pin: 'pin', name: 'name' }),
   'pin.copyUrl': 'pin',
   'pin.move': Object.freeze({ pin: 'pin', folder: 'folder?', before: 'pin-or-folder?' }),
   'folder.toggle': 'folder',
   'folder.new': 'none',
+  'folder.newIn': 'folder',
   'folder.newWithTab': 'tab',
   'folder.newWithPin': 'pin',
   'folder.rename': 'folder',
   'folder.setName': Object.freeze({ folder: 'folder', name: 'name' }),
   'folder.move': Object.freeze({ folder: 'folder', before: 'pin-or-folder?' }),
+  'folder.nest': Object.freeze({ folder: 'folder', parent: 'folder?', before: 'pin-or-folder?' }),
   'folder.delete': 'folder',
   'space.switch': 'space',
   'space.new': 'none',
@@ -343,19 +350,26 @@ export const ACTION_MAP = Object.freeze({
   'tab.duplicate': 'duplicateTab',
   'tab.mute': 'muteTab',
   'tab.unload': 'unloadTab',
+  'tab.rename': 'local',
+  'tab.setTitle': 'renameTab',
   'tab.moveToSpace': 'moveTabToSpace',
   'tab.move': 'moveTab',
   'tab.pinAt': 'pinTab',
   'pin.open': 'openPin',
+  'pin.reset': 'resetPin',
+  'pin.rename': 'local',
+  'pin.setTitle': 'renamePin',
   'pin.copyUrl': 'local',
   'pin.move': 'movePin',
   'folder.toggle': 'setFolderOpen',
   'folder.new': 'createFolder',
+  'folder.newIn': 'createFolder',
   'folder.newWithTab': 'createFolder',
   'folder.newWithPin': 'createFolder',
   'folder.rename': 'local',
   'folder.setName': 'renameFolder',
   'folder.move': 'moveFolder',
+  'folder.nest': 'nestFolder',
   'folder.delete': 'deleteFolder',
   'space.switch': 'setSpace',
   'space.new': 'createSpace',
@@ -398,7 +412,7 @@ export const ACTION_MAP = Object.freeze({
   'settings.category': 'local',
 });
 
-const LOCAL = new Set(['space.edit', 'space.rename', 'folder.rename', 'palette.open', 'palette.close', 'menu.open', 'menu.run', 'menu.close', 'editor.save', 'editor.cancel', 'editor.delete', 'editor.color', 'editor.theme',
+const LOCAL = new Set(['space.edit', 'space.rename', 'folder.rename', 'tab.rename', 'pin.rename', 'palette.open', 'palette.close', 'menu.open', 'menu.run', 'menu.close', 'editor.save', 'editor.cancel', 'editor.delete', 'editor.color', 'editor.theme',
   'notice.run', 'notice.close', 'prompt.run', 'prompt.close', 'launcher.more', 'settings.run', 'settings.category', 'tab.copyUrl', 'pin.copyUrl', 'toast.close']);
 const NAV = { 'nav.back': 'goBack', 'nav.forward': 'goForward', 'nav.reload': 'reload' };
 
@@ -426,6 +440,7 @@ export function requestFor(name: string, arg: any, { state, ui, platform, row }:
     case 'tab.duplicate': return send('duplicateTab', { tabId: arg, windowId });
     case 'tab.mute': return send('muteTab', { tabId: arg, windowId });
     case 'tab.unload': return send('unloadTab', { tabId: arg, windowId });
+    case 'tab.setTitle': return send('renameTab', { tabId: arg.tab, title: arg.name });
     case 'tab.moveToSpace': return send('moveTabToSpace', { tabId: arg.tab, spaceId: arg.space });
     case 'tab.move': {
       // The tab it goes next to, by its address and place too (as the
@@ -435,16 +450,20 @@ export function requestFor(name: string, arg: any, { state, ui, platform, row }:
     }
     case 'tab.pinAt': return send('pinTab', { tabId: arg.tab, folderId: arg.folder, beforeId: arg.before });
     case 'pin.open': return send('openPin', { pinId: arg, windowId, ...show });
+    case 'pin.reset': return send('resetPin', { pinId: arg, windowId, ...show });
+    case 'pin.setTitle': return send('renamePin', { pinId: arg.pin, title: arg.name });
     case 'pin.move': return send('movePin', { pinId: arg.pin, folderId: arg.folder, beforeId: arg.before });
     case 'folder.toggle': {
       const folder = (state?.folders ?? []).find((f) => f.id === arg);
       return send('setFolderOpen', { folderId: arg, open: folder?.open === false });
     }
     case 'folder.new': return send('createFolder', { windowId });
+    case 'folder.newIn': return send('createFolder', { windowId, parentId: arg });
     case 'folder.newWithTab': return send('createFolder', { windowId, tabId: arg });
     case 'folder.newWithPin': return send('createFolder', { windowId, pinIds: [arg] });
     case 'folder.setName': return send('renameFolder', { folderId: arg.folder, name: arg.name });
     case 'folder.move': return send('moveFolder', { folderId: arg.folder, beforeId: arg.before });
+    case 'folder.nest': return send('nestFolder', { folderId: arg.folder, parentId: arg.parent, beforeId: arg.before });
     case 'folder.delete': return send('deleteFolder', { folderId: arg });
     case 'space.switch': return send('setSpace', { windowId, spaceId: arg, ...show });
     case 'space.new': return send('createSpace', { windowId });

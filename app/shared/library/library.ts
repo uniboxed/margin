@@ -87,9 +87,9 @@ export function stateOf(values: Values): LibState {
   const spaces = sorted(values?.spaces).sort((a, b) => finite(a[1].order) - finite(b[1].order) || a[0].localeCompare(b[0]))
     .map(([id, s]) => ({ id, name: str(s.name, 200), emoji: str(s.emoji, 16), color: str(s.color, 32), browser: BROWSERS.has(s.browser) ? s.browser : 'safari', profile: typeof s.profile === 'string' && s.profile ? s.profile : null, ...(M.themeIdOk(s.theme) ? { theme: s.theme } : {}) }));
   const pins = sorted(values?.pins).filter(([, p]) => typeof p.spaceId === 'string' && typeof p.url === 'string')
-    .map(([id, p]) => ({ id, spaceId: p.spaceId, url: p.url, title: str(p.title), ...(typeof p.folderId === 'string' && p.folderId ? { folderId: p.folderId } : {}), pos: finite(p.pos), target: targetOf(p.target) ?? webTarget('safari', null) }));
+    .map(([id, p]) => ({ id, spaceId: p.spaceId, url: p.url, title: str(p.title), ...(typeof p.customTitle === 'string' && p.customTitle ? { customTitle: str(p.customTitle, 200) } : {}), ...(typeof p.folderId === 'string' && p.folderId ? { folderId: p.folderId } : {}), pos: finite(p.pos), target: targetOf(p.target) ?? webTarget('safari', null) }));
   const folders = sorted(values?.folders).filter(([, f]) => typeof f.spaceId === 'string')
-    .map(([id, f]) => ({ id, spaceId: f.spaceId, name: str(f.name, 200), open: f.open !== false, pos: finite(f.pos) }));
+    .map(([id, f]) => ({ id, spaceId: f.spaceId, name: str(f.name, 200), open: f.open !== false, pos: finite(f.pos), ...(typeof f.parentId === 'string' && f.parentId ? { parentId: f.parentId } : {}) }));
   const archive = sorted(values?.archive).filter(([, a]) => typeof a.url === 'string')
     .sort((a, b) => finite(b[1].closedAt) - finite(a[1].closedAt) || a[0].localeCompare(b[0]))
     .map(([id, a]) => ({ id, url: a.url, title: str(a.title), spaceId: str(a.spaceId, 256), favIconUrl: str(a.icon, 100_000), closedAt: finite(a.closedAt), target: targetOf(a.target) ?? webTarget('safari', null) }));
@@ -100,6 +100,8 @@ export function stateOf(values: Values): LibState {
       id, url: t.url, title: str(t.title), favIconUrl: str(t.icon, 100_000), spaceId: t.spaceId, order: finite(t.order),
       lastActive: finite(t.lastUsed), wasActive: t.selected === true, keptAt: finite(t.lastUsed), why: 'library',
       target: targetOf(t.target) ?? webTarget('safari', null),
+      ...(typeof t.pinnedBy === 'string' && t.pinnedBy ? { pinnedBy: t.pinnedBy } : {}),
+      ...(typeof t.customTitle === 'string' && t.customTitle ? { customTitle: str(t.customTitle, 200) } : {}),
       ...(isObject(t.imported) ? { imported: { browser: str(t.imported.browser, 32), profile: str(t.imported.profile, 256), id: str(t.imported.id, 256) } } : {}),
     };
   }
@@ -111,12 +113,15 @@ export function stateOf(values: Values): LibState {
 export function valuesOf(state: LibState, imports: Record<string, any> = {}): Values {
   const out: Values = { spaces: {}, pins: {}, folders: {}, tabs: {}, archive: {}, windows: {}, imports: { ...imports } };
   state.spaces.forEach((s, i) => { out.spaces[s.id] = { name: s.name ?? '', emoji: s.emoji ?? '', color: s.color ?? '', order: i, browser: s.browser ?? 'safari', profile: s.profile ?? null, ...(M.themeIdOk(s.theme) ? { theme: s.theme } : {}) }; });
-  state.pins.forEach((p: any, i) => { out.pins[p.id] = { spaceId: p.spaceId, url: p.url, title: p.title ?? '', folderId: p.folderId ?? null, pos: finite(p.pos, i), target: targetOf(p.target) ?? webTarget('safari', null) }; });
-  (state.folders ?? []).forEach((f, i) => { out.folders[f.id] = { spaceId: f.spaceId, name: f.name ?? '', open: f.open !== false, pos: finite(f.pos, i) }; });
+  state.pins.forEach((p: any, i) => { out.pins[p.id] = { spaceId: p.spaceId, url: p.url, title: p.title ?? '', ...(p.customTitle ? { customTitle: p.customTitle } : {}), folderId: p.folderId ?? null, pos: finite(p.pos, i), target: targetOf(p.target) ?? webTarget('safari', null) }; });
+  (state.folders ?? []).forEach((f, i) => { out.folders[f.id] = { spaceId: f.spaceId, name: f.name ?? '', open: f.open !== false, pos: finite(f.pos, i), ...(f.parentId ? { parentId: f.parentId } : {}) }; });
   for (const k of Object.values(state.keptTabs ?? {}) as any[]) {
     out.tabs[k.id] = {
       url: k.url, title: k.title ?? '', icon: k.favIconUrl ?? '', spaceId: k.spaceId, order: finite(k.order), lastUsed: finite(k.lastActive), selected: !!k.wasActive,
-      target: targetOf(k.target) ?? webTarget('safari', null), ...(k.imported ? { imported: k.imported } : {}),
+      target: targetOf(k.target) ?? webTarget('safari', null),
+      ...(k.pinnedBy ? { pinnedBy: k.pinnedBy } : {}),
+      ...(k.customTitle ? { customTitle: k.customTitle } : {}),
+      ...(k.imported ? { imported: k.imported } : {}),
     };
   }
   for (const a of state.archive as any[]) out.archive[a.id] = { url: a.url, title: a.title ?? '', spaceId: a.spaceId ?? '', icon: a.favIconUrl ?? '', closedAt: finite(a.closedAt), target: targetOf(a.target) ?? webTarget('safari', null) };
@@ -180,8 +185,8 @@ function used(s: LibState, id: string, w: string | null, now: number): LibState 
 }
 
 // A new item, in the list's newest place.
-function addItem(s: LibState, id: string, { spaceId, url, title, icon, target, now }: { spaceId: string, url: string, title: string, icon: string, target: Target, now: number }): LibState {
-  const item = { id, url, title, favIconUrl: icon, spaceId, order: lastPlace(s) + 1, lastActive: now, wasActive: false, keptAt: now, why: 'library', target };
+function addItem(s: LibState, id: string, { spaceId, url, title, icon, target, now, pinnedBy }: { spaceId: string, url: string, title: string, icon: string, target: Target, now: number, pinnedBy?: string | null }): LibState {
+  const item = { id, url, title, favIconUrl: icon, spaceId, order: lastPlace(s) + 1, lastActive: now, wasActive: false, keptAt: now, why: 'library', target, ...(pinnedBy ? { pinnedBy } : {}) };
   return { ...s, keptTabs: { ...s.keptTabs, [id]: item } } as LibState;
 }
 
@@ -276,7 +281,8 @@ const ACTIONS: Record<string, Handler> = {
     const { url, title } = placeOf(target, p?.url, p?.title);
     if (!url) return fail(s, 'no address');
     const id = ids.tab();
-    let next = addItem(s, id, { spaceId, url, title, icon: target.kind === 'margin' ? '' : str(p.icon, 100_000), target, now });
+    const pinnedBy = typeof p?.pinnedBy === 'string' && s.pins.some((x) => x.id === p.pinnedBy && x.spaceId === spaceId) ? p.pinnedBy : null;
+    let next = addItem(s, id, { spaceId, url, title, icon: target.kind === 'margin' ? '' : str(p.icon, 100_000), target, now, pinnedBy });
     if (p.front) next = used(next, id, w, now);
     return { s: next, result: { tabId: id } };
   },
@@ -323,10 +329,12 @@ const ACTIONS: Record<string, Handler> = {
     return { s: used(s, k.id, win(p), now), result: { shown: k.id } };
   },
   // Closed from Margin (its ×, ⌘W): to the archive (a web page), and the hosting closes its page.
+  // A sticky-pinned item resets to unloaded at its root URL instead of archiving.
   closeTab({ s, p, now, ids, requests }) {
-    const k = s.keptTabs[p?.tabId];
+    const k: any = s.keptTabs[p?.tabId];
     if (!k) return fail(s, 'no such item');
-    const next = archiveItem(s, k.id, ids.other('a'), now);
+    const isStickyPin = typeof k.pinnedBy === 'string' && s.pins.some((pin) => pin.id === k.pinnedBy);
+    const next = isStickyPin ? M.forgetKept(s, k.id) as LibState : archiveItem(s, k.id, ids.other('a'), now);
     const after = frontOf(next, k.spaceId);
     requests.push({ type: 'closeTab', item: k.id, url: k.url, target: targetOfItem(k), spaceId: k.spaceId, next: after?.id ?? null });
     return { s: next };
@@ -427,16 +435,43 @@ const ACTIONS: Record<string, Handler> = {
     requests.push({ type: 'unpin', pin: pin.id, url: pin.url, target: targetOf(pin.target), spaceId: pin.spaceId });
     return { s: M.removePin(s, pin.id) as LibState };
   },
-  // Shown in the window: its item in the space if there is one (an address the space has), else the hosting opens it.
+  // Shown in the window: its item in the space if there is one (bound via pinnedBy first, else URL), else the hosting opens it.
   openPin({ s, p, now, requests }) {
     const pin: any = s.pins.find((x) => x.id === p?.pinId);
     if (!pin) return fail(s, 'no such pin');
     const w = win(p);
-    const item = M.keptForUrl(s, pin.url, pin.spaceId);
+    const bound = Object.values(s.keptTabs ?? {}).find((k) => k.pinnedBy === pin.id && k.spaceId === pin.spaceId) ?? null;
+    const item = bound ?? M.keptForUrl(s, pin.url, pin.spaceId);
     let next = w != null ? M.setActiveSpace(s, w as any, pin.spaceId) as LibState : s;
-    if (item) next = used(next, item.id, w, now);
-    requests.push({ type: 'openPin', windowId: p.windowId ?? null, pin: pin.id, item: item?.id ?? null, url: pin.url, target: targetOf(pin.target), spaceId: pin.spaceId });
+    if (item) {
+      if (item.pinnedBy !== pin.id) next = M.bindTabToPin(next, item.id, pin.id) as LibState;
+      next = used(next, item.id, w, now);
+    }
+    requests.push({ type: 'openPin', windowId: p.windowId ?? null, pin: pin.id, item: item?.id ?? null, url: item?.url ?? pin.url, target: targetOf(pin.target), spaceId: pin.spaceId });
     return { s: next, result: { pin: pin.id, item: item?.id ?? null } };
+  },
+  // Reset a drifted sticky pin's live item back to the pin's root URL.
+  resetPin({ s, p, now, requests }) {
+    const pin: any = s.pins.find((x) => x.id === p?.pinId);
+    if (!pin) return fail(s, 'no such pin');
+    const w = win(p);
+    const item = Object.values(s.keptTabs ?? {}).find((k) => k.pinnedBy === pin.id && k.spaceId === pin.spaceId)
+      ?? M.keptForUrl(s, pin.url, pin.spaceId);
+    let next = w != null ? M.setActiveSpace(s, w as any, pin.spaceId) as LibState : s;
+    if (item) {
+      next = { ...next, keptTabs: { ...next.keptTabs, [item.id]: { ...next.keptTabs[item.id], url: pin.url, title: pin.title || next.keptTabs[item.id].title } } } as LibState;
+      next = used(next, item.id, w, now);
+    }
+    requests.push({ type: 'resetPin', windowId: p.windowId ?? null, pin: pin.id, item: item?.id ?? null, url: pin.url, target: targetOf(pin.target), spaceId: pin.spaceId });
+    return { s: next, result: { pin: pin.id, item: item?.id ?? null } };
+  },
+  renamePin({ s, p }) {
+    if (!s.pins.some((x) => x.id === p?.pinId)) return fail(s, 'no such pin');
+    return { s: M.renamePin(s, p.pinId, p?.title ?? '') as LibState };
+  },
+  renameTab({ s, p }) {
+    if (!s.keptTabs[p?.tabId]) return fail(s, 'no such item');
+    return { s: M.renameTab(s, p.tabId, p?.title ?? '') as LibState };
   },
   movePin({ s, p }) {
     return { s: M.movePin(s, p?.pinId, { folderId: p?.folderId ?? null, beforeId: p?.beforeId ?? null }) as LibState };
@@ -446,13 +481,14 @@ const ACTIONS: Record<string, Handler> = {
   createFolder({ s, p, ids }) {
     const id = ids.other('f');
     const k: any = typeof p?.tabId === 'string' ? s.keptTabs[p.tabId] : null;
-    const spaceId = hasSpace(s, p?.spaceId) ? p.spaceId : k ? k.spaceId : windowSpace(s, win(p));
+    const parentFolder = typeof p?.parentId === 'string' ? (s.folders ?? []).find((f) => f.id === p.parentId) : null;
+    const spaceId = hasSpace(s, p?.spaceId) ? p.spaceId : parentFolder ? parentFolder.spaceId : k ? k.spaceId : windowSpace(s, win(p));
     if (!spaceId) return fail(s, 'no space');
     const pinIds: string[] = Array.isArray(p?.pinIds) ? p.pinIds.filter((x: unknown) => typeof x === 'string') : [];
     const firstPin = s.pins.find((x) => x.id === pinIds[0] && x.spaceId === spaceId);
     const before = p?.beforeId ?? (firstPin && !firstPin.folderId ? firstPin.id : null);
-    let next = M.createFolder(s, { id, spaceId, name: p?.name, pinIds, beforeId: before }) as LibState;
-    if (k) {
+    let next = M.createFolder(s, { id, spaceId, name: p?.name, pinIds, parentId: parentFolder?.id ?? null, beforeId: before }) as LibState;
+    if (k && next !== s) {
       const pinId = ids.other('p');
       const pinned = M.addPin(next, { id: pinId, spaceId, url: k.url, title: k.title, folderId: id }) as LibState;
       if (pinned !== next) next = M.forgetKept({ ...pinned, pins: pinned.pins.map((pin) => (pin.id === pinId ? { ...pin, target: targetOfItem(k) } : pin)) }, k.id) as LibState;
@@ -462,7 +498,8 @@ const ACTIONS: Record<string, Handler> = {
   renameFolder({ s, p }) { return { s: M.renameFolder(s, p?.folderId, p?.name) as LibState }; },
   setFolderOpen({ s, p }) { return { s: M.setFolderOpen(s, p?.folderId, !!p?.open) as LibState }; },
   deleteFolder({ s, p }) { return { s: M.deleteFolder(s, p?.folderId) as LibState }; },
-  moveFolder({ s, p }) { return { s: M.moveFolder(s, p?.folderId, { beforeId: p?.beforeId ?? null }) as LibState }; },
+  moveFolder({ s, p }) { return { s: M.moveFolder(s, p?.folderId, { parentId: p?.parentId ?? null, beforeId: p?.beforeId ?? null }) as LibState }; },
+  nestFolder({ s, p }) { return { s: M.moveFolder(s, p?.folderId, { parentId: p?.parentId ?? null, beforeId: p?.beforeId ?? null }) as LibState }; },
   // ---- Margin's windows ----
   // A Margin window closed for good: its space is forgotten (a new one starts in the first space).
   forgetWindow({ s, p }) {

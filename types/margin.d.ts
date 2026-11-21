@@ -21,12 +21,18 @@ export interface Space {
 }
 export interface Pin {
   id: string; spaceId: string; url: string; title: string;
+  /** user-given custom title (inline rename); absent: use live/saved title */
+  customTitle?: string;
   /** a folder of its space (state/model.ts); none or unknown: at the top level */
   folderId?: string;
   /** order within its level (folder, or the space's top level); missing: its place in the list */
   pos?: number;
 }
-export interface Folder { id: string; spaceId: string; name: string; open: boolean; pos?: number }
+export interface Folder {
+  id: string; spaceId: string; name: string; open: boolean; pos?: number;
+  /** parent folder in the same space (nested folders, max depth 4); absent: top level */
+  parentId?: string;
+}
 // Snapshot of an open tab (state/model.ts tabRecord).
 export interface TabRecord {
   id: number; windowId: number; index: number; title: string; url: string;
@@ -61,6 +67,10 @@ export interface TabRecord {
   restoreScroll?: { y: number; url: string };
   /** a page Margin sent it to, shown at once while the browser's tab still says the page before (state/model.ts goingTo) */
   going?: { url: string; title: string; from: string; at: number };
+  /** sticky pin binding: pin id this live tab belongs to (survives sub-navigation) */
+  pinnedBy?: string;
+  /** user-given custom title (inline rename) */
+  customTitle?: string;
 }
 /** A tab from before ids changed that no open tab matched yet (an earlier build's lostTabs: moved into keptTabs as read). */
 export interface LostTab { url: string; spaceId: string; lastActive: number; windowId: number; index: number }
@@ -78,6 +88,10 @@ export interface KeptTab {
   wasTab?: number;
   /** where its page was scrolled as it closed, and the address that's for (the scroll record) */
   scroll?: { y: number; url: string };
+  /** sticky pin binding: pin id this item belongs to */
+  pinnedBy?: string;
+  /** user-given custom title (inline rename) */
+  customTitle?: string;
   /** view.sidebar only: not open */
   kept?: true;
 }

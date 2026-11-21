@@ -6,7 +6,8 @@
 // the runtime keeps the action. Pure: runs in Node.
 
 import type { State } from '../../../types/margin';
-import type { FolderRow, SpaceView } from '../view-model.ts';
+import type { FolderRow, PinRow, SpaceView } from '../view-model.ts';
+import { MAX_FOLDER_DEPTH, folderDepth } from '../../state/model.ts';
 import { themeChoices, spaceThemeId, spaceThemesOn } from '../space-theme.ts';
 
 // The space editor's swatches (Arcadia's).
@@ -30,14 +31,22 @@ export function menuItems(target: MenuTarget | null | undefined, { state, space,
   const item = (label: string, action: string, arg?: unknown, extra = {}) => list.push({ id: `i${n++}`, label, separator: false, danger: false, confirm: false, action, ...(arg === undefined ? {} : { arg }), ...extra });
   const separator = () => { if (list.length && !list.at(-1)!.separator) list.push({ id: `s${s++}`, label: '', separator: true, danger: false, confirm: false, action: null }); };
   const pinned = space?.pinned ?? [];
-  const folders = pinned.filter((p): p is FolderRow => p.isFolder);
-  const shownPins = pinned.flatMap((p) => (p.isFolder ? p.pins : [p]));
+  const flat = space?.pinnedFlat ?? null;
+  const folders: FolderRow[] = flat
+    ? flat.filter((p): p is FolderRow => p.isFolder)
+    : pinned.filter((p): p is FolderRow => p.isFolder);
+  const shownPins: PinRow[] = flat
+    ? flat.filter((p): p is PinRow => !p.isFolder)
+    : pinned.flatMap((p) => (p.isFolder ? p.pins : [p]));
   switch (target.kind) {
     case 'folder': {
       const folder = (state.folders ?? []).find((f) => f.id === target.id);
       if (!folder) return [];
       item('Rename Folder', 'folder.rename', folder.id);
       item(folder.open === false ? 'Open Folder' : 'Close Folder', 'folder.toggle', folder.id);
+      const depth = folderDepth(state as State, folder.id, folder.spaceId);
+      if (depth < MAX_FOLDER_DEPTH - 1) item('New Subfolder', 'folder.newIn', folder.id);
+      if (folder.parentId) item('Move Out of Folder', 'folder.nest', { folder: folder.id, parent: null, before: null });
       separator();
       item('Delete Folder (pins stay)', 'folder.delete', folder.id, { danger: true });
       break;
@@ -48,7 +57,9 @@ export function menuItems(target: MenuTarget | null | undefined, { state, space,
       const shown = shownPins.find((p) => p.id === pin.id);
       const isWeb = /^https?:\/\//i.test(pin.url ?? '');
       const liveTab = shown?.tabId != null ? state.tabs?.[shown.tabId] : null;
+      if (shown?.drifted) item('Reset to Pinned URL', 'pin.reset', pin.id);
       item('Unpin', 'tab.unpin', pin.id);
+      item('Rename Pin', 'pin.rename', pin.id);
       if (isWeb) item('Copy URL', 'pin.copyUrl', pin.id);
       separator();
       for (const f of folders) if (f.id !== shown?.folderId) item(`Move to 📁 ${f.name}`, 'pin.move', { pin: pin.id, folder: f.id, before: null });
@@ -74,6 +85,7 @@ export function menuItems(target: MenuTarget | null | undefined, { state, space,
       item('Pin Tab', 'tab.pin', tabId);
       for (const f of folders) item(`Pin to 📁 ${f.name}`, 'tab.pinAt', { tab: tabId, folder: f.id, before: null });
       item('New Folder with Tab', 'folder.newWithTab', tabId);
+      item('Rename Tab', 'tab.rename', tabId);
       if (isWeb) {
         separator();
         item('Copy URL', 'tab.copyUrl', tabId);

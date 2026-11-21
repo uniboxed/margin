@@ -382,7 +382,7 @@ const BEHAVIORS: Record<string, string[]> = {
   'm-drop': ['folder', 'space', 'tabs', 'pins'],
   'm-resize': ['sidebar'],
   'm-peek': ['left', 'right', 'top', 'bottom'],
-  'm-rename': ['space', 'folder', 'tab'],
+  'm-rename': ['space', 'folder', 'tab', 'pin'],
   'm-scroll': ['tabs', 'palette', 'archive'],
   'm-swipe': ['spaces'],
   'm-input': ['palette', 'space-name', 'space-emoji', 'launcher', ...['number', 'toggle', 'choice', 'list', 'shortcut', 'color'].map((k) => `setting-${k}`)],

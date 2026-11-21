@@ -117,5 +117,13 @@ export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = asy
       const updated = await tabs().update(tab.id, { muted: next });
       return { muted: updated?.mutedInfo?.muted ?? next, ok: true };
     },
+    async navigate({ itemId, url }: { itemId?: unknown, url?: unknown }) {
+      if (typeof itemId !== 'string' || !ITEM.test(itemId)) throw new Error('no item');
+      if (typeof url !== 'string' || !SHOWN.test(url)) throw new Error('not an address');
+      const tab = await own(itemId, null);
+      if (tab?.id == null) return { ok: false };
+      await tabs().update(tab.id, { url, active: true });
+      return { ok: true, tabId: tab.id };
+    },
   };
 }

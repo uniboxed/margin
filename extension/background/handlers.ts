@@ -247,14 +247,21 @@ export const handlers = {
   },
   // Closing from Margin archives the tab, like Arc. One that isn't open (a
   // string id: state/model.ts keptTabs) goes to the archive as it is.
+  // A sticky-pinned tab unloads & resets without archiving.
   async closeTab({ tabId }: { tabId: number | string }) {
     if (typeof tabId === 'string') {
-      await mutate((s) => M.archiveKept(s, tabId, { id: newId(), closedAt: now() }));
+      await mutate((s) => {
+        const k = s.keptTabs[tabId];
+        if (k?.pinnedBy && s.pins.some((p) => p.id === k.pinnedBy)) return M.forgetKept(s, tabId);
+        return M.archiveKept(s, tabId, { id: newId(), closedAt: now() });
+      });
       return;
     }
     await mutate((s) => {
       const tab = s.tabs[tabId];
-      return tab && /^https?:/i.test(tab.url) ? M.archiveTab(s, M.archiveEntryForTab(s, tab, { id: newId(), closedAt: now() })) : s;
+      if (!tab) return s;
+      if (tab.pinnedBy && s.pins.some((p) => p.id === tab.pinnedBy)) return s;
+      return /^https?:/i.test(tab.url) ? M.archiveTab(s, M.archiveEntryForTab(s, tab, { id: newId(), closedAt: now() })) : s;
     });
     const closing = await api.tabs.get(tabId).catch(() => null);
     // The tab in front: the space's most recent other tab comes to the front
@@ -342,9 +349,15 @@ export const handlers = {
       // A tab Margin hasn't placed in a space yet goes to its window's space.
       // (Not a kept tab: an open one, with its window.)
       const spaceId = kept ? kept.spaceId : st.tabSpace[tabId as number] ?? V.activeSpaceId(st, (tab as TabRecord).windowId);
-      const next = M.addPin(st, { id, spaceId, url: tab.url, title: tab.title, folderId, beforeId });
-      if (next === st) result = 'not pinned (already pinned in that space, or no space)';
-      return kept && next !== st ? M.forgetKept(next, kept.id) : next;
+      let next = M.addPin(st, { id, spaceId, url: tab.url, title: tab.title, folderId, beforeId });
+      if (next === st) {
+        result = 'not pinned (already pinned in that space, or no space)';
+        return st;
+      }
+      if ((tab as TabRecord).customTitle) next = M.renamePin(next, id, (tab as TabRecord).customTitle!);
+      if (kept) return M.forgetKept(next, kept.id);
+      if (typeof tabId === 'number') next = M.bindTabToPin(next, tabId, id);
+      return next;
     });
     console.info(`[margin] pin tab ${tabId}: ${result}`);
     return result === 'pinned' ? id : null;
@@ -355,24 +368,31 @@ export const handlers = {
   // `beforeId` (else in the place of the first pin it takes, else the end).
   // Returns its id.
   /** @param message `tabId` a string: a tab that isn't open (pinned into it, it's the pin from then on) */
-  async createFolder({ windowId, spaceId, name, pinIds = [], tabId, beforeId = null }: { windowId?: number, spaceId?: string, name?: string, pinIds?: string[], tabId?: number | string, beforeId?: string | null }, sender: BrowserMessageSender) {
+  async createFolder({ windowId, spaceId, name, pinIds = [], tabId, parentId = null, beforeId = null }: { windowId?: number, spaceId?: string, name?: string, pinIds?: string[], tabId?: number | string, parentId?: string | null, beforeId?: string | null }, sender: BrowserMessageSender) {
     const id = newId();
     const pinFromTab = Number.isInteger(tabId) || typeof tabId === 'string' ? newId() : null;
     const s = pinFromTab ? await load() : null;
     const kept = typeof tabId === 'string' ? s?.keptTabs?.[tabId] ?? null : null;
     // (A number that isn't a whole one names no tab: `s` wasn't read for it.)
     const tab = kept ?? (typeof tabId === 'number' && s ? (s.tabs[tabId] ?? (await api.tabs.get(tabId).catch(() => null))) : null);
+    let created = false;
     await mutate((st) => {
-      const space = spaceId ?? (kept ? kept.spaceId : tab ? st.tabSpace[tab.id as number] : null) ?? V.activeSpaceId(st, windowId ?? sender?.tab?.windowId);
+      const parent = parentId ? (st.folders ?? []).find((f) => f.id === parentId) : null;
+      const space = spaceId ?? parent?.spaceId ?? (kept ? kept.spaceId : tab ? st.tabSpace[tab.id as number] : null) ?? V.activeSpaceId(st, windowId ?? sender?.tab?.windowId);
       const firstPin = st.pins.find((p) => p.id === pinIds[0] && p.spaceId === space);
       // In the place of the first pin it takes, if that's at the top level.
       const before = beforeId ?? (firstPin && !firstPin.folderId ? firstPin.id : null);
-      let next = M.createFolder(st, { id, spaceId: space, name, pinIds, beforeId: before });
+      let next = M.createFolder(st, { id, spaceId: space, name, pinIds, parentId: parent?.id ?? null, beforeId: before });
+      if (next === st) return st;
+      created = true;
       // (A tab is found only when one was asked for: then the pin has its id.)
-      if (tab?.url) next = M.addPin(next, { id: pinFromTab!, spaceId: space, url: tab.url, title: tab.title, folderId: id });
+      if (tab?.url) {
+        next = M.addPin(next, { id: pinFromTab!, spaceId: space, url: tab.url, title: tab.title, folderId: id });
+        if (typeof tabId === 'number') next = M.bindTabToPin(next, tabId, pinFromTab!);
+      }
       return kept ? M.forgetKept(next, kept.id) : next;
     });
-    return id;
+    return created ? id : null;
   },
   async renameFolder({ folderId, name }: { folderId: string, name: string }) {
     await mutate((s) => M.renameFolder(s, folderId, name));
@@ -387,8 +407,11 @@ export const handlers = {
   async movePin({ pinId, folderId = null, beforeId = null }: { pinId: string, folderId?: string | null, beforeId?: string | null }) {
     await mutate((s) => M.movePin(s, pinId, { folderId, beforeId }));
   },
-  async moveFolder({ folderId, beforeId = null }: { folderId: string, beforeId?: string | null }) {
-    await mutate((s) => M.moveFolder(s, folderId, { beforeId }));
+  async moveFolder({ folderId, parentId = null, beforeId = null }: { folderId: string, parentId?: string | null, beforeId?: string | null }) {
+    await mutate((s) => M.moveFolder(s, folderId, { parentId, beforeId }));
+  },
+  async nestFolder({ folderId, parentId = null, beforeId = null }: { folderId: string, parentId?: string | null, beforeId?: string | null }) {
+    await mutate((s) => M.moveFolder(s, folderId, { parentId, beforeId }));
   },
   // A tab dragged in the sidebar's list, next to another (`side`: above it,
   // 'before', or below, 'after', as the list shows them: newest at the top,
@@ -501,22 +524,45 @@ export const handlers = {
     const pin = s.pins.find((p) => p.id === pinId);
     if (!pin) return;
     if (Number.isFinite(sidebarTop) && windowId != null) void setScroll(windowId, sidebarTop as number); // (finite: checked)
-    // Only a tab of the pin's space (as the sidebar shows it): one elsewhere
-    // would switch the window to that space.
+    // Only a tab of the pin's space (as the sidebar shows it): sticky pinnedBy match first, then normalized URL fallback.
     const key = M.normalizeUrl(pin.url);
-    const matches = Object.values(s.tabs).filter((t) => M.normalizeUrl(t.url) === key && s.tabSpace[t.id] === pin.spaceId);
+    const bound = Object.values(s.tabs).filter((t) => t.pinnedBy === pin.id && s.tabSpace[t.id] === pin.spaceId);
+    const matches = bound.length ? bound : Object.values(s.tabs).filter((t) => M.normalizeUrl(t.url) === key && s.tabSpace[t.id] === pin.spaceId);
     // The window asking first.
     const existing = matches.find((t) => t.windowId === windowId) ?? matches[0];
     if (existing) {
+      if (existing.pinnedBy !== pin.id) await mutate((st) => M.bindTabToPin(st, existing.id, pin.id));
       // In another window of the profile: it comes here (docs/BROWSER-WINDOWS.md §9).
       await away.showTab(existing.id, windowId ?? sender?.tab?.windowId, { source: 'openPin', deadline });
       return { shown: existing.id };
     }
     // Its tab that isn't open, if the space has one (kept from before it was
     // pinned): opened as that Margin tab.
-    const kept = M.keptForUrl(s, pin.url, pin.spaceId);
-    const tab = await openTab({ windowId, url: pin.url, spaceId: pin.spaceId, deadline, ...(kept ? { keptId: kept.id } : {}) });
+    const kept = Object.values(s.keptTabs ?? {}).find((k) => k.pinnedBy === pin.id && k.spaceId === pin.spaceId) ?? M.keptForUrl(s, pin.url, pin.spaceId);
+    const tab = await openTab({ windowId, url: kept?.url ?? pin.url, spaceId: pin.spaceId, deadline, ...(kept ? { keptId: kept.id } : {}) });
+    if (tab?.id != null) await mutate((st) => M.bindTabToPin(st, tab.id, pin.id));
     return { shown: tab.id };
+  },
+  async resetPin({ pinId, windowId, deadline }: { pinId: string, windowId?: number, deadline?: number }, sender: BrowserMessageSender) {
+    const s = await load();
+    const pin = s.pins.find((p) => p.id === pinId);
+    if (!pin) return null;
+    const bound = Object.values(s.tabs).filter((t) => t.pinnedBy === pin.id && s.tabSpace[t.id] === pin.spaceId);
+    const existing = bound.find((t) => t.windowId === windowId) ?? bound[0];
+    if (existing) {
+      await api.tabs.update(existing.id, { url: pin.url, active: true }).catch(() => null);
+      await away.showTab(existing.id, windowId ?? sender?.tab?.windowId, { source: 'resetPin', deadline });
+      return { shown: existing.id };
+    }
+    const tab = await openTab({ windowId, url: pin.url, spaceId: pin.spaceId, deadline });
+    if (tab?.id != null) await mutate((st) => M.bindTabToPin(st, tab.id, pin.id));
+    return { shown: tab.id };
+  },
+  async renamePin({ pinId, title }: { pinId: string, title: string }) {
+    await mutate((s) => M.renamePin(s, pinId, title));
+  },
+  async renameTab({ tabId, title }: { tabId: number | string, title: string }) {
+    await mutate((s) => M.renameTab(s, tabId, title));
   },
   // A space shown in the window (its tab most used there to the front); `bringTab: false`: only
   // the sidebar's space, the page in front stays. Answers which tab is in front now.
@@ -772,6 +818,10 @@ export const handlers = {
   async hostMute(message: { itemId?: string, muted?: boolean }, sender: BrowserMessageSender) {
     if (!sender?.app) throw new Error('the app\'s request only');
     return hostedTabs.mute(message);
+  },
+  async hostNavigate(message: { itemId?: string, url?: string }, sender: BrowserMessageSender) {
+    if (!sender?.app) throw new Error('the app\'s request only');
+    return hostedTabs.navigate(message);
   },
   async duplicateTab({ tabId, windowId }: { tabId: number | string, windowId?: number }, sender: BrowserMessageSender) {
     const s = await load();

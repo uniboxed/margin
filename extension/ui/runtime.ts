@@ -679,7 +679,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
         void Promise.resolve(host.send(type, payload)).then((res) => { if (typeof res?.spaceId === 'string') behaviors.editor.openWhenThere(res.spaceId, { fresh: true }); });
         return true;
       }
-      case 'folder.new': case 'folder.newWithTab': case 'folder.newWithPin':
+      case 'folder.new': case 'folder.newIn': case 'folder.newWithTab': case 'folder.newWithPin':
         // Its name, edited in place once it's drawn (sidebar.js folderCreated).
         void Promise.resolve(host.send(type, payload)).then((id) => { if (typeof id === 'string') behaviors.rename.startWhenThere('folder', id); });
         return true;
@@ -766,6 +766,8 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       case 'space.edit': return behaviors.editor.open(arg);
       case 'space.rename': return behaviors.rename.start('space', arg);
       case 'folder.rename': return behaviors.rename.start('folder', arg);
+      case 'tab.rename': return behaviors.rename.start('tab', arg);
+      case 'pin.rename': return behaviors.rename.start('pin', arg);
       case 'menu.open': {
         const box = info?.element?.getBoundingClientRect?.();
         return behaviors.menus.open({ kind: arg, id: null }, box ? { x: box.left, y: box.top } : { x: 0, y: 0 }, { above: true });

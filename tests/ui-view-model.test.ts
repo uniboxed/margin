@@ -62,7 +62,7 @@ test('rows: icons from the stored favicons, a letter and color without one, slee
   assert.equal(row(14).letter, 'N');
   assert.match(row(14).color, /^hsl\(\d+ 55% 48%\)$/);
   assert.equal(row(15).title, 'https://shop.example/', 'no title: its address (as Arcadia)');
-  assert.deepEqual(Object.keys(row(12)).sort(), ['active', 'asleep', 'audible', 'away', 'behind', 'color', 'host', 'icon', 'id', 'isApp', 'kind', 'letter', 'loading', 'muted', 'notOpen', 'open', 'pinned', 'title', 'url']);
+  assert.deepEqual(Object.keys(row(12)).sort(), ['active', 'asleep', 'audible', 'away', 'behind', 'color', 'hasCustomTitle', 'host', 'icon', 'id', 'isApp', 'kind', 'letter', 'loading', 'muted', 'notOpen', 'open', 'pinned', 'title', 'url']);
   assert.deepEqual([pin('pa').open, pin('pa').tabId, pin('pa').asleep, pin('pa').nested], [true, 11, true, true], 'a pin open in a sleeping tab');
   assert.deepEqual([pin('pb').open, pin('pb').tabId, pin('pb').active], [false, null, false], 'a pin not open');
   assert.deepEqual([pin('pc').active, pin('pc').folderId], [true, 'f2']);

@@ -43,7 +43,7 @@ export type UiState = {
   palette?: { open?: boolean, query?: string, selected?: number, newTab?: boolean, selectAll?: boolean },
   toast?: { id: string, text: string } | null,
   menu?: { kind: MenuTarget['kind'], id?: string | number | null, x?: number, y?: number, above?: boolean, confirming?: string | null } | null,
-  editing?: { kind: 'space' | 'folder', id: string } | null,
+  editing?: { kind: 'space' | 'folder' | 'tab' | 'pin', id: string | number } | null,
   // (`fresh`: a space just made, switched to as its editor closes.)
   editor?: { spaceId?: string, name: string, emoji: string, color: string, theme?: string, confirmDelete?: boolean, fresh?: boolean } | null,
   newTabPending?: boolean,
@@ -100,15 +100,17 @@ export type Face = { title: string, url: string, host: string, icon: string | nu
 export type TabRow = Face & {
   kind: 'tab', id: number | string, active: boolean, behind: boolean, away: boolean,
   audible: boolean, muted: boolean, asleep: boolean, loading: boolean, pinned: false,
-  open: boolean, notOpen: boolean,
+  open: boolean, notOpen: boolean, hasCustomTitle: boolean,
 };
 export type PinRow = Face & {
-  kind: 'pin', isFolder: false, id: string, folderId: string | null, nested: boolean,
+  kind: 'pin', isFolder: false, id: string, folderId: string | null, nested: boolean, depth: number,
   tabId: number | null, open: boolean, active: boolean, behind: boolean, away: boolean,
+  drifted: boolean, rootUrl: string, hasCustomTitle: boolean,
   audible: boolean, muted: boolean, asleep: boolean, loading: boolean, pinned: true,
 };
 export type FolderRow = {
   kind: 'folder', isFolder: true, id: string, name: string, open: boolean,
+  parentFolderId: string | null, depth: number,
   count: number, pins: PinRow[], shown: PinRow[], hasShown: boolean,
 };
 export type SpaceChip = {
@@ -117,7 +119,7 @@ export type SpaceChip = {
   label: string,
 };
 export type SpaceView = SpaceChip & {
-  pinned: (FolderRow | PinRow)[], folders: FolderRow[], pins: PinRow[],
+  pinned: (FolderRow | PinRow)[], pinnedFlat: (FolderRow | PinRow)[], folders: FolderRow[], pins: PinRow[],
   today: TabRow[], hasToday: boolean, hasPinned: boolean,
   newTab: { active: boolean },
 };
@@ -175,7 +177,7 @@ export type ViewModel = {
   hasArchive: boolean,
   palette: { open: boolean, query: string, newTab: boolean, rows: PaletteRow[], hasRows: boolean, selected: string | null },
   menu: { kind: string, id: string | number | null, x: number, y: number, label: string, items: MenuRow[], hasItems: boolean } | null,
-  editing: { kind: 'space' | 'folder', id: string } | null,
+  editing: { kind: 'space' | 'folder' | 'tab' | 'pin', id: string | number } | null,
   editor: EditorView | null,
   notice: NoticeView | null,
   prompt: PromptView | null,
@@ -242,10 +244,11 @@ const isLoading = (t: { status?: string, loading?: boolean } | null | undefined)
 // it), and a click opens it (tab.activate) where it was clicked.
 function tabRow(state: State, t: any): TabRow {
   const open = !t.kept;
+  const custom = typeof t.customTitle === 'string' && t.customTitle.trim() ? t.customTitle.trim() : '';
   return {
     kind: 'tab',
     id: t.id,
-    ...face(state, t, t.title || t.url || 'New Tab'),
+    ...face(state, t, custom || t.title || t.url || 'New Tab'),
     active: !!t.active,
     behind: open && !!t.behind,
     // Chosen here, but live in another window of the profile (docs/BROWSER-WINDOWS.md §9): drawn faded.
@@ -257,24 +260,31 @@ function tabRow(state: State, t: any): TabRow {
     pinned: false,
     open,
     notOpen: !open,
+    hasCustomTitle: !!custom,
   };
 }
 
 /** @param p a pin as shared/view.ts sidebar shows it */
-function pinRow(state: State, p: any, nested: boolean): PinRow {
+function pinRow(state: State, p: any, nested: boolean, depth: number = nested ? 1 : 0): PinRow {
   const tab = ((p.tabId != null ? state.tabs[p.tabId] : null) as any);
+  const custom = typeof p.customTitle === 'string' && p.customTitle.trim() ? p.customTitle.trim() : '';
+  const liveTitle = tab?.customTitle || tab?.title;
   return {
     kind: 'pin',
     isFolder: false,
     id: p.id,
-    ...face(state, p, p.title || p.url || ''),
+    ...face(state, tab ?? p, custom || (p.drifted && liveTitle ? liveTitle : p.title) || p.url || ''),
     folderId: p.folderId ?? null,
     nested,
+    depth,
     tabId: p.tabId ?? null,
     open: p.tabId != null,
     active: !!p.active,
     behind: !!p.behind,
     away: !!p.away,
+    drifted: !!p.drifted,
+    rootUrl: p.rootUrl ?? p.url ?? '',
+    hasCustomTitle: !!custom,
     audible: !!tab?.audible,
     muted: !!tab?.muted,
     asleep: !!tab?.sleeping,
@@ -332,7 +342,7 @@ function fresh(input: ViewModelInput): ViewModel {
   if (!state) {
     return {
       version: VM_VERSION, ready: false, window: win,
-      space: { id: '', name: '', emoji: '', color: '', abbr: '', index: 0, number: 1, active: true, tabCount: 0, label: '', pinned: [], folders: [], pins: [], today: [], hasToday: false, hasPinned: false, newTab: { active: false } },
+      space: { id: '', name: '', emoji: '', color: '', abbr: '', index: 0, number: 1, active: true, tabCount: 0, label: '', pinned: [], pinnedFlat: [], folders: [], pins: [], today: [], hasToday: false, hasPinned: false, newTab: { active: false } },
       spaces: [], tab: null, archive: [], hasArchive: false,
       palette: { open: !!paletteUi.open, query: paletteUi.query ?? '', newTab: !!paletteUi.newTab, rows: [], hasRows: false, selected: null },
       menu: null, editing, editor: null, notice, prompt, toast, gesture, launcher: null, pageLoader, settingsForm: null, settingsTab: null, settings, platform,
@@ -353,16 +363,32 @@ function fresh(input: ViewModelInput): ViewModel {
   // (`shown`: view.peek), so the highlight stays in sight.
   const pins: PinRow[] = [];
   const folders: FolderRow[] = [];
-  const pinned = view.pinned.map((item) => {
+  const pinById = new Map<string, PinRow>();
+  const pinned = view.pinned.map((item: any) => {
     if (item.kind !== 'folder') {
-      const row = pinRow(state, item, false);
+      const row = pinRow(state, item, false, 0);
       pins.push(row);
+      pinById.set(row.id, row);
       return row;
     }
-    const inside = item.pins.map((p) => pinRow(state, p, true));
-    const byId = new Map(inside.map((p) => [p.id, p]));
-    const shown = item.open ? inside : item.peek.map((p) => byId.get(p.id)!); // (peek: some of its pins)
-    const folder: FolderRow = { kind: 'folder', isFolder: true, id: item.id, name: item.name, open: item.open, count: inside.length, pins: inside, shown, hasShown: shown.length > 0 };
+    const inside = item.pins.map((p: any) => {
+      const r = pinRow(state, p, true, p.depth ?? 1);
+      pinById.set(r.id, r);
+      return r;
+    });
+    const byId = new Map(inside.map((p: PinRow) => [p.id, p]));
+    const shown = item.open ? inside : item.peek.map((p: any) => byId.get(p.id)!); // (peek: some of its pins)
+    const folder: FolderRow = { kind: 'folder', isFolder: true, id: item.id, name: item.name, open: item.open, parentFolderId: item.parentFolderId ?? null, depth: item.depth ?? 0, count: inside.length, pins: inside, shown, hasShown: shown.length > 0 };
+    folders.push(folder);
+    return folder;
+  });
+  const pinnedFlat: (FolderRow | PinRow)[] = (view.pinnedFlat ?? []).map((item: any) => {
+    if (item.kind !== 'folder') return pinById.get(item.id) ?? pinRow(state, item, (item.depth ?? 0) > 0, item.depth ?? 0);
+    const existing = folders.find((f) => f.id === item.id);
+    if (existing) return existing;
+    const inside = (item.pins ?? []).map((p: any) => pinById.get(p.id) ?? pinRow(state, p, true, (item.depth ?? 0) + 1));
+    const shown = item.open ? inside : (item.peek ?? []).map((p: any) => pinById.get(p.id)!).filter(Boolean);
+    const folder: FolderRow = { kind: 'folder', isFolder: true, id: item.id, name: item.name, open: item.open, parentFolderId: item.parentFolderId ?? null, depth: item.depth ?? 0, count: inside.length, pins: inside, shown, hasShown: shown.length > 0 };
     folders.push(folder);
     return folder;
   });
@@ -393,6 +419,7 @@ function fresh(input: ViewModelInput): ViewModel {
   const space: SpaceView = {
     ...chip,
     pinned,
+    pinnedFlat,
     folders,
     pins,
     today,
@@ -407,14 +434,14 @@ function fresh(input: ViewModelInput): ViewModel {
   const pinnedUrls = new Set(state.pins.filter((p) => p.spaceId === state.tabSpace[current?.id]).map((p) => V.normalizeUrl(p.url)));
   const tab = current ? {
     id: current.id,
-    ...face(state, current, current.title || current.url || 'New Tab'),
+    ...face(state, current, current.customTitle || current.title || current.url || 'New Tab'),
     // Loading: as the background records it, or this page's own load (the
     // in-page host: content/loader.js, the pill's timing).
     loading: isLoading(current) || (!!ui.pageLoading && current.id === currentTabId),
     audible: !!current.audible,
     muted: !!current.muted,
     asleep: !!current.sleeping,
-    pinned: pinnedUrls.has(V.normalizeUrl(current.url)),
+    pinned: !!current.pinnedBy || pinnedUrls.has(V.normalizeUrl(current.url)),
     newTab: V.isNewTabPage(current.url),
   } : null;
 

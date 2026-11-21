@@ -219,6 +219,8 @@ function keptRecord(r: TabRecord, spaceId: string, { why, now, from = null, wasT
     // Where its page was scrolled (noteScroll), with the address it's for: opened again, it goes
     // back there once (linkKept, takeScroll).
     ...(r.scroll != null && r.scroll > 0 ? { scroll: { y: r.scroll, url: r.url } } : {}),
+    ...(typeof r.pinnedBy === 'string' && r.pinnedBy ? { pinnedBy: r.pinnedBy } : {}),
+    ...(typeof r.customTitle === 'string' && r.customTitle ? { customTitle: r.customTitle } : {}),
     keptAt: now,
     why,
     ...(from ? { from } : {}),
@@ -647,6 +649,8 @@ function tabRecord(tab: BrowserTab, prev: TabRecord | null | undefined, now: num
     // to sleep again until it's been left that long once more: sleepyTabs).
     ...(seen.asleep ? { sleeping: { at: prev?.sleeping?.at ?? now, how: seen.asleep } } : {}),
     ...(!seen.asleep && prev?.sleeping ? { wokeAt: now } : prev?.wokeAt != null ? { wokeAt: prev.wokeAt } : {}),
+    ...(typeof prev?.pinnedBy === 'string' && prev.pinnedBy ? { pinnedBy: prev.pinnedBy } : {}),
+    ...(typeof prev?.customTitle === 'string' && prev.customTitle ? { customTitle: prev.customTitle } : {}),
   };
 }
 
@@ -1096,19 +1100,67 @@ function updateSpace(state: State, spaceId: string, patch: { name?: string; emoj
 // Pins saved before folders existed have no `pos`: their order in the list
 // stands in (shared/view.ts does the same). Every change renumbers the
 // lists it touches 0, 1, 2…
+const MAX_FOLDER_DEPTH = 4;
 const posOf = (item: any, i: number) => (Number.isFinite(item?.pos) ? item.pos : i);
 const folderIn = (state: State, folderId: string | null | undefined, spaceId: string) => (state.folders ?? []).find((f) => f.id === folderId && f.spaceId === spaceId) ?? null;
 // A pin's folder, if that folder exists in the pin's space (else it's loose).
 const folderOfPin = (state: State, pin: { folderId?: string | null, spaceId: string }) => (pin.folderId ? folderIn(state, pin.folderId, pin.spaceId) : null);
+// A folder's parent folder, if it exists in the same space and doesn't cycle.
+function folderParent(state: State, folder: { id: string, parentId?: string | null, spaceId: string }) {
+  if (!folder.parentId || folder.parentId === folder.id) return null;
+  const parent = folderIn(state, folder.parentId, folder.spaceId);
+  if (!parent) return null;
+  // Walk up from parent to guard against malformed cycles in stored data.
+  const seen = new Set<string>([folder.id]);
+  let cur: typeof parent | null = parent;
+  while (cur) {
+    if (seen.has(cur.id)) return null;
+    seen.add(cur.id);
+    cur = cur.parentId ? folderIn(state, cur.parentId, folder.spaceId) : null;
+  }
+  return parent;
+}
+function folderDepth(state: State, folderId: string | null | undefined, spaceId: string): number {
+  let depth = 0;
+  const seen = new Set<string>();
+  let cur = folderId ? folderIn(state, folderId, spaceId) : null;
+  while (cur && !seen.has(cur.id)) {
+    seen.add(cur.id);
+    const parent = cur.parentId ? folderIn(state, cur.parentId, spaceId) : null;
+    if (!parent) break;
+    depth++;
+    cur = parent;
+  }
+  return depth;
+}
+function folderSubtreeHeight(state: State, folderId: string, spaceId: string, seen = new Set<string>()): number {
+  if (seen.has(folderId)) return 0;
+  seen.add(folderId);
+  const children = (state.folders ?? []).filter((f) => f.spaceId === spaceId && f.parentId === folderId);
+  if (!children.length) return 1;
+  return 1 + Math.max(...children.map((c) => folderSubtreeHeight(state, c.id, spaceId, seen)));
+}
+function folderHasAncestor(state: State, folderId: string, ancestorId: string, spaceId: string): boolean {
+  const seen = new Set<string>();
+  let cur = folderIn(state, folderId, spaceId);
+  while (cur && !seen.has(cur.id)) {
+    if (cur.id === ancestorId) return true;
+    seen.add(cur.id);
+    cur = cur.parentId ? folderIn(state, cur.parentId, spaceId) : null;
+  }
+  return false;
+}
 
 // One list, in order: [{ kind: 'folder' | 'pin', id }]. `folderId` null: the
-// space's top level.
+// space's top level; a folder id: its child folders and pins mixed in order.
 function pinOrder(state: State, spaceId: string, folderId: string | null = null) {
   const items: { kind: 'folder' | 'pin', id: string, pos: number }[] = [];
   // Folders first, so equal positions sort as shared/view.ts shows them.
-  if (folderId == null) {
-    (state.folders ?? []).forEach((f, i) => f.spaceId === spaceId && items.push({ kind: 'folder', id: f.id, pos: posOf(f, i) }));
-  }
+  (state.folders ?? []).forEach((f, i) => {
+    if (f.spaceId !== spaceId) return;
+    const parent = folderParent(state, f)?.id ?? null;
+    if (parent === folderId) items.push({ kind: 'folder', id: f.id, pos: posOf(f, i) });
+  });
   state.pins.forEach((p, i) => {
     if (p.spaceId !== spaceId) return;
     const inFolder = folderOfPin(state, p)?.id ?? null;
@@ -1118,7 +1170,7 @@ function pinOrder(state: State, spaceId: string, folderId: string | null = null)
 }
 
 // Write `list` (pinOrder's shape) as the order of that level, putting its
-// pins in `folderId` (null: none).
+// pins and subfolders in `folderId` (null: top level).
 function writeOrder(state: State, folderId: string | null, list: { kind: "folder" | "pin"; id: string; }[] | { kind: string; id: string; }[]) {
   const pos = new Map(list.map((item, i) => [item.id, i] as [string, number]));
   // Unchanged items, and lists, stay as they are (the background saves only
@@ -1132,9 +1184,10 @@ function writeOrder(state: State, folderId: string | null, list: { kind: "folder
   });
   let foldersChanged = false;
   const folders = (state.folders ?? []).map((f) => {
-    if (!pos.has(f.id) || f.pos === pos.get(f.id)) return f;
+    if (!pos.has(f.id) || (f.pos === pos.get(f.id) && (f.parentId ?? null) === (folderId ?? null))) return f;
     foldersChanged = true;
-    return { ...f, pos: pos.get(f.id) };
+    const { parentId: _old, ...rest } = f;
+    return { ...rest, ...(folderId ? { parentId: folderId } : {}), pos: pos.get(f.id) };
   });
   if (!pinsChanged && !foldersChanged) return state;
   return { ...state, ...(pinsChanged ? { pins } : {}), ...(foldersChanged ? { folders } : {}) };
@@ -1171,7 +1224,77 @@ function addPin(state: State, { id, spaceId, url, title, folderId = null, before
 }
 
 function removePin(state: State, pinId: string) {
-  return { ...state, pins: state.pins.filter((p) => p.id !== pinId) };
+  const pins = state.pins.filter((p) => p.id !== pinId);
+  if (pins.length === state.pins.length) return state;
+  return unbindPinTab({ ...state, pins }, pinId);
+}
+
+// Sticky pin binding: attach a live or kept tab to `pinId` so sub-navigation stays attached to that pin.
+function bindTabToPin(state: State, tabId: number | string, pinId: string | null) {
+  if (typeof tabId === 'string') {
+    const k = state.keptTabs?.[tabId];
+    if (!k || (k.pinnedBy ?? null) === pinId) return state;
+    const { pinnedBy: _old, ...rest } = k;
+    return { ...state, keptTabs: { ...state.keptTabs, [tabId]: { ...rest, ...(pinId ? { pinnedBy: pinId } : {}) } } };
+  }
+  const t = state.tabs[tabId];
+  if (!t || (t.pinnedBy ?? null) === pinId) return state;
+  const { pinnedBy: _old, ...rest } = t;
+  return { ...state, tabs: { ...state.tabs, [tabId]: { ...rest, ...(pinId ? { pinnedBy: pinId } : {}) } } };
+}
+
+function unbindPinTab(state: State, pinId: string) {
+  let tabsChanged = false;
+  const tabs: Record<number, TabRecord> = {};
+  for (const [id, t] of Object.entries(state.tabs)) {
+    if (t.pinnedBy === pinId) {
+      tabsChanged = true;
+      const { pinnedBy: _old, ...rest } = t;
+      tabs[Number(id)] = rest;
+    } else tabs[Number(id)] = t;
+  }
+  let keptChanged = false;
+  const keptTabs: Record<string, KeptTab> = {};
+  for (const [id, k] of Object.entries(state.keptTabs ?? {})) {
+    if (k.pinnedBy === pinId) {
+      keptChanged = true;
+      const { pinnedBy: _old, ...rest } = k;
+      keptTabs[id] = rest;
+    } else keptTabs[id] = k;
+  }
+  if (!tabsChanged && !keptChanged) return state;
+  return { ...state, ...(tabsChanged ? { tabs } : {}), ...(keptChanged ? { keptTabs } : {}) };
+}
+
+// Custom inline title on a pin or tab (blank clears customTitle back to live/saved title).
+const CUSTOM_TITLE_MAX = 80;
+const cleanCustomTitle = (name: unknown) => String(name ?? '').replace(/\s+/g, ' ').trim().slice(0, CUSTOM_TITLE_MAX);
+function renamePin(state: State, pinId: string, title: string) {
+  const pin = state.pins.find((p) => p.id === pinId);
+  if (!pin) return state;
+  const clean = cleanCustomTitle(title);
+  if ((pin.customTitle ?? '') === clean) return state;
+  return {
+    ...state,
+    pins: state.pins.map((p) => {
+      if (p.id !== pinId) return p;
+      const { customTitle: _old, ...rest } = p;
+      return clean ? { ...rest, customTitle: clean } : rest;
+    }),
+  };
+}
+function renameTab(state: State, tabId: number | string, title: string) {
+  const clean = cleanCustomTitle(title);
+  if (typeof tabId === 'string') {
+    const k = state.keptTabs?.[tabId];
+    if (!k || (k.customTitle ?? '') === clean) return state;
+    const { customTitle: _old, ...rest } = k;
+    return { ...state, keptTabs: { ...state.keptTabs, [tabId]: clean ? { ...rest, customTitle: clean } : rest } };
+  }
+  const t = state.tabs[tabId];
+  if (!t || (t.customTitle ?? '') === clean) return state;
+  const { customTitle: _old, ...rest } = t;
+  return { ...state, tabs: { ...state.tabs, [tabId]: clean ? { ...rest, customTitle: clean } : rest } };
 }
 
 // A pin into a folder of its space (or out of folders: null), before the pin
@@ -1190,12 +1313,16 @@ function movePin(state: State, pinId: string, { folderId = null, beforeId = null
 
 // ---- folders --------------------------------------------------------------
 
-// A folder in a space (open), at the space's top level before `beforeId`
+// A folder in a space (open), at `parentId` (null: top level) before `beforeId`
 // (the end by default), holding `pinIds` (of that space) in that order.
-function createFolder(state: State, { id, spaceId, name = 'New Folder', pinIds = [], beforeId = null }: { id: string, spaceId: string, name?: string, pinIds?: string[], beforeId?: string | null }) {
+function createFolder(state: State, { id, spaceId, name = 'New Folder', pinIds = [], parentId = null, beforeId = null }: { id: string, spaceId: string, name?: string, pinIds?: string[], parentId?: string | null, beforeId?: string | null }) {
   if (!hasSpace(state, spaceId) || (state.folders ?? []).some((f) => f.id === id)) return state;
-  let next = { ...state, folders: [...(state.folders ?? []), { id, spaceId, name: uniqueName(state, spaceId, folderName(name) || 'New Folder'), open: true }] };
-  next = writeOrder(next, null, placed(pinOrder(next, spaceId), { kind: 'folder', id }, beforeId));
+  const parent = parentId ? folderIn(state, parentId, spaceId) : null;
+  if (parentId && !parent) return state;
+  if (parent && folderDepth(state, parent.id, spaceId) + 1 >= MAX_FOLDER_DEPTH) return state;
+  const targetParent = parent?.id ?? null;
+  let next = { ...state, folders: [...(state.folders ?? []), { id, spaceId, name: uniqueName(state, spaceId, folderName(name) || 'New Folder'), open: true, ...(targetParent ? { parentId: targetParent } : {}) }] };
+  next = writeOrder(next, targetParent, placed(pinOrder(next, spaceId, targetParent), { kind: 'folder', id }, beforeId));
   for (const pinId of pinIds) {
     if (next.pins.some((p) => p.id === pinId && p.spaceId === spaceId)) next = movePin(next, pinId, { folderId: id });
   }
@@ -1215,21 +1342,35 @@ function setFolderOpen(state: State, folderId: string, open: boolean) {
   return { ...state, folders: (state.folders ?? []).map((f) => (f.id === folderId ? { ...f, open: !!open } : f)) };
 }
 
-// A folder at its space's top level before `beforeId` (the end by default).
-function moveFolder(state: State, folderId: string, { beforeId = null }: { beforeId?: string | null } = {}) {
+// Move a folder within its space, optionally nesting it inside `parentId` (null: top level)
+// before `beforeId`. Refuses cycles (moving into itself or a descendant) and depths past MAX_FOLDER_DEPTH.
+function moveFolder(state: State, folderId: string, { parentId, beforeId = null }: { parentId?: string | null, beforeId?: string | null } = {}) {
   const folder = (state.folders ?? []).find((f) => f.id === folderId);
   if (!folder) return state;
-  return writeOrder(state, null, placed(pinOrder(state, folder.spaceId), { kind: 'folder', id: folderId }, beforeId));
+  const from = folderParent(state, folder)?.id ?? null;
+  const to = parentId === undefined ? from : parentId;
+  if (to != null) {
+    const parent = folderIn(state, to, folder.spaceId);
+    if (!parent) return state;
+    if (folderHasAncestor(state, to, folderId, folder.spaceId)) return state; // cycle guard
+    const newDepth = folderDepth(state, to, folder.spaceId) + 1;
+    const height = folderSubtreeHeight(state, folderId, folder.spaceId);
+    if (newDepth + height - 1 >= MAX_FOLDER_DEPTH) return state;
+  }
+  let next = state;
+  if (from !== to) next = writeOrder(next, from, pinOrder(next, folder.spaceId, from).filter((x) => x.id !== folderId));
+  return writeOrder(next, to, placed(pinOrder(next, folder.spaceId, to), { kind: 'folder', id: folderId }, beforeId));
 }
 
-// Delete a folder; its pins stay, in its place at the top level.
+// Delete a folder; its child pins and subfolders stay, promoted into its parent level in its place.
 function deleteFolder(state: State, folderId: string) {
   const folder = (state.folders ?? []).find((f) => f.id === folderId);
   if (!folder) return state;
+  const parent = folderParent(state, folder)?.id ?? null;
   const inside = pinOrder(state, folder.spaceId, folderId);
-  const top = pinOrder(state, folder.spaceId).flatMap((x) => (x.id === folderId ? inside : [x]));
+  const level = pinOrder(state, folder.spaceId, parent).flatMap((x) => (x.id === folderId ? inside : [x]));
   const next = { ...state, folders: state.folders.filter((f) => f.id !== folderId) };
-  return writeOrder(next, null, top);
+  return writeOrder(next, parent, level);
 }
 
 // Delete a space; its tabs, pins and archive entries move to the first
@@ -1362,7 +1503,14 @@ export {
   addPin,
   removePin,
   movePin,
+  bindTabToPin,
+  unbindPinTab,
+  renamePin,
+  renameTab,
   pinOrder,
+  MAX_FOLDER_DEPTH,
+  folderDepth,
+  folderHasAncestor,
   createFolder,
   renameFolder,
   setFolderOpen,

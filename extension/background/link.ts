@@ -137,6 +137,7 @@ export const STATE_KEYS = ['openTabs', 'spaces', 'pins', 'folders', 'archive', '
 // app/platforms/macos/shell/Shell.swift's keys), and nothing else.
 export const APP_REQUESTS = new Set([
   'activateTab', 'closeTab', 'newTab', 'pinTab', 'unpin', 'moveTabToSpace', 'moveTab', 'openPin', 'movePin',
+  'resetPin', 'renamePin', 'renameTab', 'nestFolder',
   'duplicateTab', 'muteTab', 'unloadTab', 'restoreLastArchive',
   'setFolderOpen', 'createFolder', 'renameFolder', 'deleteFolder', 'moveFolder', 'setSpace', 'createSpace',
   'renameSpace', 'setSpaceTheme', 'deleteSpace', 'clearToday', 'goBack', 'goForward', 'reload', 'restoreArchive', 'openLauncher',
@@ -149,8 +150,8 @@ export const APP_REQUESTS = new Set([
   'closeWindow', 'setWindowState',
   // Margin.app's index of the person's imported themes (app/platforms/macos/shell/ShellThemes.swift).
   'userThemes',
-  // Margin.app hosting this profile's window in its page area (background/hosted.ts): an item's tab shown, closed, muted.
-  'hostShow', 'hostClose', 'hostPicture', 'hostMute',
+  // Margin.app hosting this profile's window in its page area (background/hosted.ts): an item's tab shown, closed, muted, navigated.
+  'hostShow', 'hostClose', 'hostPicture', 'hostMute', 'hostNavigate',
 ]);
 // The requests that call windows.update or windows.remove for one window: each carries `notAfter`
 // from the app, and only one runs per window at a time (background/handoff.ts).

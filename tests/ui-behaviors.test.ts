@@ -60,18 +60,20 @@ test('drop rules: on a folder\'s row, its top quarter is before it and the rest 
   assert.deepEqual(dropTarget(pin('pa'), pinsOver(folderRow('f2'), 0.6), space), { into: 'f2' });
   assert.equal(dropTarget(pin('pa'), pinsOver(folderRow('f1'), 0.6), space), null, 'already in it');
   assert.equal(dropTarget(pin('pd'), pinsOver(folderRow('f2'), 0.1), space), null, 'just before the folder after it: where it is');
-  // In a folder's own drop area, between its rows: into it.
+  // In a folder's own drop area, between its rows: into it (including nesting another folder).
   assert.deepEqual(dropTarget(pin('pd'), { zone: 'folder', folder: 'f1' }, space), { into: 'f1' });
-  assert.equal(dropTarget(folder('f2'), { zone: 'folder', folder: 'f1' }, space), null, 'folders stay at the top level');
+  assert.deepEqual(dropTarget(folder('f2'), { zone: 'folder', folder: 'f1' }, space), { into: 'f1' }, 'folders can nest into another folder');
+  assert.equal(dropTarget(folder('f1'), { zone: 'folder', folder: 'f1' }, space), null, 'a folder cannot nest into itself');
 });
 
-test('drop rules: a folder dragged goes before (top half) or after (bottom half) a row at the top level', () => {
-  assert.deepEqual(dropTarget(folder('f2'), pinsOver(folderRow('f1'), 0.3), space), { folderId: null, beforeId: 'f1', row: folder('f1'), side: 'before' });
+test('drop rules: a folder dragged goes before (top edge), into (middle), or after (bottom edge) another folder', () => {
+  assert.deepEqual(dropTarget(folder('f2'), pinsOver(folderRow('f1'), 0.1), space), { folderId: null, beforeId: 'f1', row: folder('f1'), side: 'before' });
+  assert.deepEqual(dropTarget(folder('f2'), pinsOver(folderRow('f1'), 0.5), space), { into: 'f1' }, 'middle nests into f1');
   assert.equal(dropTarget(folder('f2'), pinsOver(folderRow('f2'), 0.3), space), null, 'on itself');
-  assert.deepEqual(dropTarget(folder('f2'), pinsOver(folderRow('f1'), 0.7), space), { folderId: null, beforeId: 'pd', row: folder('f1'), side: 'after' }, 'after f1 and its pins');
+  assert.deepEqual(dropTarget(folder('f2'), pinsOver(folderRow('f1'), 0.9), space), { folderId: null, beforeId: 'pd', row: folder('f1'), side: 'after' }, 'after f1 and its pins');
   assert.equal(dropTarget(folder('f1'), pinsOver(pinRow('pd'), 0.3), space), null, 'before the row after it: where it is');
   assert.deepEqual(dropTarget(folder('f1'), pinsOver(pinRow('pd'), 0.7), space), { folderId: null, beforeId: 'f2', row: pin('pd'), side: 'after' });
-  assert.equal(dropTarget(folder('f1'), pinsOver(pinRow('pa', 'f1'), 0.3), space), null, 'not inside a folder');
+  assert.equal(dropTarget(folder('f1'), pinsOver(pinRow('pa', 'f1'), 0.3), space), null, 'not inside itself');
 });
 
 test('drop rules: on a pin\'s row, before or after it at its level; below the last row, the end', () => {
@@ -118,17 +120,17 @@ const labels = (items: MenuItem[]) => items.map((i) => (i.separator ? '—' : i.
 const run = (items: MenuItem[]) => items.filter((i) => !i.separator).map((i) => [i.action, i.arg]);
 
 test('menus: a folder\'s, a pin\'s, a tab\'s, as today\'s right-click menu', () => {
-  assert.deepEqual(labels(menuItems({ kind: 'folder', id: 'f1' }, { state, space })), ['Rename Folder', 'Close Folder', '—', 'Delete Folder (pins stay)']);
-  assert.deepEqual(run(menuItems({ kind: 'folder', id: 'f2' }, { state, space })), [['folder.rename', 'f2'], ['folder.toggle', 'f2'], ['folder.delete', 'f2']]);
+  assert.deepEqual(labels(menuItems({ kind: 'folder', id: 'f1' }, { state, space })), ['Rename Folder', 'Close Folder', 'New Subfolder', '—', 'Delete Folder (pins stay)']);
+  assert.deepEqual(run(menuItems({ kind: 'folder', id: 'f2' }, { state, space })), [['folder.rename', 'f2'], ['folder.toggle', 'f2'], ['folder.newIn', 'f2'], ['folder.delete', 'f2']]);
   assert.equal(menuItems({ kind: 'folder', id: 'f2' }, { state, space })[1].label, 'Open Folder', 'a closed one opens');
   // A pin in a folder, its tab open; a loose pin not open.
   const pa = menuItems({ kind: 'pin', id: 'pa' }, { state, space });
-  assert.deepEqual(labels(pa), ['Unpin', 'Copy URL', '—', 'Move to 📁 Projects', 'Remove from Folder', 'New Folder with Pin', '—', 'Mute Tab', 'Sleep Tab', 'Close Tab']);
-  assert.deepEqual(run(pa), [['tab.unpin', 'pa'], ['pin.copyUrl', 'pa'], ['pin.move', { pin: 'pa', folder: 'f2', before: null }], ['pin.move', { pin: 'pa', folder: null, before: null }], ['folder.newWithPin', 'pa'], ['tab.mute', 11], ['tab.unload', 11], ['tab.close', 11]]);
-  assert.deepEqual(labels(menuItems({ kind: 'pin', id: 'pd' }, { state, space })), ['Unpin', 'Copy URL', '—', 'Move to 📁 Reading', 'Move to 📁 Projects', 'New Folder with Pin']);
+  assert.deepEqual(labels(pa), ['Unpin', 'Rename Pin', 'Copy URL', '—', 'Move to 📁 Projects', 'Remove from Folder', 'New Folder with Pin', '—', 'Mute Tab', 'Sleep Tab', 'Close Tab']);
+  assert.deepEqual(run(pa), [['tab.unpin', 'pa'], ['pin.rename', 'pa'], ['pin.copyUrl', 'pa'], ['pin.move', { pin: 'pa', folder: 'f2', before: null }], ['pin.move', { pin: 'pa', folder: null, before: null }], ['folder.newWithPin', 'pa'], ['tab.mute', 11], ['tab.unload', 11], ['tab.close', 11]]);
+  assert.deepEqual(labels(menuItems({ kind: 'pin', id: 'pd' }, { state, space })), ['Unpin', 'Rename Pin', 'Copy URL', '—', 'Move to 📁 Reading', 'Move to 📁 Projects', 'New Folder with Pin']);
   const t = menuItems({ kind: 'tab', id: 14 }, { state, space });
-  assert.deepEqual(labels(t), ['Pin Tab', 'Pin to 📁 Reading', 'Pin to 📁 Projects', 'New Folder with Tab', '—', 'Copy URL', 'Duplicate Tab', 'Mute Tab', '—', 'Move to 💼 Deep Work', 'Move to 🎨 Side', '—', 'Sleep Tab', 'Close Tab']);
-  assert.deepEqual(run(t), [['tab.pin', 14], ['tab.pinAt', { tab: 14, folder: 'f1', before: null }], ['tab.pinAt', { tab: 14, folder: 'f2', before: null }], ['folder.newWithTab', 14],
+  assert.deepEqual(labels(t), ['Pin Tab', 'Pin to 📁 Reading', 'Pin to 📁 Projects', 'New Folder with Tab', 'Rename Tab', '—', 'Copy URL', 'Duplicate Tab', 'Mute Tab', '—', 'Move to 💼 Deep Work', 'Move to 🎨 Side', '—', 'Sleep Tab', 'Close Tab']);
+  assert.deepEqual(run(t), [['tab.pin', 14], ['tab.pinAt', { tab: 14, folder: 'f1', before: null }], ['tab.pinAt', { tab: 14, folder: 'f2', before: null }], ['folder.newWithTab', 14], ['tab.rename', 14],
     ['tab.copyUrl', 14], ['tab.duplicate', 14], ['tab.mute', 14],
     ['tab.moveToSpace', { tab: 14, space: 'work' }], ['tab.moveToSpace', { tab: 14, space: 'side' }], ['tab.unload', 14], ['tab.close', 14]]);
   // Every item's action passes the checks.
