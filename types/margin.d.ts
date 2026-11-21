@@ -150,6 +150,8 @@ export interface Settings {
   marginFullscreenAuto: boolean;
   fullscreenOnly: boolean;
   shortcuts: Shortcuts;
+  /** Margin.app's own keys by Settings field (shared/app-keys.ts): a combination, '' off; absent: the default */
+  appKeys?: Record<string, string>;
   shortcutDefaults: string;
   /** Favorites bar scope: 'global' across all Spaces (default) or 'profile' scoped per browser profile */
   favoritesScope?: 'global' | 'profile';

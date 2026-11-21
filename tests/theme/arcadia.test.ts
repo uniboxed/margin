@@ -354,7 +354,7 @@ for (const [name, engine] of ENGINES) {
         assert.equal(f.numbers.length, 3, 'two of Margin\'s, and Arcadia\'s own sidebar width (Settings of “Arcadia”)');
         assert.equal(f.toggles.length, 6);
         assert.equal(f.lists, 1);
-        assert.equal(f.shortcuts.length, 5);
+        assert.equal(f.shortcuts.length, 13, 'the five, and Margin.app\'s eight');
         assert.ok(f.shortcuts.every(([ro]) => ro));
         const lastSent = (type: string) => page.evaluate((t) => T.rtSent().filter(([k]) => k === t).at(-1) ?? null, type);
         await page.click('label:has-text("keep the frame") input');
@@ -373,6 +373,15 @@ for (const [name, engine] of ENGINES) {
         await page.keyboard.press('Alt+KeyS');
         assert.match(await page.evaluate(() => document.querySelector('.settings-form .help.error')?.textContent ?? ''), /already used for “Show or hide the sidebar”/);
         await page.keyboard.press('Escape');
+        // Margin.app's keys: Delete turns one off; a numbered one takes a digit (its modifiers for 1–9).
+        await page.click('label:has-text("Pin or unpin the tab") input');
+        await page.keyboard.press('Backspace');
+        assert.equal((await lastSent('updateSettings'))![1].patch.appKeys.togglePin, '');
+        await page.click('label:has-text("Go to space 1–9") input');
+        await page.keyboard.press('Alt+Meta+KeyP');
+        assert.match(await page.evaluate(() => document.querySelector('.settings-form .help.error')?.textContent ?? ''), /takes a digit/);
+        await page.keyboard.press('Alt+Control+Digit4');
+        assert.equal((await lastSent('updateSettings'))![1].patch.appKeys.spaceDigits, 'Ctrl+Alt+Digit1');
         await page.click('button:has-text("Wake all sleeping tabs")');
         await page.waitForFunction(() => /No tabs are asleep/.test(document.querySelector('.settings-form')?.textContent ?? ''));
         assert.deepEqual(await lastSent('wakeSleeping'), ['wakeSleeping', {}]);
