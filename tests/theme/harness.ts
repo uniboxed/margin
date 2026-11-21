@@ -434,6 +434,11 @@ const withRuntime = Object.assign(T, {
     for (; el && out.length < 12; el = el.parentElement ?? (el.getRootNode() as Partial<ShadowRoot>)?.host ?? null) out.push(el.localName + (el.className && typeof el.className === 'string' ? `.${el.className.split(/\s+/).join('.')}` : ''));
     return out;
   },
+  // Every element at a point that takes it (elementsFromPoint: what paints there and isn't pointer-events: none), by name.
+  rtElementsAt(x: number, y: number) { return (rt.target as Document | ShadowRoot).elementsFromPoint(x, y).map((e) => e.localName); },
+  // `<m-page>` (and so all it draws: a split's dividers and bands, a pane's loader) hidden or shown again, for a picture
+  // of what the rest of the page paints.
+  rtPageHidden(on: boolean) { const p = rt.target.querySelector('m-page') as HTMLElement | null; if (p) { if (on) p.style.setProperty('visibility', 'hidden'); else p.style.removeProperty('visibility'); } },
   rtOrder(a: string, b: string) { const x = rt.target.querySelector(a); const y = rt.target.querySelector(b); return x && y ? x.compareDocumentPosition(y) & Node.DOCUMENT_POSITION_FOLLOWING ? 'before' : 'after' : null; },
   rtClosest(selector: string, ancestor: string) { return [...rt.target.querySelectorAll(selector)].some((el) => el.closest(ancestor)); },
   rtSetScroll(selector: string, px: number) { const el = rt.target.querySelector(selector)!; el.scrollTop = px; return el.scrollTop; },

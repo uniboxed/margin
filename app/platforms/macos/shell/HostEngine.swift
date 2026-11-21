@@ -144,6 +144,9 @@ final class HostEngine {
         var lateWatch = 3.0
         var memberWait = 0.6 // a window moved by the bridge (into Margin's Space, or parked): there by then
         var memberEvery = 0.005 // ...read this often (a switch is a move each way: well under 100 ms in all)
+        // The visible hosts' order looked at after they're fronted, until the focused one is in front, for this long
+        // (then the ones out of place raised once more: `frontVisible`).
+        var orderWait = 0.15
         var destroyWait = 1.5
         var placeWait = 1.5 // its own Space's reservation taking effect
         var windowPlaceWait = 0.6 // a window-mode host's frame set by Accessibility: at most this long for the window server's bounds
@@ -629,11 +632,36 @@ final class HostEngine {
     }
 
     // Every visible host's app in front back to front, the focused one last (its app active, its window key): their
-    // order in the window server right, Margin's window kept in front of them by its own rule.
+    // order in the window server right, Margin's window kept in front of them by its own rule. The layout's order wins
+    // (back to front by z, the focused one last), never the order from before, and nothing is raised over the focused
+    // one once it's in front: the window server's order read first; the focused one in front of the others already (a
+    // host newly brought in: a window its app just made is its front one), only its app made active (its keys); else
+    // the hosts from the first one out of place raised, back to front. The real screen, 2026-11-21: main raised over
+    // Peek's new card window, whose own raise then didn't take (its app's Accessibility doesn't list a window made a
+    // moment ago and moved between Spaces by the bridge), so main's page showed in the card. Then read again until the
+    // focused one is in front, else it alone raised once more (raising another would bury it again).
     private func frontVisible() async {
-        let list = visibleHosts
-        for h in list where h.id != shown { _ = await front(h) }
-        if let id = shown, let h = hosts[id], h.phase == .shown { _ = await front(h) }
+        let focused = shown.flatMap { id in hosts[id].flatMap { $0.phase == .shown ? $0 : nil } }
+        let wanted = visibleHosts.filter { $0 !== focused } + (focused.map { [$0] } ?? []) // (back to front)
+        guard let top = wanted.last else { return }
+        var from = 0
+        if let now = serverOrder(of: wanted) {
+            from = now.last == top.window ? wanted.count - 1 : wanted.indices.first { now[$0] != wanted[$0].window } ?? wanted.count - 1
+        }
+        for h in wanted[from...] { _ = await front(h) }
+        guard wanted.count > 1, top === focused else { return }
+        if await wait(options.orderWait, every: options.memberEvery, { self.serverOrder(of: wanted).map { $0.last == top.window } ?? true }) { return }
+        Diagnostics.note("host: \(top.id), focused, not in front of the other visible hosts once fronted (back to front \(serverOrder(of: wanted).map { $0.map(String.init).joined(separator: ", ") } ?? "unread"), wanted \(wanted.map { String($0.window) }.joined(separator: ", "))): raised again")
+        _ = await front(top)
+    }
+    // These hosts' windows in the window server's order now, back to front (its on-screen list is front to back); nil:
+    // unread, or one of them not in it.
+    private func serverOrder(of list: [Host]) -> [Int]? {
+        guard let screen = sys.onScreenWindows() else { return nil }
+        let mine = Set(list.map(\.window))
+        let order = screen.map(\.number).filter { mine.contains($0) }
+        guard order.count == mine.count, Set(order) == mine else { return nil }
+        return order.reversed()
     }
 
     // An app (the person's default browser, at Margin's launch) started with no Dock icon if it isn't running, as a
@@ -1788,8 +1816,7 @@ final class HostEngine {
         let others = visibleHosts.filter { $0 !== host }
         guard !others.isEmpty else { _ = await front(host); return }
         if let point, others.contains(where: { sys.bounds(window: $0.window)?.contains(point) == true }) { return }
-        for h in others { _ = await front(h) }
-        _ = await front(host)
+        await frontVisible()
     }
 
     // A host's window's own minimum as learnt (its tile's), nil: none known (a split's page never lays its pane below it).

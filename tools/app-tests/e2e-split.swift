@@ -90,6 +90,50 @@ func glueSplitScenario() async {
   check("a drag's frame: the holes follow the rects the engine says at once (the windows' bounds not read meanwhile), and go back with them",
         list.count == 2 && liveHoles == moved.map(\.rect) && c.holes == panes.map(\.rect), "\(liveHoles) \(c.holes)")
 
+  // Peek's card over the split (the real screen, 2026-11-21: the split's gap drawn as a stripe across the card's page):
+  // the page draws the card, its window is told visible at its <m-peek-page>, and in the card's page nothing of
+  // Margin's window paints (its ground cut there, its page's divider clipped out), while the gap beside the card is
+  // still Margin's ground; the card's page is cut out of the ground even while its window's frame reads elsewhere.
+  if panes.count == 2 {
+    c.push(#"{"type":"peek","peek":{"url":"https://docs.example.org/guide","title":"The Guide","loading":false}}"#)
+    _ = await until(3) { c.cardRect != nil }
+    try? await Task.sleep(nanoseconds: 300_000_000) // (its open's animation over)
+    let cardRect = c.cardRect ?? .zero
+    let cardWindow = 99950
+    let content = c.contentFrame
+    func local(_ p: CGPoint) -> CGPoint { CGPoint(x: p.x - content.minX, y: p.y - content.minY) }
+    let gapX = (panes[0].rect.maxX + panes[1].rect.minX) / 2
+    let under = CGPoint(x: gapX, y: cardRect.midY), aboveCard = CGPoint(x: gapX, y: (page.minY + cardRect.minY) / 2)
+    var cardFrame: CGRect? = cardRect
+    let was = c.hostedBounds
+    c.hostedBounds = { n in n == cardWindow ? cardFrame : was(n) }
+    let withCard = list + [HostShownWindow(window: cardWindow, rect: cardRect, role: .card, z: 2, focused: true)]
+    c.setVisibleHosts(withCard)
+    check("Peek's card over the split: drawn across the gap between the panes (set up)",
+          cardRect.width > 0 && cardRect.minX < gapX && cardRect.maxX > gapX && cardRect.minY < page.midY && cardRect.maxY > page.midY && cardRect.minY > page.minY + 4, "\(cardRect) gap at \(gapX)")
+    let onPage = await js(c.webView, "const p = document.querySelector('m-page'); const r = p.getBoundingClientRect(); return [p.hasAttribute('m-card-clip'), document.elementsFromPoint(\(Double(local(under).x)), \(Double(local(under).y))).map(e => e.localName).filter(n => n.startsWith('m-')).join(',')].join('|')") as? String ?? ""
+    check("…the page's <m-page> clipped out of the card's page: nothing of it (the divider) there",
+          onPage.hasPrefix("true|") && !onPage.contains("m-divider") && !onPage.contains("m-page"), onPage)
+    let points = [local(under), local(aboveCard)]
+    _ = await until(3) { windowAlpha(c.panel, at: points).map { $0[0] == 0 && $0[1] > 0 } == true }
+    let alpha = windowAlpha(c.panel, at: points)
+    check("…as the window server pictures Margin's window: see-through in the card's page where the gap crosses it (the card's window shows), the gap above the card painted",
+          alpha.map { $0[0] == 0 && $0[1] > 0 } == true && c.holes.contains(cardRect) && !c.ground.fills(local(under)), "\(String(describing: alpha)) \(c.holes)")
+    // (Its window's frame read elsewhere, not in place yet: the card's page still cut out of the ground.)
+    cardFrame = CGRect(x: page.minX, y: page.minY, width: 200, height: 120)
+    c.setVisibleHosts(list)
+    c.setVisibleHosts(withCard)
+    check("…the card's page cut out of Margin's ground whatever its window's frame reads (not in place yet) and whatever's under it, a split's gap",
+          c.holes.contains(cardRect) && !c.ground.fills(local(under)) && c.ground.fills(local(aboveCard)), "\(c.holes) under \(c.ground.fills(local(under)))")
+    cardFrame = cardRect
+    c.hostedBounds = was
+    c.setVisibleHosts(list)
+    c.push(#"{"type":"peek","peek":null}"#)
+    _ = await until(3) { c.cardRect == nil }
+    let unclipped = await js(c.webView, "return document.querySelector('m-page').hasAttribute('m-card-clip') || getComputedStyle(document.querySelector('m-page')).clipPath !== 'none'") as? Bool
+    check("…the card gone: <m-page> whole again, the holes the panes'", unclipped == false && c.holes == panes.map(\.rect), "\(String(describing: unclipped)) \(c.holes)")
+  }
+
   // The divider dragged in the page: the drag reaches the session, the ratios are saved, each window placed at its new box.
   func divider(_ type: String, dx: Double = 0) async {
     _ = await js(c.webView, """

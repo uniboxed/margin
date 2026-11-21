@@ -605,6 +605,23 @@ test('hitRects: what takes the pointer over the slot, boxes inside others left o
   assert.deepEqual(hitRects((many as unknown as Element), slot, { getStyle }), { rects: [], all: true });
 });
 
+test('hitRects: a split\'s dividers take the pointer, none while Peek\'s card is up over the split (its page the card\'s)', () => {
+  type FakeEl = { localName: string, children: FakeEl[], attrs: Set<string>, hasAttribute: (n: string) => boolean, getBoundingClientRect: () => { left: number, top: number, right: number, bottom: number, width: number, height: number }, style: HitStyle };
+  const el = (name: string, r: number[], children: FakeEl[] = [], attrs: string[] = []): FakeEl => {
+    const set = new Set(attrs);
+    return {
+      localName: name, children, attrs: set, hasAttribute: (n) => set.has(n),
+      getBoundingClientRect: () => ({ left: r[0], top: r[1], right: r[0] + r[2], bottom: r[1] + r[3], width: r[2], height: r[3] }),
+      style: { pointerEvents: 'auto', visibility: 'visible' },
+    };
+  };
+  const getStyle = (e: Element) => (e as unknown as FakeEl).style;
+  const slot = { left: 260, top: 8, right: 1272, bottom: 792 };
+  const stacked = (attrs: string[]) => el('div', [0, 0, 1280, 800], [el('m-page', [260, 8, 1012, 784], [el('m-pane', [260, 8, 1012, 340]), el('m-divider', [260, 348, 1012, 52]), el('m-pane', [260, 400, 1012, 392])], attrs)]);
+  assert.deepEqual(hitRects((stacked([]) as unknown as Element), slot, { getStyle }), { rects: [[260, 348, 1012, 52]], all: false }, 'the band is Margin\'s');
+  assert.deepEqual(hitRects((stacked(['m-card-clip']) as unknown as Element), slot, { getStyle }), { rects: [], all: false }, 'a card up: the band under its page never Margin\'s');
+});
+
 test('hitRects: a box counts only as far as the ancestors that clip it show it, as CSS clips', () => {
   type FakeEl = { localName: string, children: FakeEl[], getBoundingClientRect: () => { left: number, top: number, right: number, bottom: number, width: number, height: number }, style: HitStyle };
   const el = (name: string, r: number[], style: Partial<HitStyle> = {}, children: FakeEl[] = []): FakeEl => ({

@@ -1419,7 +1419,27 @@ func multiHoleChecks(_ c: MarginWindowController, page: CGRect, main: Int, bound
         "\(frames) \(String(describing: seen))")
 
   // ---- a card over main ----
+  // (A still pointer over where the card's bar comes, in main's hole until then: the page's, through to main.)
+  let overBar = CGPoint(x: cardRect.midX, y: cardRect.minY - 20)
+  c.setVisibleHosts([])
+  c.pointerMoved(overBar, buttonsDown: false)
+  let passedBefore = c.panel.ignoresMouseEvents
   c.setVisibleHosts([HostShownWindow(window: main, rect: page, role: .main, z: 0, focused: false), HostShownWindow(window: card, rect: cardRect, role: .card, z: 1, focused: true)])
+  check("several hosts: a card opening under a STILL pointer over its bar (in main's hole until then): Margin's panel takes the mouse there at once, with no move (never Safari's toolbar under the bar)",
+        passedBefore && !c.panel.ignoresMouseEvents, "before \(passedBefore), now ignoring \(c.panel.ignoresMouseEvents)")
+  // (Still there as the card closes: main's again at once; still over the card's content as it opens: the card's.)
+  c.setVisibleHosts([])
+  let throughMain = c.panel.ignoresMouseEvents
+  c.pointerMoved(mid(cardRect), buttonsDown: false)
+  c.setVisibleHosts([HostShownWindow(window: main, rect: page, role: .main, z: 0, focused: false), HostShownWindow(window: card, rect: cardRect, role: .card, z: 1, focused: true)])
+  let throughCard = c.panel.ignoresMouseEvents
+  c.setVisibleHosts([])
+  c.pointerMoved(overBar, buttonsDown: true) // (a drag from the page: its way kept whatever the slot does)
+  c.setVisibleHosts([HostShownWindow(window: main, rect: page, role: .main, z: 0, focused: false), HostShownWindow(window: card, rect: cardRect, role: .card, z: 1, focused: true)])
+  let dragKept = c.panel.ignoresMouseEvents
+  c.pointerMoved(overBar, buttonsDown: false)
+  check("several hosts: …a still pointer there goes through to main again as soon as the card's gone, one over the card's content to the card as it opens; a held button keeps the drag's way through a slot's change",
+        throughMain && throughCard && dragKept && !c.panel.ignoresMouseEvents, "main \(throughMain) card \(throughCard) drag \(dragKept) after \(c.panel.ignoresMouseEvents)")
   let around = CGPoint(x: page.minX + 20, y: page.midY)
   check("several hosts: a card open: main's hole and the card's, the card's the focused one; the ground cut for the page area (the card's inside it)",
         c.holes == [page, cardRect] && c.hole == cardRect && !c.ground.fills(local(mid(cardRect))) && !c.ground.fills(local(around)) && c.ground.extras.isEmpty, "\(c.holes) \(c.ground.extras)")

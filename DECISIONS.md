@@ -6951,3 +6951,37 @@ From Margin's log on the real screen (split view and Peek with real Safari). UI 
   again as plain members (no tiles) each get their own box's loader meanwhile. Checked: `split-tests.swift` (no
   page-area loader, the pane's item and name), `tests/ui-host-app.test.ts` (the message and hello, checked),
   `tests/theme/split-view.test.ts` (5 themes, both engines: the loader in that pane's box only, readable, gone after).
+
+## Peek's card over a split on the real screen (fix/screen-card, 2026-11-21)
+
+- **The card window's first open over a split: in front of the panes.** The real screen had main's window above the
+  new card window (main's page in the card's top half); a second open (a switch) was right. The engine's own order of
+  raises was already the layout's (checked on the stand-in world: main, the pane, the card last), so the difference is
+  the new window itself: its raise by Accessibility can fail for a window its app made a moment ago and the bridge
+  moved between Spaces (not listed yet), while main's (listed long ago) works, so fronting main again buried the card.
+  The fix, decided here: `frontVisible` (every layout's change, `holdLayout`'s release, a focus, a press around a
+  window, a field's close) reads the window server's order first; the focused host already in front of the other
+  visible ones (a new window is its app's front one), only its app is made active (its keys), nothing raised over it;
+  else the hosts from the first out of place are raised, back to front, the focused one last. Then it's read again up
+  to `orderWait` (150 ms) and, the focused one still not in front, it alone is raised once more (said in the log).
+  The other panes' order among themselves isn't forced when the focused one is in front (panes don't overlap; a
+  stacked pane's toolbar rests in its band). `holdLayout` wasn't the path: a layout's own placing never holds one.
+- **Nothing of Margin's window inside the card's page.** The ground cuts the card's whole rect while a card is up
+  (each visible host's frame ∩ its rect as before for the others), whatever its window's frame reads. The page clips
+  `<m-page>` out of the card's `<m-peek-page>` box while a card is up (behaviors/card.ts: an even-odd `clip-path` on
+  `<m-page>`, `m-card-clip`, its outer edge far outside so a theme's frame or shadow on it is never cut): a split's
+  dividers, bands, pane loaders and a theme's pane ring never paint or take a press there; the dividers aren't reported
+  in `hits` then (host-app.ts), so Margin's catch fill isn't over the card's page either (the dim around it is Margin's).
+- **A still pointer under a change of the pointer's slot.** Margin's panel's `ignoresMouseEvents` was set only on
+  pointer moves; a card opening under a still pointer (last over the page's hole) left the panel passing the mouse
+  over the card's bar, and Safari's toolbar resting under it showed its tooltip. Now every change of the slot
+  (`updateHole`: a card or pane opening or closing, a layout's change, the page's hits, the loader) looks at the
+  pointer again at once (`NSEvent.mouseLocation`; the harness's last move in tests); never in a drag's frames (the
+  page area followed live) or with a button held (a drag keeps its way), nothing said to the page, no cost per move.
+- Checked: `screen-card-tests.swift` (the stand-in world's window-server order, a new window's raise failing: the
+  card's first open over a split with main focused, a pane's first open), the app's e2e (`e2e-split.swift`: the real
+  page's `<m-page>` clipped under the card, Margin's window see-through there as the window server pictures it, the
+  ground cut whatever the card's frame reads; `e2e-glue.swift`: a card opening and closing under a still pointer, a
+  held button kept), `tests/theme/card-over-split.test.ts` (5 themes and the default card, both engines: nothing of
+  `<m-page>` at the band inside the card's page, its pixels as with no `<m-page>`, a pane's loader too, whole again
+  after), `tests/ui-host-app.test.ts` (no divider hits while the card clips). Nothing on the real screen yet.
