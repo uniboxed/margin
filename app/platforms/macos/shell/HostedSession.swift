@@ -834,14 +834,14 @@ final class HostedSession: LibraryDelegate {
     }
 
     // A push of a Safari profile's copy for its UI (UIPush.swift: only the types passed on, checked and cut there), for
-    // the window Margin hosts for that profile (the person's own windows: not Margin's), to the Margin window it
+    // a window Margin hosts for that profile, any role (the person's own windows: not Margin's), to the Margin window it
     // belongs in. Its tabs named by the UI's numbers for their items (`uiNumber`); one that isn't an item open in
     // Margin is left out. Which window (DECISIONS.md, the mini player): the Margin window showing the space of the
     // item it's about (the first source: the copy lists playing ones first, the newest first), the hosting one or
     // the one in front first among several; none showing it: the hosting window, else the one in front. A standing
     // push (`media`) is taken back from the window that had it when another gets it (its empty one).
     func copyPush(profile: String, windowId: Int?, msg: JSONObject) {
-        guard let windowId, safariWindows[profile] == windowId, let type = msg["type"] as? String else { return }
+        guard let windowId, safariWindows.contains(where: { $0.key.profile == profile && $0.value == windowId }), let type = msg["type"] as? String else { return }
         var items: [String] = []
         guard let page = UIPush.page(msg, tab: { entry in
             guard let (item, n) = self.uiNumber(profile: profile, entry: entry) else { return nil }
