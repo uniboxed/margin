@@ -551,6 +551,9 @@ final class HostEngine {
         visible.count <= 1 && visible.values.allSatisfy { $0.role == .main && $0.rect == nil } && hosts[id].map { $0.role == .main && $0.rect == nil } != false
     }
 
+    // (The session's word: a show of `id` is today's one-host way, else a layout of it alone. HostedEngine.)
+    func showsAlone(_ id: HostID) -> Bool { alone(id) }
+
     // `setLayout`'s steps, in the engine's queue.
     private func applyLayout(main: HostTarget, mainRect: CGRect?, extras: [HostExtra], focused: HostID?) async -> [HostID: HostResult] {
         var results: [HostID: HostResult] = [:]

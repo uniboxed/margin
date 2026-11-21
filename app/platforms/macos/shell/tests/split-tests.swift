@@ -218,6 +218,37 @@ private func splitSessionTests() {
           session.layout[1]?.split == sp && session.shown[1] == a && engine.shown == safari && bounds(pane1) == rects[b] && bounds(editId) == rects[edit] && inMargin(pane1)
           && !links.types(since: mark).contains("newWindow"), "\(links.types(since: mark)) \(String(describing: session.layout[1]))")
 
+    // ---- an item outside it of the SAME profile picked while main has the focus (the real screen, 2026-11-21: only the
+    // copy's hostShow in the main window, a tab switch, the engine never asked: msu.edu shown in the split's top pane's
+    // rect, the other pane and Notes left on screen). Every show path: shown alone at the page area, the panes parked. ----
+    func leftAlone(_ label: String, _ shownItem: String) {
+        check("split session: \(label) of the main pane's own profile, main focused: shown alone at the page area, the other panes' windows parked, the split kept",
+              session.shown[1] == shownItem && session.layout[1] == nil && engine.visible.count == 1 && engine.shown == safari && engine.visible[safari]?.rect == nil
+              && bounds(safari) == window.hostedPlacement?.page && !inMargin(pane1) && !inMargin(editId) && library.split(sp)?.panes == [a, edit, b],
+              "\(String(describing: session.shown[1])) \(String(describing: session.layout[1])) \(engine.visible) \(String(describing: bounds(safari)))")
+    }
+    func splitAgain() {
+        run { _ = library.perform("activateTab", ["windowId": 1, "tabId": a]) }
+        check("split session: …the split's main pane picked again: the whole split, main focused", session.layout[1]?.split == sp && engine.shown == safari && engine.visible.count == 3)
+    }
+    run { _ = library.perform("activateTab", ["windowId": 1, "tabId": c]) }
+    leftAlone("a sidebar pick (activateTab)", c)
+    splitAgain()
+    session.cycled(windowId: 1)
+    run { _ = library.perform("activateTab", ["windowId": 1, "tabId": c]) }
+    leftAlone("the next/previous-tab key's pick", c)
+    splitAgain()
+    run { _ = library.perform("newTab", ["windowId": 1, "url": "https://e.example/"]) }
+    leftAlone("a new tab (the palette's address)", item("https://e.example/"))
+    splitAgain()
+    let fav = library.perform("addFavorite", ["windowId": 1, "url": "https://fav.example/", "title": "Fav"]).result as? String ?? ""
+    run { _ = library.perform("openFavorite", ["windowId": 1, "favoriteId": fav]) }
+    let favItem = library.items().first { $0.value["url"] as? String == "https://fav.example/" }?.id ?? ""
+    check("split session: (a favorite made and opened)", !fav.isEmpty && !favItem.isEmpty, "\(fav) \(favItem)")
+    leftAlone("a favorite opened", favItem)
+    splitAgain()
+    rects = panes()
+
     // ---- a press in a pane: it's focused ----
     session.pagePressed(window, at: CGPoint(x: rects[edit]!.midX, y: rects[edit]!.midY))
     run { await Task.yield() }

@@ -110,6 +110,10 @@ protocol HostedEngine: AnyObject {
     func follow(_ placement: HostPlacement, rects: [HostID: CGRect])
     func pageRectChanged(_ placement: HostPlacement, rects: [HostID: CGRect]) async -> Bool
     func minimum(of id: HostID) -> CGSize?
+    // `id` would be shown today's one-host way: no other host visible, it (if visible) main at the page area (HostEngine
+    // `alone`). False: a layout of several is up (a split, a card), or it's at a rect of its own: a show of it is a
+    // layout of it alone, never only a tab switch in its window.
+    func showsAlone(_ id: HostID) -> Bool
 }
 
 // One of a profile's hosted Safari windows: its profile and its role (docs/PEEK-SPLIT.md §1).
@@ -159,6 +163,7 @@ extension HostedEngine {
     func follow(_ placement: HostPlacement, rects: [HostID: CGRect]) { follow(placement) }
     func pageRectChanged(_ placement: HostPlacement, rects: [HostID: CGRect]) async -> Bool { await pageRectChanged(placement) }
     func minimum(of id: HostID) -> CGSize? { nil }
+    func showsAlone(_ id: HostID) -> Bool { true }
     func start(bundleId: String) async -> HostApp? { nil }
     func prepare(_ target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64) async -> HostResult { .failed(.launch, "no engine to prepare it") }
 }
@@ -603,7 +608,12 @@ final class HostedSession: LibraryDelegate {
             // made yet: the engine's first open (behind the loader), then its tab. A tab switch in the window shown
             // is Safari's own, in sight: nothing said.
             defer { w.setShowing(nil) }
-            let comes = engine.shown != id || hostingWindow != w.id
+            // (Its window in a layout of several (a split's main pane, a card's opener): never a tab switch only. The
+            // engine lays it out alone at the page area, the others parked (docs/PEEK-SPLIT.md §4 "Leaving"; the real
+            // screen, 2026-11-21: an item of main's own profile picked while main was focused showed in its pane's rect,
+            // the other panes left on screen).
+            let laidOut = layout[w.id] != nil || !engine.showsAlone(id)
+            let comes = engine.shown != id || hostingWindow != w.id || laidOut
             let there = safariWindows[SafariKey(p)] != nil && engine.isHosted(id)
             if comes {
                 let title = (library.items().first { $0.id == item }?.value["title"] as? String).flatMap { $0.isEmpty ? nil : $0 }
