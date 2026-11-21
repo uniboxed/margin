@@ -880,5 +880,5 @@ img.fav.app { width: 20px; height: 20px; margin: -2px; border-radius: 0; object-
 .lg m-page[m-split="row"] > m-divider:is(:hover, :focus-visible, [m-dragging])::after { transform: translate(-50%, -50%) scaleY(1.6); }
 .lg m-page[m-split="column"] > m-divider:is(:hover, :focus-visible, [m-dragging])::after { transform: translate(-50%, -50%) scaleX(1.6); }
 .lg m-divider[m-dragging]::after { background: var(--accent); }
-.lg m-pane[m-focused] { border-radius: 10px; box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--accent) 60%, transparent); }
+.lg m-pane[m-focused] { border-radius: 10px; box-shadow: 0 0 0 2.5px var(--accent); }
 @media (prefers-reduced-motion: reduce) { .lg m-divider::after { transition: none; } }
