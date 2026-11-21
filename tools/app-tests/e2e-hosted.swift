@@ -258,6 +258,58 @@ func hostedScenario() async {
     check("… and the same sheet draws its plain look: no material, the panel's own hairline and shadow",
           await waitJS(c.webView, "const p = document.querySelector('.lg .panel'); if (!p) return false; const cs = getComputedStyle(p); return !CSS.supports('-apple-visual-effect', 'none') && cs.getPropertyValue('-apple-visual-effect') === '' && cs.boxShadow !== 'none';"))
     check("nothing warned drawing either", warned.isEmpty, "\(warned.prefix(5))")
+
+    // ---- another theme, no animation (2026-11-20): at once when the hosted window covers its page area already; a bigger
+    // page area (Arcadia's after Neubrutalism's): the theme before held until the hosted window has taken it, at most 300 ms ----
+    let themes = glassDir.deletingLastPathComponent()
+    func pkg(_ id: String) -> JSONObject? {
+      let d = themes.appendingPathComponent(id)
+      guard let m = try? String(contentsOf: d.appendingPathComponent("theme.json"), encoding: .utf8), let h = try? String(contentsOf: d.appendingPathComponent("theme.html"), encoding: .utf8),
+            let cs = try? String(contentsOf: d.appendingPathComponent("theme.css"), encoding: .utf8) else { return nil }
+      return ["id": id, "manifest": m, "html": h, "css": cs, "files": [String: String]()]
+    }
+    func send(_ m: JSONObject) async { _ = try? await c.webView.callAsyncJavaScript("marginApp.receive(m)", arguments: ["m": jsonString(m) ?? ""], in: nil, contentWorld: .page) }
+    func slot() async -> [Int] { (await js(c.webView, "const r = document.querySelector('m-page')?.getBoundingClientRect(); return r ? [r.left, r.top, r.width, r.height].map(Math.round) : null") as? [Any] ?? []).compactMap { ($0 as? NSNumber)?.intValue } }
+    func swaps() async -> [[String: Any]] { (await js(c.webView, "return marginApp.stats().themeSwaps") as? [[String: Any]]) ?? [] }
+    if let arcadia = pkg("arcadia"), let neo = pkg("neubrutalism") {
+      await send(["type": "theme", "theme": arcadia])
+      _ = await waitJS(c.webView, "return !!document.querySelector('.arcadia')")
+      let big = await slot()
+      await send(["type": "hostedFrame", "rect": big])
+      await send(["type": "theme", "theme": neo])
+      let drewNeo = await waitJS(c.webView, "return !!document.querySelector('.nb') && !document.querySelector('.arcadia')")
+      let small = await slot()
+      let first = (await swaps()).last
+      check("another theme with a smaller page area, the hosted window covering it: drawn at once (no wait)", drewNeo && small.count == 4 && big.count == 4 && small[2] < big[2]
+            && first?["id"] as? String == "neubrutalism" && (first?["waitedMs"] as? NSNumber)?.intValue == 0 && first?["covered"] as? Bool == true, "\(String(describing: first)) \(big) \(small)")
+      // The window at Neubrutalism's page area; Arcadia's is bigger: held until the window says it's there.
+      await send(["type": "hostedFrame", "rect": small])
+      let n = (await swaps()).count
+      await send(["type": "theme", "theme": arcadia])
+      try? await Task.sleep(nanoseconds: 120_000_000)
+      await send(["type": "hostedFrame", "rect": big])
+      _ = await waitJS(c.webView, "return marginApp.stats().themeSwaps.length > \(n)")
+      let held = (await swaps()).last
+      let heldDrawn = await waitJS(c.webView, "return !!document.querySelector('.arcadia') && !document.querySelector('.nb')")
+      let waited = (held?["waitedMs"] as? NSNumber)?.intValue ?? -1
+      check("a bigger page area: the theme before held until the hosted window took it (~120 ms here), then drawn in one go", held?["id"] as? String == "arcadia" && held?["covered"] as? Bool == true && waited >= 90 && waited < 290
+            && heldDrawn, "\(String(describing: held))")
+      // The window never coming: drawn anyway after 300 ms, never stuck.
+      await send(["type": "theme", "theme": neo])
+      _ = await waitJS(c.webView, "return !!document.querySelector('.nb')")
+      await send(["type": "hostedFrame", "rect": small])
+      let m = (await swaps()).count
+      await send(["type": "theme", "theme": arcadia])
+      _ = await waitJS(c.webView, "return marginApp.stats().themeSwaps.length > \(m)")
+      let late = (await swaps()).last
+      let lateDrawn = await waitJS(c.webView, "return !!document.querySelector('.arcadia')")
+      let lateMs = (late?["waitedMs"] as? NSNumber)?.intValue ?? -1
+      check("the hosted window not at the bigger page area in 300 ms: the new theme drawn anyway, never stuck", late?["covered"] as? Bool == false && lateMs >= 290 && lateMs < 600
+            && lateDrawn, "\(String(describing: late))")
+      await send(["type": "hostedFrame", "rect": NSNull()])
+    } else {
+      check("Arcadia's and Neubrutalism's packages beside the app's page (dist/webkit/themes)", false, themes.path)
+    }
   } else {
     check("Liquid Glass's package beside the app's page (dist/webkit/themes/liquid-glass)", false, glassDir.path)
   }

@@ -6574,3 +6574,16 @@ the loading animation, Tirth):
   (`copyFullScreen`); unread with a Space of its own recorded: asked, as before.
 Tests (the stand-in world): each of the three, failing without the change (the first as the real log: place failed),
 and the person's full-screen Space left alone.
+
+## A space's theme: no animation, Safari at its size first (2026-11-20)
+
+Tirth, after the lab of seven switch animations and the earlier canvas's reveal: no animation; the theme changes at once
+once the switch has landed, and the window-size issue fixed (20:18:23: into Arcadia's bigger page area, Safari was
+smaller than its card ~50–100 ms). Now: the overlay still waits for a space swipe's settle to land, then swaps the theme
+with no cross-fade. When the new page area is bigger than the hosted window (Margin.app says the window's bounds in
+the page's coordinates, `hostedFrame`, in the hello and at each change), the swap runs inside a view transition with no
+animation: the theme before stays on screen until the window covers the new page area (`HOSTED_WAIT_MS` 300 at most,
+~30–50 ms measured for a tile), then the new theme in one frame with Safari already its size. A smaller page area, or
+nothing hosted: at once (the window bigger than it a moment, under the theme's frame). `marginApp.stats().themeSwaps`
+records each (waited, covered). Checks (the real overlay in WebKit): smaller at once; bigger held ~120 ms until the
+window said it was there; never there: drawn after 300 ms.

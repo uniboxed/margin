@@ -494,6 +494,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         } else {
             hosted = nil
             hostedFrame = nil
+            sayHostedFrame()
             setPageMinimum(nil)
             loadingLabel = nil
             showingLabel = nil
@@ -812,6 +813,21 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // The hosted window's bounds read from the window server (kept: a layout report, a pointer move never reads them).
     private func readHosted() {
         hostedFrame = hosted.flatMap { hostedBounds($0) }
+        sayHostedFrame()
+    }
+    // ...and said to the page as they change, in its coordinates (top left in the content; null: none hosted): a theme
+    // with a bigger page area waits for the hosted window to take it before it shows (overlay.ts swapTheme).
+    private var hostedFrameSent: String?
+    private var hostedFrameJSON: String {
+        guard let f = hostedFrame else { return "null" }
+        let c = contentFrame
+        return "[\(Int((f.minX - c.minX).rounded())),\(Int((f.minY - c.minY).rounded())),\(Int(f.width.rounded())),\(Int(f.height.rounded()))]"
+    }
+    private func sayHostedFrame() {
+        let json = hostedFrameJSON
+        guard asked, json != hostedFrameSent else { return }
+        hostedFrameSent = json
+        push(#"{"type":"hostedFrame","rect":"# + json + "}")
     }
 
     // The hole: where the hosted window shows through, only while the page is `shown`: its bounds inside the page area
@@ -1534,6 +1550,8 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         if pageState == .elsewhere, let picture = elsewherePicture, let data = jsonString(picture) { json += #","pagePicture":"# + data }
         let theme = owner.theme(id, snapshot)
         themeSent = theme
+        hostedFrameSent = hostedFrameJSON
+        json += #","hostedFrame":"# + hostedFrameSent!
         json += #","theme":"# + (theme ?? "null") + "}"
         return json
     }
