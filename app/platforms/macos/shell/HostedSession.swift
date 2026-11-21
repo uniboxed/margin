@@ -1296,7 +1296,7 @@ final class HostedSession: LibraryDelegate {
         switch r.outcome {
         case .delivered(let already):
             Diagnostics.note(already ? "\(who): a click in its pane\(had): its window \(r.window) key already (\(r.ms) ms; Margin's word behind): the click delivered"
-                                     : "\(who): a click in its pane\(had): its window \(r.window) key in \(r.ms) ms (\(r.crossApp ? "its app made the front app" : "in its own app")): the click delivered")
+                                     : "\(who): a click in its pane\(had): its window \(r.window) key in \(r.ms) ms (\(r.crossApp ? (r.server ? "its app, kept active, made the front app by the window server" : "its app made the front app") : "in its own app")): the click delivered")
             if let id, w.id == hostingWindow { pressedHost(id, in: w, fronted: true) }
         case .notKey:
             Diagnostics.note("\(who): a click in its pane\(had): its window \(r.window) not key within \(r.ms) ms: the click let go as before (it only focuses; the pane focused the usual way)")

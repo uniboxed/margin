@@ -242,6 +242,8 @@ final class HostEngine {
         var tileSettleWatch = 0.03 // the first switch after a tile change watched this long for the tiles laid out again
         var liveFrame = 1.0 / 120
         var liveWait = 0.05
+        // All panes active (PanesActive.swift): each change applied once per main-queue turn (off: at once, the tests').
+        var activesCoalesced = true
     }
 
     enum Phase: Equatable { case preparing, shown, parked }
@@ -368,6 +370,14 @@ final class HostEngine {
     private let sys: HostSystem
     private let markerURL: URL?
     private let ownPid: Int32
+    // All panes active (PanesActive.swift, the section below): the kept set, the scene Margin's window last told, the
+    // one step queued, the let-go waiting for its grace.
+    let actives = PanesActiveKeeper()
+    private var activeScene: PaneClickScene?
+    private var activeQueued = false
+    private var activeDue: DispatchWorkItem?
+    private var activeTerminate: NSObjectProtocol?
+    var onKeptActive: ((Set<pid_t>) -> Void)? // the apps kept active changed (the pane click tap's word)
     private(set) var hosts: [HostID: Host] = [:]
     // The focused host (docs/PEEK-SPLIT.md §1): the visible host with the keys. With one visible host, the one shown.
     private(set) var shown: HostID? { didSet { if let id = shown, shown != oldValue { shownAt = sys.now(); hosts[id]?.visibleAt = shownAt }; followShown(oldValue); announceHosted() } }
@@ -550,7 +560,13 @@ final class HostEngine {
         sys.onAppQuit = { [weak self] pid in self?.appQuit(pid) }
         if let routesURL { core.loadRoutes(from: routesURL) }
         loadMinimums()
+        // (Margin ending without its quit's steps: every app kept active let go before it does.)
+        activeTerminate = NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.releaseActivesNow(why: "Margin ends") }
+        }
     }
+
+    deinit { if let activeTerminate { NotificationCenter.default.removeObserver(activeTerminate) } }
 
     var hasHosts: Bool { !hosts.isEmpty || !launched.isEmpty }
     // The pid of a running app of this bundle that Margin started itself (no Dock icon), if any.
@@ -989,6 +1005,7 @@ final class HostEngine {
     // is done; the apps finish on their own. What isn't done stays in the marker for the next launch's recovery: a
     // window not given back (`leftWindows`), an app asked to quit and still running then (asked again if it still runs).
     func quitAll() async {
+        releaseActivesNow(why: "Margin quits")
         quitting = true
         if liveOn { dragging(false) }
         await serial {
@@ -4239,6 +4256,8 @@ final class HostEngine {
 
     private func front(_ host: Host) async -> Bool {
         guard !quitting else { return false }
+        // (An app kept active takes AppKit's own activation for done: the window server makes it the front one first.)
+        if actives.kept[host.pid] != nil { _ = sys.makeFront(pid: host.pid, window: host.window) }
         let asked = await sys.frontmost(pid: host.pid)
         return await sys.activate(pid: host.pid, window: host.window) || asked
     }
@@ -5830,6 +5849,7 @@ final class HostEngine {
         }
         quitDoubted.remove(pid)
         exited(pid)
+        if actives.kept[pid] != nil || actives.touched[pid] != nil { actives.gone(pid); onKeptActive?(Set(actives.kept.keys)) }
         let gone = hosts.values.filter { $0.pid == pid }
         let wasLaunched = launched.removeValue(forKey: pid) != nil
         guard !gone.isEmpty || wasLaunched else { return }
@@ -5909,6 +5929,118 @@ final class HostEngine {
         emit(.listed(still))
     }
 
+    // ---- all panes active (PanesActive.swift) ----
+    // Never through `serial`: a front change re-asserts the split's other panes at once, whatever operation runs.
+
+    // Margin's hosting window's split as the pane click tap is told it (nil: none shown on the current Space).
+    // Only its panes' windows, apps and roles and its focused window count (a drag's rects every frame: nothing).
+    func panesShown(_ scene: PaneClickScene?) {
+        let next = scene.map { s in PaneClickScene(panes: s.panes.map { PaneClickScene.Pane(rect: .zero, pid: $0.pid, window: $0.window, card: $0.card) }, focused: s.focused) }
+        guard next != activeScene else { return }
+        activeScene = next
+        queueActives()
+    }
+
+    // An app made the front one (NSWorkspace's activation, the tap's focus): counted only if it is the window server's
+    // front process now (a record's activation is never the window server's).
+    func frontChanged(_ pid: pid_t?) {
+        // (No split shown and nothing kept: nothing, whatever app comes in front.)
+        guard activeScene != nil || !actives.kept.isEmpty, sys.keepsPanesActive || !actives.kept.isEmpty else { return }
+        if let pid, (sys.frontProcess() ?? sys.frontApp()) == pid { actives.heardFront(pid) }
+        queueActives()
+    }
+
+    var keptActive: Set<pid_t> { Set(actives.kept.keys) }
+    var paneFronting: PaneFronting? { sys.paneFronting }
+
+    private func queueActives() {
+        guard sys.keepsPanesActive || !actives.kept.isEmpty else { return } // (off with nothing kept: nothing at all)
+        guard options.activesCoalesced else { return stepActives() }
+        guard !activeQueued else { return }
+        activeQueued = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.activeQueued = false
+            self.stepActives()
+        }
+    }
+
+    // One step of the keeper over the scene, the window server's front app and what's hosted; its records sent off the
+    // main thread (RealHostSystem's queue); a let-go waiting for its grace stepped again then (no timer otherwise).
+    func stepActives() {
+        activeDue?.cancel()
+        activeDue = nil
+        let touched = actives.touched, kept = actives.kept
+        let actions: [PanesActiveKeeper.Action]
+        if quitting || !sys.keepsPanesActive {
+            actions = actives.releaseAll(why: quitting ? "Margin quits" : "panes active off")
+        } else {
+            let scene = activeScene
+            let front = sys.frontProcess() ?? sys.frontApp()
+            actions = actives.step(panes: scene?.panes ?? [], focused: scene?.focused, front: front, margin: ownPid,
+                                   hosted: { pid in self.hosts.values.contains { $0.pid == pid } },
+                                   allowed: { p in self.exiting[p.pid] == nil && self.hosts.values.contains { $0.window == p.window && $0.pid == p.pid && $0.phase == .shown } },
+                                   ending: { pid in self.exiting[pid] != nil || self.quitAsked.contains(pid) }, now: sys.now())
+        }
+        for a in actions {
+            switch a {
+            case .keep(let w): sys.keepActive(w)
+            case .move(let w, let from): sys.moveActive(w, from: from)
+            case .release(let w, _): sys.releaseActive(w)
+            }
+        }
+        if !actions.isEmpty { sayActives(actions) }
+        if actives.touched != touched { saveMarker() }
+        if actives.kept != kept { onKeptActive?(Set(actives.kept.keys)) }
+        if let due = actives.due {
+            let item = DispatchWorkItem { [weak self] in self?.stepActives() }
+            activeDue = item
+            DispatchQueue.main.asyncAfter(deadline: .now() + max(0.01, due - sys.now()), execute: item)
+        }
+    }
+
+    // Every app kept let go at once, its records sent before this returns (Margin quits or ends).
+    func releaseActivesNow(why: String) {
+        activeDue?.cancel()
+        activeDue = nil
+        let actions = actives.releaseAll(why: why)
+        guard !actions.isEmpty else { return }
+        sys.releaseActiveNow(actions.compactMap { if case .release(let w, _) = $0 { return w }; return nil })
+        sayActives(actions)
+        saveMarker()
+        onKeptActive?([])
+    }
+
+    // One line a step: what was kept, moved, let go (and why), and the app with the keys.
+    private func sayActives(_ actions: [PanesActiveKeeper.Action]) {
+        func name(_ w: PaneWindow) -> String { hosts.values.first { $0.window == w.window }.map { "\($0.id)" } ?? "pid \(w.pid)" }
+        let parts = actions.map { a -> String in
+            switch a {
+            case .keep(let w): return "\(name(w)) kept active (its \(w))"
+            case .move(let w, let from): return "\(name(w)) kept active by its \(w) (was window \(from))"
+            case .release(let w, let why): return "\(name(w)) let go (\(why); its \(w))"
+            }
+        }
+        let front = sys.frontProcess() ?? sys.frontApp()
+        let keys = front.flatMap { f in hosts.values.first { $0.pid == f }.map { "\($0.id)" } } ?? front.map { "pid \($0)" } ?? "unread"
+        Diagnostics.note("panes active: " + parts.joined(separator: "; ") + " (the keys: \(keys); \(actives.kept.count) kept)")
+    }
+
+    // After a crash: each app the marker says was kept active, still that launch, not the front one, and still taking
+    // itself for the active app (AppKit's word; unread: taken as so), deactivated. Their count.
+    private func releaseCrashedActives(_ list: [HostMarker.Kept]) async -> Int {
+        var n = 0
+        for k in list {
+            guard let now = sys.app(pid: k.pid), k.bundleId == nil || now.bundleId == k.bundleId else { continue }
+            if let then = k.launchedAt, let at = now.launchedAt, abs(then - at) >= 2 { continue } // (its pid used again)
+            guard (sys.frontProcess() ?? sys.frontApp()) != k.pid, await sys.appActive(pid: k.pid) != false else { continue }
+            sys.releaseActiveNow([PaneWindow(pid: k.pid, window: k.window)])
+            n += 1
+        }
+        if !list.isEmpty { Diagnostics.note("panes active: a crashed Margin kept \(list.count) app\(list.count == 1 ? "" : "s") active: \(n) let go (deactivated), \(list.count - n) gone, in front or not active") }
+        return n
+    }
+
     // ---- the crash marker ----
 
     private func saveMarker() {
@@ -5925,6 +6057,13 @@ final class HostEngine {
         if !hosts.isEmpty || !goneTiles.isEmpty { m.marginTile = marginTile; m.goneTiles = goneTiles.isEmpty ? nil : goneTiles.sorted() }
         // (The anchors: a killed Margin's stay in its Space and keep it listed; its next launch destroys them.)
         if !anchorTiles.isEmpty { m.anchors = anchorTiles; m.marginTile = marginTile }
+        // (All panes active: apps sent active, for the next launch to let go after a crash.)
+        if !actives.touched.isEmpty {
+            m.keptActive = actives.touched.sorted { $0.key < $1.key }.map { pid, window in
+                let app = sys.app(pid: pid)
+                return HostMarker.Kept(pid: pid, window: window, bundleId: app?.bundleId, launchedAt: app?.launchedAt)
+            }
+        }
         if m.isEmpty { try? FileManager.default.removeItem(at: markerURL); return }
         if !m.write(markerURL) { Diagnostics.warn("host: the crash marker wasn't written") }
     }
@@ -5959,6 +6098,7 @@ final class HostEngine {
         }
         let alive = m.apps.filter(same)
         let alivePids = Set(alive.map(\.pid))
+        let letGo = await releaseCrashedActives(m.keptActive ?? [])
         // That Safari still running, the same launch (a pid used again by another Safari isn't it).
         func sameSafari(_ pid: Int32, _ launchedAt: Double?) -> Bool {
             guard let now = sys.app(pid: pid), now.bundleId == options.safariBundle else { return false }
@@ -6046,6 +6186,7 @@ final class HostEngine {
             return
         }
         Diagnostics.note("host: a marker from a Margin that didn't quit cleanly: \(m.apps.count) app\(m.apps.count == 1 ? "" : "s") (\(alive.count) still running, \(quit) quit), "
+                         + (m.keptActive.map { "\($0.count) kept active (\(letGo) let go), " } ?? "")
                          + "\(m.windows.count) window\(m.windows.count == 1 ? "" : "s") (\(outOfFullScreen) out of full screen, \(givenBack) given back where they were), \(destroyed) Space\(destroyed == 1 ? "" : "s") destroyed, "
                          + (tileIds.isEmpty ? "" : "\(tilesDestroyed) of \(tileIds.count) hosted tile\(tileIds.count == 1 ? "" : "s") destroyed, ")
                          + "\(leftSafariWindows.count) Safari window\(leftSafariWindows.count == 1 ? "" : "s") Margin asked for still to close, in \(ms(since: started)) ms")

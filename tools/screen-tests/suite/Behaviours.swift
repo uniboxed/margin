@@ -64,6 +64,11 @@ extension Runner {
     case .splitWith(let main, let adding): splitWith(main, adding: adding)
     case .paneClick(let n, let kind): paneClick(n, kind)
     case .paneClickTimes(let a, let b, let t): paneClickTimes(a, b, times: t)
+    case .panesActive(let a, let b): panesActive(a, b)
+    case .panesActiveFlips(let a, let b, let t): panesActiveFlips(a, b, times: t)
+    case .panesActiveHidden(let a, let b, let alone): panesActiveHidden(a, b, alone: alone)
+    case .panesActiveQuit(let a, let b): panesActiveQuit(a, b)
+    case .panesActiveCrash(let a, let b): panesActiveCrash(a, b)
     case .idleCost(let label, let s): idleCostStep(label, seconds: s)
     case .animations(let label):
       gate("asking the page")

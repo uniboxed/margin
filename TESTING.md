@@ -211,6 +211,37 @@ Manual verification checklist in real Safari + Margin.app (automated unit, Rust,
           menus and sheets; a single item shown (no `pane clicks: on` at all); scrolling the other pane (never held).
         - **Costs:** with the split up and nothing touched, Activity Monitor's Margin CPU at 0 as before (the tap waits
           for presses only); `npm run test:screen -- --part pane-clicks` says Margin's idle cost with the tap on.
+     i. **Every pane draws active (feat/panes-active, DECISIONS.md 2026-11-21 "Every pane of a split draws active").**
+        At launch the host's line ends `…; panes active ok` (else `panes active off: <why>`: then only the focused pane
+        draws active, as before; send the line). Read the log alongside: each change says one line, `panes active: <id>
+        kept active (its window <n> (pid <p>)) … (the keys: <id>; <n> kept)`, or `<id> let go (<why>; …)`.
+        - **Safari + Notes** side by side, Safari focused: Notes draws active too (its toolbar not greyed, its text
+          caret blinking where it was, its selection highlighted in colour, not grey), and Safari's page is active (its
+          field's caret, a blue selection). `panes active: app:com.apple.Notes kept active …` when the split appears.
+        - **Typing goes to the last pane clicked, only there:** type: the letters go to Safari; click once into a note
+          in Notes and type: the letters go to Notes only, Safari's caret still showing (it stays active, the line says
+          `safari:… kept active`); back and forth a few times. The menu bar always shows the last clicked app's menus
+          (Safari's, then Notes'); ⌘C/⌘V act in the last clicked pane.
+        - **The ring:** the focused pane's ring is the only one, in every theme, light and dark (Arcadia's has a thin
+          edge in the frame's text colour).
+        - **The moment between:** with each click across apps, watch the pane that had the keys: at most one frame of an
+          inactive look (the research measured ~30 ms between macOS deactivating it and Margin activating it again).
+          Report any visible flicker.
+        - **⌘-Tab away and back:** ⌘-Tab to an app outside Margin (Finder): both panes inactive at once (`… let go
+          (another app in front …`); ⌘-Tab back to Margin: both active again.
+        - **Two panes of one app** (Safari + Safari): only the focused one active (as before: AppKit has one key window per
+          app); nothing in the log for them.
+        - **The split hidden:** pick another item: about a second later `… let go (its pane gone …`; the split again:
+          kept again. A preview card over the split (Shift+click): nothing in the log for the panes under the dim.
+        - **Quit Margin** with the split up: `… let go (Margin quits …` before the quit's lines; afterwards no app draws
+          active but the front one (Notes and Safari as usual).
+        - **Crash recovery:** with the split up, `kill -9` Margin's process (Activity Monitor › Force Quit): Notes (the
+          kept one) still draws active although another app is in front: that's the crash. Open Margin again: its log
+          says `panes active: a crashed Margin kept 1 app active: 1 let go (deactivated) …` and Notes draws inactive.
+        - **Costs:** with the split up and nothing touched, Margin's CPU at 0 in Activity Monitor; `npm run test:screen
+          -- --part panes-active` says the idle cost with both panes active. `defaults write com.unibox.margin
+          MarginPanesActive -bool NO` and a relaunch: only the focused pane draws active again (`panes active: off
+          (MarginPanesActive is NO)…`).
 - [ ] **M2.8 All 5 Built-in Themes:** Switch Spaces through **Arcadia**, **Liquid Glass**, **Material**, **Neubrutalism**, and **Pixel** and inspect Favorites grid, nested folders, drifted pin reset, combined Split View row, background Mini Player, Peek modal, and Toast pill in light and dark appearance (and macOS 26 system glass for Liquid Glass).
 
 ## Safari startup (2026-11-10)

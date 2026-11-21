@@ -48,6 +48,8 @@ func glueSplitScenario() async {
   made.paneTapTrusted = { true }
   made.paneTapGrace = 0
   guard let library = shell.library, let session = shell.hosted, let engine = shell.host else { return check("the library, the session and the engine", false) }
+  // (All panes active: on in the stand-in world, a pane gone let go after its grace, as in the app.)
+  world.panesActive = true
   let space = library.spaces().first?.id ?? ""
   func app(_ bundle: String, _ name: String) -> String {
     (library.perform("addItem", ["spaceId": space, "target": ItemTarget.app(bundleId: bundle, name: name).json, "title": name]).result as? JSONObject)?["tabId"] as? String ?? ""
@@ -105,6 +107,13 @@ func glueSplitScenario() async {
         && scene?.panes.map(\.rect) == c.holes && scene?.panes.map { Optional($0.pid) } == [world.wins[notesWindow]?.pid, world.wins[editWindow]?.pid]
         && scene?.focused == editWindow && scene?.marginWindows.contains(c.window.windowNumber) == true && scene?.marginWindows.contains(c.panel.windowNumber) == true
         && scene?.slot == c.slot && scene?.fieldHasKeys == false, "\(taps.count) \(String(describing: scene))")
+  // All panes active (PanesActive.swift): the split as Margin's window publishes it reaches the engine, which keeps
+  // Notes (not the focused app) active; the tap's scene says Notes is kept.
+  let notesPid = world.wins[notesWindow]?.pid ?? 0
+  _ = await until(3) { made.keptActive == [notesPid] && (taps.last?.scenes.last ?? nil)?.kept == [notesPid] }
+  check("all panes active: the split shown: Notes' window kept active (TextEdit focused), the tap's scene carries it",
+        world.activeCalls.first == "keep \(notesPid) \(notesWindow)" && made.keptActive == [notesPid] && (taps.last?.scenes.last ?? nil)?.kept == [notesPid],
+        "\(world.activeCalls) \(made.keptActive) \(String(describing: (taps.last?.scenes.last ?? nil)?.kept))")
   if let tap = taps.last, panes.count == 2 {
     tap.claims = [77]
     let notesMid = CGPoint(x: panes[0].rect.midX, y: panes[0].rect.midY), editMid = CGPoint(x: panes[1].rect.midX, y: panes[1].rect.midY)
@@ -263,14 +272,22 @@ func glueSplitScenario() async {
         "byId \(byId) byRow \(byRow) \(ended) \(String(describing: library.split(sp))) \(engine.visible) \(String(describing: world.bounds(window: notesWindow))) \(world.inMargin) \(menu) \(session.done.suffix(4))")
   check("…the page's state names each pane by its row's number too (what an on-screen check dispatches with)", menu.contains("\"tabId\":\(row)"), menu)
   check("the pane click tap: the split ended, one window shown: no tap (stopped)", made.paneTap == nil && taps.last?.stopped == 1, "\(taps.map(\.stopped))")
+  _ = await until(3) { made.keptActive.isEmpty }
+  check("all panes active: the split ended: every app kept let go (deactivated), none kept", made.keptActive.isEmpty && engine.keptActive.isEmpty
+        && world.activeCalls.contains { $0.hasPrefix("release ") }, "\(world.activeCalls) \(made.keptActive)")
 
   // A split again, then Margin quits: the tap goes at once.
   _ = library.perform("createSplit", ["windowId": c.id, "panes": [notesItem, editItem]])
   let again = await until(15) { engine.visible.count == 2 && made.paneTap != nil }
   let last = taps.last
+  _ = await until(3) { !engine.keptActive.isEmpty }
+  let keptAgain = !engine.keptActive.isEmpty
   made.closeAll()
   check("the pane click tap: a split again: a tap again; Margin quits (its windows closed): stopped at once", again && last?.stopped == 1 && made.paneTap == nil,
         "\(again) \(String(describing: last?.stopped))")
+  _ = await until(3) { engine.keptActive.isEmpty }
+  check("all panes active: a split again: kept again; Margin's windows closed: let go", keptAgain && engine.keptActive.isEmpty, "\(world.activeCalls)")
+  print("  (all panes active, the glue's split: \(world.activeCalls.count) records asked over its two splits, its presses and its ends: \(world.activeCalls.joined(separator: ", ")))")
 }
 
 // The pane click tap's stand-in: what it was told, the presses it claims.

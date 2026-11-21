@@ -17,6 +17,13 @@
 //   `SLSSpaceCopyValues`). Bridged only: the direct `SLSSpaceSetValues` is ignored for another process's tiles (the kit,
 //   2026-11-17). Off: the host runs as before (a page-area change re-fits the one shown on release).
 //
+// - All panes active (a part of its own, PaneRecords.swift; docs/PRIVATE-APIS.md rows 40-45): a split's panes of other apps than the front one kept
+//   active by the window server's event records (`SLPSPostEventRecordTo`, the records' layout checked at launch with
+//   `SLEventRecordPointer`), the window server's front process read (`SLPSGetFrontProcess`) and set
+//   (`_SLPSSetFrontProcessWithOptions`: a kept app made the front one, which AppKit's own activation may take for done),
+//   a pid's process serial number and back (HIServices' `GetProcessForPID`, `GetProcessPID`). Off: only the focused
+//   pane draws active, as before.
+//
 // The same rules as PrivateCalls.swift: everything looked up at launch (`HostCalls.check`, one log line), anything
 // missing or an encoding changed turns the host off for the run (Margin then never hosts; the setting says so in
 // the log), every function optional, every wrapper refusing under MARGIN_APP_TESTS. The outside-open notifications
@@ -35,6 +42,10 @@ enum HostCalls {
                                          "_kLSOpenOptionAddToRecentsKey", "_kLSOpenOptionArgumentsKey"]
     // The outside-open notifications (their own part).
     nonisolated static let noteFunctions = ["_LSScheduleNotificationOnQueueWithBlock", "_LSModifyNotification", "_LSASNCreateWithPid"]
+
+    // All panes active (their own part): SkyLight's records and front process, HIServices' process serial numbers.
+    nonisolated static let activeFunctions = ["SLPSPostEventRecordTo", "SLEventRecordPointer", "SLPSGetFrontProcess", "_SLPSSetFrontProcessWithOptions"]
+    nonisolated static let processFunctions = ["GetProcessForPID", "GetProcessPID"]
 
     nonisolated static let destroyClass = "SLSBridgedSpaceDestroyOperation"
     nonisolated static let initDestroy = "initWithSpaceID:"
@@ -75,9 +86,10 @@ enum HostCalls {
         var opens = false // the outside-open notifications
         var tiles = false // live resize: a hosted window's tile in Margin's Space, sized by its rect
         var anchors = false // the layout's first two tiles Margin's own, empty
+        var panesActive = false // a split's panes of other apps kept active (their records' layout checked at launch)
         var missing: [String] = []
         var mismatched: [String] = []
-        var reasons: [String: String] = [:] // "host", "outside opens", "tiles"
+        var reasons: [String: String] = [:] // "host", "outside opens", "tiles", "anchors", "panes active"
         var functionsFound = 0, functionsTotal = 0
         var selectorsFound = 0, selectorsTotal = 0
         static let off = Availability()
@@ -86,7 +98,7 @@ enum HostCalls {
             func part(_ name: String, _ on: Bool) -> String { on ? "\(name) ok" : "\(name) off: \(reasons[name] ?? "not checked")" }
             let encodings = mismatched.isEmpty ? "encodings ok" : "\(mismatched.count) encoding\(mismatched.count == 1 ? "" : "s") changed"
             return "private calls (host) on \(build ?? "build unknown"): \(part("host", host)) (\(functionsFound)/\(functionsTotal) functions and keys, "
-                + "\(selectorsFound)/\(selectorsTotal) selectors, \(encodings)); \(part("outside opens", opens)); \(part("tiles", tiles)); \(part("anchors", anchors))"
+                + "\(selectorsFound)/\(selectorsTotal) selectors, \(encodings)); \(part("outside opens", opens)); \(part("tiles", tiles)); \(part("anchors", anchors)); \(part("panes active", panesActive))"
         }
     }
 
@@ -164,13 +176,39 @@ enum HostCalls {
         }
         a.anchors = a.tiles && anchorProblems.isEmpty
         a.reasons["anchors"] = a.tiles ? why(anchorProblems) : "the tiles are off"
+        // All panes active: SkyLight's four, HIServices' two (the records' layout is the launch check's, `check`).
+        var activeProblems: [String] = []
+        for name in activeFunctions where sky && resolver.function(name, in: .skyLight) == nil { activeProblems.append("\(name) missing") }
+        let his = resolver.open(.hiServices)
+        if !his { activeProblems.append("HIServices.framework didn't open") }
+        for name in processFunctions where his && resolver.function(name, in: .hiServices) == nil { activeProblems.append("\(name) missing") }
+        a.panesActive = a.host && activeProblems.isEmpty
+        a.reasons["panes active"] = a.host ? why(activeProblems) : "the host is off"
         return a
+    }
+
+    // The records' layout (PaneRecords.swift) read back from three public events through the resolver's
+    // `SLEventRecordPointer`: nil as expected, else what differs. Only the system's resolver is ever asked (a test's
+    // "functions" are never called: its stand-in reader is given instead).
+    static func recordsProblem(_ resolver: PrivateResolver) -> String? {
+        typealias RecordPointer = @convention(c) (CGEvent) -> UnsafeRawPointer?
+        guard !PrivateCalls.inTests, let p = resolver.function("SLEventRecordPointer", in: .skyLight) else { return "SLEventRecordPointer missing" }
+        let pointer = unsafeBitCast(p, to: RecordPointer.self)
+        let r = PaneRecords.publicRecords { event in
+            pointer(event).map { Array(UnsafeBufferPointer(start: $0.assumingMemoryBound(to: UInt8.self), count: Int(PaneRecords.length))) }
+        }
+        return PaneRecords.problem(appKit: r.appKit, down: r.down, up: r.up)
     }
 
     // At launch (ShellHost.swift startHost), after PrivateCalls.check: one line.
     static func check(resolver: PrivateResolver, base: PrivateCalls.Availability) -> Availability {
         let started = Diagnostics.now()
-        let a = evaluate(resolver, base: base)
+        var a = evaluate(resolver, base: base)
+        // (The records' layout, from public events: anything else and the part's off for the run.)
+        if a.panesActive, let problem = recordsProblem(resolver) {
+            a.panesActive = false
+            a.reasons["panes active"] = "the event records' layout isn't the one checked (\(problem))"
+        }
         Diagnostics.note(a.line(build: resolver.build) + " in " + Diagnostics.ms(since: started))
         return a
     }
@@ -201,6 +239,16 @@ nonisolated struct HostPrivate: @unchecked Sendable {
     typealias InitTileMove = @convention(c) (UnsafeMutableRawPointer, ObjectiveC.Selector, UInt64, UInt64, UInt64) -> Unmanaged<AnyObject>?
     // A synchronous operation's perform: its answer (+0, kept with the operation).
     typealias PerformAnswering = @convention(c) (AnyObject, ObjectiveC.Selector) -> Unmanaged<AnyObject>?
+    // All panes active: a record to a process (its serial number), the window server's front process read (two more
+    // pointers given that it never writes: a callee taking fewer ignores them; one taking more never writes past them)
+    // and set (window, options), a pid's serial number and back.
+    typealias PostRecord = @convention(c) (UnsafePointer<ProcessSerialNumber>, UnsafePointer<UInt8>) -> Int32
+    typealias GetFrontProcess = @convention(c) (UnsafeMutablePointer<ProcessSerialNumber>, UnsafeMutableRawPointer, UnsafeMutableRawPointer) -> Int32
+    typealias SetFrontProcess = @convention(c) (UnsafePointer<ProcessSerialNumber>, UInt32, UInt32) -> Int32
+    typealias ProcessForPID = @convention(c) (pid_t, UnsafeMutablePointer<ProcessSerialNumber>) -> Int32
+    typealias ProcessPID = @convention(c) (UnsafePointer<ProcessSerialNumber>, UnsafeMutablePointer<pid_t>) -> Int32
+    // `_SLPSSetFrontProcessWithOptions`' kCPSUserGenerated: as a person's click or ⌘-Tab makes an app the front one.
+    static let userGenerated: UInt32 = 0x200
 
     let refuses: Bool
     private var mainConnectionID: MainConnectionID?
@@ -225,14 +273,21 @@ nonisolated struct HostPrivate: @unchecked Sendable {
     private var createTileClass: AnyClass?
     private var initCreateTile: InitSetValues?
     private var performCreateTile: PerformAnswering?
+    private var postRecord: PostRecord?
+    private var getFrontProcess: GetFrontProcess?
+    private var setFrontProcess: SetFrontProcess?
+    private var processForPID: ProcessForPID?
+    private var processPID: ProcessPID?
     let hasTiles: Bool
     let hasAnchors: Bool
+    let hasPanesActive: Bool
     private let kept = KeptOperations()
 
     init(resolver: PrivateResolver, availability: HostCalls.Availability, refusing: Bool = PrivateCalls.inTests) {
         refuses = refusing
         hasTiles = availability.host && availability.tiles
         hasAnchors = hasTiles && availability.anchors
+        hasPanesActive = availability.host && availability.panesActive
         guard availability.host else { return }
         func fn<T>(_ name: String, _ framework: PrivateFramework, _: T.Type) -> T? { resolver.function(name, in: framework).map { unsafeBitCast($0, to: T.self) } }
         mainConnectionID = fn("SLSMainConnectionID", .skyLight, MainConnectionID.self)
@@ -261,6 +316,13 @@ nonisolated struct HostPrivate: @unchecked Sendable {
             createTileClass = resolver.objcClass(HostCalls.createTileClass)
             initCreateTile = resolver.implementation(HostCalls.createTileClass, HostCalls.initSetValues).map { unsafeBitCast($0, to: InitSetValues.self) }
             performCreateTile = resolver.implementation(HostCalls.createTileClass, PrivateCalls.perform).map { unsafeBitCast($0, to: PerformAnswering.self) }
+        }
+        if availability.panesActive {
+            postRecord = fn("SLPSPostEventRecordTo", .skyLight, PostRecord.self)
+            getFrontProcess = fn("SLPSGetFrontProcess", .skyLight, GetFrontProcess.self)
+            setFrontProcess = fn("_SLPSSetFrontProcessWithOptions", .skyLight, SetFrontProcess.self)
+            processForPID = fn("GetProcessForPID", .hiServices, ProcessForPID.self)
+            processPID = fn("GetProcessPID", .hiServices, ProcessPID.self)
         }
         if availability.opens {
             schedule = fn("_LSScheduleNotificationOnQueueWithBlock", .launchServices, ScheduleNotification.self)
@@ -344,6 +406,38 @@ nonisolated struct HostPrivate: @unchecked Sendable {
             if let n = answer.value(forKey: key) as? NSNumber, n.uint64Value > 0 { return (true, n.uint64Value) }
         }
         return (true, nil)
+    }
+
+    // ---- all panes active (PaneRecords.swift) ----
+
+    private func serialNumber(_ pid: pid_t) -> ProcessSerialNumber? {
+        guard pid > 0, !refuses, let processForPID else { return nil }
+        var psn = ProcessSerialNumber()
+        return processForPID(pid, &psn) == 0 ? psn : nil
+    }
+
+    // A record (PaneRecords: 0x100 bytes) to the app of `pid`. Its result: 0 taken, else the window server's error (nil:
+    // not sent: no such process, refused).
+    func post(_ record: [UInt8], to pid: pid_t) -> Int32? {
+        guard record.count >= PaneRecords.size, let postRecord, var psn = serialNumber(pid) else { return nil }
+        return record.withUnsafeBufferPointer { postRecord(&psn, $0.baseAddress!) }
+    }
+
+    // The window server's front process (the keyboard's, the menu bar's): its pid; nil: unread.
+    func frontProcess() -> pid_t? {
+        guard !refuses, let getFrontProcess, let processPID else { return nil }
+        var psn = ProcessSerialNumber()
+        var a = (UInt64(0), UInt64(0), UInt64(0), UInt64(0)), b = a
+        let read = withUnsafeMutableBytes(of: &a) { pa in withUnsafeMutableBytes(of: &b) { pb in getFrontProcess(&psn, pa.baseAddress!, pb.baseAddress!) } }
+        guard read == 0 else { return nil }
+        var pid: pid_t = 0
+        return processPID(&psn, &pid) == 0 && pid > 0 ? pid : nil
+    }
+
+    // The app of `pid` made the window server's front process, `window` its window, as a person's click would. True: taken.
+    func setFront(pid: pid_t, window: Int) -> Bool {
+        guard let setFrontProcess, var psn = serialNumber(pid), let n = UInt32(exactly: window) else { return false }
+        return setFrontProcess(&psn, n, Self.userGenerated) == 0
     }
 
     private func alloc(_ cls: AnyClass?) -> UnsafeMutableRawPointer? {

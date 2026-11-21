@@ -123,6 +123,28 @@ final class FakeHostWorld: HostSystem {
         return true
     }
     func frontApp() -> pid_t? { front }
+    // All panes active (PanesActive.swift): off unless a test turns it on; every record sent (`activeCalls`, in order:
+    // "keep pid window", "move pid from→to", "release pid window", "releaseNow pid window", "makeFront pid window"), the
+    // window server's front process (`serverFront`, else `front`), AppKit's word in each app (`appActiveOf`).
+    var panesActive = false
+    var activeCalls: [String] = []
+    var serverFront: pid_t?
+    var serverFrontUnread = false
+    var appActiveOf: [pid_t: Bool] = [:]
+    var keepsPanesActive: Bool { panesActive }
+    func frontProcess() -> pid_t? { serverFrontUnread ? nil : serverFront ?? front }
+    func makeFront(pid: pid_t, window: Int) -> Bool {
+        activeCalls.append("makeFront \(pid) \(window)")
+        guard apps[pid] != nil else { return false }
+        serverFront = nil
+        front = pid
+        return true
+    }
+    func keepActive(_ w: PaneWindow) { activeCalls.append("keep \(w.pid) \(w.window)") }
+    func moveActive(_ w: PaneWindow, from: Int) { activeCalls.append("move \(w.pid) \(from)→\(w.window)") }
+    func releaseActive(_ w: PaneWindow) { activeCalls.append("release \(w.pid) \(w.window)") }
+    func releaseActiveNow(_ list: [PaneWindow]) { for w in list { activeCalls.append("releaseNow \(w.pid) \(w.window)") } }
+    func appActive(pid: pid_t) async -> Bool? { appActiveOf[pid] }
     // A window's page given the keys (AXFocused on its web area): out of its address field, so its toolbar slides back up
     // (`pageFocusRests` later, as Safari's ~70 ms slide); the window made key (raised, unless its raise doesn't take).
     var pageFocused: [Int] = []
@@ -1405,7 +1427,8 @@ final class HostFakeResolver: PrivateResolver, @unchecked Sendable {
     var version = "27.2.1"
     var build: String? = "26B131"
     var frameworks = Set(PrivateFramework.allCases)
-    var functions = Set(HostCalls.skyFunctions + HostCalls.launchFunctions + HostCalls.launchKeys + HostCalls.noteFunctions + HostCalls.tileFunctions)
+    var functions = Set(HostCalls.skyFunctions + HostCalls.launchFunctions + HostCalls.launchKeys + HostCalls.noteFunctions + HostCalls.tileFunctions
+                        + HostCalls.activeFunctions + HostCalls.processFunctions)
     var encodings = Dictionary(uniqueKeysWithValues: (HostCalls.selectors + HostCalls.tileSelectors + HostCalls.anchorSelectors).map { ($0.label, $0.encoding) })
     var hasClass = true
     var tileClasses = Set(HostCalls.tileClasses + [HostCalls.createTileClass])
@@ -3895,7 +3918,7 @@ func hostCallsTests() {
     let all = HostCalls.evaluate(HostFakeResolver(), base: base)
     check("host calls: all there: the host and outside opens on", all.host && all.opens && all.missing.isEmpty && all.mismatched.isEmpty, "\(all)")
     check("host calls: the counts", all.functionsFound == 12 && all.functionsTotal == 12 && all.selectorsFound == 2 && all.selectorsTotal == 2, "\(all)")
-    check("host calls: the launch line", all.line(build: "26B131") == "private calls (host) on 26B131: host ok (12/12 functions and keys, 2/2 selectors, encodings ok); outside opens ok; tiles ok; anchors ok", all.line(build: "26B131"))
+    check("host calls: the launch line", all.line(build: "26B131") == "private calls (host) on 26B131: host ok (12/12 functions and keys, 2/2 selectors, encodings ok); outside opens ok; tiles ok; anchors ok; panes active ok", all.line(build: "26B131"))
     // The anchors are a part of their own: the create-tile class missing or its encoding changed turns them off, never the tiles.
     do {
         let r = HostFakeResolver()

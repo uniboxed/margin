@@ -7261,3 +7261,100 @@ another window there (window 36, pid 874, layer 2147483628)", a keep-awake app's
 shielding level, over the whole display and letting the pointer through. Windows at the assistive-technology level
 (1500) and above (screen dimmers, keep-awake and zoom overlays, shielding, cursor) are never covers now
 (`PaneClick.overlay`); a menu, a sheet or panel, the Dock or a system dialog still is.
+
+## Every pane of a split draws active (2026-11-21)
+
+Decided by Tirth, as polish on the pane click tap: in a split only the window server's front app drew active. The
+other panes showed as inactive windows do (Safari's grey toolbar and selection, no caret, `document.hasFocus()` false,
+no `:focus`), so a split read as one live pane and one dead one. Now every pane whose app isn't the front one is kept
+active (`app/platforms/macos/shell/PanesActive.swift`, `app/platforms/macos/private/PaneRecords.swift`).
+
+The research (2026-11-21, its scratchpad's `allfocus/`: two probe apps, experiments e1-e6, WebKit's sources, yabai's
+`window_manager.c`). AppKit decides inside each app whether it's active and which window is key, from the event records
+the window server delivers to it. Margin sends a pane's app two kinds with SkyLight's `SLPSPostEventRecordTo`, as yabai
+and AltTab do: an *application activated* record (an AppKit-defined event, type 13, subtype 1) and the *make-key* pair
+(a left mouse down and up whose byte 0x3a is 0x10: the window made key, no click). That app then takes itself for the
+active app and makes that window key, while another app stays the window server's front process. `NSApp.isActive`, the
+key and main window, the active appearance, WebKit's `WindowIsActive`/`IsFocused`, `document.hasFocus()`, `:focus`, the
+blue selection and the caret are all real. A *deactivated* record (subtype 2) gives it back cleanly. It held 10 s and
+more, and timers and `requestAnimationFrame` aren't throttled by inactivity anyway (only by visibility). Inside an app
+that's already active, the make-key pair alone doesn't move its key window: the old one's app is deactivated, then the
+new one activated and made key, 40 ms apart (yabai's recipe). `SLSSetWindowHasKeyAppearance` and `SLSSetWindowActive`
+sent from another process do nothing.
+
+- **Who.** In a split shown in Margin's hosting window on the current Space (the scene the pane click tap is told,
+  `MarginWindowController.paneScene`), every visible pane whose app isn't the front one, one window per app: the one
+  focused last in it, else its frontmost pane. AppKit has one key window per app (WebKit's `isViewWindowActive` is
+  `isKeyWindow`), so two panes of the same app can't both be active; it's never tried. Margin in front (its menu, a
+  prompt): the focused pane's app counts as the front one, which draws inactive as it did (the keys are Margin's then).
+  Never kept: Margin itself, an app Margin doesn't host, a pane whose window isn't shown, an app quitting. An app with
+  a sheet or an alert up is kept as any other: its sheet draws active with its window, and the keys still go only to
+  the front app (the ring says which). A preview card open: nothing kept or let go for it. Its dim covers the split and
+  the card has the keys; the split's apps are left as they were until it closes (no records for a card's open and close).
+- **The keys and the menu bar** stay the window server's front process, the pane last clicked: the pane click tap makes
+  that pane's app the front one. A kept app takes itself for active, so Accessibility's AXFrontmost reads true and its
+  pane's window focused. The tap's "key already" fast path now needs the window server's front process to be that app
+  too (`SLPSGetFrontProcess`); otherwise the window server makes it the front one (`_SLPSSetFrontProcessWithOptions`,
+  kCPSUserGenerated, and the make-key pair), because AppKit's own activation, which AXFrontmost asks for, may be taken
+  for done in an app that believes it's active. The engine's own fronting (a press the usual way, the sidebar, a
+  layout) does the same for a kept app first. The keyboard follows the click, and the app that had it is kept from then.
+- **When.** Told the scene as it changes (only its panes' windows, apps, roles and focused window count: a drag's rects
+  every frame are nothing) and each change of the front app (NSWorkspace's activation; the tap's own word on a press it
+  focused, before NSWorkspace's). An activation only counts when its app is the window server's front process: an
+  activation by a record is never one, so a record can't start a loop. Applied once per main-queue turn, never through
+  the engine's operation queue: a front change re-asserts at once, whatever operation runs. An app the window server
+  deactivated since (it was the front one and another is now, or it was between two steps) is kept again. One kept and
+  still kept is never sent anything again. Nothing at rest: no timer, no polling, nothing per pointer move. A loop's
+  guard: an app kept more than 60 times in 10 s is left alone for the run, said once.
+- **Let go** (a deactivated record): its pane gone from the scene, or not shown, for 1 s (the tap's grace: a layout's
+  change takes the panes away for a moment, and an operation moving a window has it not shown for a moment). Released
+  at once when another app that Margin doesn't host comes in front, when its app is quitting (a row's close, Margin's
+  quit), and when Margin quits: sent and waited for before the quit's steps (`quitAll`), and again at
+  `willTerminate`. When its app quits, it's forgotten and nothing is sent. Margin's windows closed: the scene's gone.
+  After a crash: the marker (`hosted.json`, `keptActive`: pid, window, app, launch) lists the apps sent active since
+  they were last let go, written only when that list changes (a split's start and end, not each click). The next
+  launch's recovery deactivates each one that's still that launch, isn't the front app and still takes itself for
+  active (AXFrontmost; unread counts as yes). A record is never sent to the window server's front app (read just
+  before, on the records' own queue): it's active for real.
+- **The records** (`PaneRecords`): 0x100 bytes zeroed (AltTab: the window server reads past 0xf8 since 14.7.4), the
+  length 0xf8 at 0x04, the type at 0x08, the window's number at 0x3c, the subtype at 0x8a. **The launch check** builds
+  an AppKit-defined event (subtype 1, data1 and data2 set) and a mouse press and release with public calls (NSEvent),
+  reads them back as the window server's records (`SLEventRecordPointer`) and compares every offset. Any mismatch, or
+  any of the six calls missing, turns the part off for the run (today's behaviour), said once in the host's launch line
+  (`… ; panes active ok` / `panes active off: <why>`). The make-key flag can't be made with a public call: it's yabai's
+  and AltTab's, and the research's. A record the window server refuses (a nonzero result): off for the run, said once.
+  `defaults write com.unibox.margin MarginPanesActive -bool NO`: never kept, while a crash's leftovers are still let go.
+- **Off the main thread.** Records are sent on a queue of their own (`margin.panes-active`, user-interactive). The
+  front process is read inline, at about 2.7 µs a read, and made front inline: on the tap's thread for a press, on the
+  main thread for the engine.
+- **The ring says where the keys go.** Several panes draw active now, so Margin's ring around the focused pane is what
+  says where typing goes. `tests/theme/pane-ring.test.ts` measures it in all five themes, light and dark, in WebKit and
+  Chromium: on the focused pane only, at least 2 px, its outer edge at least 3:1 against the gap (WCAG 2.1 1.4.11).
+  Arcadia's and Liquid Glass's rings were the accent at 70% and 60% (2.4:1 and 2.1:1 in light), so both are the full
+  accent now. Arcadia's frame takes the space's colour (an accent ring fell to 1.9:1 in dark over a yellow space), so
+  its ring has a 1 px edge in the frame's own text colour (`--fg`). Material, Neubrutalism and Pixel pass as they were.
+- **Log:** `panes active: <id> kept active (its window <n> (pid <p>)); <id> let go (<why>; …) (the keys: <id>; <n>
+  kept)`, one line per step that sends anything; the tap's line for a kept pane: `… (its app, kept active, made the
+  front app by the window server): the click delivered`; at launch, the host's line `… ; panes active ok`; after a crash,
+  `panes active: a crashed Margin kept <n> app(s) active: <m> let go (deactivated), …`; said once:
+  `panes active: the window server refused a record (error <n>): off for the run …`, `panes active: off
+  (MarginPanesActive is NO) …`, `panes active: pid <p> kept active <n> times in 10 s (a loop?) …`.
+- **Costs (the stand-in):** a step at rest sends nothing and costs about 7-12 µs (unoptimised test build: the keeper
+  over four panes, or the engine's step with the front read and the hosts looked up). A front change costs one step
+  and three records for each app kept anew (the window server's work: microseconds each). No timer except while a
+  let-go waits out its grace. Memory: a few dictionaries keyed by pid.
+- **Risks and unknowns** (for the hand checks): app logic keyed on `isActive` (panels that hide on deactivate,
+  notifications held while active, an app that refreshes on each activation); input methods, dead keys and secure input
+  follow the real front app; the ~30 ms between the window server deactivating the app that had the keys and Margin
+  activating it again (the research's swap: 27-36 ms) may draw one inactive frame; real Safari's and Notes' behaviour
+  beyond the probes' (WebKit's own state matched them in the research); AXFrontmost reading a kept app's own
+  `isActive` (believed so: the crash recovery and the tap rely on the window server's word, and AXFrontmost only gates
+  the recovery).
+- **Checks:** `panes-active-tests.swift` (the records' bytes; the launch check against the window server's own record
+  as read on 27.2.1 and every offset moved; the part's own launch check; the keeper's every case; the engine on the
+  stand-in world, which keeps, re-asserts and lets go on every exit path, its marker and the next launch's recovery,
+  coalescing, and its cost), `pane-click-tests.swift` (`paneClickKeptTests`: a kept app's pane is never "key already",
+  the window server's way), `e2e-split.swift` (Margin's own window: the split kept, the tap's scene carrying it, let go
+  at the split's end and when the windows close), `tests/theme/pane-ring.test.ts`. The real screen: the `panes-active`
+  and `panes-active-crash` parts of `npm run test:screen` (Chameleon's `state` probe: AppKit's own word; written and
+  dry-run only), and TESTING.md M2.7 step 13i (Safari + Notes).

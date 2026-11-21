@@ -103,6 +103,16 @@ The stand-in world plays the same switches off screen: `app/platforms/macos/shel
   on it. Then 8 timed clicks back and forth (Margin's key time under the 120 ms cap; the press's post to the copy's
   click), a click in the pane with the keys (straight through, nothing said), Margin's idle cost with the tap on, and
   Margin's quit.
+- `panes-active` and `panes-active-crash` (Margin's `PanesActive.swift`: every pane of a split draws active): Chameleon
+  1 and 2 made a split as pane-clicks does; each copy's own word asked by its notification (`test.margin.chameleon.state`:
+  Chameleon logs `state active … key … main … editing …`, AppKit's own state): both active, each its pane's window key,
+  the focused one the front app; a grid click and a field click (its key typed reaches only it) with both active after
+  each; 6 clicks back and forth, the inactive moment of the one that had the keys timed from its own log; Margin's idle
+  cost with both active; the split hidden (Chameleon 3 shown alone): the kept one let go after the 1 s grace; Margin's
+  quit: its `let go (Margin quits` line, the kept copy's resign logged before it's quit. The crash part, from a launch of
+  its own: Margin killed (SIGKILL) with the split up, the kept copy still active, Margin opened again: `a crashed Margin
+  kept 1 app active: 1 let go`, the copy's resign logged before its quit. Clicks and keys only where pane-clicks posts
+  them. Written 2026-11-21 and dry-run only so far.
 - `real-apps` (opt-in, `--real-apps`): Maps, Phone, Messages, Mail, WhatsApp, Safari, Notes, Calculator (the list at the
   top of `suite/RealApps.swift`; skipped if not installed). Recorded first (running, pid, windows, saved-state defaults
   keys, Margin's library items); each hosted through the dev hook only and its desired state held 30 s; a switch to

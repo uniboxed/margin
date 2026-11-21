@@ -87,6 +87,9 @@ struct ChameleonSwitches: Equatable {
     // Keys the suite also sets: the priming launch (`restore` by the system), and where the app logs.
     static let primeKey = "ChameleonPrime", logKey = "ChameleonLog"
     static let extraWindowNotification = "test.margin.chameleon.extraWindow"
+    // Its state asked (all panes active, Margin's PanesActive.swift): one `state` line, AppKit's own word (whether it's
+    // the active app, its key and main windows, whether its field is being edited: its caret's there).
+    static let stateNotification = "test.margin.chameleon.state"
     static let defaultFixedSize = CGSize(width: 400, height: 300)
     static let stripHeight: CGFloat = 88
 

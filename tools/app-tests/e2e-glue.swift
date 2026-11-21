@@ -52,6 +52,14 @@ final class GlueHostWorld: HostSystem {
   var onAppQuit: ((pid_t) -> Void)?
   var onLaunch: ((String) -> Void)? // (the test's: what Margin's window shows as an app is launched)
   var listsMarginOnly: Bool { fullScreenSpaces == [Self.marginSpace] }
+  // All panes active (PanesActive.swift): off unless a scenario turns it on; each record asked for, in order.
+  var panesActive = false
+  var activeCalls: [String] = []
+  var keepsPanesActive: Bool { panesActive }
+  func keepActive(_ w: PaneWindow) { activeCalls.append("keep \(w.pid) \(w.window)") }
+  func moveActive(_ w: PaneWindow, from: Int) { activeCalls.append("move \(w.pid) \(from)→\(w.window)") }
+  func releaseActive(_ w: PaneWindow) { activeCalls.append("release \(w.pid) \(w.window)") }
+  func releaseActiveNow(_ list: [PaneWindow]) { for w in list { activeCalls.append("releaseNow \(w.pid) \(w.window)") } }
 
   func now() -> Double { Date().timeIntervalSince1970 }
   func sleep(_ seconds: Double) async { try? await Task.sleep(nanoseconds: UInt64(max(0.005, seconds) * 1_000_000_000)) }

@@ -189,6 +189,13 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate, NSToolbarDel
             }
         }
         if case .at(let s)? = switches.extraWindow { DispatchQueue.main.asyncAfter(deadline: .now() + s) { [weak self] in self?.extra("timer") } }
+        // (Its state, on the suite's ask: AppKit's own word, as a split's pane kept active by Margin's records has it.)
+        DistributedNotificationCenter.default().addObserver(forName: .init(ChameleonSwitches.stateNotification), object: nil, queue: .main) { note in
+            guard (note.userInfo?["bundle"] as? String) == bundleId || (note.object as? String) == bundleId else { return }
+            let key = NSApp.keyWindow
+            let editing = key.map { $0.firstResponder is NSTextView && ($0.firstResponder as? NSTextView)?.isFieldEditor == true } ?? false
+            clog("state active \(NSApp.isActive) key \(key?.windowNumber ?? -1) main \(NSApp.mainWindow?.windowNumber ?? -1) editing \(editing) ask \(note.userInfo?["ask"] as? String ?? "-")")
+        }
         if switches.extraWindow != nil {
             DistributedNotificationCenter.default().addObserver(forName: .init(ChameleonSwitches.extraWindowNotification), object: nil, queue: .main) { [weak self] note in
                 guard (note.userInfo?["bundle"] as? String) == bundleId || (note.object as? String) == bundleId else { return }
