@@ -57,6 +57,7 @@ type Ctx = {
   files: string[], assetUrl: (path: string) => string, removed: Removed[], errors: string[], stats: { pages: number, nodes: number },
   parts: Set<string>, slots: Set<string>, ns: string, forDepth: number, inTemplate: boolean, inIf: boolean, guard: string | null, part?: string,
   inLoader?: boolean, // inside the `page-loader` part or the <m-page-loader> slot
+  peekPages?: { n: number }, // the <m-peek-page>s of the `peek` part so far (one: where the card's window goes)
 };
 // The files a style sheet may point to, and how their addresses are written.
 type CssOptions = { files?: string[], assetUrl?: (path: string) => string };
@@ -316,7 +317,7 @@ const HTML_ELEMENTS = new Set([
 // Margin's own elements: control flow and slots.
 const MARGIN_ELEMENTS = new Set([
   'm-for', 'm-if', 'm-else', 'm-page', 'm-window-controls', 'm-drag-region', 'm-palette', 'm-notice', 'm-menu', 'm-editor',
-  'm-launcher', 'm-prompt', 'm-settings', 'm-page-loader', 'm-toast', 'm-peek',
+  'm-launcher', 'm-prompt', 'm-settings', 'm-page-loader', 'm-toast', 'm-peek', 'm-peek-page',
 ]);
 // Dropped with everything inside them. (Raw-text elements never get this far.)
 const DROP = new Set([
@@ -385,7 +386,7 @@ const BEHAVIORS: Record<string, string[]> = {
   'm-rename': ['space', 'folder', 'tab', 'pin', 'favorite'],
   'm-scroll': ['tabs', 'palette', 'archive'],
   'm-swipe': ['spaces'],
-  'm-input': ['palette', 'space-name', 'space-emoji', 'launcher', ...['number', 'toggle', 'choice', 'list', 'shortcut', 'color'].map((k) => `setting-${k}`)],
+  'm-input': ['palette', 'space-name', 'space-emoji', 'launcher', 'peek', ...['number', 'toggle', 'choice', 'list', 'shortcut', 'color'].map((k) => `setting-${k}`)],
 };
 // Which element each of Margin's inputs is: a Settings list is a <textarea>,
 // a choice a <select> (Margin draws its options), the rest <input>s (Margin
@@ -541,6 +542,7 @@ function cleanNode(node: ParsedNode, ctx: Ctx): CleanNode | CleanNode[] | null {
       if (ctx.parts.has(part)) { report(ctx.removed, 'element', `template m-part="${part}"`, 'a second template for this part (the first is the one used)', at); return null; }
       ctx.parts.add(part);
       sub.part = part;
+      if (part === 'peek') sub.peekPages = { n: 0 };
     }
     if (GUARDED_PART_SET.has(part)) sub.guard = `"${part}" part`;
   }
@@ -553,6 +555,14 @@ function cleanNode(node: ParsedNode, ctx: Ctx): CleanNode | CleanNode[] | null {
   }
   if (lname === 'm-else' && !ctx.inIf) { report(ctx.removed, 'element', 'm-else', 'outside <m-if>', at); return null; }
   sub.inIf = lname === 'm-if';
+  // Where Peek's card window goes (docs/PEEK-SPLIT.md §2): the `peek` part's own element, one, outside any list, with
+  // nothing in it (the card's page shows through it). Anywhere else it means nothing: removed.
+  if (lname === 'm-peek-page') {
+    if (ctx.part !== 'peek' || !sub.peekPages) { report(ctx.removed, 'element', 'm-peek-page', 'only in the "peek" part (where the card\'s page goes)', at); return null; }
+    if (ctx.forDepth > 0) { report(ctx.removed, 'element', 'm-peek-page', 'inside <m-for> (there\'s one card page)', at); return null; }
+    if (sub.peekPages.n++ > 0) { report(ctx.removed, 'element', 'm-peek-page', 'a second one in the "peek" part (the first is where the card\'s page goes)', at); return null; }
+    if (node.children.some((c) => c.type === 'el' || (c.type === 'text' && c.value.trim()))) report(ctx.removed, 'element', 'm-peek-page', 'its content (the card\'s page goes there)', at);
+  }
   if (lname === 'm-page') {
     if (ctx.forDepth > 0 || ctx.inTemplate) { ctx.errors.push('template: <m-page> inside <m-for> or <template>'); return null; }
     ctx.stats.pages++;
@@ -568,7 +578,7 @@ function cleanNode(node: ParsedNode, ctx: Ctx): CleanNode | CleanNode[] | null {
   if (lname === 'button' && !attrs.some(([n]) => n === 'type')) attrs.push(['type', 'button']);
   ctx.stats.nodes++;
   // (A <select>'s options and a <textarea>'s text are Margin's.)
-  const children = lname === 'm-page' || lname === 'select' || lname === 'textarea' ? [] : cleanChildren(node.children, sub);
+  const children = lname === 'm-page' || lname === 'm-peek-page' || lname === 'select' || lname === 'textarea' ? [] : cleanChildren(node.children, sub);
   return { type: 'el', ns: HTML, name: lname, attrs, children };
 }
 

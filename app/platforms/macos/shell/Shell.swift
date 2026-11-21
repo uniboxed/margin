@@ -283,6 +283,16 @@ final class Shell: ExtensionLinkDelegate {
                 hosted?.copyLoading(profile: connection.hello.profile, windowId: windowId, tabIds: ids)
                 return
             }
+            // Peek's card (HostedPeek.swift): a page's click (answered at once), the copy giving up on one, the card's
+            // page as it changes, Esc and ⌘↩ in it. The session's own, never passed to a page as they come.
+            let profile = connection.hello.profile
+            switch type {
+            case "peekOpen": hosted?.peekOpen(profile: profile, windowId: windowId, msg: msg); return
+            case "peekCancel": hosted?.peekCancel(profile: profile, msg: msg); return
+            case "cardPage": hosted?.cardPage(profile: profile, windowId: windowId, msg: msg); return
+            case "cardKey": hosted?.cardKey(profile: profile, windowId: windowId, key: msg["key"] as? String ?? ""); return
+            default: break
+            }
             // What its UI shows for that window (UIPush.swift: only the types passed on, checked there), to the Margin
             // window it belongs in (HostedSession.copyPush). Any other push: not the page's.
             if UIPush.forwarded[type] != nil { hosted?.copyPush(profile: connection.hello.profile, windowId: windowId, msg: msg) }

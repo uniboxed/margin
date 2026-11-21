@@ -109,6 +109,8 @@ export const ACTIONS = Object.freeze({
   'peek.setSpace': 'space',
   'peek.back': 'none',
   'peek.forward': 'none',
+  // Little Arc (⌥⌘N): the card with Margin's own address field (docs/PEEK-SPLIT.md §3).
+  'littleArc.open': 'none',
   'airTraffic.addHost': 'tab',
   // An Air Traffic rule (state.airTraffic): removed, or turned off and on again (a tab's menu, Settings).
   'airTraffic.remove': 'rule',
@@ -466,6 +468,7 @@ export const ACTION_MAP = Object.freeze({
   'peek.setSpace': 'local',
   'peek.back': 'local',
   'peek.forward': 'local',
+  'littleArc.open': 'local',
   'airTraffic.addHost': 'addAirTrafficRule',
   'airTraffic.remove': 'removeAirTrafficRule',
   'airTraffic.toggle': 'toggleAirTrafficRule',
@@ -493,7 +496,7 @@ export const ACTION_MAP = Object.freeze({
 });
 
 const LOCAL = new Set(['space.edit', 'space.rename', 'folder.rename', 'tab.rename', 'pin.rename', 'favorite.rename', 'palette.open', 'palette.close', 'menu.open', 'menu.run', 'menu.close', 'editor.save', 'editor.cancel', 'editor.delete', 'editor.color', 'editor.theme',
-  'notice.run', 'notice.close', 'prompt.run', 'prompt.close', 'launcher.more', 'settings.run', 'settings.category', 'tab.copyUrl', 'pin.copyUrl', 'favorite.copyUrl', 'peek.close', 'peek.expand', 'peek.copyUrl', 'peek.setSpace', 'peek.back', 'peek.forward']);
+  'notice.run', 'notice.close', 'prompt.run', 'prompt.close', 'launcher.more', 'settings.run', 'settings.category', 'tab.copyUrl', 'pin.copyUrl', 'favorite.copyUrl', 'peek.close', 'peek.expand', 'peek.copyUrl', 'peek.setSpace', 'peek.back', 'peek.forward', 'littleArc.open']);
 const NAV = { 'nav.back': 'goBack', 'nav.forward': 'goForward', 'nav.reload': 'reload' };
 
 /**

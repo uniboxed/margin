@@ -86,6 +86,7 @@ final class FakeHostedWindow: HostedWindow {
         return HostPlacement(page: page, area: FakeHostWorld.display)
     }
     func push(_ json: String) { pushed.append(json) }
+    var cardRect: CGRect? // where its page draws Peek's card page (the theme's <m-peek-page>), nil: none
     // A split as its page lays it out (docs/PEEK-SPLIT.md §4): `splitShown` says which (its id, items in order, stacked or
     // not, ratios; a test sets it as the page would for the item in front), laid out in the page area with an 8 pt gap.
     var splitShown: (() -> (id: String, items: [String], vertical: Bool, ratios: [CGFloat])?)?
@@ -174,6 +175,8 @@ final class FakeHostedLinks: HostedLinks {
             onHostShow?()
             nextTab += 1
             return (["tabId": nextTab - 1, "created": true], nil)
+        case "hostPromotePeek":
+            return (["ok": true, "tabId": nextTab - 1, "moved": true], nil)
         default:
             return ([:], nil)
         }

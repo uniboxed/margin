@@ -6782,3 +6782,90 @@ apps mixed, side by side or stacked, live dividers, each Safari pane a window of
   refusal), Swift (`split-tests.swift`: the session on the stand-in world end to end; live holes; per-host budgets),
   the app's e2e with the real page (`tools/app-tests/e2e-split.swift`: two apps split, panes measured by the real
   WKWebView page, windows at those boxes, a divider dragged by pointer events, saved, placed again).
+
+## Peek and Little Arc in Margin.app (docs/PEEK-SPLIT.md §2, §3, 2026-11-21)
+
+Step 2 of the plan, on feat/peek (from feat/arc-suite), on the several-visible-hosts foundation (§1, above). The
+user's choices (the doc's table) as built; what was decided here is marked so.
+
+- **The click, the page's side** (content/peek.ts, core.ts). Only in a window Margin.app draws (the copy's `appDrawn`
+  for the tab's window) and never in a copy that stood back. Heard in the bubble phase on `window`, after the page's own
+  handlers: a click the page handled (`defaultPrevented`) is left alone, nothing ever stops the event. Only trusted
+  primary clicks with no ⌘/⌃/⌥, on an `<a href>` (SVG links too; never `download`, never a same-page `#` link). The
+  default is cancelled at once (it can't be later), then the card asked for; refused, or no answer in 400 ms: the
+  link's own default done by the page (`location.assign`, or the copy's new tab for `target=_blank` and other named
+  targets, `window.open` only if the background didn't answer). Shift+click's own Safari default (Reading List) isn't
+  one a page can do: it opens as a plain click would (decided). Auto-Peek: a pinned tab's or favorite's link to another
+  site, never an auth flow (shared/peek.ts, unchanged). Which pages are a pin's or favorite's in Margin.app is the
+  library's word, not the copy's state (which has no library pins): each `hostShow` says `pinned`, the copy tells the
+  tab's page (`peekPinned`, and hello's `pinned`).
+- **The answer** (background/peek.ts, handlers.ts). The copy pushes `peekOpen { id, url, source, tabId, notAfter }`
+  (a request back is the protocol's only way an app answers a push, as `paletteDropped` is for `palette`): Margin.app
+  answers `peekAnswer { id, ok }` at once (a new request in `APP_REQUESTS`). The copy waits only until `notAfter`
+  (350 ms after the click, under the page's 400 ms); later, it's a no and the app is told `peekCancel { id }` (a card it
+  opened for that click is closed again): a link never opens twice. Chosen over a UI push (`UIPush.forwarded`): the
+  card must be answered and laid out natively before the page can show it (documented in UIPush.swift).
+- **The card's window.** `safari:<profile>#card`, made at the first Peek through `requestSafariWindow(role: .card)`,
+  asked of the copy as `newWindow { url }` at the card's own address (the copy takes an http(s) address only from the
+  app; the empty new-tab page's address field kept Safari's toolbar down). Its page is the copy's tab tagged
+  `peek-card` (background/hosted.ts `CARD_ITEM`, `hostShow { role: 'card', fresh }`: `fresh` sends a tagged tab to a new
+  Peek's address); never one of the library's items, so not in the sidebar, not archived, not counted by the keys. A
+  new tab in the card window (a `_blank` link there) is the card's page from then (the one before closed). Closed:
+  `hostCardClose` closes the tab and leaves `about:blank` so the window stays, parked. Opening a parked one is a layout
+  change (`HostedSession.applyLayout` with the card's extra: main never parked). Closed by Margin after 15 minutes
+  unused (the shell's poll through the sweep) and when its profile's main window goes.
+- **Geometry.** The `peek` part's `<m-peek-page>` (sanitizer: only there, once, empty, never in a list) is measured as
+  laid out (offsets: the card's scale never moves the window) and sent as its own message `peekRect` (decided: not a
+  field of the page's `layout`, which split view grows too, so the two stay apart), turned into screen points by
+  Margin's window (`cardRect`). The session waits for it 300 ms, else Margin's default rect (centred, 8% each side, 7%
+  above and below, at least 420×320, under a 44 pt bar: `HostedSession.defaultCardRect`). The engine refuses a card
+  below its window's known minimum: the card goes and a toast says there's no room. While a card is up the theme's
+  root has `--m-page-*` (the page's place), so `<m-peek>` lays its dim over the page area alone.
+- **Look and motion** (all five themes; Margin's own default card, `m-peek[m-default]`, for themes with none). The
+  dim is a spread shadow around an element at the card's place (never painted over the card's page: Margin's window is
+  above the hosted ones); the card's page is covered while its window isn't in place (`peek.loading`, its own spinner)
+  and as it goes (`peek.closing`), clear once `ready`. Open 150 ms (dim fade, card from 0.96 and nothing), close the
+  reverse, then gone; Reduce Motion: a fade. A card's first open never shows the page card's loader over main (the
+  engine's slow step for a card is the card's own: `cardLoadingStep`). Found by the theme tests: Liquid Glass's and
+  Neubrutalism's ✕ was hidden (their `.close` is a row's hover-only button): it's `peek-close` now.
+- **Focus and keys.** The card is the focused host (keys to its window); the item under it stays the window's item
+  shown (the sidebar's highlight). Fields letting go give the keys to the card, never main over it. Closing lays out
+  main alone again (its app active). ⌘W: Margin's Close Tab and a hosted app's ⌘W both close the card (or Little Arc's
+  field) when one is up, never the item. Esc: in Margin's UI (the card behavior) and in the card's page (a listener only
+  in pages of the card's window, told by the copy: hello's `card`, `cardWindow`), only when the page didn't handle it
+  and focus isn't in a field; ⌘↩ the same for Expand. A press on the dimmed area is the foundation's caught press,
+  which now closes the card.
+- **Attached to its opener.** A pick of another item in that window (any show: the sidebar, the keys, the palette's
+  apps) hides it (parked, kept with its page); the opener shown again brings it back (a pick of the opener itself
+  while it's up keeps it hidden until another item is picked and the opener again). One card per profile: a Peek
+  elsewhere replaces it.
+- **Expand.** A new item of the card's space at its current address and title (target the card's profile), the
+  card's tab moved into the profile's main window as that item's (`hostPromotePeek`, which now leaves a blank tab
+  behind), then shown as main; the card window parked. Over a split, the expanded page is shown alone, as any item
+  picked outside a split (the split stays for its next pick).
+- **Over a split** (merged with split view, §4). A card opens over a split as one more visible host: the split's
+  layout is kept (`HostedLayout.split`, its panes at their `<m-pane>`s, asked of the page again; the card keeps its own
+  `<m-peek-page>` rect, never a pane's), the focused pane stays the window's item shown. Closing it (any way) lays the
+  split out again without it, its focused pane focused. ⌘W: the card when one is up (Margin's Close Tab and a hosted
+  app's ⌘W alike), else the focused pane (split's rule). A page-area change or a drag places the card at its
+  `<m-peek-page>` with the panes (one engine call, the layout held for all). One helper leaves the blank tab in any of
+  Margin's windows a move, a close or an Expand would empty (background/hosted.ts `leaveBlank`). The copy takes an
+  http(s) `newWindow` address from Margin.app only (a card's or a pane's window). Checked: peek-split-tests.swift.
+- **Little Arc** (⌥⌘N, `littleArc.open`): the card with Margin's own field (`m-input="peek"`, no window yet;
+  `peek.littleArc` tells the app so ⌘W closes it). Return takes what's typed as the palette does (shared/search.ts
+  `resolveInput`): an address, else a search, its address from the engine Safari searches with (the palette's
+  `searchUrl`); `peek.go` opens the card at it, then it's Peek. With nothing hosted in the window (the launcher) there's
+  no page under a card: what's chosen opens as the space's new tab at once (decided).
+- **Foundation gaps closed.** A card's or pane's own full-screen toolbar is a strip of its own rect (core
+  `is_strip_of_any`, the hosts' rects given to the observer per app: `hostRects`), never a small transient window, and
+  never moved or parked; the windows let in front of Margin's (core front.rs) count every visible host's app, each
+  one's rect for its strip; the page's hello has `hostedFrames`; a stand-in-world check fails if `desired()` keeps only
+  the focused host shown (a window under a card moved off its place is put back).
+- **Checked** headless: unit (`tests/peek-click.test.ts`: the bubble phase, never stopping the event, the page's own
+  clicks left alone, undrawn windows, the fallback once and in time, the copy's wait; `tests/peek-card.test.ts`: the
+  card's tab, its window, a new tab there, close and Expand; `tests/peek.test.ts`: the sanitizer's `m-peek-page`, the
+  view model), the five themes and the default in WebKit and Chromium (`tests/theme/peek-card.test.ts`: place, cover,
+  clear, the dim, real presses on every button, Esc, ⌘↩, motion and Reduce Motion, Little Arc's address and search,
+  dark), Swift (`peek-session-tests.swift`, `multi-host-tests.swift`), Rust (`kinds/tests.rs`, `front.rs`), the app's
+  e2e (`e2e-glue.swift`: the real page's `peekRect` in Margin's off-screen window, covered then clear, gone; the hello's
+  frames). Nothing on the real screen with real Safari yet: TESTING.md M2.5.

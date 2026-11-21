@@ -85,6 +85,8 @@ nonisolated enum WindowKinds {
         var closed: Set<Int> = []
         // The last time Margin sized one of its windows (a tile's rect, a frame) and the rects it set.
         var resized: Resized? = nil
+        // Its hosts laid out at rects of their own (a card's, a split pane's): each one's toolbar a strip of its rect.
+        var hostRects: [CGRect] = []
     }
 
     // Margin's last sizing of an app's window: when, and the rects it set (a tile's, the window's frame).
@@ -106,6 +108,10 @@ nonisolated enum WindowKinds {
     static func isStrip(_ b: CGRect, in p: HostPlacement) -> Bool {
         var pl = p.margin
         return margin_kinds_is_strip(b.marginRect, &pl)
+    }
+    // …or of one of its hosts' own rects (a card's or a pane's toolbar is as wide as its own window).
+    static func isStrip(_ b: CGRect, in p: HostPlacement, rects: [CGRect]) -> Bool {
+        isStrip(b, in: p) || rects.contains { isStrip(b, in: HostPlacement(page: $0, area: p.area, display: p.display)) }
     }
 
     static func near(_ a: CGRect, _ b: CGRect) -> Bool { HostLayout.near(a, b, within: 4) }
@@ -143,6 +149,7 @@ nonisolated extension WindowKinds.App {
         var d: [String: Any] = ["launchedByMargin": launchedByMargin, "hosted": hosted.sorted(), "woken": woken.sorted(), "previousMains": previousMains.sorted(),
                                 "previousHelpers": previousHelpers.sorted(), "launchWindows": launchWindows.sorted(), "closed": closed.sorted()]
         if let r = resized { d["resized"] = ["at": r.at, "rects": r.rects.map(\.coreJSON)] }
+        if !hostRects.isEmpty { d["hostRects"] = hostRects.map(\.coreJSON) }
         return d
     }
 }

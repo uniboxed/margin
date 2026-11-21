@@ -667,29 +667,40 @@ img.fav.app { width: 22px; height: 22px; margin: -2px; box-shadow: none; backgro
   text-transform: uppercase;
 }
 
-.peek-slot { position: fixed; inset: 0; z-index: 50; pointer-events: none; }
-.peek-slot:not(:empty) { pointer-events: auto; }
-.peek-backdrop { position: fixed; inset: 0; display: grid; place-items: center; }
-.peek-card {
-  position: relative;
-  z-index: 1;
-  width: min(86vw, 980px);
-  height: min(84vh, 720px);
-  display: flex;
-  flex-direction: column;
-  background: var(--side);
-  color: var(--ink);
-  overflow: hidden;
+/* ---- Peek's card and Little Arc (docs/PEEK-SPLIT.md §2, §3) ----------------------------------------------
+   Laid over the page area alone (Margin's --m-page-* while a card is up): the page dimmed around the card (main shows
+   through, dimmed), the card's page (<m-peek-page>, where Margin.app puts the card's Safari window) clear once that
+   window is in place (.ready), covered while it loads and as it goes. Open: the dim fades in and the card comes from
+   0.96 and nothing in 150 ms; close: the reverse. Transform and opacity only; Reduce Motion: a fade. Once the window is
+   in place the dimmed page never takes the pointer (Margin.app catches a press there and closes the card); while it
+   loads, and for Little Arc's field alone, the scrim does (a click there closes it). */
+.peek-slot { position: fixed; left: var(--m-page-left, 0px); top: var(--m-page-top, 0px); right: var(--m-page-right, 0px); bottom: var(--m-page-bottom, 0px); z-index: 50; overflow: hidden; border-radius: var(--m-page-radius, 0px); pointer-events: none; --peek-dim: rgba(11, 10, 26, 0.45); }
+@media (prefers-color-scheme: dark) { .peek-slot { --peek-dim: rgba(11, 10, 26, 0.6); } }
+.peek-backdrop { position: absolute; inset: 0; pointer-events: none; }
+.peek-backdrop > .scrim { position: absolute; inset: 0; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; animation: none; cursor: default; pointer-events: none; }
+.peek-backdrop:is(.loading, .little-arc) > .scrim { pointer-events: auto; }
+.peek-dim, .peek-card { position: absolute; left: clamp(0px, 8%, calc(50% - 210px)); right: clamp(0px, 8%, calc(50% - 210px)); top: clamp(0px, 7%, calc(50% - 182px)); bottom: clamp(0px, 7%, calc(50% - 182px)); border-radius: 0px; }
+.peek-backdrop.little-arc :is(.peek-dim, .peek-card) { bottom: auto; height: 50px; }
+.peek-dim { box-shadow: 0 0 0 100vmax var(--peek-dim); pointer-events: none; animation: px-peek-fade-in 150ms ease-out both; }
+.peek-backdrop.closing .peek-dim { animation: px-peek-fade-out 150ms ease-in both; }
+.peek-card { display: flex; flex-direction: column; overflow: hidden; pointer-events: none; transform-origin: 50% 40%; animation: px-peek-in 150ms cubic-bezier(.2, .8, .2, 1) both; background: transparent; color: var(--ink); }
+.peek-backdrop.closing .peek-card { animation: px-peek-out 150ms cubic-bezier(.4, 0, 1, 1) both; }
+.peek-bar { flex: none; box-sizing: border-box; height: 44px; display: flex; align-items: center; gap: 6px; padding: 0 10px; pointer-events: auto; height: 44px; gap: 8px; padding: 0 10px; background: var(--deep); box-shadow: 0 3px 0 var(--ink); }
+.peek-host { flex: 1 1 0; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 15px; color: var(--yellow); }
+.peek-field { flex: 1 1 0; min-width: 0; height: 30px; box-sizing: border-box; padding: 0 10px; font: inherit; outline: none; height: 30px; border: 0; border-radius: 0; background: var(--side); color: var(--ink); box-shadow: var(--pxs, 0 0 0 2px var(--ink)); }
+.peek-page { position: relative; flex: 1 1 auto; min-height: 0; background: transparent; }
+.peek-backdrop:not(.ready) .peek-page { background: var(--side); pointer-events: auto; }
+.peek-backdrop.little-arc .peek-page { display: none; }
+.peek-backdrop.loading .peek-page::after { content: ''; position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; box-sizing: border-box; border: 3px solid var(--yellow); border-right-color: transparent; animation: px-spin 0.9s linear infinite; }
+@keyframes px-peek-in { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
+@keyframes px-peek-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(0.96); } }
+@keyframes px-peek-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes px-peek-fade-out { from { opacity: 1; } to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .peek-card { animation-name: px-peek-fade-in; }
+  .peek-backdrop.closing .peek-card { animation-name: px-peek-fade-out; }
+  .peek-backdrop.loading .peek-page::after { animation: none; }
 }
-.peek-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  background: var(--deep);
-  box-shadow: 0 3px 0 var(--ink);
-}
-.peek-host { flex: 1 1 0; min-width: 0; font-size: 15px; color: var(--yellow); }
 .peek-btn { flex: none; }
 
 /* Split View (docs/PEEK-SPLIT.md §4): Margin's own <m-pane>s, flexed by the split's ratios, and an <m-divider> between

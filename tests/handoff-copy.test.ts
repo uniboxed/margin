@@ -306,11 +306,14 @@ test('newWindow made ready out of sight (Margin.app at its launch): a blank page
   const blank = (await handlers.newWindow({ fullscreen: false, url: 'about:blank', background: true } as any))!;
   assert.deepEqual(fake.createdWith[0], { focused: true, url: 'about:blank' }, 'focused, whatever an older app asks');
   assert.equal(fake.tabs.get(blank.windowId * 10)?.url, 'about:blank', 'nothing loaded in it');
-  const page = (await handlers.newWindow({ fullscreen: false, url: 'https://a.example/' }))!;
-  assert.deepEqual(fake.createdWith[1], { focused: true, url: 'https://a.example/' }, 'a web page: a split\'s pane window opened at its pane\'s page (docs/PEEK-SPLIT.md §4)');
-  const other = (await handlers.newWindow({ fullscreen: false, url: 'file:///etc/hosts' }))!;
+  const app = { app: true, tab: { windowId: null } } as any;
+  const page = (await handlers.newWindow({ fullscreen: false, url: 'https://a.example/' }, app))!;
+  assert.deepEqual(fake.createdWith[1], { focused: true, url: 'https://a.example/' }, 'a web page: a split\'s pane window or Peek\'s card window opened at its page (docs/PEEK-SPLIT.md §2, §4)');
+  const other = (await handlers.newWindow({ fullscreen: false, url: 'file:///etc/hosts' }, app))!;
   assert.deepEqual(fake.createdWith[2], { focused: true }, 'any other address ignored');
-  for (const w of [blank, page, other]) { fake.windows.delete(w.windowId); fake.tabs.delete(w.windowId * 10); }
+  const notApp = (await handlers.newWindow({ fullscreen: false, url: 'https://a.example/' }))!;
+  assert.deepEqual(fake.createdWith[3], { focused: true }, 'a web page only when Margin.app asks');
+  for (const w of [blank, page, other, notApp]) { fake.windows.delete(w.windowId); fake.tabs.delete(w.windowId * 10); }
   fake.windows.get(1)!.focused = true;
 });
 

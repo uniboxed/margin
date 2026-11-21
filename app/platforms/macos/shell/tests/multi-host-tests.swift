@@ -167,6 +167,7 @@ func multiHostTests() {
     // ---- a card (Safari's window in the card's role) over an app: main never parked, the stray rule leaves it alone ----
     do {
         let (w, e) = world()
+        w.toolbarAbove = ["com.apple.Safari"] // (its full-screen windows' toolbar a window of its own, resting above each)
         let safariPid = w.start("com.apple.Safari", policy: .regular, windows: 1)
         let copy = FakeSafariCopy(w) { safariPid }
         copy.wire(e)
@@ -190,6 +191,22 @@ func multiHostTests() {
         check("multi-host: the stray rule leaves a visible card's window alone through polls (in Margin's Space, shown: no stray, no park)",
               inMargin(w, cw) && w.bounds(window: cw) == card && e.hosts[peek.id]?.phase == .shown && !parkedCard && inMargin(w, edit) && e.shown == peek.id,
               "\(events) \(String(describing: w.spaces(window: cw)))")
+        // The card's own full-screen toolbar (Safari's, resting above its window: as wide as the card, not the page area):
+        // the engine tells the observer the card's rect for its app, and the core reads such a window as its strip
+        // (kinds.rs `is_strip_of_any`; against the page area alone it was a small, transient window); never moved or parked.
+        let toolbar = w.toolbarOf[cw] ?? 0
+        let toolbarMark = w.calls.count
+        polls(w, e, 8)
+        let facts = e.observed().first { $0.pid == safariPid }
+        let tb = w.bounds(window: toolbar) ?? .zero
+        let one = [WindowKinds.Window(number: toolbar, bounds: tb, onScreen: true, place: .margin, everPlaced: true)]
+        let asStrip = WindowKinds.classify(one, app: WindowKinds.App(launchedByMargin: true, hosted: [cw], hostRects: facts?.hostRects ?? []), in: placement)[toolbar]?.kind
+        let alone = WindowKinds.classify(one, app: WindowKinds.App(launchedByMargin: true, hosted: [cw]), in: placement)[toolbar]?.kind
+        check("multi-host: a card's own toolbar is a strip of the card's rect (the engine gives its app the card's rect), never a small window; never moved or parked",
+              toolbar != 0 && facts?.hostRects == [card] && tb.width == card.width && tb.height < 100 && asStrip == .strip && alone == .transient
+              && WindowKinds.isStrip(tb, in: placement, rects: [card]) && !WindowKinds.isStrip(tb, in: placement)
+              && !w.calls.dropFirst(toolbarMark).contains { $0.hasPrefix("move \(toolbar) ") } && w.spaces(window: toolbar) == w.spaces(window: cw),
+              "\(toolbar) \(String(describing: facts?.hostRects)) \(tb) \(String(describing: asStrip)) \(String(describing: alone)) \(w.calls.dropFirst(toolbarMark).filter { $0.hasPrefix("move") })")
         // Margin's window leaving full screen: every visible host parked, nothing left in a user Space.
         _ = hostRun { await e.parkShown(why: "test") }
         check("multi-host: parked with nothing shown: the card and main both out of Margin's Space", w.spaces(window: cw) == [] && w.spaces(window: edit) == [] && e.shown == nil && e.visible.isEmpty,
@@ -251,5 +268,13 @@ func multiHostTests() {
         polls(w, e)
         check("multi-host: tiles off: both held through polls", w.bounds(window: n) == card && inMargin(w, n) && w.bounds(window: edit) == page && inMargin(w, edit) && e.visible.count == 2,
               "\(String(describing: w.bounds(window: n))) \(e.visible)")
+        // The window under the card (visible, not focused) moved off its place by something else: put back at its rect by
+        // the reconciler, as the focused one would be. (Fails if `desired` keeps only the focused host shown: the one
+        // under a card is then "parked" to it, and nothing puts it back.)
+        w.wins[edit]?.memberFrame = CGRect(x: 300, y: 60, width: 900, height: 700)
+        polls(w, e, 16)
+        check("multi-host: desired keeps every visible host shown: the window under a card, moved off its place, is put back at the page area, the card left at its rect and focused",
+              w.bounds(window: edit) == page && inMargin(w, edit) && w.bounds(window: n) == card && inMargin(w, n) && e.shown == notes.id && e.visible.count == 2,
+              "\(String(describing: w.bounds(window: edit))) \(String(describing: w.bounds(window: n))) \(e.visible)")
     }
 }

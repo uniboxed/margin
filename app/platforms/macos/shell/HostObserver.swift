@@ -47,6 +47,7 @@ final class HostObserver {
         var parked: [Int: UInt64] = [:] // its windows in a private Space Margin made → that Space
         var woken: Set<Int> = [] // windows it opened only so Margin could wake it
         var launchWindows: Set<Int> = [] // its windows when the first show of a window of it ended (an app Margin started)
+        var hostRects: [CGRect] = [] // its hosts' own rects (a card's, a split pane's: docs/PEEK-SPLIT.md §1)
     }
 
     // What it costs (the tests and the dev hook say it).
@@ -128,6 +129,7 @@ final class HostObserver {
             app.hosted = t.hosted
             app.woken = t.woken
             app.launchWindows = t.launchWindows
+            app.hostRects = t.hostRects
             app.running = sys.processRuns(pid: t.pid)
             app.policy = sys.policy(pid: t.pid)
             app.hidden = sys.isHidden(pid: t.pid)
@@ -152,7 +154,7 @@ final class HostObserver {
                 if onScreen != nil { w.onScreen = shown.contains(n) }
                 // (A menu, a tooltip, another layer's window: followed by the lists alone, while it's on screen. One no list
                 // has, its bounds not known yet, is read as any other.)
-                let light = t.hosted[n] == nil && w.bounds != .zero && (w.layer != 0 || ((w.bounds.width < WindowKinds.tinySide || w.bounds.height < WindowKinds.tinySide) && !WindowKinds.isStrip(w.bounds, in: placement)))
+                let light = t.hosted[n] == nil && w.bounds != .zero && (w.layer != 0 || ((w.bounds.width < WindowKinds.tinySide || w.bounds.height < WindowKinds.tinySide) && !WindowKinds.isStrip(w.bounds, in: placement, rects: t.hostRects)))
                 if light {
                     if w.onScreen != true || listed[n] == nil && onScreen != nil { app.windows[n] = nil; continue }
                     w.place = .unread

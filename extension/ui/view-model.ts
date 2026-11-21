@@ -45,7 +45,9 @@ export type UiState = {
   toast?: { id: string, text: string } | null,
   /** The background mini player's sources (Margin.app's `media` push: overlay.ts), or one. */
   media?: MediaSource[] | MediaSource | null,
-  peek?: { url: string, title?: string, spaceId?: string | null, littleArc?: boolean } | null,
+  // Peek's card and Little Arc (docs/PEEK-SPLIT.md §2, §3; Margin.app's `peek` push, ui/behaviors/card.ts): `loading`
+  // until its window is in place, `closing` as it goes, `query` Little Arc's field.
+  peek?: { url: string, title?: string, spaceId?: string | null, littleArc?: boolean, loading?: boolean, closing?: boolean, canGoBack?: boolean | null, canGoForward?: boolean | null, query?: string } | null,
   menu?: { kind: MenuTarget['kind'], id?: string | number | null, x?: number, y?: number, above?: boolean, confirming?: string | null } | null,
   editing?: { kind: 'space' | 'folder' | 'tab' | 'pin' | 'favorite', id: string | number } | null,
   // (`fresh`: a space just made, switched to as its editor closes.)
@@ -180,8 +182,15 @@ export type MediaView = {
 };
 export type PeekView = {
   url: string, host: string, title: string, spaceId: string, spaceName: string, spaceEmoji: string,
-  littleArc: boolean,
-  labels: { expand: string, copyUrl: string, close: string, back: string, forward: string },
+  /** Little Arc's address field first, no page yet (`isLittleArc`: the same, the name themes read). */
+  littleArc: boolean, isLittleArc: boolean,
+  /** Its window not in place yet (its page area covered, a loader there); `ready`: in place, its page showing through. */
+  loading: boolean, ready: boolean,
+  /** Going away (the reverse of its open, then gone). */
+  closing: boolean,
+  canGoBack: boolean, canGoForward: boolean,
+  query: string,
+  labels: { expand: string, copyUrl: string, close: string, back: string, forward: string, search: string },
 };
 export type GestureView = { pull: boolean, swipe: boolean, back: boolean, forward: boolean, armed: boolean, done: boolean, leaving: boolean, progress: number, percent: number };
 export type LauncherView = {
@@ -761,17 +770,27 @@ function fresh(input: ViewModelInput): ViewModel {
   }
 
   let peek: PeekView | null = null;
-  if (ui.peek && typeof ui.peek.url === 'string' && ui.peek.url) {
+  if (ui.peek && typeof ui.peek.url === 'string' && (ui.peek.url || ui.peek.littleArc || ui.peek.loading)) {
     const targetSpace = spaces.find((s) => s.id === ui.peek?.spaceId) ?? chip;
+    const url = ui.peek.url.slice(0, 2048);
+    const littleArc = !!ui.peek.littleArc;
+    const loading = !littleArc && ui.peek.loading !== false;
     peek = {
-      url: ui.peek.url,
-      host: hostOf(ui.peek.url) || ui.peek.url,
-      title: String(ui.peek.title || hostOf(ui.peek.url) || ui.peek.url).slice(0, 140),
+      url,
+      host: url ? hostOf(url) || url : '',
+      title: String(ui.peek.title || (url ? hostOf(url) || url : '')).slice(0, 140),
       spaceId: targetSpace?.id ?? '',
       spaceName: targetSpace?.name ?? '',
       spaceEmoji: targetSpace?.emoji ?? '',
-      littleArc: !!ui.peek.littleArc,
-      labels: { expand: 'Open in Space', copyUrl: 'Copy URL', close: 'Close', back: 'Back', forward: 'Forward' },
+      littleArc,
+      isLittleArc: littleArc,
+      loading,
+      ready: !littleArc && !loading && !ui.peek.closing,
+      closing: !!ui.peek.closing,
+      canGoBack: ui.peek.canGoBack !== false,
+      canGoForward: ui.peek.canGoForward !== false,
+      query: String(ui.peek.query ?? '').slice(0, 2048),
+      labels: { expand: 'Open in Space', copyUrl: 'Copy URL', close: 'Close', back: 'Back', forward: 'Forward', search: 'Search or enter address' },
     };
   }
 

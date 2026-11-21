@@ -24,6 +24,7 @@ import * as away from './away.ts';
 import { appLink } from './app-link.ts';
 import { createHostedTabs, type HostedTabsApi } from './hosted.ts';
 import { createMediaHub, type MediaReportInput } from './media.ts';
+import { createPeekAnswers } from './peek.ts';
 import { matchAirTrafficRule } from '../shared/air-traffic.ts';
 import { shrinkPicture } from './picture.ts';
 import { noticeAnswered } from './notices.ts';
@@ -177,7 +178,9 @@ const appState = (windowId: number | null) => {
 
 const launcherOpening = new Map<string, Promise<{ tabId: number, shown: number }>>();
 // Margin.app hosting this profile's window in its page area (background/hosted.ts): its items' tabs.
-const hostedTabs = createHostedTabs(() => api.tabs as unknown as HostedTabsApi, shrinkPicture);
+export const hostedTabs = createHostedTabs(() => api.tabs as unknown as HostedTabsApi, shrinkPicture, (windowId, msg) => appLink.push(windowId, msg));
+// A page's Peek clicks waiting for Margin.app's word (background/peek.ts).
+const peekAnswers = createPeekAnswers();
 // The background mini player's sources (background/media.ts): each tab's, told to Margin.app for its window.
 export const mediaHub = createMediaHub({ push: (windowId, msg) => appLink.push(windowId, msg), itemOf: (tabId) => hostedTabs.itemOf(tabId) });
 
@@ -202,7 +205,10 @@ export const handlers = {
     const windowId = sender.tab?.windowId ?? null;
     const fullscreen = windowId != null && capabilities?.marginFullscreen && engine.fullscreen ? await engine.fullscreen.isFullscreen(windowId) : false;
     // `since`: with the page's own address, which copy's tab ids it may trust (shared/stored.ts).
-    return { tabId: sender.tab?.id ?? null, windowId, instanceId, fullscreen, app: appState(windowId), since: thisCopy().since };
+    // `card`: its window is Peek's card window in Margin.app (background/hosted.ts): its Esc and ⌘↩ are the card's.
+    // `pinned`: Margin.app shows a pin's or favorite's item in it (Auto-Peek).
+    const tabId = sender.tab?.id;
+    return { tabId: tabId ?? null, windowId, instanceId, fullscreen, app: appState(windowId), since: thisCopy().since, ...(windowId != null && hostedTabs.isCard(windowId) ? { card: true } : {}), ...(tabId != null && hostedTabs.isPinned(tabId) ? { pinned: true } : {}) };
   },
   // Whether this copy owns the state: only an owner answers this (the others
   // say `stale`, background.ts), after checking the stored owner again.
@@ -822,13 +828,14 @@ export const handlers = {
   // at its launch (HostedSession.prepareBrowser): nothing loaded in it. Always focused: a hidden Safari (one Margin.app
   // started) asked for an unfocused window answers its id but never orders it in (the real Mac, 2026-11-16), so the
   // app couldn't find it; the app keeps its own Space current while it's made.
-  async newWindow({ fromWindowId, fullscreen, url }: { fromWindowId?: number, fullscreen?: boolean, url?: string } = {}) {
+  async newWindow({ fromWindowId, fullscreen, url }: { fromWindowId?: number, fullscreen?: boolean, url?: string } = {}, sender?: BrowserMessageSender) {
     const from = Number.isInteger(fromWindowId) ? await api.windows.get(fromWindowId as number).catch(() => null) : null;
     const spaceId = from ? M.activeSpaceId(await load(), from.id) : null;
     const full = fullscreen ?? from?.state === 'fullscreen';
-    // (A web page's address: a split's pane window, Margin.app's, opened at its pane's page (docs/PEEK-SPLIT.md §4):
-    // never Safari's empty new-tab page, whose address field keeps the toolbar down over the page.)
-    const page = typeof url === 'string' && /^https?:\/\//i.test(url) && url.length <= 8192;
+    // (A web page's address only from Margin.app: its Peek card window or a split's pane window, opened at its page
+    // (docs/PEEK-SPLIT.md §2, §4), never Safari's empty new-tab page, whose address field keeps the toolbar down over
+    // the page. Any other address, or one asked by anything else, is ignored, as before.)
+    const page = !!sender?.app && typeof url === 'string' && /^https?:\/\//i.test(url) && url.length <= 8192;
     const props = { focused: true, ...(url === 'about:blank' || page ? { url } : {}) };
     markMarginOpening();
     let win;
@@ -1008,15 +1015,43 @@ export const handlers = {
     if (!sender?.app) throw new Error('the app\'s request only');
     return hostedTabs.promotePeek(message);
   },
-  async openPeek({ url, source = 'shift-click', spaceId = null }: { url: string, source?: string, spaceId?: string | null }, sender: BrowserMessageSender) {
-    if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return null;
+  // Peek's card closed in Margin.app: its page's tab closed, its window kept (parked) with a blank tab.
+  async hostCardClose(_message: object, sender: BrowserMessageSender) {
+    if (!sender?.app) throw new Error('the app\'s request only');
+    return hostedTabs.closeCard();
+  },
+  // A page's Peek click (content/peek.ts), asked of Margin.app for the page's window (background/peek.ts): `hosted`
+  // once the app answered yes by `notAfter`; else no (and the app told to drop it), with the link's new tab opened
+  // here (`opened`) when the page's link opens one (`target=_blank`): the page opens a same-tab link itself.
+  async openPeek({ url, source = 'shift-click', newTab = false, notAfter }: { url: string, source?: string, newTab?: boolean, notAfter?: number }, sender: BrowserMessageSender) {
+    if (sender?.app || typeof url !== 'string' || url.length > 4096 || !/^https?:\/\//i.test(url)) return null;
     const win = sender?.tab?.windowId ?? null;
-    if (appLink.linked() && win != null && appLink.push(win, { type: 'peekOpen', url, source, spaceId })) {
-      return { ok: true, hosted: true };
+    const by = Number.isFinite(notAfter) ? Math.min(notAfter as number, Date.now() + 1000) : Date.now() + 300;
+    let ok: boolean | null = false;
+    if (appLink.linked() && win != null) {
+      const id = peekAnswers.id();
+      const answer = peekAnswers.wait(id, by);
+      if (appLink.push(win, { type: 'peekOpen', id, url, source: source === 'auto-peek' ? 'auto-peek' : 'shift-click', tabId: sender.tab?.id ?? null, notAfter: by })) ok = await answer;
+      else { peekAnswers.answer(id, false); ok = false; }
+      if (ok === null) appLink.push(win, { type: 'peekCancel', id });
     }
-    // Unlinked fallback: open in a new tab in the current space.
-    const tab = await openTab({ windowId: win ?? undefined, url, spaceId: spaceId ?? undefined });
-    return { ok: true, hosted: false, tabId: tab?.id ?? null };
+    if (ok === true) return { ok: true, hosted: true };
+    if (!newTab || win == null) return { ok: true, hosted: false };
+    const opener = sender.tab;
+    const tab = await api.tabs.create({ windowId: win, url, active: true, ...(Number.isInteger(opener?.index) ? { index: (opener!.index as number) + 1 } : {}) }).catch(() => null);
+    return { ok: true, hosted: false, opened: tab?.id != null };
+  },
+  // Margin.app's answer to a `peekOpen` push (above): whether it shows the card. The app's word only.
+  async peekAnswer({ id, ok }: { id?: string, ok?: boolean }, sender: BrowserMessageSender) {
+    if (!sender?.app) throw new Error('the app\'s request only');
+    return peekAnswers.answer(id, ok);
+  },
+  // Esc or ⌘↩ in a page of Peek's card window (content/peek.ts startCardKeys): told to Margin.app as
+  // `cardKey { key }`, only from a tab of a window the app made the card's (background/hosted.ts).
+  async cardKey({ key }: { key?: string }, sender: BrowserMessageSender) {
+    const win = sender?.tab?.windowId;
+    if (sender?.app || win == null || (key !== 'close' && key !== 'expand') || !hostedTabs.isCard(win)) return false;
+    return appLink.push(win, { type: 'cardKey', key });
   },
   // What a page plays (content/media.ts): the mini player's sources (background/media.ts).
   async mediaState(report: MediaReportInput, sender: BrowserMessageSender) {

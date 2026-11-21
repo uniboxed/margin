@@ -740,6 +740,10 @@ const withRuntime = Object.assign(T, {
   },
   rtFolderRename(folderId: string, name: string) { rt.mock.state = { ...rt.mock.state, folders: rt.mock.state.folders.map((f) => (f.id === folderId ? { ...f, name } : f)) }; rt.host.setState(rt.mock.state); },
   // The tab in front, the space's tabs, and the mini player the view model has (mini-player.test.ts).
+  // Peek's card (ui/behaviors/card.ts): the app's word on it, as the overlay passes it on; where its page is measured.
+  rtCard(peek: unknown) { return rt.runtime!.card.show(peek); },
+  rtPeekPage() { return rt.runtime!.measurePeekPage(); },
+  rtPeekVm() { const p = rt.runtime!.vm!.peek; return p ? { loading: p.loading, ready: p.ready, closing: p.closing, littleArc: p.littleArc, host: p.host, url: p.url } : null; },
   rtMedia() { const vm = rt.runtime!.vm!; return { front: vm.tab?.id ?? null, today: vm.space.today.map((t) => t.id), media: vm.media ? { tabId: vm.media.tabId, title: vm.media.title, paused: vm.media.paused } : null }; },
   // No tab audible (as Margin.app's state has none: its mini player is the copies' `media` push only).
   rtSilence() {

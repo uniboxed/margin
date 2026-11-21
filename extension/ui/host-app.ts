@@ -520,15 +520,31 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           void post('perform', { name, arg: arg ?? null }).catch(() => {});
           return true;
         case 'copyUrl':
-        case 'peek.open':
-        case 'peek.close':
-        case 'peek.expand':
-        case 'peek.setSpace':
-        case 'peek.back':
-        case 'peek.forward':
           if (typeof arg?.url !== 'string' || !arg.url) return false;
           void post('perform', { name, arg: { url: arg.url } }).catch(() => {});
           return true;
+        // Peek's card and Little Arc (ui/behaviors/card.ts; app/platforms/macos/shell/HostedPeek.swift): only Margin's
+        // own window has one. Close, back and forward say nothing more; Expand its space; Little Arc's field its
+        // address or search (`peek.go`), and that it's open (`peek.littleArc`: ⌘W and Esc are the card's then).
+        case 'peek.close':
+        case 'peek.back':
+        case 'peek.forward':
+          if (!appWindow) return false;
+          void post('perform', { name, arg: {} }).catch(() => {});
+          return true;
+        case 'peek.expand':
+        case 'peek.littleArc':
+          if (!appWindow) return false;
+          void post('perform', { name, arg: { spaceId: typeof arg?.spaceId === 'string' ? arg.spaceId : null } }).catch(() => {});
+          return true;
+        case 'peek.go': {
+          if (!appWindow) return false;
+          const url = typeof arg?.url === 'string' && /^https?:\/\//i.test(arg.url) && arg.url.length <= 2048 ? arg.url : null;
+          const query = typeof arg?.query === 'string' && arg.query.trim() ? arg.query.trim().slice(0, 1000) : null;
+          if (!url && !query) return false;
+          void post('perform', { name, arg: { ...(url ? { url } : { query }), spaceId: typeof arg?.spaceId === 'string' ? arg.spaceId : null } }).catch(() => {});
+          return true;
+        }
         // Themes (app/platforms/macos/shell/ShellThemes.swift): the file picker; a checked theme kept; one removed.
         case 'theme.import':
           void post('perform', { name, arg: null }).catch(() => {});

@@ -16,7 +16,7 @@ import { startTrackpad } from './trackpad.ts';
 import { SWITCH_GRACE_MS } from '../shared/switching.ts';
 import { startLoads } from './loads.ts';
 import { startMedia } from './media.ts';
-import { startPeek } from './peek.ts';
+import { PEEK_ANSWER_MS, startCardKeys, startPeek } from './peek.ts';
 import { fromStorage, onlyMark, openTabsCurrent, readForPage, takesChanges, withChanges } from '../shared/stored.ts';
 import { APP_LINK_KEY, appDraws, drawsWindow } from '../shared/app-link.ts';
 import { startScrollRecord } from './scroll-record.ts';
@@ -402,6 +402,8 @@ export function startCore() {
     }
     helloWindowId = ctx.windowId;
     fullscreen = ctx.fullscreen;
+    cardKeys.set((ctx as { card?: boolean }).card === true);
+    appPinned = (ctx as { pinned?: boolean }).pinned === true;
     // The background's word on the link (it may be newer than storage's).
     if (ctx.app !== undefined) {
       const drawn = { ...(appLink?.drawn ?? {}) };
@@ -438,8 +440,14 @@ export function startCore() {
       if (!dormant) void send('mediaState', report);
     },
   });
+  // Peek's link clicks (content/peek.ts): only in a window Margin.app draws, never in a copy that stood back; the
+  // card asked of the background (which asks the app: background/peek.ts), the link opening as it would have when
+  // the app doesn't take it in time.
   startPeek({
+    isDrawn: () => !dormant && appLink !== undefined && drawsWindow(appLink, windowId ?? helloWindowId),
     isPinnedOrFav: () => {
+      // (Margin.app's library says so for its items: the copy's own state doesn't have its pins.)
+      if (appPinned) return true;
       const s = state;
       if (!s) return false;
       const t = tabId != null ? s.tabs?.[tabId] : null;
@@ -450,16 +458,30 @@ export function startCore() {
       return (s.favorites ?? []).some((f: any) => V.normalizeUrl(f.url) === key);
     },
     autoPeekEnabled: () => state?.settings?.autoPeekPins !== false,
-    onPeek: (url, source) => {
-      if (!dormant) void send('openPeek', { url, source });
+    ask: async (url, source, newTab) => {
+      const res = await send('openPeek', { url, source, newTab, notAfter: Date.now() + PEEK_ANSWER_MS - 50 }, false);
+      // (Refused, but the background opened the new tab already: done as the page would have had it.)
+      return res?.hosted === true || res?.opened === true;
+    },
+    fallback: ({ url, newTab }) => {
+      if (!newTab) return void location.assign(url);
+      // (No background to open it: the page's own way, which Safari may block this long after the click.)
+      window.open(url, '_blank', 'noopener');
     },
   });
+  // A pin's or favorite's item in Margin.app (the copy says so: hello's `pinned`, then `peekPinned`).
+  let appPinned = false;
+  // Esc and ⌘↩ in a page of the card's window (the copy says which: hello's `card`, then `cardWindow`).
+  const cardKeys = startCardKeys({ send: (key) => { if (!dormant) void send('cardKey', { key }, false); } });
   const onMessage = (message: any, _: BrowserMessageSender, sendResponse: (response?: any) => void) => {
     // Whether this page was opened from nothing (no referrer, its first
     // history entry), for the note on Safari's "New tabs open with"
     // (extension/engines/webkit/safari/newtab-hint.ts: Margin.app's overlay says it).
     if (message?.type === 'newtab-hint') return sendResponse({ fromNothing: !document.referrer && history.length === 1 });
     if (message?.type === 'windowState') return setFullscreen(!!message.fullscreen);
+    // This page's tab in the card's window of Margin.app's Peek, or out of it (background/hosted.ts).
+    if (message?.type === 'cardWindow' && typeof message.on === 'boolean') return cardKeys.set(message.on);
+    if (message?.type === 'peekPinned' && typeof message.on === 'boolean') { appPinned = message.on; return; }
     if (message?.type === 'mediaCommand' && typeof message.command === 'string') {
       return sendResponse({ ok: mediaWatcher.command(message.command) });
     }
