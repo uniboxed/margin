@@ -7169,3 +7169,16 @@ and the copy makes the window around that tab (`windows.create({ tabId, focused,
 `windowAround`: a blank left behind in a window it would empty), so the window never has a blank first page. An older
 copy ignores `itemId` and opens blank, as before; a browser that refuses `tabId` falls back the same way. Checks:
 tests/hosted-tabs.test.ts (windowAround), split-tests.swift (the payload names the item; failing without it).
+
+## A new pane's or card's Safari window: its page given the keys before it's revealed (2026-11-21)
+
+On the real screen a new pane window came up with Safari's full-screen toolbar down over it and the keys in its address
+field (its text selected), whether it was made at its page (`windows.create({ url })`) or around an open tab. Safari
+keeps the toolbar down while the keys are there, and it stayed down (even a click in the pane didn't move them). Tested by
+hand: Accessibility's AXFocused on the window's AXWebArea moved the keys into the page and the toolbar rested at once
+(822,41 → 822,-11); the window became key with it, and giving the keys back to the main pane kept the pane's toolbar at
+rest. Now, for every Safari window made in a layout (a pane's, the card's), the engine gives its page the keys under its
+loader (`HostEngine.focusPages`, `HostSystem.focusPage`: a breadth-first walk to the AXWebArea, 64 elements at most),
+then fronts the layout again so the focused host has the keys, then waits for the toolbar to rest (`toolbarsRest`)
+before the reveal. No private call, no polling; one Accessibility call per new window. Checks: pane-fronting-tests.swift
+(a toolbar that wouldn't rest by itself: page focused, revealed resting; failing without it).

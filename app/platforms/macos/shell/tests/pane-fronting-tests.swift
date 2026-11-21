@@ -186,12 +186,16 @@ private func paneFrontingCase(stacked: Bool, restsAfter: Double?, band: Bool = f
         check("\(name) B: the pane's loader lifted only once its tab was in and its own full-screen toolbar rested (never out over its page revealed)",
               lifted.map { !$0.toolbarOut && $0.tabIn } == true && window.paneLoadingsSaid.last?.item == nil,
               "\(String(describing: lifted)) \(window.paneLoadingsSaid.suffix(3).map { $0.item ?? "nil" })")
-        check("\(name) B: …its wait said (out by 52 pt at its reveal, resting after ~70 ms)",
-              waited?.contains("resting after") == true, "\(String(describing: waited))")
+        check("\(name) B: …resting by its reveal: its wait said (out by 52 pt, resting after ~70 ms), or its page given the keys first so none was needed",
+              waited?.contains("resting after") == true || (waited == nil && w.pageFocused.contains(paneWindow)), "\(String(describing: waited)) \(w.pageFocused)")
     } else {
-        check("\(name) B: a toolbar that doesn't go back up: the pane revealed anyway once the wait is over (bounded: 0.5 s), said",
-              lifted.map { $0.tabIn && $0.toolbarOut } == true && waited?.contains("still out (revealed anyway) after 50") == true && window.paneLoadingsSaid.last?.item == nil,
-              "\(String(describing: lifted)) \(String(describing: waited))")
+        // (Safari keeps its toolbar down while the keys are in the new window's address field, whatever comes after (the
+        // real screen, 2026-11-21: a pane made at its page, or around its tab): its page given the keys under its loader,
+        // the toolbar rests, then the keys back to the focused pane; before: revealed with the toolbar out after 0.5 s.)
+        check("\(name) B: a toolbar that wouldn't go back up by itself: the new window's page given its keys under its loader, then revealed with its toolbar resting, the keys back to the focused pane",
+              w.pageFocused.contains(paneWindow) && lifted.map { $0.tabIn && !$0.toolbarOut } == true && waited?.contains("still out") != true && window.paneLoadingsSaid.last?.item == nil
+              && lines.contains { $0.contains("new windows' pages given their keys") },
+              "\(String(describing: lifted)) \(String(describing: waited)) focused pages \(w.pageFocused)")
     }
     let liftMs = lifted.map { Int(($0.at - t0) * 1000) } ?? -1
     Diagnostics.echo = echo

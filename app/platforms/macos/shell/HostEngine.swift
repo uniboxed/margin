@@ -1251,6 +1251,19 @@ final class HostEngine {
     // Spaces: out when its bottom is below its window's top), at most `toolbarRestWait`, only while one is out (a read
     // per host otherwise: never polled at rest). Never moved, parked or reordered (2026-11-07). Nil: none was out;
     // else what was waited for, said.
+    func focusPages(_ ids: [HostID]) async -> String? {
+        let list = ids.compactMap { hosts[$0] }.filter { $0.phase == .shown && $0.safariWindow != nil && isVisible($0.id) }
+        guard !list.isEmpty else { return nil }
+        let t0 = sys.now()
+        var taken: [String] = []
+        for h in list { taken.append("\(h.id) \(await sys.focusPage(pid: h.pid, window: h.window) ? "taken" : "not taken")") }
+        // (Each focus made its window key: the layout's order and keys as they should be again, the focused one last.)
+        if visible.count > 1 { await frontVisible() } else if let s = shown.flatMap({ hosts[$0] }) { _ = await front(s) }
+        let line = "host: new windows' pages given their keys (\(taken.joined(separator: ", "))), the keys back to \(shown.map(\.description) ?? "none") in \(ms(since: t0)) ms"
+        Diagnostics.note(line)
+        return line
+    }
+
     func toolbarsRest(_ ids: [HostID]) async -> String? {
         let list = ids.compactMap { hosts[$0] }.filter { $0.phase == .shown && $0.mode == .fullScreen && isVisible($0.id) }
         guard !list.isEmpty else { return nil }

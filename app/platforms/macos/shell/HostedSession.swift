@@ -122,6 +122,10 @@ protocol HostedEngine: AnyObject {
     // A new pane's reveal: its own full-screen toolbar out over its page waited for until it rests (HostEngine
     // `toolbarsRest`, bounded); nil: none was out.
     func toolbarsRest(_ ids: [HostID]) async -> String?
+    // New Safari windows' pages given their window's keys (out of the address field Safari leaves them in, which keeps
+    // its full-screen toolbar down over the page), then the layout's focused host given the keys back (HostEngine
+    // `focusPages`); nil: none was a Safari window.
+    func focusPages(_ ids: [HostID]) async -> String?
 }
 
 // One of a profile's hosted Safari windows: its profile and its role (docs/PEEK-SPLIT.md §1).
@@ -175,6 +179,7 @@ extension HostedEngine {
     func liveFollowers() -> (follow: Int, visible: Int) { (shownFillsPage ? 1 : 0, shown == nil ? 0 : 1) }
     var knownAppMinimums: [String: CGSize] { [:] }
     func toolbarsRest(_ ids: [HostID]) async -> String? { nil }
+    func focusPages(_ ids: [HostID]) async -> String? { nil }
     func start(bundleId: String) async -> HostApp? { nil }
     func prepare(_ target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64) async -> HostResult { .failed(.launch, "no engine to prepare it") }
 }
@@ -898,7 +903,11 @@ final class HostedSession: LibraryDelegate {
             shownItems.append(part.item)
         }
         if !made.isEmpty {
-            _ = await engine.toolbarsRest(made.filter { id in parts.contains { $0.target.id == id && shownItems.contains($0.item) } })
+            let new = made.filter { id in parts.contains { $0.target.id == id && shownItems.contains($0.item) } }
+            // (Its page given the keys first, under its loader: a window Safari made keeps them in its address field and
+            // its toolbar down over the page whatever made it, at its page or around its tab: the real screen, 2026-11-21.)
+            _ = await engine.focusPages(new)
+            _ = await engine.toolbarsRest(new)
             releaseReveal(w.id)
         }
         guard shownItems.contains(main) else { settleHosting(); onChange?(); return }

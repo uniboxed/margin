@@ -123,6 +123,18 @@ final class FakeHostWorld: HostSystem {
         return true
     }
     func frontApp() -> pid_t? { front }
+    // A window's page given the keys (AXFocused on its web area): out of its address field, so its toolbar slides back up
+    // (`pageFocusRests` later, as Safari's ~70 ms slide); the window made key (raised, unless its raise doesn't take).
+    var pageFocused: [Int] = []
+    var pageFocusRests = 0.07
+    func focusPage(pid: pid_t, window: Int) async -> Bool {
+        calls.append("focusPage \(pid) \(window)")
+        guard wins[window]?.pid == pid else { return false }
+        pageFocused.append(window)
+        if toolbarOut.contains(window) { toolbarRestsAt[window] = min(toolbarRestsAt[window] ?? .infinity, clock + pageFocusRests) }
+        if !unraisable.contains(window) { raised.removeAll { $0 == window }; raised.insert(window, at: 0) }
+        return true
+    }
     // How long an app takes to answer the raise (Accessibility's, at each activation: Messages 79 ms, 2026-11-17).
     var activateLag = 0.0
     func hiddenInFullScreen(_ n: Int) -> Bool {
