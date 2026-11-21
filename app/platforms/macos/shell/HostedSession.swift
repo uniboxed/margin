@@ -104,6 +104,8 @@ protocol HostedEngine: AnyObject {
     // press.
     func setLayout(main: HostTarget, mainRect: CGRect?, extras: [HostExtra], focused: HostID?, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64) async -> [HostID: HostResult]
     func focus(_ id: HostID) async -> Bool
+    // ...its window made key already (the pane click tap's press): Margin's word only, nothing fronted (HostEngine `focus`).
+    func focus(_ id: HostID, fronted: Bool) async -> Bool
     func visibleHost(at point: CGPoint) -> HostID?
     // A split's panes (docs/PEEK-SPLIT.md §4): a drag's frame with every visible host's rect in it, as the page measured
     // them; the page area and those rects taken at the drag's end (or any other change); a host's minimum as learnt.
@@ -171,6 +173,7 @@ extension HostedEngine {
         return out
     }
     func focus(_ id: HostID) async -> Bool { false }
+    func focus(_ id: HostID, fronted: Bool) async -> Bool { fronted ? false : await focus(id) }
     func visibleHost(at point: CGPoint) -> HostID? { nil }
     func follow(_ placement: HostPlacement, rects: [HostID: CGRect]) { follow(placement) }
     func pageRectChanged(_ placement: HostPlacement, rects: [HostID: CGRect]) async -> Bool { await pageRectChanged(placement) }
@@ -1269,15 +1272,36 @@ final class HostedSession: LibraryDelegate {
     }
 
     // A visible host pressed in Margin's window `w` (its window's own press, or one in its pane around a smaller window):
-    // focused, its item the window's item shown (the sidebar's highlight).
-    func pressedHost(_ id: HostID, in w: HostedWindow) {
+    // focused, its item the window's item shown (the sidebar's highlight). `fronted`: its window has the keys already
+    // (the pane click tap's press): the engine fronts nothing (`focus(_:fronted:)`), the rest the same.
+    func pressedHost(_ id: HostID, in w: HostedWindow, fronted: Bool = false) {
         guard w.id == hostingWindow, var l = layout[w.id], let item = l.items.first(where: { open[$0]?.host == id }) else { return }
         Task {
-            guard await self.engine.focus(id), self.layout[w.id] != nil else { return }
+            guard await self.engine.focus(id, fronted: fronted), self.layout[w.id] != nil else { return }
             l.focused = item
             self.layout[w.id] = l
             self.shown[w.id] = item
             self.onChange?()
+        }
+    }
+
+    // The pane click tap's word on a press in a pane without the keys (PaneClickTap.swift), one line each: its window made
+    // key for it and the press let go to it (focused here as a press is, its item the window's shown, nothing fronted
+    // again: the monitor's own press leaves it), or let go as before (not key in time, or another window over the pane
+    // there: the monitor's press focuses it the usual way).
+    func paneClicked(_ w: HostedWindow, _ r: PaneClickResult) {
+        let id = engine.target(ofWindow: r.window)?.id
+        let who = id.map { "host: \($0)" } ?? "host: window \(r.window)"
+        let had = engine.shown.map { " while \($0) had the keys" } ?? ""
+        switch r.outcome {
+        case .delivered(let already):
+            Diagnostics.note(already ? "\(who): a click in its pane\(had): its window \(r.window) key already (\(r.ms) ms; Margin's word behind): the click delivered"
+                                     : "\(who): a click in its pane\(had): its window \(r.window) key in \(r.ms) ms (\(r.crossApp ? "its app made the front app" : "in its own app")): the click delivered")
+            if let id, w.id == hostingWindow { pressedHost(id, in: w, fronted: true) }
+        case .notKey:
+            Diagnostics.note("\(who): a click in its pane\(had): its window \(r.window) not key within \(r.ms) ms: the click let go as before (it only focuses; the pane focused the usual way)")
+        case .covered(let c):
+            Diagnostics.note("\(who): a click in its pane over another window there (window \(c.window), pid \(c.pid), layer \(c.layer)): let go as before")
         }
     }
 

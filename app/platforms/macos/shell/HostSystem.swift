@@ -491,6 +491,120 @@ nonisolated final class HostAX: @unchecked Sendable {
     func forget(pid: pid_t) { queue.async { self.elements = self.elements.filter { $0.value.pid != pid } } }
 }
 
+// The quick focus of the pane click tap (PaneClickTap.swift), on the tap's own thread while a press waits: a pane's
+// window made key through Accessibility, never a click: its app made the front app (AXFrontmost) when it isn't, the
+// window its app's main one (AXMain) and raised (AXRaise); key once its app is the front one with that window focused
+// (both read from the app itself, every 1 ms by the tap). Only ever the pane's own window, found by its number: never
+// a full-screen Safari window's toolbar, which is a window of its own. Each call bounded by the press's time left
+// (Accessibility's messaging timeout, set on this class's own elements only: never the system-wide one, which would
+// set every element's in Margin, HostAX's too), so a busy app never holds the input past the tap's cap. The panes'
+// window elements looked up ahead on a queue of their own (`warm`); on the tap's thread only one missing at a press.
+nonisolated final class AXPaneFocus: PaneFocusing, @unchecked Sendable {
+    private let lock = NSLock()
+    private var elements: [Int: (pid: pid_t, element: AXUIElement)] = [:]
+    private let warmQueue = DispatchQueue(label: "margin.pane-click.warm", qos: .utility)
+    let refuses = PrivateCalls.inTests
+
+    func now() -> Double { Double(clock_gettime_nsec_np(CLOCK_UPTIME_RAW)) / 1e9 }
+    func pause(_ seconds: Double) { if seconds > 0 { usleep(useconds_t(seconds * 1e6)) } }
+
+    // A messaging timeout for what's left (5 ms at least, 150 at most); nil: no time left.
+    private func timeout(_ until: Double) -> Float? {
+        let left = until - now()
+        return left <= 0 ? nil : Float(min(0.15, max(0.005, left)))
+    }
+
+    private func attr(_ e: AXUIElement, _ name: String) -> AnyObject? {
+        var v: AnyObject?
+        return AXUIElementCopyAttributeValue(e, name as CFString, &v) == .success ? v : nil
+    }
+
+    private func number(_ e: AnyObject?) -> Int? {
+        guard let e, CFGetTypeID(e) == AXUIElementGetTypeID() else { return nil }
+        var n: CGWindowID = 0
+        return hostWindowNumber(e as! AXUIElement, &n) == .success && n > 0 ? Int(n) : nil
+    }
+
+    func keyState(pid: pid_t, until: Double) -> (front: Bool, window: Int?)? {
+        guard !refuses, let t = timeout(until) else { return nil }
+        let app = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(app, t)
+        guard let front = attr(app, kAXFrontmostAttribute) as? Bool else { return nil }
+        guard let t2 = timeout(until) else { return (front, nil) }
+        AXUIElementSetMessagingTimeout(app, t2)
+        return (front, number(attr(app, kAXFocusedWindowAttribute)))
+    }
+
+    // Its element by its number: kept, else read from its app's windows (`until`: the time it may take).
+    private func element(pid: pid_t, window: Int, until: Double) -> AXUIElement? {
+        lock.lock()
+        let kept = elements[window]
+        lock.unlock()
+        if let kept, kept.pid == pid { return kept.element }
+        guard let t = timeout(until) else { return nil }
+        let app = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(app, t)
+        guard let list = attr(app, kAXWindowsAttribute) as? [AXUIElement], let found = list.first(where: { number($0) == window }) else { return nil }
+        lock.lock()
+        elements[window] = (pid, found)
+        lock.unlock()
+        return found
+    }
+
+    func focus(pid: pid_t, window: Int, frontmost: Bool, until: Double) -> Bool {
+        guard !refuses else { return false }
+        var asked = false
+        if frontmost, let t = timeout(until) {
+            let app = AXUIElementCreateApplication(pid)
+            AXUIElementSetMessagingTimeout(app, t)
+            asked = AXUIElementSetAttributeValue(app, kAXFrontmostAttribute as CFString, kCFBooleanTrue) == .success
+        }
+        guard let w = element(pid: pid, window: window, until: until) else { return asked }
+        if let t = timeout(until) {
+            AXUIElementSetMessagingTimeout(w, t)
+            asked = AXUIElementSetAttributeValue(w, kAXMainAttribute as CFString, kCFBooleanTrue) == .success || asked
+        }
+        if let t = timeout(until) {
+            AXUIElementSetMessagingTimeout(w, t)
+            asked = AXUIElementPerformAction(w, kAXRaiseAction as CFString) == .success || asked
+        }
+        // (A stale element, its window gone from Accessibility's list since: looked up again at the next press.)
+        if !asked {
+            lock.lock()
+            if elements[window]?.element === w { elements[window] = nil }
+            lock.unlock()
+        }
+        return asked
+    }
+
+    // The window server's on-screen windows above the pane's, front to back (its own list: no permission), the first
+    // that holds the point and shows (alpha above 0), none of Margin's own.
+    func cover(at point: CGPoint, above window: Int, except: [Int]) -> PaneClickCover? {
+        guard let n = CGWindowID(exactly: window), let list = CGWindowListCopyWindowInfo(.optionOnScreenAboveWindow, n) as? [[String: Any]] else { return nil }
+        for w in list {
+            guard let number = (w[kCGWindowNumber as String] as? NSNumber)?.intValue, !except.contains(number) else { continue }
+            if let alpha = (w[kCGWindowAlpha as String] as? NSNumber)?.doubleValue, alpha <= 0 { continue }
+            guard let b = w[kCGWindowBounds as String], CFGetTypeID(b as CFTypeRef) == CFDictionaryGetTypeID(),
+                  let r = CGRect(dictionaryRepresentation: b as! CFDictionary), r.contains(point) else { continue }
+            return PaneClickCover(window: number, pid: (w[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value ?? 0,
+                                  layer: (w[kCGWindowLayer as String] as? NSNumber)?.intValue ?? 0)
+        }
+        return nil
+    }
+
+    func warm(_ panes: [PaneClickScene.Pane]) {
+        let keep = Dictionary(panes.map { ($0.window, $0.pid) }, uniquingKeysWith: { a, _ in a })
+        lock.lock()
+        elements = elements.filter { keep[$0.key] == $0.value.pid }
+        let missing = panes.filter { elements[$0.window] == nil }
+        lock.unlock()
+        guard !refuses, !missing.isEmpty, AXIsProcessTrusted() else { return }
+        warmQueue.async {
+            for p in missing { _ = self.element(pid: p.pid, window: p.window, until: self.now() + 0.5) }
+        }
+    }
+}
+
 final class RealHostSystem: HostSystem {
     private let calls: HostPrivate
     private let sky: SkyLight

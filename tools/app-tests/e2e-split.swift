@@ -36,6 +36,17 @@ func glueSplitScenario() async {
   shell.start()
   defer { shell.stop {} }
   let made = shell.makeMarginWindows()
+  // (The pane click tap: a stand-in for each one made, the tap's word on a press handed back through `reports`.)
+  var taps: [FakePaneTap] = []
+  var reports: [@Sendable (PaneClickResult) -> Void] = []
+  made.makePaneTap = { report, _ in
+    let t = FakePaneTap()
+    taps.append(t)
+    reports.append(report)
+    return t
+  }
+  made.paneTapTrusted = { true }
+  made.paneTapGrace = 0
   guard let library = shell.library, let session = shell.hosted, let engine = shell.host else { return check("the library, the session and the engine", false) }
   let space = library.spaces().first?.id ?? ""
   func app(_ bundle: String, _ name: String) -> String {
@@ -46,6 +57,7 @@ func glueSplitScenario() async {
   defer { made.closeAll() }
   world.marginWindow = c.window.windowNumber
   c.hostedBounds = { world.bounds(window: $0) }
+  c.hostedPid = { world.wins[$0]?.pid ?? ($0 == 99950 ? 4242 : nil) } // (99950: the preview card's stand-in window below)
   world.display = c.contentFrame
   guard await until(15, { c.isReady }) else { return check("Margin's window's page drawn", false) }
   _ = library.perform("createSplit", ["windowId": c.id, "panes": [notesItem, editItem]])
@@ -74,6 +86,66 @@ func glueSplitScenario() async {
   _ = await until(3) { c.slot?.hits.contains { $0.contains(gap) } == true }
   check("the divider takes the pointer (Margin's, in the gap: never a pane's)", c.slot?.hits.contains { $0.contains(gap) } == true && !PassThrough.pageGets(gap, c.slot),
         "\(String(describing: c.slot?.hits))")
+
+  // The pane click tap (PaneClickTap.swift): made once the split's two windows are visible, told each pane's hole, window
+  // and app, the one with the keys and Margin's own windows; a press it claimed left by the monitor's path (nothing fronted
+  // again), its word focusing that pane without fronting anything; a press it didn't claim focused the usual way.
+  _ = await until(3) { (taps.last?.scenes.last ?? nil)?.panes.count == 2 }
+  // (The first run's space editor has the keys: a field of Margin's, every press as before then. Let go, as a press outside it.)
+  let fieldFirst = (taps.last?.scenes.last ?? nil)?.fieldHasKeys == c.pageWantsKeyboard
+  c.push(#"{"type":"pressOutside"}"#)
+  _ = await until(3) { !c.pageWantsKeyboard && (taps.last?.scenes.last ?? nil)?.fieldHasKeys == false }
+  await session.idle()
+  try? await Task.sleep(nanoseconds: 100_000_000)
+  await session.idle()
+  let scene = taps.last?.scenes.last ?? nil
+  check("the pane click tap: a field of Margin's with the keys told as it takes and lets go of them", fieldFirst && scene?.fieldHasKeys == false)
+  check("the pane click tap: made with the split's two windows visible and started, told each pane's hole, window and app, the focused one, Margin's own windows, the slot",
+        taps.count == 1 && taps.last?.started == 1 && taps.last?.stopped == 0 && made.paneTapsMade == 1 && scene?.panes.map(\.window) == [notesWindow, editWindow]
+        && scene?.panes.map(\.rect) == c.holes && scene?.panes.map { Optional($0.pid) } == [world.wins[notesWindow]?.pid, world.wins[editWindow]?.pid]
+        && scene?.focused == editWindow && scene?.marginWindows.contains(c.window.windowNumber) == true && scene?.marginWindows.contains(c.panel.windowNumber) == true
+        && scene?.slot == c.slot && scene?.fieldHasKeys == false, "\(taps.count) \(String(describing: scene))")
+  if let tap = taps.last, panes.count == 2 {
+    tap.claims = [77]
+    let notesMid = CGPoint(x: panes[0].rect.midX, y: panes[0].rect.midY), editMid = CGPoint(x: panes[1].rect.midX, y: panes[1].rect.midY)
+    var mark = world.calls.count
+    c.pressed(notesMid, number: 77)
+    await session.idle()
+    try? await Task.sleep(nanoseconds: 50_000_000)
+    check("the pane click tap: a press it claimed (its pane's window made key by it): the monitor's path leaves it, nothing fronted",
+          c.tapClaimedPresses == 1 && engine.shown == edit && !world.calls.dropFirst(mark).contains { $0.hasPrefix("activate") }, "\(world.calls.dropFirst(mark))")
+    reports.last?(PaneClickResult(window: notesWindow, pid: world.wins[notesWindow]?.pid ?? 0, outcome: .delivered(already: false), ms: 6, number: 77))
+    let focusedByTap = await until(3) { engine.shown == notes && session.shown[c.id] == notesItem }
+    await session.idle()
+    _ = await until(3) { (tap.scenes.last ?? nil)?.focused == notesWindow }
+    check("the pane click tap: …its word: Notes focused (the keys, the sidebar's highlight), nothing fronted, the tap told Notes has the keys now",
+          focusedByTap && !world.calls.dropFirst(mark).contains { $0.hasPrefix("activate") } && (tap.scenes.last ?? nil)?.focused == notesWindow,
+          "\(String(describing: engine.shown)) \(world.calls.dropFirst(mark))")
+    mark = world.calls.count
+    c.pressed(editMid, number: 78)
+    let usual = await until(3) { engine.shown == edit }
+    await session.idle()
+    check("the pane click tap: a press it didn't claim (passed, not key in time): focused the usual way, the visible ones fronted",
+          usual && c.tapClaimedPresses == 1 && world.calls.dropFirst(mark).contains("activate com.apple.TextEdit"), "\(world.calls.dropFirst(mark))")
+    // Another Space current: every press passes at once, the tap gone after its grace unless the split's back by then.
+    made.paneTapGrace = 0.3
+    c.onCurrentSpace = { false }
+    made.paneSceneChanged()
+    let passing = tap.scenes.last.map { $0 == nil } == true && made.paneTap === tap
+    c.onCurrentSpace = { true }
+    made.paneSceneChanged()
+    try? await Task.sleep(nanoseconds: 450_000_000)
+    check("the pane click tap: another Space current for a moment: every press passes meanwhile, the same tap kept once it's back within its grace",
+          passing && made.paneTap === tap && taps.count == 1 && tap.stopped == 0 && (tap.scenes.last ?? nil)?.panes.count == 2)
+    c.onCurrentSpace = { false }
+    made.paneSceneChanged()
+    let gone = await until(2) { made.paneTap == nil }
+    check("the pane click tap: another Space current: gone after its grace (stopped)", gone && tap.stopped == 1 && made.paneTapsEnded == 1)
+    made.paneTapGrace = 0
+    c.onCurrentSpace = { true }
+    made.paneSceneChanged()
+    check("the pane click tap: Margin's Space current again with the split: a new one", taps.count == 2 && taps.last?.started == 1 && made.paneTap === taps.last)
+  }
 
   // A drag's frame told by the engine (its windows a frame behind at most): the holes are the new rects at once.
   let list = c.visibleHosts
@@ -109,6 +181,9 @@ func glueSplitScenario() async {
     c.hostedBounds = { n in n == cardWindow ? cardFrame : was(n) }
     let withCard = list + [HostShownWindow(window: cardWindow, rect: cardRect, role: .card, z: 2, focused: true)]
     c.setVisibleHosts(withCard)
+    let cardScene = taps.last?.scenes.last ?? nil
+    check("the pane click tap: the preview card over the split: only the card's page told (the dim around it Margin's)",
+          cardScene?.panes.map(\.window) == [cardWindow] && cardScene?.panes.first?.card == true && cardScene?.panes.first?.rect == c.holes.last, "\(String(describing: cardScene)) \(c.holes)")
     check("The preview card over the split: drawn across the gap between the panes (set up)",
           cardRect.width > 0 && cardRect.minX < gapX && cardRect.maxX > gapX && cardRect.minY < page.midY && cardRect.maxY > page.midY && cardRect.minY > page.minY + 4, "\(cardRect) gap at \(gapX)")
     let onPage = await js(c.webView, "const p = document.querySelector('m-page'); const r = p.getBoundingClientRect(); return [p.hasAttribute('m-card-clip'), document.elementsFromPoint(\(Double(local(under).x)), \(Double(local(under).y))).map(e => e.localName).filter(n => n.startsWith('m-')).join(',')].join('|')") as? String ?? ""
@@ -187,4 +262,24 @@ func glueSplitScenario() async {
         && library.items(space: space).contains { $0.id == editItem },
         "byId \(byId) byRow \(byRow) \(ended) \(String(describing: library.split(sp))) \(engine.visible) \(String(describing: world.bounds(window: notesWindow))) \(world.inMargin) \(menu) \(session.done.suffix(4))")
   check("…the page's state names each pane by its row's number too (what an on-screen check dispatches with)", menu.contains("\"tabId\":\(row)"), menu)
+  check("the pane click tap: the split ended, one window shown: no tap (stopped)", made.paneTap == nil && taps.last?.stopped == 1, "\(taps.map(\.stopped))")
+
+  // A split again, then Margin quits: the tap goes at once.
+  _ = library.perform("createSplit", ["windowId": c.id, "panes": [notesItem, editItem]])
+  let again = await until(15) { engine.visible.count == 2 && made.paneTap != nil }
+  let last = taps.last
+  made.closeAll()
+  check("the pane click tap: a split again: a tap again; Margin quits (its windows closed): stopped at once", again && last?.stopped == 1 && made.paneTap == nil,
+        "\(again) \(String(describing: last?.stopped))")
+}
+
+// The pane click tap's stand-in: what it was told, the presses it claims.
+nonisolated final class FakePaneTap: PaneClickTapping, @unchecked Sendable {
+  var started = 0, stopped = 0
+  var scenes: [PaneClickScene?] = []
+  var claims: Set<Int> = []
+  func start() { started += 1 }
+  func stop() { stopped += 1 }
+  func update(_ scene: PaneClickScene?) { scenes.append(scene) }
+  func claimed(number: Int, at point: CGPoint) -> Bool { claims.remove(number) != nil }
 }

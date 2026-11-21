@@ -576,6 +576,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // A card open: the press's place each time one landed on the page area outside the card's content (the dimmed page
     // around it, caught: preview closes the card then, §2).
     private(set) var caughtPresses: [CGPoint] = []
+    private(set) var tapClaimedPresses = 0 // presses in a pane the pane click tap focused for (the monitor's path left them)
     var catchRegion: CatchRegion { catcher.region } // (what the catch fill fills now: the tests read it)
     func setVisibleHosts(_ list: [HostShownWindow]) {
         // (Only their rects new, in a drag's frame: the holes follow, nothing read, said or reordered; docs/PEEK-SPLIT.md §4.)
@@ -740,7 +741,34 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             s.holes = list.last { $0.host.role == .card }.map { [$0.rect] } ?? list.map(\.rect)
             if !s.rect.isNull, !s.rect.isEmpty { slot = s }
         }
+        // (The same holes for the pane click tap, each with its window: a card's alone while one is open.)
+        paneHoles = slot == nil ? [] : (list.last { $0.host.role == .card }.map { [$0] } ?? list).map { (rect: $0.rect, window: $0.host.window, card: $0.host.role == .card) }
         catcher.region = CatchRegion.of(frame: content, slot: slot)
+    }
+
+    // ---- the first click in another pane (PaneClickTap.swift) ----
+
+    // The holes the pointer goes through to while several hosts are visible, each with its window (a card's alone while
+    // one is open); empty with one host.
+    private var paneHoles: [(rect: CGRect, window: Int, card: Bool)] = []
+    private var paneOwners: [Int: pid_t] = [:] // each pane window's app (the window server's word, read once a window)
+    // What the pane click tap decides with (MarginWindows keeps the tap): only while several hosted windows are visible
+    // here, shown, this window on screen in the current Space; nil otherwise (no tap at all then, with no other window
+    // hosting several). Published as the holes change (`updateHole`), a field of Margin's takes or lets go of the keys,
+    // or the Space changes.
+    var paneScene: PaneClickScene? {
+        guard hosting, visibleHosts.count > 1, !paneHoles.isEmpty, let slot, pageState == .shown, !isClosed,
+              options.harness || window.isVisible, onCurrentSpace() else { return nil }
+        var panes: [PaneClickScene.Pane] = []
+        for h in paneHoles {
+            guard let pid = paneOwners[h.window] ?? hostedPid(h.window) else { continue }
+            paneOwners[h.window] = pid
+            panes.append(PaneClickScene.Pane(rect: h.rect, pid: pid, window: h.window, card: h.card))
+        }
+        if paneOwners.count > 8 { paneOwners = paneOwners.filter { k, _ in paneHoles.contains { $0.window == k } } }
+        guard !panes.isEmpty else { return nil }
+        let own = [window.windowNumber, panel.windowNumber, backdrop?.windowNumber ?? 0].filter { $0 > 0 }
+        return PaneClickScene(panes: panes, focused: visibleHosts.first { $0.focused }?.window, slot: slot, marginWindows: own, fieldHasKeys: pageWantsKeyboard)
     }
     // A card open (one of the visible hosts is one): its content's hole, nil: none.
     private var cardHole: CGRect? { visibleHosts.contains { $0.role == .card } ? slot?.holes?.first : nil }
@@ -1032,9 +1060,11 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         let was = slot
         placeHole()
         if slot != was { pointerAgain() }
+        owner?.paneSceneChanged()
     }
     private func placeHole() {
         if visibleHosts.count > 1 { return updateHoles() }
+        paneHoles = []
         defer { holes = hole.map { [$0] } ?? [] }
         let content = contentFrame
         var next: CGRect?
@@ -1232,7 +1262,8 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // palette goes. A press in the page area around a smaller hosted window (window mode; on it, the app has it already)
     // gives that app the keyboard. Only while this window is on screen in the current Space (the monitor hears every
     // app's presses).
-    func pressed(_ at: CGPoint) {
+    // `number`: the press's event number (the window server's), how the pane click tap's own presses are known.
+    func pressed(_ at: CGPoint, number: Int = 0) {
         // (Several visible: a card open catches a press on the page around its content; else the press's host is found
         // by its rect, HostedSession `pagePressed`, and focused.)
         // (A press on what the page draws over the page area, a split's divider: Margin's own, never a pane's.)
@@ -1242,6 +1273,11 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
                 caughtPresses.append(at)
                 if caughtPresses.count > 50 { caughtPresses.removeFirst() }
                 owner?.onCaughtPress?(self, at)
+            } else if owner?.paneTapClaimed(number: number, at: at) == true {
+                // (The pane click tap gave its pane's window the keys for this press: focused already, and told to the
+                // session by the tap's own word, `onPaneClick`. Fronting the layout again now would flip the app in
+                // front while the press goes on.)
+                tapClaimedPresses += 1
             } else {
                 owner?.onPagePress?(self, at)
             }
@@ -1882,6 +1918,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         case "focus":
             let had = pageWantsKeyboard
             pageWantsKeyboard = body["on"] as? Bool == true
+            if had != pageWantsKeyboard { owner?.paneSceneChanged() }
             // A field of Margin's wants the keys (the palette, ⌘T or the menu's New Tab; a rename, an editor): the panel
             // takes them, Margin isn't made active (before 2026-11-17 it was, and the hosted app went to its inactive
             // look; the Accessibility frontmost of 1d728d4a is now only a said last resort, `takeKeys`).
@@ -2003,7 +2040,7 @@ final class MarginWindows {
         menuTarget.enabled = { [weak self] action in action == .newWindow || self?.front != nil }
         pointer.onMove = { [weak self] at in for c in self?.controllers ?? [] { c.pointerMoved(at) } }
         if !options.harness { startKeyRelay(); startWheelPhases() }
-        pointer.onPress = { [weak self] at in for c in self?.controllers ?? [] { c.pressed(at) } }
+        pointer.onPress = { [weak self] at, number in for c in self?.controllers ?? [] { c.pressed(at, number: number) } }
         // Margin activated (its Dock icon, ⌘-Tab): each window in front of what it hosts (the `order` mechanism orders
         // it there again), and one still not in full screen, its toggle ignored while Margin wasn't active, asked again.
         activeObserver = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
@@ -2019,7 +2056,7 @@ final class MarginWindows {
         let workspace = NSWorkspace.shared.notificationCenter
         frontObservers = [
             workspace.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { for c in self?.controllers ?? [] { c.spaceChanged(); c.keepFront() } }
+                MainActor.assumeIsolated { for c in self?.controllers ?? [] { c.spaceChanged(); c.keepFront() }; self?.paneSceneChanged() }
             },
             workspace.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { for c in self?.controllers ?? [] { c.keepFront(); c.tryFullScreen("an app activated") } }
@@ -2036,6 +2073,8 @@ final class MarginWindows {
         if let keyRelay { NSEvent.removeMonitor(keyRelay) }
         if let wheelPhases { NSEvent.removeMonitor(wheelPhases) }
         if let activeObserver { NotificationCenter.default.removeObserver(activeObserver) }
+        if let quitObserver { NotificationCenter.default.removeObserver(quitObserver) }
+        paneTap?.stop()
         for o in frontObservers { NSWorkspace.shared.notificationCenter.removeObserver(o) }
     }
 
@@ -2157,13 +2196,97 @@ final class MarginWindows {
         if controllers.isEmpty { pointer.stop() }
         Diagnostics.note("Margin's window \(controller.id) closed (\(controllers.count) open; Margin keeps running)")
         onClosed?(controller.id)
+        paneSceneChanged()
     }
 
     func closeAll() {
+        endPaneTap("Margin quits")
+        closingAll = true
         for c in controllers { c.close() }
         controllers = []
         lastKey = nil
         pointer.stop()
+        closingAll = false
+    }
+
+    // ---- the first click in another pane (PaneClickTap.swift) ----
+
+    // The tap exists only while a Margin window shows several hosted windows on the current Space, Accessibility is
+    // granted and Margin isn't quitting; it's told each change of that window's panes (`paneScene`). No longer wanted:
+    // every press passes at once, and the tap goes `paneTapGrace` later unless it's wanted again by then (a layout's
+    // change takes the panes away for a moment), at once when Margin quits.
+    // `makePaneTap`: the real tap (never in a test, MARGIN_APP_TESTS); a test's stand-in otherwise. Its word on each press
+    // it held comes back on the main thread (`onPaneClick`), its own lines into the log.
+    lazy var makePaneTap: (_ report: @escaping @Sendable (PaneClickResult) -> Void, _ said: @escaping @Sendable (String) -> Void) -> PaneClickTapping? = { report, said in
+        guard !PrivateCalls.inTests else { return nil }
+        return PaneClickTap(core: PaneClickCore(focuser: AXPaneFocus(), report: report), said: said)
+    }
+    var paneTapTrusted: () -> Bool = { AXIsProcessTrusted() }
+    var paneTapGrace: TimeInterval = 1
+    var onPaneClick: ((MarginWindowController, PaneClickResult) -> Void)?
+    private(set) var paneTap: PaneClickTapping?
+    private(set) var paneTapsMade = 0 // (the tests read them)
+    private(set) var paneTapsEnded = 0
+    private var paneTapEnd: DispatchWorkItem?
+    private var paneTapRefusedSaid = false
+    private var closingAll = false
+    private var quitObserver: NSObjectProtocol?
+
+    // A Margin window's panes changed (its holes, a field of Margin's took or let go of the keys, the Space changed, a
+    // window closed): the tap made, told, or let go.
+    func paneSceneChanged() {
+        let scene = closingAll ? nil : controllers.lazy.compactMap { $0.paneScene }.first
+        guard let scene else {
+            guard let tap = paneTap else { return }
+            tap.update(nil)
+            guard paneTapEnd == nil else { return }
+            if paneTapGrace <= 0 { return endPaneTap("no split shown on the current Space") }
+            let end = DispatchWorkItem { [weak self] in self?.endPaneTap("no split shown on the current Space") }
+            paneTapEnd = end
+            DispatchQueue.main.asyncAfter(deadline: .now() + paneTapGrace, execute: end)
+            return
+        }
+        paneTapEnd?.cancel()
+        paneTapEnd = nil
+        if let tap = paneTap { return tap.update(scene) }
+        guard paneTapTrusted() else {
+            if !paneTapRefusedSaid { Diagnostics.note("pane clicks: Accessibility isn't granted: a first click in another pane only focuses it, as before") }
+            paneTapRefusedSaid = true
+            return
+        }
+        let report: @Sendable (PaneClickResult) -> Void = { [weak self] r in
+            DispatchQueue.main.async { MainActor.assumeIsolated { self?.paneClicked(r) } }
+        }
+        let said: @Sendable (String) -> Void = { line in DispatchQueue.main.async { MainActor.assumeIsolated { Diagnostics.note(line) } } }
+        guard let tap = makePaneTap(report, said) else { return }
+        paneTap = tap
+        paneTapsMade += 1
+        tap.update(scene)
+        tap.start()
+        if quitObserver == nil {
+            quitObserver = NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.endPaneTap("Margin quits") }
+            }
+        }
+    }
+
+    private func endPaneTap(_ why: String) {
+        paneTapEnd?.cancel()
+        paneTapEnd = nil
+        guard let tap = paneTap else { return }
+        tap.update(nil)
+        tap.stop()
+        paneTap = nil
+        paneTapsEnded += 1
+        Diagnostics.note("pane clicks: off (\(why))")
+    }
+
+    // A press the tap gave its pane's window the keys for (the monitor's press of `number` at `at`), consumed.
+    func paneTapClaimed(number: Int, at: CGPoint) -> Bool { paneTap?.claimed(number: number, at: at) ?? false }
+
+    private func paneClicked(_ r: PaneClickResult) {
+        guard let c = controllers.first(where: { $0.visibleHosts.contains { $0.window == r.window } }) else { return }
+        onPaneClick?(c, r)
     }
 
     private func sourceChanged() {

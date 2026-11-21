@@ -598,13 +598,17 @@ final class HostEngine {
 
     // The keys to a visible host (a press in its pane: docs/PEEK-SPLIT.md §1): it's the one shown from now, the visible
     // ones fronted back to front, it last (never main raised over a card: a card open has the focus). False: not visible.
-    @discardableResult func focus(_ id: HostID) async -> Bool {
+    // `fronted`: its window has the keys already (the pane click tap made it key for the press it held, PaneClickTap.swift):
+    // only Margin's word follows (the one shown, the holes' focus), nothing fronted: fronting the visible ones again
+    // while that press goes on would make another app the front one mid-click.
+    @discardableResult func focus(_ id: HostID) async -> Bool { await focus(id, fronted: false) }
+    @discardableResult func focus(_ id: HostID, fronted: Bool) async -> Bool {
         await serial(planned: true) {
             guard self.isVisible(id), let host = self.hosts[id] else { return false }
             if let card = self.visibleHosts.last(where: { $0.role == .card }), card !== host { return false }
             self.focusWanted = id
             if self.shown != id { self.shown = id }
-            await self.frontVisible()
+            if !fronted { await self.frontVisible() }
             return true
         }
     }

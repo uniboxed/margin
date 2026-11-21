@@ -107,6 +107,7 @@ final class LateHostEngine: HostedEngine {
         await engine.setLayout(main: main, mainRect: mainRect, extras: extras, focused: focused, in: placement, marginWindow: marginWindow, marginSpace: marginSpace)
     }
     func focus(_ id: HostID) async -> Bool { await resolve()?.focus(id) ?? false }
+    func focus(_ id: HostID, fronted: Bool) async -> Bool { await resolve()?.focus(id, fronted: fronted) ?? false }
     func visibleHost(at point: CGPoint) -> HostID? { resolve()?.visibleHost(at: point) }
     func follow(_ placement: HostPlacement, rects: [HostID: CGRect]) { resolve()?.follow(placement, rects: rects) }
     func pageRectChanged(_ placement: HostPlacement, rects: [HostID: CGRect]) async -> Bool { await resolve()?.pageRectChanged(placement, rects: rects) ?? false }
@@ -241,6 +242,7 @@ extension Shell {
         windows.onLeftFullScreen = { [weak session] controller in session?.leftFullScreen(controller) }
         windows.onEnteredFullScreen = { [weak session] controller in session?.enteredFullScreen(controller) }
         windows.onPagePress = { [weak session] controller, at in session?.pagePressed(controller, at: at) }
+        windows.onPaneClick = { [weak session] controller, result in session?.paneClicked(controller, result) }
         windows.onCaughtPress = { [weak session] controller, at in session?.caughtPress(controller, at: at) }
         windows.onCardRect = { [weak session] controller in session?.cardRectChanged(controller) }
         windows.onPanes = { [weak session] controller in session?.pageRectChanged(controller) }

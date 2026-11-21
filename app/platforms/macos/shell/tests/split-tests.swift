@@ -274,6 +274,32 @@ private func splitSessionTests() {
     check("split session: the keys back after a field of Margin's: the focused pane's app fronted last (never main's)",
           w.calls.last { $0.hasPrefix("activate") }?.hasSuffix(" \(editWindowNumber)") == true, "\(w.calls.suffix(4))")
 
+    // ---- a press the pane click tap gave its pane's window the keys for (PaneClickTap.swift): focused here as a press is
+    // (the keys, the sidebar's highlight), nothing fronted again (that would flip the app in front mid-click) ----
+    let mainWindowNumber = engine.hosts[safari]?.window ?? 0
+    var mark2 = w.calls.count
+    var changes = 0
+    let onChange = session.onChange
+    session.onChange = { changes += 1; onChange?() }
+    session.paneClicked(window, PaneClickResult(window: mainWindowNumber, pid: engine.hosts[safari]?.pid ?? 0, outcome: .delivered(already: false), ms: 7, number: 41))
+    hostRun { await session.idle(); for _ in 0..<5 { await Task.yield() } }
+    check("split session: a press the pane click tap focused: that pane focused (the keys, the sidebar's highlight), nothing fronted, nothing moved",
+          session.shown[1] == a && engine.shown == safari && session.layout[1]?.focused == a && changes > 0
+          && !w.calls.dropFirst(mark2).contains { $0.hasPrefix("activate") || $0.hasPrefix("frontmost") } && bounds(safari) == rects[a],
+          "\(String(describing: session.shown[1])) \(w.calls.dropFirst(mark2))")
+    mark2 = w.calls.count
+    session.paneClicked(window, PaneClickResult(window: editWindowNumber, pid: engine.hosts[editId]?.pid ?? 0, outcome: .notKey, ms: 120, number: 42))
+    session.paneClicked(window, PaneClickResult(window: editWindowNumber, pid: engine.hosts[editId]?.pid ?? 0, outcome: .covered(PaneClickCover(window: 7, pid: 9, layer: 101)), ms: 1, number: 43))
+    hostRun { await session.idle(); for _ in 0..<5 { await Task.yield() } }
+    check("split session: …one let go as before (not key in time, covered): nothing done by the tap's word (the monitor's press does it the usual way)",
+          session.shown[1] == a && engine.shown == safari && w.calls.count == mark2, "\(w.calls.dropFirst(mark2))")
+    session.paneClicked(window, PaneClickResult(window: editWindowNumber, pid: engine.hosts[editId]?.pid ?? 0, outcome: .delivered(already: true), ms: 0.4, number: 44))
+    hostRun { await session.idle(); for _ in 0..<5 { await Task.yield() } }
+    session.onChange = onChange
+    check("split session: …its window key already (Margin's word behind): focused here the same way, nothing fronted",
+          session.shown[1] == edit && engine.shown == editId && session.layout[1]?.focused == edit && !w.calls.dropFirst(mark2).contains { $0.hasPrefix("activate") || $0.hasPrefix("frontmost") },
+          "\(String(describing: session.shown[1])) \(w.calls.dropFirst(mark2))")
+
     // ---- a divider dragged (tiles off: each a plain member, placed again at the release) ----
     window.followingPage = false
     var dragSaid: [String] = []
