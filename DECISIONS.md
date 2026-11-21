@@ -6725,7 +6725,9 @@ user's choices (the doc's table) as built; what was decided here is marked so.
   link's own default done by the page (`location.assign`, or the copy's new tab for `target=_blank` and other named
   targets, `window.open` only if the background didn't answer). Shift+click's own Safari default (Reading List) isn't
   one a page can do: it opens as a plain click would (decided). Auto-Peek: a pinned tab's or favorite's link to another
-  site, never an auth flow (shared/peek.ts, unchanged).
+  site, never an auth flow (shared/peek.ts, unchanged). Which pages are a pin's or favorite's in Margin.app is the
+  library's word, not the copy's state (which has no library pins): each `hostShow` says `pinned`, the copy tells the
+  tab's page (`peekPinned`, and hello's `pinned`).
 - **The answer** (background/peek.ts, handlers.ts). The copy pushes `peekOpen { id, url, source, tabId, notAfter }`
   (a request back is the protocol's only way an app answers a push, as `paletteDropped` is for `palette`): Margin.app
   answers `peekAnswer { id, ok }` at once (a new request in `APP_REQUESTS`). The copy waits only until `notAfter`
