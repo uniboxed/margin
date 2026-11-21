@@ -81,7 +81,7 @@ function field(f: Partial<SettingsField> & { id: string, kind: SettingsField['ki
  * and the form's own state (`ui`: the
  * shortcut being recorded, the statuses, the active theme: its id, name and theme.json settings).
  * */
-export function settingsFields(settings: any, features: any = {}, ui: { recording?: string | null, status?: Record<string, { text: string, error?: boolean } | undefined>, theme?: { id: string, name: string, settings: Record<string, any> } | null, spaceTheme?: string | null } = {}): SettingsField[] {
+export function settingsFields(settings: any, features: any = {}, ui: { recording?: string | null, status?: Record<string, { text: string, error?: boolean } | undefined>, theme?: { id: string, name: string, settings: Record<string, any> } | null, spaceTheme?: string | null, airTraffic?: { rules?: unknown, spaces?: unknown } | null } = {}): SettingsField[] {
   const s = settings ?? {};
   const f = features ?? {};
   const status = ui.status ?? {};
@@ -132,6 +132,7 @@ export function settingsFields(settings: any, features: any = {}, ui: { recordin
   list.push(field({ id: 'frameWhenHidden', kind: 'toggle', label: 'With the sidebar hidden, keep the frame around pages', checked: s.frameWhenHidden !== false }));
   list.push(field({ id: 'autoPeekPins', kind: 'toggle', label: 'Open external links from Pinned tabs and Favorites in Peek', checked: s.autoPeekPins !== false }));
   if (f.newTabHint) list.push(field({ id: 'newTabHint', kind: 'toggle', label: 'Tell me when a new tab seems to open Safari’s homepage instead of Margin (Safari Settings › General › “New tabs open with” should be Margin)', checked: s.newTabHint !== false }));
+  list.push(...airTrafficFields(ui.airTraffic ?? null));
   // The active theme's own settings: after Margin's, under their own heading, so they don't read as Margin's.
   list.push(...themeOwnFields(s, ui.theme ?? null));
   // Keyboard shortcuts: recorded by pressing them.
@@ -170,7 +171,38 @@ export function categoryOf(id: string): SettingsCategory {
   if (TABS_FIELDS.has(id)) return 'tabs';
   if (BROWSING_FIELDS.has(id)) return 'browsing';
   if (KEYBOARD_FIELDS.has(id)) return 'keyboard';
+  if (id === AIR_TRAFFIC_GROUP || id === AIR_TRAFFIC_NONE || id.startsWith(AIR_TRAFFIC_TOGGLE) || id.startsWith(AIR_TRAFFIC_REMOVE)) return 'browsing';
   return 'appearance';
+}
+
+// ---- Air Traffic Control's rules (state.airTraffic: shared/air-traffic.ts) ---------------------------------
+// Each rule: a toggle (on routes the links it matches to its space; off, kept but not used) and Remove. Made in a
+// tab's menu ("Always Open <site> in This Space"), which also removes the one routing that tab's address.
+const AIR_TRAFFIC_GROUP = 'airTrafficRules';
+const AIR_TRAFFIC_NONE = 'airTrafficNone';
+const AIR_TRAFFIC_TOGGLE = 'airTraffic:';
+const AIR_TRAFFIC_REMOVE = 'removeAirTraffic:';
+const RULE_ID = /^[A-Za-z0-9_:-]{1,64}$/;
+
+function airTrafficFields(given: { rules?: unknown, spaces?: unknown } | null) {
+  if (!given) return [];
+  const spaces = Array.isArray(given.spaces) ? given.spaces : [];
+  const rules = (Array.isArray(given.rules) ? given.rules : [])
+    .filter((r) => r && typeof r.id === 'string' && RULE_ID.test(r.id) && typeof r.pattern === 'string')
+    .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0)).slice(0, 100);
+  const out: SettingsField[] = [field({ id: AIR_TRAFFIC_GROUP, kind: 'group', label: 'Air Traffic Control' })];
+  if (!rules.length) {
+    out.push(field({ id: AIR_TRAFFIC_NONE, kind: 'info', label: 'No rules yet. To open a site’s links in one space, choose “Always Open <site> in This Space” in a tab’s menu.' }));
+    return out;
+  }
+  for (const r of rules) {
+    const sp = spaces.find((x: any) => x?.id === r.spaceId);
+    const where = sp ? `${themeText(sp.emoji, 8)} ${themeText(sp.name, 40)}`.trim() : 'a space that’s gone';
+    const pattern = themeText(r.pattern, 200);
+    out.push(field({ id: `${AIR_TRAFFIC_TOGGLE}${r.id}`, kind: 'toggle', label: `Open ${pattern} in ${where}`, checked: r.enabled !== false }));
+    out.push(field({ id: `${AIR_TRAFFIC_REMOVE}${r.id}`, kind: 'button', label: `Remove rule for ${pattern}` }));
+  }
+  return out;
 }
 
 /** A category asked for (the UI's `settingsCategory`), else the first. */
@@ -274,9 +306,14 @@ export function removePrompt(fieldId: string, list: any[]) {
  * patch, or null (not a field, a bad value, nothing to save). `value`: what
  * the input holds (text; a toggle's checked state as a boolean).
  * */
-export function saveField(f: SettingsField | null | undefined, value: any, settings: any): { type: 'updateSettings', payload: { patch: Record<string, any> } } | null {
+export function saveField(f: SettingsField | null | undefined, value: any, settings: any): { type: 'updateSettings', payload: { patch: Record<string, any> } } | { type: 'toggleAirTrafficRule', payload: { ruleId: string, enabled: boolean } } | null {
   if (!f || f.disabled) return null;
   const patch = (p: Record<string, any>) => ({ type: ('updateSettings' as 'updateSettings'), payload: { patch: p } });
+  // An Air Traffic rule turned on or off (the rule, not a setting).
+  if (f.kind === 'toggle' && f.id.startsWith(AIR_TRAFFIC_TOGGLE)) {
+    const ruleId = f.id.slice(AIR_TRAFFIC_TOGGLE.length);
+    return typeof value === 'boolean' && RULE_ID.test(ruleId) ? { type: 'toggleAirTrafficRule' as const, payload: { ruleId, enabled: value } } : null;
+  }
   switch (f.kind) {
     case 'number': {
       const n = Number(value);
@@ -313,6 +350,10 @@ export function shortcutTaken(id: string, combo: string, settings: any): string 
 export function runField(f: SettingsField | null | undefined) {
   if (f?.id === 'wakeAll') return { type: 'wakeSleeping', payload: {} };
   if (f?.id === 'resetShortcuts') return { type: 'updateSettings', payload: { patch: { sidebarShortcut: 'Alt+KeyS', shortcuts: { ...shortcuts.NAVIGATION } } } };
+  if (f?.isButton && f.id.startsWith(AIR_TRAFFIC_REMOVE)) {
+    const ruleId = f.id.slice(AIR_TRAFFIC_REMOVE.length);
+    return RULE_ID.test(ruleId) ? { type: 'removeAirTrafficRule', payload: { ruleId } } : null;
+  }
   return null;
 }
 

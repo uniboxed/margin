@@ -698,7 +698,7 @@ function fresh(input: ViewModelInput): ViewModel {
     // (Its Theme: the space this window shows, its own; ui/space-theme.ts.)
     const shownSpace = state.spaces.find((s) => s.id === space.id) ?? null;
     const spaceTheme = shownSpace && spaceThemesOn(input.platform?.features) ? spaceThemeId(shownSpace, state.settings, input.platform?.features) : null;
-    const all = settingsFields(state.settings, input.platform?.features ?? {}, { recording: ui.recording ?? null, status: ui.settingsStatus ?? {}, theme: ui.theme ?? null, spaceTheme });
+    const all = settingsFields(state.settings, input.platform?.features ?? {}, { recording: ui.recording ?? null, status: ui.settingsStatus ?? {}, theme: ui.theme ?? null, spaceTheme, airTraffic: { rules: state.airTraffic ?? [], spaces: state.spaces } });
     const fields = ui.settingsPage && ui.settingsNav ? fieldsIn(all, category) : all;
     settingsForm = { fields, hasFields: fields.length > 0 };
   }

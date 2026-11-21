@@ -9,6 +9,7 @@ import type { State } from '../../../types/margin';
 import type { FavoriteRow, FolderRow, PinRow, SpaceView } from '../view-model.ts';
 import { FAVORITES_CAP, MAX_FOLDER_DEPTH, favoriteScopeOf, folderDepth, normalizeUrl } from '../../state/model.ts';
 import { themeChoices, spaceThemeId, spaceThemesOn } from '../space-theme.ts';
+import { matchAirTrafficRule } from '../../shared/air-traffic.ts';
 
 // The space editor's swatches (Arcadia's).
 export const SPACE_COLORS = Object.freeze(['#6c5ce7', '#0984e3', '#00b894', '#fdcb6e', '#e17055', '#d63031', '#e84393', '#636e72']);
@@ -130,6 +131,10 @@ export function menuItems(target: MenuTarget | null | undefined, { state, space,
         if (host && !(state.airTraffic ?? []).some((r) => r.pattern === host && r.spaceId === spaceId && r.enabled !== false)) {
           item(`Always Open ${host} in This Space`, 'airTraffic.addHost', tabId);
         }
+        // The rule that routes this address now (the first that matches, as links are routed), to take it away. (Every
+        // rule, on or off: Settings › Browsing.)
+        const routing = matchAirTrafficRule(url, state.airTraffic ?? [], new Set((state.spaces ?? []).map((sp) => sp.id)));
+        if (routing) item(`Remove Rule for ${routing.pattern}`, 'airTraffic.remove', routing.id);
       }
       if (others.length) {
         separator();

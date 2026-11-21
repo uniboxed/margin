@@ -14,6 +14,7 @@ import type { State } from '../../types/margin';
 //            string: state/model.ts keptTabs; activating it opens it);
 //   space — the id of an existing space;
 //   folder — an existing folder's id;   pin — an existing pin's id;
+//   rule — an existing Air Traffic rule's id (state.airTraffic);
 //   archive — an archived entry's id;   row — a row of the open palette;
 //   item   — an item of the open menu;  color — a swatch of the space editor;
 //   notice-item, prompt-item — a button of the notice or prompt shown;
@@ -110,6 +111,9 @@ export const ACTIONS = Object.freeze({
   'peek.back': 'none',
   'peek.forward': 'none',
   'airTraffic.addHost': 'tab',
+  // An Air Traffic rule (state.airTraffic): removed, or turned off and on again (a tab's menu, Settings).
+  'airTraffic.remove': 'rule',
+  'airTraffic.toggle': 'rule',
   'split.add': 'tab',
   'split.open': 'split',
   'split.focus': 'tab',
@@ -164,7 +168,7 @@ const isId = (value: unknown) => (typeof value === 'number' && Number.isSafeInte
  */
 export type ActionContext = {
   hasTab(id: any): boolean, hasSpace(id: any): boolean, hasFolder(id: any): boolean,
-  hasPin(id: any): boolean, hasFavorite?(id: any): boolean, hasSplit?(id: any): boolean, hasArchived(id: any): boolean, hasPaletteRow(id: any): boolean,
+  hasPin(id: any): boolean, hasFavorite?(id: any): boolean, hasSplit?(id: any): boolean, hasRule?(id: any): boolean, hasArchived(id: any): boolean, hasPaletteRow(id: any): boolean,
   hasMenuItem?(id: any): boolean, hasColor?(id: any): boolean,
   hasNoticeItem?(id: any): boolean, hasPromptItem?(id: any): boolean,
   hasSettingItem?(id: any): boolean,
@@ -191,6 +195,7 @@ function valueOk(kind: string | readonly unknown[], v: any, ctx: ActionContext) 
     case 'pin': return isId(v) && ctx.hasPin(v);
     case 'favorite': return isId(v) && !!ctx.hasFavorite?.(v);
     case 'split': return isId(v) && !!ctx.hasSplit?.(v);
+    case 'rule': return isId(v) && !!ctx.hasRule?.(v);
     case 'pin-or-folder': return isId(v) && (ctx.hasPin(v) || ctx.hasFolder(v));
     case 'name': return plainText(v, NAME_MAX);
     case 'emoji': return plainText(v, EMOJI_MAX);
@@ -215,7 +220,7 @@ export function checkAction(name: string, arg: any, ctx: ActionContext): { ok: t
     return { ok: true };
   }
   const has: Record<string, (id: any) => boolean> = {
-    tab: ctx.hasTab, space: ctx.hasSpace, folder: ctx.hasFolder, pin: ctx.hasPin, favorite: ctx.hasFavorite ?? (() => false), split: ctx.hasSplit ?? (() => false), archive: ctx.hasArchived, row: ctx.hasPaletteRow,
+    tab: ctx.hasTab, space: ctx.hasSpace, folder: ctx.hasFolder, pin: ctx.hasPin, favorite: ctx.hasFavorite ?? (() => false), split: ctx.hasSplit ?? (() => false), rule: ctx.hasRule ?? (() => false), archive: ctx.hasArchived, row: ctx.hasPaletteRow,
     item: ctx.hasMenuItem ?? (() => false), color: ctx.hasColor ?? (() => false),
     'notice-item': ctx.hasNoticeItem ?? (() => false), 'prompt-item': ctx.hasPromptItem ?? (() => false),
     'setting-item': ctx.hasSettingItem ?? (() => false), theme: ctx.hasTheme ?? (() => false),
@@ -271,6 +276,7 @@ export function contextFromState(state: any, paletteIds: Iterable<string> = [], 
   const pins = ids(state?.pins);
   const favorites = ids(state?.favorites);
   const splits = ids(state?.splits);
+  const rules = ids(state?.airTraffic);
   const archived = ids(state?.archive);
   const rows = new Set(paletteIds);
   const items = new Set(menuIds);
@@ -289,6 +295,7 @@ export function contextFromState(state: any, paletteIds: Iterable<string> = [], 
     hasPin: (id) => pins.has(id),
     hasFavorite: (id) => favorites.has(id),
     hasSplit: (id) => splits.has(id),
+    hasRule: (id) => rules.has(id),
     hasArchived: (id) => archived.has(id),
     hasPaletteRow: (id) => rows.has(id),
     hasMenuItem: (id) => items.has(id),
@@ -454,6 +461,8 @@ export const ACTION_MAP = Object.freeze({
   'peek.back': 'local',
   'peek.forward': 'local',
   'airTraffic.addHost': 'addAirTrafficRule',
+  'airTraffic.remove': 'removeAirTrafficRule',
+  'airTraffic.toggle': 'toggleAirTrafficRule',
   'split.add': 'addToSplit',
   'split.open': 'openSplit',
   'split.focus': 'activateTab',
@@ -575,6 +584,8 @@ export function requestFor(name: string, arg: any, { state, ui, platform, row }:
       const spaceId = typeof arg === 'string' ? state?.keptTabs?.[arg]?.spaceId : state?.tabSpace?.[arg];
       return send('addAirTrafficRule', { pattern: host, spaceId: spaceId ?? undefined });
     }
+    case 'airTraffic.remove': return send('removeAirTrafficRule', { ruleId: arg });
+    case 'airTraffic.toggle': return send('toggleAirTrafficRule', { ruleId: arg });
     case 'split.add': return send('addToSplit', { tabId: arg, windowId });
     case 'split.open': return send('openSplit', { splitId: arg, windowId, ...show });
     case 'split.focus': return send('activateTab', { tabId: arg, ...(typeof arg === 'string' && windowId != null ? { windowId } : {}), ...show });

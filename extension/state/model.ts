@@ -211,6 +211,16 @@ const KEPT_CAP = 500;
 // extension page isn't worth keeping).
 const isWebPage = (url: string | null | undefined) => /^(https?|file):/i.test(url ?? '');
 
+// What binds a Margin tab beyond its page (sticky pins and favorites, its own name): carried with
+// its Margin tab whichever way it goes, open → kept (keptRecord) and kept → open (linkKept,
+// reclaimTabs), so a renamed tab keeps its name and a pin's or favorite's tab stays theirs.
+const BINDINGS = ['pinnedBy', 'favoriteId', 'customTitle'] as const;
+function bindingsOf(r: Partial<Record<typeof BINDINGS[number], unknown>> | null | undefined) {
+  const out: { pinnedBy?: string, favoriteId?: string, customTitle?: string } = {};
+  for (const key of BINDINGS) if (typeof r?.[key] === 'string' && r[key]) out[key] = r[key] as string;
+  return out;
+}
+
 // A kept tab from an open tab's record (`spaceId`: its space). `from`: the
 // window it was in, as it was lost with others (a window closing, a relaunch
 // that didn't bring it back), so a window that comes back takes it back
@@ -230,9 +240,7 @@ function keptRecord(r: TabRecord, spaceId: string, { why, now, from = null, wasT
     // Where its page was scrolled (noteScroll), with the address it's for: opened again, it goes
     // back there once (linkKept, takeScroll).
     ...(r.scroll != null && r.scroll > 0 ? { scroll: { y: r.scroll, url: r.url } } : {}),
-    ...(typeof r.pinnedBy === 'string' && r.pinnedBy ? { pinnedBy: r.pinnedBy } : {}),
-    ...(typeof r.favoriteId === 'string' && r.favoriteId ? { favoriteId: r.favoriteId } : {}),
-    ...(typeof r.customTitle === 'string' && r.customTitle ? { customTitle: r.customTitle } : {}),
+    ...bindingsOf(r),
     keptAt: now,
     why,
     ...(from ? { from } : {}),
@@ -327,7 +335,7 @@ function linkKept(state: State, tabId: number, keptId: string, now: number) {
   const r = state.tabs[tabId];
   if (!k || !r) return state;
   const spaceId = hasSpace(state, k.spaceId) ? k.spaceId : state.tabSpace[tabId];
-  const record = { ...r, mid: k.id, order: k.order, title: r.title && r.title !== r.url ? r.title : k.title || r.title, lastActive: now, placed: true };
+  const record = { ...r, ...bindingsOf(k), mid: k.id, order: k.order, title: r.title && r.title !== r.url ? r.title : k.title || r.title, lastActive: now, placed: true };
   if (!r.favIconUrl && k.favIconUrl) record.favIconUrl = k.favIconUrl;
   // Its page's scroll, for the page to take once as it loads (takeScroll).
   if (k.scroll && k.scroll.y > 0 && sameUrl(k.scroll.url, k.url)) record.restoreScroll = { y: k.scroll.y, url: k.url };
@@ -335,10 +343,11 @@ function linkKept(state: State, tabId: number, keptId: string, now: number) {
   return { ...next, tabs: { ...next.tabs, [tabId]: record }, ...(spaceId ? { tabSpace: { ...next.tabSpace, [tabId]: spaceId } } : {}) };
 }
 
-// The kept tab of a space with this address, if any (a pin opened: its tab).
-function keptForUrl(state: State, url: string, spaceId: string) {
+// The kept tab of a space with this address, if any (a pin opened: its tab). `pinId`/`favoriteId`: whose it's
+// for: one bound to another pin or favorite isn't taken (boundElsewhere).
+function keptForUrl(state: State, url: string, spaceId: string, forWhom: { pinId?: string | null, favoriteId?: string | null } | null = null) {
   const key = normalizeUrl(url);
-  return Object.values(state.keptTabs ?? {}).filter((k) => k.spaceId === spaceId && normalizeUrl(k.url) === key)
+  return Object.values(state.keptTabs ?? {}).filter((k) => k.spaceId === spaceId && normalizeUrl(k.url) === key && (!forWhom || !boundElsewhere(state, k, spaceId, forWhom)))
     .sort((a, b) => (b.lastActive ?? 0) - (a.lastActive ?? 0))[0] ?? null;
 }
 
@@ -602,6 +611,47 @@ function activeSpaceId(state: State, windowId: number) {
 function pinForUrl(state: State, url: string | undefined, spaceId?: string) {
   const key = normalizeUrl(url);
   return state.pins.find((p) => normalizeUrl(p.url) === key && (spaceId == null || p.spaceId === spaceId));
+}
+
+// ---- sticky bindings (pinnedBy, favoriteId) ---------------------------------------------------
+// A tab (open or kept) bound to a pin is that pin's only while both are in the same space (pins are a
+// space's); one bound to a favorite, while the favorite is there (favorites aren't a space's).
+const pinOfSpace = (state: State, pinId: unknown, spaceId: string | null | undefined) => typeof pinId === 'string' && !!pinId && state.pins.some((p) => p.id === pinId && p.spaceId === spaceId);
+const hasFavorite = (state: State, favoriteId: unknown) => typeof favoriteId === 'string' && !!favoriteId && (state.favorites ?? []).some((f) => f.id === favoriteId);
+
+// Whether a tab of `spaceId` belongs to a pin other than `pinId` or a favorite other than `favoriteId`
+// (a pin's or favorite's search by address never takes another's tab).
+function boundElsewhere(state: State, r: { pinnedBy?: string, favoriteId?: string } | null | undefined, spaceId: string | null | undefined, { pinId = null, favoriteId = null }: { pinId?: string | null, favoriteId?: string | null } = {}) {
+  if (!r) return false;
+  if (r.pinnedBy && r.pinnedBy !== pinId && pinOfSpace(state, r.pinnedBy, spaceId)) return true;
+  if (r.favoriteId && r.favoriteId !== favoriteId && hasFavorite(state, r.favoriteId)) return true;
+  return false;
+}
+
+// A record without a binding that no longer holds in `spaceId` (its pin gone or in another space, its favorite gone).
+function heldBindings<T extends { pinnedBy?: string, favoriteId?: string }>(state: State, r: T, spaceId: string | null | undefined): T {
+  const dropPin = !!r.pinnedBy && !pinOfSpace(state, r.pinnedBy, spaceId);
+  const dropFav = !!r.favoriteId && !hasFavorite(state, r.favoriteId);
+  if (!dropPin && !dropFav) return r;
+  const out = { ...r };
+  if (dropPin) delete out.pinnedBy;
+  if (dropFav) delete out.favoriteId;
+  return out;
+}
+
+// Every tab's bindings checked again (after a space is deleted: its duplicate pins dropped).
+function settleBindings(state: State) {
+  let tabs: Record<number, TabRecord> | null = null;
+  for (const [id, t] of Object.entries(state.tabs)) {
+    const held = heldBindings(state, t, state.tabSpace[Number(id)]);
+    if (held !== t) (tabs ??= { ...state.tabs })[Number(id)] = held;
+  }
+  let keptTabs: Record<string, KeptTab> | null = null;
+  for (const [id, k] of Object.entries(state.keptTabs ?? {})) {
+    const held = heldBindings(state, k, k.spaceId);
+    if (held !== k) (keptTabs ??= { ...state.keptTabs })[id] = held;
+  }
+  return tabs || keptTabs ? { ...state, ...(tabs ? { tabs } : {}), ...(keptTabs ? { keptTabs } : {}) } : state;
 }
 
 // ---- tabs -----------------------------------------------------------------
@@ -1015,7 +1065,7 @@ function reclaimTabs(state: State, tabIds: number[], now: number) {
   for (const [id, k] of matched) {
     const record = tabs[id];
     const lastActive = record.active ? record.lastActive : Math.min(now, (k.lastActive ?? now) + (now - k.from.at));
-    tabs[id] = { ...record, mid: k.id, order: k.order, lastActive, restored: true, restoredFrom: k.from.key };
+    tabs[id] = { ...record, ...bindingsOf(k), mid: k.id, order: k.order, lastActive, restored: true, restoredFrom: k.from.key };
     if (hasSpace(state, k.spaceId)) tabSpace[id] = k.spaceId;
     delete keptTabs[k.id];
     if (record.active) next = setActiveSpace(next, record.windowId, tabSpace[id]);
@@ -1023,17 +1073,20 @@ function reclaimTabs(state: State, tabIds: number[], now: number) {
   return orderTabs(next, true);
 }
 
+// (Moved to another space, a tab of a pin is that pin's no more: heldBindings.)
 function moveTab(state: State, tabId: number | string, spaceId: string) {
   // A kept tab (not open): its space.
   if (typeof tabId === 'string') {
     const k = state.keptTabs?.[tabId];
     if (!k || !hasSpace(state, spaceId) || k.spaceId === spaceId) return state;
-    return { ...state, keptTabs: { ...state.keptTabs, [tabId]: { ...k, spaceId } } };
+    return { ...state, keptTabs: { ...state.keptTabs, [tabId]: heldBindings(state, { ...k, spaceId }, spaceId) } };
   }
   if (!hasSpace(state, spaceId) || !state.tabs[tabId]) return state;
   // Placed on purpose (the user, or Margin opening it there): never taken
   // for a tab coming back from before the ids changed (reclaimTabs).
-  const tabs = state.tabs[tabId].placed ? state.tabs : { ...state.tabs, [tabId]: { ...state.tabs[tabId], placed: true } };
+  const record = state.tabs[tabId].placed ? state.tabs[tabId] : { ...state.tabs[tabId], placed: true };
+  const held = heldBindings(state, record, spaceId);
+  const tabs = held === state.tabs[tabId] ? state.tabs : { ...state.tabs, [tabId]: held };
   return { ...state, tabs, tabSpace: { ...state.tabSpace, [tabId]: spaceId } };
 }
 
@@ -1417,7 +1470,8 @@ function deleteSpace(state: State, spaceId: string) {
   if (state.splits?.length) {
     next.splits = state.splits.map((g) => (g.spaceId === spaceId ? { ...g, spaceId: target } : g));
   }
-  return next;
+  // Its pins the first space already had are gone: their tabs (now that space's) are no pin's.
+  return settleBindings(next);
 }
 
 // ---- favorites ------------------------------------------------------------
@@ -1443,11 +1497,32 @@ function renumberFavorites(list: NonNullable<State['favorites']>, scope: string)
   return list.map((f) => ((f.scope || 'global') === scope ? { ...f, pos: i++ } : f));
 }
 
+// What a favorite can be: a web page (http, https), or a Mac app (Margin.app's app items: `app://<bundle id>` with an
+// app target). Never a browser's own page (an extension's, about:, a new-tab page) nor one of Margin's.
+function favoriteUrlOk(url: unknown, target?: { kind: string, bundleId?: string } | null) {
+  if (typeof url !== 'string') return false;
+  if (/^https?:\/\/[^\s/]/i.test(url)) return !target || target.kind === 'web';
+  return target?.kind === 'app' && typeof target.bundleId === 'string' && url === `app://${target.bundleId}`;
+}
+
+// The kept tabs bound to a favorite (its tab asleep, or lost with its window), the most recently used first.
+function keptOfFavorite(state: State, favoriteId: string) {
+  return Object.values(state.keptTabs ?? {}).filter((k) => k.favoriteId === favoriteId)
+    .sort((a, b) => (b.lastActive ?? 0) - (a.lastActive ?? 0) || a.id.localeCompare(b.id));
+}
+
+// A favorite's one tab is `keepId` (open or kept): any other kept tab bound to it (left by earlier builds, which opened
+// a new tab each time) goes to the archive, so they don't pile up unseen (the sidebar never shows a favorite's tabs).
+function settleFavorite(state: State, favoriteId: string, keepId: string | null | undefined) {
+  return keptOfFavorite(state, favoriteId).filter((k) => k.id !== keepId)
+    .reduce((st, k) => archiveKept(st, k.id, { id: `a-${k.id}`, closedAt: k.keptAt ?? k.lastActive ?? 0 }), state);
+}
+
 function addFavorite(state: State, { id, scope = 'global', url, title, customTitle, target, beforeId = null }: {
   id: string, scope?: string, url: string, title?: string, customTitle?: string,
   target?: NonNullable<State['favorites']>[number]['target'], beforeId?: string | null,
 }) {
-  if (!url) return state;
+  if (!favoriteUrlOk(url, target)) return state;
   const list = state.favorites ?? [];
   const inScope = list.filter((f) => (f.scope || 'global') === scope).sort((a, b) => posOf(a, 0) - posOf(b, 0));
   if (inScope.length >= FAVORITES_CAP) return state;
@@ -1551,9 +1626,10 @@ function addAirTrafficRule(state: State, { id, pattern, spaceId, enabled = true 
   const norm = normalizePattern(pattern);
   if (!norm || !hasSpace(state, spaceId)) return state;
   const list = state.airTraffic ?? [];
-  if (list.length >= AIR_TRAFFIC_CAP) return state;
-  // Replace existing rule for the exact same pattern so 1-click "Always open in this Space" updates cleanly.
+  // Replace existing rule for the exact same pattern so 1-click "Always open in this Space" updates cleanly
+  // (at the cap too: a replaced rule doesn't add one).
   const rest = list.filter((r) => normalizePattern(r.pattern) !== norm);
+  if (rest.length >= AIR_TRAFFIC_CAP) return state;
   const rule: AirTrafficRule = { id, pattern: norm, spaceId, enabled: enabled !== false, order: rest.length };
   return { ...state, airTraffic: [...rest, rule].map((r, i) => ({ ...r, order: i })) };
 }
@@ -1573,6 +1649,11 @@ function toggleAirTrafficRule(state: State, ruleId: string, enabled?: boolean) {
 }
 
 // ---- split view (2–4 panes) -----------------------------------------------
+// A split's panes are Margin tabs, by their own lasting ids (`t-…`: an open tab's `mid`, a kept tab's id; the library's
+// item ids), never the browser's tab ids, which change at a restart and as Margin updates ("Margin's tabs" above): a
+// pane outlives its tab sleeping, its window closing and coming back, the browser renumbering its tabs, as pins' and
+// kept tabs' bindings do. A pane whose Margin tab is gone (closed, archived, forgotten) leaves its split
+// (settleSplits, after every change); fewer than 2 left: no split.
 const MAX_SPLIT_PANES = 4;
 
 function normalizeSplitRatios(ratios: number[] | undefined, count: number): number[] {
@@ -1584,16 +1665,38 @@ function normalizeSplitRatios(ratios: number[] | undefined, count: number): numb
   return raw.map((v) => Math.round((v / sum) * 10000) / 10000);
 }
 
+// A pane's id for what the UI or a handler names (an open tab by its browser id, a number or its digits; a Margin tab
+// by its own id): that Margin tab's id; null for none.
+function paneKey(state: State, itemId: string | number | null | undefined): string | null {
+  if (typeof itemId === 'number' || (typeof itemId === 'string' && /^\d+$/.test(itemId))) {
+    const mid = state.tabs?.[Number(itemId)]?.mid;
+    return isTabId(mid) ? mid : null;
+  }
+  return typeof itemId === 'string' && itemId ? itemId : null;
+}
+
+// Whether a Margin tab is there (open, or kept).
+const hasMarginTab = (state: State, mid: string) => !!state.keptTabs?.[mid] || Object.values(state.tabs ?? {}).some((t) => t.mid === mid);
+
 function splitForItem(state: State, itemId: string | number): SplitGroup | null {
-  const key = String(itemId);
+  const key = paneKey(state, itemId);
+  if (!key) return null;
   return (state.splits ?? []).find((g) => g.panes.includes(key)) ?? null;
+}
+
+// The split with only `panes` of its own left, in that order, their ratios kept relative to each other; null for fewer
+// than 2 (the split goes).
+function withPanes(group: SplitGroup, panes: string[]): SplitGroup | null {
+  if (panes.length < 2) return null;
+  const old = normalizeSplitRatios(group.ratios, group.panes.length);
+  return { ...group, panes, ratios: normalizeSplitRatios(panes.map((p) => old[group.panes.indexOf(p)] ?? 1), panes.length) };
 }
 
 function createSplit(state: State, { id, spaceId, panes, axis = 'horizontal', ratios }: {
   id: string, spaceId: string, panes: (string | number)[], axis?: 'horizontal' | 'vertical', ratios?: number[],
 }) {
   if (!hasSpace(state, spaceId)) return state;
-  const unique = [...new Set(panes.map(String).filter(Boolean))].slice(0, MAX_SPLIT_PANES);
+  const unique = [...new Set(panes.map((p) => paneKey(state, p)).filter((k): k is string => !!k && hasMarginTab(state, k)))].slice(0, MAX_SPLIT_PANES);
   if (unique.length < 2) return state;
   // Remove any of these panes from existing splits first so a tab belongs to at most one split.
   let next = state;
@@ -1606,16 +1709,17 @@ function createSplit(state: State, { id, spaceId, panes, axis = 'horizontal', ra
     spaceId,
     axis: axis === 'vertical' ? 'vertical' : 'horizontal',
     panes: unique,
-    ratios: normalizeSplitRatios(ratios, unique.length),
+    // (Ratios given for every pane asked for, by the same index; else equal.)
+    ratios: normalizeSplitRatios(Array.isArray(ratios) && ratios.length === panes.length && unique.length === panes.length ? ratios : undefined, unique.length),
   };
   return { ...next, splits: [...(next.splits ?? []), group] };
 }
 
 function addToSplit(state: State, splitId: string, paneId: string | number) {
-  const key = String(paneId);
+  const key = paneKey(state, paneId);
   const list = state.splits ?? [];
   const group = list.find((g) => g.id === splitId);
-  if (!group || !key || group.panes.includes(key) || group.panes.length >= MAX_SPLIT_PANES) return state;
+  if (!group || !key || !hasMarginTab(state, key) || group.panes.includes(key) || group.panes.length >= MAX_SPLIT_PANES) return state;
   let next = state;
   const other = splitForItem(next, key);
   if (other && other.id !== splitId) next = removeFromSplit(next, other.id, key);
@@ -1625,15 +1729,48 @@ function addToSplit(state: State, splitId: string, paneId: string | number) {
 }
 
 function removeFromSplit(state: State, splitId: string, paneId: string | number) {
-  const key = String(paneId);
+  const key = paneKey(state, paneId);
   const list = state.splits ?? [];
   const group = list.find((g) => g.id === splitId);
-  if (!group || !group.panes.includes(key)) return state;
-  const panes = group.panes.filter((p) => p !== key);
+  if (!group || !key || !group.panes.includes(key)) return state;
   // Fewer than 2 panes remaining: dissolve the split group automatically.
-  if (panes.length < 2) return { ...state, splits: list.filter((g) => g.id !== splitId) };
-  const ratios = normalizeSplitRatios(undefined, panes.length);
-  return { ...state, splits: list.map((g) => (g.id === splitId ? { ...g, panes, ratios } : g)) };
+  const left = withPanes(group, group.panes.filter((p) => p !== key));
+  return { ...state, splits: left ? list.map((g) => (g.id === splitId ? left : g)) : list.filter((g) => g.id !== splitId) };
+}
+
+// Every split checked against the Margin tabs there are now: a pane whose tab is gone leaves (the others' ratios kept
+// relative to each other), as does one already in an earlier split; one saved by a browser tab id becomes that open
+// tab's Margin tab; a split of fewer than 2 goes. Run after every change (background/store.ts mutate,
+// app/shared/library/library.ts perform): a tab closing, archived or forgotten, a renumbering, a space deleted.
+function settleSplits(state: State) {
+  const list = state.splits ?? [];
+  if (!list.length) return state;
+  const seen = new Set<string>();
+  let changed = false;
+  const splits: SplitGroup[] = [];
+  for (const g of list) {
+    const raw = Array.isArray(g.panes) ? g.panes : [];
+    const keys = raw.map((p) => paneKey(state, p));
+    const panes: string[] = [];
+    const ratios: number[] = [];
+    const old = normalizeSplitRatios(g.ratios, raw.length);
+    keys.forEach((k, i) => {
+      if (!k || seen.has(k) || panes.includes(k) || !hasMarginTab(state, k) || panes.length >= MAX_SPLIT_PANES) return;
+      panes.push(k);
+      ratios.push(old[i]);
+    });
+    const same = panes.length === raw.length && panes.every((p, i) => p === raw[i]) && Array.isArray(g.ratios) && g.ratios.length === raw.length;
+    if (same && panes.length >= 2) {
+      panes.forEach((p) => seen.add(p));
+      splits.push(g);
+      continue;
+    }
+    changed = true;
+    if (panes.length < 2) continue;
+    panes.forEach((p) => seen.add(p));
+    splits.push({ ...g, panes, ratios: normalizeSplitRatios(ratios, panes.length) });
+  }
+  return changed ? { ...state, splits } : state;
 }
 
 function swapSplitPanes(state: State, splitId: string, indexA: number, indexB: number) {
@@ -1743,6 +1880,8 @@ export {
   normalizeUrl,
   activeSpaceId,
   pinForUrl,
+  boundElsewhere,
+  settleBindings,
   assignTab,
   upsertTab,
   goingTo,
@@ -1788,6 +1927,9 @@ export {
   moveFavorite,
   renameFavorite,
   bindTabToFavorite,
+  favoriteUrlOk,
+  keptOfFavorite,
+  settleFavorite,
   unbindFavoriteTab,
   AIR_TRAFFIC_CAP,
   addAirTrafficRule,
@@ -1795,6 +1937,8 @@ export {
   toggleAirTrafficRule,
   MAX_SPLIT_PANES,
   splitForItem,
+  paneKey,
+  settleSplits,
   createSplit,
   addToSplit,
   removeFromSplit,
