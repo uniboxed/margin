@@ -7182,3 +7182,74 @@ loader (`HostEngine.focusPages`, `HostSystem.focusPage`: a breadth-first walk to
 then fronts the layout again so the focused host has the keys, then waits for the toolbar to rest (`toolbarsRest`)
 before the reveal. No private call, no polling; one Accessibility call per new window. Checks: pane-fronting-tests.swift
 (a toolbar that wouldn't rest by itself: page focused, revealed resting; failing without it).
+
+## The first click in another pane goes through (2026-11-21)
+
+Decided by Tirth: in a split, a click in the pane that doesn't have the keys took two clicks (a link in the other
+Safari pane, a note's text in Notes). Each pane is its own hosted window under Margin's window, which lets the pointer
+through holes over them; a press on a window that isn't key only made it key: WebKit refuses the first mouse
+(`WebViewImpl::acceptsFirstMouse` is NO but for a selection drag or a legacy scrollbar), and so do AppKit's text
+views (an `NSButton` takes it). ⌘-click and right-click already reach Safari without the keys.
+
+The lab (the click-through research of 2026-11-21, a Margin-like non-activating panel with holes over two WKWebView
+windows and a native one): catching the press in Margin's window and replaying it fails (the window server keeps
+routing the press's events to the window that got the down); SkyLight's front-process-with-window focus (yabai's)
+fails within one app. An active CGEventTap on presses that makes the pane's window key with Accessibility, then lets the
+press go on, delivered every kind of click exactly once: a link, Shift+click, a button, a text field, a double-click
+with its dblclick, a drag-select, a right-click, across apps both ways. 6-13 ms within one app, 25-80 ms across apps,
+58-66 ms the first time (a cold Accessibility cache).
+
+- **Held in the callback (the lab's variant c'), not swallowed and re-posted (c).** Both measured the same. Held, the
+  window server's event stream waits for the callback, so every event keeps its order: a key typed right after the
+  click reaches the pane clicked, and a scroll, a trackpad's pressure or a key can't overtake the press (a re-post lets
+  every event outside the tap's mask through first). Only left presses come through the tap; a re-post needs every
+  drag and release too (a round trip each, for every drag anywhere while a split is up). Nothing is copied, posted or
+  tagged. The cost: all input waits while the window is made key, so the hold is capped at 120 ms (the lab's slowest
+  was 80): not key by then, the press goes on as before (it only focuses) and the pane is focused the usual way.
+- **When there's a tap at all.** Only while a Margin window shows two or more hosted windows (a split, or the preview
+  card over main) on the current Space, Accessibility is granted (`AXIsProcessTrusted`) and Margin isn't quitting.
+  One pane, nothing hosted, another Space current: no tap, no thread, nothing. When it's no longer wanted every press
+  passes at once and the tap goes a second later unless it's wanted again (a layout's change takes the panes away for
+  a moment); at quit, at once. On a thread and run loop of its own (`margin.pane-click-tap`, user-interactive), never
+  the main thread's: Margin busy never holds the input. macOS's "too slow" or "user input" off: on again at once.
+- **What it decides with** (`PaneClick.decide`, a pure function): the hosting window's scene, published as its holes
+  change, a field of Margin's takes or lets go of the keys, or the Space changes (`MarginWindowController.paneScene`:
+  each pane's hole with its window and app, the one with the keys, Margin's slot with its hits, Margin's own window
+  numbers). A press passes untouched over Margin's own UI (`PassThrough.pageGets`: the divider, a stacked band, the
+  card's bar, menus, the palette, the dim around a card), outside every hole, in the pane with the keys, with ⌘ or ⌃
+  (unchanged: Safari takes them without the keys), with another button held, or while a field of Margin's has the keys.
+  A card open: only its page counts. Shift and ⌥ are held (Shift+click's Preview is one click now). Last, for a press
+  it would hold, the window server's list of windows above the pane's (no permission) at the point: any other window
+  there that shows (a menu or popup of any app, a sheet, the Dock, a banner) and the press passes as before.
+- **The quick focus** (`AXPaneFocus`, HostSystem.swift): its app made the front app (AXFrontmost) only if it isn't,
+  the window its app's main one (AXMain) and raised (AXRaise); key once its app is the front one with that window
+  focused, both read from the app itself every 1 ms. Each call's messaging timeout is the press's time left, set on
+  this class's own elements only (never the system-wide element, which would set every element's in Margin, HostAX's
+  too). Only ever the pane's own window, by its number: never a full-screen Safari window's toolbar. The panes' window
+  elements are looked up ahead on a queue of their own as the panes change. Its window key already (Margin's word
+  behind): let go at once.
+- **Bookkeeping without fronting.** `HostEngine.focus(_:fronted: true)` records the one shown and the holes' focus and
+  fronts nothing: `frontVisible` around the press would make another app the front one mid-click. The tap says each
+  press it held on the main thread (`onPaneClick` → `HostedSession.paneClicked` → `pressedHost(fronted: true)`: the
+  keys, the sidebar's highlight, ⌘W's target); the press's own monitor (`pressed(at:number:)`) knows it by its event
+  number (AppKit's `eventNumber` is the event's `mouseEventNumber`; by its point when it has none) and leaves it
+  (`paneTapClaimed`). A press the tap let go (not key in time, covered) isn't claimed: the monitor focuses it the
+  usual way, as before.
+- **Log**, at the host lines' level, one line per press it held: `host: <id>: a click in its pane while <id> had the
+  keys: its window <n> key in <ms> ms (in its own app | its app made the front app): the click delivered`, `… key
+  already (<ms> ms; Margin's word behind) …`, `… not key within <ms> ms: the click let go as before …`, `… over another
+  window there (window <n>, pid <p>, layer <l>): let go as before`; `pane clicks: on (…)`, `pane clicks: off (no split
+  shown on the current Space | Margin quits)`; said once: `pane clicks: Accessibility isn't granted …`, `the event tap
+  wasn't made …`. Nothing per move.
+- **Costs (the stand-in):** a press that passes costs the tap's decision about 1.5 µs (a lock, the scene, pageGets; no
+  Accessibility, no window list); a held press costs its focus (the lab's numbers above). Idle: nothing (a tap on
+  presses is woken only by a press). Memory: one thread and one Mach port while a split is up; the scene is a few
+  hundred bytes. Nothing private is new (`_AXUIElementGetWindow`, already HostAX's, finds a window's element).
+- **Checks:** `pane-click-tests.swift` (the decision for every case, the hold on a stand-in focuser and a pipe of
+  events: a click, a double-click, a drag from the other pane, the cap, key already, across apps, covered, the claims,
+  the mask; the engine's `fronted` focus with nothing fronted, failing when it fronts), `split-tests.swift` (the
+  session's bookkeeping for the tap's word: focused, highlight, nothing fronted; a let-go press changes nothing),
+  `e2e-split.swift` (the tap's life in Margin's own window: made at two visible and told each pane, its claimed press
+  left by the monitor, the card's page alone, another Space for a moment and for good, gone at one, Margin's quit).
+  The real screen: the `pane-clicks` part of `npm run test:screen` (two Chameleon copies; Chameleon's grid refuses the
+  first mouse as WebKit does) and TESTING.md M2.7 step 13h (Safari+Safari, Safari+Notes).

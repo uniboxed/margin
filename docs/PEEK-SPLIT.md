@@ -67,6 +67,10 @@ visible items `visible` (the sidebar highlights a split's panes as one capsule).
 - The pointer's slot: a list of rects (each pane's hole), less the theme's hits; while a card is open, only the
   card's content rect (the dimmed page around it caught: a click there closes the card).
 - `pressed(at)`: the press's host found by rect; a press in another pane focuses that pane (no raise of main).
+  While several are visible, the pane click tap (PaneClickTap.swift, 2026-11-21) holds a left press in a pane without
+  the keys until Accessibility has made its window key, so the press itself reaches the page (one click, not two);
+  the monitor's own press then leaves it (`paneTapClaimed`) and the session records the focus without fronting
+  anything (`HostEngine.focus(_:fronted:)`).
 - `hostedFrame` pushes the focused host's frame (theme swap unchanged) plus `hostedFrames` for all.
 
 **Browser copy (extension/background/hosted.ts).** `hostShow {windowId, itemId, url}` shows the item's tab in that
