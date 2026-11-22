@@ -29,6 +29,7 @@
 //   with a toast before anything is opened (`refusesAdd`, runtime.ts dispatch); so is stacking (or unstacking) panes
 //   that wouldn't fit along the other axis (`refusesAxis`). The sidebar's edge stops where the panes would no longer fit
 //   (`floor`, behaviors/resize.ts).
+import { frontItemOf } from '../../shared/front-item.ts';
 import type { Rt } from '../runtime.ts';
 import type { ViewModel } from '../view-model.ts';
 
@@ -403,22 +404,34 @@ export function installSplit(rt: Rt) {
       const vm = rt.vm;
       const g = h.layout;
       if (!h.appWindow || !vm || !g) return null;
-      const split = vm.split;
-      const axis = split?.axis ?? 'horizontal';
-      if (split && split.panes.some((p) => p.tabId === tabId || String(p.id) === String(tabId))) return null;
-      if (split && split.panes.length >= 4) return 'A split view has 4 panes at most';
-      // (Each pane's id and address: the split's own, the one added from the state; the item in front first. Its address
-      // names its app for its known minimum (`appMin`, known before its window exists) and its band, stacked.)
       const st: any = rt.state;
-      const urlOf = (id: unknown) => {
-        const known = split?.panes.find((p) => String(p.id) === String(id) || String(p.tabId) === String(id));
-        if (known) return known.url;
-        return (typeof id === 'string' ? st?.keptTabs?.[id]?.url : st?.tabs?.[id as number]?.url) ?? '';
-      };
-      const panes = [
-        ...(split ? split.panes.map((p) => ({ id: String(p.id), url: p.url ?? '' })) : [{ id: String(vm.tab?.id ?? 'front'), url: vm.tab?.url ?? '' }]),
-        { id: String(tabId), url: urlOf(tabId) },
-      ];
+      const kept: Record<string, any> = st?.keptTabs ?? {};
+      const item = typeof tabId === 'string' ? kept[tabId] : null;
+      let axis = 'horizontal';
+      let panes: { id: string, url: string }[];
+      if (item) {
+        // (A library item, Margin.app's: what the library makes of it, `addToSplit`: added to the split of the item used
+        // last in its space (not itself), or a new split of that one and it, in that order. Each pane's address names its
+        // app for its known minimum (`appMin`, known before its window exists) and its band, stacked.)
+        const partner = frontItemOf(Object.values(kept), item.spaceId, item.id);
+        if (!partner) return null; // (the library's to refuse: no second item)
+        const group = ((st?.splits ?? []) as { panes: string[], axis?: string }[]).find((g) => g.panes.includes(partner.id)) ?? null;
+        if (group?.panes.includes(item.id)) return null;
+        if (group && group.panes.length >= 4) return 'A split view has 4 panes at most';
+        axis = group?.axis === 'vertical' ? 'vertical' : 'horizontal';
+        panes = [...(group ? group.panes : [partner.id]).map((id) => ({ id: String(id), url: String(kept[id]?.url ?? '') })), { id: item.id, url: String(item.url ?? '') }];
+      } else {
+        // (A browser's tab: the split shown, or the tab in front, and it.)
+        const split = vm.split;
+        axis = split?.axis ?? 'horizontal';
+        if (split && split.panes.some((p) => p.tabId === tabId || String(p.id) === String(tabId))) return null;
+        if (split && split.panes.length >= 4) return 'A split view has 4 panes at most';
+        const url = typeof tabId === 'number' ? st?.tabs?.[tabId]?.url ?? '' : '';
+        panes = [
+          ...(split ? split.panes.map((p) => ({ id: String(p.id), url: p.url ?? '' })) : [{ id: String(vm.tab?.id ?? 'front'), url: vm.tab?.url ?? '' }]),
+          { id: String(tabId), url },
+        ];
+      }
       const ok = fits(axis, panes, true);
       return ok ? null : 'Not enough room for another pane';
     },

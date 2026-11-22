@@ -150,19 +150,25 @@ for (const [name, engine] of ENGINES) {
         assert.equal(safariTight.toast, 'Not enough room for another pane');
         const safariRoomy = await ev(({ t, w }) => T.rtSplitAdd(t, w), { t: tabs[2], w: 1760 });
         assert.deepEqual(safariRoomy.sent, ['addToSplit'], '3 × 574 and the gaps in 1760: added');
-        // The real screen's (2026-11-21 19:32:02): Notes (an app's item, its least 701) added beside a web page (574) in
-        // 1264 pt: refused before anything is opened, and the check said in Margin.app's log (each pane's app and floor,
-        // the room, the answer, the apps known) to read its inputs back.
+        // The real screen's (2026-11-21 19:32:02): a Safari tab in front (a library item, 574) and Notes used before it (an
+        // app's item, its least 701), 1264 pt. "Add to Split View" on the Safari tab's own row: the library splits it with
+        // Notes (the item used last besides it), so the check pairs it so too (it measured the tab beside itself: fits),
+        // and refuses before anything is opened; on Notes' row the same pair. Said in Margin.app's log (each pane's app and
+        // floor, the room, the answer, the apps known) to read the inputs back.
         await ev((m) => T.rtAppMin(m), { web: [574, 220], 'com.apple.Notes': [701, 53] });
         await ev(() => T.rtNoSplit());
-        await ev(() => T.rtKeptApp('t-notes', 'com.apple.Notes', 'Notes'));
-        const notesTight = await ev(({ w }) => T.rtSplitAdd('t-notes', w), { w: 1264 });
-        assert.deepEqual(notesTight.sent, [], 'Notes beside a web page in 1264 pt: nothing asked of the library');
-        assert.equal(notesTight.toast, 'Not enough room for another pane');
-        assert.match(notesTight.note ?? '', /^split add: web 574 \+ com\.apple\.Notes 701 \+ gaps \d+ in 1264 \(horizontal\): refused; apps known: web, com\.apple\.Notes$/, `the check said: ${notesTight.note}`);
-        const notesRoomy = await ev(({ w }) => T.rtSplitAdd('t-notes', w), { w: 1400 });
-        assert.deepEqual(notesRoomy.sent, ['addToSplit'], 'in 1400 pt: added');
-        assert.match(notesRoomy.note ?? '', /: fits;/);
+        await ev(() => T.rtKept('t-notes', 'app://com.apple.Notes', { lastActive: 1000, name: 'Notes' }));
+        await ev(() => T.rtKept('t-web', 'https://maps.example/', { lastActive: 2000, wasActive: true }));
+        const ownRow = await ev(({ w }) => T.rtSplitAdd('t-web', w), { w: 1264 });
+        assert.deepEqual(ownRow.sent, [], 'the front tab\'s own row, Notes used before it: nothing asked of the library');
+        assert.equal(ownRow.toast, 'Not enough room for another pane');
+        assert.match(ownRow.note ?? '', /^split add: com\.apple\.Notes 701 \+ web 574 \+ gaps \d+ in 1264 \(horizontal\): refused; apps known: web, com\.apple\.Notes$/, `the check said: ${ownRow.note}`);
+        const notesRow = await ev(({ w }) => T.rtSplitAdd('t-notes', w), { w: 1264 });
+        assert.deepEqual(notesRow.sent, [], 'Notes\' row beside the front tab: nothing asked of the library');
+        assert.match(notesRow.note ?? '', /^split add: web 574 \+ com\.apple\.Notes 701 \+ gaps \d+ in 1264 \(horizontal\): refused;/, `the check said: ${notesRow.note}`);
+        const roomyPair = await ev(({ w }) => T.rtSplitAdd('t-web', w), { w: 1400 });
+        assert.deepEqual(roomyPair.sent, ['addToSplit'], 'in 1400 pt: added');
+        assert.match(roomyPair.note ?? '', /: fits;/);
         await ev((t) => T.rtSplit(t), tabs.slice(0, 2));
         await ev((m) => T.rtAppMin(m), {});
         const roomy = await ev(({ t, w }) => T.rtSplitAdd(t, w), { t: tabs[2], w: 1200 });

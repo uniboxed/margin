@@ -819,11 +819,13 @@ const withRuntime = Object.assign(T, {
     rt.runtime!.dispatch('split.add', tabId, 'behavior');
     return { sent: rt.host.sent.map((s) => s.type), toast: rt.runtime!.vm?.toast?.text ?? null, note: rt.notes.at(-1) ?? null };
   },
-  // A kept item (Margin.app's library: an app's item, `app://<bundle id>`) added to the state, in the front tab's space.
-  rtKeptApp(id: string, bundleId: string, name: string) {
+  // A kept item (Margin.app's library: a web page's, or an app's `app://<bundle id>`) in the state, in the front tab's
+  // space, used last at `lastActive` (the selected one: `wasActive`).
+  rtKept(id: string, url: string, { lastActive = 0, wasActive = false, name = '' } = {}) {
     const s = rt.mock.state as any;
     const front = Object.values(s.tabs as Record<string, any>).find((t) => t.active)?.id;
-    s.keptTabs = { ...(s.keptTabs ?? {}), [id]: { id, url: `app://${bundleId}`, title: name, spaceId: s.tabSpace[front], target: { kind: 'app', bundleId, name } } };
+    const app = /^app:\/\/([^/?#]+)/.exec(url)?.[1];
+    s.keptTabs = { ...(s.keptTabs ?? {}), [id]: { id, url, title: name || url, spaceId: s.tabSpace[front], lastActive, wasActive, target: app ? { kind: 'app', bundleId: app, name } : { kind: 'web', browser: 'safari', profile: null } } };
     rt.host.setState(rt.mock.state);
   },
   rtVm() { const vm = rt.runtime!.vm!; return { space: vm.space.id, sidebar: vm.window.sidebar, palette: vm.palette.open, rows: vm.palette.rows.length, today: vm.space.today.length }; },
