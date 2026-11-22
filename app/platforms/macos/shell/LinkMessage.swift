@@ -4,8 +4,8 @@
 // link's session and its WebSocket in link.rs, socket.rs, websocket.rs, relay.rs, joined in link_hub.rs; docs/
 // CORE-REFACTOR.md step 1.5): a message comes here already read by the core (`LinkMessage(core:)` maps its JSON, with
 // nothing checked twice), and what the app sends goes to the core as `{ k, … }` (`AppMessage.core`), stamped and
-// sized there. StateMirror.swift still keeps a copy's state on the Mac's side (the core has its own, mirror.rs, for
-// Windows).
+// sized there. A copy's state (its snapshot, deltas and window lists) is the core's too, applied as it's read
+// (mirror.rs, link_hub.rs): what comes here is what each did (`State`), the values read through StateMirror.swift.
 
 import CoreGraphics
 import Foundation
@@ -97,15 +97,39 @@ enum LinkMessage {
         }
     }
 
-    // A stored key in a delta: its new value, or gone.
-    enum Change {
-        case set(Any)
-        case removed
-    }
+    // A snapshot, a delta or a window list, as the core applied it to the link's state (link_hub.rs StateApplied).
+    struct State {
+        enum Kind: String { case snapshot, delta, windows }
+        enum Outcome: Equatable {
+            case applied
+            case ignored // another epoch's, or the state is being asked for again (a resync)
+            case gap(expected: Int, got: Int) // a number missed: the state asked for again (logged and sent by the core)
+        }
 
-    struct Favicons {
-        let set: JSONObject
-        let del: [String]
+        let kind: Kind
+        let epoch: String
+        let seq: Int
+        let outcome: Outcome
+        let keys: Set<String> // the keys it carried: a snapshot's state's, a delta's changes'
+        let windows: [JSONObject]? // the windows, when it changed them
+        let hasState: Bool
+        let resyncing: Bool
+
+        init?(core s: JSONObject) {
+            guard let kind = (s["kind"] as? String).flatMap(Kind.init(rawValue:)) else { return nil }
+            self.kind = kind
+            epoch = s["epoch"] as? String ?? ""
+            seq = int(s["seq"]) ?? 0
+            switch s["outcome"] as? String {
+            case "applied": outcome = .applied
+            case "gap": outcome = .gap(expected: int(s["expected"]) ?? 0, got: int(s["got"]) ?? 0)
+            default: outcome = .ignored
+            }
+            keys = Set(s["keys"] as? [String] ?? [])
+            windows = s["windows"] as? [JSONObject]
+            hasState = s["hasState"] as? Bool == true
+            resyncing = s["resyncing"] as? Bool == true
+        }
     }
 
     // A theme package put together from its pieces by the core (link_hub.rs), or why not (already logged there).
@@ -115,9 +139,8 @@ enum LinkMessage {
     }
 
     case hello(Hello)
-    case snapshot(epoch: String, seq: Int, state: JSONObject, windows: [JSONObject])
-    case delta(epoch: String, seq: Int, changes: [String: Change], favicons: Favicons?)
-    case windows(epoch: String, seq: Int, list: [JSONObject])
+    // The copy's state changed (or a message of it was left): the core's mirror has it (the link's `mirror`).
+    case state(State)
     // Something for one window's UI (or every window's, with no windowId). The app reads `loading` and the preview's
     // and the UI's pushes (Shell.linkReceived).
     case push(epoch: String, windowId: Int?, msg: JSONObject)
@@ -137,22 +160,10 @@ enum LinkMessage {
         guard let k = m["k"] as? String else { return nil }
         if k.hasPrefix("data.") { self = .data(kind: k, body: m); return }
         let epoch = m["epoch"] as? String ?? ""
-        let seq = int(m["seq"]) ?? 0
         switch k {
         case "hello":
             guard let h = Hello(core: m) else { return nil }
             self = .hello(h)
-        case "snapshot":
-            self = .snapshot(epoch: epoch, seq: seq, state: m["state"] as? JSONObject ?? [:], windows: m["windows"] as? [JSONObject] ?? [])
-        case "delta":
-            var changes: [String: Change] = [:]
-            for (key, change) in m["changes"] as? JSONObject ?? [:] {
-                changes[key] = (change as? JSONObject)?["newValue"].map(Change.set) ?? .removed
-            }
-            let favicons = (m["favicons"] as? JSONObject).map { Favicons(set: $0["set"] as? JSONObject ?? [:], del: $0["del"] as? [String] ?? []) }
-            self = .delta(epoch: epoch, seq: seq, changes: changes, favicons: favicons)
-        case "windows":
-            self = .windows(epoch: epoch, seq: seq, list: m["list"] as? [JSONObject] ?? [])
         case "push":
             self = .push(epoch: epoch, windowId: int(m["windowId"]), msg: m["msg"] as? JSONObject ?? [:])
         case "keys":
@@ -169,14 +180,16 @@ enum LinkMessage {
         case "bye":
             self = .bye(why: m["why"] as? String ?? "")
         default:
+            // (A snapshot, a delta or a window list never comes here on a link: the core applies it and says `State`.)
             self = .other(k)
         }
     }
 
-    // A message's text read by the core (the tests', the WebKit host's): nil if it isn't one.
-    static func decode(_ text: String) -> LinkMessage? {
-        (LinkCore.protocolCall(["type": "message", "text": text]) as? JSONObject).flatMap { LinkMessage(core: $0) }
-    }
+    // A message's text read by the core (the tests'): nil if it isn't one.
+    static func decode(_ text: String) -> LinkMessage? { read(text).flatMap { LinkMessage(core: $0) } }
+
+    // A message's text as the core reads it (protocol.rs LinkMessage::object), its fields checked: nil if it isn't one.
+    static func read(_ text: String) -> JSONObject? { LinkCore.protocolCall(["type": "message", "text": text]) as? JSONObject }
 }
 
 // What the app sends a copy (its link's session's own, welcome, tick, req and bye, are the core's).

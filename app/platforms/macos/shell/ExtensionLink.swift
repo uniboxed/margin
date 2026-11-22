@@ -87,6 +87,12 @@ final class LinkConnection {
     var refused: Int { refusedByCore + refusedHere }
     fileprivate var refusedByCore = 0
     fileprivate var refusedHere = 0
+    // The copy's state, as the core mirrors it (StateMirror.swift): kept up by the link's answers, values read from
+    // the core (none once the link is down).
+    private(set) lazy var mirror = StateMirror { [weak self] key in
+        guard let self else { return nil }
+        return self.owner?.stateValue(self.conn, key)
+    }
 
     fileprivate init(hello: LinkMessage.Hello, conn: UInt64, owner: SocketLink) {
         self.hello = hello
@@ -253,6 +259,16 @@ final class SocketLink {
 
     // ---- the core ----
 
+    // One stored key of a link's state, its JSON as the core keeps it (nil: no such link or key).
+    fileprivate func stateValue(_ conn: UInt64, _ key: String) -> Data? {
+        guard let core else { return nil }
+        var len = 0
+        let out = Array(key.utf8).withUnsafeBufferPointer { margin_link_state_value(core, conn, $0.baseAddress, $0.count, &len) }
+        guard let out else { return nil }
+        defer { margin_buffer_free(out, len) }
+        return Data(bytes: out, count: len)
+    }
+
     // One request to the core (`now` and `wall` added), its answer; nil if it couldn't be made.
     private func call(_ request: JSONObject) -> JSONObject? {
         var r = request
@@ -300,6 +316,11 @@ final class SocketLink {
             links[hello.key] = link
             byConn[conn] = link
             delegate?.linkUp(link)
+        case "state":
+            // (Applied by the core as it was read: its mirror has it, the gap's resync sent and logged there.)
+            guard let link = byConn[conn], let state = LinkMessage.State(core: item) else { return }
+            link.mirror.applied(state)
+            delegate?.linkReceived(link, .state(state))
         case "received":
             guard let link = byConn[conn], let message = (item["message"] as? JSONObject).flatMap({ LinkMessage(core: $0) }) else { return }
             delegate?.linkReceived(link, message)

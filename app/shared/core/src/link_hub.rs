@@ -17,12 +17,19 @@
 //! per link (a new link starts over), the whole handed on once it adds up ([`HubOut::Theme`]) or why not
 //! ([`HubOut::ThemeRefused`], logged "KEY: a theme refused: WHY"); a message the link refuses to send is logged
 //! "not sent to KEY: not JSON, or over 1000000 bytes".
+//!
+//! Each link's state is mirrored here ([`StateMirror`], one per link, begun at its hello): a snapshot, a delta or a
+//! window list is applied as it's read and the caller told only what it did ([`HubOut::State`]: its keys, the windows
+//! when they changed, never the values again); the caller reads a value when it needs one ([`LinkHub::mirror`]). A
+//! number missed is logged "KEY: number N came, M was next: the state asked for again" and a `resync` sent at once and
+//! every 2 s while the snapshot hasn't come ([`Resync`], at [`LinkHub::next_deadline`]), as Shell.swift's timer did.
 
 use std::collections::BTreeMap;
 
 use crate::chunks::{ChunkAssembler, Outcome};
 use crate::json::Object;
 use crate::link::{Action, ConnId, Level, LinkError, Timing};
+use crate::mirror::{self, Resync, StateMirror};
 use crate::protocol::{AppMessage, Hello, LinkMessage, MAX_APP_MESSAGE};
 use crate::relay::{RelayHub, RelayOut};
 use crate::socket::{Out, SocketLink};
@@ -33,6 +40,41 @@ use crate::time::Secs;
 pub enum Which {
     Tcp,
     Relay,
+}
+
+/// Which state message a [`StateApplied`] is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StateKind {
+    Snapshot,
+    Delta,
+    Windows,
+}
+
+impl StateKind {
+    pub fn name(self) -> &'static str {
+        match self {
+            StateKind::Snapshot => "snapshot",
+            StateKind::Delta => "delta",
+            StateKind::Windows => "windows",
+        }
+    }
+}
+
+/// What a state message did to its link's mirror.
+#[derive(Clone, Debug, PartialEq)]
+pub struct StateApplied {
+    pub kind: StateKind,
+    pub epoch: String,
+    pub seq: i64,
+    pub outcome: mirror::Outcome,
+    /// The keys it carried, sorted: a snapshot's state's, a delta's changes' (`favicons` among them only as a key a
+    /// delta named, which is left: icons go as their diff); a window list's none.
+    pub keys: Vec<String>,
+    /// The windows as the mirror has them now, when this changed them (a snapshot or a window list applied).
+    pub windows: Option<Vec<Object>>,
+    /// The mirror after it: a snapshot has come this epoch; a number missed and the snapshot not come yet.
+    pub has_state: bool,
+    pub resyncing: bool,
 }
 
 /// What the caller does, in order.
@@ -65,7 +107,13 @@ pub enum HubOut {
         conn: ConnId,
         hello: Hello,
     },
-    /// `linkReceived`: everything after hello but replies, tocks and theme pieces.
+    /// A snapshot, a delta or a window list, applied to the link's mirror (or not: [`StateApplied::outcome`]).
+    State {
+        conn: ConnId,
+        key: String,
+        applied: StateApplied,
+    },
+    /// `linkReceived`: everything after hello but replies, tocks, theme pieces and the state.
     Received {
         conn: ConnId,
         key: String,
@@ -114,6 +162,9 @@ pub struct LinkHub {
     link: SocketLink,
     relays: RelayHub,
     themes: BTreeMap<ConnId, ChunkAssembler>,
+    /// Each link's state and its resync timer.
+    mirrors: BTreeMap<ConnId, (StateMirror, Resync)>,
+    resync_retry: Secs,
     wall: Secs,
 }
 
@@ -125,7 +176,14 @@ impl LinkHub {
 
     /// Over a link made by the caller (the tests' secrets).
     pub fn with_link(link: SocketLink, version: &str) -> Self {
-        Self { link, relays: RelayHub::new(version), themes: BTreeMap::new(), wall: 0.0 }
+        Self {
+            link,
+            relays: RelayHub::new(version),
+            themes: BTreeMap::new(),
+            mirrors: BTreeMap::new(),
+            resync_retry: Resync::RETRY,
+            wall: 0.0,
+        }
     }
 
     pub fn link(&self) -> &SocketLink {
@@ -138,6 +196,18 @@ impl LinkHub {
 
     pub fn relays(&self) -> &RelayHub {
         &self.relays
+    }
+
+    /// A link's state, as its copy last sent it (from its hello on).
+    pub fn mirror(&self, conn: ConnId) -> Option<&StateMirror> {
+        self.mirrors.get(&conn).map(|(m, _)| m)
+    }
+
+    /// The resync's retry (2 s; the tests' shorter): links that say hello after this take it.
+    pub fn set_resync_retry(&mut self, retry: Secs) {
+        if retry.is_finite() && retry > 0.0 {
+            self.resync_retry = retry;
+        }
     }
 
     /// The relays' welcome says this version (the Mac's `CFBundleVersion`; set before the first relay connects).
@@ -154,7 +224,8 @@ impl LinkHub {
     }
 
     pub fn next_deadline(&self) -> Option<Secs> {
-        self.link.next_deadline()
+        let resync = self.mirrors.values().filter_map(|(_, r)| r.due_at());
+        self.link.next_deadline().into_iter().chain(resync).reduce(Secs::min)
     }
 
     // ---- what the caller says ----
@@ -219,7 +290,64 @@ impl LinkHub {
 
     pub fn tick(&mut self, now: Secs) -> Vec<HubOut> {
         let outs = self.link.tick(now);
-        self.route(outs, now)
+        let mut out = self.route(outs, now);
+        // Resyncs due again (the snapshot asked for not come yet).
+        let due: Vec<(ConnId, String)> = self
+            .mirrors
+            .iter_mut()
+            .filter_map(|(conn, (m, r))| r.tick(now, m).then(|| (*conn, m.epoch().unwrap_or_default().to_owned())))
+            .collect();
+        for (conn, epoch) in due {
+            self.resync(conn, epoch, now, &mut out);
+        }
+        out
+    }
+
+    /// A `resync` to that link (nothing if it can't go: the link is going).
+    fn resync(&mut self, conn: ConnId, epoch: String, now: Secs, out: &mut Vec<HubOut>) {
+        if let Ok(bytes) = self.link.send(conn, &AppMessage::Resync { epoch }, now) {
+            out.push(HubOut::Write { which: Which::Tcp, conn, bytes });
+        }
+    }
+
+    /// A state message applied to its link's mirror: what it did, said; a number missed, logged and the state asked
+    /// for again.
+    fn mirrored(&mut self, conn: ConnId, key: String, message: &LinkMessage, now: Secs, out: &mut Vec<HubOut>) {
+        let Some((m, r)) = self.mirrors.get_mut(&conn) else { return };
+        let (kind, epoch, seq, keys) = match message {
+            LinkMessage::Snapshot { epoch, seq, state, .. } => {
+                (StateKind::Snapshot, epoch, *seq, state.keys().cloned().collect::<Vec<_>>())
+            }
+            LinkMessage::Delta { epoch, seq, changes, .. } => {
+                (StateKind::Delta, epoch, *seq, changes.keys().cloned().collect())
+            }
+            LinkMessage::Windows { epoch, seq, .. } => (StateKind::Windows, epoch, *seq, Vec::new()),
+            _ => return,
+        };
+        let outcome = m.apply(message);
+        let ask = r.after(outcome, now);
+        let windows = (outcome == mirror::Outcome::Applied && kind != StateKind::Delta).then(|| m.windows().to_vec());
+        let mut keys = keys;
+        keys.sort();
+        let applied = StateApplied {
+            kind,
+            epoch: epoch.clone(),
+            seq,
+            outcome,
+            keys,
+            windows,
+            has_state: m.has_state(),
+            resyncing: m.is_resyncing(),
+        };
+        let own_epoch = m.epoch().unwrap_or_default().to_owned();
+        if let mirror::Outcome::Gap { expected, got } = outcome {
+            let text = format!("{key}: number {got} came, {expected} was next: the state asked for again");
+            out.push(HubOut::Log { level: Level::Warn, text });
+        }
+        if ask {
+            self.resync(conn, own_epoch, now, out);
+        }
+        out.push(HubOut::State { conn, key, applied });
     }
 
     /// `LinkConnection.send`. A message refused for its size is logged and counted
@@ -294,7 +422,7 @@ impl LinkHub {
                 Out::Note(note) => out.push(HubOut::Note(note)),
                 Out::AppUpDue => out.push(HubOut::AppUpDue),
                 Out::Log { level, text } => out.push(HubOut::Log { level, text }),
-                Out::Link(a) => self.session(a, out),
+                Out::Link(a) => self.session(a, now, out),
             }
         }
     }
@@ -313,10 +441,13 @@ impl LinkHub {
         }
     }
 
-    fn session(&mut self, a: Action, out: &mut Vec<HubOut>) {
+    fn session(&mut self, a: Action, now: Secs, out: &mut Vec<HubOut>) {
         match a {
             Action::Up { conn, hello } => {
                 self.themes.insert(conn, ChunkAssembler::default());
+                let mut m = StateMirror::new();
+                m.begin(&hello);
+                self.mirrors.insert(conn, (m, Resync::new(self.resync_retry)));
                 out.push(HubOut::Up { conn, hello });
             }
             Action::Received { conn, key, message: LinkMessage::Theme { epoch, chunk } } => {
@@ -334,9 +465,16 @@ impl LinkHub {
                     }
                 }
             }
+            Action::Received {
+                conn,
+                key,
+                message:
+                    message @ (LinkMessage::Snapshot { .. } | LinkMessage::Delta { .. } | LinkMessage::Windows { .. }),
+            } => self.mirrored(conn, key, &message, now, out),
             Action::Received { conn, key, message } => out.push(HubOut::Received { conn, key, message }),
             Action::Down { conn, key, why } => {
                 self.themes.remove(&conn);
+                self.mirrors.remove(&conn);
                 out.push(HubOut::Down { conn, key, why });
             }
             Action::Answer { conn, id, answer, .. } => out.push(HubOut::Answer { conn, id, answer }),
@@ -642,6 +780,89 @@ mod tests {
             19.0,
         );
         assert!(matches!(&out[..], [HubOut::Received { conn: 1, message: LinkMessage::Push { .. }, .. }]));
+    }
+
+    fn state(out: &[HubOut]) -> Option<&StateApplied> {
+        out.iter().find_map(|o| if let HubOut::State { applied, .. } = o { Some(applied) } else { None })
+    }
+
+    fn resyncs(out: &[HubOut]) -> usize {
+        texts(out, Which::Tcp, 1).iter().filter(|m| m["k"] == "resync" && m["epoch"] == "e1").count()
+    }
+
+    #[test]
+    fn each_links_state_mirrored_as_it_comes() {
+        let mut h = linked();
+        assert!(h.mirror(1).is_some_and(|m| !m.has_state() && m.epoch() == Some("e1")), "begun at its hello");
+        let out = h.tcp_bytes(
+            1,
+            &frame(json!({"k":"snapshot","epoch":"e1","seq":1,"state":{"spaces":[{"id":"a"}],"openTabs":{"tabs":{}},"favicons":{"https://a":{"icon":"A"}}},"windows":[{"windowId":3}]})),
+            1.0,
+        );
+        let a = state(&out).expect("said");
+        assert!(a.kind == StateKind::Snapshot && a.outcome == mirror::Outcome::Applied && a.has_state && !a.resyncing);
+        assert_eq!(a.keys, ["favicons", "openTabs", "spaces"]);
+        assert_eq!(a.windows.as_ref().map(Vec::len), Some(1), "the windows, as they changed");
+        assert!(!out.iter().any(|o| matches!(o, HubOut::Received { .. })), "the state never handed on as it came");
+        let m = h.mirror(1).expect("a mirror");
+        assert_eq!(m.value_text("spaces").as_deref(), Some(r#"[{"id":"a"}]"#), "a value's text as it's kept");
+        assert_eq!(m.value_text("favicons").as_deref(), Some(r#"{"https://a":{"icon":"A"}}"#));
+        let out = h.tcp_bytes(
+            1,
+            &frame(json!({"k":"delta","epoch":"e1","seq":2,"changes":{"spaces":{"newValue":[]},"pins":{}}})),
+            1.5,
+        );
+        let a = state(&out).expect("said");
+        assert!(a.kind == StateKind::Delta && a.outcome == mirror::Outcome::Applied && a.seq == 2);
+        assert_eq!((a.keys.clone(), a.windows.clone()), (vec!["pins".to_owned(), "spaces".to_owned()], None));
+        assert_eq!(h.mirror(1).and_then(|m| m.value("spaces")), Some(json!([])));
+        let out = h.tcp_bytes(
+            1,
+            &frame(json!({"k":"windows","epoch":"e1","seq":3,"list":[{"windowId":3},{"windowId":4}]})),
+            2.0,
+        );
+        assert_eq!(state(&out).and_then(|a| a.windows.as_ref()).map(Vec::len), Some(2));
+        assert_eq!(h.next_deadline(), Some(5.0), "only the link's ticker");
+
+        // A number missed: logged, the state asked for at once, and every 2 s until it comes.
+        let out = h.tcp_bytes(1, &frame(json!({"k":"windows","epoch":"e1","seq":5,"list":[]})), 10.0);
+        let a = state(&out).expect("said");
+        assert!(a.outcome == mirror::Outcome::Gap { expected: 4, got: 5 } && a.resyncing && a.windows.is_none());
+        assert!(logged(&out, "safari:P1: number 5 came, 4 was next: the state asked for again"));
+        assert_eq!(resyncs(&out), 1);
+        let out = h.tcp_bytes(1, &frame(json!({"k":"delta","epoch":"e1","seq":6,"changes":{}})), 11.0);
+        assert!(state(&out).is_some_and(|a| a.outcome == mirror::Outcome::Ignored) && resyncs(&out) == 0);
+        assert_eq!(resyncs(&h.tick(11.9)), 0);
+        assert_eq!(resyncs(&h.tick(12.0)), 1, "2 s on: again");
+        assert_eq!(resyncs(&h.tick(14.0)), 1, "and again");
+        let out = h.tcp_bytes(1, &frame(json!({"k":"snapshot","epoch":"e1","seq":9,"state":{}})), 15.0);
+        assert!(state(&out).is_some_and(|a| a.outcome == mirror::Outcome::Applied && !a.resyncing));
+        assert_eq!(resyncs(&h.tick(16.0)), 0, "the snapshot: no more");
+        assert_eq!(h.mirror(1).map(|m| m.keys()), Some(vec![]), "the resync's state, whole");
+
+        // Another gap, then the link goes: no more asks, the mirror gone.
+        h.tcp_bytes(1, &frame(json!({"k":"windows","epoch":"e1","seq":20,"list":[]})), 17.0);
+        let out = h.tcp_ended(1, None, 18.0);
+        assert!(out.iter().any(|o| matches!(o, HubOut::Down { conn: 1, .. })));
+        assert!(h.mirror(1).is_none() && h.tick(19.0).is_empty());
+    }
+
+    #[test]
+    fn a_new_link_starts_its_state_over() {
+        let mut h = linked();
+        h.set_resync_retry(0.5);
+        h.tcp_bytes(1, &frame(json!({"k":"snapshot","epoch":"e1","seq":1,"state":{"a":1}})), 1.0);
+        // The same profile again (a reload): it takes over, and its mirror is its own.
+        h.tcp_accept(2, 2.0);
+        h.tcp_bytes(2, &copy_request(), 2.0);
+        let out = h.tcp_bytes(2, &hello("safari", "P1", "e2"), 2.0);
+        assert!(out.iter().any(|o| matches!(o, HubOut::Up { conn: 2, .. })));
+        assert!(h.mirror(2).is_some_and(|m| !m.has_state() && m.keys().is_empty() && m.epoch() == Some("e2")));
+        let out = h.tcp_bytes(2, &frame(json!({"k":"snapshot","epoch":"e1","seq":1,"state":{"a":1}})), 2.5);
+        assert!(state(&out).is_some_and(|a| a.outcome == mirror::Outcome::Ignored), "the old epoch's: left");
+        let out = h.tcp_bytes(2, &frame(json!({"k":"delta","epoch":"e2","seq":1,"changes":{}})), 3.0);
+        assert!(state(&out).is_some_and(|a| a.outcome == mirror::Outcome::Gap { expected: 1, got: 1 }));
+        assert_eq!(h.next_deadline(), Some(3.5), "the retry set before its hello: taken");
     }
 
     #[test]

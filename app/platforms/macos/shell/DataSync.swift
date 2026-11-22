@@ -62,53 +62,6 @@ enum DataNames {
     }
 }
 
-// One small file written whole: a temporary file beside it (flushed), the version it replaces kept as `.bak` (a hard
-// link), then renamed over it (the themes' files: they move to margin-core with ThemeStore, docs/CORE-REFACTOR.md;
-// browser.json is margin-core's since step 1.4).
-enum AtomicFile {
-    nonisolated struct WriteError: Error, CustomStringConvertible { let description: String }
-
-    nonisolated static func write(_ data: Data, to url: URL) throws {
-        let dir = url.deletingLastPathComponent()
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let tmp = dir.appendingPathComponent(".\(url.lastPathComponent).\(UUID().uuidString.prefix(8)).tmp").path
-        let fd = open(tmp, O_WRONLY | O_CREAT | O_EXCL, 0o600)
-        guard fd >= 0 else { throw WriteError(description: "\(url.lastPathComponent): open: \(String(cString: strerror(errno)))") }
-        var failed: String?
-        data.withUnsafeBytes { (buffer: UnsafeRawBufferPointer) in
-            var offset = 0
-            while offset < buffer.count {
-                let n = Darwin.write(fd, buffer.baseAddress! + offset, buffer.count - offset)
-                if n < 0 {
-                    if errno == EINTR { continue }
-                    failed = String(cString: strerror(errno))
-                    return
-                }
-                offset += n
-            }
-        }
-        if failed == nil, fsync(fd) != 0 { failed = String(cString: strerror(errno)) }
-        close(fd)
-        if let failed {
-            unlink(tmp)
-            throw WriteError(description: "\(url.lastPathComponent): write: \(failed)")
-        }
-        let path = url.path
-        if FileManager.default.fileExists(atPath: path) {
-            let bak = path + ".bak"
-            unlink(bak)
-            if link(path, bak) != 0 { try? FileManager.default.copyItem(atPath: path, toPath: bak) }
-        }
-        guard rename(tmp, path) == 0 else {
-            let e = String(cString: strerror(errno))
-            unlink(tmp)
-            throw WriteError(description: "\(url.lastPathComponent): rename: \(e)")
-        }
-        let dirFd = open(dir.path, O_RDONLY)
-        if dirFd >= 0 { fsync(dirFd); close(dirFd) }
-    }
-}
-
 final class DataSync {
     enum NeedChoice {
         case ask // data.need, as always

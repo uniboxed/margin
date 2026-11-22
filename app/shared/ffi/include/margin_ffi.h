@@ -117,7 +117,8 @@ uint8_t *margin_profiles_resolve(const uint8_t *request, size_t len, size_t *out
 // The link (link_hub.rs, ffi link.rs): the copies' WebSockets, Chrome's and Edge's relays, Safari's way in. The Swift
 // side owns the sockets, Safari's dispatch, the notification, the note's file and one timer, and carries out each
 // answer's `do` list in order. Bytes in are typed; bytes out come through `write` during the call (which 0: a copy's
-// TCP connection, 1: a relay's; copied before it returns). Answers (JSON) freed with margin_buffer_free.
+// TCP connection, 1: a relay's; copied before it returns). Answers (JSON) freed with margin_buffer_free. Each link's
+// state is mirrored in the core.
 typedef struct MarginLink MarginLink;
 typedef void (*MarginLinkWrite)(void *ctx, uint8_t which, uint64_t conn, const uint8_t *bytes, size_t len);
 
@@ -125,6 +126,25 @@ MarginLink *margin_link_new(const uint8_t *config, size_t len, void *ctx, Margin
 void margin_link_free(MarginLink *link);
 uint8_t *margin_link_call(MarginLink *link, const uint8_t *request, size_t len, size_t *out_len);
 uint8_t *margin_link_bytes(MarginLink *link, uint8_t which, uint64_t conn, const uint8_t *bytes, size_t len, double now, double wall, size_t *out_len);
+// One stored key of a link's state (the core mirrors each link's snapshot and deltas: the bytes' answer says only what
+// changed), its JSON's bytes as kept; NULL: no such link or key.
+uint8_t *margin_link_state_value(MarginLink *link, uint64_t conn, const uint8_t *key, size_t len, size_t *out_len);
 uint8_t *margin_link_protocol(const uint8_t *request, size_t len, size_t *out_len);
+
+// The themes a person imported, the built-ins' packages, what the picker chose (data/themes.rs, ffi themes.rs). The
+// store: one object over its folder, one JSON call (list, has, save, remove), the package a window draws typed (its
+// UTF-8 JSON's bytes, NULL: none). The built-ins: one object over the app's folder (NULL: none), the package typed.
+// No object: the id rule, the limits, the picker's choice read within its caps. Freed with margin_buffer_free.
+typedef struct MarginThemes MarginThemes;
+typedef struct MarginBuiltinThemes MarginBuiltinThemes;
+
+MarginThemes *margin_themes_new(const uint8_t *root, size_t len);
+void margin_themes_free(MarginThemes *themes);
+uint8_t *margin_themes_call(MarginThemes *themes, const uint8_t *request, size_t len, size_t *out_len);
+uint8_t *margin_themes_message(MarginThemes *themes, const uint8_t *id, size_t len, size_t *out_len);
+MarginBuiltinThemes *margin_builtin_themes_new(const uint8_t *root, size_t len);
+void margin_builtin_themes_free(MarginBuiltinThemes *builtins);
+uint8_t *margin_builtin_themes_message(MarginBuiltinThemes *builtins, const uint8_t *chosen, size_t len, size_t *out_len);
+uint8_t *margin_themes_protocol(const uint8_t *request, size_t len, size_t *out_len);
 
 #endif

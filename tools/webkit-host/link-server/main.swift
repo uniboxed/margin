@@ -57,17 +57,22 @@ final class Harness: ExtensionLinkDelegate {
 
   func linkReceived(_ c: LinkConnection, _ message: LinkMessage) {
     switch message {
-    case .snapshot(let epoch, let seq, let state, let windows):
-      let spaces = (state["spaces"] as? [Any])?.count ?? -1
-      say(["ev": "snapshot", "seq": seq, "keys": Array(state.keys).sorted(), "spaces": spaces, "windows": windows])
-      guard firstWindow[epoch] == nil, let w = windows.first, let id = int(w["windowId"]) else { return }
-      firstWindow[epoch] = id
-    case .delta(_, let seq, let changes, _):
-      say(["ev": "delta", "seq": seq, "keys": Array(changes.keys).sorted()])
-    case .windows(_, let seq, let list):
-      // Each window's tab in front (ids only).
-      let each: [[String: Any]] = list.map { w in ["windowId": w["windowId"] ?? NSNull(), "activeTabId": w["activeTabId"] ?? NSNull()] }
-      say(["ev": "windows", "seq": seq, "count": list.count, "list": each])
+    case .state(let state):
+      // (Applied by the core as it was read: the values are its mirror's, the windows as it now has them.)
+      let windows = state.windows ?? c.mirror.windows
+      switch state.kind {
+      case .snapshot:
+        let spaces = (c.mirror.value("spaces") as? [Any])?.count ?? -1
+        say(["ev": "snapshot", "seq": state.seq, "keys": state.keys.sorted(), "spaces": spaces, "windows": windows])
+        guard firstWindow[state.epoch] == nil, let w = windows.first, let id = int(w["windowId"]) else { return }
+        firstWindow[state.epoch] = id
+      case .delta:
+        say(["ev": "delta", "seq": state.seq, "keys": state.keys.sorted()])
+      case .windows:
+        // Each window's tab in front (ids only).
+        let each: [[String: Any]] = windows.map { w in ["windowId": w["windowId"] ?? NSNull(), "activeTabId": w["activeTabId"] ?? NSNull()] }
+        say(["ev": "windows", "seq": state.seq, "count": windows.count, "list": each])
+      }
     case .theme(let epoch, let theme):
       // (Its pieces put together by the core, per link.)
       switch theme {

@@ -13,10 +13,12 @@ mod data;
 mod keys;
 mod link;
 mod profiles;
+mod themes;
 pub use data::*;
 pub use keys::*;
 pub use link::*;
 pub use profiles::*;
+pub use themes::*;
 
 use margin_core::geometry::Rect;
 use margin_core::host::api::HostCore;

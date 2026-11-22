@@ -7,7 +7,7 @@ pub mod system;
 pub mod time;
 
 // The link: the copies' WebSockets on every OS, the one copy of its rules (the Mac's through margin-ffi's link object:
-// `link_hub`; StateMirror.swift is still the Mac's own).
+// `link_hub`, which keeps each link's `mirror`).
 pub mod chunks;
 pub mod link;
 pub mod link_hub;
@@ -17,7 +17,8 @@ pub mod relay;
 pub mod socket;
 pub mod websocket;
 
-// The lasting data (DataSet.swift, DataStore.swift, DataSync.swift, BrowserProfiles.swift, ThemeStore.swift).
+// The lasting data and the imported themes (the Mac's through margin-ffi: DataSync.swift, BrowserProfiles.swift,
+// ThemeStore.swift are its wrappers).
 pub mod data;
 
 // Windows (WindowMap.swift, WindowMatcher.swift) and the overlays (PassThrough.swift, OverlayPlanner.swift).

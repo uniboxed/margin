@@ -143,7 +143,8 @@ extension Tests {
     let browserJSON = root.appendingPathComponent("safari/browser.json")
     let order: JSONObject = ["format": 1, "browser": "safari", "order": [["s-default", "personal"], ["s-OTHER", "personal"], ["s-default", "work"]],
                              "profiles": ["s-default": ["name": "Default", "firstSeen": 1], "s-OTHER": ["name": "Other", "firstSeen": 2]], "savedAt": 1]
-    try? AtomicFile.write(try! JSONSerialization.data(withJSONObject: order), to: browserJSON)
+    try? FileManager.default.createDirectory(at: browserJSON.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try? JSONSerialization.data(withJSONObject: order).write(to: browserJSON, options: .atomic)
     let filesBefore = filesUnder(root)
     guard let lib = Library.open(dataRoot: root, script: script, background: false) else { return check("library import: opens", false) }
     lib.now = { 777 }

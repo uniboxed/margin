@@ -9,6 +9,10 @@
 //! - Everything else is one JSON call (`margin_link_call`), its answer `{ do: […], deadline, port, refusedInARow }`
 //!   (and the call's own fields). `now` is the caller's monotonic clock (a sleep is never 40 s of silence), `wall`
 //!   the wall clock's (every `at`).
+//! - Each link's state is the core's (`link_hub`'s mirrors): a snapshot, a delta or a window list is applied inside
+//!   the bytes' call, and the answer says only what it did (`state`: its keys, the windows when they changed, the
+//!   mirror's flags), never the values again; a value is read when the app needs it (`margin_link_state_value`: its
+//!   JSON's bytes as kept). A resync is the core's too (logged, sent, retried at the answer's `deadline`).
 //! - The builders and readers of the Mac's window requests (`setWindowState` with `land: false`, what a windows call
 //!   answered, what `newWindow` answered): `margin_link_protocol`, with no object.
 //!
@@ -18,7 +22,8 @@ use std::ffi::c_void;
 
 use margin_core::json::{self, Object};
 use margin_core::link::{Level, LinkError, Timing};
-use margin_core::link_hub::{HubOut, LinkHub, Which};
+use margin_core::link_hub::{HubOut, LinkHub, StateApplied, Which};
+use margin_core::mirror::Outcome;
 use margin_core::protocol::{
     AppMessage, HandoffRequest, LinkMessage, MAX_APP_MESSAGE, SpaceWindowAnswer, VERSION, WindowCallAnswer,
     WindowState, number,
@@ -92,6 +97,7 @@ impl MarginLink {
                 HubOut::Note(info) => json!({ "do": "note", "info": info }),
                 HubOut::AppUpDue => json!({ "do": "appUpDue" }),
                 HubOut::Up { conn, hello } => json!({ "do": "up", "conn": conn, "hello": hello.object() }),
+                HubOut::State { conn, key, applied } => state_json(conn, &key, applied),
                 HubOut::Received { conn, key, message } => {
                     json!({ "do": "received", "conn": conn, "key": key, "message": message.object() })
                 }
@@ -202,11 +208,47 @@ impl MarginLink {
                 Vec::new()
             }
             "state" => Vec::new(),
+            "mirror" => {
+                let m = self.hub.mirror(conn(o));
+                extra.insert(
+                    "mirror".into(),
+                    m.map_or(Value::Null, |m| {
+                        let state = m.state_json().and_then(|t| serde_json::from_str::<Value>(&t).ok());
+                        json!({
+                            "epoch": m.epoch(), "seq": m.seq(), "keys": m.keys(), "hasState": m.has_state(),
+                            "resyncing": m.is_resyncing(), "windows": m.windows(), "state": state,
+                        })
+                    }),
+                );
+                Vec::new()
+            }
             other => return json!({ "error": format!("bad request: no call {other:?}") }),
         };
         self.carry(outs, &mut list);
         self.reply(list, Some(extra))
     }
+}
+
+/// What a state message did, for the answer's list.
+fn state_json(conn: u64, key: &str, a: StateApplied) -> Value {
+    let mut o = json!({
+        "do": "state", "conn": conn, "key": key, "kind": a.kind.name(), "epoch": a.epoch, "seq": a.seq,
+        "keys": a.keys, "hasState": a.has_state, "resyncing": a.resyncing,
+    });
+    let outcome = match a.outcome {
+        Outcome::Applied => "applied",
+        Outcome::Ignored => "ignored",
+        Outcome::Gap { expected, got } => {
+            o["expected"] = expected.into();
+            o["got"] = got.into();
+            "gap"
+        }
+    };
+    o["outcome"] = outcome.into();
+    if let Some(windows) = a.windows {
+        o["windows"] = Value::Array(windows.into_iter().map(Value::Object).collect());
+    }
+    o
 }
 
 /// A message the Mac's Swift sends, from its JSON (`{ k, … }` as on the wire, `at` stamped here): `drawn`,
@@ -269,11 +311,12 @@ pub unsafe extern "C" fn margin_link_free(link: *mut MarginLink) {
 }
 
 /// One request (`{ type, now, wall, … }`) → its answer (`{ do, deadline, port, refusedInARow, … }`). Types:
-/// `origins` (origins), `relays` (version: the relays' welcome's), `listening` (port or null), `woken` (json: the notification's), `appUp` (runningFor: how
-/// long Safari has run, or null), `dispatched` (name, n, why or null), `accept` and `ended` (conn; error), `relayOpen`
-/// and `relayEnded` (conn), `tick`, `send` (conn, message: `drawn`, `resync` or a data message; answers `sent`,
-/// `error`, `refused`), `request` (conn, kind, payload, windowId; answers `id` or `error`), `close` (conn, code,
-/// why), `stop` (why), `heardPid` (pid; answers `heard`), `state`.
+/// `origins` (origins), `relays` (version: the relays' welcome's), `listening` (port or null), `woken` (json: the
+/// notification's), `appUp` (runningFor: how long Safari has run, or null), `dispatched` (name, n, why or null),
+/// `accept` and `ended` (conn; error), `relayOpen` and `relayEnded` (conn), `tick`, `send` (conn, message: `drawn`,
+/// `resync` or a data message; answers `sent`, `error`, `refused`), `request` (conn, kind, payload, windowId; answers
+/// `id` or `error`), `close` (conn, code, why), `stop` (why), `heardPid` (pid; answers `heard`), `mirror` (conn;
+/// answers `mirror`: that link's state whole, for the tests), `state`.
 ///
 /// # Safety
 /// `link` from [`margin_link_new`], not freed; `request` points to `len` readable bytes; one call at a time.
@@ -334,6 +377,31 @@ pub unsafe extern "C" fn margin_link_bytes(
     let mut list = Vec::new();
     l.carry(outs, &mut list);
     answer(&l.reply(list, None), out_len)
+}
+
+/// One stored key of a link's state (its copy's storage.local, as the core mirrors it), its JSON's bytes as kept
+/// (UTF-8; freed with `margin_buffer_free`). Null: no such link, no state yet for that key.
+///
+/// # Safety
+/// `link` from [`margin_link_new`], not freed; `key` points to `len` readable bytes; one call at a time.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_link_state_value(
+    link: *mut MarginLink,
+    conn: u64,
+    key: *const u8,
+    len: usize,
+    out_len: *mut usize,
+) -> *mut u8 {
+    // SAFETY: from margin_link_new and not freed (the caller's contract); one call at a time.
+    let Some(l) = (!link.is_null()).then(|| unsafe { &*link }) else { return std::ptr::null_mut() };
+    let Some(key) = text(key, len) else { return std::ptr::null_mut() };
+    let Some(value) = l.hub.mirror(conn).and_then(|m| m.value_text(key)).filter(|_| !out_len.is_null()) else {
+        return std::ptr::null_mut();
+    };
+    let boxed = value.into_bytes().into_boxed_slice();
+    // SAFETY: out_len is writable (checked non-null; the caller's contract).
+    unsafe { *out_len = boxed.len() };
+    Box::into_raw(boxed) as *mut u8
 }
 
 /// The Mac's window requests and their answers read (no object): `setWindowState` (windowId, state, focused,
@@ -511,10 +579,51 @@ mod tests {
         assert_eq!(a["deadline"], 6.0, "the ticker in 5 s");
         let snap = json!({"k":"snapshot","epoch":"e","seq":1,"state":{"a":1}}).to_string();
         let a = bytes(l, 0, 3, &client_frame(snap.as_bytes()), 1.5);
+        assert!(did(&a, "received").is_empty(), "the state isn't handed on as it came");
         assert_eq!(
-            did(&a, "received")[0]["message"],
-            json!({"k":"snapshot","epoch":"e","seq":1,"state":{"a":1},"windows":[]})
+            did(&a, "state")[0],
+            &json!({"do":"state","conn":3,"key":"safari:P","kind":"snapshot","epoch":"e","seq":1,"keys":["a"],
+                    "hasState":true,"resyncing":false,"outcome":"applied","windows":[]})
         );
+        let value = |key: &str| {
+            let mut n = 0;
+            // SAFETY: a live link, a valid buffer.
+            let p = unsafe { margin_link_state_value(l, 3, key.as_ptr(), key.len(), &mut n) };
+            if p.is_null() {
+                return None;
+            }
+            // SAFETY: an answer's bytes, freed right after.
+            let t = String::from_utf8(unsafe { std::slice::from_raw_parts(p, n) }.to_vec()).ok();
+            unsafe { crate::margin_buffer_free(p, n) };
+            t
+        };
+        assert_eq!(value("a").as_deref(), Some("1"));
+        assert_eq!(value("b"), None);
+        let delta = json!({"k":"delta","epoch":"e","seq":3,"changes":{"a":{"newValue":{"x":[1]}}}}).to_string();
+        let a = bytes(l, 0, 3, &client_frame(delta.as_bytes()), 1.6);
+        let gap = did(&a, "state")[0];
+        assert!(gap["outcome"] == "gap" && gap["expected"] == 2 && gap["got"] == 3 && gap["resyncing"] == true);
+        assert!(
+            did(&a, "log")
+                .iter()
+                .any(|d| d["text"] == "safari:P: number 3 came, 2 was next: the state asked for again")
+        );
+        assert_eq!(value("a").as_deref(), Some("1"), "nothing taken past a gap");
+        let snap = json!({"k":"snapshot","epoch":"e","seq":4,"state":{"a":{"x":[1]}},"windows":[{"windowId":2}]});
+        bytes(l, 0, 3, &client_frame(snap.to_string().as_bytes()), 1.7);
+        let m = call(l, json!({"type":"mirror","conn":3}))["mirror"].clone();
+        assert_eq!(
+            m,
+            json!({"epoch":"e","seq":4,"keys":["a"],"hasState":true,"resyncing":false,"windows":[{"windowId":2}],
+                   "state":{"a":{"x":[1]}}})
+        );
+        assert_eq!(call(l, json!({"type":"mirror","conn":9}))["mirror"], Value::Null);
+        // SAFETY: null link or key: none.
+        unsafe {
+            let mut n = 0;
+            assert!(margin_link_state_value(std::ptr::null_mut(), 3, b"a".as_ptr(), 1, &mut n).is_null());
+            assert!(margin_link_state_value(l, 3, std::ptr::null(), 0, &mut n).is_null());
+        }
         // Sends and requests.
         let a =
             call(l, json!({"type":"send","conn":3,"message":{"k":"drawn","epoch":"e","windowId":4,"on":true},"now":2}));

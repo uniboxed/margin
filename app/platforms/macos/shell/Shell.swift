@@ -5,7 +5,7 @@
 // Nothing is drawn over the person's own browser windows (decided 2026-11-16: hosted only).
 //
 //  - The links to Margin's extension copies (ExtensionLink.swift, one per browser profile) stay up as the tabs'
-//    drivers: each copy's state is mirrored (StateMirror.swift), its lasting data kept (DataSync.swift), its theme
+//    drivers: each copy's state is mirrored (by margin-core: StateMirror.swift), its lasting data kept (DataSync.swift), its theme
 //    package and its shortcuts heard; its `loading` pushes are the Margin window's loading bar, and the pushes for
 //    its UI that UIPush.swift passes on (the mini player's `media`, `toast`) go to the Margin window they belong in.
 //  - Each read (`track`): Margin's keys held while Margin or an app it hosts is in front (Shortcuts.swift
@@ -19,7 +19,6 @@ final class Shell: ExtensionLinkDelegate {
         var harness = false
         var root: URL? // the UI page's folder (dist/app); default: the app's Resources/app
         var restPoll: TimeInterval = 0.25 // the host's poll while something is hosted or a copy is linked
-        var resyncRetry: TimeInterval = 2
         // The lasting data's folder (margin-core's store, DataSync.swift). Default: ~/Library/Application Support/Margin/data,
         // or a new temporary folder for a harness (a test never touches the real one).
         var dataRoot: URL?
@@ -59,10 +58,9 @@ final class Shell: ExtensionLinkDelegate {
 
     final class Link {
         let connection: LinkConnection
-        let mirror = StateMirror()
+        var mirror: StateMirror { connection.mirror } // (the core's, kept per link: a gap's resync is the core's too)
         var theme: String? // the theme package's JSON (background/theme-package.ts ThemeMessage)
         var themeId: String?
-        var resyncTimer: Timer?
         var keys: [String: [String]]? // the copy's shortcuts, once it said
         var drawnSent: [Int: Bool] = [:] // what the copy was last told of each of its windows (tellDrawn)
         init(_ connection: LinkConnection) { self.connection = connection }
@@ -220,7 +218,6 @@ final class Shell: ExtensionLinkDelegate {
 
     func linkUp(_ connection: LinkConnection) {
         let entry = Link(connection)
-        entry.mirror.begin(connection.hello)
         if let hub = link.relay, let warning = Self.unheardPid(connection.key, connection.hello, heard: hub.heardPid) { Diagnostics.warn(warning) }
         links[connection.key] = entry
         options.sawBrowser?(connection.hello.browser)
@@ -234,27 +231,18 @@ final class Shell: ExtensionLinkDelegate {
     func linkReceived(_ connection: LinkConnection, _ message: LinkMessage) {
         guard let entry = links[connection.key], entry.connection === connection else { return }
         switch message {
-        case .snapshot, .delta, .windows:
-            switch entry.mirror.apply(message) {
-            case .applied:
-                entry.resyncTimer?.invalidate()
-                if case .snapshot = message { profilesSoon(); themesTellCopy(entry) }
-                if case .delta(_, _, let changes, _) = message, changes["spaces"] != nil { profilesSoon() }
-                // A Safari copy's tabs: the hosted items' sound (playing, muted), for the UI's rows (HostedSession.copyTabs).
-                var tabsChanged = false
-                if case .snapshot = message { tabsChanged = true }
-                if case .delta(_, _, let changes, _) = message, changes["openTabs"] != nil { tabsChanged = true }
-                if tabsChanged, connection.hello.browser == "safari", let tabs = (entry.mirror.value("openTabs") as? JSONObject)?["tabs"] as? JSONObject {
-                    hosted?.copyTabs(profile: connection.hello.profile, tabs: tabs)
-                }
-                tellDrawn(entry)
-                soon()
-            case .gap(let expected, let got):
-                Diagnostics.warn("\(connection.key): number \(got) came, \(expected) was next: the state asked for again")
-                resync(entry)
-            case .ignored:
-                break
+        case .state(let state):
+            // (Applied by the core as it was read; a number missed was logged and the state asked for again there.)
+            guard state.outcome == .applied else { return }
+            if state.kind == .snapshot { profilesSoon(); themesTellCopy(entry) }
+            if state.kind == .delta, state.keys.contains("spaces") { profilesSoon() }
+            // A Safari copy's tabs: the hosted items' sound (playing, muted), for the UI's rows (HostedSession.copyTabs).
+            let tabsChanged = state.kind == .snapshot || (state.kind == .delta && state.keys.contains("openTabs"))
+            if tabsChanged, connection.hello.browser == "safari", let tabs = (entry.mirror.value("openTabs") as? JSONObject)?["tabs"] as? JSONObject {
+                hosted?.copyTabs(profile: connection.hello.profile, tabs: tabs)
             }
+            tellDrawn(entry)
+            soon()
         case .theme(let epoch, let theme):
             // (Its pieces put together by the core, this link's epoch's only: link_hub.rs.)
             guard epoch == connection.epoch else { return }
@@ -304,23 +292,11 @@ final class Shell: ExtensionLinkDelegate {
     }
 
     func linkDown(_ connection: LinkConnection, _ why: String) {
-        guard let entry = links[connection.key], entry.connection === connection else { return }
-        entry.resyncTimer?.invalidate()
+        guard links[connection.key]?.connection === connection else { return }
         links[connection.key] = nil
         data.linkDown(connection)
         profilesSoon()
         soon()
-    }
-
-    private func resync(_ entry: Link) {
-        entry.connection.send(.resync(epoch: entry.connection.epoch))
-        entry.resyncTimer?.invalidate()
-        entry.resyncTimer = Timer.scheduledTimer(withTimeInterval: options.resyncRetry, repeats: false) { [weak self, weak entry] _ in
-            MainActor.assumeIsolated {
-                guard let self, let entry, entry.mirror.isResyncing, self.links[entry.connection.key] === entry else { return }
-                self.resync(entry)
-            }
-        }
     }
 
     // ---- the reads ----

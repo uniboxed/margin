@@ -1,13 +1,14 @@
-//! The app's copy of one extension copy's state (app/platforms/macos/shell/StateMirror.swift): storage.local's keys, as the
-//! extension sends them (a snapshot, then deltas: docs/PROTOCOL.md), each kept as the JSON it came as. An overlay's
-//! page gets the whole state from here at once (no round trip, so nothing to wait for before it draws); the app
-//! itself reads only the little it needs ([`StateMirror::value`]).
+//! The app's copy of one extension copy's state, the one copy of its rules (the Mac's through
+//! [`crate::link_hub::LinkHub`], which keeps one per link; the Windows shell's in [`crate::shell`]): storage.local's
+//! keys, as the extension sends them (a snapshot, then deltas: docs/PROTOCOL.md), each kept as the JSON it came as.
+//! An overlay's page gets the whole state from here at once (no round trip, so nothing to wait for before it draws);
+//! the app itself reads only the little it needs ([`StateMirror::value`]).
 //!
 //! One mirror per link (per browser profile): `epoch` is the copy's for this connection, and nothing from another
 //! epoch is taken. Snapshots, deltas and window lists count up together (`seq`, from 1 each epoch); on the link
 //! they come in order, so a number missed is a bug somewhere, and the state is asked for whole again
-//! ([`Outcome::Gap`]: a resync), with what comes before it left. [`Resync`] is Shell.swift's resync timer: the
-//! `resync` sent at once and again every 2 s until a snapshot comes.
+//! ([`Outcome::Gap`]: a resync), with what comes before it left. [`Resync`] is the resync timer: the `resync` sent at
+//! once and again every 2 s until a snapshot comes.
 
 use crate::json::Object;
 use crate::protocol::{Change, Hello, LinkMessage};
@@ -192,10 +193,16 @@ impl StateMirror {
 
     /// `value`: one stored key, read (for the app's own use).
     pub fn value(&self, key: &str) -> Option<Value> {
+        self.value_text(key).and_then(|json| serde_json::from_str(&json).ok())
+    }
+
+    /// One stored key's JSON text as it's kept (the icons put together), not read: what a shell that isn't Rust
+    /// reads itself (the Mac's, through margin-ffi's link object).
+    pub fn value_text(&self, key: &str) -> Option<String> {
         if key == "favicons" {
-            return if self.has_favicons { serde_json::from_str(&object(&self.favicons)).ok() } else { None };
+            return self.has_favicons.then(|| object(&self.favicons));
         }
-        self.values.get(key).and_then(|json| serde_json::from_str(json).ok())
+        self.values.get(key).cloned()
     }
 
     /// `keys`: the stored keys, sorted (`favicons` among them once any came).
@@ -224,7 +231,7 @@ fn object(parts: &BTreeMap<String, String>) -> String {
     out
 }
 
-/// Shell.swift's resync timer (`resync(_:)`, `options.resyncRetry`): after a gap a `resync` goes at once, and again
+/// The resync timer (the Mac's Shell.swift had it as `resync(_:)`): after a gap a `resync` goes at once, and again
 /// every [`Resync::RETRY`] seconds while the mirror is still resyncing; anything applied (the snapshot) stops it, as
 /// does the link going.
 #[derive(Clone, Debug)]

@@ -223,9 +223,12 @@ the loading bar, `copyTabs`) is the session's: step 3.
 
 `extension/ui` and `extension/themes` are Margin's window's now (the hosted design draws them in Margin's own window on
 the Mac, on Windows next); the extension's content scripts and new-tab page use neither. A pure move into
-`app/shared/ui/` (its own commit, no behaviour change: the build, the theme tests, pack-theme, the CI plan and the docs'
+`app/shared/ui/` (themes at `app/shared/ui/themes/`; its own commit, no behaviour change: the build, the theme tests, pack-theme, the CI plan and the docs'
 paths). The extension's two leftovers (the background's theme settings and package import, the model's theme settings:
 its old ownership of spaces) import from there until step 4 removes them. The Windows branch touches neither folder.
+In the same pass, its own commit: `app/shared/ffi` moves to `app/platforms/macos/ffi` (Tirth, 2026-11-22: only the Mac's
+Swift needs the C bridge; Windows uses the core directly): the workspace, build-core.sh, safari.sh, the app tests' and
+the WebKit host's run scripts, the module map, the docs.
 
 ## Step 2: hosting decisions into the core
 

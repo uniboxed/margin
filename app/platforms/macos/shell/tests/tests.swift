@@ -1,8 +1,8 @@
 // Checks of Margin.app's shell logic (app/platforms/macos/shell/), with no browser, no window
 // on screen and no link: the link's messages as margin-core reads and writes them, mapped for the app
 // (LinkMessage.swift; the rules themselves, the WebSocket, the chunks and the session are the core's tests:
-// app/shared/core/src/protocol.rs, websocket.rs, chunks.rs, link.rs, socket.rs, link_hub.rs), the app's
-// copy of a copy's state (StateMirror.swift), pass-through decisions
+// app/shared/core/src/protocol.rs, websocket.rs, chunks.rs, link.rs, socket.rs, link_hub.rs; a copy's state is the
+// core's too: mirror.rs, link_hub.rs), what the core says a state message did (LinkMessage.State), pass-through decisions
 // (PassThrough.swift), layout reports (PageLayout), shortcuts and their gating
 // (Shortcuts.swift, against a stand-in for Carbon), the coordinate flips, and
 // the lasting data (data-tests.swift: the data messages, through margin-core's
@@ -49,7 +49,8 @@ final class FakeRegistrar: HotKeyRegistrar {
     let started = Date()
     linkMessages()
     appMessages()
-    mirror()
+    stateMessages()
+    linkUp()
     layouts()
     frameRate()
     systemAppearance()
@@ -106,20 +107,18 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("no kind", LinkMessage.decode(#"{"epoch":"e"}"#) == nil)
     check("a snapshot needs its epoch", LinkMessage.decode(#"{"k":"snapshot","seq":1,"state":{}}"#) == nil)
     check("a seq that isn't a whole number: not one", LinkMessage.decode(#"{"k":"windows","epoch":"e","seq":1.5,"list":[]}"#) == nil)
-    if case .snapshot(let epoch, let seq, let state, let windows)? = LinkMessage.decode(#"{"k":"snapshot","epoch":"e","seq":1,"state":{"spaces":[{"id":"a"}]},"windows":[{"windowId":3,"focused":true}]}"#) {
-      check("snapshot", epoch == "e" && seq == 1 && same(state["spaces"], [["id": "a"]]) && windows.first?["windowId"] as? Int == 3)
-    } else { check("snapshot decodes", false) }
-    if case .delta(_, let seq, let changes, let favicons)? = LinkMessage.decode(#"{"k":"delta","epoch":"e","seq":2,"changes":{"pins":{"newValue":[]},"folders":{}},"favicons":{"set":{"https://a.example":{"icon":"data:x"}},"del":["https://b.example"]}}"#) {
-      var pinsSet = false
-      if case .set(let v)? = changes["pins"] { pinsSet = same(v, [Any]()) }
-      var foldersGone = false
-      if case .removed? = changes["folders"] { foldersGone = true }
-      check("delta: a key's new value, a key removed (no newValue)", seq == 2 && pinsSet && foldersGone)
-      check("delta: site icons as a diff", favicons?.del == ["https://b.example"] && same(favicons?.set["https://a.example"], ["icon": "data:x"]))
-    } else { check("delta decodes", false) }
-    if case .windows(_, let seq, let list)? = LinkMessage.decode(#"{"k":"windows","epoch":"e","seq":3,"list":[{"windowId":1},{"windowId":2}]}"#) {
-      check("windows", seq == 3 && list.count == 2)
-    } else { check("windows decodes", false) }
+    // (A snapshot, a delta and a window list are applied by the core as it reads them: stateMessages; the reads here.)
+    let snapshot = LinkMessage.read(#"{"k":"snapshot","epoch":"e","seq":1,"state":{"spaces":[{"id":"a"}]},"windows":[{"windowId":3,"focused":true}]}"#)
+    check("snapshot", snapshot?["epoch"] as? String == "e" && int(snapshot?["seq"]) == 1 && same((snapshot?["state"] as? JSONObject)?["spaces"], [["id": "a"]])
+          && ((snapshot?["windows"] as? [JSONObject])?.first?["windowId"] as? Int) == 3)
+    let delta = LinkMessage.read(#"{"k":"delta","epoch":"e","seq":2,"changes":{"pins":{"newValue":[]},"folders":{}},"favicons":{"set":{"https://a.example":{"icon":"data:x"}},"del":["https://b.example"]}}"#)
+    let changes = delta?["changes"] as? JSONObject
+    check("delta: a key's new value, a key removed (no newValue)", int(delta?["seq"]) == 2 && same((changes?["pins"] as? JSONObject)?["newValue"], [Any]())
+          && (changes?["folders"] as? JSONObject)?["newValue"] == nil)
+    let favicons = delta?["favicons"] as? JSONObject
+    check("delta: site icons as a diff", favicons?["del"] as? [String] == ["https://b.example"] && same((favicons?["set"] as? JSONObject)?["https://a.example"], ["icon": "data:x"]))
+    let windows = LinkMessage.read(#"{"k":"windows","epoch":"e","seq":3,"list":[{"windowId":1},{"windowId":2}]}"#)
+    check("windows", int(windows?["seq"]) == 3 && (windows?["list"] as? [Any])?.count == 2)
     if case .push(_, let windowId, let msg)? = LinkMessage.decode(#"{"k":"push","epoch":"e","windowId":4,"msg":{"type":"switching","tabId":5}}"#) {
       check("push for a window", windowId == 4 && msg["type"] as? String == "switching")
     } else { check("push decodes", false) }
@@ -164,27 +163,25 @@ final class FakeRegistrar: HotKeyRegistrar {
           && SpaceWindowAnswer(["windowId": 5])?.bounds == nil && SpaceWindowAnswer(["state": "normal"]) == nil)
   }
 
-  static func mirror() {
-    let m = StateMirror()
-    let snap = LinkMessage.snapshot(epoch: "e1", seq: 1, state: ["spaces": [["id": "a"]], "settings": ["sidebarPinnedOpen": true], "favicons": ["https://a.example": ["icon": "A"], "https://b.example": ["icon": "B"]]], windows: [["windowId": 1]])
-    check("nothing before hello", m.apply(snap) == .ignored && !m.hasState && m.stateJSON() == nil)
-    m.begin(hello)
-    check("a delta before the snapshot: a gap", m.apply(.delta(epoch: "e1", seq: 1, changes: [:], favicons: nil)) == .gap(expected: 1, got: 1))
-    check("snapshot", m.apply(snap) == .applied && m.hasState && m.seq == 1 && m.windows.count == 1 && m.origin == "o" && m.since == 5)
-    check("the state as it came", same(object(m.stateJSON()), ["spaces": [["id": "a"]], "settings": ["sidebarPinnedOpen": true], "favicons": ["https://a.example": ["icon": "A"], "https://b.example": ["icon": "B"]]]))
-    let delta = LinkMessage.delta(epoch: "e1", seq: 2, changes: ["pins": .set([["id": "p"]]), "settings": .removed], favicons: .init(set: ["https://c.example": ["icon": "C"], "https://a.example": ["icon": "A2"]], del: ["https://b.example"]))
-    check("delta", m.apply(delta) == .applied && m.seq == 2)
-    check("delta applied: set, removed, icons diffed", same(object(m.stateJSON()), ["spaces": [["id": "a"]], "pins": [["id": "p"]], "favicons": ["https://a.example": ["icon": "A2"], "https://c.example": ["icon": "C"]]]))
-    check("windows count with the rest", m.apply(.windows(epoch: "e1", seq: 3, list: [["windowId": 1], ["windowId": 2]])) == .applied && m.windows.count == 2 && m.seq == 3)
-    check("another epoch's: left", m.apply(.windows(epoch: "e0", seq: 4, list: [])) == .ignored && m.windows.count == 2 && m.seq == 3)
-    check("a number missed: a gap", m.apply(.delta(epoch: "e1", seq: 5, changes: ["pins": .set([])], favicons: nil)) == .gap(expected: 4, got: 5))
-    check("then left until the state comes again", m.apply(.delta(epoch: "e1", seq: 6, changes: ["pins": .set([])], favicons: nil)) == .ignored && m.isResyncing)
-    check("the state again (a resync's snapshot, numbered on)", m.apply(.snapshot(epoch: "e1", seq: 7, state: ["pins": []], windows: [])) == .applied && m.keys == ["pins"] && m.seq == 7 && !m.isResyncing)
-    check("and on from it", m.apply(.delta(epoch: "e1", seq: 8, changes: ["spaces": .set([])], favicons: nil)) == .applied && m.keys == ["pins", "spaces"])
-    check("a stored null kept", m.apply(.delta(epoch: "e1", seq: 9, changes: ["archive": .set(NSNull())], favicons: nil)) == .applied && object(m.stateJSON())?["archive"] is NSNull)
-    m.begin(LinkMessage.Hello(epoch: "e2", profile: "P1", browser: "safari", ext: nil, owner: true, instanceId: nil, origin: "o2", since: 6, pid: nil))
-    check("a new connection: nothing kept", !m.hasState && m.keys.isEmpty && m.seq == 0 && m.windows.isEmpty && m.origin == "o2")
-    check("the old epoch's snapshot: left", m.apply(.snapshot(epoch: "e1", seq: 1, state: ["a": 1], windows: [])) == .ignored)
+  // What the core says a state message did (link_hub.rs StateApplied, as ffi/link.rs writes it), read for the app; the
+  // mirror's rules themselves (epochs, numbers, gaps, icons, values) are the core's tests: mirror.rs, link_hub.rs.
+  static func stateMessages() {
+    let applied = LinkMessage.State(core: ["do": "state", "kind": "delta", "epoch": "e1", "seq": 2, "outcome": "applied", "keys": ["openTabs", "spaces"], "hasState": true, "resyncing": false])
+    check("state: a delta applied, its keys", applied?.kind == .delta && applied?.outcome == .applied && applied?.seq == 2 && applied?.keys == ["openTabs", "spaces"]
+          && applied?.windows == nil && applied?.hasState == true && applied?.resyncing == false)
+    let gap = LinkMessage.State(core: ["kind": "windows", "epoch": "e1", "seq": 5, "outcome": "gap", "expected": 4, "got": 5, "keys": [], "hasState": true, "resyncing": true])
+    check("state: a gap, what was next and what came", gap?.outcome == .gap(expected: 4, got: 5) && gap?.resyncing == true)
+    check("state: not a kind known: none", LinkMessage.State(core: ["kind": "later", "outcome": "applied"]) == nil)
+    let m = StateMirror { key in key == "spaces" ? Data(#"[{"id":"a"}]"#.utf8) : key == "n" ? Data("3".utf8) : nil }
+    check("mirror: nothing before the core says so", !m.hasState && !m.isResyncing && m.windows.isEmpty)
+    m.applied(LinkMessage.State(core: ["kind": "snapshot", "epoch": "e1", "seq": 1, "outcome": "applied", "keys": ["spaces"], "windows": [["windowId": 1]], "hasState": true, "resyncing": false])!)
+    check("mirror: a snapshot: its state and windows", m.hasState && !m.isResyncing && m.windows.count == 1)
+    m.applied(gap!)
+    check("mirror: a gap: resyncing, the windows as they were", m.isResyncing && m.windows.count == 1)
+    check("mirror: values read from the core's text (a fragment too)", same(m.value("spaces"), [["id": "a"]]) && int(m.value("n")) == 3 && m.value("none") == nil)
+  }
+
+  static func linkUp() {
     // A copy's hello naming a browser process no connector named: trusted, logged once at link up.
     let chrome = { (pid: Int?) in LinkMessage.Hello(epoch: "c1", profile: "p-b", browser: "chrome", ext: nil, owner: true, instanceId: nil, origin: nil, since: nil, pid: pid) }
     check("link up: a process no connector named is logged, in margin-core's words",

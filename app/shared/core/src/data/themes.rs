@@ -12,6 +12,9 @@
 //! checks a value's shape, id and size; what's in it is checked by the overlay, in JS, every time it loads (the same
 //! checks as any theme). A file of a later format, or one whose id isn't its name, is never used.
 //!
+//! The built-ins' packages the app carries for its own window ([`BuiltinThemes`]: `theme.<id>.json` beside the window's
+//! page, scripts/build.ts BUILTIN_THEMES), read once each.
+//!
 //! And what the person chose to import (ShellThemes.swift `theme.import`, ThemeStore.swift `ThemeFileReader`): a
 //! folder or a `.margintheme` file, read within caps before anything is read, into the `themeFile` push's body. The
 //! file picker is the shell's.
@@ -35,10 +38,12 @@ pub const MAX_BYTES: usize = 4_718_592;
 pub const MAX_THEMES: usize = 50;
 /// A package's files, at most.
 pub const MAX_PACKAGE_FILES: usize = 64;
-/// extension/themes/packages.ts: an imported theme can't take one of these ids.
-/// The built-ins' ids, and an earlier name of one that saved settings still mean it by (Neubrutalism's until
-/// 2026-11-10: the extension's state/model.ts OLD_NAMES): an imported theme takes neither.
-pub const BUILTINS: [&str; 4] = ["arcadia", "neubrutalism", "pixel", "neo-brutalism"];
+/// The built-ins' ids (extension/themes/packages.ts `PACKAGE_THEMES`), and an earlier name of one that saved settings
+/// still mean it by (Neubrutalism's until 2026-11-10: the extension's state/model.ts OLD_NAMES): an imported theme
+/// takes neither.
+pub const BUILTINS: [&str; 6] = ["arcadia", "neubrutalism", "pixel", "liquid-glass", "material", "neo-brutalism"];
+/// A built-in's earlier name, as saved settings may still say it, and the built-in it means now.
+pub const ALIASES: [(&str, &str); 1] = [("neo-brutalism", "neubrutalism")];
 
 /// ui/theme-schema.ts: a theme's id is 1–41 of a–z, 0–9 and `-`, starting with a letter or digit.
 pub fn id_ok(id: &str) -> bool {
@@ -225,6 +230,46 @@ fn read_json(path: &Path) -> Option<Value> {
     [path.to_path_buf(), bak_of(path)].iter().find_map(|p| serde_json::from_slice(&fs::read(p).ok()?).ok())
 }
 
+/// The built-in themes' packages the app carries for its own window (scripts/build.ts BUILTIN_THEMES: `theme.<id>.json`
+/// beside the window's page, the Mac's Resources/app), each the `theme` message's JSON (`{ id, manifest, html, css,
+/// files }`). The page has only Arcadia of its own; a built-in chosen in Margin's own Settings is drawn from here
+/// (2026-11-19). Read once each, kept.
+#[derive(Debug, Default)]
+pub struct BuiltinThemes {
+    root: Option<PathBuf>,
+    cache: HashMap<String, String>,
+}
+
+impl BuiltinThemes {
+    /// `root`: the folder with the packages (`None`: a test's, the harness's: none).
+    pub fn new(root: Option<PathBuf>) -> Self {
+        Self { root, cache: HashMap::new() }
+    }
+
+    /// The package's JSON as its file has it; `None`: not a built-in (an earlier name means the built-in it is now),
+    /// or its file missing, not UTF-8 or not a package of that id.
+    pub fn message(&mut self, chosen: &str) -> Option<String> {
+        let id = ALIASES.iter().find(|(old, _)| *old == chosen).map_or(chosen, |(_, now)| *now);
+        if !BUILTINS.contains(&id) || ALIASES.iter().any(|(old, _)| *old == id) {
+            return None;
+        }
+        if let Some(text) = self.cache.get(id) {
+            return Some(text.clone());
+        }
+        let data = fs::read(self.root.as_ref()?.join(format!("theme.{id}.json"))).ok()?;
+        let text = String::from_utf8(data).ok()?;
+        let Ok(Value::Object(o)) = serde_json::from_str::<Value>(&text) else { return None };
+        let shaped = json::string(o.get("id")) == Some(id)
+            && ["manifest", "html", "css"].iter().all(|k| o.get(*k).is_some_and(Value::is_string))
+            && json::object(o.get("files")).is_some_and(|f| f.values().all(Value::is_string));
+        if !shaped {
+            return None;
+        }
+        self.cache.insert(id.to_owned(), text.clone());
+        Some(text)
+    }
+}
+
 // ---- what the picker chose, read with caps before reading ----
 
 /// ui/theme-import.ts `IMPORT_LIMITS.entries`.
@@ -251,12 +296,17 @@ fn fail(why: &str) -> ThemeFile {
     ThemeFile { message: json!({ "type": "themeFile", "error": why }), kind: "refused", bytes: 0 }
 }
 
+/// Whether the picker's choice may be a theme at all: a folder (itself, not a link to one), or a file named
+/// `.margintheme`.
+pub fn chosen_ok(path: &Path) -> bool {
+    path.extension().is_some_and(|e| e.eq_ignore_ascii_case("margintheme"))
+        || fs::symlink_metadata(path).is_ok_and(|m| m.is_dir())
+}
+
 /// What the picker chose (ShellThemes.swift `theme.import`): a folder, or a file named `.margintheme`; anything else
-/// is refused before it's read.
+/// is refused before it's read ([`chosen_ok`]).
 pub fn read_chosen(path: &Path) -> ThemeFile {
-    let margintheme = path.extension().is_some_and(|e| e.eq_ignore_ascii_case("margintheme"));
-    let folder = fs::symlink_metadata(path).is_ok_and(|m| m.is_dir());
-    if !margintheme && !folder {
+    if !chosen_ok(path) {
         return fail("That isn’t a theme’s folder or a .margintheme file.");
     }
     read_theme_file(path)
@@ -509,6 +559,54 @@ mod tests {
         assert!(fresh.remove("mine").expect("removed") && fresh.list().is_empty() && fresh.message("mine").is_none());
         assert!(!root.join("mine.json").exists() && !bak_of(&root.join("mine.json")).exists());
         assert!(!fresh.remove("mine").expect("nothing") && !fresh.remove("../index").expect("nothing"));
+    }
+
+    #[test]
+    fn every_built_in_and_its_earlier_name_refused() {
+        let tmp = temp();
+        let mut store = ThemeStore::new(tmp.path());
+        for id in ["arcadia", "neubrutalism", "pixel", "liquid-glass", "material", "neo-brutalism"] {
+            assert!(
+                store.save(&value(id, "A", "1", None), 1.0).is_err_and(|e| e.to_string().contains("built-in")),
+                "{id}"
+            );
+        }
+        fs::write(tmp.path().join("index.json"), r#"[{"id":"material"},{"id":"liquid-glass"},{"id":"mine"}]"#)
+            .expect("written");
+        assert_eq!(ids(&store.list()), ["mine"], "a built-in's id in the index left out");
+    }
+
+    #[test]
+    fn the_built_ins_packages() {
+        let tmp = temp();
+        let package = |id: &str| {
+            json!({ "id": id, "manifest": "{}", "html": "<div></div>", "css": "", "files": { "a.woff2": "AA==" } })
+                .to_string()
+        };
+        for id in ["arcadia", "neubrutalism", "pixel", "liquid-glass", "material"] {
+            fs::write(tmp.path().join(format!("theme.{id}.json")), package(id)).expect("written");
+        }
+        // A file named for one, saying another; one with a file that isn't base64 text; an earlier name's own file.
+        fs::write(tmp.path().join("theme.pixel.json"), package("arcadia")).expect("written");
+        fs::write(
+            tmp.path().join("theme.material.json"),
+            r#"{"id":"material","manifest":"{}","html":"","css":"","files":{"a":1}}"#,
+        )
+        .expect("written");
+        fs::write(tmp.path().join("theme.neo-brutalism.json"), package("neo-brutalism")).expect("written");
+        fs::write(tmp.path().join("theme.mine.json"), package("mine")).expect("written");
+        let mut b = BuiltinThemes::new(Some(tmp.path().to_path_buf()));
+        assert_eq!(b.message("arcadia"), Some(package("arcadia")), "the file's own text");
+        assert_eq!(b.message("liquid-glass"), Some(package("liquid-glass")));
+        assert!(b.message("neo-brutalism").is_some_and(|t| t.contains(r#""id":"neubrutalism""#)), "the earlier name");
+        assert_eq!(b.message("pixel"), None, "a file naming another id");
+        assert_eq!(b.message("material"), None, "not a package");
+        assert_eq!(b.message("mine"), None, "an imported theme's id is no built-in");
+        assert_eq!(b.message("../overlay"), None);
+        assert_eq!(b.message(""), None);
+        fs::remove_file(tmp.path().join("theme.arcadia.json")).expect("removed");
+        assert_eq!(b.message("arcadia"), Some(package("arcadia")), "read once, kept");
+        assert_eq!(BuiltinThemes::new(None).message("pixel"), None, "none without the folder");
     }
 
     #[test]
