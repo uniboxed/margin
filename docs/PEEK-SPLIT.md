@@ -118,11 +118,12 @@ keeps Safari's toolbar down). Then it's the preview card: Expand puts it in the 
   the profile's main window, the others `#pane1`…`#pane3`, each tab moved into its window by `hostShow`.
 - **Rects:** when the shown item is in a split, Margin's renderer puts `<m-pane>` boxes (one per pane, flex by the
   ratios) and `<m-divider>`s between them inside `<m-page>`; themes style the gap, the divider and the focused pane.
-  The overlay measures each `m-pane` and sends the rects with the page's. Minimums: each app's window minimum, known to
-  the app before any window of it exists (kept per app version in minimums.json; Safari's from any of its windows), is
-  sent to the page for every pane (`appMin`), which never lays a pane below it (a divider stops there; a pane that can't
-  fit isn't added, nor an axis toggled that wouldn't fit: a toast says so), and the engine never opens a window for a
-  rect below it. A pane that still fails (open or place) leaves the split at once (a toast), the rest laid out again;
+  The overlay measures each `m-pane` and sends the rects with the page's. Least size: Arc's, 220 pt each (its split
+  view's `minimumPaneWidth`, its least height stacked too; read from Arc 1.174.0's binary, 2026-11-21), whatever the
+  pane's window needs: a divider stops there (and snaps to an even split within 14 pt, Arc's, with the alignment
+  haptic on a slow drag), a pane that can't have 220 isn't added, nor an axis toggled that wouldn't fit (a toast says
+  so; Margin.app checks again before any window moves). A pane narrower than its window can be is shown cut (§4b).
+  A pane that still fails (open or place) leaves the split at once (a toast), the rest laid out again;
   one left goes to the page area. A new pane comes in beside the panes shown, which keep their rects until it's in
   place, then all are laid out at once.
 - **Dividers:** dragged in the page: the ratios change per frame, the panes are measured and sent, the windows follow
@@ -140,6 +141,30 @@ keeps Safari's toolbar down). Then it's the preview card: Expand puts it in the 
   they are.
 - **Leaving:** picking an item outside the split parks the other panes' windows; the split stays for next time.
 - **Sidebar drag:** every pane follows live.
+
+## 4b. A cut pane (Tirth, 2026-11-21: "allow them in there but show however much can fit", arrows to see the rest)
+
+- **Its window** stays at its own minimum (its tile's, as read now: a tile narrower than its window's minimum makes
+  macOS take the window out of its tile) along the short side, the rest of it hidden: under Margin's window (the
+  sidebar, the frame) or under the pane beside it. Margin's hole stays the pane. The frame is margin-core's
+  `layout::cut`: the window wholly within the display (a tile past the display's edge is taken out of its tile within
+  0.6 s, 2026-11-21), at its start (left, top: the default) or its end along each axis.
+- **Kept under the panes beside it**, the focused one too (`frontVisible`): never raised over them; its keys given
+  without a raise (`_SLPSSetFrontProcessWithOptions` with kCPSNoWindows, 0x400, and the make-key pair: yabai's). A
+  press on it (any button, its drags and its release) goes to its window as the window server's records, built from
+  the press's own record with its window and its point in it (`PaneRecords.delivered`), never routed: the window
+  server's routing is what raises a clicked window (2026-11-22: a press, drags and a release delivered to a window
+  behind another, each at its point, nothing raised or activated). Its app brought in front some other way (⌘-Tab):
+  put back under them (`repairCutOrder`).
+- **Arrows** (the page's `<m-pane-arrow>`, on each hidden side, while the pointer is over that pane: Margin.app's
+  `paneHover`, said as the pointer enters and leaves it): a **slide** where its other alignment shows that side whole
+  (its tile's rect moved over 150 ms, eased, one rect a frame: ~0.2 ms each, the window a frame behind at most, with
+  Safari); else, the side against the display's edge, a **reveal**: it comes over its neighbours, its whole window in
+  its hole, until the pointer leaves it (or its arrow is pressed again), then it's tucked back under them.
+- Tried and ruled out (2026-11-21/22): a window-mode (non-full-screen) window can hang off the display's edge but draws
+  over full-screen tiles (its hidden part would cover the pane beside it), shows its title bar and stops short of the
+  Dock; transforming or clipping a tile's own Space does nothing (stored, never drawn); showing a second full-screen
+  Space beside Margin's draws it only while it's the current Space, and any click in the other one blanks it.
 
 ## 5. Order of work
 

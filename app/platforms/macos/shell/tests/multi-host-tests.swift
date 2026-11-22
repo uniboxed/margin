@@ -260,6 +260,7 @@ func multiHostTests() {
     // ---- a cut pane's arrows (docs/PEEK-SPLIT.md §4b): its sides, a slide, a reveal, tucked back; kept behind ----
     do {
         let (w, e) = world()
+        w.byRaise = true // (the window server's order: the raise order)
         w.minSize["com.apple.Notes"] = CGSize(width: 700, height: 400)
         var told: [[HostShownWindow]] = []
         e.hostedWindows = { told.append($0) }
@@ -294,6 +295,20 @@ func multiHostTests() {
         check("cut pane: tucked back: no longer revealed, tucked under the left pane again", h?.revealed == false && back?.revealed == false && back?.tucked == true, "\(String(describing: back))")
         let none = hostRun { await e.slide(textEdit.id, side: .left) } ?? true
         check("cut pane: a pane that isn't cut: no slide", !none)
+        // Its app brought in front some other way (⌘-Tab): macOS raised its window over the left pane; put back under it.
+        let edit = window(w, "com.apple.TextEdit")
+        w.autoOnScreen = true // (the window server's list read)
+        w.raised.removeAll { $0 == n }
+        w.raised.insert(n, at: 0)
+        let calls1 = w.activeCalls.count
+        let notesPid = h?.pid ?? 0
+        let repaired = hostRun { await e.repairCutOrder(notesPid) } ?? false
+        let ei = w.raised.firstIndex(of: edit) ?? 99, ni = w.raised.firstIndex(of: n) ?? -1
+        check("cut pane: its app brought in front by ⌘-Tab (its window raised over the left pane): the left pane over it again, its keys without a raise",
+              repaired && ei < ni && w.activeCalls.dropFirst(calls1).contains { $0.hasPrefix("focusWithoutRaise ") && $0.hasSuffix(" \(n)") }, "\(repaired) \(w.raised) \(w.activeCalls.dropFirst(calls1)) on screen \(w.onScreenWindows()?.map(\.number) ?? [])")
+        let calls2 = w.activeCalls.count
+        let again = hostRun { await e.repairCutOrder(notesPid) } ?? true
+        check("cut pane: …its app in front again with its window already behind: nothing done", !again && w.activeCalls.count == calls2, "\(w.activeCalls.dropFirst(calls2))")
     }
 
     // ---- tiles off: a pane as a plain member, placed at its rect by its own Space's reservation ----

@@ -803,10 +803,10 @@ final class HostEngine {
         let focused = shown.flatMap { id in hosts[id].flatMap { $0.phase == .shown ? $0 : nil } }
         // (A cut pane, docs/PEEK-SPLIT.md §4b: behind every other, the focused one too, so the part of its window past its
         // pane stays under the panes beside it; it gets the keys without a raise. One revealed is in front, as any.)
-        let under = { (h: Host) in self.isCut(h) && !h.revealed }
+        let tucked = { (h: Host) in self.isCut(h) && !h.revealed }
         let others = visibleHosts.filter { $0 !== focused }
-        let cutFocused = focused.map(under) ?? false
-        let wanted = others.filter(under) + (cutFocused ? [focused!] : []) + others.filter { !under($0) } + (cutFocused ? [] : focused.map { [$0] } ?? []) // (back to front)
+        let cutFocused = focused.map(tucked) ?? false
+        let wanted = others.filter(tucked) + (cutFocused ? [focused!] : []) + others.filter { !tucked($0) } + (cutFocused ? [] : focused.map { [$0] } ?? []) // (back to front)
         guard let top = wanted.last else { return }
         // (The keys: the focused one's, by a raise when it's in front of the others, without one when it's cut.)
         func keys() async { if cutFocused, let f = focused { _ = sys.focusWithoutRaise(pid: f.pid, window: f.window) } else { _ = await front(top) } }
@@ -828,13 +828,13 @@ final class HostEngine {
         if !bad.contains(where: { $0.1 == topIndex }) {
             let under = Set(pairs.filter { $0.1 == topIndex }.map(\.0))
             let fix = Set(bad.filter { !under.contains($0.0) && !under.contains($0.1) }.flatMap { [$0.0, $0.1] })
-            for k in fix.sorted() { _ = await front(wanted[k]) }
+            for k in fix.sorted() where !tucked(wanted[k]) { _ = await front(wanted[k]) }
             await keys()
             return
         }
         // Else the ones from the first out of place that overlap another raised, back to front, the focused one last.
         let from = bad.map(\.0).min() ?? 0
-        for k in from..<wanted.count where k == topIndex || involved.contains(k) { _ = await front(wanted[k]) }
+        for k in from..<wanted.count where (k == topIndex || involved.contains(k)) && !tucked(wanted[k]) { _ = await front(wanted[k]) }
         if cutFocused { await keys(); return }
         guard wanted.count > 1, top === focused else { return }
         // (Read again: the focused one behind a host it overlaps. Unread: taken as in front, as before.)
@@ -6060,10 +6060,30 @@ final class HostEngine {
     // An app made the front one (NSWorkspace's activation, the tap's focus): counted only if it is the window server's
     // front process now (a record's activation is never the window server's).
     func frontChanged(_ pid: pid_t?) {
+        // (A cut pane's app made the front one some other way (⌘-Tab, the app itself): macOS raised its window over a pane
+        // it lies under: the order put right again, its keys kept without a raise. Only then: one read of the window list,
+        // nothing for any other app or a cut pane still behind (Margin's own focus without a raise).)
+        if let pid, cutWindowOver(pid) != nil { Task { _ = await self.repairCutOrder(pid) } }
         // (No split shown and nothing kept: nothing, whatever app comes in front.)
         guard activeScene != nil || !actives.kept.isEmpty, sys.keepsPanesActive || !actives.kept.isEmpty else { return }
         if let pid, (sys.frontProcess() ?? sys.frontApp()) == pid { actives.heardFront(pid) }
         queueActives()
+    }
+
+    // A visible cut pane of `pid`'s app whose window is over a pane it lies under now (the window server's order), nil: none.
+    private func cutWindowOver(_ pid: pid_t) -> Host? {
+        guard let h = visibleHosts.first(where: { $0.pid == pid && isCut($0) && !$0.revealed }) else { return nil }
+        let f = frame(h)
+        return visibleHosts.contains { o in o !== h && o.role != .card && (o.rect ?? placement.page).intersects(f) && windowBehind(o.window, h.window) == true } ? h : nil
+    }
+    // That cut pane put back under the panes it lies under, its keys kept without a raise (`frontVisible`). True: it was over.
+    func repairCutOrder(_ pid: pid_t) async -> Bool {
+        await serial(planned: true) {
+            guard let h = self.cutWindowOver(pid) else { return false }
+            Diagnostics.note("host: \(h.id): its app came in front some other way, its window over a pane it lies under: put back under it")
+            await self.frontVisible()
+            return true
+        }
     }
 
     var keptActive: Set<pid_t> { Set(actives.kept.keys) }
