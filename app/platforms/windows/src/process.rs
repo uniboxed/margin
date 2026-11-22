@@ -1,11 +1,16 @@
-//! Other processes: their executable's path, their parent, when they started. Windows only.
+//! Other processes: their executable's path, their parent, when they started, their integrity level. Windows only.
 
-use windows::Win32::Foundation::FILETIME;
+use windows::Win32::Foundation::{FILETIME, HANDLE};
+use windows::Win32::Security::{
+    GetSidSubAuthority, GetSidSubAuthorityCount, GetTokenInformation, TOKEN_MANDATORY_LABEL, TOKEN_QUERY,
+    TokenIntegrityLevel,
+};
 use windows::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS,
 };
 use windows::Win32::System::Threading::{
-    GetProcessTimes, OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
+    GetCurrentProcess, GetProcessTimes, OpenProcess, OpenProcessToken, PROCESS_NAME_WIN32,
+    PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
 };
 use windows::core::PWSTR;
 
@@ -92,4 +97,47 @@ pub fn ancestor_not_named(pid: u32, skip: &[&str], depth: usize) -> Option<(u32,
         child_started = started;
     }
     None
+}
+
+/// A process's integrity level: its token's mandatory label's last sub-authority (0x2000 medium, 0x3000 high: an app
+/// run as administrator, 0x4000 system). None: its token can't be read (often itself a sign of a higher level).
+pub fn integrity(pid: u32) -> Option<u32> {
+    let process = open(pid)?;
+    token_integrity(process.raw())
+}
+
+/// This process's own integrity level.
+pub fn own_integrity() -> Option<u32> {
+    // SAFETY: the current-process pseudo handle needs no closing.
+    token_integrity(unsafe { GetCurrentProcess() })
+}
+
+fn token_integrity(process: HANDLE) -> Option<u32> {
+    let mut token = HANDLE::default();
+    // SAFETY: `process` is open for PROCESS_QUERY_LIMITED_INFORMATION (or the pseudo handle); `token` is an out-parameter.
+    unsafe { OpenProcessToken(process, TOKEN_QUERY, &mut token) }.ok()?;
+    // SAFETY: OpenProcessToken succeeded: the token handle is ours to close.
+    let token = unsafe { Handle::new(token) }?;
+    let mut size = 0u32;
+    // SAFETY: a size query (no buffer): it fails with ERROR_INSUFFICIENT_BUFFER and sets `size`.
+    let _ = unsafe { GetTokenInformation(token.raw(), TokenIntegrityLevel, None, 0, &mut size) };
+    if size == 0 || size > 4096 {
+        return None;
+    }
+    // u64s keep the buffer aligned for TOKEN_MANDATORY_LABEL (pointer-aligned).
+    let mut buf = vec![0u64; (size as usize).div_ceil(8)];
+    // SAFETY: `buf` holds at least `size` bytes, as the call is told.
+    unsafe { GetTokenInformation(token.raw(), TokenIntegrityLevel, Some(buf.as_mut_ptr() as *mut _), size, &mut size) }
+        .ok()?;
+    // SAFETY: GetTokenInformation(TokenIntegrityLevel) filled `buf` with a TOKEN_MANDATORY_LABEL whose SID points into
+    // `buf`, alive for the reads below; the sub-authority index is within the count the SID says it has.
+    unsafe {
+        let label = &*(buf.as_ptr() as *const TOKEN_MANDATORY_LABEL);
+        let sid = label.Label.Sid;
+        let count = *GetSidSubAuthorityCount(sid);
+        if count == 0 {
+            return None;
+        }
+        Some(*GetSidSubAuthority(sid, (count - 1) as u32))
+    }
 }
