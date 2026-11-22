@@ -1,0 +1,24 @@
+{
+  "about": "The hosted window contract's checks, the same in the copy (extension/background/hosted.ts, handlers.ts newWindow) and the app (app/shared/core/src/hosted_browser.rs): tests/hosted-chromium.test.ts and the Rust tests read this file.",
+  "items": {
+    "valid": ["t-aaaa", "peek-card", "chrome:p-abc:t-1", "a", "A.b_c-d:e"],
+    "invalid": ["", "t aaaa", "t/1", "t#1", "ü", "x?y"]
+  },
+  "urls": {
+    "valid": ["https://a.example/", "http://127.0.0.1:8080/x?y=1#z", "HTTPS://A.EXAMPLE", "about:blank"],
+    "invalid": ["", "about:blank#x", "chrome://settings", "file:///etc/hosts", "javascript:alert(1)", "data:text/html,x", "ftp://a"]
+  },
+  "marks": {
+    "valid": ["abcd1234", "m1A2b3C4d5", "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcd"],
+    "invalid": ["", "short", "abc-1234", "abcd 1234", "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcde", "abcd1234#"]
+  },
+  "titles": [
+    { "title": "Margin m1A2b3C4d5 - Google Chrome", "mark": "m1A2b3C4d5", "has": true },
+    { "title": "Margin m1A2b3C4d5 - Personal - Microsoft Edge", "mark": "m1A2b3C4d5", "has": true },
+    { "title": "Margin m1A2b3C4d5", "mark": "m1A2b3C4d5", "has": true },
+    { "title": "Margin m1A2b3C4d5x - Google Chrome", "mark": "m1A2b3C4d5", "has": false },
+    { "title": "Margin xm1A2b3C4d5 - Google Chrome", "mark": "m1A2b3C4d5", "has": false },
+    { "title": "m1A2b3C4d5 - Google Chrome", "mark": "m1A2b3C4d5", "has": false },
+    { "title": "Item page - Google Chrome", "mark": "m1A2b3C4d5", "has": false }
+  ]
+}

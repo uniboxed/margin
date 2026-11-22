@@ -185,3 +185,22 @@ test('"only in full screen": a hosted window counts as full screen whatever its 
   hostedTabs.windowRemoved(id);
   assert.equal(hostedTabs.isHosted(id), false);
 });
+
+// The same checks as the app makes before it asks (app/shared/core/src/hosted_browser.rs), from one file of vectors.
+test('the copy takes exactly what the app\'s checks let through (tests/fixtures/hosted-browser.json)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const v = JSON.parse(readFileSync(new URL('./fixtures/hosted-browser.json', import.meta.url), 'utf8'));
+  const window = (await handlers.newWindow({ fullscreen: false, hosted: true }, app))!.windowId;
+  const took = (p: Promise<unknown>) => p.then(() => true, () => false);
+  for (const id of v.items.valid) assert.equal(await took(handlers.hostShow({ windowId: window, itemId: id === 'peek-card' ? 't-x' : id, url: 'about:blank' }, app)), true, id);
+  for (const id of v.items.invalid) assert.equal(await took(handlers.hostShow({ windowId: window, itemId: id, url: 'about:blank' }, app)), false, id);
+  for (const url of v.urls.valid) assert.equal(await took(handlers.hostShow({ windowId: window, itemId: 't-urls', url }, app)), true, url);
+  for (const url of v.urls.invalid) assert.equal(await took(handlers.hostShow({ windowId: window, itemId: 't-urls', url }, app)), false, url);
+  for (const [list, opened] of [[v.marks.valid, true], [v.marks.invalid, false]] as const) {
+    for (const mark of list) {
+      fake.createdWith.length = 0;
+      await handlers.newWindow({ fullscreen: false, mark }, app);
+      assert.equal(fake.createdWith[0].url === `${ORIGIN}newtab/newtab.html?mark=${mark}`, opened, mark);
+    }
+  }
+});
