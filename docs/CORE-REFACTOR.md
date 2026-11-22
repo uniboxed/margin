@@ -100,6 +100,32 @@ against the core.
 - Part sizes are measured as Rust's JSON writes them (Swift's escaped `/` counted larger): a part can split at a
   slightly different item; the limits (900 KB a part, 10,000 parts, 1 MB a message) hold either way.
 
+### 1.2 + 1.3 design (one change: the sync drives the store)
+
+- **The store writes in the background, in order** (as DataStore.swift does): `save` updates memory at once, builds
+  the files and hands them to one writer thread (inline in tests: `DataStore::new_inline`); it returns a ticket. The
+  writer runs the jobs in order (atomic writes, fsync, the directories synced), and each result waits in a done queue
+  the owner drains (`take_done`), told by a waker (the Mac: a C callback that hops to the main thread; Windows: a
+  message to its window). A failed write forgets the profile's cached set (read again from disk next time), as
+  Swift's did. `wait_for_writes` blocks for the writer before a load from disk or an archive.
+- **The sync acts on a save only once it's written** (as DataSync.swift's callbacks): each of its five saves keeps its
+  follow-up keyed by the ticket, with the link's epoch it was made for: an app-side change (send the changes if linked
+  and not awaiting), a hello (answer the lost or send the set, then the ack), a snapshot (send the set back if the app
+  had one, the ack, the first-set effect), the copy's changes (answer the lost, the ack), a carry (archive the old set,
+  the carried effect, the held hello answered or the set sent, the held changes taken). `written()` drains the done
+  queue and runs them; a link whose epoch changed since gets nothing (counted unsent, as Swift's weak peer). The
+  `changed` effect comes before the follow-up, as Swift's `onChange` did. A failed save: "not stored: nothing
+  confirmed to the copy"; a carry's resets `carrying` and lets the held hello fall back to `data.need`.
+- **One data object over the FFI** (`margin_data_*`): the profiles' sync (link up and down, a message, an app-side
+  change, values, sets, profiles, hold and release, carry, the hold deadline, `written`) answering effects (sends
+  with their browser, profile and epoch, changed, first set, carried, log lines), and the library's flat store (load,
+  merge and save, live values) beside it. Swift routes each send to its link's connection and runs the callbacks the
+  rest of the app had (`onChange`, `onFirstSet`, `onCarried`, `beforeNeed`'s choice).
+- **Order of commits:** the Rust store and sync changes with their tests (Mac untouched); the FFI and its tests; the
+  Mac switched (DataStore.swift, DataSync.swift, DataSet.swift deleted, the Swift data tests kept against the FFI);
+  measured (a 1,000-item set's save, the main thread never blocked on a write).
+- Before the first install with it, Margin's data folder is copied aside once (it holds the person's library).
+
 ### 1.4 Browser profiles (BrowserProfiles.swift → profiles.rs)
 - Rust gains Swift's Safari name mapping (`useBrowserNames`, keeping a deleted profile's last name as typed, at most 40
   characters, `associate` on refresh and carry, `checkMapped`, `browserRead`, `carrySource`, `mightCarry`).
