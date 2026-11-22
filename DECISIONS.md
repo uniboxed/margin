@@ -7457,5 +7457,7 @@ however much can fit inside it", arrows on hover on the sides with more to show,
   comparison each, a cut pane's taken); `paneHover` is said only as the pointer enters or leaves a cut pane; a slide is
   ~9 rects of ~0.2 ms; a press on a cut pane lying under another reads its window's origin once. The poll's look at the
   window order runs only while a cut pane lies under another (not for edge panes). No timer.
-- **Open**: on the real screen with real apps (Safari, Notes past the edge), a second display beside this one, the
-  screen suite's scenario for it.
+- **Seen on the real screen** (2026-11-22): Chameleon past the edge, slid both ways; Notes (pane 328, window 501) past
+  the edge beside Safari, slid under Safari's pane and back; the screen suite's `cut-panes` part, 14 of 14.
+- **Open**: a second display beside this one (none connected yet): a tile past the edge should stay clipped to its own
+  display.
