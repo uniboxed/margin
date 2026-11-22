@@ -214,14 +214,20 @@ this step before it starts):
 - Swift keeps: the protocols to the engine and to Margin's window (as the adapter's contract), Safari's own window
   mechanics (waking a profile through Safari's menu, the restored-window sweep), NSPasteboard, UserDefaults.
 
-The sidebar's edit rules stay in TypeScript (one copy) until the extension no longer owns spaces anywhere; then they
-move into the core.
+## Step 4: the sidebar's rules into the core (Tirth, 2026-11-22)
+
+Right after step 3, before the Windows hosted session plugs in, so Windows never runs a stopgap (no QuickJS, no hidden
+web view): the library's edit rules (app/shared/library/library.ts over extension/state/model.ts: about 40 actions,
+the import, the snapshot) become margin-core's, the Mac's LibraryRules (JavaScriptCore) goes, and the TS copy stays
+only while Chrome's and Edge's copies still own spaces in the old design (feat/hosted-windows-chromium retires that).
+The TS tests' cases are carried over as shared vectors run against both until the TS copy is deleted.
 
 ## Order and checks
 
 1. Step 1 (1.1 → 1.5), merged after the gate and the screen suite.
 2. Step 2, the same.
-3. Step 3, with the Windows thread's plan read first; its Windows session then plugs into the core's.
+3. Step 3, with the Windows thread's plan read first.
+4. Step 4 (the sidebar's rules); then the Windows session plugs into the core's.
 
 Every merge: `npm run gate`, the screen suite's Chameleon parts, idle cost and live-resize numbers against the ones
 before, and the log lines tests read unchanged.
