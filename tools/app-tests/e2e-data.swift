@@ -1,9 +1,9 @@
 // Margin.app's lasting data end to end (part of e2e.swift's run): the real
-// link and shell with their DataSync and DataStore, in a temporary folder,
+// link and shell with their DataSync (margin-core's sync and store), in a temporary folder,
 // against fake-extension.mts's data messages (its converter and refill are
 // the extension's own, shared/data-set.ts): the first link, a relink with a
 // queue, a second profile kept apart, a wiped cache refilled, the app's own
-// change, and a crash mid-write followed by a relaunch.
+// change, and a write that fails followed by a relaunch.
 import AppKit
 
 @MainActor
@@ -16,7 +16,7 @@ func dataScenario() async {
   defer { try? FileManager.default.removeItem(at: root) }
   let fm = FileManager.default
   let p1 = DataProfile(browser: "safari", profile: "P1"), p2 = DataProfile(browser: "safari", profile: "P2")
-  // "P1" on disk: capitals written out (DataStore.fileName).
+  // "P1" on disk: capitals written out (DataNames.fileName).
   let dir1 = root.appendingPathComponent("safari/%501"), dir2 = root.appendingPathComponent("safari/%502")
 
   // A shell with its data in `root`, linked to the fake (its own port and token: a launch of the app).
@@ -75,7 +75,7 @@ func dataScenario() async {
   check("its Margin tabs: the copy's open tabs", tabs == 7, "\(tabs)")
 
   let rev1 = fake.first("dataAck") { $0["id"] as? String == "A" }?["rev"] as? String ?? ""
-  check("the first ack carries the set's rev", !rev1.isEmpty && shell.data.store.load(p1)?.rev == rev1, rev1)
+  check("the first ack carries the set's rev", !rev1.isEmpty && shell.data.stored(p1)?.rev == rev1, rev1)
 
   // ---- relinking with nothing changed: no snapshot ----
   check("the link closed", await close("A", shell, "safari:P1"))
@@ -92,8 +92,8 @@ func dataScenario() async {
   mark = fake.events.count
   connect("A1b", "P1", ["acked": t0, "rev": rev1, "queue": []])
   check("relink after an app-side change (the copy's rev is older): the snapshot, then data.ack with its rev", await until(5, { fake.first("dataAck", since: mark) != nil })
-        && fake.first("dataSnapshot", since: mark) != nil && fake.first("dataSnapshot", since: mark)?["rev"] as? String == shell.data.store.load(p1)?.rev
-        && fake.first("dataAck", since: mark)?["rev"] as? String == shell.data.store.load(p1)?.rev && shell.data.store.load(p1)?.rev != rev1)
+        && fake.first("dataSnapshot", since: mark) != nil && fake.first("dataSnapshot", since: mark)?["rev"] as? String == shell.data.stored(p1)?.rev
+        && fake.first("dataAck", since: mark)?["rev"] as? String == shell.data.stored(p1)?.rev && shell.data.stored(p1)?.rev != rev1)
   check("A1b's link closed", await close("A1b", shell, "safari:P1"))
 
   // ---- relinking with a queue and a rev the app doesn't know ----
@@ -138,7 +138,7 @@ func dataScenario() async {
   let answered = (fake.first("dataChanges", since: mark)?["changes"] as? [JSONObject])?.first ?? [:]
   check("the queued change that lost answered with the app's item, before data.ack with the new rev", answered["id"] as? String == "home" && ((answered["value"] as? JSONObject)?["name"] as? String) == "P2 home"
         && (ackIndex(mark, "dataChanges") ?? .max) < (ackIndex(mark, "dataAck") ?? .min)
-        && fake.first("dataAck", since: mark)?["rev"] as? String == shell.data.store.load(p2)?.rev && shell.data.store.load(p2)?.rev != lastB["rev"] as? String)
+        && fake.first("dataAck", since: mark)?["rev"] as? String == shell.data.stored(p2)?.rev && shell.data.stored(p2)?.rev != lastB["rev"] as? String)
 
   // ---- a wiped cache ----
   check("P1's link closed", await close("A2", shell, "safari:P1"))
@@ -158,34 +158,47 @@ func dataScenario() async {
   check("and sent to P1's copy, not P2's", await until(3, { fake.first("dataChanges", since: mark) != nil }) && fake.first("dataChanges", since: mark)?["id"] as? String == "A3"
         && ((fake.first("dataChanges", since: mark)?["changes"] as? [JSONObject])?.first?["id"] as? String) == "side" && fake.all("dataChanges", since: mark).count == 1)
 
-  // ---- a crash mid-write, then a relaunch ----
+  // ---- a write that fails, then a relaunch ----
+  // (A crash mid-write itself, its temporary file and set.json's rev written first: margin-core's store.rs and
+  // sync.rs tests; the store's crash hook isn't reachable from the app.)
   mark = fake.events.count
   fake.tell(["do": "dataHello", "id": "A3", "queue": []]) // the copy's rev is from before the app's change: brought up to it
   check("a hello with the rev from before the app's change: the snapshot again", await until(5, { fake.first("dataAck", since: mark) != nil }) && fake.first("dataSnapshot", since: mark) != nil)
   let lastAck = fake.all("dataAck") { $0["id"] as? String == "A3" }.last ?? [:]
   let lastAcked = num(lastAck["upTo"]) ?? 0
-  shell.data.store.crashAfterWrites = shell.data.store.scheduled + 2 // set.json's new rev, settings
+  // P1's folders read-only: no file of the next save can be written.
+  let items1 = dir1.appendingPathComponent("items")
+  try? fm.setAttributes([.posixPermissions: 0o555], ofItemAtPath: items1.path)
+  try? fm.setAttributes([.posixPermissions: 0o555], ofItemAtPath: dir1.path)
+  var warned: [String] = []
+  let echo = Diagnostics.echo
+  Diagnostics.echo = { line in warned.append(line); echo?(line) }
   mark = fake.events.count
-  let crashed = [change("settings", "archiveAfterHours", t0 + 6000, 72), change("spaces", "home", t0 + 6001, space("Base", 0))]
-  fake.tell(["do": "dataChanges", "id": "A3", "changes": crashed])
-  check("a crash mid-write (settings written, spaces not)", await until(3, { shell.data.store.crashed }))
+  let failed = [change("settings", "archiveAfterHours", t0 + 6000, 72), change("spaces", "home", t0 + 6001, space("Base", 0))]
+  fake.tell(["do": "dataChanges", "id": "A3", "changes": failed])
+  check("a write that fails: said", await until(3, { warned.contains { $0.contains("safari:P1: not stored: nothing confirmed to the copy") } }), "\(warned.suffix(5))")
   try? await Task.sleep(nanoseconds: 300_000_000)
+  Diagnostics.echo = echo
+  try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dir1.path)
+  try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: items1.path)
   check("nothing confirmed to the copy", fake.first("dataAck", since: mark) == nil)
-  let leftover = ((try? fm.contentsOfDirectory(atPath: dir1.appendingPathComponent("items").path)) ?? []).filter { $0.hasSuffix(".tmp") }
-  check("a temporary file left where it died", leftover.count == 1, "\(leftover)")
+  check("the app's memory as its files (the failed save dropped)", named(shell, p1, "home") == "Home" && shell.data.stored(p1)?.rev == lastAck["rev"] as? String)
   let diskRev = (try? Data(contentsOf: dir1.appendingPathComponent("set.json"))).flatMap { try? JSONSerialization.jsonObject(with: $0) as? JSONObject }?["rev"] as? String
+  // A temporary file as a crash mid-write leaves one.
+  try? Data("half".utf8).write(to: items1.appendingPathComponent(".spaces.json.1234abcd.tmp"))
   var stopped = false
   shell.stop { stopped = true }
   _ = await until(3, { stopped })
   guard let relaunched = await launch() else { return check("data: relaunched", false) }
   shell = relaunched
   mark = fake.events.count
-  connect("A4", "P1", ["acked": lastAcked, "rev": lastAck["rev"] as? String ?? "", "queue": crashed])
+  connect("A4", "P1", ["acked": lastAcked, "rev": lastAck["rev"] as? String ?? "", "queue": failed])
   check("relaunched: the copy's unconfirmed queue merged again, then data.ack", await until(5, { fake.first("dataAck", since: mark) != nil }) && num(fake.first("dataAck", since: mark)?["upTo"]) == t0 + 6001)
-  check("the crashed save had already given set.json a new rev (written first): the copy's rev is older, so the snapshot",
-        diskRev != nil && diskRev != lastAck["rev"] as? String && fake.first("dataSnapshot", since: mark) != nil, "\(diskRev ?? "nil") vs \(lastAck["rev"] ?? "nil")")
+  check("the failed save wrote nothing (set.json's rev the copy's): in step, so no snapshot",
+        diskRev != nil && diskRev == lastAck["rev"] as? String && fake.first("dataSnapshot", since: mark) == nil, "\(diskRev ?? "nil") vs \(lastAck["rev"] ?? "nil")")
+  let leftover = ((try? fm.contentsOfDirectory(atPath: items1.path)) ?? []).filter { $0.hasSuffix(".tmp") }
   check("both changes in, nothing from before lost, the temporary file gone", named(shell, p1, "home") == "Base" && shell.data.values("settings", of: p1)["archiveAfterHours"] as? Int == 72
-        && named(shell, p1, "side") == "Studio" && named(shell, p1, "work") == "Focus" && shell.data.store.removedTemps == 1 && shell.data.store.recovered.isEmpty)
+        && named(shell, p1, "side") == "Studio" && named(shell, p1, "work") == "Focus" && leftover.isEmpty, "\(leftover)")
   check("P2's set as it was", named(shell, p2, "home") == "P2 home")
   check("data: nothing the app sent was over 1 MB, nothing refused", fake.first("tooBig") == nil && shell.data.unsent == 0)
   stopped = false

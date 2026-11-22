@@ -20,7 +20,7 @@ final class Shell: ExtensionLinkDelegate {
         var root: URL? // the UI page's folder (dist/app); default: the app's Resources/app
         var restPoll: TimeInterval = 0.25 // the host's poll while something is hosted or a copy is linked
         var resyncRetry: TimeInterval = 2
-        // The lasting data's folder (DataStore.swift). Default: ~/Library/Application Support/Margin/data,
+        // The lasting data's folder (margin-core's store, DataSync.swift). Default: ~/Library/Application Support/Margin/data,
         // or a new temporary folder for a harness (a test never touches the real one).
         var dataRoot: URL?
         var bundleIds = ["safari": safariIdentifier, "chrome": "com.google.Chrome", "edge": "com.microsoft.edgemac"]
@@ -125,8 +125,8 @@ final class Shell: ExtensionLinkDelegate {
         self.shortcuts = AppShortcuts(registrar: hotKeys)
         self.options = options
         let dataRoot = options.dataRoot
-            ?? (options.harness ? FileManager.default.temporaryDirectory.appendingPathComponent("margin-harness-\(UUID().uuidString)", isDirectory: true) : DataStore.appRoot)
-        data = DataSync(store: DataStore(root: dataRoot))
+            ?? (options.harness ? FileManager.default.temporaryDirectory.appendingPathComponent("margin-harness-\(UUID().uuidString)", isDirectory: true) : DataSync.appRoot)
+        data = DataSync(root: dataRoot)
         link.delegate = self
         startLibrary(dataRoot: dataRoot)
         if let system = options.hostSystem { host = HostEngine(system: system, marker: nil, options: options.hostOptions ?? HostEngine.Options()) }

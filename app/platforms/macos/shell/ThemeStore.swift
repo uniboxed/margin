@@ -7,7 +7,7 @@
 //                html, css, files as base64)
 //   index.json   the short list: [{ id, name, version, author, bytes, savedAt }]
 //
-// Each written as DataStore writes (a temporary file, fsync, the old one kept
+// Each written as the data store writes (AtomicFile: a temporary file, fsync, the old one kept
 // as .bak, a rename). The app checks a value's shape, id and size; what's in
 // it is checked by the overlay, in JS, every time it loads (the same checks as
 // any theme). A file of a later format, or one whose id isn't its name, is
@@ -86,7 +86,7 @@ final class ThemeStore {
         var index = list().filter { $0["id"] as? String != id }
         guard index.count < Self.maxThemes else { throw Refused(description: "more than \(Self.maxThemes) themes") }
         index.append(entry)
-        try DataStore.writeAtomically(data, to: fileURL(id))
+        try AtomicFile.write(data, to: fileURL(id))
         try writeIndex(index)
         cache[id] = nil
         return entry
@@ -120,7 +120,7 @@ final class ThemeStore {
 
     private func writeIndex(_ index: [JSONObject]) throws {
         guard let data = try? JSONSerialization.data(withJSONObject: index, options: [.sortedKeys]) else { throw Refused(description: "the index isn't JSON") }
-        try DataStore.writeAtomically(data, to: indexURL)
+        try AtomicFile.write(data, to: indexURL)
     }
 }
 

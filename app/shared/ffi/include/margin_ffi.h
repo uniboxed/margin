@@ -98,6 +98,7 @@ typedef uint8_t *(*MarginDataNeed)(void *ctx, const uint8_t *question, size_t le
 
 MarginData *margin_data_new(const uint8_t *root, size_t len, bool background, void *ctx, MarginDataWake wake, MarginDataNeed need);
 void margin_data_free(MarginData *data);
+uint8_t *margin_data_file_name(const uint8_t *name, size_t len, size_t *out_len);
 uint8_t *margin_data_call(MarginData *data, const uint8_t *request, size_t len, size_t *out_len);
 MarginLibrary *margin_library_new(const uint8_t *root, size_t len, bool background, void *ctx, MarginDataWake wake);
 void margin_library_free(MarginLibrary *library);

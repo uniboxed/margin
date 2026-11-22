@@ -70,10 +70,10 @@ final class BrowserProfiles {
     private(set) var browserNames: [String: BrowserName] = [:]
     struct BrowserName: Equatable { var name: String }
 
-    // `root`: the data folder (DataStore.root); nil keeps it in memory (the unit tests).
+    // `root`: the data folder (DataSync.root); nil keeps it in memory (the unit tests).
     init(browser: String, root: URL?) {
         self.browser = browser
-        url = root?.appendingPathComponent(DataStore.fileName(browser), isDirectory: true).appendingPathComponent("browser.json")
+        url = root?.appendingPathComponent(DataNames.fileName(browser), isDirectory: true).appendingPathComponent("browser.json")
         load()
     }
 
@@ -99,7 +99,7 @@ final class BrowserProfiles {
             "profiles": info.mapValues(\.json),
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: body, options: [.sortedKeys]) else { return }
-        do { try DataStore.writeAtomically(data, to: url) } catch { Diagnostics.warn("\(browser): browser.json not saved: \(error)") }
+        do { try AtomicFile.write(data, to: url) } catch { Diagnostics.warn("\(browser): browser.json not saved: \(error)") }
     }
 
     // ---- profiles ----

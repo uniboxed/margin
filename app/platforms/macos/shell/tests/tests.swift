@@ -4,8 +4,8 @@
 // copy of a copy's state (StateMirror.swift), pass-through decisions
 // (PassThrough.swift), layout reports (PageLayout), shortcuts and their gating
 // (Shortcuts.swift, against a stand-in for Carbon), the coordinate flips, and
-// the lasting data (data-tests.swift: the merge's vectors, the files, the data
-// messages); then each part's own suite (the host, Margin's window, the library, ...).
+// the lasting data (data-tests.swift: the data messages, through margin-core's
+// data sync); then each part's own suite (the host, Margin's window, the library, ...).
 // tools/app-tests/run.sh
 // builds and runs them (and the end-to-end check, e2e.swift).
 import AppKit
@@ -69,10 +69,8 @@ final class FakeRegistrar: HotKeyRegistrar {
     shortcuts()
     geometry()
     pointerWant()
-    dataMerge()
-    dataStore()
     dataSync()
-    dataCarry() // data-tests.swift
+    dataCarry() // data-tests.swift (the merge's vectors and the files: margin-core's tests)
     libraryTests() // library-tests.swift: the app's own spaces, its rules in JavaScriptCore
     profilesTests()
     safariProfilesTests() // safari-profiles-tests.swift

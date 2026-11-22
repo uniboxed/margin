@@ -56,7 +56,7 @@ func peekSessionTests() {
     }
     links.onCloseWindow = { id in if let n = copyWindows.removeValue(forKey: id) { w.closeWindow(n) } }
     func run(_ body: @escaping () async -> Void) { hostRun { await body(); await session.idle() } }
-    let source = LibraryWindowSource(library: library, session: session, profileSource: DataSetWindowSource(data: DataSync(store: DataStore(root: tempFolder("peek-profile"))), pick: { nil }))
+    let source = LibraryWindowSource(library: library, session: session, profileSource: DataSetWindowSource(data: DataSync(root: tempFolder("peek-profile")), pick: { nil }))
     let made = library.perform("createSpace", ["windowId": 1, "name": "Home", "emoji": "🏠"])
     let home = (made.result as? JSONObject)?["spaceId"] as? String ?? ""
     links.profiles = ["s-default"]

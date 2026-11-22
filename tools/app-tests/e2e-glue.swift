@@ -793,7 +793,7 @@ func glueScenario() async {
   check("keys: ⌥⌘↓ then: the next one, Calculator again", back && shell.hostedKeysRun.last == "next-tab → \(c.id)", "\(String(describing: session.shown[c.id])) \(shell.hostedKeysRun)")
   // ---- a hosted app's own keys that would undo its hosting (2026-11-19): Margin's while it's in front ----
   check("app keys: a hosted app in front: its ⌘W, ⇧⌘W, ⌥⌘W, ⌘M, ⌘H, ⌥⌘H, ⌃⌘F are Margin's", shell.shortcuts.guardsAppKeys
-        && AppKey.allCases.allSatisfy { k in keys.held.values.contains(Combo.parse(k.rawValue)!) }, "\(keys.held.values)")
+        && AppKey.allCases.allSatisfy { k in keys.held.values.contains(k.combo) }, "\(keys.held.values)")
   let calcWindowNow = engine.shown.flatMap { engine.hosts[$0]?.window } ?? 0
   world.focused[calcPid] = calcWindowNow
   let appKeysBefore = shell.hostedKeysRun.count

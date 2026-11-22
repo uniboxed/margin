@@ -9,7 +9,7 @@ extension Shell {
 
     func profilesOf(_ browser: String) -> BrowserProfiles {
         if let p = browserProfiles[browser] { return p }
-        let p = BrowserProfiles(browser: browser, root: data.store.root)
+        let p = BrowserProfiles(browser: browser, root: data.root)
         browserProfiles[browser] = p
         return p
     }
@@ -38,7 +38,7 @@ extension Shell {
             self.carryOver()
         }
         // A signing change's new ids: the profile's set carried over (BrowserProfiles carrySource, DataSync carry).
-        data.beforeNeed = { [weak self] p in self?.needChoice(p) ?? .ask }
+        data.beforeNeed = { [weak self] p, withSets in self?.needChoice(p, withSets: withSets) ?? .ask }
         data.onCarried = { [weak self] old, new, _ in
             guard let self else { return }
             self.profilesOf(new.browser).carry(from: old.profile, to: new.profile)
@@ -66,9 +66,11 @@ extension Shell {
     // under its old id, carried over; or a hold while Safari's profiles are
     // read again (none maps it yet, and there's a set that could be its);
     // else data.need as always. Without a read (no Full Disk Access): as always.
-    func needChoice(_ p: DataProfile) -> DataSync.NeedChoice {
+    // (`withSets`: the Safari profiles with a set on disk, as the data says it in its question: it isn't asked back.)
+    func needChoice(_ p: DataProfile, withSets: Set<String>) -> DataSync.NeedChoice {
         guard p.browser == "safari" else { return .ask }
         let profiles = profilesOf("safari"), linked = linkedProfiles("safari")
+        let hasSafariSet = { (id: String) in withSets.contains(id) }
         if let (old, id) = profiles.carrySource(for: p.profile, hasSet: hasSafariSet, linked: linked) {
             return .carry(from: DataProfile(browser: "safari", profile: old), why: "Safari profile \(id)")
         }

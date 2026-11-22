@@ -91,6 +91,12 @@ fn effects_json(fx: &Effects) -> Value {
     })
 }
 
+/// A name as the store writes it on disk (`DataStore::file_name`: a–z, 0–9, `_`, `-` as they are, the rest `%XX`).
+#[unsafe(no_mangle)]
+pub extern "C" fn margin_data_file_name(name: *const u8, len: usize, out_len: *mut usize) -> *mut u8 {
+    answer(&Value::String(DataStore::file_name(text(name, len).unwrap_or(""))), out_len)
+}
+
 /// The data object over the store at `root` (UTF-8 path). `background`: its writer a thread of its own, which calls
 /// `wake` after each save (false: written at once, the tests). `need`: the choice for a profile with no set (null:
 /// always ask).
