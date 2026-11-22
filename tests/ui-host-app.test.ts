@@ -214,6 +214,24 @@ test("the app host in Margin's own window: a split pane's loader (`paneLoading`)
   over.receive({ type: 'paneLoading', pane: { item: 't-a', label: 'Notes' } });
   assert.equal(over.paneLoading, null, 'over a browser: none');
 });
+test("the app host in Margin's own window: a split's cut panes (`paneCut`): each side a slide, checked; an arrow sent only for a side the pane has", () => {
+  const b = bridge();
+  const host = createAppHost({ hello: hello({ host: 'app-window', mode: 'fullscreen' }), post: b.post });
+  host.receive({ type: 'paneCut', panes: { 't-notes1': { window: 20, right: 'slide', left: 'reveal', revealed: true }, '<b>': { window: 3, left: 'slide' } } });
+  assert.deepEqual(host.paneCuts, { 't-notes1': { window: 20, right: 'slide' } }, 'only slides, no other word kept; an item id that isn\'t one: none');
+  assert.equal(host.perform('split.slide', { item: 't-notes1', side: 'right' }), true);
+  assert.equal(host.perform('split.slide', { item: 't-notes1', side: 'left' }), false, 'a side it doesn\'t have');
+  assert.equal(host.perform('split.slide', { item: 't-notes1', side: 'back' }), false, 'no reveal to put back');
+  assert.equal(host.perform('split.slide', { item: 't-other', side: 'right' }), false, 'not a cut pane');
+  assert.deepEqual(b.posts.filter((p) => p.op === 'perform').map((p) => [p.name, p.arg]), [['split.slide', { item: 't-notes1', side: 'right' }]]);
+  host.receive({ type: 'paneHover', window: 20 });
+  assert.equal(host.paneHover, 20);
+  host.receive({ type: 'paneCut', panes: {} });
+  assert.deepEqual([host.paneCuts, host.paneHover], [{}, null], 'none cut: none hovered');
+  const over = createAppHost({ hello: hello(), post: b.post });
+  over.receive({ type: 'paneCut', panes: { 't-a': { window: 2, right: 'slide' } } });
+  assert.deepEqual(over.paneCuts, {}, 'over a browser: none');
+});
 
 test("the app host in Margin's own window: every app's known minimum (`appMin`, `web` for Safari's pages), checked; in its hello; none over a browser", () => {
   const b = bridge();

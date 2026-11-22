@@ -24,6 +24,20 @@ nonisolated enum PaneRecords {
     static let appKitDefined: UInt8 = 13, activated: UInt8 = 1, deactivated: UInt8 = 2
     static let mouseDown: UInt8 = 1, mouseUp: UInt8 = 2, makeKeyFlag: UInt8 = 0x10
 
+    // A mouse event's own record (`own`: what SLEventRecordPointer reads of it) made `window`'s, the point in it (from its
+    // top left) at the window-local location: everything else as it came (its type, button, click count, modifiers, time).
+    // Posted to its app, it reaches that window and nothing raises it (the window server's routing is what raises a
+    // clicked window: the real screen, 2026-11-22, a press, drags and a release to a window behind another, each at its
+    // point, the order kept). A split's cut pane, docs/PEEK-SPLIT.md §4b.
+    static func delivered(_ own: [UInt8], window: Int, local: CGPoint) -> [UInt8]? {
+        guard own.count >= Int(length), let w = Int32(exactly: window) else { return nil }
+        var b = Array(own.prefix(size)) + [UInt8](repeating: 0, count: max(0, size - own.count))
+        withUnsafeBytes(of: w.littleEndian) { for i in 0..<4 { b[windowAt + i] = $0[i] } }
+        withUnsafeBytes(of: Double(local.x).bitPattern.littleEndian) { for i in 0..<8 { b[locationAt + i] = $0[i] } }
+        withUnsafeBytes(of: Double(local.y).bitPattern.littleEndian) { for i in 0..<8 { b[locationAt + 8 + i] = $0[i] } }
+        return b
+    }
+
     private static func blank(type: UInt8, window: Int) -> [UInt8] {
         var b = [UInt8](repeating: 0, count: size)
         b[lengthAt] = length

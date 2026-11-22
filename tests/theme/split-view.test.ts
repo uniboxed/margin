@@ -84,36 +84,102 @@ for (const [name, engine] of ENGINES) {
         assert.equal(saved[0][1].splitId, 'spv-1');
         assert.ok(saved[0][1].ratios[0] < 0.4 && near(saved[0][1].ratios[0] + saved[0][1].ratios[1], 1, 0.01), `its ratios: ${saved[0][1].ratios}`);
 
-        // A minimum (the app's, for the left pane's window): the divider stops there.
+        // Arc's least (220, docs/PEEK-SPLIT.md §4): the divider stops there whatever a pane's window needs (its own 500,
+        // Safari's 574: that window is shown cut by Margin.app, §4b), never at the window's minimum.
         await ev((m) => T.rtPaneMin(m), { [String(tabs[0])]: [500, 0] });
+        await ev((m) => T.rtAppMin(m), { web: [574, 220] });
         await frames();
         p = await ev(() => T.rtPanes());
-        assert.ok(p.panes[0].width >= 499, `laid out at its minimum at least: ${p.panes[0].width}`);
         await page.mouse.move(p.dividers[0].x, p.dividers[0].y);
         await page.mouse.down();
-        for (let i = 1; i <= 5; i++) { await page.mouse.move(p.dividers[0].x - 60 * i, p.dividers[0].y); await frames(); }
+        for (let i = 1; i <= 6; i++) { await page.mouse.move(p.dividers[0].x - 200 * i, p.dividers[0].y); await frames(); }
         await page.mouse.up();
         await frames();
         p = await ev(() => T.rtPanes());
-        assert.ok(p.panes[0].width >= 499, `the divider stopped at its minimum: ${p.panes[0].width}`);
+        assert.ok(near(p.panes[0].width, 220, 1.5), `stopped at Arc's 220, not at its window's 500: ${p.panes.map((x) => x.width)}`);
         await ev((m) => T.rtPaneMin(m), {});
-        await frames();
-        // Its app's known minimum alone (Safari's, for every web pane, whether its window is open or not: the real
-        // screen's 574 × 220): no pane laid out below it, the divider stops there (2026-11-21: a pane laid at 481).
-        await ev((m) => T.rtAppMin(m), { web: [500, 0] });
-        await frames();
-        p = await ev(() => T.rtPanes());
-        assert.ok(p.panes.every((x) => x.width >= 499), `every web pane at its app's minimum at least: ${p.panes.map((x) => x.width)}`);
-        await page.mouse.move(p.dividers[0].x, p.dividers[0].y);
-        await page.mouse.down();
-        for (let i = 1; i <= 5; i++) { await page.mouse.move(p.dividers[0].x + 60 * i, p.dividers[0].y); await frames(); }
-        await page.mouse.up();
-        await frames();
-        p = await ev(() => T.rtPanes());
-        assert.ok(p.panes[1].width >= 499, `the divider stopped at the other pane's app minimum: ${p.panes.map((x) => x.width)}`);
         await ev((m) => T.rtAppMin(m), {});
         await frames();
+        // The snap (Arc's 14 pt): dragged slowly to within it of an even split, even, with one haptic (a slow drag:
+        // 120 pt/s at most); dragged fast through it, even too, no haptic.
         p = await ev(() => T.rtPanes());
+        const even = (q: typeof p) => q.dividers[0].x + (q.panes[1].width - q.panes[0].width) / 2;
+        await ev(() => T.rtSentClear());
+        let target = even(p);
+        await page.mouse.move(p.dividers[0].x, p.dividers[0].y);
+        await page.mouse.down();
+        await page.mouse.move(target - 40, p.dividers[0].y, { steps: 4 });
+        await frames();
+        for (let i = 1; i <= 30; i++) { await page.mouse.move(target - 40 + i, p.dividers[0].y); await page.waitForTimeout(16); }
+        await page.mouse.up();
+        await frames();
+        let haptics = (await ev(() => T.rtPerformedFull())).filter(([n]) => n === 'haptic.alignment').length;
+        let snapSaved = (await ev(() => T.rtSent())).filter(([type]) => type === 'resizeSplit').at(-1);
+        assert.deepEqual(snapSaved?.[1].ratios, [0.5, 0.5], `within 14 of even: even (${JSON.stringify(snapSaved?.[1].ratios)})`);
+        assert.equal(haptics, 1, 'one haptic as it snapped, a slow drag');
+        p = await ev(() => T.rtPanes());
+        await page.mouse.move(p.dividers[0].x, p.dividers[0].y);
+        await page.mouse.down();
+        await page.mouse.move(p.dividers[0].x - 120, p.dividers[0].y, { steps: 3 });
+        await frames();
+        await ev(() => T.rtSentClear());
+        const before = (await ev(() => T.rtPerformedFull())).filter(([n]) => n === 'haptic.alignment').length;
+        target = p.dividers[0].x;
+        await page.mouse.move(target - 6, p.dividers[0].y, { steps: 2 });
+        await frames();
+        await page.mouse.up();
+        await frames();
+        haptics = (await ev(() => T.rtPerformedFull())).filter(([n]) => n === 'haptic.alignment').length - before;
+        snapSaved = (await ev(() => T.rtSent())).filter(([type]) => type === 'resizeSplit').at(-1);
+        assert.deepEqual(snapSaved?.[1].ratios, [0.5, 0.5], 'a fast drag into the snap: even too');
+        assert.equal(haptics, 0, 'a fast drag: no haptic');
+        p = await ev(() => T.rtPanes());
+
+        // A cut pane (docs/PEEK-SPLIT.md §4b): its window wider than its box (Notes' 700 in a 600 pane): an arrow on each
+        // hidden side, hidden and click-through until the pointer is over that pane (Margin.app's `paneHover`), then
+        // shown inside its box; pressed, `split.slide` with its side; the pointer gone: hidden again, nothing sent.
+        const cutId = String(tabs[1]);
+        await ev((c) => T.rtPaneCuts(c), { [cutId]: { window: 20, right: 'slide', left: 'slide' } });
+        await frames();
+        let ar = await ev(() => T.rtPaneArrows());
+        const cutPane = ar.find((x) => x.id === cutId)!;
+        assert.deepEqual(cutPane.arrows.map((a) => [a.side, a.mode]).sort(), [['left', 'slide'], ['right', 'slide']], `one arrow per hidden side: ${JSON.stringify(cutPane.arrows)}`);
+        assert.ok(cutPane.arrows.every((a) => !a.shown && a.pointer === 'none'), `hidden and click-through until hovered: ${JSON.stringify(cutPane.arrows)}`);
+        const inHits = (hits: number[][], a: { x: number, y: number }) => hits.some(([x, y, w, h]) => a.x >= x && a.x <= x + w && a.y >= y && a.y <= y + h);
+        const hitsHidden = await ev(() => T.rtPageHits());
+        assert.ok(cutPane.arrows.every((a) => !inHits(hitsHidden, a)), `hidden arrows never Margin's to take the pointer: ${JSON.stringify(hitsHidden)}`);
+        assert.ok(ar.find((x) => x.id !== cutId)!.arrows.length === 0, 'a pane that isn\'t cut: none');
+        await ev(() => T.rtPaneHover(20));
+        await frames();
+        await page.waitForTimeout(200);
+        ar = await ev(() => T.rtPaneArrows());
+        const lit = ar.find((x) => x.id === cutId)!;
+        assert.ok(lit.lit && lit.arrows.every((a) => a.shown && a.pointer === 'auto' && a.inside), `hovered: shown, taking the pointer, inside its box: ${JSON.stringify(lit.arrows)}`);
+        const rightArrow = lit.arrows.find((a) => a.side === 'right')!, leftArrow = lit.arrows.find((a) => a.side === 'left')!;
+        const hitsShown = await ev(() => T.rtPageHits());
+        assert.ok(inHits(hitsShown, rightArrow) && inHits(hitsShown, leftArrow), `shown arrows are Margin's to take the pointer (Margin.app told them: hitRects): ${JSON.stringify(hitsShown)}`);
+        assert.ok(rightArrow.right < 30 && leftArrow.left < 30, `at its sides: ${JSON.stringify(lit.arrows)}`);
+        assert.ok(rightArrow.color !== rightArrow.background && /Show the right of this pane/.test(rightArrow.label ?? ''), `readable, named: ${rightArrow.color} on ${rightArrow.background}, ${rightArrow.label}`);
+        await ev(() => T.rtSentClear());
+        await page.mouse.click(rightArrow.x, rightArrow.y);
+        await frames();
+        let slides = (await ev(() => T.rtPerformedFull())).filter(([n]) => n === 'split.slide').map(([, a]) => a);
+        assert.deepEqual(slides.at(-1), { item: cutId, side: 'right' }, `pressed: split.slide on its side (${JSON.stringify(slides)})`);
+        // Slid (its left its one side now): one arrow; the pointer gone: hidden and click-through again, nothing sent.
+        await ev((c) => T.rtPaneCuts(c), { [cutId]: { window: 20, left: 'slide' } });
+        await frames();
+        ar = await ev(() => T.rtPaneArrows());
+        assert.deepEqual(ar.find((x) => x.id === cutId)!.arrows.map((a) => [a.side, a.shown, a.label]), [['left', true, 'Show the left of this pane']], `slid: its other side's arrow: ${JSON.stringify(ar)}`);
+        const slidesBefore = (await ev(() => T.rtPerformedFull())).filter(([n]) => n === 'split.slide').length;
+        await ev(() => T.rtPaneHover(null));
+        await frames();
+        await page.waitForTimeout(200);
+        ar = await ev(() => T.rtPaneArrows());
+        slides = (await ev(() => T.rtPerformedFull())).filter(([n]) => n === 'split.slide').map(([, a]) => a);
+        assert.ok(ar.find((x) => x.id === cutId)!.arrows.every((a) => !a.shown && a.pointer === 'none') && slides.length === slidesBefore, `the pointer gone: hidden, nothing sent: ${JSON.stringify(ar)} ${JSON.stringify(slides)}`);
+        await ev((c) => T.rtPaneCuts(c), {});
+        await frames();
+        assert.ok((await ev(() => T.rtPaneArrows())).every((x) => x.arrows.length === 0 && !x.lit), 'no pane cut: no arrows');
 
         // A pane's window opening beside the one shown (Notes added): its loader over its own box only, the other pane
         // drawn as it was (its window shows and takes the pointer); gone when it's in place.
@@ -141,40 +207,34 @@ for (const [name, engine] of ENGINES) {
         const tight = await ev(({ t, w }) => T.rtSplitAdd(t, w), { t: tabs[2], w: 560 });
         assert.deepEqual(tight.sent, [], 'nothing asked of the library');
         assert.equal(tight.toast, 'Not enough room for another pane');
-        // The real screen's (2026-11-21 13:26:54): a third Safari pane beside two in a 1264 pt page area. Safari's minimum
-        // is known for every web pane (`appMin`, from any of its windows), the new one's too before its window exists:
-        // 3 × 574 and the gaps don't fit, refused before anything is opened.
+        // Three Safari panes in a 1264 pt page area (the real screen's, 2026-11-21 13:26:54, refused then by Safari's 574):
+        // added now, each 220 at least by Arc's rule, a window that needs more shown cut (docs/PEEK-SPLIT.md §4b).
         await ev((m) => T.rtAppMin(m), { web: [574, 220] });
-        const safariTight = await ev(({ t, w }) => T.rtSplitAdd(t, w), { t: tabs[2], w: 1264 });
-        assert.deepEqual(safariTight.sent, [], 'three Safari panes in 1264 pt: nothing asked of the library');
-        assert.equal(safariTight.toast, 'Not enough room for another pane');
-        const safariRoomy = await ev(({ t, w }) => T.rtSplitAdd(t, w), { t: tabs[2], w: 1760 });
-        assert.deepEqual(safariRoomy.sent, ['addToSplit'], '3 × 574 and the gaps in 1760: added');
-        // The real screen's (2026-11-21 19:32:02): a Safari tab in front (a library item, 574) and Notes used before it (an
-        // app's item, its least 701), 1264 pt. "Add to Split View" on the Safari tab's own row: the library splits it with
-        // Notes (the item used last besides it), so the check pairs it so too (it measured the tab beside itself: fits),
-        // and refuses before anything is opened; on Notes' row the same pair. Said in Margin.app's log (each pane's app and
-        // floor, the room, the answer, the apps known) to read the inputs back.
+        const threeSafari = await ev(({ t, w }) => T.rtSplitAdd(t, w), { t: tabs[2], w: 1264 });
+        assert.deepEqual(threeSafari.sent, ['addToSplit'], 'three Safari panes in 1264 pt: added (each 220 at least, cut)');
+        // The pairing (the real screen's 2026-11-21 19:32:02): "Add to Split View" on the row of the Safari tab in front
+        // splits it with Notes (the item used last besides it, by the library), so the check pairs it so too; refused
+        // only where two of 220 and the gap don't fit (440 pt), each said in Margin.app's log with the inputs.
         await ev((m) => T.rtAppMin(m), { web: [574, 220], 'com.apple.Notes': [701, 53] });
         await ev(() => T.rtNoSplit());
         // (Both open in Margin's window, as on the real screen: rows of a number, the menu's add names them so.)
         await ev(() => T.rtKept('t-notes', 'app://com.apple.Notes', { lastActive: 1000, name: 'Notes', row: 902 }));
         await ev(() => T.rtKept('t-web', 'https://maps.example/', { lastActive: 2000, wasActive: true, row: 901 }));
-        const ownRow = await ev(({ w }) => T.rtSplitAdd(901, w), { w: 1264 });
-        assert.deepEqual(ownRow.sent, [], 'the front tab\'s own row, Notes used before it: nothing asked of the library');
+        const ownRowRoomy = await ev(({ w }) => T.rtSplitAdd(901, w), { w: 1264 });
+        assert.deepEqual(ownRowRoomy.sent, ['addToSplit'], 'the front tab\'s own row beside Notes in 1264: added (Notes shown cut)');
+        assert.match(ownRowRoomy.note ?? '', /^split add: com\.apple\.Notes 220 \+ web 220 \+ gaps \d+ in 1264 \(horizontal\): fits;/, `the check said: ${ownRowRoomy.note}`);
+        const ownRow = await ev(({ w }) => T.rtSplitAdd(901, w), { w: 440 });
+        assert.deepEqual(ownRow.sent, [], 'in 440: nothing asked of the library');
         assert.equal(ownRow.toast, 'Not enough room for another pane');
-        assert.match(ownRow.note ?? '', /^split add: com\.apple\.Notes 701 \+ web 574 \+ gaps \d+ in 1264 \(horizontal\): refused; apps known: web, com\.apple\.Notes$/, `the check said: ${ownRow.note}`);
-        const notesRow = await ev(({ w }) => T.rtSplitAdd(902, w), { w: 1264 });
-        assert.deepEqual(notesRow.sent, [], 'Notes\' row beside the front tab: nothing asked of the library');
-        assert.match(notesRow.note ?? '', /^split add: web 574 \+ com\.apple\.Notes 701 \+ gaps \d+ in 1264 \(horizontal\): refused;/, `the check said: ${notesRow.note}`);
-        const roomyPair = await ev(({ w }) => T.rtSplitAdd(901, w), { w: 1400 });
-        assert.deepEqual(roomyPair.sent, ['addToSplit'], 'in 1400 pt: added');
-        assert.match(roomyPair.note ?? '', /: fits;/);
+        assert.match(ownRow.note ?? '', /^split add: com\.apple\.Notes 220 \+ web 220 \+ gaps \d+ in 440 \(horizontal\): refused; apps known: web, com\.apple\.Notes$/, `the check said: ${ownRow.note}`);
+        const notesRow = await ev(({ w }) => T.rtSplitAdd(902, w), { w: 440 });
+        assert.deepEqual(notesRow.sent, [], 'Notes\' row beside the front tab in 440: refused');
+        assert.match(notesRow.note ?? '', /^split add: web 220 \+ com\.apple\.Notes 220 \+ gaps \d+ in 440 \(horizontal\): refused;/, `the check said: ${notesRow.note}`);
         // Notes closed (a kept item, by its id), the tab open: the same pair.
         await ev(() => T.rtKept('t-notes2', 'app://com.apple.Notes', { lastActive: 1500, name: 'Notes' }));
-        const closedNotes = await ev(({ w }) => T.rtSplitAdd(901, w), { w: 1264 });
-        assert.deepEqual(closedNotes.sent, [], 'beside a closed Notes item used before it: refused');
-        assert.match(closedNotes.note ?? '', /^split add: com\.apple\.Notes 701 \+ web 574 /, `the check said: ${closedNotes.note}`);
+        const closedNotes = await ev(({ w }) => T.rtSplitAdd(901, w), { w: 440 });
+        assert.deepEqual(closedNotes.sent, [], 'beside a closed Notes item used before it, in 440: refused');
+        assert.match(closedNotes.note ?? '', /^split add: com\.apple\.Notes 220 \+ web 220 /, `the check said: ${closedNotes.note}`);
         await ev((t) => T.rtSplit(t), tabs.slice(0, 2));
         await ev((m) => T.rtAppMin(m), {});
         const roomy = await ev(({ t, w }) => T.rtSplitAdd(t, w), { t: tabs[2], w: 1200 });
@@ -187,7 +247,9 @@ for (const [name, engine] of ENGINES) {
         assert.equal(p.axis, 'column');
         assert.equal(p.panes.length, 3);
         assert.equal(p.dividers.length, 2);
-        assert.ok(near(p.panes[1].height, p.panes[2].height) && p.panes[0].height > p.panes[1].height * 1.8, `by their ratios: ${p.panes.map((x) => x.height)}`);
+        // (By their ratios, each 220 at least, Arc's least height stacked: in this 800 pt window the two quarters are held
+        // at 220 and the half takes the rest.)
+        assert.ok(near(p.panes[1].height, p.panes[2].height) && p.panes[1].height >= 219 && p.panes[0].height >= p.panes[1].height, `by their ratios, 220 at least: ${p.panes.map((x) => x.height)}`);
         assert.ok(p.panes.every((x) => near(x.left, p.panes[0].left) && near(x.width, p.panes[0].width)), 'one above the other');
         assert.equal(p.dividers[0].cursor, 'row-resize');
         // Stacked, each pane below another is a Safari window here (web tabs): the gap above it is a band at least as
@@ -201,18 +263,19 @@ for (const [name, engine] of ENGINES) {
           assert.ok(dv.labelColor && dv.labelColor !== dv.background, `its name readable: ${dv.labelColor} on ${dv.background}`);
         }
         assert.ok(p.panes[0].height > 0 && near(p.layout![1].rect[1] - (p.layout![0].rect[1] + p.layout![0].rect[3]), p.dividers[0].height, 1), `the panes sent with the band between them: ${JSON.stringify(p.layout)}`);
-        // Room for another stacked pane counts the bands: three floors (140) and two plain gaps would fit in 470, not
-        // with two 52 pt bands.
+        // Room for another stacked pane counts the bands: three floors (Arc's 220) and two plain gaps would fit in 694,
+        // not with two 52 pt bands.
         await ev((t) => T.rtSplit(t, { axis: 'vertical' }), tabs.slice(0, 2));
         await frames();
-        const stackedTight = await ev(({ t }) => T.rtSplitAdd(t, 1200, 140 * 3 + 2 * 12 + 10), { t: tabs[2] });
+        const stackedTight = await ev(({ t }) => T.rtSplitAdd(t, 1200, 220 * 3 + 2 * 12 + 10), { t: tabs[2] });
         assert.equal(stackedTight.toast, 'Not enough room for another pane', 'stacked: the bands counted in the room');
-        const stackedRoomy = await ev(({ t }) => T.rtSplitAdd(t, 1200, 140 * 3 + 2 * 60), { t: tabs[2] });
+        const stackedRoomy = await ev(({ t }) => T.rtSplitAdd(t, 1200, 220 * 3 + 2 * 60), { t: tabs[2] });
         assert.deepEqual(stackedRoomy.sent, ['addToSplit']);
-        // Side by side again only where they fit along the width (each web pane's app minimum known): refused, said.
+        // Side by side again only where they fit along the width (each 220 at least, whatever their windows need):
+        // refused, said.
         await ev((m) => T.rtAppMin(m), { web: [700, 220] });
-        const unstackTight = await ev(() => T.rtSplitAxis('spv-1', 1264));
-        assert.deepEqual(unstackTight.sent, [], 'two 700 pt panes side by side in 1264: not asked');
+        const unstackTight = await ev(() => T.rtSplitAxis('spv-1', 440));
+        assert.deepEqual(unstackTight.sent, [], 'two panes side by side in 440 (2 × 220 and the gap): not asked');
         assert.equal(unstackTight.toast, 'Not enough room for these panes side by side');
         const unstack = await ev(() => T.rtSplitAxis('spv-1', 1500));
         assert.deepEqual(unstack.sent, ['toggleSplitAxis'], 'room for them: asked');

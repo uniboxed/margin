@@ -51,6 +51,10 @@ nonisolated struct PaneClickScene: Equatable, Sendable {
         var pid: pid_t
         var window: Int // the window server's number
         var card = false // the preview card's: while one is open only its page counts
+        // Cut and lying under another pane (docs/PEEK-SPLIT.md §4b): a press on it goes to its window as the window
+        // server's records, never routed (routed, its window would be raised over the pane beside it). Its window's frame.
+        var tucked = false
+        var frame: CGRect = .zero
     }
     var panes: [Pane] = [] // back to front
     var focused: Int? // the window with the keys, as Margin has it (the engine's focused host)
@@ -87,6 +91,7 @@ nonisolated enum PaneClick {
         case pass(Pass)
         case covered(PaneClickScene.Pane, PaneClickCover) // another window over the pane there: as before
         case hold(PaneClickScene.Pane) // its window made key, then the press goes on
+        case tuck(PaneClickScene.Pane) // a cut pane under another (docs/PEEK-SPLIT.md §4b): delivered to its window, never routed
     }
 
     // What a left press at `point` (top left) does. `focused`: the window with the keys as the tap knows it (Margin's, or
@@ -102,6 +107,9 @@ nonisolated enum PaneClick {
         // (A card open: its page alone, whatever else is listed.)
         let panes = scene.panes.contains { $0.card } ? scene.panes.filter(\.card) : scene.panes
         guard let pane = panes.last(where: { $0.rect.contains(point) }), pane.pid > 0, pane.window > 0 else { return .pass(.margin) }
+        // (A cut pane under another: every press of it its window's as records, whatever its modifiers and whether it has
+        // the keys (routed, its window would be raised over the pane beside it); a window over it there still lets it go.)
+        if pane.tucked, !pane.card { return cover(pane).map { .covered(pane, $0) } ?? .tuck(pane) }
         if !flags.intersection([.maskCommand, .maskControl]).isEmpty { return .pass(.modifier) }
         if pane.window == focused { return .pass(.focused) }
         if let c = cover(pane) { return .covered(pane, c) }
@@ -123,6 +131,7 @@ nonisolated struct PaneClickResult: Equatable, Sendable {
     var crossApp = false // its app made the front app (another app had the keys)
     var number = 0 // the press's event number (the window server's mouseEventNumber)
     var server = false // ...by the window server (its app was kept active: PanesActive.swift)
+    var tucked = false // a cut pane's press, delivered to its window as records (never routed): docs/PEEK-SPLIT.md §4b
 }
 
 // A pane's window made key, as the tap's thread asks it (HostSystem.swift `AXPaneFocus`; a test's stand-in). Every call
@@ -142,11 +151,20 @@ nonisolated protocol PaneFocusing: AnyObject, Sendable {
     func frontProcess() -> pid_t?
     // The app made the window server's front process and `window` its key one (an app kept active). True: taken.
     func makeFront(pid: pid_t, window: Int) -> Bool
+    // A cut pane (docs/PEEK-SPLIT.md §4b): its app made the front one and `window` its key one without a raise; a mouse
+    // event delivered to `window` as its own record at its point less `origin` (never routed: never raised); its
+    // window's top left now. False, nil: none (the press routed as before).
+    func focusWithoutRaise(pid: pid_t, window: Int) -> Bool
+    func deliver(_ event: CGEvent, pid: pid_t, window: Int, origin: CGPoint) -> Bool
+    func windowOrigin(_ window: Int) -> CGPoint?
 }
 
 extension PaneFocusing {
     nonisolated func frontProcess() -> pid_t? { nil }
     nonisolated func makeFront(pid: pid_t, window: Int) -> Bool { false }
+    nonisolated func focusWithoutRaise(pid: pid_t, window: Int) -> Bool { false }
+    nonisolated func deliver(_ event: CGEvent, pid: pid_t, window: Int, origin: CGPoint) -> Bool { false }
+    nonisolated func windowOrigin(_ window: Int) -> CGPoint? { nil }
 }
 
 // The hold, apart from the event tap (the tests drive it with a stand-in focuser and a pipe of presses). A press comes in
@@ -168,6 +186,8 @@ nonisolated final class PaneClickCore: @unchecked Sendable {
     private var scene: PaneClickScene?
     private var given: (window: Int, at: Double)?
     private var claims: [(number: Int, point: CGPoint, at: Double)] = []
+    // A press on a cut pane under way: its drags and release go to the same window as records until its button is up.
+    private var redirect: (pid: pid_t, window: Int, origin: CGPoint, button: Int64)?
 
     init(focuser: PaneFocusing, report: @escaping @Sendable (PaneClickResult) -> Void) {
         self.focuser = focuser
@@ -191,6 +211,66 @@ nonisolated final class PaneClickCore: @unchecked Sendable {
         return scene
     }
 
+    // Any mouse button's event on the tap's thread (a press, a drag, a release): true, taken here (delivered to a cut pane's
+    // window as its own record: never routed, so never raised over the pane beside it, docs/PEEK-SPLIT.md §4b); false, it
+    // goes on as it came (a left press first through `pressed`, which may hold it while its pane's window is made key).
+    func event(_ type: CGEventType, _ e: CGEvent, otherButtons: Bool = false) -> Bool {
+        let button = e.getIntegerValueField(.mouseEventButtonNumber)
+        let down = type == .leftMouseDown || type == .rightMouseDown || type == .otherMouseDown
+        let up = type == .leftMouseUp || type == .rightMouseUp || type == .otherMouseUp
+        lock.lock()
+        let r = redirect
+        lock.unlock()
+        // (One under way: its own button's drags and release, then over.)
+        if let r, !down {
+            guard button == r.button else { return false }
+            let taken = focuser.deliver(e, pid: r.pid, window: r.window, origin: r.origin)
+            if up { lock.lock(); redirect = nil; lock.unlock() }
+            return taken
+        }
+        guard down else { return false }
+        let p = Press(point: e.location, flags: e.flags, number: Int(e.getIntegerValueField(.mouseEventNumber)), otherButtons: otherButtons)
+        let t0 = focuser.now()
+        lock.lock()
+        let scene = self.scene
+        if let g = given, t0 - g.at > givenFor { given = nil }
+        let focused = given?.window ?? scene?.focused
+        lock.unlock()
+        // (Only a cut pane's presses are taken here; any other press as before: a left one held by `pressed`.)
+        let except = scene?.marginWindows ?? []
+        let decision = PaneClick.decide(p.point, flags: p.flags, otherButtons: type == .leftMouseDown ? p.otherButtons : false, scene: scene, focused: focused) { pane in
+            self.focuser.cover(at: p.point, above: pane.window, except: except)
+        }
+        guard case .tuck(let pane) = decision else {
+            if type == .leftMouseDown { pressed(p) }
+            return false
+        }
+        // (Its window key first, without a raise, when it isn't: the press waits, `cap` at most, as a held one does.)
+        let until = t0 + cap
+        var crossApp = false
+        if let s = focuser.keyState(pid: pane.pid, until: until), s.front, s.window == pane.window, focuser.frontProcess().map({ $0 == pane.pid }) ?? true {} else {
+            crossApp = true
+            _ = focuser.focusWithoutRaise(pid: pane.pid, window: pane.window)
+            while focuser.now() < until {
+                if let s = focuser.keyState(pid: pane.pid, until: until), s.front, s.window == pane.window { break }
+                let left = until - focuser.now()
+                if left > 0 { focuser.pause(min(every, left)) }
+            }
+        }
+        let origin = focuser.windowOrigin(pane.window) ?? pane.frame.origin
+        guard focuser.deliver(e, pid: pane.pid, window: pane.window, origin: origin) else {
+            // (Not delivered (no records): routed as before, a left one held by `pressed`.)
+            if type == .leftMouseDown { pressed(p) }
+            return false
+        }
+        lock.lock()
+        redirect = (pane.pid, pane.window, origin, button)
+        given = (pane.window, focuser.now())
+        lock.unlock()
+        _ = said(PaneClickResult(window: pane.window, pid: pane.pid, outcome: .delivered(already: !crossApp), ms: ms(since: t0), crossApp: crossApp, number: p.number, tucked: true))
+        return true
+    }
+
     // A left press, on the tap's thread. Held (this returns once its pane's window is key, or after `cap`) when it lands
     // in a pane without the keys; the result said (`report`) for each press it held or found covered, nil otherwise.
     @discardableResult func pressed(_ p: Press) -> PaneClickResult? {
@@ -209,6 +289,8 @@ nonisolated final class PaneClickCore: @unchecked Sendable {
             return nil
         case .covered(let pane, let c):
             return said(PaneClickResult(window: pane.window, pid: pane.pid, outcome: .covered(c), ms: ms(since: t0), number: p.number))
+        case .tuck:
+            return nil // (`event`'s, never routed)
         case .hold(let pane):
             let until = t0 + cap
             let kept = scene?.kept.contains(pane.pid) == true
@@ -308,7 +390,10 @@ nonisolated final class PaneClickTap: PaneClickTapping, @unchecked Sendable {
     // (The thread holds the tap until `stop`; the callback's pointer to it is the thread's own reference.)
     // Left presses only: drags, releases, moves, scrolls and keys never come through it (macOS adds its own word when it
     // turns the tap off).
-    static let mask = CGEventMask(1) << CGEventMask(CGEventType.leftMouseDown.rawValue)
+    // Presses, drags and releases of every button: a cut pane's press and the drags and release after it are delivered to
+    // its window as records (docs/PEEK-SPLIT.md §4b); every other one goes on at once (one comparison).
+    static let mask = [CGEventType.leftMouseDown, .leftMouseUp, .leftMouseDragged, .rightMouseDown, .rightMouseUp, .rightMouseDragged,
+                       .otherMouseDown, .otherMouseUp, .otherMouseDragged].reduce(CGEventMask(0)) { $0 | (CGEventMask(1) << CGEventMask($1.rawValue)) }
 
     private func run() {
         guard let port = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap, eventsOfInterest: Self.mask,
@@ -357,29 +442,29 @@ nonisolated final class PaneClickTap: PaneClickTapping, @unchecked Sendable {
     func update(_ scene: PaneClickScene?) { core.update(scene) }
     func claimed(number: Int, at point: CGPoint) -> Bool { core.claimed(number: number, at: point) }
 
-    // On its thread: a press (held while its pane's window is made key), or macOS's word that it turned the tap off.
-    fileprivate func heard(_ type: CGEventType, _ event: CGEvent) {
+    // On its thread: a press (held while its pane's window is made key, or a cut pane's taken), a drag or a release (a cut
+    // pane's taken), or macOS's word that it turned the tap off. True: taken (not passed on).
+    fileprivate func heard(_ type: CGEventType, _ event: CGEvent) -> Bool {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             lock.lock()
             let port = stopped ? nil : self.port
             turnedOn += 1
             let n = turnedOn
             lock.unlock()
-            guard let port else { return }
+            guard let port else { return false }
             CGEvent.tapEnable(tap: port, enable: true)
             if n == 1 || n % 100 == 0 {
                 said("pane clicks: macOS turned the event tap off (\(type == .tapDisabledByTimeout ? "too slow" : "user input")): on again (\(n) so far)")
             }
-            return
+            return false
         }
-        guard type == .leftMouseDown else { return }
-        let other = CGEventSource.buttonState(.combinedSessionState, button: .right) || CGEventSource.buttonState(.combinedSessionState, button: .center)
-        core.pressed(PaneClickCore.Press(point: event.location, flags: event.flags, number: Int(event.getIntegerValueField(.mouseEventNumber)), otherButtons: other))
+        let other = type == .leftMouseDown && (CGEventSource.buttonState(.combinedSessionState, button: .right) || CGEventSource.buttonState(.combinedSessionState, button: .center))
+        return core.event(type, event, otherButtons: other)
     }
 }
 
 // The tap's callback (C): every event goes on, as it came; a press only after its pane's window is key (or the cap).
 nonisolated private func paneClickTapCallback(_ proxy: CGEventTapProxy, _ type: CGEventType, _ event: CGEvent, _ info: UnsafeMutableRawPointer?) -> Unmanaged<CGEvent>? {
-    if let info { Unmanaged<PaneClickTap>.fromOpaque(info).takeUnretainedValue().heard(type, event) }
+    if let info, Unmanaged<PaneClickTap>.fromOpaque(info).takeUnretainedValue().heard(type, event) { return nil }
     return Unmanaged.passUnretained(event)
 }

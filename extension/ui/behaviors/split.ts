@@ -6,13 +6,12 @@
 // hover and drag, the focused pane's ring) by its CSS. The view measures each pane with the page (ui/render.ts
 // View.measure: `split`, `panes`), and Margin.app places each pane's window at its box (HostedSession.swift).
 //
-// - A pane is never laid out below its window's own minimum (the app's `paneMin`: host-app.ts `paneMinimums`, the
-//   engine's as learnt), nor below its app's known minimum (`appMin`: every app's, `web` for Safari's pages, whether a
-//   window of it is open or not: a pane being added, main, a pane not opened yet), nor below PANE_FLOOR: its box's
-//   `min-width` (side by side) or `min-height` (stacked). The real screen, 2026-11-21: a third Safari pane let into a
-//   split of two, its window made and refused, because only the open panes' minimums were known.
+// - A pane is never laid out below Arc's least, PANE_FLOOR (220 pt, `minimumPaneWidth` in Arc 1.174.0's split view, also
+//   its least height stacked): its box's `min-width` (side by side) or `min-height` (stacked). Its window may need more:
+//   Margin.app shows it cut, its window at its own minimum, the rest hidden (docs/PEEK-SPLIT.md §4b, arrows to see it).
 // - A divider dragged: the two panes beside it change size with the pointer, at most once a frame, each stopping at
-//   its minimum; the page measured and reported that frame (the app's windows follow it live: `split.resizing`, as a
+//   220; within SNAP (14 pt) of an even split of the two, they're even (Arc's), with Margin's alignment haptic as it
+//   snaps when the drag is slow (Arc's: 120 pt/s at most); the page measured and reported that frame (the app's windows follow it live: `split.resizing`, as a
 //   drag of the sidebar's edge); let go, `split.resize` saves the ratios. Double-click: equal sizes. Focused (Tab),
 //   ←/→ (↑/↓ stacked) move it 2% (⇧: 10%), Home/End to its ends, Enter makes them equal; each saved.
 // - Nothing per frame but a drag's own frames; nothing at all while no split is shown (no listener does any work).
@@ -25,6 +24,11 @@
 // - A pane whose window is opening beside the panes shown (Margin.app's `paneLoading`: its item): `<m-pane m-loading>`
 //   with Margin's loader in it (`<m-pane-loader>`: a spinner, "Opening …"), over that pane's box only; the other panes
 //   stay shown and usable (never the page card's loader over the whole page area).
+// - A cut pane (Margin.app's `paneCut`: its window wider or taller than its box, at its own minimum, the rest past the
+//   display's edge, under the sidebar or under the pane beside it, docs/PEEK-SPLIT.md §4b): an
+//   `<m-pane-arrow m-side="left|right|up|down" m-mode="slide">` on each side where its window is hidden, shown while the
+//   pointer is over that pane (`m-pane[m-cut-hover]`: Margin.app's `paneHover`, said as the pointer enters and leaves
+//   it); pressed, its window slides to show that side, `split.slide`. Nothing at all while no pane is cut.
 // - Adding a pane that can't fit (each pane's minimum and the gaps, bands counted, more than the page area): refused
 //   with a toast before anything is opened (`refusesAdd`, runtime.ts dispatch); so is stacking (or unstacking) panes
 //   that wouldn't fit along the other axis (`refusesAxis`). The sidebar's edge stops where the panes would no longer fit
@@ -33,14 +37,23 @@ import { frontItemOf } from '../../shared/front-item.ts';
 import type { Rt } from '../runtime.ts';
 import type { ViewModel } from '../view-model.ts';
 
-/** The smallest a pane is laid out (Margin's points) when its window's own minimum isn't known yet. */
-export const PANE_FLOOR = Object.freeze({ width: 200, height: 140 });
+/** The smallest a pane is laid out (Margin's points): Arc's split view's `minimumPaneWidth`, 220, its least height
+ *  stacked too (read from Arc 1.174.0's binary, 2026-11-21). */
+export const PANE_FLOOR = Object.freeze({ width: 220, height: 220 });
+/** A divider dragged within this of an even split of its two panes: even (Arc's, pt). */
+export const SNAP = 14;
+/** The fastest a drag snaps with the haptic (Arc's, pt/s). */
+export const SNAP_HAPTIC_SPEED = 120;
 /** The gap between panes when the theme doesn't set `--m-split-gap`. */
 export const SPLIT_GAP = 8;
 /** Safari's full-screen toolbar window's height (pt; measured on the real screen 2026-11-21: 1264×52 resting just above
  *  its window, its toolbar hidden). Margin.app's engine doesn't say it to the page (it never touches that window). */
 export const SAFARI_TOOLBAR = 52;
 const STEP = 0.02;
+type PaneSide = 'left' | 'right' | 'up' | 'down';
+type PaneCut = { window: number } & Partial<Record<PaneSide, 'slide'>>;
+const SIDES: readonly PaneSide[] = ['left', 'right', 'up', 'down'];
+const SIDE_WORDS: Record<PaneSide, string> = { left: 'left', right: 'right', up: 'top', down: 'bottom' };
 const BIG_STEP = 0.1;
 
 type Split = NonNullable<ViewModel['split']>;
@@ -52,30 +65,25 @@ export function appKeyOf(url: unknown): string {
   return m ? m[1] : 'web';
 }
 
-/** Each pane's floor along the axis (`row`: widths): its window's own minimum (by item id), else its app's known one
- *  (by its address), and PANE_FLOOR at least. */
-export function paneFloors(split: { axis: string, panes: readonly { id: unknown, url?: string | null }[] }, minimums: Record<string, [number, number]> = {}, apps: Record<string, [number, number]> = {}): number[] {
-  const row = split.axis !== 'vertical';
-  return split.panes.map((p) => {
-    const own = minimums[String(p.id)];
-    const app = apps[appKeyOf(p.url)];
-    const m = own ?? app;
-    const either = own && app ? (row ? Math.max(own[0], app[0]) : Math.max(own[1], app[1])) : m ? (row ? m[0] : m[1]) : 0;
-    return Math.max(row ? PANE_FLOOR.width : PANE_FLOOR.height, either);
-  });
+/** Each pane's floor along the axis: Arc's least, PANE_FLOOR, whatever its window needs (that's shown cut). */
+export function paneFloors(split: { axis: string, panes: readonly unknown[] }): number[] {
+  const least = split.axis !== 'vertical' ? PANE_FLOOR.width : PANE_FLOOR.height;
+  return split.panes.map(() => least);
 }
 
 /**
  * The ratios after divider `index` moved `delta` px: the two panes beside it, each kept at its floor at least, the
  * others as they are. `sizes`: every pane's size now (px), `floors` each one's least.
  */
-export function dragRatios(sizes: number[], floors: number[], index: number, delta: number): number[] {
+export function dragRatios(sizes: number[], floors: number[], index: number, delta: number, snap = 0): number[] {
   const total = sizes.reduce((a, b) => a + b, 0);
   if (!(total > 0) || index < 0 || index >= sizes.length - 1) return sizes.map((s) => s / (total || 1));
   const pair = sizes[index] + sizes[index + 1];
   const lo = Math.min(floors[index] ?? 0, pair / 2);
   const hi = Math.max(pair - (floors[index + 1] ?? 0), pair / 2);
-  const a = Math.min(hi, Math.max(lo, sizes[index] + delta));
+  let a = Math.min(hi, Math.max(lo, sizes[index] + delta));
+  // (Within `snap` of an even split of the two: even, Arc's.)
+  if (snap > 0 && Math.abs(a - pair / 2) <= snap) a = pair / 2;
   const next = [...sizes];
   next[index] = a;
   next[index + 1] = pair - a;
@@ -120,15 +128,35 @@ const sameRatios = (a: number[] | null | undefined, b: number[] | null | undefin
 
 export function installSplit(rt: Rt) {
   const { view, doc } = rt;
-  let drag: { el: Element, pointerId: number, index: number, start: number, sizes: number[], floors: number[], ratios: number[], told: boolean, split: string } | null = null;
+  let drag: { el: Element, pointerId: number, index: number, start: number, sizes: number[], floors: number[], ratios: number[], told: boolean, split: string, snapped: boolean, at: number, pos: number, speed: number } | null = null;
   // The ratios drawn ahead of the state: a drag's, then the ones just saved until the state has them (or 2 s).
   let held: { split: string, ratios: number[], until: number } | null = null;
   let frame = 0;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let laidOut = '';
 
-  const host = () => rt.host as typeof rt.host & { appWindow?: boolean, pageHosted?: boolean, paneMinimums?: Record<string, [number, number]>, appMinimums?: Record<string, [number, number]>, paneLoading?: { item: string, name: string } | null, note?: (text: string) => void };
-  const floorsOf = (split: { axis: string, panes: readonly { id: unknown, url?: string | null }[] }) => paneFloors(split, host().paneMinimums, host().appMinimums);
+  const host = () => rt.host as typeof rt.host & { appWindow?: boolean, pageHosted?: boolean, paneMinimums?: Record<string, [number, number]>, appMinimums?: Record<string, [number, number]>, paneLoading?: { item: string, name: string } | null, paneCuts?: Record<string, PaneCut>, paneHover?: number | null, note?: (text: string) => void };
+  // A cut pane's arrows (its hidden sides), shown while the pointer is over it; nothing for one that isn't cut.
+  function arrows(p: HTMLElement, cut: PaneCut | null, hovered: boolean) {
+    const want = cut ? SIDES.filter((s) => cut[s]) : [];
+    const have = [...p.children].filter((c) => c.localName === 'm-pane-arrow') as HTMLElement[];
+    for (const a of have) if (!want.includes(a.getAttribute('m-side') as PaneSide)) a.remove();
+    for (const side of want) {
+      let a = have.find((x) => x.getAttribute('m-side') === side);
+      if (!a || !a.isConnected) {
+        a = doc.createElement('m-pane-arrow');
+        a.setAttribute('m-side', side);
+        a.setAttribute('role', 'button');
+        p.appendChild(a);
+      }
+      if (a.getAttribute('m-mode') !== 'slide') a.setAttribute('m-mode', 'slide');
+      const label = `Show the ${SIDE_WORDS[side]} of this pane`;
+      if (a.getAttribute('aria-label') !== label) { a.setAttribute('aria-label', label); a.setAttribute('title', label); }
+    }
+    const lit = !!cut && hovered;
+    if (lit !== p.hasAttribute('m-cut-hover')) { if (lit) p.setAttribute('m-cut-hover', ''); else p.removeAttribute('m-cut-hover'); }
+  }
+  const floorsOf = (split: { axis: string, panes: readonly unknown[] }) => paneFloors(split);
   const page = () => view.pageEl as HTMLElement | null;
   /** The split shown here now: the item in front a pane of it, a window hosted in the page area. */
   const shown = (vm: ViewModel | null = rt.vm): Split | null => {
@@ -217,7 +245,9 @@ export function installSplit(rt: Rt) {
     const ratios = ratiosFor(split);
     const floors = floorsOf(split);
     const opening = host().paneLoading ?? null;
-    const key = JSON.stringify([split.id, split.axis, split.panes.map((p) => [p.id, p.active, p.url, p.title, p.host]), ratios, floors, opening]);
+    const cuts = host().paneCuts ?? {};
+    const hover = host().paneHover ?? null;
+    const key = JSON.stringify([split.id, split.axis, split.panes.map((p) => [p.id, p.active, p.url, p.title, p.host]), ratios, floors, opening, cuts, hover]);
     if (key === laidOut) return;
     laidOut = key;
     const axis = row(split) ? 'row' : 'column';
@@ -253,6 +283,8 @@ export function installSplit(rt: Rt) {
       if (p.getAttribute('m-pane-id') !== id) p.setAttribute('m-pane-id', id);
       if (pane.active) { if (!p.hasAttribute('m-focused')) p.setAttribute('m-focused', ''); } else if (p.hasAttribute('m-focused')) p.removeAttribute('m-focused');
       loader(p, opening && opening.item === id ? opening.name : null);
+      const cut = cuts[id] ?? null;
+      arrows(p, cut, !!cut && cut.window === hover);
       const s = p.style;
       const grow = String(round4(ratios[i] ?? 1 / n));
       if (s.flexGrow !== grow) s.flexGrow = grow;
@@ -295,6 +327,18 @@ export function installSplit(rt: Rt) {
     return el && d && d.parentElement === el ? d : null;
   };
 
+  // A cut pane's arrow pressed: its window slid to show that side.
+  rt.listen(rt.container, 'pointerdown', (e: PointerEvent) => {
+    const a = (e.target as Element | null)?.closest?.('m-pane-arrow');
+    const p = a?.parentElement;
+    if (e.button !== 0 || !a || !p || p.localName !== 'm-pane' || p.parentElement !== page()) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const item = p.getAttribute('m-pane-id') ?? '';
+    const side = a.getAttribute('m-side') as PaneSide | null;
+    if (!side || host().paneCuts?.[item]?.[side] !== 'slide') return;
+    rt.host.perform?.('split.slide', { item, side });
+  }, true);
   rt.listen(rt.container, 'pointerdown', (e: PointerEvent) => {
     if (e.button !== 0 || drag) return;
     const d = dividerAt(e.target);
@@ -307,7 +351,7 @@ export function installSplit(rt: Rt) {
     const index = Number(d.getAttribute('m-index'));
     const now = sizes(el, split);
     const total = now.reduce((a, b) => a + b, 0) || 1;
-    drag = { el: d, pointerId: e.pointerId, index, start: row(split) ? e.clientX : e.clientY, sizes: now, floors: floorsOf(split), ratios: now.map((s) => s / total), told: false, split: split.id };
+    drag = { el: d, pointerId: e.pointerId, index, start: row(split) ? e.clientX : e.clientY, sizes: now, floors: floorsOf(split), ratios: now.map((s) => s / total), told: false, split: split.id, snapped: false, at: e.timeStamp, pos: row(split) ? e.clientX : e.clientY, speed: 0 };
     d.setAttribute('m-dragging', '');
     view.rootElement()?.classList.add('m-split-resizing');
   }, true);
@@ -316,8 +360,17 @@ export function installSplit(rt: Rt) {
     const split = shown();
     if (!split || split.id !== drag.split) return;
     const k = rt.scale?.() || 1;
-    const delta = ((row(split) ? e.clientX : e.clientY) - drag.start) * k;
-    const next = dragRatios(drag.sizes, drag.floors, drag.index, delta);
+    const pos = row(split) ? e.clientX : e.clientY;
+    const delta = (pos - drag.start) * k;
+    // (Its speed (pt/s) from the move before: the snap's haptic only for a slow drag, Arc's.)
+    const dt = (e.timeStamp - drag.at) / 1000;
+    if (dt > 0) { drag.speed = Math.abs(pos - drag.pos) * k / dt; drag.at = e.timeStamp; drag.pos = pos; }
+    const next = dragRatios(drag.sizes, drag.floors, drag.index, delta, SNAP);
+    const total = drag.sizes.reduce((a, b) => a + b, 0);
+    const pairNow = (next[drag.index] + next[drag.index + 1]) * total;
+    const snapped = Math.abs(next[drag.index] * total - pairNow / 2) < 0.5 && Math.abs(drag.sizes[drag.index] + delta - pairNow / 2) > 0.5;
+    if (snapped && !drag.snapped && drag.speed <= SNAP_HAPTIC_SPEED) rt.host.perform?.('haptic.alignment');
+    drag.snapped = snapped;
     if (sameRatios(next, drag.ratios) && next.every((v, i) => v === drag!.ratios[i])) return;
     drag.ratios = next;
     if (!drag.told) { drag.told = true; tell(true); }

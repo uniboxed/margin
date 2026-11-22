@@ -39,6 +39,12 @@ nonisolated protocol PaneFronting: AnyObject, Sendable {
     // The app made the window server's front process (the keyboard's, the menu bar's) and `window` made its key one,
     // whatever AppKit in it believes (an app kept active takes its own activation for done). True: taken.
     func makeFront(pid: pid_t, window: Int) -> Bool
+    // The same, its windows left where they are in the window server's order (never raised over the panes it lies under:
+    // a split's cut pane, docs/PEEK-SPLIT.md §4b). True: taken.
+    func focusWithoutRaise(pid: pid_t, window: Int) -> Bool
+    // A mouse event delivered to `window` of `pid` as its own record, at its point less `origin` (the window's top left),
+    // never routed by the window server (which would raise it). True: taken.
+    func deliver(_ event: CGEvent, pid: pid_t, window: Int, origin: CGPoint) -> Bool
 }
 
 nonisolated struct PaneWindow: Hashable, Sendable, CustomStringConvertible {
@@ -224,6 +230,20 @@ nonisolated final class PaneActivator: PaneFronting, @unchecked Sendable {
         _ = send(PaneRecords.makeKey(window: window, down: true), to: pid)
         _ = send(PaneRecords.makeKey(window: window, down: false), to: pid)
         return true
+    }
+
+    func focusWithoutRaise(pid: pid_t, window: Int) -> Bool {
+        guard calls.setFront(pid: pid, window: window, options: HostPrivate.noWindows) else { return false }
+        _ = send(PaneRecords.makeKey(window: window, down: true), to: pid)
+        _ = send(PaneRecords.makeKey(window: window, down: false), to: pid)
+        return true
+    }
+
+    func deliver(_ event: CGEvent, pid: pid_t, window: Int, origin: CGPoint) -> Bool {
+        let p = event.location
+        guard !refused, let own = calls.record(of: event),
+              let r = PaneRecords.delivered(own, window: window, local: CGPoint(x: p.x - origin.x, y: p.y - origin.y)) else { return false }
+        return send(r, to: pid)
     }
 
     func keep(_ w: PaneWindow) { queue.async { self.keepNow(w) } }

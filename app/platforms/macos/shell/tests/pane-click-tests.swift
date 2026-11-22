@@ -57,6 +57,22 @@ final class FakePaneFocus: PaneFocusing, @unchecked Sendable {
         return cover.flatMap { except.contains($0.window) ? nil : $0 }
     }
     func warm(_ panes: [PaneClickScene.Pane]) { warmed.append(panes.map(\.window)) }
+    // A cut pane's (docs/PEEK-SPLIT.md §4b): focus without a raise (its window key `keyAfter` later, as a focus), each
+    // event delivered as a record (`delivers` false: no records, routed as before), the window's top left.
+    var delivers = true
+    var origins: [Int: CGPoint] = [:]
+    func focusWithoutRaise(pid: pid_t, window: Int) -> Bool {
+        log.append("focusWithoutRaise \(window)")
+        asked = (clock, pid, window)
+        clock += 0.0003
+        return true
+    }
+    func deliver(_ event: CGEvent, pid: pid_t, window: Int, origin: CGPoint) -> Bool {
+        guard delivers else { return false }
+        log.append("deliver \(event.type.rawValue) to \(window) at \(Int(event.location.x - origin.x)),\(Int(event.location.y - origin.y))")
+        return true
+    }
+    func windowOrigin(_ window: Int) -> CGPoint? { origins[window] }
 }
 
 nonisolated final class PaneBox<T>: @unchecked Sendable {
@@ -65,6 +81,7 @@ nonisolated final class PaneBox<T>: @unchecked Sendable {
 }
 
 func paneClickTests() {
+    paneClickTuckTests()
     paneClickDecisionTests()
     paneClickHoldTests()
     paneClickKeptTests()
@@ -292,8 +309,10 @@ private func paneClickHoldTests() {
         c.update(nil)
         check("pane click: the panes' windows warmed as they change (not at a focus change), dropped with the split", f.warmed == [[10, 20], []], "\(f.warmed)")
     }
-    check("pane click tap: its mask is left presses only (drags, releases, moves, scrolls and keys never reach it)",
-          PaneClickTap.mask == CGEventMask(1) << CGEventMask(CGEventType.leftMouseDown.rawValue))
+    let buttons: [CGEventType] = [.leftMouseDown, .leftMouseUp, .leftMouseDragged, .rightMouseDown, .rightMouseUp, .rightMouseDragged, .otherMouseDown, .otherMouseUp, .otherMouseDragged]
+    let never: [CGEventType] = [.mouseMoved, .scrollWheel, .keyDown, .keyUp, .flagsChanged]
+    check("pane click tap: its mask is every button's presses, drags and releases (a cut pane's press goes on as records); moves, scrolls and keys never reach it",
+          buttons.allSatisfy { PaneClickTap.mask & (CGEventMask(1) << CGEventMask($0.rawValue)) != 0 } && never.allSatisfy { PaneClickTap.mask & (CGEventMask(1) << CGEventMask($0.rawValue)) == 0 })
     // (The monitor's press is matched by its event number: AppKit's eventNumber is the event's mouseEventNumber. Made
     // here, never posted.)
     if let cg = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown, mouseCursorPosition: CGPoint(x: 10, y: 10), mouseButton: .left) {
@@ -409,4 +428,64 @@ private func paneClickEngineTests() {
     _ = hostRun { await e.focus(textEdit.id) }
     check("pane click engine: a press the usual way (the tap off, or its focus not in time): the visible ones fronted as before", w.calls.dropFirst(mark).contains { $0.hasPrefix("activate") } && e.shown == textEdit.id,
           "\(w.calls.dropFirst(mark))")
+}
+
+
+// A cut pane under another (docs/PEEK-SPLIT.md §4b): the right pane's window (20, Notes' 700 at 804…1504) lies under the
+// left pane: every press on it, its drags and its release are delivered to its window as records (never routed: routed,
+// its window would be raised over the left pane), after its window is made key without a raise when it isn't.
+private func paneClickTuckTests() {
+    func tucked(focused: Int? = 10) -> PaneClickScene {
+        var sc = scene(rightPid: 502, focused: focused)
+        sc.panes[1].tucked = true
+        sc.panes[1].frame = CGRect(x: 804, y: 41, width: 700, height: 933)
+        return sc
+    }
+    func ev(_ t: CGEventType, _ p: CGPoint, _ b: CGMouseButton = .left) -> CGEvent { CGEvent(mouseEventSource: nil, mouseType: t, mouseCursorPosition: p, mouseButton: b)! }
+    let inRight = CGPoint(x: 1200, y: 500), inLeft = CGPoint(x: 500, y: 500)
+    // The decision: tucked even with the keys or ⌘ held; covered by another window there: let go as before.
+    let d = PaneClick.decide(inRight, flags: .maskCommand, otherButtons: false, scene: tucked(focused: 20), focused: 20) { _ in nil }
+    check("pane click tuck: a press on a cut pane under another is taken (its window's as records), with the keys and ⌘ held too", d == .tuck(tucked().panes[1]), "\(d)")
+    let covered = PaneClickCover(window: 99, pid: 9, layer: 101)
+    let dc = PaneClick.decide(inRight, flags: [], otherButtons: false, scene: tucked(), focused: 10) { _ in covered }
+    check("pane click tuck: …a window over it there (a menu): let go as before", dc == .covered(tucked().panes[1], covered), "\(dc)")
+    check("pane click tuck: a press on the other pane: as before", PaneClick.decide(inLeft, flags: [], otherButtons: false, scene: tucked(), focused: 20) { _ in nil } == .hold(tucked().panes[0]))
+    // A click: its window key without a raise, then the press, its drags and the release delivered (at its window's
+    // own point), each taken; then a drag that isn't its own goes on.
+    let f = FakePaneFocus()
+    f.origins[20] = CGPoint(x: 804, y: 41)
+    let results = PaneBox<[PaneClickResult]>([])
+    let core = PaneClickCore(focuser: f, report: { results.value.append($0) })
+    core.update(tucked())
+    let tookDown = core.event(.leftMouseDown, ev(.leftMouseDown, inRight))
+    let tookDrag = core.event(.leftMouseDragged, ev(.leftMouseDragged, CGPoint(x: 1210, y: 500)))
+    let tookUp = core.event(.leftMouseUp, ev(.leftMouseUp, CGPoint(x: 1210, y: 500)))
+    let tookAfter = core.event(.leftMouseDragged, ev(.leftMouseDragged, inLeft))
+    check("pane click tuck: its window made key without a raise (never Accessibility's raising focus), then the press, a drag and the release delivered at its window's point, each taken",
+          tookDown && tookDrag && tookUp && f.log == ["focusWithoutRaise 20", "deliver 1 to 20 at 396,459", "deliver 6 to 20 at 406,459", "deliver 2 to 20 at 406,459"], "\(f.log)")
+    check("pane click tuck: …once released, the next drag goes on as it came", !tookAfter, "\(tookAfter)")
+    check("pane click tuck: …said once, delivered, its app made the front one (Margin's bookkeeping follows, nothing fronted)",
+          results.value.count == 1 && results.value[0].tucked && results.value[0].outcome == .delivered(already: false) && results.value[0].crossApp, "\(results.value)")
+    // Its window key already: nothing asked, delivered at once.
+    f.log = []
+    _ = core.event(.leftMouseDown, ev(.leftMouseDown, inRight))
+    _ = core.event(.leftMouseUp, ev(.leftMouseUp, inRight))
+    check("pane click tuck: its window key already: no focus asked, the click delivered", f.log == ["deliver 1 to 20 at 396,459", "deliver 2 to 20 at 396,459"], "\(f.log)")
+    // A right click on it too (a context menu), its own button's release only.
+    f.log = []
+    let rd = core.event(.rightMouseDown, ev(.rightMouseDown, inRight, .right))
+    let leftUpMeanwhile = core.event(.leftMouseUp, ev(.leftMouseUp, inRight))
+    let ru = core.event(.rightMouseUp, ev(.rightMouseUp, inRight, .right))
+    check("pane click tuck: a right click on it delivered too; another button's release meanwhile goes on", rd && ru && !leftUpMeanwhile && f.log == ["deliver 3 to 20 at 396,459", "deliver 4 to 20 at 396,459"], "\(f.log)")
+    // Not a tucked pane: a right press goes on, untouched.
+    f.log = []
+    core.update(scene(rightPid: 502))
+    check("pane click tuck: a right press on a pane that isn't cut goes on untouched", !core.event(.rightMouseDown, ev(.rightMouseDown, inRight, .right)) && f.log.isEmpty, "\(f.log)")
+    // No records (delivery refused): the press routed as before (held, focused the usual way).
+    let g = FakePaneFocus()
+    g.delivers = false
+    let core2 = PaneClickCore(focuser: g, report: { _ in })
+    core2.update(tucked())
+    let routed = core2.event(.leftMouseDown, ev(.leftMouseDown, inRight))
+    check("pane click tuck: no records: the press goes on as before (not taken)", !routed && g.log.first == "focusWithoutRaise 20", "\(routed) \(g.log)")
 }

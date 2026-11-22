@@ -7417,3 +7417,47 @@ then both panes "failed" and the page showed the launcher.
 - **Open:** Notes' least as its tile says it changes while it goes full screen: 701×53 first, 501×300 ~90 ms later (its
   folder column shown or not). Whichever came last is kept, so Notes beside a Safari tab is refused at 701 though Notes
   can sit at 628 (it did, at 501). Taking the settled reading is a follow-up.
+
+## A pane narrower than its window is shown cut, with arrows (2026-11-22)
+
+Tirth (2026-11-21): rather than refusing an app or tab that can't fit in its split pane, "allow them in there but show
+however much can fit inside it", arrows on hover on the sides with more to show, and split limits like Arc's.
+
+- **Arc's limits**, read from Arc 1.174.0's binary (its `ARCUI.SplitViewController`): `minimumPaneWidth` 220 pt, a
+  constant, also the least height stacked; a divider's drag snaps to an even split of its two panes within 14 pt, a
+  haptic only when the drag is slower than 120 pt/s; 4 panes at most (Margin had that). Now `PANE_FLOOR` 220×220 for
+  every pane (`ui/behaviors/split.ts`), whatever its window needs; adds and axis toggles refused only where 220 each
+  and the gaps don't fit; Margin.app's own check before any window moves (`HostedSession.noRoom`) uses 220 too.
+- **The cut pane** (docs/PEEK-SPLIT.md §4b): its window at its own minimum within the display (margin-core
+  `layout::cut`, the engine's `frame`), Margin's hole the pane, kept under the panes beside it (`frontVisible`), its keys
+  without a raise (kCPSNoWindows + the make-key pair), its presses delivered to its window as records by the pane click
+  tap (never routed: routing raises the clicked window), put back under them if its app comes in front another way.
+- **Arrows**: a slide (its tile's rect, 150 ms eased) to its other alignment, which shows that side whole. First built
+  as "slide where there's room, reveal over its neighbours at the display's edge" (Tirth's choice, 2026-11-22); then
+  Tirth asked to move the window to the screen's edge properly instead (2026-11-22, below), and the reveal went.
+- **Past the display's edge** (2026-11-22): the earlier finding that macOS ejects a tile past the display's edge was
+  wrong. Read in AppKit (`_NSFullScreenContentController reshapeContentForTileFrame:…` and its delayed block): a window
+  leaves its tile only when it can't take the tile's size, never for its position. Measured with a Chameleon test copy
+  (Margin paused so its keeper didn't put it back): tiles 388 past the right edge, 300 past the left, 400 past the
+  bottom, 300 past the top, each kept, drawn clipped at the edge. So a cut pane's window lies away from the other
+  panes (`layout::cut` with no alignment asked): an edge pane's rest goes past the display's edge or under the sidebar,
+  under no pane (nothing kept behind, nothing polled, its focus and presses as any pane's); a middle pane's under the
+  pane before it (a chain, ordered by `tuckedOrder`); a slide that would put two cut panes over each other's isn't
+  offered. Only tiles may pass the edge: a window entering, a member and tiles off keep a frame within the display
+  (`layout::within`), since a full-screen Space's reservation can't be negative (`layout::plan`); `layout::tile` takes
+  a page past the area now.
+- **Research that ruled things out** (2026-11-21/22, on the real screen with Chameleon test copies and a Safari test
+  page; lab dev hook on `lab/split-overflow`, never merged): a window-mode window can hang off the edge but draws above full-screen tiles (its hidden part over the
+  neighbour), shows its title bar and stops short of the Dock; a tile's own Space ignores `SLSBridgedSpaceSet
+  {Transform,Shape}Operation` (stored, never drawn); Codex's two-root scene (two full-screen Spaces shown together,
+  clipped and translated) draws the second Space only while it's the current Space here too, and any click in the
+  other one blanks it, so every click in Margin's Space would have to be re-delivered: kept as research. A click on a
+  window behind another, routed by the window server, raises it; the same click as the window's own record doesn't.
+- **Cost**: nothing at rest. The tap now also hears every button's drags and releases while a split is up (one
+  comparison each, a cut pane's taken); `paneHover` is said only as the pointer enters or leaves a cut pane; a slide is
+  ~9 rects of ~0.2 ms; a press on a cut pane lying under another reads its window's origin once. The poll's look at the
+  window order runs only while a cut pane lies under another (not for edge panes). No timer.
+- **Seen on the real screen** (2026-11-22): Chameleon past the edge, slid both ways; Notes (pane 328, window 501) past
+  the edge beside Safari, slid under Safari's pane and back; the screen suite's `cut-panes` part, 14 of 14.
+- **Open**: a second display beside this one (none connected yet): a tile past the edge should stay clipped to its own
+  display.

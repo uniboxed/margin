@@ -48,7 +48,7 @@ private func splitEngineTests() {
         e.follow(placement, rects: [textEdit.id: left2, notes.id: right2])
         let atOnce = told.dropFirst(mark).last
         check("split: a divider's frame: Margin's window told each pane's rect in it at once (its holes follow the page, a frame before the windows at most)",
-              on && atOnce == [HostShownWindow(window: edit, rect: left2, role: .main, z: 0, focused: true), HostShownWindow(window: n, rect: right2, role: .pane, z: 1, focused: false)],
+              on && atOnce == [HostShownWindow(window: edit, rect: left2, role: .main, z: 0, focused: true, frame: left2), HostShownWindow(window: n, rect: right2, role: .pane, z: 1, focused: false, frame: right2)],
               "\(on) \(String(describing: atOnce))")
         _ = hostRun { await w.sleep(0.05); return true }
         check("split: …and the windows follow (their tiles)", w.bounds(window: edit) == left2 && w.bounds(window: n) == right2,

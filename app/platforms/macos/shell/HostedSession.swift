@@ -128,6 +128,8 @@ protocol HostedEngine: AnyObject {
     // its full-screen toolbar down over the page), then the layout's focused host given the keys back (HostEngine
     // `focusPages`); nil: none was a Safari window.
     func focusPages(_ ids: [HostID]) async -> String?
+    // A cut pane's arrow (docs/PEEK-SPLIT.md §4b): its window slid to show that side (true: done).
+    func slide(_ id: HostID, side: PaneSide) async -> Bool
 }
 
 // One of a profile's hosted Safari windows: its profile and its role (docs/PEEK-SPLIT.md §1).
@@ -183,6 +185,7 @@ extension HostedEngine {
     var knownAppMinimums: [String: CGSize] { [:] }
     func toolbarsRest(_ ids: [HostID]) async -> String? { nil }
     func focusPages(_ ids: [HostID]) async -> String? { nil }
+    func slide(_ id: HostID, side: PaneSide) async -> Bool { false }
     func start(bundleId: String) async -> HostApp? { nil }
     func prepare(_ target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64) async -> HostResult { .failed(.launch, "no engine to prepare it") }
 }
@@ -253,6 +256,9 @@ protocol HostedWindow: AnyObject {
     func push(_ json: String)
     // Every visible host's window while more than one is (docs/PEEK-SPLIT.md §1: its holes), [] when one is again.
     func setVisibleHosts(_ list: [HostShownWindow])
+    // A split's cut panes (docs/PEEK-SPLIT.md §4b), told to its page for their arrows: `{ <item>: { window,
+    // left|right|up|down: "slide" } }` (JSON, each side its arrow slides), `{}` for none. Said only when it changes.
+    func setPaneCuts(_ json: String)
     // Where its page draws the preview card page (the theme's <m-preview-page>, top-left screen points), nil: none drawn.
     var cardRect: CGRect? { get }
     // A split shown (docs/PEEK-SPLIT.md §4): the panes its page laid out in `<m-page>`, each by its item with its box on
@@ -279,6 +285,7 @@ extension HostedWindow {
     func setStartupStuck(_ why: String?) {}
     func setMarginPage(_ page: String?) {}
     func setVisibleHosts(_ list: [HostShownWindow]) {}
+    func setPaneCuts(_ json: String) {}
     var cardRect: CGRect? { nil }
     var paneLayout: (split: String, panes: [PagePane])? { nil }
     func setPaneMinimums(_ minimums: [String: CGSize]) {}
@@ -884,8 +891,8 @@ final class HostedSession: LibraryDelegate {
             // its window's own Space at each ask. The real screen, 2026-11-21 19:32:02: Notes (701) added beside a Safari
             // tab (574) in 1264 pt, Safari's pane laid out at 949…1523, past the page area; Safari failed five times, the
             // split shown as an empty page. The ones coming in go, the person told, the item shown before kept.)
-            if let out = Self.noRoom(parts.map { ($0.item, $0.role, $0.rect, leastSize($0.target)) }, page: placement.page, had: hadItems) {
-                note("layout: split \(split.id): no room in the page area \(Int(placement.page.width))×\(Int(placement.page.height)) (\(parts.filter { $0.role != .card }.map { p in "\(p.item) \(p.rect.map { "\(Int($0.minX))…\(Int($0.maxX))×\(Int($0.height))" } ?? "-") least \(leastSize(p.target).map { "\(Int($0.width))×\(Int($0.height))" } ?? "none")" }.joined(separator: ", "))): nothing moved")
+            if let out = Self.noRoom(parts.map { ($0.item, $0.role, $0.rect, Self.paneLeast) }, page: placement.page, had: hadItems) {
+                note("layout: split \(split.id): no room in the page area \(Int(placement.page.width))×\(Int(placement.page.height)) (\(parts.filter { $0.role != .card }.map { p in "\(p.item) \(p.rect.map { "\(Int($0.minX))…\(Int($0.maxX))×\(Int($0.height))" } ?? "-") " }.joined(separator: ", ")), each pane 220 at least): nothing moved")
                 let keep = hadFocus.flatMap { f in parts.contains { $0.item == f } && !out.contains(f) ? f : nil } ?? main
                 leaveSplit(split.id, out.map { ($0, .failed(.place, Self.noRoomReason)) }, focus: keep, in: w)
                 settleHosting()
@@ -956,21 +963,17 @@ final class HostedSession: LibraryDelegate {
         if requested[w.id] == main || requested[w.id] == focus { requested[w.id] = nil }
         onChange?()
         note("layout: \(shownItems.count) item(s) shown in Margin's window \(w.id), \(focus) focused")
+        if w.id == hostingWindow { w.setPaneCuts(paneCutsJSON(shownList)) }
     }
 
-    // A target's window's least size: its host's as learnt, else its app's known one (Safari's for a Safari window).
-    private func leastSize(_ t: HostTarget) -> CGSize? {
-        if let m = engine.minimum(of: t.id) { return m }
-        switch t {
-        case .app(let bundle): return engine.knownAppMinimums[bundle]
-        case .safariWindow: return engine.knownAppMinimums[safariIdentifier]
-        }
-    }
+    // A pane's least size, Arc's (its split view's `minimumPaneWidth`, 220 pt, also the least height of stacked panes:
+    // read from Arc 1.174.0's binary, 2026-11-21). A pane's window may be wider: it's shown cut (docs/PEEK-SPLIT.md §4b).
+    nonisolated static let paneLeast = CGSize(width: 220, height: 220)
 
     // Why a pane didn't come, as `leaveSplit` and the toast say it: no room for it (below its window's minimum, past the
     // page area, or its page area can't be reached from the display's: HostEngine `enterFullScreen`).
-    static let noRoomReason = "below its window's minimum or past the page area"
-    static func isNoRoom(_ why: String) -> Bool { why.contains("below its window's minimum") || why.contains("no room for it") }
+    static let noRoomReason = "below a pane's least (220 pt) or past the page area"
+    static func isNoRoom(_ why: String) -> Bool { why.contains("below a pane's least") || why.contains("below its window's minimum") || why.contains("no room for it") }
 
     // The panes that must leave a split laid out at these rects (nil: every pane fits): one whose rect isn't within the
     // page area (1 pt either way) or is under its window's known minimum makes it not fit. Then the panes coming in
@@ -1255,6 +1258,30 @@ final class HostedSession: LibraryDelegate {
     func hostedWindows(_ list: [HostShownWindow]) {
         guard let id = hostingWindow, let w = window(id) else { return }
         w.setVisibleHosts(list)
+        shownList = list
+        w.setPaneCuts(paneCutsJSON(list))
+    }
+
+    // The engine's last word on the visible windows (`hostedWindows`): its cut panes told again once a layout's new items
+    // are known (the engine says it at the layout's end, before the session has the items of the windows it opened).
+    private var shownList: [HostShownWindow] = []
+
+    // A split's cut panes by their items, for the page's arrows (docs/PEEK-SPLIT.md §4b): `{}` for none.
+    func paneCutsJSON(_ list: [HostShownWindow]) -> String {
+        var out: [String] = []
+        for s in list {
+            guard let cut = s.cut, let target = engine.target(ofWindow: s.window), let item = open.first(where: { $0.value.host == target.id })?.key, let key = jsonString(item) else { continue }
+            let sides = PaneSide.allCases.filter { cut.sides.contains($0) }.map { #""\#($0.rawValue)":"slide""# }
+            out.append(#"\#(key):{"window":\#(s.window)\#(sides.isEmpty ? "" : "," + sides.joined(separator: ","))}"#)
+        }
+        return "{" + out.sorted().joined(separator: ",") + "}"
+    }
+
+    // A cut pane's arrow pressed in its page (`split.slide`: its item, the side): the engine slides its window to show
+    // that side (docs/PEEK-SPLIT.md §4b). The focus stays where it is (a press on Margin's own control).
+    func slidePane(_ item: String, side: String, in w: HostedWindow) {
+        guard w.id == hostingWindow, layout[w.id]?.items.contains(item) == true, let id = open[item]?.host, let s = PaneSide(rawValue: side) else { return }
+        Task { _ = await self.engine.slide(id, side: s) }
     }
 
     // The one shown's own minimum width (HostEngine `onMinimum`; nil: none): told to the Margin window hosting it.

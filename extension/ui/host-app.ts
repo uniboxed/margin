@@ -169,13 +169,19 @@ export function hitRects(root: Element, slot: { left: number, top: number, right
     for (const child of (el.children as any) as Element[]) {
       if (child.localName === 'template') continue;
       if (child.localName === 'm-page') {
-        // (Nothing of the page's place takes the pointer but a split's dividers, Margin's own: docs/PEEK-SPLIT.md §4;
-        // none while the preview card is up over it, `m-card-clip`: its page is the card's, the dim around it Margin's.)
+        // (Nothing of the page's place takes the pointer but a split's dividers and a cut pane's arrows while they're
+        // shown, Margin's own: docs/PEEK-SPLIT.md §4, §4b; none while the preview card is up over it, `m-card-clip`: its
+        // page is the card's, the dim around it Margin's.)
         if (child.hasAttribute?.('m-card-clip')) continue;
+        const add = (b: DOMRect) => { if (b.width > 0 && b.height > 0 && b.left < slot.right && b.right > slot.left && b.top < slot.bottom && b.bottom > slot.top) found.push(box(b.left, b.top, b.right, b.bottom)); };
         for (const d of (child.children as any) as Element[]) {
-          if (d.localName !== 'm-divider') continue;
-          const b = d.getBoundingClientRect();
-          if (b.width > 0 && b.height > 0 && b.left < slot.right && b.right > slot.left && b.top < slot.bottom && b.bottom > slot.top) found.push(box(b.left, b.top, b.right, b.bottom));
+          if (d.localName === 'm-divider') { add(d.getBoundingClientRect()); continue; }
+          if (d.localName !== 'm-pane') continue;
+          for (const a of (d.children as any) as Element[]) {
+            if (a.localName !== 'm-pane-arrow') continue;
+            const st = getStyle(a);
+            if (st.pointerEvents !== 'none' && st.visibility !== 'hidden') add(a.getBoundingClientRect());
+          }
         }
         continue;
       }
@@ -303,6 +309,11 @@ export function chromeRects(root: Element | null): { controls: number[] | null, 
  * state (theme, command, pointer, pressOutside, blur, shown, push), for the page.
  * `onNotice({ id, action })`: a button of a notice the overlay put up.
  * */
+/** A split's cut pane (docs/PEEK-SPLIT.md §4b): its window, and its hidden sides its arrows slide into its pane. */
+export type PaneSide = 'left' | 'right' | 'up' | 'down';
+export const PANE_SIDES: readonly PaneSide[] = Object.freeze(['left', 'right', 'up', 'down']);
+export type PaneCut = { window: number } & Partial<Record<PaneSide, 'slide'>>;
+
 export function createAppHost({ hello, post, onMessage = () => {}, onNotice = () => {}, warn = (...args) => console.warn('[margin]', ...args), note = (...args) => console.info('[margin]', ...args) }: {
   hello: any,
   post: (op: string, body?: Record<string, any>) => Promise<any>,
@@ -311,7 +322,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   warn?: (...args: any[]) => void,
   /** A line for Margin.app's log (a decision worth reading back from the real screen, never per frame). */
   note?: (...args: any[]) => void,
-}): Host & { readonly platform: Host['platform'] & { app: boolean, features: Record<string, any> }, readonly appWindow: boolean, readonly pageOutside: boolean, readonly pageHosted: boolean, readonly marginPage: 'settings' | null, readonly pageMinWidth: number, readonly paneMinimums: Record<string, [number, number]>, readonly appMinimums: Record<string, [number, number]>, note(text: string): void, readonly paneLoading: { item: string, name: string, bundleId: string | null } | null, readonly pageStuck: string | null, readonly sidebarDocked: boolean, perform(name: string, arg?: any): boolean | undefined, staysOnScreen: boolean, receive(msg: any): void, readonly windows: any[], readonly layout: Geometry | null, readonly settingsAsked: boolean, readonly pageTabId: number | null, readonly frontTabId: number | null, readonly loading: number[], readonly userThemes: any[], takeFailure(): { type: string, error: string } | null, destroy(): void } {
+}): Host & { readonly platform: Host['platform'] & { app: boolean, features: Record<string, any> }, readonly appWindow: boolean, readonly pageOutside: boolean, readonly pageHosted: boolean, readonly marginPage: 'settings' | null, readonly pageMinWidth: number, readonly paneMinimums: Record<string, [number, number]>, readonly appMinimums: Record<string, [number, number]>, note(text: string): void, readonly paneLoading: { item: string, name: string, bundleId: string | null } | null, readonly paneCuts: Record<string, PaneCut>, readonly paneHover: number | null, readonly pageStuck: string | null, readonly sidebarDocked: boolean, perform(name: string, arg?: any): boolean | undefined, staysOnScreen: boolean, receive(msg: any): void, readonly windows: any[], readonly layout: Geometry | null, readonly settingsAsked: boolean, readonly pageTabId: number | null, readonly frontTabId: number | null, readonly loading: number[], readonly userThemes: any[], takeFailure(): { type: string, error: string } | null, destroy(): void } {
   const windowId = Number.isInteger(hello?.windowId) ? hello.windowId : null;
   let raw: Record<string, any> | null = hello?.state && typeof hello.state === 'object' ? hello.state : null;
   let state: any = null;
@@ -354,6 +365,22 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
     return { item: v.item, name: typeof v.label === 'string' ? v.label.slice(0, 120) : '', bundleId: isBundleId(v.bundleId) ? v.bundleId : null };
   };
   let paneLoading = paneLoadingOf(hello?.paneLoading);
+  // A split's cut panes (docs/PEEK-SPLIT.md §4b): each one's window, its sides' arrows (each a slide); at most 4 (a
+  // split's panes), each side checked.
+  const paneCutsOf = (v: unknown): Record<string, PaneCut> => {
+    const out: Record<string, PaneCut> = {};
+    if (!appWindow || !v || typeof v !== 'object' || Array.isArray(v)) return out;
+    for (const [item, c] of Object.entries(v as Record<string, any>).slice(0, 4)) {
+      if (!/^[A-Za-z0-9_.:-]{1,256}$/.test(item) || !c || typeof c !== 'object' || !Number.isInteger(c.window)) continue;
+      const cut: PaneCut = { window: c.window };
+      for (const side of PANE_SIDES) if (c[side] === 'slide') cut[side] = 'slide';
+      out[item] = cut;
+    }
+    return out;
+  };
+  let paneCuts = paneCutsOf(hello?.paneCut);
+  // The cut pane's window the pointer is over (Margin.app says it as the pointer enters and leaves one), null: none.
+  let paneHover: number | null = null;
   // The page card's state (Margin's own window only), and the name of what's opening while it's `loading`.
   const pageStateOf = (v: unknown) => (v === 'shown' || v === 'loading' || v === 'elsewhere' ? v : 'empty');
   // (Its item's name and app said while it opens, and while it's in another Margin window: its card.)
@@ -461,6 +488,8 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
     /** A line in Margin.app's log. */
     note(text: string) { note(text); },
     get paneLoading() { return paneLoading; },
+    get paneCuts() { return paneCuts; },
+    get paneHover() { return paneHover; },
     /** The page card's state (Margin's own window; undefined over a browser: its page is always there). */
     get pageState() { return appWindow ? pageState : undefined; },
     get pageOpening() { return pageOpening; },
@@ -596,6 +625,12 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           if (!appWindow || typeof arg?.on !== 'boolean') return false;
           void post('perform', { name, arg: { on: arg.on } }).catch(() => {});
           return true;
+        // A cut pane's arrow (behaviors/split.ts, docs/PEEK-SPLIT.md §4b): its window slid to show that side, one it
+        // has; Margin.app's engine does it.
+        case 'split.slide':
+          if (!appWindow || typeof arg?.item !== 'string' || !PANE_SIDES.includes(arg?.side) || paneCuts[arg.item]?.[arg.side as PaneSide] !== 'slide') return false;
+          void post('perform', { name, arg: { item: arg.item, side: arg.side } }).catch(() => {});
+          return true;
         // A space swipe's detent (behaviors/swipe.ts, Arc's feel): the trackpad's alignment tick, as Arc gives it.
         case 'haptic.alignment':
           if (!appWindow) return false;
@@ -662,6 +697,19 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           const next = paneMinOf(msg.apps, 64);
           if (JSON.stringify(next) === JSON.stringify(appMinimums)) return;
           appMinimums = next;
+          return emit();
+        }
+        case 'paneCut': {
+          const next = paneCutsOf(msg.panes);
+          if (JSON.stringify(next) === JSON.stringify(paneCuts)) return;
+          paneCuts = next;
+          if (paneHover != null && !Object.values(paneCuts).some((c) => c.window === paneHover)) paneHover = null;
+          return emit();
+        }
+        case 'paneHover': {
+          const next = Number.isInteger(msg.window) && Object.values(paneCuts).some((c) => c.window === msg.window) ? msg.window as number : null;
+          if (next === paneHover) return;
+          paneHover = next;
           return emit();
         }
         case 'paneLoading': {

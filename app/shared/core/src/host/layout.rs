@@ -93,16 +93,22 @@ impl Edges {
     }
 }
 
-/// The edges that make a full-screen window the page area: the page's distances from the area's edges, whole
-/// points. None: the page can't be reached that way (it passes the area, or leaves less than a point).
-pub fn plan(p: &Placement) -> Option<Edges> {
-    let edges = Edges {
+/// The page's distances from the area's edges, whole points (negative past them).
+fn edges_of(p: &Placement) -> Edges {
+    Edges {
         left: p.page.min_x() - p.area.min_x(),
         right: p.area.max_x() - p.page.max_x(),
         top: p.page.min_y() - p.area.min_y(),
         bottom: p.area.max_y() - p.page.max_y(),
     }
-    .whole();
+    .whole()
+}
+
+/// The edges that make a full-screen window the page area (its own Space's reservation): the page's distances from the
+/// area's edges, whole points. None: the page can't be reached that way (it passes the area, or leaves less than a
+/// point): a reservation is never negative.
+pub fn plan(p: &Placement) -> Option<Edges> {
+    let edges = edges_of(p);
     if !edges.usable() || p.page.width < 1.0 || p.page.height < 1.0 || p.area.width < 1.0 || p.area.height < 1.0 {
         return None;
     }
@@ -110,15 +116,34 @@ pub fn plan(p: &Placement) -> Option<Edges> {
 }
 
 /// A hosted window's tile rect in Margin's Space that puts its full-screen window at the page area: `home` (Margin's
-/// own tile, the display's from its top left, the menu bar's band included) less the plan's edges. Measured in the
-/// kit (2026-11-17): home 0,0 1512×982, page 248,41 1256×933 in 0,33 1512×949 → tile 248,8 1256×966.
+/// own tile, the display's from its top left, the menu bar's band included) less the page's edges. Measured in the
+/// kit (2026-11-17): home 0,0 1512×982, page 248,41 1256×933 in 0,33 1512×949 → tile 248,8 1256×966. A page past the
+/// area's edge (a split's cut pane, docs/PEEK-SPLIT.md §4b) gives a tile past the display's, which macOS keeps
+/// (2026-11-22); at least a point of it on the display.
 pub fn tile(p: &Placement, home: &Rect) -> Option<Rect> {
-    let edges = plan(p)?;
+    let edges = edges_of(p);
+    let finite = [edges.left, edges.right, edges.top, edges.bottom].iter().all(|v| v.is_finite());
+    if !finite || p.page.width < 1.0 || p.page.height < 1.0 || p.area.width < 1.0 || p.area.height < 1.0 {
+        return None;
+    }
     if home.width < p.area.width - 1.0 || home.height < p.area.height - 1.0 {
         return None;
     }
     let r = edges.inset(home);
-    (r.width >= 1.0 && r.height >= 1.0).then_some(r)
+    let on = r.intersection(home);
+    (r.width >= 1.0 && r.height >= 1.0 && on.width >= 1.0 && on.height >= 1.0).then_some(r)
+}
+
+/// A frame held within the area (moved, never resized, as far as it fits): where a cut pane's window goes while it
+/// isn't a tile in Margin's Space (its own Space's reservation can't pass the display: `plan`).
+pub fn within(frame: &Rect, area: &Rect) -> Rect {
+    let along = |start: f64, size: f64, lo: f64, hi: f64| start.min(hi - size).max(lo);
+    Rect::new(
+        along(frame.x, frame.width, area.min_x(), area.max_x()),
+        along(frame.y, frame.height, area.min_y(), area.max_y()),
+        frame.width,
+        frame.height,
+    )
 }
 
 /// Where a window that can't be smaller than `min` goes for a page area: the page area itself when it's at least
@@ -134,6 +159,34 @@ pub fn fit(page: &Rect, min: Option<Size>, area: &Rect) -> Rect {
     let width = page.width.max(min.width.ceil().min(area.width));
     let height = page.height.max(min.height.ceil().min(area.max_y() - page.min_y()));
     Rect::new((page.max_x() - width).max(area.min_x()), page.min_y(), width, height)
+}
+
+/// A split pane's window frame when the pane is narrower (or, stacked, lower) than its window can be
+/// (docs/PEEK-SPLIT.md §4b): the pane itself when the window can be that small; else the window at its own minimum, the
+/// rest of it past its pane: past the display's edge, under Margin's window (the sidebar, the frame) or under a
+/// neighbour pane (Margin's hole stays the pane). Along each axis its start (left, top) at the pane's start (`end`
+/// false), or its end (right, bottom) at the pane's end (true); `None`, away from the other panes, `page` (the split's
+/// whole page area) telling where they are: a pane at the page's end puts the rest past it (its start at the pane's),
+/// any other (at the page's start, or between two panes) puts it before the pane (its end at the pane's), so a pane at
+/// either edge lies under no other pane and a pane between two lies under the one before it only (a chain, never two
+/// panes over each other's). Never held within the display: macOS keeps a full-screen window's tile past the display's
+/// edge, drawn clipped there (2026-11-22, an 800 wide tile 388 past the right edge, 300 past the left, 400 past the
+/// bottom and 300 past the top, each held with no eject; AppKit takes a window out of its tile only when it can't take
+/// the tile's size). Its size never past the area's (a window wider than the display isn't laid out so).
+pub fn cut(pane: &Rect, min: Option<Size>, area: &Rect, page: &Rect, end_x: Option<bool>, end_y: Option<bool>) -> Rect {
+    let Some(min) = min else { return *pane };
+    let width = pane.width.max(min.width.ceil().min(area.width));
+    let height = pane.height.max(min.height.ceil().min(area.height));
+    if width <= pane.width + 0.5 && height <= pane.height + 0.5 {
+        return *pane;
+    }
+    // (Not asked: the end alignment unless the pane is at the page's end; within a point of it.)
+    let along = |start: f64, end: f64, size: f64, page_end: f64, at_end: Option<bool>| {
+        if at_end.unwrap_or(end < page_end - 1.0) { end - size } else { start }
+    };
+    let x = along(pane.min_x(), pane.max_x(), width, page.max_x(), end_x);
+    let y = along(pane.min_y(), pane.max_y(), height, page.max_y(), end_y);
+    Rect::new(x, y, width, height)
 }
 
 /// Margin's own tile: the display's whole frame from its top left (None: the display isn't known).
@@ -186,6 +239,77 @@ mod tests {
         assert_eq!(home(&Placement { display: Rect::ZERO, ..kit() }), None);
         // A home smaller than the area: no tile.
         assert_eq!(tile(&kit(), &Rect::new(0.0, 0.0, 1000.0, 982.0)), None);
+        // A page past the area (a cut pane's window past the display's edge): no plan (a reservation), but a tile past
+        // the display's edge; none wholly off it.
+        let home = Rect::new(0.0, 0.0, 1512.0, 982.0);
+        let past = Placement { page: Rect::new(876.0, 41.0, 701.0, 933.0), ..kit() };
+        assert_eq!(plan(&past), None);
+        assert_eq!(tile(&past, &home), Some(Rect::new(876.0, 8.0, 701.0, 966.0)));
+        let left = Placement { page: Rect::new(-300.0, -159.0, 800.0, 600.0), ..kit() };
+        assert_eq!(tile(&left, &home), Some(Rect::new(-300.0, -192.0, 800.0, 633.0)));
+        assert_eq!(
+            tile(&Placement { page: Rect::new(1600.0, 41.0, 700.0, 933.0), ..kit() }, &home),
+            None,
+            "off the display"
+        );
+        assert_eq!(tile(&Placement { page: Rect::new(f64::NAN, 41.0, 700.0, 933.0), ..kit() }, &home), None);
+        // Held within the area: moved, never resized.
+        let area = kit().area;
+        assert_eq!(within(&past.page, &area), Rect::new(811.0, 41.0, 701.0, 933.0));
+        assert_eq!(within(&Rect::new(-73.0, -10.0, 701.0, 600.0), &area), Rect::new(0.0, 33.0, 701.0, 600.0));
+        assert_eq!(within(&Rect::new(240.0, 41.0, 701.0, 933.0), &area), Rect::new(240.0, 41.0, 701.0, 933.0));
+    }
+
+    #[test]
+    fn cut_keeps_a_pane_window_at_its_minimum_away_from_the_other_panes() {
+        let area = Rect::new(0.0, 33.0, 1512.0, 949.0);
+        let page = Rect::new(240.0, 41.0, 1264.0, 933.0);
+        // Two side by side in a 1264 page area at 240: 628 each.
+        let left = Rect::new(240.0, 41.0, 628.0, 933.0);
+        let right = Rect::new(876.0, 41.0, 628.0, 933.0);
+        let notes = Some(Size::new(701.0, 53.0));
+        assert_eq!(cut(&left, None, &area, &page, None, None), left, "no minimum: the pane");
+        assert_eq!(cut(&left, Some(Size::new(500.0, 300.0)), &area, &page, None, None), left, "fits: the pane");
+        // Not asked: the left pane's rest goes left (under the sidebar), the right pane's right (past the display's edge),
+        // each under no other pane.
+        assert_eq!(cut(&left, notes, &area, &page, None, None), Rect::new(167.0, 41.0, 701.0, 933.0));
+        assert_eq!(
+            cut(&right, notes, &area, &page, None, None),
+            Rect::new(876.0, 41.0, 701.0, 933.0),
+            "876…1577: past 1512"
+        );
+        // Asked: either alignment, never held within the display (a slide at the display's edge).
+        assert_eq!(cut(&left, notes, &area, &page, Some(false), None), Rect::new(240.0, 41.0, 701.0, 933.0));
+        assert_eq!(cut(&right, notes, &area, &page, Some(true), None), Rect::new(803.0, 41.0, 701.0, 933.0));
+        assert_eq!(cut(&right, notes, &area, &page, Some(false), None), Rect::new(876.0, 41.0, 701.0, 933.0));
+        // The sidebar hidden, the left pane at the display's edge: past it (-73).
+        let full = Rect::new(8.0, 41.0, 1496.0, 933.0);
+        let edge = Rect::new(8.0, 41.0, 620.0, 933.0);
+        assert_eq!(cut(&edge, notes, &area, &full, None, None), Rect::new(-73.0, 41.0, 701.0, 933.0));
+        // Three: the middle one's rest before it (under the left pane), the right one's past the display.
+        let a = Rect::new(240.0, 41.0, 416.0, 933.0);
+        let b = Rect::new(664.0, 41.0, 416.0, 933.0);
+        let c = Rect::new(1088.0, 41.0, 416.0, 933.0);
+        assert_eq!(cut(&a, notes, &area, &page, None, None).max_x(), a.max_x());
+        assert_eq!(cut(&b, notes, &area, &page, None, None), Rect::new(379.0, 41.0, 701.0, 933.0));
+        assert_eq!(cut(&c, notes, &area, &page, None, None), Rect::new(1088.0, 41.0, 701.0, 933.0));
+        // A pane as wide as the page (stacked): at its start along x.
+        let top = Rect::new(240.0, 41.0, 1264.0, 400.0);
+        assert_eq!(cut(&top, Some(Size::new(1300.0, 0.0)), &area, &page, None, None).x, 240.0);
+        // A fractional minimum: whole points up.
+        assert_eq!(cut(&left, Some(Size::new(700.2, 0.0)), &area, &page, Some(false), None).width, 701.0);
+        // Never wider than the area itself.
+        assert_eq!(cut(&left, Some(Size::new(4000.0, 0.0)), &area, &page, Some(false), None).width, 1512.0);
+        // Stacked (a pane 400 tall, the window's least 600): the top one's rest up (past the display's top), the bottom
+        // one's down (past its bottom); asked, either.
+        let bottom = Rect::new(240.0, 449.0, 1264.0, 525.0);
+        let tall = Some(Size::new(0.0, 600.0));
+        assert_eq!(cut(&top, tall, &area, &page, None, None), Rect::new(240.0, -159.0, 1264.0, 600.0));
+        assert_eq!(
+            cut(&bottom, Some(Size::new(0.0, 700.0)), &area, &page, None, None),
+            Rect::new(240.0, 449.0, 1264.0, 700.0)
+        );
+        assert_eq!(cut(&top, tall, &area, &page, None, Some(false)), Rect::new(240.0, 41.0, 1264.0, 600.0));
     }
 
     #[test]

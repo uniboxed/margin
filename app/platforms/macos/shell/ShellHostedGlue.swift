@@ -120,6 +120,7 @@ final class LateHostEngine: HostedEngine {
     var knownAppMinimums: [String: CGSize] { resolve()?.knownAppMinimums ?? [:] }
     func toolbarsRest(_ ids: [HostID]) async -> String? { await resolve()?.toolbarsRest(ids) }
     func focusPages(_ ids: [HostID]) async -> String? { await resolve()?.focusPages(ids) }
+    func slide(_ id: HostID, side: PaneSide) async -> Bool { await resolve()?.slide(id, side: side) ?? false }
 }
 
 extension Shell {
@@ -245,10 +246,12 @@ extension Shell {
         windows.onEnteredFullScreen = { [weak session] controller in session?.enteredFullScreen(controller) }
         windows.onPagePress = { [weak session] controller, at in session?.pagePressed(controller, at: at) }
         windows.onPaneClick = { [weak session] controller, result in session?.paneClicked(controller, result) }
+        windows.onPaneSlide = { [weak session] controller, item, side in session?.slidePane(item, side: side, in: controller) }
         // All panes active (PanesActive.swift): the split and the front app to the engine, its front process to the tap.
         windows.onPanesActive = { [weak self] scene in self?.host?.panesShown(scene) }
         windows.onFrontApp = { [weak self] pid in self?.host?.frontChanged(pid) }
         windows.paneFronting = { [weak self] in self?.host?.paneFronting }
+        windows.paneDelivery = { [weak self] in self?.host?.paneDelivery }
         windows.onCaughtPress = { [weak session] controller, at in session?.caughtPress(controller, at: at) }
         windows.onCardRect = { [weak session] controller in session?.cardRectChanged(controller) }
         windows.onPanes = { [weak session] controller in session?.pageRectChanged(controller) }
