@@ -36,7 +36,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use serde_json::{Map, Value, json};
 
 use super::set::{DataChange, DataSet, FORMAT};
-use super::store::{DataProfile, DataStore, SaveError, Stored};
+use super::store::{DataProfile, DataStore, Outcome, SaveError, Stored, Ticket};
 use super::{Note, number, random_hex};
 use crate::json::{self, Object};
 
@@ -137,8 +137,43 @@ struct Linked {
     held_changes: Vec<DataChange>,
 }
 
+/// What a save is for, done once it's written (DataSync.swift's save callbacks): nothing is confirmed to a copy
+/// before its data is on disk.
+enum After {
+    /// The app's own change: sent to the copy if it's linked and not awaiting.
+    Change { applied: Vec<DataChange> },
+    /// A hello taken: the lost answered (in step) or the set sent, then the ack.
+    Hello { in_step: bool, lost: BTreeSet<(String, String)>, up_to: f64 },
+    /// The copy's snapshot stored: the app's set sent back if it had one, the ack, the profile's first set said.
+    Snapshot { had: bool, up_to: f64 },
+    /// The copy's changes stored: the lost answered, the ack.
+    Changes { lost: BTreeSet<(String, String)>, up_to: f64 },
+    /// A set carried over to this profile: the old one put away, said, the held hello answered or the set sent.
+    Carry(Carried),
+}
+
+/// A carry's own words: from which profile, why, how many items, how many of the new copy's own left out.
+struct Carried {
+    old: DataProfile,
+    why: String,
+    items: usize,
+    dropped: usize,
+}
+
+/// A save handed to the store, waiting to be written.
+struct Pending {
+    profile: DataProfile,
+    /// The link it was made for (its epoch), if the profile was linked.
+    epoch: Option<String>,
+    changed: Option<BTreeSet<String>>,
+    all: BTreeSet<String>,
+    after: After,
+}
+
 pub struct DataSync {
     store: DataStore,
+    /// Saves handed to the store, by ticket (in order), with what each is for.
+    pending: BTreeMap<Ticket, Pending>,
     /// The items' JSON in one message from the app, at most.
     pub part_bytes: usize,
     linked: HashMap<DataProfile, Linked>,
@@ -155,6 +190,7 @@ impl DataSync {
     pub fn new(store: DataStore) -> Self {
         Self {
             store,
+            pending: BTreeMap::new(),
             part_bytes: PART_BYTES,
             linked: HashMap::new(),
             unsent: 0,
@@ -190,22 +226,6 @@ impl DataSync {
         self.set(p).map(|s| s.live_values(collection)).unwrap_or_default()
     }
 
-    /// The profile's Margin tabs, open or not, of one space or all, newest first (highest `order`; on the same
-    /// order, by id).
-    pub fn margin_tabs(&mut self, p: &DataProfile, space: Option<&str>) -> Vec<(String, Object)> {
-        let mut out: Vec<(String, Object)> = self
-            .values("tabs", p)
-            .into_iter()
-            .filter_map(|(id, v)| match v {
-                Value::Object(o) if space.is_none_or(|s| json::string(o.get("spaceId")) == Some(s)) => Some((id, o)),
-                _ => None,
-            })
-            .collect();
-        let order = |o: &Object| json::num(o.get("order")).unwrap_or(0.0);
-        out.sort_by(|a, b| order(&b.1).total_cmp(&order(&a.1)).then_with(|| a.0.cmp(&b.0)));
-        out
-    }
-
     pub fn is_linked(&self, p: &DataProfile) -> bool {
         self.linked.contains_key(p)
     }
@@ -223,10 +243,7 @@ impl DataSync {
             return Some(self.finish(fx));
         }
         let changed = applied.iter().map(|c| c.collection.clone()).collect();
-        if self.save(p, set, acked, Some(changed), &mut fx).is_some() && self.linked.get(p).is_some_and(|l| !l.awaiting)
-        {
-            self.send_changes(p, &applied, &mut fx);
-        }
+        self.save(p, set, acked, Some(changed), After::Change { applied }, &mut fx);
         Some(self.finish(fx))
     }
 
@@ -408,17 +425,7 @@ impl DataSync {
             won.iter().filter(|w| **w).count(),
             if in_step { "the copy has the app's set: no snapshot" } else { "the set sent back" }
         )));
-        let Some(rev) = self.save(p, set, stored_acked.max(up_to), Some(changed), fx) else { return };
-        let sent = if in_step {
-            self.answer(p, &lost, fx);
-            None
-        } else {
-            self.send_set(p, fx)
-        };
-        if let Some(l) = self.linked.get_mut(p) {
-            l.synced = true;
-        }
-        self.send_ack(p, up_to, sent.unwrap_or(rev), fx); // a snapshot is of the set now: its rev
+        self.save(p, set, stored_acked.max(up_to), Some(changed), After::Hello { in_step, lost, up_to }, fx);
     }
 
     /// The app's items for changes of the copy's that lost to them, in `data.changes`.
@@ -493,15 +500,7 @@ impl DataSync {
             "{p}: data.snapshot from the copy ({count} items){}",
             if had { "" } else { ": the profile's first data set" }
         )));
-        let Some(rev) = self.save(p, merged, stored_acked.max(up_to), None, fx) else { return };
-        let sent = if had { self.send_set(p, fx) } else { None }; // the copy lacks what the app had
-        if let Some(l) = self.linked.get_mut(p) {
-            l.synced = true;
-        }
-        self.send_ack(p, up_to, sent.unwrap_or(rev), fx);
-        if !had {
-            fx.first_set.push(p.clone());
-        }
+        self.save(p, merged, stored_acked.max(up_to), None, After::Snapshot { had, up_to }, fx);
     }
 
     fn take_changes(&mut self, p: &DataProfile, changes: Vec<DataChange>, fx: &mut Effects) {
@@ -529,9 +528,7 @@ impl DataSync {
         let lost = lost_keys(&changes, &won);
         let up_to = acked_sent.max(newest(&changes));
         let changed = won_collections(&changes, &won);
-        let Some(rev) = self.save(p, set, stored_acked.max(up_to), Some(changed), fx) else { return };
-        self.answer(p, &lost, fx); // the app's newer items, for the changes that lost to them
-        self.send_ack(p, up_to, rev, fx);
+        self.save(p, set, stored_acked.max(up_to), Some(changed), After::Changes { lost, up_to }, fx);
     }
 
     // ---- carried over ----
@@ -591,11 +588,24 @@ impl DataSync {
         if let Some(l) = self.linked.get_mut(new) {
             l.carrying = true;
         }
-        let saved = self.save(new, set, acked, None, fx);
+        let after = After::Carry(Carried { old: old.clone(), why: why.to_string(), items, dropped });
+        if !self.save(new, set, acked, None, after, fx) {
+            if let Some(l) = self.linked.get_mut(new) {
+                l.carrying = false;
+            }
+            return false;
+        }
+        true // (the rest once it's written: `after`)
+    }
+
+    /// A carried set written: the old one put away and said, then the new profile's copy told (its held hello
+    /// answered as a relink with nothing queued, or the set sent) and its held changes taken.
+    fn carried(&mut self, new: &DataProfile, c: Carried, rev: String, fx: &mut Effects) {
+        let Carried { old, why, items, dropped } = c;
+        let old = &old;
         if let Some(l) = self.linked.get_mut(new) {
             l.carrying = false;
         }
-        let Some(rev) = saved else { return false };
         let archived = self.store.archive(old);
         fx.log.push(Note::note(format!(
             "{}: {} → {} ({why}): data carried over ({items} items{}; the old set {})",
@@ -606,7 +616,7 @@ impl DataSync {
             if archived.is_none() { "not put away" } else { "put away" }
         )));
         fx.carried.push((old.clone(), new.clone(), why.to_string()));
-        let Some(l) = self.linked.get_mut(new) else { return true };
+        let Some(l) = self.linked.get_mut(new) else { return };
         if let Some(mut body) = l.held_hello.take() {
             // The held hello answered as a relink with nothing queued: the set goes to the copy.
             l.hold_until = None;
@@ -618,38 +628,139 @@ impl DataSync {
             self.send_ack(new, acked_sent, sent.unwrap_or(rev), fx);
         }
         self.take_held_changes(new, fx);
-        true
+    }
+
+    /// A carried set that couldn't be written: no longer carrying; its held hello goes on without it (no set: the
+    /// whole set asked for), and its held changes are taken.
+    fn carry_failed(&mut self, new: &DataProfile, fx: &mut Effects) {
+        let Some(l) = self.linked.get_mut(new) else { return };
+        l.carrying = false;
+        if let Some(body) = l.held_hello.take() {
+            l.hold_until = None;
+            self.hello(new, &body, false, fx);
+        }
+        self.take_held_changes(new, fx);
     }
 
     // ---- storing ----
 
-    /// The rev this save wrote, or `None` if it wasn't stored (nothing is confirmed to the copy then).
+    /// Handed to the store, `after` kept for once it's written; false if it wasn't (nothing is confirmed to the
+    /// copy then).
     fn save(
         &mut self,
         p: &DataProfile,
         set: DataSet,
         acked: f64,
         changed: Option<BTreeSet<String>>,
+        after: After,
         fx: &mut Effects,
-    ) -> Option<String> {
+    ) -> bool {
         let all: BTreeSet<String> = set.items.keys().cloned().collect();
-        match self.store.save(p, Stored::new(set, acked), changed.as_ref()) {
-            Ok(rev) => {
-                if changed.as_ref().is_none_or(|c| !c.is_empty()) {
-                    fx.changed.push((p.clone(), changed.unwrap_or(all)));
-                }
-                Some(rev)
+        match self.store.submit(p, Stored::new(set, acked), changed.as_ref()) {
+            Ok(ticket) => {
+                let epoch = self.linked.get(p).map(|l| l.epoch.clone());
+                self.pending.insert(ticket, Pending { profile: p.clone(), epoch, changed, all, after });
+                true
             }
-            Err(SaveError::Crashed) => None, // a dead app says nothing
+            Err(SaveError::Crashed) => false, // a dead app says nothing
             Err(_) => {
                 fx.log.push(Note::warn(format!("{p}: not stored: nothing confirmed to the copy")));
-                None
+                false
             }
         }
     }
 
+    /// The saves written since: each one's `changed` said, then what it was for (a failed one: nothing confirmed).
+    /// Again while a follow-up's own saves are written at once (the store without a writer).
+    fn drain(&mut self, fx: &mut Effects) {
+        loop {
+            let done = self.store.take_done();
+            if done.is_empty() {
+                return;
+            }
+            fx.log.extend(self.store.take_log());
+            for d in done {
+                let Some(pend) = self.pending.remove(&d.ticket) else { continue };
+                match d.outcome {
+                    Outcome::Saved => {
+                        if pend.changed.as_ref().is_none_or(|c| !c.is_empty()) {
+                            fx.changed.push((pend.profile.clone(), pend.changed.clone().unwrap_or(pend.all.clone())));
+                        }
+                        self.after(pend, d.rev, fx);
+                    }
+                    Outcome::Crashed => {} // a dead app says nothing
+                    Outcome::Failed(_) => {
+                        fx.log.push(Note::warn(format!("{}: not stored: nothing confirmed to the copy", pend.profile)));
+                        if matches!(pend.after, After::Carry(_)) {
+                            self.carry_failed(&pend.profile, fx);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// What a written save was for. A hello's, a snapshot's and the copy's changes' answer only the link they came
+    /// from: one gone or replaced since gets nothing (counted unsent; a first set is still said).
+    fn after(&mut self, pend: Pending, rev: String, fx: &mut Effects) {
+        let p = &pend.profile;
+        let same_link = pend.epoch.is_some() && self.linked.get(p).map(|l| &l.epoch) == pend.epoch.as_ref();
+        match pend.after {
+            After::Change { applied } => {
+                if self.linked.get(p).is_some_and(|l| !l.awaiting) {
+                    self.send_changes(p, &applied, fx);
+                }
+            }
+            After::Hello { in_step, lost, up_to } => {
+                if !same_link {
+                    self.unsent += 1;
+                    return;
+                }
+                let sent = if in_step {
+                    self.answer(p, &lost, fx);
+                    None
+                } else {
+                    self.send_set(p, fx)
+                };
+                if let Some(l) = self.linked.get_mut(p) {
+                    l.synced = true;
+                }
+                self.send_ack(p, up_to, sent.unwrap_or(rev), fx); // a snapshot is of the set now: its rev
+            }
+            After::Snapshot { had, up_to } => {
+                if same_link {
+                    let sent = if had { self.send_set(p, fx) } else { None }; // the copy lacks what the app had
+                    if let Some(l) = self.linked.get_mut(p) {
+                        l.synced = true;
+                    }
+                    self.send_ack(p, up_to, sent.unwrap_or(rev), fx);
+                } else {
+                    self.unsent += 1;
+                }
+                if !had {
+                    fx.first_set.push(p.clone());
+                }
+            }
+            After::Changes { lost, up_to } => {
+                if !same_link {
+                    self.unsent += 1;
+                    return;
+                }
+                self.answer(p, &lost, fx); // the app's newer items, for the changes that lost to them
+                self.send_ack(p, up_to, rev, fx);
+            }
+            After::Carry(c) => self.carried(p, c, rev, fx),
+        }
+    }
+
+    /// The saves the store's writer has written since (its wake): what each was for.
+    pub fn written(&mut self) -> Effects {
+        self.finish(Effects::default())
+    }
+
     /// The store's log, after the call's own.
     fn finish(&mut self, mut fx: Effects) -> Effects {
+        self.drain(&mut fx);
         fx.log.extend(self.store.take_log());
         fx
     }
@@ -899,6 +1010,59 @@ mod tests {
 
     fn body(o: &Outgoing, key: &str) -> Value {
         o.message.get(key).cloned().unwrap_or(Value::Null)
+    }
+
+    /// A sync over a store with its own writer, and the channel its wake says on.
+    fn background(root: &Path) -> (DataSync, std::sync::mpsc::Receiver<()>) {
+        let (tx, rx) = std::sync::mpsc::channel::<()>();
+        let tx = std::sync::Mutex::new(tx);
+        let mut store = DataStore::background(root, move || {
+            let _ = tx.lock().map(|t| t.send(()));
+        });
+        store.now = Box::new(|| 1000.0);
+        (DataSync::new(store), rx)
+    }
+
+    #[test]
+    fn nothing_confirmed_before_it_is_written() {
+        let dir = temp();
+        let (mut sync, woken) = background(dir.path());
+        let p = sp("P1");
+        let link = Link::new("safari", "P1", "e1");
+        sync.link_up(&link);
+        let need = sync.received(&link, &msg("data.hello", json!({ "format": 1, "acked": 0, "queue": [] })));
+        assert!(need.send.iter().any(|o| o.kind() == "data.need"), "no set: the whole set asked for");
+        let snapshot = msg(
+            "data.snapshot",
+            json!({ "format": 1, "set": { "format": 1, "items": { "spaces": {
+                "s1": { "updatedAt": 5, "value": space("Home", 0) } } } }, "transfer": "t1", "part": 0, "parts": 1 }),
+        );
+        let now = sync.received(&link, &snapshot);
+        assert!(
+            !now.send.iter().any(|o| o.kind() == "data.ack") && now.first_set.is_empty(),
+            "handed to the writer: nothing yet"
+        );
+        assert_eq!(name(&mut sync, &p, "spaces", "s1").as_deref(), Some("Home"), "in memory at once");
+        woken.recv_timeout(std::time::Duration::from_secs(10)).expect("woken once it's written");
+        let later = sync.written();
+        assert!(later.send.iter().any(|o| o.kind() == "data.ack" && o.epoch == "e1"), "the ack once it's on disk");
+        assert_eq!(later.first_set, vec![p.clone()]);
+        assert_eq!(later.changed.len(), 1);
+        // The copy's changes, then its link replaced before they're written: the new link gets no ack of them.
+        let changes = msg("data.changes", json!({ "changes": [cj("spaces", "s2", 9.0, Some(space("Work", 1)))] }));
+        let before = sync.received(&link, &changes);
+        assert!(!before.send.iter().any(|o| o.kind() == "data.ack"));
+        let relinked = Link::new("safari", "P1", "e2");
+        sync.link_up(&relinked);
+        woken.recv_timeout(std::time::Duration::from_secs(10)).expect("woken");
+        let unsent = sync.unsent();
+        let after = sync.written();
+        assert!(
+            !after.send.iter().any(|o| o.kind() == "data.ack"),
+            "the link it came from is gone: no ack to the new one"
+        );
+        assert_eq!(sync.unsent(), unsent + 1);
+        assert_eq!(name(&mut sync, &p, "spaces", "s2").as_deref(), Some("Work"), "stored all the same");
     }
 
     #[test]
@@ -1253,28 +1417,6 @@ mod tests {
             .change(&p, &[change("siteIcons", "big", 9.0, Some(json!("x".repeat(MAX_APP_MESSAGE))))])
             .expect("a set");
         assert!(fx.send.is_empty() && sync.unsent() == 1, "a data message from the app over 1 MB: refused");
-    }
-
-    #[test]
-    fn margin_tabs_newest_first() {
-        let root = temp();
-        let mut sync = DataSync::new(test_store(root.path()));
-        let p = sp("P1");
-        let mut set = DataSet::new();
-        set.merge(&[
-            change("tabs", "t-b", 1.0, Some(json!({ "spaceId": "s1", "order": 2 }))),
-            change("tabs", "t-a", 1.0, Some(json!({ "spaceId": "s1", "order": 2 }))),
-            change("tabs", "t-c", 1.0, Some(json!({ "spaceId": "s2", "order": 5 }))),
-            change("tabs", "t-d", 1.0, Some(json!({ "spaceId": "s1", "order": 1 }))),
-            change("tabs", "t-x", 1.0, None),
-            change("tabs", "t-y", 1.0, Some(json!("not an object"))),
-        ]);
-        sync.store_mut().save(&p, Stored::new(set, 0.0), None).expect("saved");
-        let ids = |v: Vec<(String, Object)>| v.into_iter().map(|t| t.0).collect::<Vec<_>>();
-        assert_eq!(ids(sync.margin_tabs(&p, None)), ["t-c", "t-a", "t-b", "t-d"]);
-        assert_eq!(ids(sync.margin_tabs(&p, Some("s1"))), ["t-a", "t-b", "t-d"]);
-        assert!(sync.margin_tabs(&sp("none"), None).is_empty());
-        assert_eq!(sync.profiles(Some("safari")), [p]);
     }
 
     #[test]
