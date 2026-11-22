@@ -287,8 +287,10 @@ func multiHostTests() {
               w.activeCalls.dropFirst(calls0).contains { $0.hasPrefix("focusWithoutRaise ") && $0.hasSuffix(" \(n)") } && !w.activeCalls.dropFirst(calls0).contains { $0.hasPrefix("makeFront ") && $0.hasSuffix(" \(n)") },
               "\(w.activeCalls.dropFirst(calls0))")
         let editW = window(w, "com.apple.TextEdit"), editPidR = w.wins[editW]?.pid ?? 0, notesPid0 = w.wins[n]?.pid ?? 0
+        _ = hostRun { await e.focus(textEdit.id, fronted: true) } // (the neighbour focused, its app's keys as they were)
         let callsR = w.activeCalls.count, axR = w.calls.count
         let revealed = hostRun { await e.slide(notes.id, side: .left) } ?? false
+        check("cut pane: a reveal focuses its pane (kept through the operation's settle: the neighbour focused before)", e.shown == notes.id, "\(String(describing: e.shown))")
         let shownRevealed = told.last?.first { $0.window == n }
         check("cut pane: a reveal while its app has the keys (without a raise): the front handed to its neighbour without a raise first, then its app activated (a real activation: AppKit raises its window), its window over the neighbour's",
               w.activeCalls.dropFirst(callsR).first == "focusWithoutRaise \(editPidR) \(editW)" && w.calls.dropFirst(axR).contains("activate \(notesPid0) \(n)") && w.inFront(n, of: editW) != false,
@@ -352,6 +354,24 @@ func multiHostTests() {
         let tries2 = tries()
         pollOnly(1)
         check("cut pane: …its window seen behind again, then over again: put back again", tries() > tries2 && (w.raised.firstIndex(of: edit) ?? 99) < (w.raised.firstIndex(of: n) ?? -1), "\(tries() - tries2) \(w.raised)")
+        // All panes active: a revealed cut pane is as a card is, the split's other apps left as they are (an app told it's
+        // active orders its window front, over the revealed one); tucked back, kept again.
+        w.panesActive = true
+        let notesPidA = w.wins[n]?.pid ?? 0
+        e.panesShown(PaneClickScene(panes: [PaneClickScene.Pane(rect: e.visible[textEdit.id]?.rect ?? .zero, pid: editPid, window: edit),
+                                            PaneClickScene.Pane(rect: right, pid: notesPidA, window: n)], focused: n))
+        w.serverFront = editPid
+        e.stepActives()
+        _ = hostRun { await e.slide(notes.id, side: .left) }
+        w.serverFront = notesPidA
+        let keptMark = w.activeCalls.count
+        e.stepActives()
+        check("cut pane: all panes active, one revealed: its neighbour's app not kept anew (it would order its window over it)",
+              h?.revealed == true && !w.activeCalls.dropFirst(keptMark).contains { $0.hasPrefix("keep \(editPid) ") }, "\(w.activeCalls.dropFirst(keptMark))")
+        _ = hostRun { await e.tuck(notes.id) }
+        e.stepActives()
+        check("cut pane: …tucked back: its neighbour's app kept again", w.activeCalls.dropFirst(keptMark).contains("keep \(editPid) \(edit)"), "\(w.activeCalls.dropFirst(keptMark))")
+        w.panesActive = false
     }
 
     // ---- tiles off: a pane as a plain member, placed at its rect by its own Space's reservation ----

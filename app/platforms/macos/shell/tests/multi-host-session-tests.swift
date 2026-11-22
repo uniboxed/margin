@@ -92,6 +92,13 @@ func multiHostSessionTests() {
     let cutSaid = window.paneCutsSaid.last ?? ""
     check("multi-host session: a pane narrower than its window's minimum: shown cut, the page told its item, window and sides (its left revealed, its right slid)",
           cutSaid == #"{"\#(editItem)":{"window":\#(editWindow),"revealed":false,"left":"reveal","right":"slide"}}"#, "\(window.paneCutsSaid)")
+    session.slidePane(editItem, side: "left", in: window)
+    _ = hostRun { for _ in 0..<200 { if session.layout[1]?.focused == editItem { break }; await Task.yield() } }
+    check("multi-host session: its left arrow (a reveal): its pane focused, the layout's focus and the one shown following the engine's",
+          session.layout[1]?.focused == editItem && session.shown[1] == editItem && engine.shown == editHost, "\(String(describing: session.layout[1]?.focused)) \(String(describing: engine.shown))")
+    session.slidePane(editItem, side: "back", in: window)
+    _ = hostRun { for _ in 0..<200 { if engine.hosts[editHost]?.revealed == false { break }; await Task.yield() } }
+    run { await session.setLayout(window: 1, main: aItem, mainRect: left, extras: [HostedLayout.Extra(item: editItem, role: .pane, rect: right)], focused: aItem) }
     engine.hosts[editHost]?.minSize = nil
     run { await session.setLayout(window: 1, main: aItem, mainRect: left, extras: [HostedLayout.Extra(item: editItem, role: .pane, rect: right)]) }
     check("multi-host session: …its minimum gone: no longer cut, the page told none", window.paneCutsSaid.last == "{}", "\(window.paneCutsSaid)")

@@ -631,6 +631,7 @@ final class HostEngine {
         await serial(planned: true) {
             guard self.isVisible(id), let host = self.hosts[id] else { return false }
             if let card = self.visibleHosts.last(where: { $0.role == .card }), card !== host { return false }
+            if self.shown != id { Diagnostics.note("host: \(id) focused (it had \(self.shown?.description ?? "nothing"))\(fronted ? ", fronted already" : "")") }
             self.focusWanted = id
             if self.shown != id { self.shown = id }
             if !fronted { await self.frontVisible() }
@@ -5542,6 +5543,9 @@ final class HostEngine {
             if mode == .reveal {
                 h.revealed = true
                 Diagnostics.note("host: \(id): its \(side.rawValue) side shown over its neighbours (a slide can't: the display's edge)")
+                // (Focused, as a press in it would: the focus asked for, so the operation's settle keeps it (it went back to
+                // the pane focused before, and Margin's keys with it, 2026-11-22), the session's layout following it.)
+                self.focusWanted = id
                 self.shown = id
                 if let n = self.neighbour(of: h) { _ = await self.raiseOver(h, n) } else { _ = await self.front(h) }
                 self.sayHostedWindows()
@@ -5582,6 +5586,7 @@ final class HostEngine {
             Diagnostics.note("host: \(id): tucked back under its neighbours")
             self.sayHostedWindows()
             if self.isVisible(id) { await self.frontVisible() }
+            self.queueActives() // (no card-like pane any more: the split's other apps kept again)
         }
     }
 
@@ -6184,7 +6189,13 @@ final class HostEngine {
         } else {
             let scene = activeScene
             let front = sys.frontProcess() ?? sys.frontApp()
-            actions = actives.step(panes: scene?.panes ?? [], focused: scene?.focused, front: front, margin: ownPid,
+            // (A revealed cut pane over its neighbours is as a card is: the split's other apps left as they are, none kept
+            // anew. An app told it's active orders its windows front: Safari, kept as Notes was revealed, came back over
+            // it at once, 2026-11-22.)
+            let over = Set(visibleHosts.filter { $0.revealed && isCut($0) }.map(\.window))
+            var panes = scene?.panes ?? []
+            for i in panes.indices where over.contains(panes[i].window) { panes[i].card = true }
+            actions = actives.step(panes: panes, focused: scene?.focused, front: front, margin: ownPid,
                                    hosted: { pid in self.hosts.values.contains { $0.pid == pid } },
                                    allowed: { p in self.exiting[p.pid] == nil && self.hosts.values.contains { $0.window == p.window && $0.pid == p.pid && $0.phase == .shown } },
                                    ending: { pid in self.exiting[pid] != nil || self.quitAsked.contains(pid) }, now: sys.now())

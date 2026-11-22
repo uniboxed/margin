@@ -1285,8 +1285,13 @@ final class HostedSession: LibraryDelegate {
         guard w.id == hostingWindow, layout[w.id]?.items.contains(item) == true, let id = open[item]?.host else { return }
         Task {
             if side == "back" { await self.engine.tuck(id); return }
-            guard let s = PaneSide(rawValue: side) else { return }
-            _ = await self.engine.slide(id, side: s)
+            guard let s = PaneSide(rawValue: side), await self.engine.slide(id, side: s) else { return }
+            // (A reveal focuses its pane, the engine's word: the layout's focus, the sidebar's highlight and the one shown follow.)
+            guard self.engine.shown == id, var l = self.layout[w.id], l.focused != item, l.items.contains(item) else { return }
+            l.focused = item
+            self.layout[w.id] = l
+            self.shown[w.id] = item
+            self.onChange?()
         }
     }
 
@@ -1344,6 +1349,7 @@ final class HostedSession: LibraryDelegate {
         guard w.id == hostingWindow, engine.shownWindow != nil else { return }
         // (Several visible: a press in another one's pane focuses it, docs/PEEK-SPLIT.md §1; never main raised over a card.)
         if let point, layout[w.id] != nil, let id = engine.visibleHost(at: point), id != engine.shown {
+            note("a press in Margin's window \(w.id) at \(Int(point.x)),\(Int(point.y)): over \(id)'s pane, focused")
             return pressedHost(id, in: w)
         }
         Task { await self.engine.activateShown(at: point) }
