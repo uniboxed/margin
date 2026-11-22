@@ -177,6 +177,12 @@ const appState = (windowId: number | null) => {
 };
 
 const launcherOpening = new Map<string, Promise<{ tabId: number, shown: number }>>();
+// Whether a page's window is in full screen for Chrome's "only in full screen" (content/core.ts): a window Margin.app
+// hosts is the app's to place, whatever its state (Windows holds a normal one at the page area too), so it counts.
+const marginsFullscreen = async (windowId: number | null) => (windowId != null && capabilities?.marginFullscreen && engine.fullscreen
+  ? hostedTabs.isHosted(windowId) || await engine.fullscreen.isFullscreen(windowId) : false);
+// A window's mark (newWindow's `mark`): what Windows finds a window made for the app by, in its title.
+const WINDOW_MARK = /^[A-Za-z0-9]{8,40}$/;
 // Margin.app hosting this profile's window in its page area (background/hosted.ts): its items' tabs.
 export const hostedTabs = createHostedTabs(() => api.tabs as unknown as HostedTabsApi, shrinkPicture, (windowId, msg) => appLink.push(windowId, msg));
 // A page's preview clicks waiting for Margin.app's word (background/peek.ts).
@@ -203,7 +209,7 @@ export const handlers = {
   async hello(_message: object, sender: BrowserMessageSender) {
     engine.onboarding?.pageLoaded();
     const windowId = sender.tab?.windowId ?? null;
-    const fullscreen = windowId != null && capabilities?.marginFullscreen && engine.fullscreen ? await engine.fullscreen.isFullscreen(windowId) : false;
+    const fullscreen = await marginsFullscreen(windowId);
     // `since`: with the page's own address, which copy's tab ids it may trust (shared/stored.ts).
     // `card`: its window is the preview card window in Margin.app (background/hosted.ts): its Esc and ⌘↩ are the card's.
     // `pinned`: Margin.app shows a pin's or favorite's item in it (auto-preview).
@@ -828,7 +834,10 @@ export const handlers = {
   // at its launch (HostedSession.prepareBrowser): nothing loaded in it. Always focused: a hidden Safari (one Margin.app
   // started) asked for an unfocused window answers its id but never orders it in (the real Mac, 2026-11-16), so the
   // app couldn't find it; the app keeps its own Space current while it's made.
-  async newWindow({ fromWindowId, fullscreen, url, itemId }: { fromWindowId?: number, fullscreen?: boolean, url?: string, itemId?: string } = {}, sender?: BrowserMessageSender) {
+  // `hosted: true` (the app's only): a window the app will host (docs/HOSTED-WINDOWS-CHROMIUM.md §3.2), its state the
+  // app's from now on. `mark` (the app's only, 8 to 40 letters and digits): the window opened at Margin's new-tab page
+  // with `?mark=`, so its title carries the mark until its first item is shown there (Windows finds the window by it).
+  async newWindow({ fromWindowId, fullscreen, url, itemId, hosted, mark }: { fromWindowId?: number, fullscreen?: boolean, url?: string, itemId?: string, hosted?: boolean, mark?: string } = {}, sender?: BrowserMessageSender) {
     const from = Number.isInteger(fromWindowId) ? await api.windows.get(fromWindowId as number).catch(() => null) : null;
     const spaceId = from ? M.activeSpaceId(await load(), from.id) : null;
     const full = fullscreen ?? from?.state === 'fullscreen';
@@ -836,7 +845,9 @@ export const handlers = {
     // (docs/PEEK-SPLIT.md §2, §4), never Safari's empty new-tab page, whose address field keeps the toolbar down over
     // the page. Any other address, or one asked by anything else, is ignored, as before.)
     const page = !!sender?.app && typeof url === 'string' && /^https?:\/\//i.test(url) && url.length <= 8192;
-    const props = { focused: true, ...(url === 'about:blank' || page ? { url } : {}) };
+    const marked = !!sender?.app && !page && url !== 'about:blank' && typeof mark === 'string' && WINDOW_MARK.test(mark);
+    const props = { focused: true, ...(url === 'about:blank' || page ? { url } : marked ? { url: api.runtime.getURL(`newtab/newtab.html?mark=${mark}`) } : {}) };
+    const forApp = !!sender?.app && (hosted === true || marked || typeof itemId === 'string');
     markMarginOpening();
     let win;
     // (A split's pane window around its item's tab, open in another of Margin's windows: made with the tab in it, never a
@@ -851,6 +862,7 @@ export const handlers = {
         ?? await api.windows.create({ focused: true }); // (or won't take the blank address)
     }
     if (!win) return null;
+    if (forApp && win.id != null) hostedTabs.madeForApp(win.id);
     if (spaceId) {
       const tabs = win.tabs ?? (await api.tabs.query({ windowId: win.id }).catch(() => []));
       await mutate((st) => {
@@ -1002,7 +1014,7 @@ export const handlers = {
   // Whether this page's window is in full screen (Chrome, "only in full screen").
   async windowState(_: object, sender: BrowserMessageSender) {
     const id = sender.tab?.windowId;
-    return { fullscreen: id != null && capabilities?.marginFullscreen && engine.fullscreen ? await engine.fullscreen.isFullscreen(id) : false };
+    return { fullscreen: await marginsFullscreen(id ?? null) };
   },
   // Margin.app hosting Safari in its page area (docs/MARGIN-APP.md, background/hosted.ts): an item of its library
   // shown as a tab of the window it hosts for this profile, and closed. The app's word only.

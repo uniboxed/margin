@@ -228,3 +228,19 @@ test('windowAround: a pane\'s window made with its item\'s tab in it (full scree
   assert.equal(await k.windowAround('t-zzzz', async () => ({ id: 52 }), false), null);
   assert.equal(await k.windowAround('t-cccc', async () => null, false), null);
 });
+
+// The windows the app hosts (docs/HOSTED-WINDOWS-CHROMIUM.md §3.2: Chromium's "Margin full screen" leaves them alone).
+test('isHosted: a window made for the app, one an item or the card was shown in; none once it closes', async () => {
+  const f = fakeTabs([{ id: 1, windowId: 9, url: NEW_TAB, active: true }, { id: 2, windowId: 5, url: NEW_TAB, active: true }]);
+  const h = createHostedTabs(() => f.api);
+  assert.equal(h.isHosted(9), false);
+  await h.show({ windowId: 9, itemId: 't-aaaa', url: 'https://a.example/' });
+  assert.equal(h.isHosted(9), true, 'an item shown there');
+  h.madeForApp(4);
+  assert.equal(h.isHosted(4), true, 'made for the app, nothing shown yet');
+  await h.show({ windowId: 5, itemId: 'peek-card', url: 'https://c.example/', role: 'card' });
+  assert.equal(h.isHosted(5), true, 'the card\'s');
+  assert.equal(h.isHosted(6), false, 'any other window: the person\'s');
+  for (const id of [9, 4, 5]) h.windowRemoved(id);
+  assert.deepEqual([9, 4, 5].map((id) => h.isHosted(id)), [false, false, false]);
+});

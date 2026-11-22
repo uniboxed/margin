@@ -301,9 +301,10 @@ api.windows?.onFocusChanged?.addListener(owned((windowId) => {
 api.tabs.onMoved.addListener(owned(() => resync({ fresh: false })));
 api.tabs.onAttached.addListener(owned(() => resync({ fresh: false })));
 api.tabs.onDetached?.addListener(owned(() => resync({ fresh: false })));
-// Chrome: a window going full screen becomes Margin full screen.
+// Chrome: a window going full screen becomes Margin full screen, except a window Margin.app hosts: its state is the
+// app's (it puts it in full screen itself; an exit and an entry here would fight it: docs/HOSTED-WINDOWS-CHROMIUM.md).
 const { fullscreen } = engine;
-if (fullscreen) api.windows?.onBoundsChanged?.addListener(owned((win) => fullscreen.followFullscreen(win.id)));
+if (fullscreen) api.windows?.onBoundsChanged?.addListener(owned((win) => (win.id == null || hostedTabs.isHosted(win.id) ? undefined : fullscreen.followFullscreen(win.id))));
 api.windows?.onRemoved.addListener(owned((windowId) => {
   away.windowGone(windowId);
   return mutate((s) => {
