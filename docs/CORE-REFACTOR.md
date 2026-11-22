@@ -176,7 +176,7 @@ against the core.
   the wall clock's (`set_wall_offset`), so a sleep never reads as 40 s of silence. LinkSocket.swift and Chunks.swift
   are gone; LinkMessage.swift maps what the core read (and keeps the window requests' Swift API over
   `margin_link_protocol`); ExtensionLink.swift and RelayLink.swift are the transport only. PageLayout moved to its own
-  file (Margin's window's, step 3). StateMirror.swift stays the Mac's for now (mirror.rs is Windows').
+  file (Margin's window's, step 3). StateMirror.swift stayed the Mac's until 1.6.
 - Kept as Rust has it: lengths in characters, not grapheme clusters (a chunk's id, a key, a nonce, `socketsOff`, a
   relay's log line); the profile id's byte check (Swift's `$` let a trailing newline through); "a message before
   hello: left" (Swift's log said "closed" but left it); a connection's `.failed` read as the TCP end's
@@ -187,9 +187,45 @@ against the core.
   needs (`land: false`, `WindowCallAnswer::Asked`, the Mac's readers through the FFI); the session's requests stay
   Swift dictionaries until step 3 takes that module.
 
+### 1.6 Themes and the state mirror (ThemeStore.swift → data/themes.rs; StateMirror.swift → mirror.rs, link_hub.rs)
+- Themes: Rust gains Swift's newer built-ins (`liquid-glass`, `material`: refused as an imported theme's id, left out
+  of the index) and BuiltinThemes (the packages the app carries for its own window, Neubrutalism's earlier name, read
+  once each). FFI (`ffi/src/themes.rs`): a store object (one JSON call: list, has, save, remove) with the package a
+  window draws typed (its bytes as they are, never inside another JSON string: up to 4.5 MB), a built-ins object,
+  and no-object calls (the id rule, the limits, what the picker chose read within caps, `chosen_ok` first).
+  ThemeStore.swift keeps the folder's place and the API; ThemeFileReader and BuiltinThemes are thin wrappers;
+  AtomicFile (DataSync.swift) is gone: the store's `write_atomically` is the one copy.
+- Kept as Rust has it: a stored package's and the index's bytes as serde writes them (Swift's JSONSerialization
+  escaped every `/`, so `bytes` in the index, and the 4.5 MB check, counted a little more; the extension's own
+  limit counts as Rust does); a name, version or author cut to 60/16/80 Unicode scalars (Swift: grapheme clusters);
+  a folder's files read in name order (Swift: the enumerator's), so with several problems the first by name is the
+  one said; a folder that can't be listed is refused ("couldn't read a file in that folder"; Swift's enumerator
+  skipped it); `Thumbs.db` and `desktop.ini` left out of a folder as `.DS_Store` is; a write that fails says the
+  OS's error ("Permission denied (os error 13)", Swift: "mine.json: open: Permission denied").
+- The mirror: each link's state lives in the core (`LinkHub`'s mirrors, begun at its hello, gone with it): a snapshot,
+  delta or window list is applied inside the bytes' call as it's read, and the answer says only what it did
+  (`do: state`: kind, outcome, the keys it carried, the windows when they changed, `hasState`, `resyncing`), never
+  the values again; a value is read when the Mac needs one (`margin_link_state_value`: its JSON's bytes as kept).
+  The resync moved with it: a gap is logged in the same words, the `resync` sent at once and every 2 s while the
+  snapshot hasn't come (at the answer's `deadline`); Shell.swift's timer and `Options.resyncRetry` are gone.
+  StateMirror.swift is a view: the flags and windows the answers said (the windows are read on every poll), values
+  read from the core. LinkMessage's `.snapshot`/`.delta`/`.windows` became `.state` (what the core applied).
+- Per delta the Mac now parses one small answer instead of the delta's values twice over (once as the core wrote
+  them into the answer, once re-encoded by the Swift mirror); a value (openTabs on a tab change) is read once, as
+  before.
+- Kept as Rust has it: a `seq` at the top of the range saturates (Swift's `seq + 1` would trap).
+
 ### Not in step 1
 The Mac shell's link routing (which hosted windows are `drawn`, the pushes for the preview card, the mini player and
 the loading bar, `copyTabs`) is the session's: step 3.
+
+## Between steps 1 and 2: the UI and its themes out of the extension (Tirth, 2026-11-22)
+
+`extension/ui` and `extension/themes` are Margin's window's now (the hosted design draws them in Margin's own window on
+the Mac, on Windows next); the extension's content scripts and new-tab page use neither. A pure move into
+`app/shared/ui/` (its own commit, no behaviour change: the build, the theme tests, pack-theme, the CI plan and the docs'
+paths). The extension's two leftovers (the background's theme settings and package import, the model's theme settings:
+its old ownership of spaces) import from there until step 4 removes them. The Windows branch touches neither folder.
 
 ## Step 2: hosting decisions into the core
 
