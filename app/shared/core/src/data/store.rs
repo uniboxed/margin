@@ -33,7 +33,7 @@ use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Condvar, Mutex, mpsc};
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
 
 use serde_json::{Value, json};
@@ -192,13 +192,19 @@ impl Job {
 #[derive(Default)]
 struct Shared {
     pending: usize,
+    /// Jobs handed over and not taken by the writer yet, in order.
+    queue: VecDeque<Job>,
+    /// A writer thread is running (it takes the queue's jobs in order until it's empty, then ends).
+    running: bool,
     finished: VecDeque<Finished>,
 }
 
-/// The background writer: a thread taking jobs in order.
+/// The background writer: a thread started when a save is handed over and none is running, which takes the jobs in
+/// order and ends once the queue is empty (no thread waits while nothing is written).
 struct Writer {
-    tx: Option<mpsc::Sender<Job>>,
     shared: Arc<(Mutex<Shared>, Condvar)>,
+    wake: Arc<dyn Fn() + Send + Sync>,
+    /// The last thread started, joined when the store goes.
     thread: Option<JoinHandle<()>>,
 }
 
@@ -255,29 +261,61 @@ impl DataStore {
 
     /// A store whose files are written by a thread of its own, in order; `wake` runs on that thread after each save
     /// is written (the owner then drains [`DataStore::take_done`] on its own thread).
-    pub fn background(root: impl Into<PathBuf>, wake: impl Fn() + Send + 'static) -> Self {
+    pub fn background(root: impl Into<PathBuf>, wake: impl Fn() + Send + Sync + 'static) -> Self {
         let mut store = Self::new(root);
-        let shared: Arc<(Mutex<Shared>, Condvar)> = Arc::default();
-        let (tx, rx) = mpsc::channel::<Job>();
-        let theirs = Arc::clone(&shared);
-        let thread = std::thread::Builder::new()
-            .name("margin-data".into())
-            .spawn(move || {
-                for job in rx {
-                    let finished = job.run();
-                    let (lock, ready) = &*theirs;
-                    {
-                        let mut s = lock.lock().unwrap_or_else(|e| e.into_inner());
-                        s.finished.push_back(finished);
-                        s.pending = s.pending.saturating_sub(1);
-                    }
-                    ready.notify_all();
-                    wake();
-                }
-            })
-            .ok();
-        store.writer = Some(Writer { tx: thread.as_ref().map(|_| tx), shared, thread });
+        store.writer = Some(Writer { shared: Arc::default(), wake: Arc::new(wake), thread: None });
         store
+    }
+
+    /// `job` to the writer: queued, and a writer thread started if none is running (it ends once the queue is empty).
+    /// False if a thread couldn't be started (the job is then the caller's to write).
+    fn hand_over(w: &mut Writer, job: Job) -> Result<(), Box<Job>> {
+        let start = {
+            let mut s = w.shared.0.lock().unwrap_or_else(|e| e.into_inner());
+            s.pending += 1;
+            s.queue.push_back(job);
+            !std::mem::replace(&mut s.running, true)
+        };
+        if !start {
+            return Ok(());
+        }
+        let (shared, wake) = (Arc::clone(&w.shared), Arc::clone(&w.wake));
+        let spawned = std::thread::Builder::new().name("margin-data".into()).spawn(move || {
+            loop {
+                let job = {
+                    let mut s = shared.0.lock().unwrap_or_else(|e| e.into_inner());
+                    match s.queue.pop_front() {
+                        Some(job) => job,
+                        None => {
+                            s.running = false;
+                            return;
+                        }
+                    }
+                };
+                let finished = job.run();
+                {
+                    let mut s = shared.0.lock().unwrap_or_else(|e| e.into_inner());
+                    s.finished.push_back(finished);
+                    s.pending = s.pending.saturating_sub(1);
+                }
+                shared.1.notify_all();
+                wake();
+            }
+        });
+        match spawned {
+            Ok(handle) => {
+                if let Some(old) = w.thread.replace(handle) {
+                    let _ = old.join(); // (ended already: it set `running` false before this one started)
+                }
+                Ok(())
+            }
+            Err(_) => {
+                let mut s = w.shared.0.lock().unwrap_or_else(|e| e.into_inner());
+                s.running = false;
+                s.pending -= 1;
+                s.queue.pop_back().map_or(Ok(()), |job| Err(Box::new(job)))
+            }
+        }
     }
 
     /// The store as one data set in its root (the app's library).
@@ -529,13 +567,10 @@ impl DataStore {
         let ticket = self.next_ticket;
         self.next_ticket += 1;
         let job = Job { ticket, profile: p.clone(), rev, files, dirs: vec![items, dir], allowed };
-        match self.writer.as_ref().and_then(|w| w.tx.as_ref().map(|tx| (tx, &w.shared))) {
-            Some((tx, shared)) => {
-                shared.0.lock().unwrap_or_else(|e| e.into_inner()).pending += 1;
-                if let Err(mpsc::SendError(job)) = tx.send(job) {
-                    // (The writer is gone: written here instead.)
-                    shared.0.lock().unwrap_or_else(|e| e.into_inner()).pending -= 1;
-                    self.inline.push_back(job.run());
+        match self.writer.as_mut() {
+            Some(w) => {
+                if let Err(job) = Self::hand_over(w, job) {
+                    self.inline.push_back(job.run()); // (no thread could be started: written here instead)
                 }
             }
             None => self.inline.push_back(job.run()),
@@ -614,8 +649,8 @@ impl DataStore {
 impl Drop for DataStore {
     /// Every save handed over is written before the store goes (the writer ends with its queue).
     fn drop(&mut self) {
+        self.wait_for_writes();
         if let Some(w) = &mut self.writer {
-            w.tx = None;
             if let Some(t) = w.thread.take() {
                 let _ = t.join();
             }
