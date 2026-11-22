@@ -47,7 +47,7 @@ pub struct MarginLibrary {
     library: LibraryStore,
 }
 
-fn answer(value: &Value, out_len: *mut usize) -> *mut u8 {
+pub(crate) fn answer(value: &Value, out_len: *mut usize) -> *mut u8 {
     if out_len.is_null() {
         return std::ptr::null_mut();
     }
@@ -57,7 +57,7 @@ fn answer(value: &Value, out_len: *mut usize) -> *mut u8 {
     Box::into_raw(boxed) as *mut u8
 }
 
-fn text<'a>(ptr: *const u8, len: usize) -> Option<&'a str> {
+pub(crate) fn text<'a>(ptr: *const u8, len: usize) -> Option<&'a str> {
     if ptr.is_null() {
         return None;
     }
@@ -77,7 +77,7 @@ fn profile_json(p: &DataProfile) -> Value {
     json!({ "browser": p.browser, "profile": p.profile })
 }
 
-fn log_json(log: &[Note]) -> Value {
+pub(crate) fn log_json(log: &[Note]) -> Value {
     Value::Array(log.iter().map(|n| json!({ "warn": n.warn, "text": n.text })).collect())
 }
 

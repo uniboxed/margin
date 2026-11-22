@@ -104,4 +104,14 @@ MarginLibrary *margin_library_new(const uint8_t *root, size_t len, bool backgrou
 void margin_library_free(MarginLibrary *library);
 uint8_t *margin_library_call(MarginLibrary *library, const uint8_t *request, size_t len, size_t *out_len);
 
+// A browser's profiles (data/profiles.rs, ffi profiles.rs; the hosted file's shape): one object per browser over its
+// browser.json in `root` (NULL: in memory), one JSON call (`now` passed in, the log lines in each answer), and the
+// slots rule on its own. Answers freed with margin_buffer_free.
+typedef struct MarginProfiles MarginProfiles;
+
+MarginProfiles *margin_profiles_new(const uint8_t *browser, size_t browser_len, const uint8_t *root, size_t root_len);
+void margin_profiles_free(MarginProfiles *profiles);
+uint8_t *margin_profiles_call(MarginProfiles *profiles, const uint8_t *request, size_t len, size_t *out_len);
+uint8_t *margin_profiles_resolve(const uint8_t *request, size_t len, size_t *out_len);
+
 #endif

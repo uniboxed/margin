@@ -245,22 +245,22 @@ func safariProfilesTests() {
     cp.refresh(spaces: ["s-default": ["w"], oldId: ["a1", "a2"]], linked: ["s-default", oldId])
     let readBefore = [SafariProfile(serverId: "DefaultProfile", uuid: "DefaultProfile", name: "Work", symbol: "", margin: "s-default"),
                   SafariProfile(serverId: FakeSafari.personalServer, uuid: "A9", name: "Personal", symbol: "", margin: oldId)]
-    let hasOld = { (id: String) in id == oldId }
-    check("carry source: before any read: none, and no hold", cp.carrySource(for: newId, hasSet: hasOld, linked: [newId]) == nil && !cp.mightCarry(newId, hasSet: hasOld, linked: [newId]))
+    let hasOld: Set<String> = [oldId] // the Safari profiles with a set
+    check("carry source: before any read: none, and no hold", cp.carrySource(for: newId, withSets: hasOld, linked: [newId]) == nil && !cp.mightCarry(newId, withSets: hasOld, linked: [newId]))
     cp.useBrowserNames(readBefore)
     check("carry source: the old id linked to Safari's profile", cp.info[oldId]?.browserId == FakeSafari.personalServer)
-    check("carry source: a new copy no read maps yet: worth a hold", cp.mightCarry(newId, hasSet: hasOld, linked: [newId, "s-default"]))
-    check("carry source: not while the old one is linked, nor with no set to carry", !cp.mightCarry(newId, hasSet: hasOld, linked: [newId, oldId]) && !cp.mightCarry(newId, hasSet: { _ in false }, linked: [newId]))
-    check("carry source: never for the default profile's copy", !cp.mightCarry("s-default", hasSet: hasOld, linked: []) && cp.carrySource(for: "s-default", hasSet: hasOld, linked: []) == nil)
-    check("carry source: the read doesn't map the new one: none yet", cp.carrySource(for: newId, hasSet: hasOld, linked: [newId]) == nil)
+    check("carry source: a new copy no read maps yet: worth a hold", cp.mightCarry(newId, withSets: hasOld, linked: [newId, "s-default"]))
+    check("carry source: not while the old one is linked, nor with no set to carry", !cp.mightCarry(newId, withSets: hasOld, linked: [newId, oldId]) && !cp.mightCarry(newId, withSets: [], linked: [newId]))
+    check("carry source: never for the default profile's copy", !cp.mightCarry("s-default", withSets: hasOld, linked: []) && cp.carrySource(for: "s-default", withSets: hasOld, linked: []) == nil)
+    check("carry source: the read doesn't map the new one: none yet", cp.carrySource(for: newId, withSets: hasOld, linked: [newId]) == nil)
     let readAfter = readBefore.map { var p = $0; if p.margin == oldId { p.margin = newId }; return p }
     cp.useBrowserNames(readAfter)
     check("startup: historical copies keep their names for carry-over", cp.browserNames[oldId]?.name == "Personal" && cp.browserNames[newId]?.name == "Personal")
-    let src = cp.carrySource(for: newId, hasSet: hasOld, linked: [newId, "s-default"])
+    let src = cp.carrySource(for: newId, withSets: hasOld, linked: [newId, "s-default"])
     check("carry source: the read maps Safari's profile to the new id: the old id's set", src?.old == oldId && src?.browserId == FakeSafari.personalServer, "\(String(describing: src))")
-    check("carry source: no hold once the read maps it", !cp.mightCarry(newId, hasSet: hasOld, linked: [newId]))
-    check("carry source: not if the old one is linked again", cp.carrySource(for: newId, hasSet: hasOld, linked: [newId, oldId]) == nil)
-    check("carry source: not with no set", cp.carrySource(for: newId, hasSet: { _ in false }, linked: [newId]) == nil)
+    check("carry source: no hold once the read maps it", !cp.mightCarry(newId, withSets: hasOld, linked: [newId]))
+    check("carry source: not if the old one is linked again", cp.carrySource(for: newId, withSets: hasOld, linked: [newId, oldId]) == nil)
+    check("carry source: not with no set", cp.carrySource(for: newId, withSets: [], linked: [newId]) == nil)
     cp.refresh(spaces: ["s-default": ["w"], oldId: ["a1", "a2"], newId: ["n1"]], linked: ["s-default", newId])
     let orderBefore = cp.stored.filter { $0.profile != newId }.map { $0.profile == oldId ? SpaceKey(profile: newId, space: $0.space) : $0 }
     let firstSeen = cp.info[oldId]?.firstSeen
@@ -271,5 +271,5 @@ func safariProfilesTests() {
           && cp.stored == orderBefore && orderBefore.count == 3, "\(cp.stored)")
     check("carry: one Personal shown", cp.profiles.filter { cp.info[$0]?.hidden != true && cp.name($0) == "Personal" } == [newId])
     cp.dropBrowserNames()
-    check("carry source: no read (no permission): none", cp.carrySource(for: newId, hasSet: { $0 == oldId }, linked: [newId]) == nil && !cp.mightCarry(oldId, hasSet: { $0 == newId }, linked: [oldId]))
+    check("carry source: no read (no permission): none", cp.carrySource(for: newId, withSets: [oldId], linked: [newId]) == nil && !cp.mightCarry(oldId, withSets: [newId], linked: [oldId]))
 }

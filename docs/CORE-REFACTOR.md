@@ -146,6 +146,15 @@ against the core.
 - The cross-profile order, `switching.closeWindows`, emoji and colour (removed from the Mac on 11-17) stay in Rust only
   for the Windows shell's old design and are never written to the Mac's browser.json (Swift's test pins their absence).
 - A stored `1` for `named`/`hidden` reads as true, as Swift did.
+- Done 2026-11-22: profiles.rs is the one copy (two shapes of the file: `BrowserProfiles::new`, the Mac's, never
+  reads or writes `emoji`, `color` or `switching`; `BrowserProfiles::overlay`, the Windows shell's old design, keeps
+  them, its `order` dropping a forgotten profile at once). FFI (`ffi/src/profiles.rs`): one object per browser, one
+  JSON call with `now` passed in and the log lines in each answer, the slots rule on its own; Safari's profiles cross
+  as `{ serverId, name, margin }`, and `carrySource`/`mightCarry` take the profiles with a set (`withSets`) instead of
+  a callback. BrowserProfiles.swift is a thin wrapper; the unused `across`, `neighbour`, `space_step`,
+  `profiles_shown`, `set_browser_link`, `set_browser_names` and `BrowserName.symbol` are gone from Rust (across.rs has
+  its own). Kept as Rust had it: a browser.json that doesn't parse falls back to its `.bak` (Swift only when it
+  couldn't be read); a kept name's 40 characters are Unicode scalars (Swift: grapheme clusters, which can keep more).
 
 ### 1.5 The link (LinkMessage.swift, ExtensionLink.swift, RelayLink.swift → protocol.rs, link.rs, socket.rs, websocket.rs, relay.rs)
 - Rust gains what the Mac uses: `setWindowState`'s `land: false`, `WindowCallAnswer.asked`, typed builders and

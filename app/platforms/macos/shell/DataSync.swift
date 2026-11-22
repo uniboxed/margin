@@ -63,8 +63,8 @@ enum DataNames {
 }
 
 // One small file written whole: a temporary file beside it (flushed), the version it replaces kept as `.bak` (a hard
-// link), then renamed over it (browser.json, the themes' files: they move to margin-core with BrowserProfiles and
-// ThemeStore, docs/CORE-REFACTOR.md).
+// link), then renamed over it (the themes' files: they move to margin-core with ThemeStore, docs/CORE-REFACTOR.md;
+// browser.json is margin-core's since step 1.4).
 enum AtomicFile {
     nonisolated struct WriteError: Error, CustomStringConvertible { let description: String }
 
