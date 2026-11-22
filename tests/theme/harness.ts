@@ -821,14 +821,15 @@ const withRuntime = Object.assign(T, {
   },
   // A kept item (Margin.app's library: a web page's, or an app's `app://<bundle id>`) in the state, in the front tab's
   // space, used last at `lastActive` (the selected one: `wasActive`).
-  // `row`: open in Margin's window too, as a row of that number (`tabs[row]`, its `mid` the item).
+  // `row`: open in Margin's window, as a row of that number (`tabs[row]`, its `mid` the item) instead.
   rtKept(id: string, url: string, { lastActive = 0, wasActive = false, name = '', row = null as number | null } = {}) {
     const s = rt.mock.state as any;
     const front = Object.values(s.tabs as Record<string, any>).find((t) => t.active)?.id;
     const app = /^app:\/\/([^/?#]+)/.exec(url)?.[1];
-    s.keptTabs = { ...(s.keptTabs ?? {}), [id]: { id, url, title: name || url, spaceId: s.tabSpace[front], lastActive, wasActive, target: app ? { kind: 'app', bundleId: app, name } : { kind: 'web', browser: 'safari', profile: null } } };
-    if (row != null) {
-      s.tabs = { ...s.tabs, [row]: { ...(s.tabs[front] ?? {}), id: row, url, title: name || url, active: false, mid: id } };
+    // (Open: a row, no longer among the kept ones, as Margin.app puts it (HostedSession `liveTab`).)
+    if (row == null) s.keptTabs = { ...(s.keptTabs ?? {}), [id]: { id, url, title: name || url, spaceId: s.tabSpace[front], lastActive, wasActive, target: app ? { kind: 'app', bundleId: app, name } : { kind: 'web', browser: 'safari', profile: null } } };
+    else {
+      s.tabs = { ...s.tabs, [row]: { ...(s.tabs[front] ?? {}), id: row, url, title: name || url, active: wasActive, lastActive, mid: id } };
       s.tabSpace = { ...s.tabSpace, [row]: s.tabSpace[front] };
     }
     rt.host.setState(rt.mock.state);

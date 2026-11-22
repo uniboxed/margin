@@ -405,24 +405,31 @@ export function installSplit(rt: Rt) {
       const g = h.layout;
       if (!h.appWindow || !vm || !g) return null;
       const st: any = rt.state;
-      const kept: Record<string, any> = st?.keptTabs ?? {};
-      // (Its library item: by its id, or, open in Margin's window, by its row's number: that row's `mid`. The real
-      // screen's add came by the open Safari tab's row number, 2026-11-21.)
+      // (Every library item of the state as the library has them: the closed ones (`keptTabs`), and the ones open in
+      // Margin's window, which the app puts there as rows of a number instead (HostedSession `liveTab`: `mid` the item,
+      // its `lastActive` the item's). The real screen's add, 2026-11-21: the Safari tab and Notes both open, so neither
+      // was found among the kept ones and the pair was guessed.)
+      const items: Record<string, { id: string, url: string, spaceId: unknown, lastActive: unknown, wasActive: boolean }> = {};
+      for (const k of Object.values(st?.keptTabs ?? {}) as any[]) if (k && typeof k.id === 'string') items[k.id] = { id: k.id, url: String(k.url ?? ''), spaceId: k.spaceId, lastActive: k.lastActive, wasActive: !!k.wasActive };
+      for (const t of Object.values(st?.tabs ?? {}) as any[]) {
+        if (t && typeof t.mid === 'string' && !items[t.mid]) items[t.mid] = { id: t.mid, url: String(t.url ?? ''), spaceId: st?.tabSpace?.[t.id], lastActive: t.lastActive, wasActive: !!t.active };
+      }
+      // (Its item: by its id, or, open in Margin's window, by its row's number (the menu names it so): that row's `mid`.)
       const mid = typeof tabId === 'string' ? tabId : typeof tabId === 'number' ? st?.tabs?.[tabId]?.mid : null;
-      const item = typeof mid === 'string' ? kept[mid] : null;
+      const item = typeof mid === 'string' ? items[mid] ?? null : null;
       let axis = 'horizontal';
       let panes: { id: string, url: string }[];
       if (item) {
         // (A library item, Margin.app's: what the library makes of it, `addToSplit`: added to the split of the item used
         // last in its space (not itself), or a new split of that one and it, in that order. Each pane's address names its
         // app for its known minimum (`appMin`, known before its window exists) and its band, stacked.)
-        const partner = frontItemOf(Object.values(kept), item.spaceId, item.id);
+        const partner = frontItemOf(Object.values(items), item.spaceId, item.id);
         if (!partner) return null; // (the library's to refuse: no second item)
         const group = ((st?.splits ?? []) as { panes: string[], axis?: string }[]).find((g) => g.panes.includes(partner.id)) ?? null;
         if (group?.panes.includes(item.id)) return null;
         if (group && group.panes.length >= 4) return 'A split view has 4 panes at most';
         axis = group?.axis === 'vertical' ? 'vertical' : 'horizontal';
-        panes = [...(group ? group.panes : [partner.id]).map((id) => ({ id: String(id), url: String(kept[id]?.url ?? '') })), { id: item.id, url: String(item.url ?? '') }];
+        panes = [...(group ? group.panes : [partner.id]).map((id) => ({ id: String(id), url: items[id]?.url ?? '' })), { id: item.id, url: item.url }];
       } else {
         // (A browser's tab: the split shown, or the tab in front, and it.)
         const split = vm.split;
