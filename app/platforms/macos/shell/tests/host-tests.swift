@@ -133,6 +133,14 @@ final class FakeHostWorld: HostSystem {
     var appActiveOf: [pid_t: Bool] = [:]
     var keepsPanesActive: Bool { panesActive }
     func frontProcess() -> pid_t? { serverFrontUnread ? nil : serverFront ?? front }
+    // (Its windows left in their order: only the front app and its key window change.)
+    func focusWithoutRaise(pid: pid_t, window: Int) -> Bool {
+        activeCalls.append("focusWithoutRaise \(pid) \(window)")
+        guard apps[pid] != nil else { return false }
+        serverFront = nil
+        front = pid
+        return true
+    }
     func makeFront(pid: pid_t, window: Int) -> Bool {
         activeCalls.append("makeFront \(pid) \(window)")
         guard apps[pid] != nil else { return false }

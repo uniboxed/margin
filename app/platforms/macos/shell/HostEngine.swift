@@ -239,6 +239,8 @@ final class HostEngine {
         var tileWait = 0.3
         var tileLimitWait = 0.5
         var tileEvery = 0.002
+        // A cut pane's slide (docs/PEEK-SPLIT.md §4b): its window's move between its two alignments, eased.
+        var slideTime = 0.15
         var tileSettleWatch = 0.03 // the first switch after a tile change watched this long for the tiles laid out again
         var liveFrame = 1.0 / 120
         var liveWait = 0.05
@@ -799,8 +801,15 @@ final class HostEngine {
     // Nothing more is done for an order among non-overlapping hosts, whatever Safari does to its own windows' order.
     private func frontVisible(fresh: Set<HostID> = []) async {
         let focused = shown.flatMap { id in hosts[id].flatMap { $0.phase == .shown ? $0 : nil } }
-        let wanted = visibleHosts.filter { $0 !== focused } + (focused.map { [$0] } ?? []) // (back to front)
+        // (A cut pane, docs/PEEK-SPLIT.md §4b: behind every other, the focused one too, so the part of its window past its
+        // pane stays under the panes beside it; it gets the keys without a raise. One revealed is in front, as any.)
+        let under = { (h: Host) in self.isCut(h) && !h.revealed }
+        let others = visibleHosts.filter { $0 !== focused }
+        let cutFocused = focused.map(under) ?? false
+        let wanted = others.filter(under) + (cutFocused ? [focused!] : []) + others.filter { !under($0) } + (cutFocused ? [] : focused.map { [$0] } ?? []) // (back to front)
         guard let top = wanted.last else { return }
+        // (The keys: the focused one's, by a raise when it's in front of the others, without one when it's cut.)
+        func keys() async { if cutFocused, let f = focused { _ = sys.focusWithoutRaise(pid: f.pid, window: f.window) } else { _ = await front(top) } }
         let t0 = sys.now()
         let pairs = overlapping(wanted)
         let topIndex = wanted.count - 1
@@ -812,7 +821,7 @@ final class HostEngine {
         }
         let bad = violated(serverOrder(of: wanted), unread: pairs)
         // (In the order that shows already, or nothing overlapping: only the focused one's keys.)
-        if bad.isEmpty { _ = await front(top); return }
+        if bad.isEmpty { await keys(); return }
         let involved = Set(pairs.flatMap { [$0.0, $0.1] })
         // (The focused one in front of every host it overlaps: none of those raised over it (its raise may not take);
         // two others out of order between them only when neither overlaps it, then it last, for its keys.)
@@ -820,12 +829,13 @@ final class HostEngine {
             let under = Set(pairs.filter { $0.1 == topIndex }.map(\.0))
             let fix = Set(bad.filter { !under.contains($0.0) && !under.contains($0.1) }.flatMap { [$0.0, $0.1] })
             for k in fix.sorted() { _ = await front(wanted[k]) }
-            _ = await front(top)
+            await keys()
             return
         }
         // Else the ones from the first out of place that overlap another raised, back to front, the focused one last.
         let from = bad.map(\.0).min() ?? 0
         for k in from..<wanted.count where k == topIndex || involved.contains(k) { _ = await front(wanted[k]) }
+        if cutFocused { await keys(); return }
         guard wanted.count > 1, top === focused else { return }
         // (Read again: the focused one behind a host it overlaps. Unread: taken as in front, as before.)
         func topBehind() -> Bool { violated(serverOrder(of: wanted), unread: []).contains { $0.1 == topIndex } }
@@ -2219,8 +2229,16 @@ final class HostEngine {
         guard !applyingLayout, let tell = hostedWindows else { return }
         let list = visibleHosts
         let now: [HostShownWindow] = list.count > 1 ? list.map { h in
-            let rect = live.map { liveRects[h.id] ?? h.rect ?? $0.page } ?? frame(h)
-            return HostShownWindow(window: h.window, rect: rect, role: visible[h.id]?.role ?? h.role, z: visible[h.id]?.z ?? 0, focused: h.id == shown)
+            // (Its pane, the hole; its window's frame apart: a cut pane's window is wider or taller, docs/PEEK-SPLIT.md §4b.)
+            let rect = live.map { liveRects[h.id] ?? h.rect ?? $0.page } ?? (h.rect ?? frame(h))
+            let window = live.map { p -> CGRect in
+                var q = p
+                q.page = liveRects[h.id] ?? h.rect ?? p.page
+                return frame(h, q)
+            } ?? frame(h)
+            let tucked = !h.revealed && isCut(h) && list.contains { o in o !== h && o.role != .card && (o.rect ?? placement.page).insetBy(dx: options.tolerance, dy: options.tolerance).intersects(window) }
+            return HostShownWindow(window: h.window, rect: rect, role: visible[h.id]?.role ?? h.role, z: visible[h.id]?.z ?? 0, focused: h.id == shown,
+                                   frame: window, tucked: tucked, revealed: h.revealed && isCut(h), cut: live == nil ? cutOf(h) : nil)
         } : []
         guard now != hostedWindowsSaid else { return }
         hostedWindowsSaid = now
@@ -4465,6 +4483,22 @@ final class HostEngine {
     // A pane's window's minimum as it's laid out now: its own as read (never its app's narrowest: a tile narrower than its
     // window's minimum now makes it leave the tile), else its app's known one before any of its windows was read.
     private func paneMinimum(_ host: Host) -> CGSize? { host.minSize ?? appMinimum(appKey(host.target), pid: host.pid) }
+    // A cut pane's sides (docs/PEEK-SPLIT.md §4b): each one with part of its window hidden, shown by a slide when its other
+    // alignment shows it whole, else by a reveal. Nil: not cut.
+    func cutOf(_ host: Host) -> PaneCut? {
+        guard isCut(host), let r = host.rect else { return nil }
+        let f = frame(host), area = placementFor(host).area, m = paneMinimum(host), tol = options.tolerance
+        func hidden(_ side: PaneSide, _ w: CGRect) -> CGFloat {
+            switch side { case .left: r.minX - w.minX; case .right: w.maxX - r.maxX; case .up: r.minY - w.minY; case .down: w.maxY - r.maxY }
+        }
+        var out = PaneCut(revealed: host.revealed)
+        for side in PaneSide.allCases where hidden(side, f) > tol {
+            let other = HostLayout.cut(r, min: m, in: area, endX: side == .left ? false : side == .right ? true : host.endX, endY: side == .up ? false : side == .down ? true : host.endY)
+            out.sides[side] = hidden(side, other) <= tol ? .slide : .reveal
+        }
+        return out
+    }
+
     // Whether a visible pane's window is wider or taller than its pane (cut), and so lies partly under another.
     func isCut(_ host: Host) -> Bool {
         guard host.mode != .window, host.role != .card, let r = host.rect else { return false }
@@ -5473,6 +5507,61 @@ final class HostEngine {
         saveMarker()
     }
 
+    // ---- a cut pane's arrows (docs/PEEK-SPLIT.md §4b) ----
+
+    // `side` of a cut pane's window shown: by a slide (its window's other alignment, its tile's rect moved there over
+    // `slideTime`, eased, one rect a frame: ~0.2 ms each, the window a frame behind at most, measured 2026-11-21 with
+    // Safari), or by a reveal (brought over its neighbours, its whole window in its hole, until `tuck`). A member (no
+    // tile) moves at once. False: not a cut pane's side, or not shown.
+    @discardableResult func slide(_ id: HostID, side: PaneSide) async -> Bool {
+        await serial(planned: true) {
+            guard let h = self.hosts[id], h.phase == .shown, self.isVisible(id), let cut = self.cutOf(h), let mode = cut.sides[side] else { return false }
+            if mode == .reveal {
+                h.revealed = true
+                Diagnostics.note("host: \(id): its \(side.rawValue) side shown over its neighbours (a slide can't: the display's edge)")
+                self.shown = id
+                _ = await self.front(h)
+                self.sayHostedWindows()
+                return true
+            }
+            let from = self.frame(h)
+            switch side { case .left: h.endX = false; case .right: h.endX = true; case .up: h.endY = false; case .down: h.endY = true }
+            let to = self.frame(h)
+            if let tile = h.tile, !h.noTiles, let home = self.tileHome {
+                let t0 = self.sys.now()
+                var steps = 0
+                while true {
+                    let k = min(1, (self.sys.now() - t0) / self.options.slideTime)
+                    let e = 1 - pow(1 - k, 3) // (ease out)
+                    var p = self.placement
+                    p.page = CGRect(x: from.minX + (to.minX - from.minX) * e, y: from.minY + (to.minY - from.minY) * e, width: to.width, height: to.height)
+                    if let rect = HostLayout.tile(p, home: home) { self.sendTileRect(h, tile, rect) }
+                    steps += 1
+                    if k >= 1 { break }
+                    await self.sys.sleep(self.options.liveFrame)
+                }
+                Diagnostics.note("host: \(id): slid to show its \(side.rawValue) side, \(self.r(from)) → \(self.r(to)) in \(self.ms(since: t0)) ms (\(steps) rects)")
+            } else {
+                _ = await self.place(h)
+                Diagnostics.note("host: \(id): moved to show its \(side.rawValue) side, \(self.r(from)) → \(self.r(to)) (no tile: at once)")
+            }
+            self.sayHostedWindows()
+            return true
+        }
+    }
+
+    // A revealed pane tucked back under its neighbours (the pointer left it, Esc, another press): the others raised over
+    // it again, it keeps the keys without a raise (`frontVisible`).
+    func tuck(_ id: HostID) async {
+        await serial(planned: true) {
+            guard let h = self.hosts[id], h.revealed else { return }
+            h.revealed = false
+            Diagnostics.note("host: \(id): tucked back under its neighbours")
+            self.sayHostedWindows()
+            if self.isVisible(id) { await self.frontVisible() }
+        }
+    }
+
     // ---- closing ----
 
     // Given back: out of full screen (a member on the current Space by Accessibility, under the freeze: it's seen; a
@@ -5979,6 +6068,7 @@ final class HostEngine {
 
     var keptActive: Set<pid_t> { Set(actives.kept.keys) }
     var paneFronting: PaneFronting? { sys.paneFronting }
+    var paneDelivery: PaneFronting? { sys.paneDelivery }
 
     private func queueActives() {
         guard sys.keepsPanesActive || !actives.kept.isEmpty else { return } // (off with nothing kept: nothing at all)

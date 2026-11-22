@@ -172,9 +172,15 @@ protocol HostSystem: AnyObject {
     // ---- all panes active (PanesActive.swift): a split's other apps kept active by the window server's records ----
     var keepsPanesActive: Bool { get } // its calls and records' layout passed, the setting on, no record refused
     var paneFronting: PaneFronting? { get } // the window server's front process for the pane click tap (nil: none)
+    // A cut pane's focus without a raise and its presses as records (docs/PEEK-SPLIT.md §4b), whatever the all-panes-
+    // active setting: the records' calls and layout passed, none refused (nil: none, presses routed as before).
+    var paneDelivery: PaneFronting? { get }
     func frontProcess() -> pid_t? // the window server's front process (nil: unread)
     // A kept app made the front one by the window server (its own activation may be taken for done): true, taken.
     func makeFront(pid: pid_t, window: Int) -> Bool
+    // The app made the front one, `window` its key one, its windows left where they are in the window server's order (a
+    // split's cut pane, kept behind the panes it lies under: docs/PEEK-SPLIT.md §4b). True: taken.
+    func focusWithoutRaise(pid: pid_t, window: Int) -> Bool
     func keepActive(_ w: PaneWindow) // sent on its own queue, never to the front app
     func moveActive(_ w: PaneWindow, from: Int) // an app kept: its other window made the key one
     func releaseActive(_ w: PaneWindow)
@@ -223,8 +229,10 @@ extension HostSystem {
     func setLiveResizing(_ space: UInt64, _ on: Bool) -> Bool { false }
     var keepsPanesActive: Bool { false }
     var paneFronting: PaneFronting? { nil }
+    var paneDelivery: PaneFronting? { nil }
     func frontProcess() -> pid_t? { nil }
     func makeFront(pid: pid_t, window: Int) -> Bool { false }
+    func focusWithoutRaise(pid: pid_t, window: Int) -> Bool { false }
     func keepActive(_ w: PaneWindow) {}
     func moveActive(_ w: PaneWindow, from: Int) {}
     func releaseActive(_ w: PaneWindow) {}
@@ -539,8 +547,19 @@ nonisolated final class AXPaneFocus: PaneFocusing, @unchecked Sendable {
     let refuses = PrivateCalls.inTests
     // The window server's front process (all panes active, PanesActive.swift); nil: Accessibility's word alone.
     private let fronting: PaneFronting?
+    // A cut pane's focus without a raise and its presses as records (HostSystem `paneDelivery`); nil: none.
+    private let delivery: PaneFronting?
 
-    init(fronting: PaneFronting? = nil) { self.fronting = fronting }
+    init(fronting: PaneFronting? = nil, delivery: PaneFronting? = nil) { self.fronting = fronting; self.delivery = delivery }
+
+    func focusWithoutRaise(pid: pid_t, window: Int) -> Bool { !refuses && delivery?.focusWithoutRaise(pid: pid, window: window) == true }
+    func deliver(_ event: CGEvent, pid: pid_t, window: Int, origin: CGPoint) -> Bool { !refuses && delivery?.deliver(event, pid: pid, window: window, origin: origin) == true }
+    // Its window's top left as the window server has it now (nil: unread).
+    func windowOrigin(_ window: Int) -> CGPoint? {
+        guard !refuses, let n = CGWindowID(exactly: window), let info = (CGWindowListCopyWindowInfo(.optionIncludingWindow, n) as? [[String: Any]])?.first,
+              let b = info[kCGWindowBounds as String] as? [String: Double], let x = b["X"], let y = b["Y"] else { return nil }
+        return CGPoint(x: x, y: y)
+    }
 
     func frontProcess() -> pid_t? { refuses ? nil : fronting?.frontProcess() }
     func makeFront(pid: pid_t, window: Int) -> Bool { !refuses && fronting?.makeFront(pid: pid, window: window) == true }
@@ -854,8 +873,10 @@ final class RealHostSystem: HostSystem {
     // ---- all panes active ----
     var keepsPanesActive: Bool { keepsActive && activator.map { !$0.refused } == true }
     var paneFronting: PaneFronting? { keepsPanesActive ? activator : nil }
+    var paneDelivery: PaneFronting? { activator.flatMap { $0.refused ? nil : $0 } }
     func frontProcess() -> pid_t? { activator?.frontProcess() }
     func makeFront(pid: pid_t, window: Int) -> Bool { activator?.makeFront(pid: pid, window: window) ?? false }
+    func focusWithoutRaise(pid: pid_t, window: Int) -> Bool { activator?.focusWithoutRaise(pid: pid, window: window) ?? false }
     func keepActive(_ w: PaneWindow) { activator?.keep(w) }
     func moveActive(_ w: PaneWindow, from: Int) { activator?.move(w, from: from) }
     func releaseActive(_ w: PaneWindow) { activator?.release(w) }

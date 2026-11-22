@@ -114,6 +114,8 @@ final class FakeHostedWindow: HostedWindow {
     func setAppMinimums(_ minimums: [String: CGSize]) { appMinimums = minimums }
     var visibleSaid: [[HostShownWindow]] = [] // each setVisibleHosts, in order
     func setVisibleHosts(_ list: [HostShownWindow]) { visibleSaid.append(list) }
+    var paneCutsSaid: [String] = [] // each setPaneCuts, in order (said only when it changes)
+    func setPaneCuts(_ json: String) { if paneCutsSaid.last != json { paneCutsSaid.append(json) } }
     var marginPage: String? // Margin's own page in its page area (setMarginPage)
     var marginPages: [String?] = [] // each setMarginPage, in order
     func setMarginPage(_ page: String?) { guard page != marginPage else { return }; marginPage = page; marginPages.append(page) }

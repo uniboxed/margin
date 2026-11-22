@@ -90,12 +90,29 @@ nonisolated struct HostExtra: Equatable, Sendable {
 
 // A visible host's window, as Margin's window is told it (`HostEngine.hostedWindows`): its window, where it should be
 // (its rect), its role, its place back to front, whether it's in place (shown at its rect: its hole may open).
+// A cut pane's sides (docs/PEEK-SPLIT.md §4b): each one where part of its window is hidden, and how its arrow shows it:
+// a slide (its window moved within its pane, its tile's rect: never past the display), or a reveal (brought over its
+// neighbours: what a slide can't show, its window's part past the display's edge side).
+nonisolated enum PaneSide: String, Sendable, CaseIterable { case left, right, up, down }
+nonisolated enum PaneCutMode: String, Sendable { case slide, reveal }
+nonisolated struct PaneCut: Equatable, Sendable {
+    var sides: [PaneSide: PaneCutMode] = [:]
+    var revealed = false
+}
+
 nonisolated struct HostShownWindow: Equatable, Sendable {
     var window: Int
-    var rect: CGRect
+    var rect: CGRect // its pane (its hole); the page area for one shown alone
     var role: HostRole
     var z: Int
     var focused: Bool
+    // Its window's frame: wider or taller than `rect` for a cut pane (docs/PEEK-SPLIT.md §4b); `rect` otherwise.
+    var frame: CGRect = .zero
+    // Cut and lying under another pane: kept behind it (a press on it delivered to its window without a raise:
+    // PaneClickTap.swift). Revealed: brought over its neighbours, its whole window shown (its hole its frame).
+    var tucked = false
+    var revealed = false
+    var cut: PaneCut? // its sides' arrows (nil: not cut)
 }
 
 nonisolated enum HostStep: String, Sendable, Codable {

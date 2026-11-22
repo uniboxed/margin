@@ -24,6 +24,12 @@
 // - A pane whose window is opening beside the panes shown (Margin.app's `paneLoading`: its item): `<m-pane m-loading>`
 //   with Margin's loader in it (`<m-pane-loader>`: a spinner, "Opening …"), over that pane's box only; the other panes
 //   stay shown and usable (never the page card's loader over the whole page area).
+// - A cut pane (Margin.app's `paneCut`: its window wider or taller than its box, at its own minimum, docs/PEEK-SPLIT.md
+//   §4b): an `<m-pane-arrow m-side="left|right|up|down" m-mode="slide|reveal">` on each side where its window is hidden,
+//   shown while the pointer is over that pane (`m-pane[m-cut-hover]`: Margin.app's `paneHover`, said as the pointer
+//   enters and leaves it) or while it's revealed; pressed, its window slides to show that side (or, at the display's
+//   edge, comes over its neighbours: a reveal), `split.slide`. A revealed pane goes back under its neighbours as the
+//   pointer leaves it, or at another press of its arrow. Nothing at all while no pane is cut.
 // - Adding a pane that can't fit (each pane's minimum and the gaps, bands counted, more than the page area): refused
 //   with a toast before anything is opened (`refusesAdd`, runtime.ts dispatch); so is stacking (or unstacking) panes
 //   that wouldn't fit along the other axis (`refusesAxis`). The sidebar's edge stops where the panes would no longer fit
@@ -45,6 +51,10 @@ export const SPLIT_GAP = 8;
  *  its window, its toolbar hidden). Margin.app's engine doesn't say it to the page (it never touches that window). */
 export const SAFARI_TOOLBAR = 52;
 const STEP = 0.02;
+type PaneSide = 'left' | 'right' | 'up' | 'down';
+type PaneCut = { window: number, revealed: boolean } & Partial<Record<PaneSide, 'slide' | 'reveal'>>;
+const SIDES: readonly PaneSide[] = ['left', 'right', 'up', 'down'];
+const SIDE_WORDS: Record<PaneSide, string> = { left: 'left', right: 'right', up: 'top', down: 'bottom' };
 const BIG_STEP = 0.1;
 
 type Split = NonNullable<ViewModel['split']>;
@@ -126,7 +136,34 @@ export function installSplit(rt: Rt) {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let laidOut = '';
 
-  const host = () => rt.host as typeof rt.host & { appWindow?: boolean, pageHosted?: boolean, paneMinimums?: Record<string, [number, number]>, appMinimums?: Record<string, [number, number]>, paneLoading?: { item: string, name: string } | null, note?: (text: string) => void };
+  const host = () => rt.host as typeof rt.host & { appWindow?: boolean, pageHosted?: boolean, paneMinimums?: Record<string, [number, number]>, appMinimums?: Record<string, [number, number]>, paneLoading?: { item: string, name: string } | null, paneCuts?: Record<string, PaneCut>, paneHover?: number | null, note?: (text: string) => void };
+  // (A revealed pane told to go back once as the pointer left it, until it's no longer revealed.)
+  const tucking = new Set<string>();
+  // A cut pane's arrows (its hidden sides), shown while the pointer is over it or it's revealed; nothing for one that isn't.
+  function arrows(p: HTMLElement, item: string, cut: PaneCut | null, hovered: boolean) {
+    const want = cut ? SIDES.filter((s) => cut[s]) : [];
+    const have = [...p.children].filter((c) => c.localName === 'm-pane-arrow') as HTMLElement[];
+    for (const a of have) if (!want.includes(a.getAttribute('m-side') as PaneSide)) a.remove();
+    for (const side of want) {
+      let a = have.find((x) => x.getAttribute('m-side') === side);
+      if (!a || !a.isConnected) {
+        a = doc.createElement('m-pane-arrow');
+        a.setAttribute('m-side', side);
+        a.setAttribute('role', 'button');
+        p.appendChild(a);
+      }
+      const mode = cut![side]!;
+      if (a.getAttribute('m-mode') !== mode) a.setAttribute('m-mode', mode);
+      const label = cut!.revealed ? 'Put it back' : `Show the ${SIDE_WORDS[side]} of this pane`;
+      if (a.getAttribute('aria-label') !== label) { a.setAttribute('aria-label', label); a.setAttribute('title', label); }
+    }
+    const lit = !!cut && (hovered || cut.revealed);
+    if (lit !== p.hasAttribute('m-cut-hover')) { if (lit) p.setAttribute('m-cut-hover', ''); else p.removeAttribute('m-cut-hover'); }
+    if (cut?.revealed !== p.hasAttribute('m-revealed')) { if (cut?.revealed) p.setAttribute('m-revealed', ''); else p.removeAttribute('m-revealed'); }
+    // (Revealed and the pointer gone from it: back under its neighbours, once.)
+    if (cut?.revealed && !hovered) { if (!tucking.has(item)) { tucking.add(item); rt.host.perform?.('split.slide', { item, side: 'back' }); } }
+    else tucking.delete(item);
+  }
   const floorsOf = (split: { axis: string, panes: readonly unknown[] }) => paneFloors(split);
   const page = () => view.pageEl as HTMLElement | null;
   /** The split shown here now: the item in front a pane of it, a window hosted in the page area. */
@@ -216,7 +253,9 @@ export function installSplit(rt: Rt) {
     const ratios = ratiosFor(split);
     const floors = floorsOf(split);
     const opening = host().paneLoading ?? null;
-    const key = JSON.stringify([split.id, split.axis, split.panes.map((p) => [p.id, p.active, p.url, p.title, p.host]), ratios, floors, opening]);
+    const cuts = host().paneCuts ?? {};
+    const hover = host().paneHover ?? null;
+    const key = JSON.stringify([split.id, split.axis, split.panes.map((p) => [p.id, p.active, p.url, p.title, p.host]), ratios, floors, opening, cuts, hover]);
     if (key === laidOut) return;
     laidOut = key;
     const axis = row(split) ? 'row' : 'column';
@@ -252,6 +291,8 @@ export function installSplit(rt: Rt) {
       if (p.getAttribute('m-pane-id') !== id) p.setAttribute('m-pane-id', id);
       if (pane.active) { if (!p.hasAttribute('m-focused')) p.setAttribute('m-focused', ''); } else if (p.hasAttribute('m-focused')) p.removeAttribute('m-focused');
       loader(p, opening && opening.item === id ? opening.name : null);
+      const cut = cuts[id] ?? null;
+      arrows(p, id, cut, !!cut && cut.window === hover);
       const s = p.style;
       const grow = String(round4(ratios[i] ?? 1 / n));
       if (s.flexGrow !== grow) s.flexGrow = grow;
@@ -294,6 +335,18 @@ export function installSplit(rt: Rt) {
     return el && d && d.parentElement === el ? d : null;
   };
 
+  // A cut pane's arrow pressed: its window slid (or revealed) on that side; on a revealed pane, back under its neighbours.
+  rt.listen(rt.container, 'pointerdown', (e: PointerEvent) => {
+    const a = (e.target as Element | null)?.closest?.('m-pane-arrow');
+    const p = a?.parentElement;
+    if (e.button !== 0 || !a || !p || p.localName !== 'm-pane' || p.parentElement !== page()) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const item = p.getAttribute('m-pane-id') ?? '';
+    const cut = host().paneCuts?.[item];
+    if (!cut) return;
+    rt.host.perform?.('split.slide', { item, side: cut.revealed ? 'back' : a.getAttribute('m-side') });
+  }, true);
   rt.listen(rt.container, 'pointerdown', (e: PointerEvent) => {
     if (e.button !== 0 || drag) return;
     const d = dividerAt(e.target);

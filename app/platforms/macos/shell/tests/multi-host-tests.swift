@@ -94,7 +94,7 @@ func multiHostTests() {
               e.shown == textEdit.id && e.visible[textEdit.id]?.role == .main && e.visible[notes.id] == HostVisible(rect: right, role: .pane, z: 1) && e.shownWindow == edit,
               "\(e.visible) \(String(describing: e.shown))")
         check("multi-host: …Margin's window told both windows, each at its rect (its holes)",
-              told.last == [HostShownWindow(window: edit, rect: left, role: .main, z: 0, focused: true), HostShownWindow(window: n, rect: right, role: .pane, z: 1, focused: false)], "\(told)")
+              told.last == [HostShownWindow(window: edit, rect: left, role: .main, z: 0, focused: true, frame: left), HostShownWindow(window: n, rect: right, role: .pane, z: 1, focused: false, frame: right)], "\(told)")
         polls(w, e)
         check("multi-host: two visible hosts held at their rects through polls (desired keeps both: neither parked nor placed again)",
               w.bounds(window: edit) == left && w.bounds(window: n) == right && inMargin(w, edit) && inMargin(w, n) && e.hosts[notes.id]?.phase == .shown
@@ -255,6 +255,45 @@ func multiHostTests() {
         check("multi-host: a pane narrower than its window's minimum: shown cut, its window at its minimum (start aligned, within the display), never below it",
               shown && b == want && b.width == 700 && b.maxX <= FakeHostWorld.display.maxX && w.belowMinimum == 0 && e.visible[notes.id]?.rect == right,
               "\(r) \(b) want \(want)")
+    }
+
+    // ---- a cut pane's arrows (docs/PEEK-SPLIT.md §4b): its sides, a slide, a reveal, tucked back; kept behind ----
+    do {
+        let (w, e) = world()
+        w.minSize["com.apple.Notes"] = CGSize(width: 700, height: 400)
+        var told: [[HostShownWindow]] = []
+        e.hostedWindows = { told.append($0) }
+        _ = open(e, notes)
+        _ = open(e, textEdit)
+        let n = window(w, "com.apple.Notes")
+        _ = layout(e, textEdit, left, [HostExtra(target: notes, role: .pane, rect: right)])
+        let h = e.hosts[notes.id]
+        let start = CGRect(x: 812, y: 41, width: 700, height: 933), end = CGRect(x: 804, y: 41, width: 700, height: 933)
+        let cut = h.flatMap { e.cutOf($0) }
+        check("cut pane: its sides: the left hidden 82 (its window can't start at 894 within the display: a reveal), the right 8 (under Margin's frame: a slide)",
+              cut?.sides == [.left: .reveal, .right: .slide] && w.bounds(window: n) == start, "\(String(describing: cut)) \(String(describing: w.bounds(window: n)))")
+        let first = told.last?.first { $0.window == n }
+        check("cut pane: …told with its pane the hole, its window's frame apart, tucked under the left pane, its sides",
+              first?.rect == right && first?.frame == start && first?.tucked == true && first?.cut?.sides[.left] == .reveal, "\(String(describing: first))")
+        let mark = w.calls.count
+        let slid = hostRun { await e.slide(notes.id, side: .right) } ?? false
+        let rects = w.calls.dropFirst(mark).filter { $0.hasPrefix("tileRect \(w.tileOf(n) ?? 0) ") }.count
+        check("cut pane: a slide to its right: its window at its end alignment (804…1504) by several rects (eased, one a frame), its right no longer hidden",
+              slid && w.bounds(window: n) == end && rects >= 3 && h.flatMap { e.cutOf($0) }?.sides[.right] == nil, "\(slid) \(String(describing: w.bounds(window: n))) \(rects)")
+        let calls0 = w.activeCalls.count
+        _ = hostRun { await e.focus(notes.id, fronted: false) }
+        check("cut pane: focused: its app given the keys without a raise (kept behind the pane it lies under), never made front by a raising call",
+              w.activeCalls.dropFirst(calls0).contains { $0.hasPrefix("focusWithoutRaise ") && $0.hasSuffix(" \(n)") } && !w.activeCalls.dropFirst(calls0).contains { $0.hasPrefix("makeFront ") && $0.hasSuffix(" \(n)") },
+              "\(w.activeCalls.dropFirst(calls0))")
+        let revealed = hostRun { await e.slide(notes.id, side: .left) } ?? false
+        let shownRevealed = told.last?.first { $0.window == n }
+        check("cut pane: its left (a slide can't show it): revealed over its neighbours, told so (its hole its whole window), no longer tucked",
+              revealed && h?.revealed == true && shownRevealed?.revealed == true && shownRevealed?.tucked == false, "\(revealed) \(String(describing: shownRevealed))")
+        _ = hostRun { await e.tuck(notes.id) }
+        let back = told.last?.first { $0.window == n }
+        check("cut pane: tucked back: no longer revealed, tucked under the left pane again", h?.revealed == false && back?.revealed == false && back?.tucked == true, "\(String(describing: back))")
+        let none = hostRun { await e.slide(textEdit.id, side: .left) } ?? true
+        check("cut pane: a pane that isn't cut: no slide", !none)
     }
 
     // ---- tiles off: a pane as a plain member, placed at its rect by its own Space's reservation ----

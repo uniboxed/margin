@@ -590,6 +590,27 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         if changed { keepFront() }
     }
 
+    // A split's cut panes, for their arrows (docs/PEEK-SPLIT.md §4b): pushed when it changes, and in each hello.
+    private(set) var paneCuts = "{}"
+    func setPaneCuts(_ json: String) {
+        guard json != paneCuts else { return }
+        paneCuts = json
+        cutWindows = Set((try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: [String: Any]])?.values.compactMap { $0["window"] as? Int } ?? [])
+        push(#"{"type":"paneCut","panes":"# + json + "}")
+        if cutWindows.isEmpty, hoveredCut != nil { hoveredCut = nil; push(#"{"type":"paneHover","window":null}"#) }
+    }
+    // The cut panes' windows, and the one the pointer is over now (said to the page as it enters and leaves one: nothing
+    // per move, nothing at all while none is cut).
+    private var cutWindows: Set<Int> = []
+    private var hoveredCut: Int?
+    private func hoverCut(_ at: CGPoint) {
+        guard !cutWindows.isEmpty else { return }
+        let over = visibleHosts.last { cutWindows.contains($0.window) && ($0.revealed ? $0.frame : $0.rect).contains(at) }?.window
+        guard over != hoveredCut else { return }
+        hoveredCut = over
+        push(#"{"type":"paneHover","window":\#(over.map(String.init) ?? "null")}"#)
+    }
+
     // ---- a split's panes (docs/PEEK-SPLIT.md §4) ----
 
     // The split its page lays out now, each pane's box on the screen (top left), in the split's order; nil: none, or not
@@ -705,8 +726,10 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         var list: [(rect: CGRect, host: HostShownWindow)] = []
         if pageState == .shown, let page = window.pageRect {
             for v in visibleHosts {
-                let bounds = followingPage ? v.rect : visibleFrames[v.window] ?? v.rect
-                let r = bounds.intersection(v.rect).intersection(page)
+                // (Its pane; a revealed one's whole window, over its neighbours: docs/PEEK-SPLIT.md §4b.)
+                let pane = v.revealed ? v.frame : v.rect
+                let bounds = followingPage ? pane : visibleFrames[v.window] ?? pane
+                let r = bounds.intersection(pane).intersection(page)
                 if !r.isNull, r.width >= 1, r.height >= 1 { list.append((r, v)) }
             }
         }
@@ -763,7 +786,8 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         for h in paneHoles {
             guard let pid = paneOwners[h.window] ?? hostedPid(h.window) else { continue }
             paneOwners[h.window] = pid
-            panes.append(PaneClickScene.Pane(rect: h.rect, pid: pid, window: h.window, card: h.card))
+            let shown = visibleHosts.first { $0.window == h.window }
+            panes.append(PaneClickScene.Pane(rect: h.rect, pid: pid, window: h.window, card: h.card, tucked: shown?.tucked == true, frame: shown?.frame ?? h.rect))
         }
         if paneOwners.count > 8 { paneOwners = paneOwners.filter { k, _ in paneHoles.contains { $0.window == k } } }
         guard !panes.isEmpty else { return nil }
@@ -1195,6 +1219,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         let local = CGPoint(x: at.x - content.minX, y: at.y - content.minY)
         setIgnoring(buttonsDown ? ignoring : passes(at))
         hover(at, inside: content.contains(at), buttonsDown: buttonsDown)
+        if !buttonsDown { hoverCut(at) }
         if content.contains(at) {
             pointerInside = true
             let now = Diagnostics.now()
@@ -1815,6 +1840,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         if !paneMinimums.isEmpty { json += #","paneMin":"# + paneMinimumsJSON }
         if !appMinimums.isEmpty { json += #","appMin":"# + minimumsJSON(appMinimums) }
         if paneLoading != nil { json += #","paneLoading":"# + paneLoadingJSON }
+        if paneCuts != "{}" { json += #","paneCut":"# + paneCuts }
         json += #","pageState":""# + pageState.rawValue + #"","pageOpening":"# + (loaderLabel.flatMap { jsonString($0) } ?? "null")
         json += #","pageOpeningBundleId":"# + (loaderApp.flatMap { jsonString($0) } ?? "null")
         if starting { json += #","pageStarting":true"# }
@@ -1944,6 +1970,12 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             // edge, every pane's window following its rect.)
             if name == "split.resizing" { return sidebarResizing((body["arg"] as? JSONObject)?["on"] as? Bool == true, divider: true) }
             if name == "haptic.alignment" { return alignmentTick() }
+            // (A cut pane's arrow, or its reveal let go (ui/behaviors/split.ts): the session's, docs/PEEK-SPLIT.md §4b.)
+            if name == "split.slide" {
+                let a = body["arg"] as? JSONObject
+                guard let item = a?["item"] as? String, let side = a?["side"] as? String, ["left", "right", "up", "down", "back"].contains(side) else { return }
+                return owner?.onPaneSlide?(self, item, side) ?? ()
+            }
             guard !name.isEmpty else { return }
             ask(name, body["arg"] as? JSONObject ?? [:])
         case "log":
@@ -2224,12 +2256,13 @@ final class MarginWindows {
     // it held comes back on the main thread (`onPaneClick`), its own lines into the log.
     lazy var makePaneTap: (_ report: @escaping @Sendable (PaneClickResult) -> Void, _ said: @escaping @Sendable (String) -> Void) -> PaneClickTapping? = { [weak self] report, said in
         guard !PrivateCalls.inTests else { return nil }
-        return PaneClickTap(core: PaneClickCore(focuser: AXPaneFocus(fronting: self?.paneFronting()), report: report), said: said)
+        return PaneClickTap(core: PaneClickCore(focuser: AXPaneFocus(fronting: self?.paneFronting(), delivery: self?.paneDelivery()), report: report), said: said)
     }
     // All panes active (PanesActive.swift): the window server's front process for the tap (the engine's; nil: none), the
     // split as the engine is told it (each change of the scene), each change of the front app (NSWorkspace's, the tap's
     // focus), and the apps kept active as the engine says them (the tap's scene carries them).
     var paneFronting: () -> PaneFronting? = { nil }
+    var paneDelivery: () -> PaneFronting? = { nil }
     var onPanesActive: ((PaneClickScene?) -> Void)?
     var onFrontApp: ((pid_t?) -> Void)?
     private(set) var keptActive: Set<pid_t> = []
@@ -2245,6 +2278,8 @@ final class MarginWindows {
     var paneTapTrusted: () -> Bool = { AXIsProcessTrusted() }
     var paneTapGrace: TimeInterval = 1
     var onPaneClick: ((MarginWindowController, PaneClickResult) -> Void)?
+    // A cut pane's arrow in a Margin window's page (`split.slide`: its item, the side or `back`): docs/PEEK-SPLIT.md §4b.
+    var onPaneSlide: ((MarginWindowController, String, String) -> Void)?
     private(set) var paneTap: PaneClickTapping?
     private(set) var paneTapsMade = 0 // (the tests read them)
     private(set) var paneTapsEnded = 0

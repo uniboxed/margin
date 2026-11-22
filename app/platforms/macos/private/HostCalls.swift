@@ -243,12 +243,16 @@ nonisolated struct HostPrivate: @unchecked Sendable {
     // pointers given that it never writes: a callee taking fewer ignores them; one taking more never writes past them)
     // and set (window, options), a pid's serial number and back.
     typealias PostRecord = @convention(c) (UnsafePointer<ProcessSerialNumber>, UnsafePointer<UInt8>) -> Int32
+    typealias RecordPointer = @convention(c) (CGEvent) -> UnsafeRawPointer?
     typealias GetFrontProcess = @convention(c) (UnsafeMutablePointer<ProcessSerialNumber>, UnsafeMutableRawPointer, UnsafeMutableRawPointer) -> Int32
     typealias SetFrontProcess = @convention(c) (UnsafePointer<ProcessSerialNumber>, UInt32, UInt32) -> Int32
     typealias ProcessForPID = @convention(c) (pid_t, UnsafeMutablePointer<ProcessSerialNumber>) -> Int32
     typealias ProcessPID = @convention(c) (UnsafePointer<ProcessSerialNumber>, UnsafeMutablePointer<pid_t>) -> Int32
     // `_SLPSSetFrontProcessWithOptions`' kCPSUserGenerated: as a person's click or ⌘-Tab makes an app the front one.
     static let userGenerated: UInt32 = 0x200
+    // …kCPSNoWindows: the app made the front one, its windows left where they are in the window server's order (a split's
+    // cut pane, kept behind the panes it lies under: docs/PEEK-SPLIT.md §4b; yabai's focus without raise).
+    static let noWindows: UInt32 = 0x400
 
     let refuses: Bool
     private var mainConnectionID: MainConnectionID?
@@ -274,6 +278,7 @@ nonisolated struct HostPrivate: @unchecked Sendable {
     private var initCreateTile: InitSetValues?
     private var performCreateTile: PerformAnswering?
     private var postRecord: PostRecord?
+    private var recordPointer: RecordPointer?
     private var getFrontProcess: GetFrontProcess?
     private var setFrontProcess: SetFrontProcess?
     private var processForPID: ProcessForPID?
@@ -319,6 +324,7 @@ nonisolated struct HostPrivate: @unchecked Sendable {
         }
         if availability.panesActive {
             postRecord = fn("SLPSPostEventRecordTo", .skyLight, PostRecord.self)
+            recordPointer = fn("SLEventRecordPointer", .skyLight, RecordPointer.self)
             getFrontProcess = fn("SLPSGetFrontProcess", .skyLight, GetFrontProcess.self)
             setFrontProcess = fn("_SLPSSetFrontProcessWithOptions", .skyLight, SetFrontProcess.self)
             processForPID = fn("GetProcessForPID", .hiServices, ProcessForPID.self)
@@ -423,6 +429,12 @@ nonisolated struct HostPrivate: @unchecked Sendable {
         return record.withUnsafeBufferPointer { postRecord(&psn, $0.baseAddress!) }
     }
 
+    // An event's own record as the window server keeps it (PaneRecords.length bytes); nil: unread.
+    func record(of event: CGEvent) -> [UInt8]? {
+        guard !refuses, let recordPointer, let p = recordPointer(event) else { return nil }
+        return Array(UnsafeBufferPointer(start: p.assumingMemoryBound(to: UInt8.self), count: Int(PaneRecords.length)))
+    }
+
     // The window server's front process (the keyboard's, the menu bar's): its pid; nil: unread.
     func frontProcess() -> pid_t? {
         guard !refuses, let getFrontProcess, let processPID else { return nil }
@@ -435,9 +447,9 @@ nonisolated struct HostPrivate: @unchecked Sendable {
     }
 
     // The app of `pid` made the window server's front process, `window` its window, as a person's click would. True: taken.
-    func setFront(pid: pid_t, window: Int) -> Bool {
+    func setFront(pid: pid_t, window: Int, options: UInt32 = HostPrivate.userGenerated) -> Bool {
         guard let setFrontProcess, var psn = serialNumber(pid), let n = UInt32(exactly: window) else { return false }
-        return setFrontProcess(&psn, n, Self.userGenerated) == 0
+        return setFrontProcess(&psn, n, options) == 0
     }
 
     private func alloc(_ cls: AnyClass?) -> UnsafeMutableRawPointer? {
