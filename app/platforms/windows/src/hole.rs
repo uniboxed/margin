@@ -154,9 +154,91 @@ pub fn chrome_hit(x: i32, y: i32, width: i32, height: i32, border: i32, sizable:
     Hit::Client
 }
 
+/// Where the page's `<m-page>` is (and each `<m-pane>` of a split), from its `layout` op (ui/host.ts `Geometry`: the
+/// page's insets from the container, its corner radius, the panes' boxes in the container), in client pixels at
+/// `scale`. These are the rects the windows Margin hosts go to (plus the window's client origin on the screen) and the
+/// holes cut from Margin's window.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PageLayout {
+    pub page: PxRect,
+    pub radius: i32,
+    /// A split's panes by item, in its order (empty: no split).
+    pub panes: Vec<(String, PxRect)>,
+}
+
+impl PageLayout {
+    /// The holes: each pane, or the page area when there's no split.
+    pub fn holes(&self) -> Vec<PxRect> {
+        if self.panes.is_empty() { vec![self.page] } else { self.panes.iter().map(|p| p.1).collect() }
+    }
+}
+
+/// The page's `layout` op read as untrusted (`{ geometry }`): None if it isn't one, or the page area is empty.
+pub fn page_layout(body: &serde_json::Value, scale: f64) -> Option<PageLayout> {
+    let g = body.get("geometry")?;
+    if !(scale.is_finite() && scale > 0.0) {
+        return None;
+    }
+    let num = |v: Option<&serde_json::Value>| v.and_then(|x| x.as_f64()).filter(|x| x.is_finite());
+    let px = |v: f64| (v * scale).round() as i32;
+    let insets = g.get("insets")?;
+    let container = g.get("container")?;
+    let (w, h) = (num(container.get("width"))?, num(container.get("height"))?);
+    let (l, t, r, b) =
+        (num(insets.get("left"))?, num(insets.get("top"))?, num(insets.get("right"))?, num(insets.get("bottom"))?);
+    let page = PxRect::new(px(l), px(t), px(w - r), px(h - b));
+    if page.width() <= 0 || page.height() <= 0 {
+        return None;
+    }
+    let panes = g
+        .get("panes")
+        .and_then(|p| p.as_array())
+        .map(|list| {
+            list.iter()
+                .take(4)
+                .filter_map(|p| {
+                    let id = p.get("id")?.as_str()?.chars().take(256).collect::<String>();
+                    let a = p.get("rect")?.as_array()?;
+                    let n: Vec<f64> = a.iter().filter_map(|x| x.as_f64()).filter(|x| x.is_finite()).collect();
+                    (n.len() == 4 && n[2] > 0.0 && n[3] > 0.0)
+                        .then(|| (id, PxRect::new(px(n[0]), px(n[1]), px(n[0] + n[2]), px(n[1] + n[3]))))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    Some(PageLayout { page, radius: px(num(g.get("radius")).unwrap_or(0.0).clamp(0.0, 64.0)), panes })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_pages_layout_in_client_pixels() {
+        let body = serde_json::json!({ "geometry": {
+            "insets": { "left": 260, "top": 40, "right": 8, "bottom": 8 }, "radius": 10, "radii": [],
+            "outer": { "left": 0, "top": 0, "right": 0, "bottom": 0, "radius": 0 },
+            "container": { "width": 1280, "height": 800 },
+        } });
+        let l = page_layout(&body, 1.5).unwrap_or_else(|| panic!("a layout"));
+        assert_eq!(l.page, PxRect::new(390, 60, 1908, 1188));
+        assert_eq!(l.radius, 15);
+        assert_eq!(l.holes(), vec![l.page]);
+        let split = serde_json::json!({ "geometry": {
+            "insets": { "left": 260, "top": 40, "right": 8, "bottom": 8 }, "radius": 10,
+            "container": { "width": 1280, "height": 800 },
+            "panes": [{ "id": "t-a", "rect": [260, 40, 500, 752] }, { "id": "t-b", "rect": [766, 40, 506, 752] }, { "id": "x", "rect": [0, 0, -1, 4] }],
+        } });
+        let s = page_layout(&split, 1.0).unwrap_or_else(|| panic!("a split"));
+        assert_eq!(
+            s.panes,
+            vec![("t-a".into(), PxRect::new(260, 40, 760, 792)), ("t-b".into(), PxRect::new(766, 40, 1272, 792))]
+        );
+        assert_eq!(s.holes().len(), 2);
+        assert_eq!(page_layout(&serde_json::json!({ "geometry": { "insets": {}, "container": {} } }), 1.0), None);
+        assert_eq!(page_layout(&serde_json::json!({}), 1.0), None);
+        assert_eq!(page_layout(&body, 0.0), None);
+    }
 
     fn area(parts: &[PxRect]) -> i64 {
         parts.iter().map(|p| p.width() as i64 * p.height() as i64).sum()

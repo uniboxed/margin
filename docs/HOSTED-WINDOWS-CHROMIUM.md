@@ -454,16 +454,18 @@ adapter of its own and no copy of the logic.
 
 1. **The plan** (this file). *Done 2026-11-22.*
 2. **The copy, Chromium:** the hosted windows known, no "Margin full screen" flip in them, the mark; unit and headless
-   Chromium e2e tests; Safari's bundle differing only by the reviewed lines.
+   Chromium e2e tests; Safari's bundle differing only by the reviewed lines. *Done 2026-11-22.*
 3. **margin-core `hosted_browser`:** the copy's window contract as typed requests and answers (one place for both apps),
-   with vectors shared with the TypeScript tests.
+   with vectors shared with the TypeScript tests. *Done 2026-11-22.*
 4. **Windows mechanism, OS-neutral half:** the adapter over `WinOs` with the simulated Windows, the hole region, the
    frame's hit test, the marker and recovery, the mark binding, the browser's command line. Compiles and passes clippy
-   for both Windows targets.
+   for both Windows targets. *Done 2026-11-22.*
 5. **Windows mechanism, Win32 half:** `WinOs` over Win32, Margin's own window (frame, hit test, region, WebView2 in
    `app-window` mode, DPI), and `margin.exe --host-check <exe>` (a dev mode hosting one app's window in Margin's page area
    with the reconcile loop, the restack and the marker) for the real-PC checks. The default launch unchanged (the
-   overlay shell).
+   overlay shell). *Done 2026-11-22, compile- and clippy-checked only; the web view is attached to Margin's window by
+   `appwindow::attach` and its `layout`/`chrome` ops read by `hole::page_layout`/`Chrome::from_op`, but the page's
+   `app-window` hello is the session's (§10 item 7), so `--host-check` paints the window plainly.*
 6. **The session plugged in** (after the parent's steps 2–3): margin.exe's hosted mode driven by `host::session`, the
    library on Windows (its runner, decision 2), Chrome and Edge started and bound (§4.4), keys, start and quit; behind
    `--hosted` until a real-PC run passes UNVERIFIED's hosting list.
@@ -476,3 +478,10 @@ adapter of its own and no copy of the logic.
 ## 12. Progress
 
 - 2026-11-22: this plan (branch `feat/hosted-windows-chromium`).
+- 2026-11-22: steps 2–5. The copy (extension/background/hosted.ts `madeForApp`/`isHosted`, handlers.ts `newWindow {
+  hosted, mark }`, newtab.ts's marked title, background.ts's full-screen guard): `tests/hosted-chromium.test.ts`,
+  `tests/e2e/chromium-hosted.test.ts` (the real Chrome build in headless Chromium, the real connector: it failed
+  without the guard, the copy's own `windows.update` to normal and back). margin-core `hosted_browser` with
+  `tests/fixtures/hosted-browser.json`. The Windows adapter (`hosting.rs`, `hosting/win32.rs`), `hole.rs`, `marker.rs`,
+  `chromium.rs`, `appwindow.rs`, `hostcheck.rs`, `browsers::candidates`, `process::integrity`. Every real-PC check:
+  docs/windows/UNVERIFIED.md "Hosting (the hosted design)".

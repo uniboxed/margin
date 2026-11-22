@@ -75,13 +75,19 @@ pub enum OverlayEvent {
 /// A callback kept in a cell (taken by `try_borrow_mut` while it runs).
 type Callback<T> = RefCell<Option<Box<dyn FnMut(T)>>>;
 
+/// A window's mouse as it's handed to a web view under visual hosting (an overlay's, Margin's own window's: appwindow.rs).
+#[derive(Default)]
+pub(crate) struct Pointer {
+    pub(crate) sink: RefCell<Option<Box<dyn MouseSink>>>,
+    pub(crate) cursor: Cell<Option<HCURSOR>>,
+    pub(crate) tracking: Cell<bool>,
+    pub(crate) buttons_down: Cell<u32>,
+}
+
 #[derive(Default)]
 struct State {
-    sink: RefCell<Option<Box<dyn MouseSink>>>,
+    pointer: Pointer,
     listener: Callback<OverlayEvent>,
-    cursor: Cell<Option<HCURSOR>>,
-    tracking: Cell<bool>,
-    buttons_down: Cell<u32>,
 }
 
 pub struct Overlay {
@@ -130,7 +136,7 @@ impl Overlay {
         // SAFETY: as in msgwin.rs: USERDATA holds one strong count, taken back in WM_NCDESTROY.
         unsafe { SetWindowLongPtrW(hwnd, GWLP_USERDATA, Rc::into_raw(state.clone()) as isize) };
         // SAFETY: a system cursor; shared, never destroyed.
-        state.cursor.set(unsafe { LoadCursorW(None, IDC_ARROW) }.ok());
+        state.pointer.cursor.set(unsafe { LoadCursorW(None, IDC_ARROW) }.ok());
         Ok(Self { hwnd, state })
     }
 
@@ -139,7 +145,7 @@ impl Overlay {
     }
 
     pub fn set_mouse_sink(&self, sink: Box<dyn MouseSink>) {
-        *self.state.sink.borrow_mut() = Some(sink);
+        *self.state.pointer.sink.borrow_mut() = Some(sink);
     }
 
     pub fn set_listener(&self, f: impl FnMut(OverlayEvent) + 'static) {
@@ -148,9 +154,9 @@ impl Overlay {
 
     /// The cursor shown over it (the web view's, as it changes).
     pub fn set_cursor(&self, cursor: HCURSOR) {
-        self.state.cursor.set(Some(cursor));
+        self.state.pointer.cursor.set(Some(cursor));
         // While the pointer is over it (it gets the mouse), show it now rather than at the next move.
-        if self.state.tracking.get() {
+        if self.state.pointer.tracking.get() {
             // SAFETY: a cursor handle the web view gave; SetCursor only shows it.
             unsafe { SetCursor(Some(cursor)) };
         }
@@ -321,7 +327,7 @@ fn is_up(msg: u32) -> bool {
     matches!(msg, WM_LBUTTONUP | WM_RBUTTONUP | WM_MBUTTONUP | WM_XBUTTONUP)
 }
 
-fn mouse(hwnd: HWND, state: &State, msg: u32, wparam: WPARAM, lparam: LPARAM) {
+pub(crate) fn mouse(hwnd: HWND, state: &Pointer, msg: u32, wparam: WPARAM, lparam: LPARAM) {
     let keys = (wparam.0 & 0xFFFF) as u32;
     let (mut x, mut y) = (lo(lparam.0), hi(lparam.0));
     let mut data = 0u32;
@@ -409,16 +415,16 @@ unsafe extern "system" fn proc_(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LP
         WM_MOUSEMOVE | WM_LBUTTONDOWN | WM_LBUTTONUP | WM_LBUTTONDBLCLK | WM_RBUTTONDOWN | WM_RBUTTONUP
         | WM_RBUTTONDBLCLK | WM_MBUTTONDOWN | WM_MBUTTONUP | WM_MBUTTONDBLCLK | WM_XBUTTONDOWN | WM_XBUTTONUP
         | WM_XBUTTONDBLCLK | WM_MOUSEWHEEL | WM_MOUSEHWHEEL | WM_MOUSELEAVE => {
-            mouse(hwnd, &state, msg, wparam, lparam);
+            mouse(hwnd, &state.pointer, msg, wparam, lparam);
             // X buttons: TRUE says it was handled (no browser back/forward from them).
             LRESULT(if matches!(msg, WM_XBUTTONDOWN | WM_XBUTTONUP | WM_XBUTTONDBLCLK) { 1 } else { 0 })
         }
         WM_CAPTURECHANGED => {
-            state.buttons_down.set(0);
+            state.pointer.buttons_down.set(0);
             LRESULT(0)
         }
         WM_SETCURSOR if (lparam.0 & 0xFFFF) as u32 == HTCLIENT => {
-            if let Some(c) = state.cursor.get() {
+            if let Some(c) = state.pointer.cursor.get() {
                 // SAFETY: a cursor handle from the system or the web view.
                 unsafe { SetCursor(Some(c)) };
             }

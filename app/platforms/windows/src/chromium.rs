@@ -123,6 +123,45 @@ pub fn profiles(local_state: &str) -> Vec<(String, String)> {
     out
 }
 
+/// The browsers' executables Margin starts, by browser.
+pub fn exe_name(browser: &str) -> Option<&'static str> {
+    match browser {
+        "chrome" => Some("chrome.exe"),
+        "edge" => Some("msedge.exe"),
+        _ => None,
+    }
+}
+
+#[cfg(windows)]
+pub use win::{executable, launch};
+
+#[cfg(windows)]
+mod win {
+    use std::path::PathBuf;
+
+    use windows::Win32::System::Registry::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
+
+    use super::launch_args;
+    use crate::win::RegKey;
+
+    const APP_PATHS: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\";
+
+    /// A browser's executable from `App Paths` (this user's first, then the machine's), as Windows' own Run box finds
+    /// it. None: not installed (or registered somewhere Margin doesn't look).
+    pub fn executable(exe: &str) -> Option<PathBuf> {
+        [HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE]
+            .into_iter()
+            .filter_map(|root| RegKey::open_read(root, &format!("{APP_PATHS}{exe}"))?.get_string(None))
+            .map(|p| PathBuf::from(p.trim().trim_matches('"')))
+            .find(|p| p.is_file())
+    }
+
+    /// The browser started for Margin in a profile's folder, with no window of its own; its process id.
+    pub fn launch(exe: &std::path::Path, profile_dir: &str) -> std::io::Result<u32> {
+        std::process::Command::new(exe).args(launch_args(profile_dir)).spawn().map(|c| c.id())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
