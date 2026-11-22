@@ -113,6 +113,15 @@ The stand-in world plays the same switches off screen: `app/platforms/macos/shel
   its own: Margin killed (SIGKILL) with the split up, the kept copy still active, Margin opened again: `a crashed Margin
   kept 1 app active: 1 let go`, the copy's resign logged before its quit. Clicks and keys only where pane-clicks posts
   them. Written 2026-11-21 and dry-run only so far.
+- `cut-panes` (docs/PEEK-SPLIT.md §4b: a pane narrower than its window, `suite/CutPanes.swift`): Chameleon 1 (its
+  `minSize` 800×300) added beside Chameleon 2 as pane-clicks does, at the page area's end: its window 800 wide from its
+  pane's start, the rest past the display's edge, read every 0.5 s for 6 s (never moved, never out of its tile, nothing
+  of it over Chameleon 2's pane, Margin's `cut panes` saying only its right arrow); the pointer into its pane, its right
+  arrow pressed on Margin's own window (only where the window list says Margin's then the copy's): slid (Margin's line,
+  its window at its end alignment, behind Chameleon 2's window, its left arrow now, the press never the copy's); a first
+  click into it under Chameleon 2's pane (pane-clicks' step) and its window still behind; its left arrow: back past the
+  edge, held 4 s; Margin's idle cost with it up. 14 passed on the real screen, 2026-11-22 (slides 152-159 ms, 0.36% CPU
+  idle, 0 wakeups/s).
 - `real-apps` (opt-in, `--real-apps`): Maps, Phone, Messages, Mail, WhatsApp, Safari, Notes, Calculator (the list at the
   top of `suite/RealApps.swift`; skipped if not installed). Recorded first (running, pid, windows, saved-state defaults
   keys, Margin's library items); each hosted through the dev hook only and its desired state held 30 s; a switch to
