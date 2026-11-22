@@ -87,4 +87,20 @@ double margin_keys_next_tick(MarginKeys *keys);
 MarginKeyHit margin_keys_tick(MarginKeys *keys, double now, uint32_t modifiers_down);
 uint8_t *margin_keys_state(MarginKeys *keys, size_t *out_len);
 
+// The lasting data (data/, ffi data.rs): the profiles' sync and the app's library, each one JSON call; their stores
+// write on a thread of their own and call `wake` there after each save (hop to the main thread, then `written`). The
+// choice for a profile with no set: `need` gets the question as JSON and answers JSON allocated with malloc (or NULL:
+// ask), freed by the data object with free.
+typedef struct MarginData MarginData;
+typedef struct MarginLibrary MarginLibrary;
+typedef void (*MarginDataWake)(void *ctx);
+typedef uint8_t *(*MarginDataNeed)(void *ctx, const uint8_t *question, size_t len, size_t *out_len);
+
+MarginData *margin_data_new(const uint8_t *root, size_t len, bool background, void *ctx, MarginDataWake wake, MarginDataNeed need);
+void margin_data_free(MarginData *data);
+uint8_t *margin_data_call(MarginData *data, const uint8_t *request, size_t len, size_t *out_len);
+MarginLibrary *margin_library_new(const uint8_t *root, size_t len, bool background, void *ctx, MarginDataWake wake);
+void margin_library_free(MarginLibrary *library);
+uint8_t *margin_library_call(MarginLibrary *library, const uint8_t *request, size_t len, size_t *out_len);
+
 #endif

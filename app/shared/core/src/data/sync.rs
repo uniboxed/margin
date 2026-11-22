@@ -110,7 +110,9 @@ pub enum NeedChoice {
 }
 
 /// Asked before `data.need` for a profile with no set (see `NeedChoice`).
-pub type BeforeNeed = Box<dyn FnMut(&DataProfile) -> NeedChoice + Send>;
+/// Asked with the profile and the profiles of its browser that have a set on disk (everything the choice needs, so
+/// the asker never calls back into the sync mid-call).
+pub type BeforeNeed = Box<dyn FnMut(&DataProfile, &[String]) -> NeedChoice + Send>;
 
 /// What one link is in the middle of.
 #[derive(Default)]
@@ -363,7 +365,12 @@ impl DataSync {
         l.transfer = None;
         l.parts.clear();
         if hold && self.store.load(p).is_none() {
-            let choice = self.before_need.as_mut().map(|f| f(p));
+            let with_sets: Vec<String> = if self.before_need.is_some() {
+                self.store.profiles(Some(&p.browser)).into_iter().map(|q| q.profile).collect()
+            } else {
+                Vec::new()
+            };
+            let choice = self.before_need.as_mut().map(|f| f(p, &with_sets));
             match choice {
                 None | Some(NeedChoice::Ask) => {}
                 Some(NeedChoice::Hold) => {
@@ -1448,7 +1455,7 @@ mod tests {
         sync.link_up(&b);
         let asked = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
         let asked2 = asked.clone();
-        sync.before_need = Some(Box::new(move |p| {
+        sync.before_need = Some(Box::new(move |p, _| {
             asked2.lock().map(|mut a| a.push(p.profile.clone())).ok();
             NeedChoice::Hold
         }));
@@ -1593,7 +1600,7 @@ mod tests {
         let a2 = Link::new("safari", "s-aaaa", "e9");
         sync.link_up(&a2);
         let (pa2, pb2) = (pa.clone(), pb.clone());
-        sync.before_need = Some(Box::new(move |p| {
+        sync.before_need = Some(Box::new(move |p, _| {
             if *p == pa2 {
                 NeedChoice::Carry { from: pb2.clone(), why: "Safari profile X".into() }
             } else {
