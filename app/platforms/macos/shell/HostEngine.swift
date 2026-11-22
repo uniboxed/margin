@@ -748,7 +748,7 @@ final class HostEngine {
             visible = [id: HostVisible(rect: nil, role: .main, z: 0)]
             h.rect = nil
             h.role = .main
-            h.endX = false; h.endY = false; h.revealed = false
+            h.endX = false; h.endY = false; h.revealed = false; cutOrderRight(h.id)
             let placed = await place(h)
             Diagnostics.note("host: layout: \(id) left alone of the layout asked: at the page area \(r(placement.page))\(placed ? "" : " (not placed there yet)")")
         }
@@ -814,13 +814,9 @@ final class HostEngine {
         // cut pane has the keys back. With no cut pane, as before.)
         let firstTucked = wanted.first(where: tucked)
         func raise(_ h: Host) async -> Bool {
-            // (Over a cut pane, its activation must be a real one for AppKit to raise its window: not kept active by records
-            // (let go first), and not the front app already (the front handed to the cut pane first, without a raise):
-            // the sequence the real screen took, 2026-11-21/22: the neighbour activated then raised, the keys back after.)
-            if let cut = firstTucked, !tucked(h) {
-                if let w = actives.kept[h.pid] { sys.releaseActiveNow([PaneWindow(pid: h.pid, window: w)]) }
-                if (sys.frontProcess() ?? sys.frontApp()) == h.pid { _ = sys.focusWithoutRaise(pid: cut.pid, window: cut.window) }
-            }
+            // (Over a cut pane, a neighbour; a revealed cut pane over its neighbours: `raiseOver`. Else, as before.)
+            if let cut = firstTucked, !tucked(h) { return await raiseOver(h, cut) }
+            if h.revealed, isCut(h), let n = neighbour(of: h) { return await raiseOver(h, n) }
             return await front(h)
         }
         // (The keys: the focused one's, by a raise when it's in front of the others, without one when it's cut.)
@@ -900,8 +896,11 @@ final class HostEngine {
     // window that came in with its tile stayed behind main whatever raised it; the same window parked and switched in, a
     // move, was in front). Done under its own loader (a card's or a pane's opening: the window isn't revealed yet), so no
     // freeze. Its rect set again if its tile was laid out meanwhile.
+    private var movingOutAndBack = 0
     private func outAndBack(_ top: Host, _ wanted: [Host], since t0: Double, why: String, behind: () -> Bool) async {
         guard sys.spaces(window: top.window) == [marginSpace], let priv = sys.createPrivateSpace() else { return }
+        movingOutAndBack += 1
+        defer { movingOutAndBack -= 1 }
         let t1 = sys.now()
         var out = false, back = false
         if sys.move(window: top.window, to: priv) { out = await wait(options.parkWait, every: options.memberEvery) { self.sys.spaces(window: top.window) == [] } }
@@ -1180,7 +1179,10 @@ final class HostEngine {
     func poll() { sys.batch { pollNow() } }
 
     private func pollNow() {
-        if busy {
+        // (A window out to a private Space and back (`outAndBack`, not always under `serial`): read mid-way it's "in no
+        // Space", a stray brought back and placed alone (2026-11-22: a split's pane, the split gone). Held off as by an
+        // operation.)
+        if busy || movingOutAndBack > 0 {
             if let since = pollHeldSince {
                 if since >= 0, sys.now() - since > 1 { Diagnostics.note("host: poll held off by an operation for over \(ms(since: since)) ms"); pollHeldSince = -1 }
             } else { pollHeldSince = sys.now() }
@@ -1260,8 +1262,9 @@ final class HostEngine {
         // (A cut pane's window raised over a pane it lies under with no app activated (the app itself ordering it
         // front, an Accessibility raise): no event says so, so the poll looks, from the on-screen list it shares, and
         // only while an unrevealed cut pane is shown. Activation's case is `frontChanged`'s, at once.)
-        if let cut = visibleHosts.first(where: { isCut($0) && !$0.revealed }), let list = screenList()?.map(\.number),
-           cutWindowOver(cut.pid, list: list) != nil { Task { _ = await self.repairCutOrder(cut.pid) } }
+        if let cut = visibleHosts.first(where: { isCut($0) && !$0.revealed }), let list = screenList()?.map(\.number) {
+            if cutWindowOver(cut.pid, list: list) != nil { Task { _ = await self.repairCutOrder(cut.pid) } } else { cutOrderRight(cut.id) }
+        }
         keepCurrentLate()
         lookOnScreen()
         lookForOthers()
@@ -5540,7 +5543,7 @@ final class HostEngine {
                 h.revealed = true
                 Diagnostics.note("host: \(id): its \(side.rawValue) side shown over its neighbours (a slide can't: the display's edge)")
                 self.shown = id
-                _ = await self.front(h)
+                if let n = self.neighbour(of: h) { _ = await self.raiseOver(h, n) } else { _ = await self.front(h) }
                 self.sayHostedWindows()
                 return true
             }
@@ -6092,7 +6095,27 @@ final class HostEngine {
 
     private var cutRepairs: [HostID: [Double]] = [:]
     private var cutRepairSaid: Set<HostID> = []
+    private var cutRepairsFailed: [HostID: Int] = [:]
     // A visible cut pane of `pid`'s app whose window is over a pane it lies under now (the window server's order), nil: none.
+    // `h`'s window raised over `below`'s (overlapping: a neighbour over a cut pane, a revealed cut pane over a neighbour).
+    // Its activation must be a real one for AppKit to raise its window: not kept active by records (let go first;
+    // PanesActive keeps it again later), and not the front app already (the front handed to `below` first, without a
+    // raise): the sequence the real screen took, 2026-11-21/22. Its app raises its window as it takes the activation, on
+    // its own thread: the keys moved on before then and it never does (2026-11-22: a neighbour activated and the keys
+    // back 10 ms later, its window still under, eight tries; a reveal of Notes, kept active, never over Safari, then
+    // taken out and back). Waited for until the window server shows it over, `orderWait` at most; unread: not waited for.
+    private func raiseOver(_ h: Host, _ below: Host) async -> Bool {
+        if let w = actives.kept[h.pid] { sys.releaseActiveNow([PaneWindow(pid: h.pid, window: w)]) }
+        if (sys.frontProcess() ?? sys.frontApp()) == h.pid { _ = sys.focusWithoutRaise(pid: below.pid, window: below.window) }
+        let ok = await front(h)
+        _ = await wait(options.orderWait, every: options.memberEvery) { self.windowBehind(below.window, h.window) ?? true }
+        return ok
+    }
+    // A visible pane `h`'s window lies over (a cut pane's neighbour), nil: none.
+    private func neighbour(of h: Host) -> Host? {
+        let f = frame(h)
+        return visibleHosts.first { $0 !== h && $0.role != .card && ($0.rect ?? placement.page).intersects(f) }
+    }
     // (`list`: an on-screen list already read, the poll's; nil: read now.)
     private func cutWindowOver(_ pid: pid_t, list: [Int]? = nil) -> Host? {
         guard let h = visibleHosts.first(where: { $0.pid == pid && isCut($0) && !$0.revealed }) else { return nil }
@@ -6108,20 +6131,30 @@ final class HostEngine {
     func repairCutOrder(_ pid: pid_t) async -> Bool {
         await serial(planned: true) {
             guard let h = self.cutWindowOver(pid) else { return false }
-            // (A loop's guard: 3 tries in 5 s for one pane, then left as it is, said once.)
+            // (A loop's guard: put back 3 times in 5 s and over again each time (the app raising it again), or 3 put-backs
+            // in a row that didn't take (its neighbour's raise refused): left as it is, said once, and not tried again
+            // until its window is seen behind them (the poll) or it leaves the split. Never a few tries every 5 s for good.)
+            guard !self.cutRepairSaid.contains(h.id) else { return false }
             let now = self.sys.now()
             var tries = (self.cutRepairs[h.id] ?? []).filter { now - $0 < 5 }
-            guard tries.count < 3 else {
-                if self.cutRepairSaid.insert(h.id).inserted { Diagnostics.warn("host: \(h.id): put back under the panes beside it 3 times in 5 s and over them again: left as it is") }
+            let failed = self.cutRepairsFailed[h.id] ?? 0
+            guard tries.count < 3, failed < 3 else {
+                self.cutRepairSaid.insert(h.id)
+                Diagnostics.warn("host: \(h.id): " + (failed >= 3 ? "put back under the panes beside it 3 times and it never went under: left as it is" : "put back under the panes beside it 3 times in 5 s and over them again: left as it is"))
                 return false
             }
             tries.append(now)
             self.cutRepairs[h.id] = tries
             Diagnostics.note("host: \(h.id): its app came in front some other way, its window over a pane it lies under: put back under it")
             await self.frontVisible()
+            let took = self.cutWindowOver(pid) == nil
+            self.cutRepairsFailed[h.id] = took ? 0 : failed + 1
+            if !took { Diagnostics.note("host: \(h.id): put back, still over the pane it lies under (\(failed + 1) in a row)") }
             return true
         }
     }
+    // (Seen behind the panes it lies under, or out of the split: its loop's guard reset.)
+    private func cutOrderRight(_ id: HostID) { cutRepairSaid.remove(id); cutRepairsFailed[id] = nil }
 
     var keptActive: Set<pid_t> { Set(actives.kept.keys) }
     var paneFronting: PaneFronting? { sys.paneFronting }

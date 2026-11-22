@@ -286,8 +286,13 @@ func multiHostTests() {
         check("cut pane: focused: its app given the keys without a raise (kept behind the pane it lies under), never made front by a raising call",
               w.activeCalls.dropFirst(calls0).contains { $0.hasPrefix("focusWithoutRaise ") && $0.hasSuffix(" \(n)") } && !w.activeCalls.dropFirst(calls0).contains { $0.hasPrefix("makeFront ") && $0.hasSuffix(" \(n)") },
               "\(w.activeCalls.dropFirst(calls0))")
+        let editW = window(w, "com.apple.TextEdit"), editPidR = w.wins[editW]?.pid ?? 0, notesPid0 = w.wins[n]?.pid ?? 0
+        let callsR = w.activeCalls.count, axR = w.calls.count
         let revealed = hostRun { await e.slide(notes.id, side: .left) } ?? false
         let shownRevealed = told.last?.first { $0.window == n }
+        check("cut pane: a reveal while its app has the keys (without a raise): the front handed to its neighbour without a raise first, then its app activated (a real activation: AppKit raises its window), its window over the neighbour's",
+              w.activeCalls.dropFirst(callsR).first == "focusWithoutRaise \(editPidR) \(editW)" && w.calls.dropFirst(axR).contains("activate \(notesPid0) \(n)") && w.inFront(n, of: editW) != false,
+              "\(w.activeCalls.dropFirst(callsR)) \(w.calls.dropFirst(axR))")
         check("cut pane: its left (a slide can't show it): revealed over its neighbours, told so (its hole its whole window), no longer tucked",
               revealed && h?.revealed == true && shownRevealed?.revealed == true && shownRevealed?.tucked == false, "\(revealed) \(String(describing: shownRevealed))")
         _ = hostRun { await e.tuck(notes.id) }
@@ -323,6 +328,30 @@ func multiHostTests() {
         let calls4 = w.activeCalls.count
         pollOnly(2)
         check("cut pane: …later polls with it behind: nothing done", w.activeCalls.count == calls4, "\(w.activeCalls.dropFirst(calls4))")
+        // Its neighbour's raise never taking: 3 tries, said once, then left as it is for good (never 3 tries every 5 s),
+        // until its window is seen behind again.
+        w.clock += 6
+        w.unraisable.insert(edit)
+        w.raised.removeAll { $0 == n }
+        w.raised.insert(n, at: 0)
+        let editPid = w.wins[edit]?.pid ?? 0
+        func tries() -> Int { w.calls.filter { $0 == "activate \(editPid) \(edit)" }.count }
+        let tries0 = tries()
+        pollOnly(6)
+        let firstRound = tries() - tries0
+        w.clock += 6
+        pollOnly(6)
+        check("cut pane: its neighbour's raise never taking: 3 tries, then left as it is, not tried again 5 s later",
+              firstRound == 3 && tries() - tries0 == 3, "\(firstRound) \(tries() - tries0)")
+        w.unraisable.remove(edit)
+        w.raised.removeAll { $0 == edit }
+        w.raised.insert(edit, at: 0)
+        pollOnly(1)
+        w.raised.removeAll { $0 == n }
+        w.raised.insert(n, at: 0)
+        let tries2 = tries()
+        pollOnly(1)
+        check("cut pane: …its window seen behind again, then over again: put back again", tries() > tries2 && (w.raised.firstIndex(of: edit) ?? 99) < (w.raised.firstIndex(of: n) ?? -1), "\(tries() - tries2) \(w.raised)")
     }
 
     // ---- tiles off: a pane as a plain member, placed at its rect by its own Space's reservation ----

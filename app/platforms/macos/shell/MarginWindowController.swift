@@ -1308,7 +1308,9 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             } else {
                 owner?.onPagePress?(self, at)
             }
-        } else if hosted != nil, pageState == .shown, !pageWantsKeyboard, options.harness || (window.isVisible && window.isOnActiveSpace), let page = window.pageRect, page.contains(at) {
+        } else if hosted != nil, !onHits, pageState == .shown, !pageWantsKeyboard, options.harness || (window.isVisible && window.isOnActiveSpace), let page = window.pageRect, page.contains(at) {
+            // (Never a press on Margin's own over the page area (a divider, a cut pane's arrow): 2026-11-22, an arrow's
+            // press focused the pane under it, and a divider's the pane beside it.)
             owner?.onPagePress?(self, at)
         }
         // (Kept in front by its order: a press on the hosted window raised it over this one; above it again, once the

@@ -164,6 +164,13 @@ keeps Safari's toolbar down). Then it's the preview card: Expand puts it in the 
   (its tile's rect moved over 150 ms, eased, one rect a frame: ~0.2 ms each, the window a frame behind at most, with
   Safari); else, the side against the display's edge, a **reveal**: it comes over its neighbours, its whole window in
   its hole, until the pointer leaves it (or its arrow is pressed again), then it's tucked back under them.
+- **Raising over another pane** (a neighbour over a cut pane, a revealed one over its neighbour: `raiseOver`): with all
+  panes active the app is kept active by records and takes an activation for done, never raising its window. So it's
+  let go first, the front handed to the pane below without a raise if it's the front app already, then activated, and
+  the window server's order waited for (`orderWait` at most) before the keys move on: handed back 10 ms later, its app
+  never raised its window (2026-11-22, eight tries in a row). A press on Margin's own over the page area (a divider, an
+  arrow) is never a press on the pane under it, and the poll holds off while a window is out to a private Space and back
+  (`outAndBack`): read mid-way, it was a stray brought back alone, and the split was gone (2026-11-22, Notes revealed).
 - Tried and ruled out (2026-11-21/22): a window-mode (non-full-screen) window can hang off the display's edge but draws
   over full-screen tiles (its hidden part would cover the pane beside it), shows its title bar and stops short of the
   Dock; transforming or clipping a tile's own Space does nothing (stored, never drawn); showing a second full-screen

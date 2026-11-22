@@ -136,6 +136,15 @@ func glueSplitScenario() async {
     await session.idle()
     check("the pane click tap: a press it didn't claim (passed, not key in time): focused the usual way, the visible ones fronted",
           usual && c.tapClaimedPresses == 1 && world.calls.dropFirst(mark).contains("activate com.apple.TextEdit"), "\(world.calls.dropFirst(mark))")
+    // A press on Margin's own over the page area (the divider; a cut pane's arrow the same): never a pane's press.
+    mark = world.calls.count
+    let shownBefore = engine.shown
+    c.pressed(gap, number: 79)
+    await session.idle()
+    try? await Task.sleep(nanoseconds: 50_000_000)
+    await session.idle()
+    check("a press on the divider (Margin's own over the page area): never taken for a press on a pane, nothing focused or fronted",
+          engine.shown == shownBefore && !world.calls.dropFirst(mark).contains { $0.hasPrefix("activate") }, "\(String(describing: engine.shown)) \(world.calls.dropFirst(mark))")
     // Another Space current: every press passes at once, the tap gone after its grace unless the split's back by then.
     made.paneTapGrace = 0.3
     c.onCurrentSpace = { false }
