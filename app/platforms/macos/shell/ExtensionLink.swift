@@ -1,32 +1,23 @@
-// Margin.app's lines to Margin's extension copies in Safari (docs/PROTOCOL.md
-// has the whole exchange; the extension's end is step 3's). The extension can
-// reach only the app's extension handler, and the app can only send into the
-// extension (SFSafariApplication.dispatchMessage), so:
-//  1. a copy asks for the link (a native message `wantLink` with a nonce):
-//     the extension handler wakes the app with a distributed notification
-//     that carries only the nonce (anything on the Mac may hear it);
-//  2. the app answers into the extension: `link`, with that nonce, the port
-//     it listens on (127.0.0.1 only), a token (the copy's proof that it's
-//     Margin) and a key (the app's proof that it's the app);
-//  3. the copy opens ws://127.0.0.1:<port>/?t=<token> (its Origin a Safari
-//     extension's); the app's first message is `welcome { key }`, then the
-//     copy says `hello` (its browser and profile) and sends the state.
-// Safari runs one copy per profile, each with its own link, at once: a link
-// is known by its browser and profile (Hello.key). A newer link for the same
-// profile takes over from the older one, and a copy not in charge of its
-// profile's state (hello.owner false: another copy of Margin, as after an
-// update) is closed. The app starting while Safari is open says `appUp`
-// (only once Safari has been running 2 s: dispatchMessage launches Safari if
-// it isn't), and the copies ask again.
-//
-// A socket is alive while it's heard from: the app ticks every 5 s, the copy
-// answers (`tock`), and 12 s without a word closes it. After the last link
-// closes, the token and key stay for 30 s (a copy starting again tries the
-// link it kept first), then change.
-//
-// From feat/native-panel's SocketLink (one link), generalised to several.
+// Margin.app's lines to Margin's extension copies (docs/PROTOCOL.md has the whole exchange; the extension's end is
+// step 3's). The rules are margin-core's (app/shared/core/src/link_hub.rs over socket.rs, link.rs, websocket.rs and
+// relay.rs, through margin-ffi's link object; docs/CORE-REFACTOR.md step 1.5): the upgrade and who may open the
+// socket, the frames, welcome and hello, one link per browser profile (a newer one takes over, a copy not in charge is
+// closed 1008), the tick every 5 s and 40 s of silence closing a link (1001), the requests' 15 s, the secrets and their
+// change 30 s after the last link goes, `wantLink` answered with `link` (held until there's a port), `appUp` once
+// Safari has run 2 s, the link note's contents, Chrome's and Edge's relays' words, each link's theme put together.
+// This file is the Mac's transport only, as app/platforms/windows/src/tcp.rs and pipe.rs are Windows':
+//  - the listener (NWListener, 127.0.0.1 only, no Nagle; made again 1 s after it fails, and on a new port when it's
+//    been waiting 5 s, as after sleep or wake) and each copy's NWConnection, their bytes passed in, the core's writes
+//    sent in order and a connection closed once what was written before has gone;
+//  - Safari's way in: the extension handler's distributed notification (`com.unibox.margin.setup`, a JSON
+//    `wantLink` with its nonce), SFSafariApplication.dispatchMessage (never while Safari isn't running: it would open
+//    Safari) and its refusals (`onDispatchRefused`, BundleWatch), the link note's file (LinkNote);
+//  - one timer at the core's next deadline, and stop's short wait for what's written (0.3 s at most).
+// The core's clock is the monotonic one (Diagnostics.now(): a sleep never reads as 40 s of silence); the messages'
+// `at` the wall clock's.
 
 import AppKit
+import MarginCore
 import Network
 import SafariServices
 
@@ -86,54 +77,51 @@ final class LinkConnection {
     let hello: LinkMessage.Hello
     var key: String { hello.key }
     var epoch: String { hello.epoch }
-    fileprivate let socket: Socket
+    // The core's name for its TCP connection.
+    let conn: UInt64
     fileprivate weak var owner: SocketLink?
     fileprivate var waiting: [Int: CheckedContinuation<JSONObject, Error>] = [:]
-    private var nextId = 1
     private(set) var isUp = true
-    // Messages refused for their size (tests read it).
-    private(set) var refused = 0
+    // Messages refused for their size, or not JSON (tests read it): the core's count, and those JSONSerialization
+    // couldn't write before they got there.
+    var refused: Int { refusedByCore + refusedHere }
+    fileprivate var refusedByCore = 0
+    fileprivate var refusedHere = 0
 
-    fileprivate init(hello: LinkMessage.Hello, socket: Socket, owner: SocketLink) {
+    fileprivate init(hello: LinkMessage.Hello, conn: UInt64, owner: SocketLink) {
         self.hello = hello
-        self.socket = socket
+        self.conn = conn
         self.owner = owner
     }
 
     // False if the link is down, or the message couldn't be sent (not JSON, over 1 MB).
     @discardableResult func send(_ message: AppMessage) -> Bool {
-        guard isUp else { return false }
-        guard let text = message.encode() else {
-            refused += 1
-            Diagnostics.warn("not sent to \(key): not JSON, or over \(LinkProtocol.maxAppMessage) bytes")
-            return false
-        }
-        socket.send(text)
-        return true
+        guard isUp, let owner else { return false }
+        return owner.send(self, message)
     }
 
-    // A request (`req`), answered as a page's is: { ok, result } or { ok: false, error, stale? }.
+    // A request (`req`), answered as a page's is: { ok, result } or { ok: false, error, stale? }. The core gives up
+    // after 15 s.
     func request(type: String, payload: JSONObject, windowId: Int?) async throws -> JSONObject {
-        guard isUp else { throw LinkError.down }
-        let id = nextId
-        nextId += 1
-        guard let text = AppMessage.req(id: id, epoch: epoch, windowId: windowId, type: type, payload: payload).encode() else { throw LinkError.notJSON }
-        let timeout = owner?.timing.request ?? 15
+        guard isUp, let owner else { throw LinkError.down }
         return try await withCheckedThrowingContinuation { continuation in
-            waiting[id] = continuation
-            socket.send(text)
-            Timer.scheduledTimer(withTimeInterval: timeout, repeats: false) { [weak self] _ in
-                MainActor.assumeIsolated { self?.waiting.removeValue(forKey: id)?.resume(throwing: LinkError.timedOut) }
+            switch owner.ask(self, type, payload, windowId) {
+            case .success(let id): waiting[id] = continuation
+            case .failure(let error): continuation.resume(throwing: error)
             }
         }
     }
 
     func close(_ code: UInt16 = 1000, _ why: String) {
-        socket.close(code, why)
+        owner?.close(self, code, why)
     }
 
-    fileprivate func replied(_ id: Int, _ body: JSONObject) {
-        waiting.removeValue(forKey: id)?.resume(returning: body)
+    fileprivate func answered(_ id: Int, _ result: Result<JSONObject, LinkError>) {
+        guard let continuation = waiting.removeValue(forKey: id) else { return }
+        switch result {
+        case .success(let body): continuation.resume(returning: body)
+        case .failure(let error): continuation.resume(throwing: error)
+        }
     }
 
     fileprivate func down() {
@@ -146,9 +134,10 @@ final class LinkConnection {
 
 // Where the link is, for Safari's extension handler to answer a copy's ask with at once (docs/PROTOCOL.md
 // "Transport (Safari)" step 1): `margin-link` in the extension's own container (its Caches, where the handler leaves
-// its launch note for the app), `{ v, port, token, key, app: { version }, pid, at }`, written as the listener gets
-// its port and as the token changes, removed when the listener goes. Only the handler (the extension's sandbox)
-// and this app read it; owner-only, replaced whole (a reader never sees half a file). None under the app's tests.
+// its launch note for the app), `{ v, port, token, key, app: { version }, pid, at }` (the core's: written as the
+// listener gets its port and as the token changes, removed when the listener goes). Only the handler (the extension's
+// sandbox) and this app read it; owner-only, replaced whole (a reader never sees half a file). None under the app's
+// tests.
 struct LinkNote {
     let url: URL?
 
@@ -194,7 +183,9 @@ final class SocketLink {
     private(set) var port: UInt16?
     let timing: Timing
     // The Origins a copy may open the socket from (a Safari extension's; Chrome's and Edge's, through their relay).
-    var allowedOrigins = ["safari-web-extension://", "chrome-extension://"]
+    var allowedOrigins = ["safari-web-extension://", "chrome-extension://"] {
+        didSet { perform(call(["type": "origins", "origins": allowedOrigins])) }
+    }
     // Chrome's and Edge's relays (RelayLink.swift): started and stopped with the link. None in the tests that make
     // their own.
     var relay: RelayHub?
@@ -204,23 +195,24 @@ final class SocketLink {
     private let safariSince: () -> Date?
     private let wake: Notification.Name
     private var listener: NWListener?
-    private var token = SocketLink.secret()
-    private var key = SocketLink.secret()
     private var wakeObserver: NSObjectProtocol?
-    private var asked: [(nonce: String, via: ExtensionDispatch?)] = [] // asked for before the listener had its port
-    private var sockets: [Socket] = [] // accepted, no hello yet
+    private var sockets: [UInt64: Socket] = [:] // every TCP connection the core knows, by its id
+    private var nextConn: UInt64 = 1
     private var links: [String: LinkConnection] = [:] // by Hello.key
-    private var ticker: Timer?
-    private var rotation: Timer?
-    private var appUpTimer: Timer?
+    private var byConn: [UInt64: LinkConnection] = [:]
+    private var timer: Timer?
+    private var timerAt: Double?
     private var listenWaitTimer: Timer?
     private var listenerWaiting = false
     private var stopped = false
-    // Each dispatch's number (the log's #n), and how many in a row weren't passed on.
-    private var dispatches = 0
+    // Dispatches in a row that weren't passed on (the core counts them).
     private(set) var refusedInARow = 0
     // A dispatch Safari didn't pass on (its name and why): BundleWatch checks whether the app was replaced.
     var onDispatchRefused: ((String, String) -> Void)?
+
+    private var core: OpaquePointer?
+    private let box = Box()
+    fileprivate final class Box { weak var link: SocketLink? }
 
     var connections: [LinkConnection] { links.values.sorted { $0.key < $1.key } }
     func connection(_ key: String) -> LinkConnection? { links[key] }
@@ -232,16 +224,139 @@ final class SocketLink {
         self.safariSince = safariSince
         self.wake = wake
         self.timing = timing
+        box.link = self
+        let config: JSONObject = [
+            "version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "",
+            "pid": Int(ProcessInfo.processInfo.processIdentifier),
+            "timing": ["tick": timing.tick, "dead": timing.dead, "keep": timing.keep, "hello": timing.hello, "request": timing.request, "safariSettled": timing.safariSettled],
+            "origins": allowedOrigins,
+        ]
+        let ctx = Unmanaged.passUnretained(box).toOpaque()
+        core = jsonText(config).flatMap { data in
+            data.withUnsafeBytes { raw in
+                margin_link_new(raw.bindMemory(to: UInt8.self).baseAddress, raw.count, ctx) { ctx, which, conn, bytes, len in
+                    // (Called during the core's call, on the main thread: each write, in order.)
+                    guard let ctx, let bytes else { return }
+                    let data = Data(bytes: bytes, count: len)
+                    MainActor.assumeIsolated { Unmanaged<Box>.fromOpaque(ctx).takeUnretainedValue().link?.written(which, conn, data) }
+                }
+            }
+        }
+        if core == nil { Diagnostics.warn("link: the core's link didn't start") }
     }
 
-    // 32 random bytes, hex.
-    static func secret() -> String {
-        var bytes = [UInt8](repeating: 0, count: 32)
-        if SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) != errSecSuccess {
-            for i in bytes.indices { bytes[i] = UInt8.random(in: 0...255) }
-        }
-        return bytes.map { String(format: "%02x", $0) }.joined()
+    deinit {
+        timer?.invalidate()
+        listenWaitTimer?.invalidate()
+        margin_link_free(core)
     }
+
+    // ---- the core ----
+
+    // One request to the core (`now` and `wall` added), its answer; nil if it couldn't be made.
+    private func call(_ request: JSONObject) -> JSONObject? {
+        var r = request
+        r["now"] = Diagnostics.now()
+        r["wall"] = Date().timeIntervalSince1970
+        return LinkCore.call(r) { margin_link_call(core, $0, $1, $2) } as? JSONObject
+    }
+
+    // An answer carried out: the core's state first (another call made while acting supersedes it), then each of its
+    // `do`s, in order.
+    @discardableResult private func perform(_ answer: JSONObject?) -> JSONObject {
+        guard let answer else { return [:] }
+        if let error = answer["error"] as? String {
+            Diagnostics.warn("link: \(error)")
+            return answer
+        }
+        port = int(answer["port"]).map { UInt16(truncatingIfNeeded: $0) }
+        refusedInARow = int(answer["refusedInARow"]) ?? refusedInARow
+        schedule(num(answer["deadline"]))
+        for item in answer["do"] as? [JSONObject] ?? [] { act(item) }
+        return answer
+    }
+
+    private func act(_ item: JSONObject) {
+        let conn = (item["conn"] as? NSNumber)?.uint64Value ?? 0
+        switch item["do"] as? String {
+        case "end":
+            if item["which"] as? String == "relay" { relay?.end(conn) } else { sockets[conn]?.end() }
+        case "log":
+            let text = item["text"] as? String ?? ""
+            if item["warn"] as? Bool == true { Diagnostics.warn(text) } else { Diagnostics.note(text) }
+        case "safari":
+            let name = item["name"] as? String ?? ""
+            let n = item["n"] as? Int ?? 0
+            dispatch.dispatch(name, item["info"] as? JSONObject ?? [:]) { [weak self] why in
+                self?.perform(self?.call(["type": "dispatched", "name": name, "n": n, "why": why ?? NSNull()]))
+            }
+        case "note":
+            note.write(item["info"] as? JSONObject)
+        case "appUpDue":
+            sayAppUp()
+        case "up":
+            guard let hello = (item["hello"] as? JSONObject).flatMap({ LinkMessage.Hello(core: $0) }) else { return }
+            let link = LinkConnection(hello: hello, conn: conn, owner: self)
+            links[hello.key] = link
+            byConn[conn] = link
+            delegate?.linkUp(link)
+        case "received":
+            guard let link = byConn[conn], let message = (item["message"] as? JSONObject).flatMap({ LinkMessage(core: $0) }) else { return }
+            delegate?.linkReceived(link, message)
+        case "theme":
+            guard let link = byConn[conn] else { return }
+            let data = (item["text"] as? String).map { Data($0.utf8) } ?? Data()
+            delegate?.linkReceived(link, .theme(epoch: item["epoch"] as? String ?? link.epoch, theme: .complete(id: item["id"] as? String ?? "", data: data)))
+        case "themeRefused":
+            guard let link = byConn[conn] else { return }
+            delegate?.linkReceived(link, .theme(epoch: link.epoch, theme: .refused(item["why"] as? String ?? "")))
+        case "down":
+            guard let link = byConn.removeValue(forKey: conn) else { return }
+            if links[link.key] === link { links[link.key] = nil }
+            link.down()
+            delegate?.linkDown(link, item["why"] as? String ?? "")
+        case "answer":
+            guard let link = byConn[conn], let id = item["id"] as? Int else { return }
+            if let reply = item["reply"] as? JSONObject { return link.answered(id, .success(reply)) }
+            link.answered(id, .failure(Self.error(item["error"] as? String)))
+        case "refused":
+            onDispatchRefused?(item["name"] as? String ?? "", item["why"] as? String ?? "")
+        default:
+            break
+        }
+    }
+
+    private static func error(_ name: String?) -> LinkError {
+        switch name {
+        case "timedOut": .timedOut
+        case "notJSON": .notJSON
+        default: .down
+        }
+    }
+
+    // The one timer, at the core's next deadline (nil: none).
+    private func schedule(_ at: Double?) {
+        guard at != timerAt || (at != nil && timer == nil) else { return }
+        timer?.invalidate()
+        timer = nil
+        timerAt = at
+        guard let at, !stopped else { return }
+        timer = Timer.scheduledTimer(withTimeInterval: max(0, at - Diagnostics.now()), repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.timer = nil
+                self.timerAt = nil
+                self.perform(self.call(["type": "tick"]))
+            }
+        }
+    }
+
+    // A write the core made (during its call): to that TCP connection, or that relay.
+    private func written(_ which: UInt8, _ conn: UInt64, _ data: Data) {
+        if which == 1 { relay?.write(conn, data) } else { sockets[conn]?.write(data) }
+    }
+
+    // ---- what the rest of the app calls ----
 
     func start() {
         guard listener == nil else { return }
@@ -252,9 +367,91 @@ final class SocketLink {
             let json = note.object as? String
             MainActor.assumeIsolated { self?.woken(json) }
         }
-        relay?.start(link: self)
+        if let relay {
+            perform(call(["type": "relays", "version": relay.version]))
+            relay.start(link: self)
+        }
         sayAppUp()
     }
+
+    // The wantLink a distributed notification carries (the tests call it too).
+    func wantLink(nonce: String) {
+        woken(jsonString(["type": "wantLink", "nonce": nonce]))
+    }
+
+    private func woken(_ json: String?) {
+        guard !stopped else { return }
+        perform(call(["type": "woken", "json": json ?? NSNull()]))
+    }
+
+    // Safari open before the app: its copies are told to ask (the core waits until Safari has run 2 s).
+    private func sayAppUp() {
+        let runningFor: Any = safariSince().map { Date().timeIntervalSince($0) } ?? NSNull()
+        perform(call(["type": "appUp", "runningFor": runningFor]))
+    }
+
+    fileprivate func send(_ link: LinkConnection, _ message: AppMessage) -> Bool {
+        guard let answer = call(["type": "send", "conn": link.conn, "message": message.core]) else {
+            // (Not JSON here, before the core: a payload JSONSerialization can't write.)
+            link.refusedHere += 1
+            Diagnostics.warn("not sent to \(link.key): not JSON, or over \(LinkProtocol.maxAppMessage) bytes")
+            return false
+        }
+        perform(answer)
+        if let refused = int(answer["refused"]) { link.refusedByCore = refused }
+        return answer["sent"] as? Bool == true
+    }
+
+    fileprivate func ask(_ link: LinkConnection, _ type: String, _ payload: JSONObject, _ windowId: Int?) -> Result<Int, LinkError> {
+        guard let answer = call(["type": "request", "conn": link.conn, "kind": type, "payload": payload, "windowId": windowId ?? NSNull()]) else { return .failure(.notJSON) }
+        perform(answer)
+        if let id = int(answer["id"]) { return .success(id) }
+        return .failure(Self.error(answer["error"] as? String))
+    }
+
+    fileprivate func close(_ link: LinkConnection, _ code: UInt16, _ why: String) {
+        perform(call(["type": "close", "conn": link.conn, "code": Int(code), "why": why]))
+    }
+
+    // Whether a relay's hello has named this browser process since the app started (RelayHub.heardPid).
+    func heardPid(_ pid: pid_t) -> Bool {
+        pid > 0 && call(["type": "heardPid", "pid": Int(pid)])?["heard"] as? Bool == true
+    }
+
+    func stop(why: String, then: @escaping () -> Void) {
+        stopped = true
+        relay?.stop()
+        if let wakeObserver { DistributedNotificationCenter.default().removeObserver(wakeObserver) }
+        wakeObserver = nil
+        listenWaitTimer?.invalidate()
+        listenWaitTimer = nil
+        listener?.cancel()
+        listener = nil
+        perform(call(["type": "stop", "why": why]))
+        timer?.invalidate()
+        timer = nil
+        timerAt = nil
+        // The `bye`s and close frames written, at most 0.3 s (not a Timer: quitting, AppKit runs the run loop in its
+        // modal panel mode, where one never fires).
+        let writing = sockets.values.filter(\.writing)
+        guard !writing.isEmpty else { return then() }
+        var left = writing.count
+        var done = false
+        let finish = {
+            guard !done else { return }
+            done = true
+            then()
+        }
+        for socket in writing {
+            socket.drained = {
+                left -= 1
+                if left == 0 { finish() }
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { MainActor.assumeIsolated { finish() } }
+    }
+
+    // ---- the listener ----
 
     private func listen() {
         // No Nagle: the small frames (req, drawn, tick) go at once.
@@ -287,19 +484,13 @@ final class SocketLink {
             listenerWaiting = false
             listenWaitTimer?.invalidate()
             listenWaitTimer = nil
-            port = listener.port?.rawValue
-            Diagnostics.note("listening on 127.0.0.1:\(port ?? 0)")
-            publish()
-            let nonces = asked
-            asked = []
-            for each in nonces { answer(each.nonce, via: each.via) }
+            perform(call(["type": "listening", "port": listener.port.map { Int($0.rawValue) } ?? NSNull()]))
         case .failed(let error):
             listenerWaiting = false
             Diagnostics.warn("listener failed: \(error)")
             listener.cancel()
             self.listener = nil
-            port = nil
-            publish()
+            perform(call(["type": "listening", "port": NSNull()]))
             retryListen()
         case .waiting(let error):
             // As after sleep or wake, or a network change: made again if it lasts.
@@ -312,8 +503,7 @@ final class SocketLink {
             // Not by stop() or a restart here (those let it go first): the system's.
             Diagnostics.warn("listener cancelled")
             self.listener = nil
-            port = nil
-            publish()
+            perform(call(["type": "listening", "port": NSNull()]))
             retryListen()
         @unknown default:
             Diagnostics.note("listener state: \(state)")
@@ -332,8 +522,7 @@ final class SocketLink {
                 Diagnostics.warn("listener still waiting after \(Int(self.timing.listenWait)) s: made again")
                 self.listenerWaiting = false
                 self.listener = nil
-                self.port = nil
-                self.publish()
+                self.perform(self.call(["type": "listening", "port": NSNull()]))
                 listener.cancel()
                 self.listen()
             }
@@ -349,272 +538,76 @@ final class SocketLink {
         }
     }
 
-    // ---- getting linked ----
-
-    private func woken(_ json: String?) {
-        guard !stopped, let data = json?.data(using: .utf8),
-              let body = (try? JSONSerialization.jsonObject(with: data)) as? JSONObject,
-              body["type"] as? String == "wantLink" else { return }
-        guard let nonce = body["nonce"] as? String, (1...128).contains(nonce.count) else { return Diagnostics.warn("wantLink without a nonce") }
-        take(nonce, via: nil)
-    }
-
-    // The wantLink a distributed notification carries (the tests call it too).
-    func wantLink(nonce: String) {
-        woken(jsonString(["type": "wantLink", "nonce": nonce]))
-    }
-
-    // A wantLink from Chrome's or Edge's relay: answered into that browser's relays (RelayDispatch), as Safari's
-    // are into Safari.
-    func wantLink(nonce: String, via relays: RelayDispatch) {
-        guard !stopped, (1...128).contains(nonce.count) else { return }
-        take(nonce, via: relays)
-    }
-
-    private func take(_ nonce: String, via: ExtensionDispatch?) {
-        if port == nil { asked = Array((asked + [(nonce, via)]).suffix(8)) } else { answer(nonce, via: via) }
-    }
-
-    // The link note as things are now: the port, token and key while listening, none otherwise.
-    private func publish() {
-        guard let port, !stopped else { return note.write(nil) }
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
-        note.write(["v": LinkProtocol.version, "port": Int(port), "token": token, "key": key, "app": ["version": version],
-                    "pid": Int(ProcessInfo.processInfo.processIdentifier), "at": Self.at()])
-    }
-
-    private func answer(_ nonce: String, via: ExtensionDispatch? = nil) {
-        guard let port else { return }
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
-        let n = nextDispatch()
-        let to = (via as? RelayDispatch)?.name ?? "Safari"
-        Diagnostics.note("wantLink: link handed to \(to) (port \(port), #\(n))")
-        (via ?? dispatch).dispatch("link", ["v": LinkProtocol.version, "nonce": nonce, "port": Int(port), "token": token, "key": key, "app": ["version": version], "at": Self.at()]) { [weak self] why in
-            self?.dispatched("link", n, why)
-        }
-    }
-
-    private func nextDispatch() -> Int {
-        dispatches += 1
-        return dispatches
-    }
-
-    // What became of a dispatch: only now is it said whether it reached the extension.
-    private func dispatched(_ name: String, _ n: Int, _ why: String?) {
-        guard let why else {
-            refusedInARow = 0
-            return Diagnostics.note("\(name) #\(n) reached the extension")
-        }
-        refusedInARow += 1
-        Diagnostics.warn("\(name) #\(n) not passed on: \(why)" + (refusedInARow > 1 ? " (\(refusedInARow) in a row)" : ""))
-        onDispatchRefused?(name, why)
-    }
-
-    // Safari open before the app: its copies are told to ask. Only once Safari
-    // has been running a while (dispatchMessage opens Safari if it isn't).
-    private func sayAppUp() {
-        appUpTimer?.invalidate()
-        guard let since = safariSince() else { return }
-        let wait = timing.safariSettled - Date().timeIntervalSince(since)
-        if wait <= 0 {
-            let n = nextDispatch()
-            Diagnostics.note("appUp handed to Safari (#\(n))")
-            dispatch.dispatch("appUp", ["v": LinkProtocol.version, "at": Self.at()]) { [weak self] why in
-                self?.dispatched("appUp", n, why)
-            }
-            return
-        }
-        appUpTimer = Timer.scheduledTimer(withTimeInterval: wait, repeats: false) { [weak self] _ in
-            MainActor.assumeIsolated { if let self, !self.stopped, self.links.isEmpty { self.sayAppUp() } }
-        }
-    }
-
     // ---- sockets ----
 
     private func accept(_ connection: NWConnection) {
         guard !stopped else { return connection.cancel() }
-        let socket = Socket(connection, link: self)
-        sockets.append(socket)
+        let id = nextConn
+        nextConn += 1
+        let socket = Socket(id: id, connection, link: self)
+        sockets[id] = socket
+        perform(call(["type": "accept", "conn": id]))
         socket.start()
-        Timer.scheduledTimer(withTimeInterval: timing.hello, repeats: false) { [weak self, weak socket] _ in
-            MainActor.assumeIsolated {
-                guard let self, let socket, socket.connection == nil, self.sockets.contains(where: { $0 === socket }) else { return }
-                socket.close(1008, "no hello within \(Int(self.timing.hello)) s")
-            }
-        }
     }
 
-    // Whether a socket's request is a copy's: the token, from a Safari extension.
-    fileprivate func allows(_ request: Handshake.Request) -> String? {
-        guard request.path == "/" || request.path.isEmpty else { return "not the link's path" }
-        guard Handshake.isUpgrade(request) else { return "not a WebSocket" }
-        guard sameSecret(request.query["t"] ?? "", token) else { return "wrong token" }
-        guard let origin = request.headers["origin"], allowedOrigins.contains(where: { origin.hasPrefix($0) }) else { return "not from Margin's extension" }
-        return nil
+    fileprivate func bytes(_ socket: Socket, _ data: Data) {
+        let answer = data.withUnsafeBytes { raw in
+            LinkCore.answer { margin_link_bytes(core, 0, socket.id, raw.bindMemory(to: UInt8.self).baseAddress, raw.count, Diagnostics.now(), Date().timeIntervalSince1970, $0) }
+        }
+        perform(answer as? JSONObject)
     }
 
-    fileprivate func opened(_ socket: Socket) {
-        Diagnostics.note("socket open")
-        socket.send(AppMessage.welcome(key: key).encode() ?? "")
+    fileprivate func ended(_ socket: Socket, _ error: String?) {
+        guard sockets[socket.id] === socket else { return }
+        sockets[socket.id] = nil
+        perform(call(["type": "ended", "conn": socket.id, "error": error ?? NSNull()]))
     }
 
-    fileprivate func received(_ text: String, on socket: Socket) {
-        guard let message = LinkMessage.decode(text) else { return Diagnostics.warn("not a link message (\(text.prefix(40)))") }
-        if case .hello(let hello) = message { return said(hello, on: socket) }
-        guard let link = socket.connection, link.isUp else { return Diagnostics.warn("a message before hello: closed") }
-        switch message {
-        case .reply(let id, let body):
-            link.replied(id, body)
-        case .tock:
-            break
-        case .bye(let why):
-            Diagnostics.note("\(link.key) said goodbye: \(why)")
-            delegate?.linkReceived(link, message) // before it's down: nothing to wait for
-            socket.close(1000, "bye")
-        default:
-            delegate?.linkReceived(link, message)
-        }
+    // ---- the relays (RelayLink.swift) ----
+
+    func relayOpened(_ id: UInt64) {
+        perform(call(["type": "relayOpen", "conn": id]))
     }
 
-    private func said(_ hello: LinkMessage.Hello, on socket: Socket) {
-        guard socket.connection == nil else { return Diagnostics.warn("a second hello on one socket: left") }
-        guard hello.owner else {
-            Diagnostics.note("hello from a copy of Margin not in charge in \(hello.key): closed")
-            return socket.close(1008, "not the copy in charge")
+    func relayBytes(_ id: UInt64, _ data: Data) {
+        let answer = data.withUnsafeBytes { raw in
+            LinkCore.answer { margin_link_bytes(core, 1, id, raw.bindMemory(to: UInt8.self).baseAddress, raw.count, Diagnostics.now(), Date().timeIntervalSince1970, $0) }
         }
-        sockets.removeAll { $0 === socket }
-        if let old = links[hello.key] {
-            // Not the profile's link going down: the newer one takes over.
-            links[hello.key] = nil
-            old.down()
-            old.socket.close(1000, "replaced")
-            Diagnostics.note("a newer link for \(hello.key) took over")
-            delegate?.linkDown(old, "replaced")
-        }
-        let link = LinkConnection(hello: hello, socket: socket, owner: self)
-        socket.connection = link
-        links[hello.key] = link
-        rotation?.invalidate()
-        rotation = nil
-        appUpTimer?.invalidate()
-        if ticker == nil {
-            ticker = Timer.scheduledTimer(withTimeInterval: timing.tick, repeats: true) { [weak self] _ in
-                MainActor.assumeIsolated { self?.tick() }
-            }
-        }
-        Diagnostics.note("hello: \(hello.key), Margin \(hello.ext ?? "?")" + (hello.socketsOff.map { "; its link was off before: \($0)" } ?? ""))
-        delegate?.linkUp(link)
+        perform(answer as? JSONObject)
     }
 
-    private func tick() {
-        for link in connections {
-            if Diagnostics.now() - link.socket.lastHeard > timing.dead {
-                Diagnostics.warn("no word from \(link.key) for \(Int(timing.dead)) s")
-                link.socket.close(1001, "no word for \(Int(timing.dead)) s")
-            } else {
-                link.send(.tick)
-            }
-        }
+    func relayEnded(_ id: UInt64) {
+        perform(call(["type": "relayEnded", "conn": id]))
     }
-
-    fileprivate func closed(_ socket: Socket, _ why: String) {
-        sockets.removeAll { $0 === socket }
-        guard let link = socket.connection else {
-            // Ended before its hello: the 'no hello' timeout, a TCP connection closed before or
-            // after the upgrade, a copy not in charge. (A refused one is logged as refused.)
-            if !socket.refused {
-                Diagnostics.note("socket ended before its hello (\(socket.isOpen ? "after" : "before") the upgrade, \(Diagnostics.ms(since: socket.started))): \(why)")
-            }
-            return
-        }
-        guard links[link.key] === link else { return }
-        links[link.key] = nil
-        link.down()
-        Diagnostics.note("link down (\(link.key)): \(why)")
-        if links.isEmpty {
-            ticker?.invalidate()
-            ticker = nil
-            // A copy starting again tries the link it kept, for a while.
-            rotation?.invalidate()
-            rotation = stopped ? nil : Timer.scheduledTimer(withTimeInterval: timing.keep, repeats: false) { [weak self] _ in
-                MainActor.assumeIsolated {
-                    guard let self, self.links.isEmpty else { return }
-                    self.token = Self.secret()
-                    self.key = Self.secret()
-                    self.publish()
-                    Diagnostics.note("token changed")
-                }
-            }
-        }
-        delegate?.linkDown(link, why)
-    }
-
-    func stop(why: String, then: @escaping () -> Void) {
-        stopped = true
-        relay?.stop()
-        if let wakeObserver { DistributedNotificationCenter.default().removeObserver(wakeObserver) }
-        wakeObserver = nil
-        for timer in [ticker, rotation, appUpTimer, listenWaitTimer] { timer?.invalidate() }
-        listenWaitTimer = nil
-        ticker = nil
-        listener?.cancel()
-        listener = nil
-        port = nil
-        note.write(nil)
-        for socket in sockets { socket.close(1001, why) }
-        let open = connections
-        guard !open.isEmpty else { return then() }
-        var left = open.count
-        var done = false
-        let finish = {
-            guard !done else { return }
-            done = true
-            then()
-        }
-        for link in open {
-            let socket = link.socket
-            socket.send(AppMessage.bye(why: why).encode() ?? "") {
-                socket.close(1001, why)
-                left -= 1
-                if left == 0 { finish() }
-            }
-            closed(socket, "stopped: \(why)")
-        }
-        // Not a Timer: quitting, AppKit runs the run loop in its modal panel mode, where one never fires.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { MainActor.assumeIsolated { finish() } }
-    }
-
-    static func at() -> Double { (Date().timeIntervalSince1970 * 1000).rounded() }
 }
 
-// One TCP connection: the WebSocket handshake, then its messages (LinkSocket.swift).
+// One TCP connection's transport: its bytes to the core, the core's writes in order, closed once what was written
+// before has gone, and its end said to the core once.
 fileprivate final class Socket {
+    let id: UInt64
     private let tcp: NWConnection
     private weak var link: SocketLink?
-    // Its copy's link, once it said hello.
-    var connection: LinkConnection?
-    private var head = Data()
-    private var reader = FrameReader()
-    private var open = false
-    private var ended = false
-    private(set) var lastHeard = Diagnostics.now()
-    let started = Diagnostics.now()
-    // Turned away before the upgrade (logged as refused, not again as ended).
-    private(set) var refused = false
-    // Upgraded to a WebSocket.
-    var isOpen: Bool { open }
+    private var pending = 0 // writes not yet sent
+    private var endWhenSent = false
+    private var cancelled = false
+    private var finished = false
+    // Stop's wait: told once what was written has gone.
+    var drained: (() -> Void)?
+    var writing: Bool { pending > 0 }
 
-    init(_ tcp: NWConnection, link: SocketLink) {
+    init(id: UInt64, _ tcp: NWConnection, link: SocketLink) {
+        self.id = id
         self.tcp = tcp
         self.link = link
     }
 
     func start() {
+        guard !cancelled else { return }
         tcp.stateUpdateHandler = { [weak self] state in
             MainActor.assumeIsolated {
                 switch state {
-                case .failed(let error): self?.end("failed: \(error)")
-                case .cancelled: self?.end("cancelled")
+                case .failed(let error): self?.finish("\(error)")
+                case .cancelled: self?.finish(nil)
                 default: break
                 }
             }
@@ -626,85 +619,48 @@ fileprivate final class Socket {
     private func receive() {
         tcp.receive(minimumIncompleteLength: 1, maximumLength: 1 << 20) { [weak self] data, _, complete, error in
             MainActor.assumeIsolated {
-                guard let self, !self.ended else { return }
-                if let data, !data.isEmpty { self.got(data) }
-                if complete || error != nil {
-                    // No close frame came: a plain TCP end (a background torn down, a crash) or an error.
-                    let how = error.map { "connection failed: \($0)" } ?? (self.open ? "no close frame" : "TCP closed")
-                    return self.end(self.open ? "closed by the extension (1006, \(how))" : how)
-                }
-                if !self.ended { self.receive() }
+                guard let self, !self.finished else { return }
+                if let data, !data.isEmpty { self.link?.bytes(self, data) }
+                // No close frame came: a plain TCP end (a background torn down, a crash) or an error.
+                if complete || error != nil { return self.finish(error.map { "\($0)" }) }
+                if !self.finished, !self.cancelled { self.receive() }
             }
         }
     }
 
-    private func got(_ data: Data) {
-        lastHeard = Diagnostics.now()
-        if !open {
-            head.append(data)
-            switch Handshake.parse(head) {
-            case .incomplete:
-                return
-            case .bad:
-                return refuse("400 Bad Request", "not a request")
-            case .request(let request, let rest):
-                head = Data()
-                if let why = link?.allows(request) { return refuse("403 Forbidden", why) }
-                open = true
-                tcp.send(content: Handshake.switching(key: request.headers["sec-websocket-key"] ?? ""), completion: .idempotent)
-                link?.opened(self)
-                reader.append(rest)
-            }
-        } else {
-            reader.append(data)
-        }
-        do {
-            while open, !ended, let message = try reader.nextMessage() {
-                switch message {
-                case .text(let text): link?.received(text, on: self)
-                case .ping(let payload): write(Frame.encode(.pong, payload))
-                case .close(let code, let reason): close(1000, "closed by the extension (\(FrameReader.describeClose(code, reason)))")
-                case .none: break
-                }
-            }
-        } catch {
-            close(1002, "\(error)")
-        }
-    }
-
-    private func refuse(_ status: String, _ why: String) {
-        refused = true
-        Diagnostics.warn("socket refused: \(why)")
-        tcp.send(content: Handshake.refusal(status), completion: .contentProcessed { [weak self] _ in
-            MainActor.assumeIsolated { self?.tcp.cancel() }
-        })
-        end(why)
-    }
-
-    func send(_ text: String, then: (() -> Void)? = nil) {
-        guard open, !ended else { then?(); return }
-        write(Frame.encode(.text, Data(text.utf8)), then: then)
-    }
-
-    private func write(_ data: Data, then: (() -> Void)? = nil) {
-        tcp.send(content: data, completion: .contentProcessed { _ in
-            MainActor.assumeIsolated { then?() }
+    func write(_ data: Data) {
+        guard !cancelled else { return }
+        pending += 1
+        tcp.send(content: data, completion: .contentProcessed { [weak self] _ in
+            MainActor.assumeIsolated { self?.sent() }
         })
     }
 
-    func close(_ code: UInt16, _ why: String) {
-        guard !ended else { return }
-        if open {
-            write(Frame.close(code, why)) { [tcp] in tcp.cancel() }
-        } else {
-            tcp.cancel()
-        }
-        end(why)
+    private func sent() {
+        pending -= 1
+        guard pending == 0 else { return }
+        if endWhenSent { cancel() }
+        drained?()
+        drained = nil
     }
 
-    private func end(_ why: String) {
-        guard !ended else { return }
-        ended = true
-        link?.closed(self, why)
+    // The core's end: closed once what was written before has gone.
+    func end() {
+        guard !cancelled else { return }
+        if pending == 0 { cancel() } else { endWhenSent = true }
+    }
+
+    private func cancel() {
+        guard !cancelled else { return }
+        cancelled = true
+        tcp.cancel()
+    }
+
+    // It has ended (the copy's end, a failure, or ours): said to the core once.
+    private func finish(_ error: String?) {
+        guard !finished else { return }
+        finished = true
+        cancel()
+        link?.ended(self, error)
     }
 }

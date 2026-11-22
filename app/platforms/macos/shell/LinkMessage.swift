@@ -1,94 +1,17 @@
-// What Margin's extension and Margin.app say on their link, version 2
-// (docs/PROTOCOL.md describes every message and the order they come in): one
-// JSON object per message, `k` naming its kind. LinkMessage is what an
-// extension copy sends, AppMessage what the app does. The state comes as the
-// extension's stored values, left as they are (StateMirror keeps them).
-//
-// Grown from feat/native-panel's version 1: hello names the copy's browser
-// and profile (each Safari profile runs its own copy, each with its own
-// link), the panel's `cover` lease is gone, and the app can send a `theme` in
-// chunks and says which of a copy's windows it draws (`drawn`: the Safari
-// window it hosts). Nothing the app sends is over 1 MB (Chrome closes a native
-// port on a bigger message from the app, PLAN.md §14): encode() refuses it.
+// What Margin's extension and Margin.app say on their link, version 2 (docs/PROTOCOL.md describes every message and
+// the order they come in), as the rest of the app reads it. The words themselves are margin-core's
+// (app/shared/core/src/protocol.rs: each message read, checked and written, the 1 MB cap on what the app sends; the
+// link's session and its WebSocket in link.rs, socket.rs, websocket.rs, relay.rs, joined in link_hub.rs; docs/
+// CORE-REFACTOR.md step 1.5): a message comes here already read by the core (`LinkMessage(core:)` maps its JSON, with
+// nothing checked twice), and what the app sends goes to the core as `{ k, … }` (`AppMessage.core`), stamped and
+// sized there. StateMirror.swift still keeps a copy's state on the Mac's side (the core has its own, mirror.rs, for
+// Windows).
 
 import CoreGraphics
 import Foundation
+import MarginCore
 
 typealias JSONObject = [String: Any]
-
-enum LinkProtocol {
-    static let version = 2
-    // The largest message the app sends, as UTF-8 JSON.
-    static let maxAppMessage = 1_000_000
-    // A chunk's bytes before base64 (about 683 KB as text, well inside maxAppMessage).
-    static let chunkBytes = 512 * 1024
-    // The largest theme taken in chunks (ui/theme-loader.ts PACKAGE_LIMITS.storedBytes is 4.5 MB).
-    static let maxThemeBytes = 8 * 1024 * 1024
-}
-
-// Where the theme put the page in Margin's window (ui/host.ts Geometry): `<m-page>`'s content box as insets from the
-// window's edges, in points (CSS pixels at zoom 1 in the window's page). The hosted window goes there
-// (MarginWindowController.swift).
-struct PageLayout: Equatable {
-    var left: Double, top: Double, right: Double, bottom: Double
-    var radius: Double
-    var radii: [Double] // top-left, top-right, bottom-right, bottom-left
-    var width: Double, height: Double // the window's size it was measured at
-    var mode: String
-    // Measured with no page area of its own (Margin's own window hosting beside it: the sidebar alone, `pageOutside`).
-    var outside = false
-    // Measured while hosting in its page area (`pageHosted`): the sidebar as the person keeps it (hidden: the frame's
-    // page area), not the launcher's, whose sidebar is always docked. A hosted window is placed only by such a layout.
-    var hosted = false
-    // What the theme draws around the page area's rounded corners (Margin's own window only: host-app.ts cornerFill):
-    // each corner's colour outside the card (CSS colours, top left clockwise; empty: not said). The ground under the
-    // page area is the colour most of them have (MarginWindowController `pageGround`).
-    var fills: [String] = []
-    // A split shown (docs/PEEK-SPLIT.md §4): its id and each pane's box as Margin's renderer laid it out in `<m-page>`
-    // (`<m-pane>`, in the page's coordinates, top left), in the split's order, each by its item; none: no split.
-    var split: String?
-    var panes: [PagePane] = []
-
-    // From the page's report ({ insets, radius, radii, container, mode, pageOutside, split, panes }); nil if it isn't one.
-    init?(geometry g: JSONObject) {
-        guard let insets = g["insets"] as? JSONObject,
-              let l = num(insets["left"]), let t = num(insets["top"]), let r = num(insets["right"]), let b = num(insets["bottom"]),
-              let container = g["container"] as? JSONObject, let w = num(container["width"]), let h = num(container["height"]),
-              [l, t, r, b, w, h].allSatisfy({ $0.isFinite }), w > 0, h > 0 else { return nil }
-        let radius = num(g["radius"]) ?? 0
-        let radii = (g["radii"] as? [Any])?.compactMap(num) ?? []
-        self.init(left: l, top: t, right: r, bottom: b, radius: radius.isFinite ? max(0, radius) : 0,
-                  radii: radii.count == 4 ? radii : [radius, radius, radius, radius], width: w, height: h,
-                  mode: g["mode"] as? String ?? "fullscreen")
-        outside = g["pageOutside"] as? Bool == true
-        hosted = g["pageHosted"] as? Bool == true
-        let said = (g["fills"] as? [Any])?.prefix(4).map { ($0 as? String).flatMap { $0.count <= 80 ? $0 : nil } ?? "" } ?? []
-        fills = said.count == 4 ? said : []
-        // (At most 4 panes, each an item's id and a finite box of its own; anything else: no split said.)
-        if let id = g["split"] as? String, PagePane.idOk(id), let list = g["panes"] as? [Any], (2...4).contains(list.count) {
-            let parsed = list.compactMap { PagePane($0) }
-            if parsed.count == list.count, Set(parsed.map(\.item)).count == parsed.count { split = id; panes = parsed }
-        }
-    }
-
-    init(left: Double, top: Double, right: Double, bottom: Double, radius: Double, radii: [Double], width: Double, height: Double, mode: String) {
-        (self.left, self.top, self.right, self.bottom, self.radius, self.radii, self.width, self.height, self.mode) = (left, top, right, bottom, radius, radii, width, height, mode)
-    }
-}
-
-// One pane of a split as the page laid it out (PageLayout `panes`): its item and its box in the page, top left.
-struct PagePane: Equatable {
-    var item: String
-    var rect: CGRect
-    static func idOk(_ s: String) -> Bool { !s.isEmpty && s.count <= 256 && s.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || "-_:.".contains($0)) } }
-    init(item: String, rect: CGRect) { (self.item, self.rect) = (item, rect) }
-    init?(_ raw: Any) {
-        guard let o = raw as? JSONObject, let item = o["id"] as? String, Self.idOk(item), let r = o["rect"] as? [Any], r.count == 4 else { return nil }
-        let n = r.compactMap(num)
-        guard n.count == 4, n.allSatisfy(\.isFinite), n[2] > 0, n[3] > 0 else { return nil }
-        self.init(item: item, rect: CGRect(x: n[0], y: n[1], width: n[2], height: n[3]))
-    }
-}
 
 // A number in JSON (JSONSerialization gives NSNumber; a Bool is not one).
 func num(_ v: Any?) -> Double? {
@@ -101,29 +24,46 @@ func int(_ v: Any?) -> Int? {
     return Int(d)
 }
 
-// One piece of something too big for one message (a theme package): its
-// bytes are the UTF-8 JSON of the whole, cut in order, each piece as base64.
-struct Chunk: Equatable {
-    let id: String // the theme's id
-    let transfer: String // the whole's SHA-256, hex: which pieces belong together
-    let part: Int // from 0
-    let parts: Int
-    let size: Int // the whole's bytes
-    let data: String // this piece, base64
+// Any JSON value as text (a string, a number or null too).
+func jsonText(_ value: Any) -> Data? {
+    try? JSONSerialization.data(withJSONObject: value, options: [.fragmentsAllowed])
+}
 
-    init(id: String, transfer: String, part: Int, parts: Int, size: Int, data: String) {
-        (self.id, self.transfer, self.part, self.parts, self.size, self.data) = (id, transfer, part, parts, size, data)
+func jsonString(_ value: Any) -> String? {
+    jsonText(value).flatMap { String(data: $0, encoding: .utf8) }
+}
+
+// margin-ffi's calls with JSON in and out (the link's, ExtensionLink.swift, and the protocol's with no object).
+enum LinkCore {
+    // A JSON answer of one of the calls (freed here), nil if there's none.
+    static func answer(_ call: (UnsafeMutablePointer<Int>) -> UnsafeMutablePointer<UInt8>?) -> Any? {
+        var len = 0
+        guard let out = call(&len) else { return nil }
+        defer { margin_buffer_free(out, len) }
+        return try? JSONSerialization.jsonObject(with: Data(bytes: out, count: len), options: [.fragmentsAllowed])
     }
 
-    init?(_ m: JSONObject) {
-        guard let id = m["id"] as? String, !id.isEmpty, id.count <= 64,
-              let transfer = m["transfer"] as? String, transfer.count == 64,
-              let part = int(m["part"]), let parts = int(m["parts"]), parts >= 1, parts <= 64, (0..<parts).contains(part),
-              let size = int(m["size"]), size >= 0, let data = m["data"] as? String else { return nil }
-        self.init(id: id, transfer: transfer, part: part, parts: parts, size: size, data: data)
+    // `request` (a JSON object) to a call taking its bytes; nil if it isn't JSON (JSONSerialization's check first: it
+    // raises rather than throws on what it can't write).
+    static func call(_ request: JSONObject, _ call: (UnsafePointer<UInt8>?, Int, UnsafeMutablePointer<Int>) -> UnsafeMutablePointer<UInt8>?) -> Any? {
+        guard JSONSerialization.isValidJSONObject(request), let data = jsonText(request) else { return nil }
+        return data.withUnsafeBytes { raw in
+            answer { call(raw.bindMemory(to: UInt8.self).baseAddress, raw.count, $0) }
+        }
     }
 
-    var fields: JSONObject { ["id": id, "transfer": transfer, "part": part, "parts": parts, "size": size, "data": data] }
+    // The protocol's builders and readers (margin_link_protocol): no object.
+    static func protocolCall(_ request: JSONObject) -> Any? {
+        call(request) { margin_link_protocol($0, $1, $2) }
+    }
+
+    static let constants = protocolCall(["type": "constants"]) as? JSONObject ?? [:]
+}
+
+enum LinkProtocol {
+    static let version = int(LinkCore.constants["version"]) ?? 2
+    // The largest message the app sends, as UTF-8 JSON (the core refuses a bigger one).
+    static let maxAppMessage = int(LinkCore.constants["maxAppMessage"]) ?? 1_000_000
 }
 
 enum LinkMessage {
@@ -142,6 +82,19 @@ enum LinkMessage {
 
         // The link's key: one link per browser profile.
         var key: String { "\(browser):\(profile)" }
+
+        // As the core read it (protocol.rs Hello::object).
+        init?(core h: JSONObject) {
+            guard let epoch = h["epoch"] as? String, let profile = h["profile"] as? String, let browser = h["browser"] as? String else { return nil }
+            self.init(epoch: epoch, profile: profile, browser: browser, ext: h["ext"] as? String, owner: h["owner"] as? Bool == true,
+                      instanceId: h["instanceId"] as? String, origin: h["origin"] as? String, since: num(h["since"]), pid: int(h["pid"]),
+                      socketsOff: h["socketsOff"] as? String)
+        }
+
+        init(epoch: String, profile: String, browser: String, ext: String?, owner: Bool, instanceId: String?, origin: String?, since: Double?, pid: Int?, socketsOff: String? = nil) {
+            (self.epoch, self.profile, self.browser, self.ext, self.owner) = (epoch, profile, browser, ext, owner)
+            (self.instanceId, self.origin, self.since, self.pid, self.socketsOff) = (instanceId, origin, since, pid, socketsOff)
+        }
     }
 
     // A stored key in a delta: its new value, or gone.
@@ -155,14 +108,20 @@ enum LinkMessage {
         let del: [String]
     }
 
+    // A theme package put together from its pieces by the core (link_hub.rs), or why not (already logged there).
+    enum Theme {
+        case complete(id: String, data: Data)
+        case refused(String)
+    }
+
     case hello(Hello)
     case snapshot(epoch: String, seq: Int, state: JSONObject, windows: [JSONObject])
     case delta(epoch: String, seq: Int, changes: [String: Change], favicons: Favicons?)
     case windows(epoch: String, seq: Int, list: [JSONObject])
-    // Something for one window's UI (or every window's, with no windowId). The app reads `loading` only (the tabs
-    // loading in the Safari window it hosts: Shell.linkReceived).
+    // Something for one window's UI (or every window's, with no windowId). The app reads `loading` and the preview's
+    // and the UI's pushes (Shell.linkReceived).
     case push(epoch: String, windowId: Int?, msg: JSONObject)
-    case theme(epoch: String, chunk: Chunk)
+    case theme(epoch: String, theme: Theme)
     // The copy's shortcuts for the app's hot keys: { command: [combination] } (Shortcuts.swift).
     case keys(epoch: String, bindings: [String: [String]])
     case reply(id: Int, body: JSONObject)
@@ -173,126 +132,82 @@ enum LinkMessage {
     // A kind this app doesn't know (a newer extension): left.
     case other(String)
 
-    static let profilePattern = try! NSRegularExpression(pattern: "^[A-Za-z0-9_.:-]{1,64}$")
-
-    // nil: not a message (not JSON, or what its kind needs is missing).
-    static func decode(_ text: String) -> LinkMessage? {
-        guard let data = text.data(using: .utf8),
-              let m = (try? JSONSerialization.jsonObject(with: data)) as? JSONObject,
-              let k = m["k"] as? String else { return nil }
-        let epoch = m["epoch"] as? String
-        let seq = int(m["seq"])
-        if k.hasPrefix("data.") { return .data(kind: k, body: m) }
+    // A message as the core read it (protocol.rs LinkMessage::object: its wire form, every field checked there).
+    init?(core m: JSONObject) {
+        guard let k = m["k"] as? String else { return nil }
+        if k.hasPrefix("data.") { self = .data(kind: k, body: m); return }
+        let epoch = m["epoch"] as? String ?? ""
+        let seq = int(m["seq"]) ?? 0
         switch k {
         case "hello":
-            guard int(m["v"]) == LinkProtocol.version, let epoch, !epoch.isEmpty,
-                  let profile = m["profile"] as? String,
-                  profilePattern.firstMatch(in: profile, range: NSRange(profile.startIndex..., in: profile)) != nil,
-                  let browser = m["browser"] as? String, ["safari", "chrome", "edge"].contains(browser) else { return nil }
-            return .hello(Hello(epoch: epoch, profile: profile, browser: browser, ext: m["ext"] as? String, owner: m["owner"] as? Bool ?? false,
-                                instanceId: m["instanceId"] as? String, origin: m["origin"] as? String, since: num(m["since"]), pid: int(m["pid"]),
-                                socketsOff: (m["socketsOff"] as? String).map { String($0.prefix(200)) }))
+            guard let h = Hello(core: m) else { return nil }
+            self = .hello(h)
         case "snapshot":
-            guard let epoch, let seq, let state = m["state"] as? JSONObject else { return nil }
-            return .snapshot(epoch: epoch, seq: seq, state: state, windows: m["windows"] as? [JSONObject] ?? [])
+            self = .snapshot(epoch: epoch, seq: seq, state: m["state"] as? JSONObject ?? [:], windows: m["windows"] as? [JSONObject] ?? [])
         case "delta":
-            guard let epoch, let seq, let raw = m["changes"] as? JSONObject else { return nil }
             var changes: [String: Change] = [:]
-            for (key, change) in raw {
-                // storage.onChanged's { newValue }, with no newValue for a key removed.
-                guard let change = change as? JSONObject else { return nil }
-                changes[key] = change["newValue"].map(Change.set) ?? .removed
+            for (key, change) in m["changes"] as? JSONObject ?? [:] {
+                changes[key] = (change as? JSONObject)?["newValue"].map(Change.set) ?? .removed
             }
-            var favicons: Favicons?
-            if let f = m["favicons"] as? JSONObject {
-                favicons = Favicons(set: f["set"] as? JSONObject ?? [:], del: f["del"] as? [String] ?? [])
-            }
-            return .delta(epoch: epoch, seq: seq, changes: changes, favicons: favicons)
+            let favicons = (m["favicons"] as? JSONObject).map { Favicons(set: $0["set"] as? JSONObject ?? [:], del: $0["del"] as? [String] ?? []) }
+            self = .delta(epoch: epoch, seq: seq, changes: changes, favicons: favicons)
         case "windows":
-            guard let epoch, let seq, let list = m["list"] as? [JSONObject] else { return nil }
-            return .windows(epoch: epoch, seq: seq, list: list)
+            self = .windows(epoch: epoch, seq: seq, list: m["list"] as? [JSONObject] ?? [])
         case "push":
-            guard let epoch, let msg = m["msg"] as? JSONObject else { return nil }
-            return .push(epoch: epoch, windowId: int(m["windowId"]), msg: msg)
-        case "theme":
-            guard let epoch, let chunk = Chunk(m) else { return nil }
-            return .theme(epoch: epoch, chunk: chunk)
+            self = .push(epoch: epoch, windowId: int(m["windowId"]), msg: m["msg"] as? JSONObject ?? [:])
         case "keys":
-            guard let epoch, let raw = m["bindings"] as? JSONObject else { return nil }
             var bindings: [String: [String]] = [:]
-            for (command, list) in raw {
-                guard let list = list as? [Any] else { continue }
-                bindings[command] = list.compactMap { $0 as? String }.filter { $0.count <= 64 }.prefix(8).map { $0 }
-            }
-            return .keys(epoch: epoch, bindings: bindings)
+            for (command, list) in m["bindings"] as? JSONObject ?? [:] { bindings[command] = list as? [String] ?? [] }
+            self = .keys(epoch: epoch, bindings: bindings)
         case "reply":
-            guard let id = int(m["id"]) else { return nil }
             var body = m
             body["k"] = nil
             body["id"] = nil
-            return .reply(id: id, body: body)
+            self = .reply(id: int(m["id"]) ?? 0, body: body)
         case "tock":
-            return .tock
+            self = .tock
         case "bye":
-            return .bye(why: m["why"] as? String ?? "")
+            self = .bye(why: m["why"] as? String ?? "")
         default:
-            return .other(k)
+            self = .other(k)
         }
+    }
+
+    // A message's text read by the core (the tests', the WebKit host's): nil if it isn't one.
+    static func decode(_ text: String) -> LinkMessage? {
+        (LinkCore.protocolCall(["type": "message", "text": text]) as? JSONObject).flatMap { LinkMessage(core: $0) }
     }
 }
 
+// What the app sends a copy (its link's session's own, welcome, tick, req and bye, are the core's).
 enum AppMessage {
-    // First, on a socket the app accepted: the app's proof that it's the app.
-    case welcome(key: String)
-    case tick
-    // A request to the copy (a window's, or the copy's with no windowId), answered with `reply` (same id).
-    case req(id: Int, epoch: String, windowId: Int?, type: String, payload: JSONObject)
     case resync(epoch: String)
     // Whether Margin draws that window of the copy's: true only for the Safari window it hosts (Shell.tellDrawn).
     case drawn(epoch: String, windowId: Int, on: Bool)
-    case theme(epoch: String, chunk: Chunk)
     // The lasting data (docs/DATA.md "Messages": data.need, data.snapshot, data.changes, data.ack).
     case data(kind: String, body: JSONObject)
-    case bye(why: String)
 
-    var object: JSONObject {
-        let at = (Date().timeIntervalSince1970 * 1000).rounded()
+    // As the core takes it: `{ k, … }` (`at` stamped there).
+    var core: JSONObject {
         switch self {
-        case .welcome(let key):
-            return ["k": "welcome", "v": LinkProtocol.version, "key": key]
-        case .tick:
-            return ["k": "tick", "at": at]
-        case .req(let id, let epoch, let windowId, let type, let payload):
-            return ["k": "req", "id": id, "epoch": epoch, "at": at, "windowId": windowId ?? NSNull(), "type": type, "payload": payload]
-        case .resync(let epoch):
-            return ["k": "resync", "epoch": epoch]
-        case .drawn(let epoch, let windowId, let on):
-            return ["k": "drawn", "epoch": epoch, "windowId": windowId, "on": on, "at": at]
-        case .theme(let epoch, let chunk):
-            return chunk.fields.merging(["k": "theme", "epoch": epoch]) { $1 }
-        case .data(let kind, let body):
-            return body.merging(["k": kind]) { $1 }
-        case .bye(let why):
-            return ["k": "bye", "why": why]
+        case .resync(let epoch): return ["k": "resync", "epoch": epoch]
+        case .drawn(let epoch, let windowId, let on): return ["k": "drawn", "epoch": epoch, "windowId": windowId, "on": on]
+        case .data(let kind, let body): return body.merging(["k": kind]) { $1 }
         }
     }
 
-    // nil if a payload isn't JSON, or the message would be over maxAppMessage.
+    // The message's text as the core writes it now; nil if it isn't JSON or would be over 1 MB (the tests').
     func encode() -> String? {
-        guard JSONSerialization.isValidJSONObject(object),
-              let data = try? JSONSerialization.data(withJSONObject: object),
-              data.count <= LinkProtocol.maxAppMessage else { return nil }
-        return String(data: data, encoding: .utf8)
+        (LinkCore.protocolCall(["type": "encode", "message": core, "at": (Date().timeIntervalSince1970 * 1000).rounded()]) as? JSONObject)?["text"] as? String
     }
 }
 
-// ---- Requests to a copy about its windows, and their answers (docs/PROTOCOL.md) ----
+// ---- Requests to a copy about its windows, and their answers (docs/PROTOCOL.md): the core's (protocol.rs) ----
 
 // A window request to a copy with a deadline (the hosted Safari window into full screen or out of it:
 // HostedSession.safariFullScreen), as a `req`'s type and payload. `notAfter` is milliseconds since 1970 (the app and
 // its copies read the same clock): a copy that gets the request after it makes no windows call and answers
-// { refused: 'late' }. Once a windows call is made it can't be taken back (Safari carries it out when it gets to
-// it), so only the request's arrival is checked.
+// { refused: 'late' }.
 enum HandoffRequest {
     enum State: String { case fullscreen, normal }
 
@@ -300,23 +215,18 @@ enum HandoffRequest {
     // (`land: false`): what the window did is read from the window server (HostEngine), never from Safari's word.
     case setWindowState(windowId: Int, state: State, focused: Bool = false, notAfter: Double)
 
-    var type: String {
-        switch self {
-        case .setWindowState: "setWindowState"
-        }
-    }
-
-    var payload: JSONObject {
+    private var built: JSONObject {
         switch self {
         case .setWindowState(let id, let state, let focused, let notAfter):
-            var p: JSONObject = ["windowId": id, "state": state.rawValue, "notAfter": notAfter.rounded(), "land": false]
-            if focused { p["focused"] = true }
-            return p
+            return LinkCore.protocolCall(["type": "setWindowState", "windowId": id, "state": state.rawValue, "focused": focused, "notAfter": notAfter, "land": false]) as? JSONObject ?? [:]
         }
     }
+
+    var type: String { built["type"] as? String ?? "setWindowState" }
+    var payload: JSONObject { built["payload"] as? JSONObject ?? [:] }
 }
 
-// What a windows call answered (setWindowState, closeWindow: the reply's `result`).
+// What a windows call answered (setWindowState, closeWindow: the reply's `result`), as the core read it.
 // `busy` and `refused` mean the copy made no windows call: nothing changed, and a `busy` is evidence
 // that an earlier call for that window is stuck (behind a hung tab).
 enum WindowCallAnswer: Equatable {
@@ -328,15 +238,17 @@ enum WindowCallAnswer: Equatable {
     case done(state: String?) // closeWindow's answer (nothing)
 
     init(_ result: JSONObject) {
-        if result["busy"] as? Bool == true { self = .busy; return }
-        if let why = result["refused"] as? String { self = .refused(why: why, pastMs: num(result["pastMs"])); return }
-        let state = result["state"] as? String
-        if let id = int(result["windowId"]), let state {
-            if result["asked"] as? Bool == true { self = .asked(windowId: id, state: state); return }
-            if result["timedOut"] as? Bool == true { self = .timedOut(windowId: id, state: state); return }
-            if let at = num(result["landedAt"]) { self = .landed(windowId: id, state: state, at: at); return }
+        let a = LinkCore.protocolCall(["type": "windowCall", "result": result]) as? JSONObject ?? [:]
+        let id = int(a["windowId"]) ?? 0
+        let state = a["state"] as? String ?? ""
+        switch a["answer"] as? String {
+        case "asked": self = .asked(windowId: id, state: state)
+        case "landed": self = .landed(windowId: id, state: state, at: num(a["at"]) ?? 0)
+        case "timedOut": self = .timedOut(windowId: id, state: state)
+        case "busy": self = .busy
+        case "refused": self = .refused(why: a["why"] as? String ?? "", pastMs: num(a["pastMs"]))
+        default: self = .done(state: a["state"] as? String)
         }
-        self = .done(state: state)
     }
 
     // Whether the copy called Safari for it.
@@ -349,28 +261,18 @@ enum WindowCallAnswer: Equatable {
 }
 
 // What newWindow answered: the new window, and its bounds as Safari gave them (points from the top left of
-// the main display, as the windows list has them). An older copy sends no bounds.
+// the main display, as the windows list has them), as the core read it. An older copy sends no bounds.
 struct SpaceWindowAnswer: Equatable {
     let windowId: Int
     let bounds: CGRect?
 
     init?(_ result: JSONObject) {
-        guard let windowId = int(result["windowId"]) else { return nil }
+        guard let a = LinkCore.protocolCall(["type": "spaceWindow", "result": result]) as? JSONObject, let windowId = int(a["windowId"]) else { return nil }
         self.windowId = windowId
-        if let b = result["bounds"] as? JSONObject, let l = num(b["left"]), let t = num(b["top"]), let w = num(b["width"]), let h = num(b["height"]),
-           [l, t, w, h].allSatisfy(\.isFinite), w > 0, h > 0 {
-            bounds = CGRect(x: l, y: t, width: w, height: h)
+        if let b = a["bounds"] as? JSONObject, let x = num(b["x"]), let y = num(b["y"]), let w = num(b["width"]), let h = num(b["height"]) {
+            bounds = CGRect(x: x, y: y, width: w, height: h)
         } else {
             bounds = nil
         }
     }
-}
-
-// Any JSON value as text (a string, a number or null too).
-func jsonText(_ value: Any) -> Data? {
-    try? JSONSerialization.data(withJSONObject: value, options: [.fragmentsAllowed])
-}
-
-func jsonString(_ value: Any) -> String? {
-    jsonText(value).flatMap { String(data: $0, encoding: .utf8) }
 }

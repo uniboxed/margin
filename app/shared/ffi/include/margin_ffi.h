@@ -114,4 +114,17 @@ void margin_profiles_free(MarginProfiles *profiles);
 uint8_t *margin_profiles_call(MarginProfiles *profiles, const uint8_t *request, size_t len, size_t *out_len);
 uint8_t *margin_profiles_resolve(const uint8_t *request, size_t len, size_t *out_len);
 
+// The link (link_hub.rs, ffi link.rs): the copies' WebSockets, Chrome's and Edge's relays, Safari's way in. The Swift
+// side owns the sockets, Safari's dispatch, the notification, the note's file and one timer, and carries out each
+// answer's `do` list in order. Bytes in are typed; bytes out come through `write` during the call (which 0: a copy's
+// TCP connection, 1: a relay's; copied before it returns). Answers (JSON) freed with margin_buffer_free.
+typedef struct MarginLink MarginLink;
+typedef void (*MarginLinkWrite)(void *ctx, uint8_t which, uint64_t conn, const uint8_t *bytes, size_t len);
+
+MarginLink *margin_link_new(const uint8_t *config, size_t len, void *ctx, MarginLinkWrite write);
+void margin_link_free(MarginLink *link);
+uint8_t *margin_link_call(MarginLink *link, const uint8_t *request, size_t len, size_t *out_len);
+uint8_t *margin_link_bytes(MarginLink *link, uint8_t which, uint64_t conn, const uint8_t *bytes, size_t len, double now, double wall, size_t *out_len);
+uint8_t *margin_link_protocol(const uint8_t *request, size_t len, size_t *out_len);
+
 #endif

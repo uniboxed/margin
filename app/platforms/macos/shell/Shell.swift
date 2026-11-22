@@ -60,7 +60,6 @@ final class Shell: ExtensionLinkDelegate {
     final class Link {
         let connection: LinkConnection
         let mirror = StateMirror()
-        var assembler = ChunkAssembler()
         var theme: String? // the theme package's JSON (background/theme-package.ts ThemeMessage)
         var themeId: String?
         var resyncTimer: Timer?
@@ -256,9 +255,10 @@ final class Shell: ExtensionLinkDelegate {
             case .ignored:
                 break
             }
-        case .theme(let epoch, let chunk):
+        case .theme(let epoch, let theme):
+            // (Its pieces put together by the core, this link's epoch's only: link_hub.rs.)
             guard epoch == connection.epoch else { return }
-            switch entry.assembler.add(chunk) {
+            switch theme {
             case .complete(let id, let data):
                 guard let object = (try? JSONSerialization.jsonObject(with: data)) as? JSONObject, object["id"] as? String == id,
                       object["manifest"] is String, object["html"] is String, object["css"] is String, let text = String(data: data, encoding: .utf8) else {
@@ -267,10 +267,8 @@ final class Shell: ExtensionLinkDelegate {
                 entry.theme = text
                 entry.themeId = id
                 Diagnostics.note("\(connection.key): theme \(id) here (\(data.count) bytes)")
-            case .refused(let why):
-                Diagnostics.warn("\(connection.key): a theme refused: \(why)")
-            case .waiting:
-                break
+            case .refused:
+                break // (said by the core: "KEY: a theme refused: WHY")
             }
         case .data(let kind, let body):
             data.received(connection, kind, body)

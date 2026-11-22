@@ -11,9 +11,11 @@
 
 mod data;
 mod keys;
+mod link;
 mod profiles;
 pub use data::*;
 pub use keys::*;
+pub use link::*;
 pub use profiles::*;
 
 use margin_core::geometry::Rect;

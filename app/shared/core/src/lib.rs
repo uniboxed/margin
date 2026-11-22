@@ -6,10 +6,11 @@ pub mod json;
 pub mod system;
 pub mod time;
 
-// The link (ExtensionLink.swift, LinkSocket.swift, LinkMessage.swift, Chunks.swift, StateMirror.swift): the copies'
-// WebSockets on every OS.
+// The link: the copies' WebSockets on every OS, the one copy of its rules (the Mac's through margin-ffi's link object:
+// `link_hub`; StateMirror.swift is still the Mac's own).
 pub mod chunks;
 pub mod link;
+pub mod link_hub;
 pub mod mirror;
 pub mod protocol;
 pub mod relay;

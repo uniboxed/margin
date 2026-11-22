@@ -1,4 +1,4 @@
-//! The app's end of Margin's connector, sans IO (app/platforms/macos/shell/RelayLink.swift: `RelayHub` and
+//! The app's end of Margin's connector, sans IO (the Mac's RelayLink.swift keeps only the socket: `RelayHub` and
 //! `RelayConnection`, less the socket): Chrome's and Edge's copies can't hear Safari's `dispatchMessage`, so the
 //! browser starts the connector (`margin-connector`, app/shared/connector/) through native messaging, and the
 //! connector connects to the app (a Unix socket on the Mac, a named pipe on Windows: only this user's, the
@@ -194,7 +194,8 @@ impl RelayHub {
                 browser: browser.to_owned(),
                 pid,
                 version: json::string(message.get("version")).unwrap_or("").to_owned(),
-                waited: json::boolean(message.get("waited")) == Some(true),
+                // (As Swift's `as? Bool` read it: 1 too.)
+                waited: json::flag(message.get("waited")) == Some(true),
             };
             let waited = hello.waited;
             if pid > 0 {

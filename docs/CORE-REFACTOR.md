@@ -169,6 +169,23 @@ against the core.
 - The old overlay's messages (setLayout, parked, the handoff's probes) stay for the Windows shell until it's hosted.
 - Tests the Rust side has and Swift never had (takeover, owner refusal, the hello timeout, rotation, 40 s of
   silence) then cover the Mac too. docs/PROTOCOL.md's stale rows fixed on the way.
+- Done 2026-11-22 (uncommitted, for review): `link_hub.rs` joins SocketLink, RelayHub and Safari's way in as the
+  Swift joined them (a Safari target, `Via::safari`, beside the relays; `woken`, `say_app_up`, `Out::Note`, a theme's
+  pieces put together per link); the FFI's link object (`ffi/src/link.rs`): bytes in typed, bytes out through a
+  write callback during the call, everything else one JSON call; `now` is the Mac's monotonic clock and the `at`s
+  the wall clock's (`set_wall_offset`), so a sleep never reads as 40 s of silence. LinkSocket.swift and Chunks.swift
+  are gone; LinkMessage.swift maps what the core read (and keeps the window requests' Swift API over
+  `margin_link_protocol`); ExtensionLink.swift and RelayLink.swift are the transport only. PageLayout moved to its own
+  file (Margin's window's, step 3). StateMirror.swift stays the Mac's for now (mirror.rs is Windows').
+- Kept as Rust has it: lengths in characters, not grapheme clusters (a chunk's id, a key, a nonce, `socketsOff`, a
+  relay's log line); the profile id's byte check (Swift's `$` let a trailing newline through); "a message before
+  hello: left" (Swift's log said "closed" but left it); a connection's `.failed` read as the TCP end's
+  "connection failed: …". Changed on purpose: a malformed `parkedActivity` is a plain push (the Mac's Swift passed it
+  on; the Windows shell drops it, as before).
+- The hosted requests' builders and readers (hostShow…, peekAnswer, newWindow's answer) overlap
+  feat/hosted-windows-chromium's `hosted_browser.rs` almost wholly, so this step adds only what the link's plumbing
+  needs (`land: false`, `WindowCallAnswer::Asked`, the Mac's readers through the FFI); the session's requests stay
+  Swift dictionaries until step 3 takes that module.
 
 ### Not in step 1
 The Mac shell's link routing (which hosted windows are `drawn`, the pushes for the preview card, the mini player and

@@ -1,5 +1,5 @@
-// Margin.app's real end of the link (app/platforms/macos/shell/ExtensionLink.swift, LinkSocket.swift,
-// LinkMessage.swift, Chunks.swift), on its own, for the WebKit host's `app*` steps: the
+// Margin.app's real end of the link (app/platforms/macos/shell/ExtensionLink.swift, RelayLink.swift and
+// LinkMessage.swift over margin-core's link through margin-ffi), on its own, for the WebKit host's `app*` steps: the
 // host passes what the extension's native messaging does to it (wantLink) on stdin, and
 // puts what this dispatches into the extension (SFSafariApplication.dispatchMessage in the
 // app) into the copy's native port. No windows, nothing hosted: it plays the app's
@@ -11,7 +11,7 @@
 // { wantLink: nonce } | { bye: true } | { refuse: Bool } (dispatches refused or passed on: the host's `appRefuse`) |
 // { req: { type, payload } } (a request from the app for the copy's first window, its reply said: the host's `appReq`
 // step) | { drawn: Bool } (whether the app draws that window: the host's `appDrawn` step).
-// Built by run.sh with the app's flags; never shows anything.
+// Built by run.sh with the app's flags and margin-core (scripts/build-core.sh host); never shows anything.
 import AppKit
 import Foundation
 
@@ -38,7 +38,6 @@ let dispatcher = StdoutDispatch()
 
 final class Harness: ExtensionLinkDelegate {
   let link: SocketLink
-  var assembler = ChunkAssembler()
   var asked = Set<String>()
   var firstWindow: [String: Int] = [:] // each copy's (epoch's) first window, as its first snapshot listed it
   var current: LinkConnection?
@@ -69,8 +68,9 @@ final class Harness: ExtensionLinkDelegate {
       // Each window's tab in front (ids only).
       let each: [[String: Any]] = list.map { w in ["windowId": w["windowId"] ?? NSNull(), "activeTabId": w["activeTabId"] ?? NSNull()] }
       say(["ev": "windows", "seq": seq, "count": list.count, "list": each])
-    case .theme(let epoch, let chunk):
-      switch assembler.add(chunk) {
+    case .theme(let epoch, let theme):
+      // (Its pieces put together by the core, per link.)
+      switch theme {
       case .complete(let id, let data):
         say(["ev": "theme", "id": id, "bytes": data.count])
         guard !asked.contains(epoch) else { return }
@@ -85,7 +85,6 @@ final class Harness: ExtensionLinkDelegate {
           }
         }
       case .refused(let why): say(["ev": "theme refused", "why": why])
-      case .waiting: break
       }
     case .keys(_, let bindings):
       say(["ev": "keys", "bindings": bindings])
