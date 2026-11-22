@@ -361,7 +361,8 @@ impl<O: WinOs> Hosting<O> {
     /// waited for), shown by the next reconcile.
     pub fn set_rect(&mut self, id: &str, rect: Option<Rect>) {
         let Some(h) = self.get_mut(id) else { return };
-        if h.rect.is_none() && rect.is_some() {
+        let show = h.rect.is_none() && rect.is_some();
+        if show {
             h.placed = false; // (a new show: placed again, its budgets the driver's `shown`)
             h.misses = 0;
         }
@@ -370,6 +371,9 @@ impl<O: WinOs> Hosting<O> {
         let window = h.window;
         if park {
             self.os.hide(window);
+        }
+        if show {
+            self.guard.cleared(id); // (a restack stopped at its last show is tried again at this one)
         }
     }
 
@@ -491,12 +495,15 @@ impl<O: WinOs> Hosting<O> {
         let outer = borders(&f).outset(&visible);
         let ok = self.os.place(h.window, outer, margin, f.maximized || f.minimized);
         let removed = !h.taskbar_removed && ok && self.os.taskbar(h.window, false);
-        // What it holds now: larger than asked is its minimum; not resizable is its size.
+        // What it holds now: larger than asked is its minimum; not the size asked and with no sizing border, its own size
+        // (a window without one that took the size asked, as a browser's own full screen, is sized as any).
         let after = self.os.facts(h.window, h.pid, margin);
+        let missed =
+            (after.bounds.width - visible.width).abs() > 1.0 || (after.bounds.height - visible.height).abs() > 1.0;
         let Some(h) = self.get_mut(id) else { return ok };
         h.placed = ok;
         h.taskbar_removed |= removed;
-        if ok && after.exists {
+        if ok && after.exists && missed && h.route != WinRoute::Framed {
             if !after.resizable {
                 h.fixed = Some(Size::new(after.bounds.width, after.bounds.height));
             } else if after.bounds.width > visible.width + 1.0 || after.bounds.height > visible.height + 1.0 {

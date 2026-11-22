@@ -30,6 +30,8 @@ struct SimWin {
     above_margin: bool,
     taskbar: bool,
     desktop: bool,
+    /// No sizing border, yet sized by SetWindowPos all the same (a browser's own full screen: WS_POPUP).
+    sized_anyway: bool,
 }
 
 #[derive(Default)]
@@ -59,6 +61,7 @@ impl Sim {
                 above_margin: true,
                 taskbar: true,
                 desktop: true,
+                sized_anyway: false,
             },
         );
     }
@@ -100,7 +103,7 @@ impl WinOs for Sim {
         w.visible = true;
         w.above_margin = false;
         let asked = BORDERS.inset(&outer);
-        w.bounds = if !w.resizable {
+        w.bounds = if !w.resizable && !w.sized_anyway {
             Rect::new(asked.x, asked.y, w.bounds.width, w.bounds.height)
         } else {
             let min = w.min.unwrap_or_default();
@@ -442,4 +445,26 @@ fn a_hosts_situation_as_the_core_reads_it() {
     assert_eq!(step(&situation(&placed, &at, &AREA), Desired::Shown), vec![]);
     let off = WindowFacts { bounds: Rect::new(0.0, 0.0, 100.0, 100.0), ..at };
     assert_eq!(step(&situation(&placed, &off, &AREA), Desired::Shown), vec![Correction::FrameWindow]);
+}
+
+#[test]
+fn a_browsers_own_full_screen_has_no_sizing_border_and_still_follows_the_page_area() {
+    // (Chromium's full-screen window is WS_POPUP: no WS_THICKFRAME, yet SetWindowPos sizes it. Taking it for a
+    // fixed-size window would keep it at its first size when Margin's window is resized.)
+    let mut sim = Sim::with(10, 42, AREA);
+    sim.win(10).resizable = false;
+    sim.win(10).sized_anyway = true;
+    let mut h = hosting(sim);
+    h.host(WinHost::new("chrome:p-1", 10, 42, "chrome.exe", WinRoute::Framed)).unwrap_or_else(|e| panic!("{e:?}"));
+    h.set_rect("chrome:p-1", Some(PAGE));
+    let (mut d, mut t) = (Driver::new(), 0.0);
+    settle(&mut d, &mut h, &mut t);
+    assert_eq!(h.os.windows[&10].bounds, PAGE);
+    assert_eq!(h.hosts[0].fixed, None);
+    let narrower = Rect::new(500.0, 50.0, 1400.0, 980.0);
+    h.set_rect("chrome:p-1", None);
+    h.set_rect("chrome:p-1", Some(narrower));
+    d.shown("chrome:p-1");
+    settle(&mut d, &mut h, &mut t);
+    assert_eq!(h.os.windows[&10].bounds, narrower, "at the new page area, not its first size");
 }

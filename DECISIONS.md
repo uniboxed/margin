@@ -7461,3 +7461,36 @@ however much can fit inside it", arrows on hover on the sides with more to show,
   the edge beside Safari, slid under Safari's pane and back; the screen suite's `cut-panes` part, 14 of 14.
 - **Open**: a second display beside this one (none connected yet): a tile past the edge should stay clipped to its own
   display.
+
+## Chrome, Edge and Windows on the hosted design: the plan and its first steps (2026-11-22)
+
+Asked by Tirth: Chrome and Edge hosted as Safari is, on the Mac and Windows, and the Windows shell on the hosted design.
+The plan is docs/HOSTED-WINDOWS-CHROMIUM.md (its §9 lists what's Tirth's to decide, §10 what the Windows side needs from
+the core's session work, which isn't re-implemented here). Built on `feat/hosted-windows-chromium`; mine, not asked:
+
+- **The copy knows the windows the app hosts** (`hosted.ts` `isHosted`: made for the app with `newWindow { hosted:
+  true }` or `{ mark }`, or an item shown there). Chromium's own "Margin full screen" (`followFullscreen`) leaves them
+  alone: it took a window the app put in full screen out of it and back in (the headless Chromium e2e reproduced it,
+  the copy's `windows.update` to normal then full screen; it passes with the guard). They also count as in full screen for
+  "only in full screen" (Margin's keys in a hosted window on Windows, which is a normal window there). Safari's paths
+  are unchanged: its build differs by these lines only, none of them reached in Safari.
+- **A window found by its mark on Windows:** `newWindow { mark }` opens Margin's new-tab page with `?mark=`, titled
+  `Margin <mark>`, so the window's title carries it (Chromium titles a window after its front tab) until `hostShow`
+  replaces that page. A title is exact where bounds can be ambiguous (restored windows at the default size); bounds stay
+  the fallback.
+- **One contract for every app that hosts a browser:** margin-core `hosted_browser` builds each request as the copy
+  checks it (vectors shared with the copy's tests, `tests/fixtures/hosted-browser.json`).
+- **Windows hosting:** a hosted window lies directly under Margin's window at its rect (`SetWindowPos` after Margin's
+  window, never activated); the page area is cut from Margin's window region so clicks reach it natively (no pointer
+  poll); a click in the hole raises it and it's put back under at once (the person's input within 0.5 s is never a
+  loop; an app raising itself is the core's loop guard's); its taskbar button removed while hosted; parked = hidden; a
+  person's minimize or maximize of the hosted window is Margin's to follow; an elevated app is refused; a window that
+  can't be resized is centred; one with a minimum goes to `layout::fit`. Windows' reads are final (no Space transitions):
+  one read counts as the reconciler's two. Browsers on Windows take the framed route (their own full screen, held at the
+  rect) and step down to the covered route (their toolbar under Margin's window) after two placements that didn't hold.
+- **A real-PC check before the session exists:** `margin.exe --host-check <program | window>` runs the mechanism alone
+  (docs/windows/UNVERIFIED.md "Hosting (the hosted design)"); the default launch is the overlay shell, unchanged.
+- **Verified:** `tests/hosted-chromium.test.ts`, `tests/hosted-tabs.test.ts`, `tests/e2e/chromium-hosted.test.ts`
+  (headless Chromium), margin-core's and margin-windows' Rust tests (the adapter against a simulated Windows), clippy
+  clean for `x86_64-pc-windows-msvc` and `aarch64-pc-windows-msvc`. **Not run on Windows**, nor with real Chrome or Edge
+  hosted on the Mac.
