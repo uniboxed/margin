@@ -162,6 +162,21 @@ pub extern "C" fn margin_layout_fit(page: MarginRect, min_width: f64, min_height
     layout::fit(&page.into(), min, &area.into()).into()
 }
 
+/// A split pane's window frame (host/layout.rs `cut`): at its minimum within the area, at its start or end along each
+/// axis; a minimum of zero (or less) on both sides: none (the pane).
+#[unsafe(no_mangle)]
+pub extern "C" fn margin_layout_cut(
+    pane: MarginRect,
+    min_width: f64,
+    min_height: f64,
+    area: MarginRect,
+    end_x: bool,
+    end_y: bool,
+) -> MarginRect {
+    let min = (min_width > 0.0 || min_height > 0.0).then_some(Size::new(min_width.max(0.0), min_height.max(0.0)));
+    layout::cut(&pane.into(), min, &area.into(), end_x, end_y).into()
+}
+
 /// Margin's own tile (host/layout.rs `home`). False: the display isn't known.
 ///
 /// # Safety
@@ -271,6 +286,12 @@ mod tests {
         assert_eq!(
             margin_layout_fit(page, 1048.0, 640.0, p.area),
             MarginRect { x: 456.0, y: 41.0, width: 1048.0, height: 933.0 }
+        );
+        let right = MarginRect { x: 876.0, y: 41.0, width: 628.0, height: 933.0 };
+        assert_eq!(margin_layout_cut(right, 0.0, 0.0, p.area, false, false), right);
+        assert_eq!(
+            margin_layout_cut(right, 701.0, 53.0, p.area, true, false),
+            MarginRect { x: 803.0, y: 41.0, width: 701.0, height: 933.0 }
         );
     }
 }

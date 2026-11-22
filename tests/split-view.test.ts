@@ -9,7 +9,7 @@ import * as L from '../app/shared/library/library.ts';
 import { checkAction, contextFromState, requestFor } from '../extension/ui/actions.ts';
 import { menuItems } from '../extension/ui/behaviors/menu-items.ts';
 import { buildViewModel } from '../extension/ui/view-model.ts';
-import { appKeyOf, dividerSizes, dragRatios, equalRatios, nextSplitPane, paneFloors, panesFit, PANE_FLOOR, SAFARI_TOOLBAR } from '../extension/ui/behaviors/split.ts';
+import { appKeyOf, dividerSizes, dragRatios, equalRatios, nextSplitPane, paneFloors, panesFit, PANE_FLOOR, SAFARI_TOOLBAR, SNAP, SNAP_HAPTIC_SPEED } from '../extension/ui/behaviors/split.ts';
 import { createHostedTabs } from '../extension/background/hosted.ts';
 import * as M from '../extension/state/model.ts';
 
@@ -178,24 +178,30 @@ test('split view, UI: a pane\'s menu has Remove, Break Out, Swap, Stacked; anoth
   assert.ok(menuItems({ kind: 'tab', id: 2 }, { state: stacked, space: vm.space }).some((i) => i.label === 'Side by Side'));
 });
 
-test('split view, UI: a divider moves the two panes beside it, each stopping at its floor', () => {
-  assert.deepEqual(paneFloors({ axis: 'horizontal', panes: [{ id: 'a' }, { id: 'b' }] as any }, { a: [500, 300] }), [500, PANE_FLOOR.width]);
-  assert.deepEqual(paneFloors({ axis: 'vertical', panes: [{ id: 'a' }, { id: 'b' }] as any }, { a: [500, 300] }), [300, PANE_FLOOR.height]);
-  // Its app's known minimum (Margin.app's `appMin`: `web` for Safari's pages, an app by its bundle id), whether its
-  // window is open or not: a pane not opened yet, main, one being added (2026-11-21: a third Safari pane let in).
-  const apps = { web: [574, 220], 'com.apple.Notes': [700, 400] } as Record<string, [number, number]>;
+test('split view, UI: a divider moves the two panes beside it, each stopping at Arc\'s 220, snapping even within 14', () => {
+  // Arc's least (its split view's `minimumPaneWidth`, 220, its least height stacked too), whatever the pane's window
+  // needs: a window wider than its pane is shown cut (docs/PEEK-SPLIT.md §4b).
+  assert.deepEqual(PANE_FLOOR, { width: 220, height: 220 });
   const mixed = [{ id: 'a', url: 'https://a.example/' }, { id: 'n', url: 'app://com.apple.Notes' }, { id: 'x', url: 'app://com.example.Other' }];
-  assert.deepEqual(paneFloors({ axis: 'horizontal', panes: mixed }, {}, apps), [574, 700, PANE_FLOOR.width]);
-  assert.deepEqual(paneFloors({ axis: 'vertical', panes: mixed }, {}, apps), [220, 400, PANE_FLOOR.height]);
-  assert.deepEqual(paneFloors({ axis: 'horizontal', panes: mixed }, { a: [600, 0], n: [650, 0] }, apps), [600, 700, PANE_FLOOR.width], 'the larger of its own and its app\'s');
+  assert.deepEqual(paneFloors({ axis: 'horizontal', panes: mixed }), [220, 220, 220]);
+  assert.deepEqual(paneFloors({ axis: 'vertical', panes: mixed }), [220, 220, 220]);
   assert.equal(appKeyOf('app://com.apple.Notes'), 'com.apple.Notes');
   assert.equal(appKeyOf('https://a.example/x'), 'web');
-  assert.equal(panesFit(paneFloors({ axis: 'horizontal', panes: [mixed[0], mixed[0], mixed[0]] }, {}, apps), 1264, 8), false, '3 Safari panes in 1264: no');
-  const r = dragRatios([600, 600], [200, 200], 0, -100);
+  assert.equal(panesFit(paneFloors({ axis: 'horizontal', panes: [mixed[0], mixed[0], mixed[0]] }), 1264, 8), true, '3 Safari panes in 1264: yes now (each 220 at least, cut where its window needs more)');
+  assert.equal(panesFit(paneFloors({ axis: 'horizontal', panes: [0, 0, 0, 0, 0, 0] }), 1264, 8), false, 'six of 220 and the gaps: no');
+  const r = dragRatios([600, 600], [220, 220], 0, -100);
   assert.deepEqual(r.map((v) => Math.round(v * 1200)), [500, 700]);
-  assert.deepEqual(dragRatios([600, 600], [500, 200], 0, -400).map((v) => Math.round(v * 1200)), [500, 700], 'stops at the left one\'s floor');
-  assert.deepEqual(dragRatios([600, 600], [200, 450], 0, 400).map((v) => Math.round(v * 1200)), [750, 450], 'stops at the right one\'s');
-  assert.deepEqual(dragRatios([400, 400, 400], [200, 200, 200], 1, 100).map((v) => Math.round(v * 1200)), [400, 500, 300], 'only the two beside it');
+  assert.deepEqual(dragRatios([600, 600], [500, 220], 0, -400).map((v) => Math.round(v * 1200)), [500, 700], 'stops at the left one\'s floor');
+  assert.deepEqual(dragRatios([600, 600], [220, 450], 0, 400).map((v) => Math.round(v * 1200)), [750, 450], 'stops at the right one\'s');
+  assert.deepEqual(dragRatios([400, 400, 400], [220, 220, 220], 1, 100).map((v) => Math.round(v * 1200)), [400, 500, 300], 'only the two beside it');
+  // The snap (Arc's 14 pt): within it of an even split of the two beside the divider, even; past it, where the pointer is.
+  assert.equal(SNAP, 14);
+  assert.equal(SNAP_HAPTIC_SPEED, 120);
+  assert.deepEqual(dragRatios([500, 700], [220, 220], 0, 90, SNAP).map((v) => Math.round(v * 1200)), [600, 600], '590 is within 14 of 600: even');
+  assert.deepEqual(dragRatios([500, 700], [220, 220], 0, 86, SNAP).map((v) => Math.round(v * 1200)), [600, 600], '586: exactly 14 off, even');
+  assert.deepEqual(dragRatios([500, 700], [220, 220], 0, 85, SNAP).map((v) => Math.round(v * 1200)), [585, 615], '585: 15 off, not snapped');
+  assert.deepEqual(dragRatios([400, 400, 400], [220, 220, 220], 1, 5, SNAP).map((v) => Math.round(v * 1200)), [400, 400, 400], 'even of the two beside it, the others as they are');
+  assert.deepEqual(dragRatios([500, 700], [220, 220], 0, 90).map((v) => Math.round(v * 1200)), [590, 610], 'no snap asked (keys, Home/End): where it moved');
   assert.deepEqual(equalRatios(3).map((v) => Math.round(v * 300)), [100, 100, 100]);
   assert.equal(panesFit([500, 500], 1008, 8), true);
   assert.equal(panesFit([500, 500], 1000, 8), false);

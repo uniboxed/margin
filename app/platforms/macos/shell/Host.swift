@@ -302,6 +302,13 @@ nonisolated enum HostLayout {
         CGRect(margin_layout_fit(page.marginRect, Double(min?.width ?? 0), Double(min?.height ?? 0), area.marginRect))
     }
 
+    // A split pane's window frame (docs/PEEK-SPLIT.md §4b): the pane itself when its window can be that small, else the
+    // window at its own minimum within the area, at its start (left, top) or end (right, bottom) along each axis
+    // (margin-core's `cut`): the rest of it hidden under Margin's window or a neighbour pane, never past the display.
+    static func cut(_ pane: CGRect, min: CGSize?, in area: CGRect, endX: Bool, endY: Bool) -> CGRect {
+        CGRect(margin_layout_cut(pane.marginRect, Double(min?.width ?? 0), Double(min?.height ?? 0), area.marginRect, endX, endY))
+    }
+
     // Margin's own tile: the display's whole frame, from its top left (nil: the display isn't known).
     static func home(_ p: HostPlacement) -> CGRect? {
         var pl = p.margin

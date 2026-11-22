@@ -136,6 +136,32 @@ pub fn fit(page: &Rect, min: Option<Size>, area: &Rect) -> Rect {
     Rect::new((page.max_x() - width).max(area.min_x()), page.min_y(), width, height)
 }
 
+/// A split pane's window frame when the pane is narrower (or, stacked, lower) than its window can be
+/// (docs/PEEK-SPLIT.md §4b): the pane itself when the window can be that small; else the window at its own minimum on
+/// that side, the rest of it hidden under Margin's window or a neighbour pane (Margin's hole stays the pane). Always
+/// wholly within the area: a full-screen window's tile past the display's edge makes macOS take it out of its tile
+/// (2026-11-21: 876…1576 on a 1512 display, out within 0.6 s), so along each axis it lies between its two alignments:
+/// `end` false, its start (left, top) at the pane's start; true, its end (right, bottom) at the pane's end; each as near
+/// as the area lets it (a pane at the display's right edge can't put its window's start there: its start alignment is
+/// as far right as the area allows).
+pub fn cut(pane: &Rect, min: Option<Size>, area: &Rect, end_x: bool, end_y: bool) -> Rect {
+    let Some(min) = min else { return *pane };
+    let width = pane.width.max(min.width.ceil().min(area.width));
+    let height = pane.height.max(min.height.ceil().min(area.height));
+    if width <= pane.width + 0.5 && height <= pane.height + 0.5 {
+        return *pane;
+    }
+    // (Between the end alignment, held off the area's start, and the start alignment, held off its end.)
+    let along = |start: f64, end: f64, size: f64, lo_bound: f64, hi_bound: f64, at_end: bool| {
+        let lo = (end - size).max(lo_bound);
+        let hi = start.min(hi_bound - size).max(lo);
+        if at_end { lo } else { hi }
+    };
+    let x = along(pane.min_x(), pane.max_x(), width, area.min_x(), area.max_x(), end_x);
+    let y = along(pane.min_y(), pane.max_y(), height, area.min_y(), area.max_y(), end_y);
+    Rect::new(x, y, width, height)
+}
+
 /// Margin's own tile: the display's whole frame from its top left (None: the display isn't known).
 pub fn home(p: &Placement) -> Option<Rect> {
     (p.display.width >= 1.0 && p.display.height >= 1.0).then(|| Rect::new(0.0, 0.0, p.display.width, p.display.height))
@@ -186,6 +212,34 @@ mod tests {
         assert_eq!(home(&Placement { display: Rect::ZERO, ..kit() }), None);
         // A home smaller than the area: no tile.
         assert_eq!(tile(&kit(), &Rect::new(0.0, 0.0, 1000.0, 982.0)), None);
+    }
+
+    #[test]
+    fn cut_keeps_a_pane_window_at_its_minimum_within_the_area() {
+        let area = Rect::new(0.0, 33.0, 1512.0, 949.0);
+        // Two side by side in a 1264 page area at 240: 628 each.
+        let left = Rect::new(240.0, 41.0, 628.0, 933.0);
+        let right = Rect::new(876.0, 41.0, 628.0, 933.0);
+        assert_eq!(cut(&left, None, &area, false, false), left, "no minimum: the pane");
+        assert_eq!(cut(&left, Some(Size::new(500.0, 300.0)), &area, false, false), left, "fits: the pane");
+        // Notes (701) on the left: its start at the pane's, or its end at the pane's (its start under the sidebar).
+        assert_eq!(cut(&left, Some(Size::new(701.0, 53.0)), &area, false, false), Rect::new(240.0, 41.0, 701.0, 933.0));
+        assert_eq!(cut(&left, Some(Size::new(701.0, 53.0)), &area, true, false), Rect::new(167.0, 41.0, 701.0, 933.0));
+        // On the right, at the display's edge: its end at the pane's; its start can't be at 876 (it would pass 1512),
+        // so the start alignment is as far right as the area allows (1512 - 701 = 811).
+        assert_eq!(cut(&right, Some(Size::new(701.0, 53.0)), &area, true, false), Rect::new(803.0, 41.0, 701.0, 933.0));
+        assert_eq!(
+            cut(&right, Some(Size::new(701.0, 53.0)), &area, false, false),
+            Rect::new(811.0, 41.0, 701.0, 933.0)
+        );
+        // A fractional minimum: whole points up.
+        assert_eq!(cut(&left, Some(Size::new(700.2, 0.0)), &area, false, false).width, 701.0);
+        // Never wider than the area itself.
+        assert_eq!(cut(&left, Some(Size::new(4000.0, 0.0)), &area, false, false), Rect::new(0.0, 41.0, 1512.0, 933.0));
+        // Stacked (a pane 400 tall, the window's least 600): top or bottom alignment, held within the area.
+        let top = Rect::new(240.0, 41.0, 1264.0, 400.0);
+        assert_eq!(cut(&top, Some(Size::new(0.0, 600.0)), &area, false, false), Rect::new(240.0, 41.0, 1264.0, 600.0));
+        assert_eq!(cut(&top, Some(Size::new(0.0, 600.0)), &area, false, true), Rect::new(240.0, 33.0, 1264.0, 600.0));
     }
 
     #[test]

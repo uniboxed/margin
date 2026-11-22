@@ -884,8 +884,8 @@ final class HostedSession: LibraryDelegate {
             // its window's own Space at each ask. The real screen, 2026-11-21 19:32:02: Notes (701) added beside a Safari
             // tab (574) in 1264 pt, Safari's pane laid out at 949…1523, past the page area; Safari failed five times, the
             // split shown as an empty page. The ones coming in go, the person told, the item shown before kept.)
-            if let out = Self.noRoom(parts.map { ($0.item, $0.role, $0.rect, leastSize($0.target)) }, page: placement.page, had: hadItems) {
-                note("layout: split \(split.id): no room in the page area \(Int(placement.page.width))×\(Int(placement.page.height)) (\(parts.filter { $0.role != .card }.map { p in "\(p.item) \(p.rect.map { "\(Int($0.minX))…\(Int($0.maxX))×\(Int($0.height))" } ?? "-") least \(leastSize(p.target).map { "\(Int($0.width))×\(Int($0.height))" } ?? "none")" }.joined(separator: ", "))): nothing moved")
+            if let out = Self.noRoom(parts.map { ($0.item, $0.role, $0.rect, Self.paneLeast) }, page: placement.page, had: hadItems) {
+                note("layout: split \(split.id): no room in the page area \(Int(placement.page.width))×\(Int(placement.page.height)) (\(parts.filter { $0.role != .card }.map { p in "\(p.item) \(p.rect.map { "\(Int($0.minX))…\(Int($0.maxX))×\(Int($0.height))" } ?? "-") " }.joined(separator: ", ")), each pane 220 at least): nothing moved")
                 let keep = hadFocus.flatMap { f in parts.contains { $0.item == f } && !out.contains(f) ? f : nil } ?? main
                 leaveSplit(split.id, out.map { ($0, .failed(.place, Self.noRoomReason)) }, focus: keep, in: w)
                 settleHosting()
@@ -958,19 +958,14 @@ final class HostedSession: LibraryDelegate {
         note("layout: \(shownItems.count) item(s) shown in Margin's window \(w.id), \(focus) focused")
     }
 
-    // A target's window's least size: its host's as learnt, else its app's known one (Safari's for a Safari window).
-    private func leastSize(_ t: HostTarget) -> CGSize? {
-        if let m = engine.minimum(of: t.id) { return m }
-        switch t {
-        case .app(let bundle): return engine.knownAppMinimums[bundle]
-        case .safariWindow: return engine.knownAppMinimums[safariIdentifier]
-        }
-    }
+    // A pane's least size, Arc's (its split view's `minimumPaneWidth`, 220 pt, also the least height of stacked panes:
+    // read from Arc 1.174.0's binary, 2026-11-21). A pane's window may be wider: it's shown cut (docs/PEEK-SPLIT.md §4b).
+    nonisolated static let paneLeast = CGSize(width: 220, height: 220)
 
     // Why a pane didn't come, as `leaveSplit` and the toast say it: no room for it (below its window's minimum, past the
     // page area, or its page area can't be reached from the display's: HostEngine `enterFullScreen`).
-    static let noRoomReason = "below its window's minimum or past the page area"
-    static func isNoRoom(_ why: String) -> Bool { why.contains("below its window's minimum") || why.contains("no room for it") }
+    static let noRoomReason = "below a pane's least (220 pt) or past the page area"
+    static func isNoRoom(_ why: String) -> Bool { why.contains("below a pane's least") || why.contains("below its window's minimum") || why.contains("no room for it") }
 
     // The panes that must leave a split laid out at these rects (nil: every pane fits): one whose rect isn't within the
     // page area (1 pt either way) or is under its window's known minimum makes it not fit. Then the panes coming in

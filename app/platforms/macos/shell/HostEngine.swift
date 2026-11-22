@@ -318,6 +318,13 @@ final class HostEngine {
         // (nil) unless a layout gave it a card's or a pane's rect (`setLayout`).
         var role = HostRole.main
         var rect: CGRect?
+        // A split pane whose window can't be as small as its pane (docs/PEEK-SPLIT.md §4b): its window at its own minimum
+        // (`frame`: HostLayout.cut), the rest under Margin's window or a neighbour pane; aligned at its pane's end along an
+        // axis when these are true (an arrow's slide), else at its start. Back to the start when it leaves a split.
+        var endX = false
+        var endY = false
+        // Brought over its neighbours to show what a slide can't (an arrow at the display's edge), until it's tucked back.
+        var revealed = false
         // Its own look at being off screen while it's visible (`backOnScreen`, docs/PEEK-SPLIT.md §4: every visible host
         // its own budget, never one shared by a split's panes): when it was last shown (made visible, or the one shown),
         // the times it was brought back, whether giving up was said, the show the look acted for with nothing to move.
@@ -653,8 +660,9 @@ final class HostEngine {
         for x in extras {
             let id = x.target.id
             if id == main.id || accepted.contains(where: { $0.target.id == id }) { results[id] = .failed(.place, "in the layout twice"); continue }
-            // (Below its app's known minimum: refused before anything is made for it, a window it would only refuse.)
-            if let m = knownMinimum(of: x.target), x.rect.width < m.width - options.tolerance || x.rect.height < m.height - options.tolerance {
+            // (A card below its app's known minimum: refused before anything is made for it, a window it would only
+            // refuse. A pane never is: its window is cut, docs/PEEK-SPLIT.md §4b.)
+            if x.role == .card, let m = knownMinimum(of: x.target), x.rect.width < m.width - options.tolerance || x.rect.height < m.height - options.tolerance {
                 results[id] = fail(id, .place, "its \(x.role.rawValue) rect \(r(x.rect)) is below its window's minimum \(Int(m.width))×\(Int(m.height))\(hosts[id] == nil ? " (its app's, known before its window is made: none made)" : "")")
                 continue
             }
@@ -738,6 +746,7 @@ final class HostEngine {
             visible = [id: HostVisible(rect: nil, role: .main, z: 0)]
             h.rect = nil
             h.role = .main
+            h.endX = false; h.endY = false; h.revealed = false
             let placed = await place(h)
             Diagnostics.note("host: layout: \(id) left alone of the layout asked: at the page area \(r(placement.page))\(placed ? "" : " (not placed there yet)")")
         }
@@ -4448,7 +4457,19 @@ final class HostEngine {
     // such a rect is never overflowed under the sidebar: one below its minimum isn't laid out (`belowMinimum`).
     private func frame(_ host: Host, _ p: HostPlacement? = nil) -> CGRect {
         let pl = p ?? placementFor(host)
-        return host.mode == .window || host.rect != nil ? pl.page : HostLayout.fit(pl.page, min: host.minSize, in: pl.area)
+        if host.mode == .window { return pl.page }
+        // (A card: its own rect. A split's pane: cut, its window never below its own minimum, Arc's 220 its pane's least.)
+        if host.rect != nil { return host.role == .card ? pl.page : HostLayout.cut(pl.page, min: paneMinimum(host), in: pl.area, endX: host.endX, endY: host.endY) }
+        return HostLayout.fit(pl.page, min: host.minSize, in: pl.area)
+    }
+    // A pane's window's minimum as it's laid out now: its own as read (never its app's narrowest: a tile narrower than its
+    // window's minimum now makes it leave the tile), else its app's known one before any of its windows was read.
+    private func paneMinimum(_ host: Host) -> CGSize? { host.minSize ?? appMinimum(appKey(host.target), pid: host.pid) }
+    // Whether a visible pane's window is wider or taller than its pane (cut), and so lies partly under another.
+    func isCut(_ host: Host) -> Bool {
+        guard host.mode != .window, host.role != .card, let r = host.rect else { return false }
+        let f = frame(host)
+        return f.width > r.width + options.tolerance || f.height > r.height + options.tolerance
     }
     private func fitted(_ host: Host, _ p: HostPlacement? = nil) -> HostPlacement {
         var pl = p ?? placementFor(host)
@@ -4480,7 +4501,8 @@ final class HostEngine {
     // A card's or a pane's rect narrower or lower than its window's own minimum: never laid out so (never under the
     // sidebar, never below its minimum: the UI clamps first, §4).
     private func belowMinimum(_ host: Host, _ rect: CGRect? = nil) -> Bool {
-        guard host.mode != .window, let m = host.minSize ?? appMinimum(appKey(host.target), pid: host.pid), let r = rect ?? host.rect else { return false }
+        // (A split's pane never is: its window is cut, `frame`. A card only.)
+        guard host.mode != .window, host.role == .card, let m = host.minSize ?? appMinimum(appKey(host.target), pid: host.pid), let r = rect ?? host.rect else { return false }
         return r.width < m.width - options.tolerance || r.height < m.height - options.tolerance
     }
 
@@ -4555,7 +4577,7 @@ final class HostEngine {
         if let id = shown {
             // (Alone at the page area from now: its rect and role as the layout says, never a pane's rect kept on it,
             // which every placing reads: `pageOf`.)
-            if visible[id] == nil { visible = [id: HostVisible(rect: nil, role: .main, z: 0)]; hosts[id]?.rect = nil; hosts[id]?.role = .main }
+            if visible[id] == nil { visible = [id: HostVisible(rect: nil, role: .main, z: 0)]; hosts[id]?.rect = nil; hosts[id]?.role = .main; hosts[id]?.endX = false; hosts[id]?.endY = false; hosts[id]?.revealed = false }
         } else if let was {
             visible[was] = nil
         }

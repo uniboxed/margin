@@ -21,24 +21,25 @@ func splitRealUseTests() {
     splitRoomTests()
 }
 
-// Which panes leave a split laid out without room (HostedSession.noRoom), the real screen's numbers (2026-11-21 19:32:02):
-// the page area 240,41 1264×933, Safari's least 574×220, Notes' 701×53.
+// Which panes leave a split laid out without room (HostedSession.noRoom): each pane Arc's 220 pt at least, all within
+// the page area (the real screen's 240,41 1264×933). A pane narrower than its window can be is shown cut, not refused.
 private func splitRoomTests() {
     let page = CGRect(x: 240, y: 41, width: 1264, height: 933)
-    let safari = CGSize(width: 574, height: 220), notes = CGSize(width: 701, height: 53)
-    let past = HostedSession.noRoom([("s", .main, CGRect(x: 949, y: 41, width: 574, height: 933), safari), ("n", .pane, CGRect(x: 240, y: 41, width: 701, height: 933), notes)], page: page, had: [])
-    check("split room: a pane past the page area (Safari's at 949…1523): the one coming in leaves (Notes), main never", past == ["n"], "\(String(describing: past))")
-    let fits = HostedSession.noRoom([("s", .main, CGRect(x: 240, y: 41, width: 628, height: 933), safari), ("n", .pane, CGRect(x: 876, y: 41, width: 628, height: 933), CGSize(width: 560, height: 53))], page: page, had: [])
-    check("split room: two at 628 within the page area, each above its least: nothing leaves", fits == nil, "\(String(describing: fits))")
-    let under = HostedSession.noRoom([("s", .main, CGRect(x: 240, y: 41, width: 628, height: 933), safari), ("n", .pane, CGRect(x: 876, y: 41, width: 628, height: 933), notes)], page: page, had: ["s", "n"])
-    check("split room: Notes' least grown to 701 in a split it was in (at 628): it leaves, main stays", under == ["n"], "\(String(describing: under))")
-    let third = HostedSession.noRoom([("a", .main, CGRect(x: 240, y: 41, width: 416, height: 933), safari), ("b", .pane, CGRect(x: 664, y: 41, width: 416, height: 933), safari), ("c", .pane, CGRect(x: 1088, y: 41, width: 416, height: 933), safari)], page: page, had: ["a", "b"])
-    check("split room: a third Safari pane squeezing all three under 574: only the newcomer leaves", third == ["c"], "\(String(describing: third))")
-    let card = HostedSession.noRoom([("s", .main, page, safari), ("k", .card, CGRect(x: 0, y: 0, width: 3000, height: 3000), safari)], page: page, had: [])
+    let least = HostedSession.paneLeast
+    check("split room: a pane's least is Arc's 220×220", least == CGSize(width: 220, height: 220))
+    let past = HostedSession.noRoom([("s", .main, CGRect(x: 949, y: 41, width: 574, height: 933), least), ("n", .pane, CGRect(x: 240, y: 41, width: 701, height: 933), least)], page: page, had: [])
+    check("split room: a pane past the page area (949…1523): the one coming in leaves, main never", past == ["n"], "\(String(describing: past))")
+    let notes = HostedSession.noRoom([("s", .main, CGRect(x: 240, y: 41, width: 628, height: 933), least), ("n", .pane, CGRect(x: 876, y: 41, width: 628, height: 933), least)], page: page, had: [])
+    check("split room: Notes (its window 701) and Safari at 628 each: room (Notes is shown cut)", notes == nil, "\(String(describing: notes))")
+    let thin = HostedSession.noRoom([("a", .main, CGRect(x: 240, y: 41, width: 836, height: 933), least), ("b", .pane, CGRect(x: 1084, y: 41, width: 200, height: 933), least), ("c", .pane, CGRect(x: 1292, y: 41, width: 212, height: 933), least)], page: page, had: ["a", "b"])
+    check("split room: a pane under 220: the newcomer leaves", thin == ["c"], "\(String(describing: thin))")
+    let four = HostedSession.noRoom((0..<4).map { i in ("p\(i)", i == 0 ? HostRole.main : .pane, CGRect(x: 240 + CGFloat(i) * 316, y: 41, width: 308, height: 933), least) }, page: page, had: ["p0", "p1", "p2"])
+    check("split room: four of 308 in 1264: room", four == nil, "\(String(describing: four))")
+    let card = HostedSession.noRoom([("s", .main, page, least), ("k", .card, CGRect(x: 0, y: 0, width: 3000, height: 3000), least)], page: page, had: [])
     check("split room: the preview card isn't a pane (its own rect, never checked)", card == nil, "\(String(describing: card))")
-    let edge = HostedSession.noRoom([("s", .main, CGRect(x: 239.5, y: 41, width: 628, height: 933), safari), ("n", .pane, CGRect(x: 876, y: 41, width: 628.6, height: 933), CGSize(width: 629, height: 53))], page: page, had: [])
+    let edge = HostedSession.noRoom([("s", .main, CGRect(x: 239.5, y: 41, width: 628, height: 933), least), ("n", .pane, CGRect(x: 876, y: 41, width: 219.4, height: 933), least)], page: page, had: [])
     check("split room: within a point either way (rounding): fits", edge == nil, "\(String(describing: edge))")
-    check("split room: the reasons that mean no room", HostedSession.isNoRoom(HostedSession.noRoomReason) && HostedSession.isNoRoom("its pane rect 1,2 3×4 is below its window's minimum 5×6") && HostedSession.isNoRoom("no room for it: its page area can't be reached from the display's (page …)") && !HostedSession.isNoRoom("main wasn't shown"))
+    check("split room: the reasons that mean no room", HostedSession.isNoRoom(HostedSession.noRoomReason) && HostedSession.isNoRoom("its card rect 1,2 3×4 is below its window's minimum 5×6") && HostedSession.isNoRoom("no room for it: its page area can't be reached from the display's (page …)") && !HostedSession.isNoRoom("main wasn't shown"))
 }
 
 // The session's world: a Safari web page shown alone, the split made from it (`createSplit`), then more panes.
@@ -195,10 +196,9 @@ private func splitRealUseSessionTests() {
     run { _ = library.perform("addToSplit", ["windowId": 1, "tabId": c, "splitId": sp]) }
     ratios = []
     let after = panes()
-    check("split real use 2: a pane below Safari's known minimum: refused before anything is made for it (no window asked, none made)",
+    check("split real use 2: a pane under Arc's least (48 of 220): refused before anything is made for it (no window asked, none made)",
           !links.types(since: mark).contains("newWindow") && engine.hosts[pane2] == nil
-          && (lines.contains { $0.contains("\(pane2)") && $0.contains("below its window's minimum 574×220") && $0.contains("none made") }
-              || lines.contains { $0.contains("no room in the page area") && $0.contains("least 574×220") && $0.contains("nothing moved") }),
+          && lines.contains { $0.contains("no room in the page area") && $0.contains("each pane 220 at least") && $0.contains("nothing moved") },
           "\(links.types(since: mark)) \(lines.filter { $0.contains("minimum") })")
     check("split real use 3: …out of the split at once (the page lays out the rest, never an empty box), said in a toast",
           library.split(sp)?.panes == [a, b] && window.pushed.dropFirst(pushes).contains { $0.contains(#""type":"toast""#) && $0.contains("Not enough room") },
@@ -284,7 +284,7 @@ private func splitRealUseMinimumTests() {
     w2.appVersions["com.apple.Notes"] = "4.13 (2750)"
     w2.start("com.apple.Notes", policy: .regular, windows: 1)
     check("split real use 2: …and not for another version of it (learnt again from its window)", e2.knownMinimum(of: notes) == nil, "\(String(describing: e2.knownMinimum(of: notes)))")
-    // The engine refuses a pane's rect below it before opening anything.
+    // A pane's rect below it: opened and shown cut, its window at that minimum within the display (docs/PEEK-SPLIT.md §4b).
     let w3 = FakeHostWorld()
     w3.tilesOn = true
     let e3 = HostEngine(system: w3, marker: marker, pid: 1)
@@ -294,12 +294,14 @@ private func splitRealUseMinimumTests() {
     let launches = w3.calls.filter { $0.hasPrefix("launch") }.count
     let left = CGRect(x: 240, y: 41, width: 800, height: 933), right = CGRect(x: 1048, y: 41, width: 456, height: 933)
     let res = hostRun { await e3.setLayout(main: .app("com.apple.TextEdit"), mainRect: left, extras: [HostExtra(target: notes, role: .pane, rect: right)], focused: nil, in: placement, marginWindow: FakeHostWorld.marginWindow, marginSpace: FakeHostWorld.marginSpace) } ?? [:]
-    var refused = false
-    if case .failed? = res[notes.id] { refused = true }
-    check("split real use 2: a pane's rect below its app's known minimum: refused before its app is started or a window made; the one left alone stays at the page area",
-          refused && w3.calls.filter { $0.hasPrefix("launch") }.count == launches && e3.hosts[notes.id] == nil && e3.visible.count == 1
-          && e3.visible[HostTarget.app("com.apple.TextEdit").id]?.rect == nil && w3.bounds(window: e3.hosts[HostTarget.app("com.apple.TextEdit").id]?.window ?? 0) == page,
-          "\(res) \(e3.visible)")
+    var shownCut = false
+    if case .shown? = res[notes.id] { shownCut = true }
+    let notesFrame = w3.bounds(window: e3.hosts[notes.id]?.window ?? 0)
+    let wanted = HostLayout.cut(right, min: CGSize(width: 700, height: 400), in: FakeHostWorld.display, endX: false, endY: false)
+    check("split real use 2: a pane's rect below its app's known minimum (456 of 700): opened and shown cut, its window 700 wide as far right as the display allows (812…1512), its pane the hole",
+          shownCut && w3.calls.filter { $0.hasPrefix("launch") }.count == launches + 1 && notesFrame == wanted && wanted == CGRect(x: 812, y: 41, width: 700, height: 933)
+          && e3.visible[notes.id]?.rect == right && e3.visible.count == 2,
+          "\(res) \(e3.visible) \(String(describing: notesFrame)) want \(wanted)")
 }
 
 // A divider dragged between two tiled windows, one slow to lay itself out (Safari's page) and one quick.

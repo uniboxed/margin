@@ -240,18 +240,21 @@ func multiHostTests() {
               "\(later.closed) \(next.leftSafariWindows)")
     }
 
-    // ---- a pane below its window's minimum: refused, never laid out under the sidebar ----
+    // ---- a pane below its window's minimum: shown cut (docs/PEEK-SPLIT.md §4b), its window at its own minimum within
+    // the area, never sent narrower (no tile below its minimum: macOS takes such a window out of its tile) ----
     do {
         let (w, e) = world()
         w.minSize["com.apple.Notes"] = CGSize(width: 700, height: 400)
         _ = open(e, notes)
         _ = open(e, textEdit)
         let n = window(w, "com.apple.Notes")
-        let mark = w.calls.count
         let r = layout(e, textEdit, left, [HostExtra(target: notes, role: .pane, rect: right)])
-        let failed: Bool = { if case .failed(.place, _)? = r[notes.id] { return true }; return false }()
-        check("multi-host: a pane narrower than its window's minimum isn't laid out (refused, said), its window left parked",
-              failed && w.spaces(window: n) == [] && w.belowMinimum == 0 && !w.calls.dropFirst(mark).contains { $0.hasPrefix("tileRect \(w.tileOf(n) ?? 0) ") }, "\(r)")
+        let shown: Bool = { if case .shown? = r[notes.id] { return true }; return false }()
+        let b = w.bounds(window: n) ?? .zero
+        let want = HostLayout.cut(right, min: CGSize(width: 700, height: 400), in: FakeHostWorld.display, endX: false, endY: false)
+        check("multi-host: a pane narrower than its window's minimum: shown cut, its window at its minimum (start aligned, within the display), never below it",
+              shown && b == want && b.width == 700 && b.maxX <= FakeHostWorld.display.maxX && w.belowMinimum == 0 && e.visible[notes.id]?.rect == right,
+              "\(r) \(b) want \(want)")
     }
 
     // ---- tiles off: a pane as a plain member, placed at its rect by its own Space's reservation ----
