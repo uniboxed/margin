@@ -126,7 +126,7 @@ export function installSplit(rt: Rt) {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let laidOut = '';
 
-  const host = () => rt.host as typeof rt.host & { appWindow?: boolean, pageHosted?: boolean, paneMinimums?: Record<string, [number, number]>, appMinimums?: Record<string, [number, number]>, paneLoading?: { item: string, name: string } | null };
+  const host = () => rt.host as typeof rt.host & { appWindow?: boolean, pageHosted?: boolean, paneMinimums?: Record<string, [number, number]>, appMinimums?: Record<string, [number, number]>, paneLoading?: { item: string, name: string } | null, note?: (text: string) => void };
   const floorsOf = (split: { axis: string, panes: readonly { id: unknown, url?: string | null }[] }) => paneFloors(split, host().paneMinimums, host().appMinimums);
   const page = () => view.pageEl as HTMLElement | null;
   /** The split shown here now: the item in front a pane of it, a window hosted in the page area. */
@@ -419,7 +419,8 @@ export function installSplit(rt: Rt) {
         ...(split ? split.panes.map((p) => ({ id: String(p.id), url: p.url ?? '' })) : [{ id: String(vm.tab?.id ?? 'front'), url: vm.tab?.url ?? '' }]),
         { id: String(tabId), url: urlOf(tabId) },
       ];
-      return fits(axis, panes) ? null : 'Not enough room for another pane';
+      const ok = fits(axis, panes, true);
+      return ok ? null : 'Not enough room for another pane';
     },
     /**
      * Why the split shown can't be stacked (or put side by side) now, null: it can: its panes along the other axis,
@@ -438,13 +439,17 @@ export function installSplit(rt: Rt) {
 
   // Whether these panes (in order), each at its floor, fit the page area along `axis` with the gaps between them (bands
   // above Safari panes counted, stacked).
-  function fits(axis: string, panes: { id: string, url: string }[]) {
+  // `said`: the check told to Margin.app's log (an add: each pane's app and floor, the room, the answer), to read the
+  // real screen's inputs back (2026-11-21 19:32: Notes let in beside a Safari tab where they couldn't fit).
+  function fits(axis: string, panes: { id: string, url: string }[], said = false) {
     const g = host().layout;
-    if (!g) return true;
+    if (!g) { if (said) host().note?.(`split add: no layout from Margin.app yet: let through (${panes.length} panes)`); return true; }
     const floors = floorsOf({ axis, panes });
     const room = axis === 'vertical' ? g.container.height - g.insets.top - g.insets.bottom : g.container.width - g.insets.left - g.insets.right;
     const el = page();
     const gaps = dividerSizes({ axis, panes }, el ? gapOf(el) : SPLIT_GAP);
-    return panesFit(floors, room, gaps);
+    const ok = panesFit(floors, room, gaps);
+    if (said) host().note?.(`split add: ${panes.map((p, i) => `${appKeyOf(p.url)}${p.url ? '' : ' (no address)'} ${floors[i]}`).join(' + ')} + gaps ${(Array.isArray(gaps) ? gaps : [gaps]).join('/')} in ${Math.round(room)} (${axis}): ${ok ? 'fits' : 'refused'}; apps known: ${Object.keys(host().appMinimums ?? {}).join(', ') || 'none'}`);
+    return ok;
   }
 }
