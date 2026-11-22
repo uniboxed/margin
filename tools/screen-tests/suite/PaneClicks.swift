@@ -138,8 +138,16 @@ extension Runner {
     let first = copyLines(n, kind == .button ? " button" : "click at").last
     let clickMs = copyStamp(first).map { ($0 - downAt) * 1000 }
     let focused = focusedCopy() == n
-    step(title, got && delivered != nil && focused && copySaid(n, "becameKey") > keyed,
-         "\(detail); its window key \(copySaid(n, "becameKey") > keyed), Margin's focus on it \(focused); Margin: \(lines.map { String($0.suffix(150)) })\(clickMs.map { String(format: "; from the press's post to the copy's click %.0f ms", $0) } ?? "")")
+    // (Its window key: a new becameKey, or, when every pane draws active (PanesActive), already key while kept active,
+    // so none is logged: its own word then, its key window the pane's and the window server's front app.)
+    let becameKey = copySaid(n, "becameKey") > keyed
+    let keptKey = becameKey ? false : {
+      guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pane.processIdentifier,
+            let w = placedWindow(pane.processIdentifier, minWidth: 300, minHeight: 300)?.n, let s = copyState(n) else { return false }
+      return s.active && s.key == w
+    }()
+    step(title, got && delivered != nil && focused && (becameKey || keptKey),
+         "\(detail); its window key \(becameKey ? "true (became key)" : keptKey ? "true (already key, kept active)" : "false"), Margin's focus on it \(focused); Margin: \(lines.map { String($0.suffix(150)) })\(clickMs.map { String(format: "; from the press's post to the copy's click %.0f ms", $0) } ?? "")")
     return (ms, clickMs)
   }
 

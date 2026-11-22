@@ -48,9 +48,12 @@ final class Grid: NSView {
         NSColor(red: 1, green: 0.3, blue: 0.5, alpha: 1).setFill(); NSRect(x: 0, y: 0, width: 30, height: 30).fill()
     }
     // (A click, its drags and its release, each with its count: the pane click checks, a double-click's second is count 2.)
-    override func mouseDown(with e: NSEvent) { clog("click at \(Int(e.locationInWindow.x)),\(Int(e.locationInWindow.y)) window \(window?.windowNumber ?? 0) count \(e.clickCount)"); window?.makeFirstResponder(nil) }
-    override func mouseDragged(with e: NSEvent) { clog("drag at \(Int(e.locationInWindow.x)),\(Int(e.locationInWindow.y)) window \(window?.windowNumber ?? 0)") }
-    override func mouseUp(with e: NSEvent) { clog("release at \(Int(e.locationInWindow.x)),\(Int(e.locationInWindow.y)) window \(window?.windowNumber ?? 0) count \(e.clickCount)") }
+    // (A synthetic record with no place reaching a view: said apart, never counted as a click, never converted (Int() of
+    // a location that isn't a number traps).)
+    private func placed(_ e: NSEvent) -> String? { let p = e.locationInWindow; return p.x.isFinite && p.y.isFinite ? "\(Int(p.x)),\(Int(p.y))" : nil }
+    override func mouseDown(with e: NSEvent) { guard let at = placed(e) else { return clog("synthetic mouse record with no place reached the grid (down)") }; clog("click at \(at) window \(window?.windowNumber ?? 0) count \(e.clickCount)"); window?.makeFirstResponder(nil) }
+    override func mouseDragged(with e: NSEvent) { guard let at = placed(e) else { return }; clog("drag at \(at) window \(window?.windowNumber ?? 0)") }
+    override func mouseUp(with e: NSEvent) { guard let at = placed(e) else { return clog("synthetic mouse record with no place reached the grid (up)") }; clog("release at \(at) window \(window?.windowNumber ?? 0) count \(e.clickCount)") }
 }
 
 // AppKit's state restoration (`restore` by the system): each saved window made again by its identifier; AppKit puts
@@ -425,7 +428,13 @@ NSApp.mainMenu = mainMenu
 // Every key press and click it gets (key codes and flags, never characters), and who has the keyboard then.
 NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown]) { e in
     if e.type == .keyDown { clog("EVENT keyDown code \(e.keyCode) flags \(String(e.modifierFlags.rawValue, radix: 16)) appActive=\(NSApp.isActive) keyWindow=\(NSApp.keyWindow?.windowNumber ?? -1)") }
-    else { clog("EVENT mouseDown at \(Int(e.locationInWindow.x)),\(Int(e.locationInWindow.y)) in window \(e.windowNumber) appActive=\(NSApp.isActive)") }
+    // (A synthetic mouse record, the window server's make-key pair as Margin's "all panes active" sends it (as yabai and
+    // AltTab do), has no place: its location isn't a number, and Int() of it traps: logged as such, never converted.)
+    else {
+        let p = e.locationInWindow
+        let at = p.x.isFinite && p.y.isFinite ? "\(Int(p.x)),\(Int(p.y))" : "no place (a synthetic record)"
+        clog("EVENT mouseDown at \(at) in window \(e.windowNumber) appActive=\(NSApp.isActive)")
+    }
     return e
 }
 NSApp.run()
