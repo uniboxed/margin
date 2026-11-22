@@ -2372,9 +2372,7 @@ final class HostedSession: LibraryDelegate {
     // The official upload, played in Safari: nothing bundled.
     static let ownAppSurprise = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 
-    static func isChromium(_ bundleId: String) -> Bool {
-        bundleId.hasPrefix("com.google.Chrome") || bundleId.hasPrefix("com.microsoft.edgemac")
-    }
+    static func isChromium(_ bundleId: String) -> Bool { ShortcutSet.isChromium(bundleId) } // (margin-core's rule)
 
     // A web item's history in its Safari window (the copy's goBack, goForward, reload for its tab).
     func navigate(_ type: String, windowId: Int?) {

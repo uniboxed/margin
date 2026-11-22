@@ -4,20 +4,67 @@
 // an app it hosts is the active app (ShortcutSet.hostedActive), and let go the
 // moment it isn't (another app in front must get ⌃⌘← and ⌘T).
 //
-// The keys: next and previous tab and space, ⌘T, the palette, the sidebar's
-// show/hide key and a new Margin window, each run by Margin's window's page as
-// its own (ShellHostedGlue.swift runHosted). A held tab or space key repeats at
-// the Mac's key repeat (a hot key fires only once per press; requested
-// 2026-11-05), each repeat marked as one. Which combinations is the first
-// linked copy's to say (its Settings shortcuts: the `keys` message,
-// docs/PROTOCOL.md); until it does, the defaults below.
-// Combinations are written as the extension's settings write them
-// ("Ctrl+Meta+ArrowDown": shared/shortcuts.ts).
+// Every rule is margin-core's (app/shared/core/src/shortcuts.rs, through margin-ffi's keys calls; docs/CORE-REFACTOR.md
+// step 1.1), the same on every OS: the commands and their default combinations, the copy's `keys` read, which keys are
+// held while an app is hosted, the gates (held, the quit guard, the hosted app's keys), a held key's repeat. This file
+// keeps the Mac's mechanism: Carbon's hot keys, the repeat's timer, the Mac's key repeat settings, and the names the
+// rest of the app calls. Combinations are written as the extension's settings write them ("Ctrl+Meta+ArrowDown":
+// shared/shortcuts.ts) and cross as Carbon's key code and modifier bits.
+//
+// The keys: next and previous tab and space, ⌘T, the palette, the sidebar's show/hide key, a new Margin window and
+// Margin.app's own (copy the address, the address field, pin, reopen, Quick Tab, Add Split, ⌃1–9 spaces, ⌘1–9 rows),
+// each run by Margin's window's page as its own (ShellHostedGlue.swift runHosted). A held tab or space key repeats at
+// the Mac's key repeat (a hot key fires only once per press; requested 2026-11-05), each repeat marked as one. Which
+// combinations is the first linked copy's to say (its Settings shortcuts: the `keys` message, docs/PROTOCOL.md);
+// until it does, the defaults.
 
 import AppKit
 import Carbon
 import Foundation
+import MarginCore
 
+// margin-core's keys calls with Swift's values: text in, JSON out (the rare calls), the constants read once.
+enum KeysCore {
+    // A JSON answer of one of the calls (freed here), nil if there's none.
+    nonisolated static func answer(_ call: (UnsafeMutablePointer<Int>) -> UnsafeMutablePointer<UInt8>?) -> Any? {
+        var len = 0
+        guard let out = call(&len) else { return nil }
+        defer { margin_buffer_free(out, len) }
+        return try? JSONSerialization.jsonObject(with: Data(bytes: out, count: len), options: [.fragmentsAllowed])
+    }
+    // `text`'s UTF-8 bytes to a call.
+    nonisolated static func bytes<T>(_ text: String, _ call: (UnsafePointer<UInt8>?, Int) -> T) -> T {
+        let utf8 = Array(text.utf8)
+        return utf8.withUnsafeBufferPointer { call($0.baseAddress, $0.count) }
+    }
+    nonisolated static func json(_ value: Any) -> String {
+        (try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys])).flatMap { String(data: $0, encoding: .utf8) } ?? "null"
+    }
+    nonisolated static let constants: [String: Any] = answer { margin_keys_constants($0) } as? [String: Any] ?? [:]
+    // The commands in the core's order (a hit's index).
+    nonisolated static let commands: [String] = constants["commands"] as? [String] ?? []
+    // `[[keyCode, modifiers, command], …]` → bindings (an entry that isn't one left out).
+    nonisolated static func bindings(_ value: Any?) -> [Combo: AppCommand] {
+        var out: [Combo: AppCommand] = [:]
+        for e in value as? [[Any]] ?? [] {
+            guard e.count == 3, let k = e[0] as? Int, let m = e[1] as? Int, let name = e[2] as? String, let c = AppCommand(rawValue: name) else { continue }
+            out[Combo(keyCode: UInt32(k), modifiers: UInt32(m))] = c
+        }
+        return out
+    }
+    nonisolated static func list(_ bindings: [Combo: AppCommand]) -> String {
+        json(bindings.map { [Int($0.key.keyCode), Int($0.key.modifiers), $0.value.rawValue] as [Any] })
+    }
+    // `[[keyCode, modifiers, …], …]` → the combinations.
+    nonisolated static func combos(_ value: Any?) -> [(Combo, String?)] {
+        (value as? [[Any]] ?? []).compactMap { e in
+            guard e.count >= 2, let k = e[0] as? Int, let m = e[1] as? Int else { return nil }
+            return (Combo(keyCode: UInt32(k), modifiers: UInt32(m)), e.count > 2 ? e[2] as? String : nil)
+        }
+    }
+}
+
+// The core's commands by name (their rules are the core's: which repeat, which are a browser's only, the defaults).
 enum AppCommand: String, CaseIterable {
     case nextTab = "next-tab", prevTab = "prev-tab", nextSpace = "next-space", prevSpace = "prev-space", palette
     case toggleSidebar = "toggle-sidebar"
@@ -33,222 +80,119 @@ enum AppCommand: String, CaseIterable {
     case item1 = "item-1", item2 = "item-2", item3 = "item-3", item4 = "item-4", item5 = "item-5"
     case item6 = "item-6", item7 = "item-7", item8 = "item-8", item9 = "item-9"
 
-    // Held down, these run again at the Mac's key repeat (a hot key itself fires once).
-    var repeats: Bool { self == .nextTab || self == .prevTab || self == .nextSpace || self == .prevSpace }
-
-    // Commands that belong to Margin or a hosted browser, never hijacked from a hosted native app (e.g. Terminal, Notes).
-    var browserOnly: Bool {
-        switch self {
-        case .copyUrl, .focusAddress, .togglePin, .reopenArchived,
-             .item1, .item2, .item3, .item4, .item5, .item6, .item7, .item8, .item9:
-            return true
-        default:
-            return false
-        }
-    }
-
-    var spaceNumber: Int? {
-        switch self {
-        case .space1: return 1; case .space2: return 2; case .space3: return 3
-        case .space4: return 4; case .space5: return 5; case .space6: return 6
-        case .space7: return 7; case .space8: return 8; case .space9: return 9
-        default: return nil
-        }
-    }
-
-    var itemNumber: Int? {
-        switch self {
-        case .item1: return 1; case .item2: return 2; case .item3: return 3
-        case .item4: return 4; case .item5: return 5; case .item6: return 6
-        case .item7: return 7; case .item8: return 8; case .item9: return 9
-        default: return nil
-        }
-    }
+    // The number in a numbered key's name (space-1…9, item-1…9), for the page's `space-index` and `item-index`.
+    var spaceNumber: Int? { rawValue.hasPrefix("space-") ? Int(rawValue.dropFirst(6)) : nil }
+    var itemNumber: Int? { rawValue.hasPrefix("item-") ? Int(rawValue.dropFirst(5)) : nil }
 }
 
-// A held key's repeat: the Mac's own delay and rate (Keyboard settings), a
-// way to wait (a test's clock), and whether the combination's modifiers are
-// still down (the release can be missed, e.g. when another app comes forward:
-// the repeat then stops at the next tick).
+// A held key's repeat: the Mac's own delay and rate (Keyboard settings), a clock and a way to wait (a test's), and the
+// modifiers down now as Carbon's bits (the release can be missed, e.g. when another app comes forward: the core then
+// stops the repeat at the next tick).
 struct KeyRepeat {
     var delay: () -> TimeInterval = { NSEvent.keyRepeatDelay }
     var interval: () -> TimeInterval = { NSEvent.keyRepeatInterval }
+    var now: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
     var after: (TimeInterval, @escaping () -> Void) -> (() -> Void) = { seconds, run in
         let timer = Timer.scheduledTimer(withTimeInterval: seconds, repeats: false) { _ in MainActor.assumeIsolated { run() } }
         return { timer.invalidate() }
     }
-    var modifiersDown: (UInt32) -> Bool = { modifiers in
+    var modifiers: () -> UInt32 = {
         let now = NSEvent.modifierFlags
-        let want: [(Int, NSEvent.ModifierFlags)] = [(cmdKey, .command), (controlKey, .control), (optionKey, .option), (shiftKey, .shift)]
-        return want.allSatisfy { modifiers & UInt32($0.0) == 0 || now.contains($0.1) }
+        let bits: [(Int, NSEvent.ModifierFlags)] = [(cmdKey, .command), (controlKey, .control), (optionKey, .option), (shiftKey, .shift)]
+        return bits.reduce(UInt32(0)) { now.contains($1.1) ? $0 | UInt32($1.0) : $0 }
     }
 }
 
+// A combination as Carbon has it: its key code and modifier bits (cmdKey, controlKey, optionKey, shiftKey).
 nonisolated struct Combo: Hashable, CustomStringConvertible {
     let keyCode: UInt32
-    let modifiers: UInt32 // Carbon's cmdKey, controlKey, optionKey, shiftKey
+    let modifiers: UInt32
 
-    static let keyCodes: [String: Int] = [
-        "ArrowDown": kVK_DownArrow, "ArrowUp": kVK_UpArrow, "ArrowLeft": kVK_LeftArrow, "ArrowRight": kVK_RightArrow,
-        "KeyA": kVK_ANSI_A, "KeyB": kVK_ANSI_B, "KeyC": kVK_ANSI_C, "KeyD": kVK_ANSI_D, "KeyE": kVK_ANSI_E, "KeyF": kVK_ANSI_F,
-        "KeyG": kVK_ANSI_G, "KeyH": kVK_ANSI_H, "KeyI": kVK_ANSI_I, "KeyJ": kVK_ANSI_J, "KeyK": kVK_ANSI_K, "KeyL": kVK_ANSI_L,
-        "KeyM": kVK_ANSI_M, "KeyN": kVK_ANSI_N, "KeyO": kVK_ANSI_O, "KeyP": kVK_ANSI_P, "KeyQ": kVK_ANSI_Q, "KeyR": kVK_ANSI_R,
-        "KeyS": kVK_ANSI_S, "KeyT": kVK_ANSI_T, "KeyU": kVK_ANSI_U, "KeyV": kVK_ANSI_V, "KeyW": kVK_ANSI_W, "KeyX": kVK_ANSI_X,
-        "KeyY": kVK_ANSI_Y, "KeyZ": kVK_ANSI_Z, "Space": kVK_Space, "F19": kVK_F19,
-        "Digit0": kVK_ANSI_0, "Digit1": kVK_ANSI_1, "Digit2": kVK_ANSI_2, "Digit3": kVK_ANSI_3, "Digit4": kVK_ANSI_4,
-        "Digit5": kVK_ANSI_5, "Digit6": kVK_ANSI_6, "Digit7": kVK_ANSI_7, "Digit8": kVK_ANSI_8, "Digit9": kVK_ANSI_9,
-        "Enter": kVK_Return, "Backquote": kVK_ANSI_Grave, "Minus": kVK_ANSI_Minus, "Equal": kVK_ANSI_Equal,
-        "BracketLeft": kVK_ANSI_LeftBracket, "BracketRight": kVK_ANSI_RightBracket, "Backslash": kVK_ANSI_Backslash,
-        "Semicolon": kVK_ANSI_Semicolon, "Quote": kVK_ANSI_Quote, "Comma": kVK_ANSI_Comma, "Period": kVK_ANSI_Period, "Slash": kVK_ANSI_Slash,
-        "F1": kVK_F1, "F2": kVK_F2, "F3": kVK_F3, "F4": kVK_F4, "F5": kVK_F5, "F6": kVK_F6,
-        "F7": kVK_F7, "F8": kVK_F8, "F9": kVK_F9, "F10": kVK_F10, "F11": kVK_F11, "F12": kVK_F12,
-    ]
-    static let modifierBits: [String: Int] = ["Meta": cmdKey, "Ctrl": controlKey, "Alt": optionKey, "Shift": shiftKey]
-
-    // "Ctrl+Meta+ArrowDown" → the key and its modifiers; nil if it isn't one (no modifier, an unknown key).
+    // "Ctrl+Meta+ArrowDown" → the key and its modifiers; nil if it isn't one (the core's rule: no modifier but Shift,
+    // an unknown key, a modifier twice).
     static func parse(_ text: String) -> Combo? {
-        let parts = text.split(separator: "+").map(String.init)
-        guard let last = parts.last, let code = keyCodes[last], parts.count >= 2 else { return nil }
-        var mods = 0
-        for p in parts.dropLast() {
-            guard let bit = modifierBits[p], mods & bit == 0 else { return nil }
-            mods |= bit
-        }
-        guard mods & (cmdKey | controlKey | optionKey) != 0 else { return nil }
-        return Combo(keyCode: UInt32(code), modifiers: UInt32(mods))
+        let c = KeysCore.bytes(text) { margin_keys_parse($0, $1) }
+        return c.ok ? Combo(keyCode: UInt32(c.key_code), modifiers: c.modifiers) : nil
     }
 
     var description: String {
-        let names = [(controlKey, "⌃"), (optionKey, "⌥"), (shiftKey, "⇧"), (cmdKey, "⌘")].filter { modifiers & UInt32($0.0) != 0 }.map(\.1).joined()
-        return names + (Self.keyCodes.first { $0.value == Int(keyCode) }?.key ?? "#\(keyCode)")
+        KeysCore.answer { margin_keys_describe(UInt16(truncatingIfNeeded: keyCode), modifiers, $0) } as? String ?? "#\(keyCode)"
     }
 }
 
 enum ShortcutSet {
-    static let defaults: [AppCommand: String] = [
-        .nextTab: "Alt+Meta+ArrowDown", .prevTab: "Alt+Meta+ArrowUp",
-        .nextSpace: "Alt+Meta+ArrowRight", .prevSpace: "Alt+Meta+ArrowLeft",
-        .palette: "Meta+KeyT", .toggleSidebar: "Alt+KeyS",
-        .newWindow: "Meta+KeyN",
-        .copyUrl: "Shift+Meta+KeyC",
-        .focusAddress: "Meta+KeyL",
-        .togglePin: "Meta+KeyD",
-        .reopenArchived: "Shift+Meta+KeyT",
-        .littleArc: "Alt+Meta+KeyN",
-        .addSplit: "Ctrl+Shift+Equal",
-        .space1: "Ctrl+Digit1", .space2: "Ctrl+Digit2", .space3: "Ctrl+Digit3",
-        .space4: "Ctrl+Digit4", .space5: "Ctrl+Digit5", .space6: "Ctrl+Digit6",
-        .space7: "Ctrl+Digit7", .space8: "Ctrl+Digit8", .space9: "Ctrl+Digit9",
-        .item1: "Meta+Digit1", .item2: "Meta+Digit2", .item3: "Meta+Digit3",
-        .item4: "Meta+Digit4", .item5: "Meta+Digit5", .item6: "Meta+Digit6",
-        .item7: "Meta+Digit7", .item8: "Meta+Digit8", .item9: "Meta+Digit9",
-    ]
+    // The defaults' bindings.
+    static var bindings: [Combo: AppCommand] { KeysCore.bindings(KeysCore.answer { margin_keys_bindings(nil, 0, $0) }) }
 
-    static var bindings: [Combo: AppCommand] {
-        var out: [Combo: AppCommand] = [:]
-        for (command, text) in defaults { if let combo = Combo.parse(text) { out[combo] = command } }
-        return out
-    }
-
-    // The copy's `keys` ({ command: [combination] }): a command it doesn't
-    // name keeps its default; one it names with nothing usable has none; the
-    // palette is always ⌘T too; a combination two commands name goes to the
-    // first in AppCommand's order (the copy's Settings refuse that anyway).
+    // The copy's `keys` ({ command: [combination] }) as bindings: a command it doesn't name keeps its default; one it
+    // names with nothing usable has none; the palette is always ⌘T too; a combination two commands name goes to the
+    // first in the core's order (the copy's Settings refuse that anyway).
     static func bindings(from keys: [String: [String]]) -> [Combo: AppCommand] {
-        var out: [Combo: AppCommand] = [:]
-        for command in AppCommand.allCases {
-            var texts = keys[command.rawValue] ?? [defaults[command]].compactMap { $0 }
-            if command == .palette, !texts.contains("Meta+KeyT") { texts.append("Meta+KeyT") }
-            for text in texts { if let combo = Combo.parse(text), out[combo] == nil { out[combo] = command } }
-        }
-        return out
+        KeysCore.bindings(KeysCore.bytes(KeysCore.json(keys)) { p, n in KeysCore.answer { margin_keys_bindings(p, n, $0) } })
     }
 }
 
 extension ShortcutSet {
-    /// A hosted window that is a browser's (the keys only a browser has, `browserOnly`, are Margin's there): Safari's
-    /// window a copy made, or an app item that is one of the browsers Margin links with (Safari, Chrome, Edge, their
-    /// channels: `bundles`, HostedSession.isChromium).
+    /// A hosted window that is a browser's (the keys only a browser has are Margin's there): Safari's window a copy
+    /// made, or an app item that is one of the browsers Margin links with (`bundles`) or Chrome or Edge in any channel.
     static func hostIsBrowser(target: HostTarget, safariWindow: Int?, bundles: Set<String>) -> Bool {
         if safariWindow != nil { return true }
         switch target {
         case .safariWindow: return true
-        case .app(let bundle): return bundles.contains(bundle) || HostedSession.isChromium(bundle)
+        case .app(let bundle):
+            return KeysCore.bytes(bundle) { b, bn in KeysCore.bytes(KeysCore.json(bundles.sorted())) { l, ln in margin_keys_is_browser_app(b, bn, l, ln) } }
         }
     }
 
-    /// The keys Margin holds now: a hosted app in front (`marginInFront` false) keeps its sidebar key, and its own
-    /// ⌘L, ⌘D, ⌘1–9… unless it's a browser (`browserOnly`); a numbered key with nothing behind it (more than the
-    /// window's spaces, `spaces`, or the sidebar's rows, `items`: its page says them) isn't held at all, so the press
-    /// reaches the app in front (Carbon's hot keys can't pass one on). Counts not said yet: every number held.
+    /// Chrome or Edge, any channel (the core's rule).
+    static func isChromium(_ bundle: String) -> Bool { KeysCore.bytes(bundle) { margin_keys_is_chromium($0, $1) } }
+
+    /// The keys Margin holds now (the core's `held`): a hosted app in front keeps its sidebar key and its own ⌘L, ⌘D,
+    /// ⌘1–9… unless it's a browser; a numbered key with nothing behind it (more than the window's spaces or rows, its
+    /// page says them) isn't held, so the press reaches the app in front. Counts not said yet: every number held.
     static func held(_ bindings: [Combo: AppCommand], marginInFront: Bool, browser: Bool, spaces: Int?, items: Int?) -> [Combo: AppCommand] {
-        bindings.filter { _, command in
-            if !marginInFront, command == .toggleSidebar || (command.browserOnly && !browser) { return false }
-            if let n = command.spaceNumber, let spaces, n > spaces { return false }
-            if let n = command.itemNumber, let items, n > items { return false }
-            return true
-        }
+        KeysCore.bindings(KeysCore.bytes(KeysCore.list(bindings)) { p, n in
+            KeysCore.answer { margin_keys_held(p, n, marginInFront, browser, Int32(spaces ?? -1), Int32(items ?? -1), $0) }
+        })
     }
-}
 
-extension ShortcutSet {
-    /// Margin hosting apps in its own window: its keys are the app's
-    /// while Margin itself is the active app (one of its windows open), or while an app it hosts is (Safari's hosted
-    /// window's included) with a Margin window on the current Space; let go otherwise, so other apps keep their keys.
-    /// Carbon's hot keys reach Margin only: the hosted app never gets the same press too.
+    // The core's three gates at once (bit 1 held, 2 the quit guard, 4 the hosted app's keys).
+    private static func gate(asks: Bool = false, quitting: Bool = false, frontPid: pid_t?, ownPid: pid_t, hostedPids: Set<pid_t>, marginWindowOpen: Bool, marginOnCurrentSpace: Bool) -> UInt8 {
+        margin_keys_gate(Int64(frontPid ?? -1), Int64(ownPid), frontPid.map(hostedPids.contains) ?? false, marginWindowOpen, marginOnCurrentSpace, asks, quitting)
+    }
+
+    /// Margin hosting apps in its own window: its keys are the app's while Margin itself is the active app (one of its
+    /// windows open), or while an app it hosts is with a Margin window on the current Space; let go otherwise.
     static func hostedActive(frontPid: pid_t?, ownPid: pid_t, hostedPids: Set<pid_t>, marginWindowOpen: Bool, marginOnCurrentSpace: Bool) -> Bool {
-        guard let frontPid, marginWindowOpen else { return false }
-        if frontPid == ownPid { return true }
-        return hostedPids.contains(frontPid) && marginOnCurrentSpace
+        gate(frontPid: frontPid, ownPid: ownPid, hostedPids: hostedPids, marginWindowOpen: marginWindowOpen, marginOnCurrentSpace: marginOnCurrentSpace) & 1 != 0
     }
-}
 
-extension ShortcutSet {
-    /// Whether ⌘Q and ⌥⌘Q are Margin's first (AppShortcuts' quit guard): it isn't quitting already, Margin or an app it
-    /// hosts is in front (`hostedActive`: a hosted app only with a Margin window on the current Space), and either
-    /// Margin asks before it quits (`asks`: its stored setting, off after "Always quit") or it's a hosted app in front.
-    /// With asking off the key in a hosted app is still Margin's: it quits Margin without asking (Shell.quitKey),
-    /// never the hosted app alone, which would leave its item dead in Margin; with Margin itself in front it's then
-    /// Margin's own Quit menu item. Never held for an app Margin doesn't host: ⌘Q there is that app's.
+    /// Whether ⌘Q and ⌥⌘Q are Margin's first (the core's quit guard rule: not quitting, Margin or an app it hosts in
+    /// front, and either Margin asks before it quits or it's a hosted app in front).
     static func guardsQuit(asks: Bool, quitting: Bool, frontPid: pid_t?, ownPid: pid_t, hostedPids: Set<pid_t>, marginWindowOpen: Bool, marginOnCurrentSpace: Bool) -> Bool {
-        !quitting && (asks || frontPid != ownPid)
-            && hostedActive(frontPid: frontPid, ownPid: ownPid, hostedPids: hostedPids, marginWindowOpen: marginWindowOpen, marginOnCurrentSpace: marginOnCurrentSpace)
+        gate(asks: asks, quitting: quitting, frontPid: frontPid, ownPid: ownPid, hostedPids: hostedPids, marginWindowOpen: marginWindowOpen, marginOnCurrentSpace: marginOnCurrentSpace) & 2 != 0
     }
-}
 
-// A hosted app's own key Margin takes while that app is in front (AppShortcuts.setAppKeyGuard), and what it does there
-// (Shell.runAppKey): in the window Margin hosts, what Margin's own menu would (⌘W its Close Tab) or nothing (the rest:
-// each would take the window out of Margin, or close every tab of a Safari window); in another window of the app's (a
-// meeting, a draft, Safari's Settings), ⌘W closes it and ⌘M minimizes it, as there.
-enum AppKey: String, CaseIterable {
-    case closeTab = "Meta+KeyW"
-    case closeWindow = "Shift+Meta+KeyW" // Safari: Close Window, every tab in it
-    case closeOthers = "Alt+Meta+KeyW" // Safari: Close Other Tabs; most apps: Close All
-    case minimize = "Meta+KeyM"
-    case hide = "Meta+KeyH"
-    case hideOthers = "Alt+Meta+KeyH" // Margin itself among the others
-    case fullScreen = "Ctrl+Meta+KeyF" // out of Margin's Space, into one of its own
-
-    var name: String {
-        switch self {
-        case .closeTab: return "⌘W"
-        case .closeWindow: return "⇧⌘W"
-        case .closeOthers: return "⌥⌘W"
-        case .minimize: return "⌘M"
-        case .hide: return "⌘H"
-        case .hideOthers: return "⌥⌘H"
-        case .fullScreen: return "⌃⌘F"
-        }
-    }
-}
-
-extension ShortcutSet {
-    /// Whether a hosted app's own keys (AppKey) are Margin's: an app Margin hosts is in front (not Margin itself, whose
-    /// menu has them), with a Margin window on the current Space (`hostedActive`), and Margin isn't quitting.
+    /// Whether a hosted app's own keys (AppKey) are Margin's (the core's rule: an app Margin hosts in front, not Margin
+    /// itself, a Margin window on the current Space, not quitting).
     static func guardsAppKeys(quitting: Bool, frontPid: pid_t?, ownPid: pid_t, hostedPids: Set<pid_t>, marginWindowOpen: Bool, marginOnCurrentSpace: Bool) -> Bool {
-        !quitting && frontPid != ownPid
-            && hostedActive(frontPid: frontPid, ownPid: ownPid, hostedPids: hostedPids, marginWindowOpen: marginWindowOpen, marginOnCurrentSpace: marginOnCurrentSpace)
+        gate(quitting: quitting, frontPid: frontPid, ownPid: ownPid, hostedPids: hostedPids, marginWindowOpen: marginWindowOpen, marginOnCurrentSpace: marginOnCurrentSpace) & 4 != 0
     }
+}
+
+// A hosted app's own key Margin takes while that app is in front (AppShortcuts.setAppKeyGuard), in the core's order,
+// and what it does there (Shell.runAppKey): in the window Margin hosts, what Margin's own menu would (⌘W its Close Tab)
+// or nothing; in another window of the app's (a meeting, a draft, Safari's Settings), ⌘W closes it and ⌘M minimizes it.
+enum AppKey: Int, CaseIterable {
+    case closeTab, closeWindow, closeOthers, minimize, hide, hideOthers, fullScreen
+
+    private var entry: [String: Any] {
+        let all = KeysCore.constants["appKeys"] as? [[String: Any]] ?? []
+        return all.indices.contains(rawValue) ? all[rawValue] : [:]
+    }
+    // For the log: "⌘W".
+    var name: String { entry["name"] as? String ?? "#\(rawValue)" }
+    var combo: Combo { Combo(keyCode: UInt32(entry["keyCode"] as? Int ?? 0), modifiers: UInt32(entry["modifiers"] as? Int ?? 0)) }
 }
 
 // Registering and letting go of a hot key (Carbon's, or a test's stand-in).
@@ -303,73 +247,58 @@ final class CarbonHotKeys: HotKeyRegistrar {
     }
 }
 
-// Margin's keys, held while they should be (ShortcutSet.hostedActive) and let go otherwise.
+// Margin's keys, held while they should be (ShortcutSet.hostedActive) and let go otherwise: the core's holder
+// (`AppShortcuts`: the bindings and their ids, the quit guard, the hosted app's keys, a held key's repeat), Carbon
+// registering for it and a timer ticking its repeat.
 final class AppShortcuts {
     // A command, and whether it's a held key's repeat (not a press).
     var onCommand: ((AppCommand, Bool) -> Void)?
-    private let registrar: HotKeyRegistrar
-    private(set) var bindings: [(Combo, AppCommand)]
+    var onQuit: ((Bool) -> Void)? // which of the two (⌥⌘Q: true)
+    var onAppKey: ((AppKey) -> Void)?
     private(set) var isActive = false
-    private var held = 0 // ids registered, so a rebind lets go of all of them
+    private(set) var guardsQuit = false
+    private(set) var guardsAppKeys = false
     // The ones another app holds (tried again each time they're taken).
     private(set) var unavailable: [Combo] = []
 
+    private let registrar: HotKeyRegistrar
     private let keyRepeat: KeyRepeat
-    // The held key repeating now (its id), and how to stop its next tick.
-    private var repeating: UInt32?
     private var cancelTick: (() -> Void)?
+    // The core's holder, and the box its register and unregister reach the registrar through (kept as long as it).
+    private var core: OpaquePointer?
+    private let box: RegistrarBox
+
+    private final class RegistrarBox {
+        let registrar: HotKeyRegistrar
+        init(_ registrar: HotKeyRegistrar) { self.registrar = registrar }
+    }
 
     init(registrar: HotKeyRegistrar, bindings: [Combo: AppCommand] = ShortcutSet.bindings, keyRepeat: KeyRepeat = KeyRepeat()) {
         self.registrar = registrar
-        self.bindings = Self.ordered(bindings)
         self.keyRepeat = keyRepeat
-        registrar.onHit = { [weak self] id in
-            if id >= Self.appKeyIdBase {
-                guard let self, self.guardsAppKeys, Int(id - Self.appKeyIdBase) < Self.appKeyCombos.count else { return }
-                self.onAppKey?(Self.appKeyCombos[Int(id - Self.appKeyIdBase)].key)
-                return
-            }
-            if id >= Self.quitIdBase {
-                guard let self, self.guardsQuit, Int(id - Self.quitIdBase) < Self.quitCombos.count else { return }
-                self.onQuit?(Self.quitCombos[Int(id - Self.quitIdBase)].keepWindows)
-                return
-            }
-            guard let self, self.isActive, Int(id) < self.bindings.count else { return }
-            let (combo, command) = self.bindings[Int(id)]
-            self.stopRepeat()
-            self.onCommand?(command, false)
-            if command.repeats { self.startRepeat(id, combo, command) }
-        }
+        box = RegistrarBox(registrar)
+        core = margin_keys_new(Unmanaged.passUnretained(box).toOpaque(), { ctx, id, key, mods in
+            guard let ctx else { return false }
+            return MainActor.assumeIsolated { Unmanaged<RegistrarBox>.fromOpaque(ctx).takeUnretainedValue().registrar.register(Combo(keyCode: UInt32(key), modifiers: mods), id: id) }
+        }, { ctx, id in
+            guard let ctx else { return }
+            MainActor.assumeIsolated { Unmanaged<RegistrarBox>.fromOpaque(ctx).takeUnretainedValue().registrar.unregister(id: id) }
+        })
+        _ = KeysCore.bytes(KeysCore.list(bindings)) { p, n in KeysCore.answer { margin_keys_rebind(core, p, n, $0) } }
+        registrar.onHit = { [weak self] id in self?.hit(id) }
         registrar.onRelease = { [weak self] id in
-            guard let self, self.repeating == id else { return }
-            self.stopRepeat()
+            guard let self else { return }
+            margin_keys_release(self.core, id)
+            if margin_keys_next_tick(self.core) < 0 { self.cancelTick?(); self.cancelTick = nil }
         }
     }
 
-    // Held: again after the Mac's repeat delay, then at its rate, until let go.
-    private func startRepeat(_ id: UInt32, _ combo: Combo, _ command: AppCommand) {
-        repeating = id
-        func tick(_ wait: TimeInterval) {
-            cancelTick = keyRepeat.after(wait) { [weak self] in
-                guard let self, self.repeating == id, self.isActive, self.keyRepeat.modifiersDown(combo.modifiers) else {
-                    self?.stopRepeat()
-                    return
-                }
-                self.onCommand?(command, true)
-                tick(max(0.02, self.keyRepeat.interval()))
-            }
-        }
-        tick(max(0.05, keyRepeat.delay()))
-    }
+    deinit { margin_keys_free(core) }
 
-    private func stopRepeat() {
-        cancelTick?()
-        cancelTick = nil
-        repeating = nil
-    }
-
-    private static func ordered(_ bindings: [Combo: AppCommand]) -> [(Combo, AppCommand)] {
-        bindings.sorted { ($0.value.rawValue, $0.key.keyCode, $0.key.modifiers) < ($1.value.rawValue, $1.key.keyCode, $1.key.modifiers) }
+    // The bindings in their ids' order (the core's).
+    var bindings: [(Combo, AppCommand)] {
+        let state = KeysCore.answer { margin_keys_state(core, $0) } as? [String: Any]
+        return KeysCore.combos(state?["bindings"]).compactMap { c, name in name.flatMap(AppCommand.init(rawValue:)).map { (c, $0) } }
     }
 
     // ---- the quit guard ----
@@ -378,19 +307,15 @@ final class AppShortcuts {
     // app never quits that app alone and leaves Margin with a dead item; Margin's own prompt comes up instead
     // (ShellQuit.swift, QuitPrompt.swift), and its Quit gives every hosted app back. Held apart from Margin's own keys,
     // by their own rule. Never held otherwise: ⌘Q is the front app's as it always was.
-    static let quitCombos: [(combo: Combo, keepWindows: Bool)] = [(Combo.parse("Meta+KeyQ")!, false), (Combo.parse("Alt+Meta+KeyQ")!, true)]
-    static let quitIdBase: UInt32 = 900
-    var onQuit: ((Bool) -> Void)? // which of the two (⌥⌘Q: true)
-    private(set) var guardsQuit = false
+    static var quitCombos: [(combo: Combo, keepWindows: Bool)] {
+        (KeysCore.constants["quit"] as? [[String: Any]] ?? []).map { (Combo(keyCode: UInt32($0["keyCode"] as? Int ?? 0), modifiers: UInt32($0["modifiers"] as? Int ?? 0)), $0["keepWindows"] as? Bool ?? false) }
+    }
 
     func setQuitGuard(active: Bool) {
         guard active != guardsQuit else { return }
         guardsQuit = active
-        for (i, entry) in Self.quitCombos.enumerated() {
-            let id = Self.quitIdBase + UInt32(i)
-            if !active { registrar.unregister(id: id); continue }
-            if !registrar.register(entry.combo, id: id) { Diagnostics.warn("\(entry.combo) is another app's: Margin can't ask before it quits by it") }
-        }
+        let answer = KeysCore.answer { margin_keys_set_quit_guard(core, active, $0) } as? [String: Any]
+        for (combo, _) in KeysCore.combos(answer?["taken"]) { Diagnostics.warn("\(combo) is another app's: Margin can't ask before it quits by it") }
     }
 
     // ---- a hosted app's own keys that would undo its hosting (Tirth, 2026-11-19) ----
@@ -398,44 +323,75 @@ final class AppShortcuts {
     // has them: Close Tab, Close Window, Minimize, Hide) or another app is. Without them, ⌘W in a hosted Safari closed
     // its window and every tab Margin had there (seen 2026-11-19 10:55:40), ⌘M or ⌃⌘F took the window out of Margin's
     // Space, ⌘H hid it, ⌥⌘H hid Margin. Each one's run by Shell.runAppKey for the window that has the keys.
-    static let appKeyCombos: [(combo: Combo, key: AppKey)] = AppKey.allCases.map { (Combo.parse($0.rawValue)!, $0) }
-    static let appKeyIdBase: UInt32 = 920
-    var onAppKey: ((AppKey) -> Void)?
-    private(set) var guardsAppKeys = false
+    static var appKeyCombos: [(combo: Combo, key: AppKey)] { AppKey.allCases.map { ($0.combo, $0) } }
 
     func setAppKeyGuard(active: Bool) {
         guard active != guardsAppKeys else { return }
         guardsAppKeys = active
-        for (i, entry) in Self.appKeyCombos.enumerated() {
-            let id = Self.appKeyIdBase + UInt32(i)
-            if !active { registrar.unregister(id: id); continue }
-            if !registrar.register(entry.combo, id: id) { Diagnostics.warn("\(entry.combo) is another app's: a hosted app keeps it") }
-        }
+        let answer = KeysCore.answer { margin_keys_set_app_key_guard(core, active, $0) } as? [String: Any]
+        for (combo, _) in KeysCore.combos(answer?["taken"]) { Diagnostics.warn("\(combo) is another app's: a hosted app keeps it") }
     }
 
-    // New combinations (the copy's `keys`): held at once if the keys are held now.
+    // New combinations (the copy's `keys`): held at once if the keys are held now; the same ones again: nothing.
     func rebind(_ next: [Combo: AppCommand]) {
-        let ordered = Self.ordered(next)
-        guard ordered.map(\.0) != bindings.map(\.0) || ordered.map(\.1) != bindings.map(\.1) else { return }
-        let was = isActive
-        set(active: false)
-        bindings = ordered
-        set(active: was)
+        let answer = KeysCore.bytes(KeysCore.list(next)) { p, n in KeysCore.answer { margin_keys_rebind(core, p, n, $0) } } as? [String: Any]
+        taken(answer?["taken"], fresh: true)
     }
 
     func set(active: Bool) {
         guard active != isActive else { return }
         isActive = active
-        if active {
-            unavailable = []
-            held = bindings.count
-            for (i, (combo, command)) in bindings.enumerated() where !registrar.register(combo, id: UInt32(i)) {
-                unavailable.append(combo)
-                Diagnostics.warn("\(combo) (\(command.rawValue)) is another app's: not Margin's")
-            }
-        } else {
-            stopRepeat()
-            for i in 0..<max(bindings.count, held) { registrar.unregister(id: UInt32(i)) }
+        let answer = KeysCore.answer { margin_keys_set_active(core, active, $0) } as? [String: Any]
+        if active { taken(answer?["taken"], fresh: true) } else { cancelTick?(); cancelTick = nil }
+    }
+
+    // The ones another app holds, just found so (a hold or a rebind while held), said once each.
+    private func taken(_ value: Any?, fresh: Bool) {
+        let list = KeysCore.combos(value)
+        if !isActive { return }
+        if fresh {
+            let state = KeysCore.answer { margin_keys_state(core, $0) } as? [String: Any]
+            unavailable = KeysCore.combos(state?["unavailable"]).map(\.0)
         }
+        for (combo, name) in list { Diagnostics.warn("\(combo) (\(name ?? "?")) is another app's: not Margin's") }
+    }
+
+    // ---- a press and a held key's repeat ----
+
+    private func hit(_ id: UInt32) {
+        let t = keyRepeat.now()
+        let h = margin_keys_press(core, id, t, max(0, keyRepeat.delay()), max(0, keyRepeat.interval()))
+        // (One of Margin's keys: any repeat before it is over; the guards' keys leave it running.)
+        if h.kind == 1 { cancelTick?(); cancelTick = nil }
+        run(h)
+        if h.kind == 1 { scheduleTick(from: t) }
+    }
+
+    private func run(_ h: MarginKeyHit) {
+        switch h.kind {
+        case 1:
+            guard KeysCore.commands.indices.contains(Int(h.index)), let command = AppCommand(rawValue: KeysCore.commands[Int(h.index)]) else { return }
+            onCommand?(command, h.repeat)
+        case 2:
+            onQuit?(h.index == 1)
+        case 3:
+            if let key = AppKey(rawValue: Int(h.index)) { onAppKey?(key) }
+        default:
+            break
+        }
+    }
+
+    // The repeat's next tick, `from` the time of the press or tick just run (the core says when it's due).
+    private func scheduleTick(from t: TimeInterval) {
+        let due = margin_keys_next_tick(core)
+        guard due >= 0 else { return }
+        cancelTick = keyRepeat.after(max(0, due - t)) { [weak self] in self?.tick(due) }
+    }
+
+    private func tick(_ due: TimeInterval) {
+        cancelTick = nil
+        let t = max(due, keyRepeat.now())
+        run(margin_keys_tick(core, t, keyRepeat.modifiers()))
+        scheduleTick(from: t)
     }
 }

@@ -9,6 +9,7 @@
 // tools/app-tests/run.sh
 // builds and runs them (and the end-to-end check, e2e.swift).
 import AppKit
+import Carbon
 import Foundation
 import WebKit
 
@@ -396,6 +397,27 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("Margin in front, counts not said yet: every key held", heldOwn.count == allKeys.count)
     check("Margin in front, no rows: no ⌘digit held", ShortcutSet.held(allKeys, marginInFront: true, browser: false, spaces: 1, items: 0).values.allSatisfy { $0.itemNumber == nil && ($0.spaceNumber ?? 1) <= 1 })
     check("keys Settings can record: punctuation and F keys", Combo.parse("Alt+Comma") != nil && Combo.parse("Ctrl+F5") != nil && Combo.parse("Meta+Backquote") != nil)
+    // The core's Mac key codes against Carbon's own constants, every key Margin's keys can be (the table the Swift
+    // side kept before the rules moved to margin-core).
+    let carbonCodes: [String: Int] = [
+        "ArrowDown": kVK_DownArrow, "ArrowUp": kVK_UpArrow, "ArrowLeft": kVK_LeftArrow, "ArrowRight": kVK_RightArrow,
+        "KeyA": kVK_ANSI_A, "KeyB": kVK_ANSI_B, "KeyC": kVK_ANSI_C, "KeyD": kVK_ANSI_D, "KeyE": kVK_ANSI_E, "KeyF": kVK_ANSI_F,
+        "KeyG": kVK_ANSI_G, "KeyH": kVK_ANSI_H, "KeyI": kVK_ANSI_I, "KeyJ": kVK_ANSI_J, "KeyK": kVK_ANSI_K, "KeyL": kVK_ANSI_L,
+        "KeyM": kVK_ANSI_M, "KeyN": kVK_ANSI_N, "KeyO": kVK_ANSI_O, "KeyP": kVK_ANSI_P, "KeyQ": kVK_ANSI_Q, "KeyR": kVK_ANSI_R,
+        "KeyS": kVK_ANSI_S, "KeyT": kVK_ANSI_T, "KeyU": kVK_ANSI_U, "KeyV": kVK_ANSI_V, "KeyW": kVK_ANSI_W, "KeyX": kVK_ANSI_X,
+        "KeyY": kVK_ANSI_Y, "KeyZ": kVK_ANSI_Z, "Space": kVK_Space, "F19": kVK_F19,
+        "Digit0": kVK_ANSI_0, "Digit1": kVK_ANSI_1, "Digit2": kVK_ANSI_2, "Digit3": kVK_ANSI_3, "Digit4": kVK_ANSI_4,
+        "Digit5": kVK_ANSI_5, "Digit6": kVK_ANSI_6, "Digit7": kVK_ANSI_7, "Digit8": kVK_ANSI_8, "Digit9": kVK_ANSI_9,
+        "Enter": kVK_Return, "Backquote": kVK_ANSI_Grave, "Minus": kVK_ANSI_Minus, "Equal": kVK_ANSI_Equal,
+        "BracketLeft": kVK_ANSI_LeftBracket, "BracketRight": kVK_ANSI_RightBracket, "Backslash": kVK_ANSI_Backslash,
+        "Semicolon": kVK_ANSI_Semicolon, "Quote": kVK_ANSI_Quote, "Comma": kVK_ANSI_Comma, "Period": kVK_ANSI_Period, "Slash": kVK_ANSI_Slash,
+        "F1": kVK_F1, "F2": kVK_F2, "F3": kVK_F3, "F4": kVK_F4, "F5": kVK_F5, "F6": kVK_F6,
+        "F7": kVK_F7, "F8": kVK_F8, "F9": kVK_F9, "F10": kVK_F10, "F11": kVK_F11, "F12": kVK_F12,
+    ]
+    let wrongCodes = carbonCodes.filter { Combo.parse("Meta+\($0.key)")?.keyCode != UInt32($0.value) }.map(\.key).sorted()
+    check("margin-core's Mac key codes are Carbon's, all 66 keys", carbonCodes.count == 66 && wrongCodes.isEmpty, "\(wrongCodes)")
+    check("margin-core's modifier bits are Carbon's", Combo.parse("Ctrl+Alt+Shift+Meta+KeyA")?.modifiers == UInt32(cmdKey | controlKey | optionKey | shiftKey)
+          && Combo.parse("Ctrl+KeyA")?.modifiers == UInt32(controlKey) && Combo.parse("Alt+KeyA")?.modifiers == UInt32(optionKey))
     // Hosting: Margin itself, or an app it hosts with a Margin window on the current Space.
     check("hosted gate: Margin in front with a window", ShortcutSet.hostedActive(frontPid: 1, ownPid: 1, hostedPids: [], marginWindowOpen: true, marginOnCurrentSpace: false))
     check("hosted gate: a hosted app in front, Margin's window on the current Space", ShortcutSet.hostedActive(frontPid: 20, ownPid: 1, hostedPids: [20, 21], marginWindowOpen: true, marginOnCurrentSpace: true))
@@ -555,7 +577,8 @@ final class FakeRegistrar: HotKeyRegistrar {
       waits.append((seconds, { if live { run() } }))
       return { live = false }
     }
-    rep.modifiersDown = { _ in mods }
+    rep.now = { 0 } // (a test's clock: each repeat runs at its due time, the waits say the gaps)
+    rep.modifiers = { mods ? 0x1B00 : 0 }
     let fake2 = FakeRegistrar()
     let held = AppShortcuts(registrar: fake2, keyRepeat: rep)
     var ran2: [AppCommand] = []
@@ -567,7 +590,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     fake2.onHit?(down)
     check("held: once at the press", ran2 == [.nextTab] && waits.first?.0 == 0.4)
     runNext(); runNext(); runNext()
-    check("held: again after the delay, then at the rate", ran2.count == 4 && waits.first?.0 == 0.05)
+    check("held: again after the delay, then at the rate", ran2.count == 4 && abs((waits.first?.0 ?? 0) - 0.05) < 1e-9, "\(ran2.count) \(waits.map(\.0))")
     check("held: the press is a press, the rest repeats", repeats2 == [false, true, true, true])
     fake2.onRelease?(down)
     runNext()

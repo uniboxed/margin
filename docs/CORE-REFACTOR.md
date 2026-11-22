@@ -67,13 +67,16 @@ against the core.
   space-1…9, item-1…9) with `browserOnly`, `spaceNumber`, `itemNumber`; the guards (`hostedActive`, `guardsQuit` with
   7952b652's meaning, `guardsAppKeys`, the seven `AppKey`s, the quit combos), `held` (a hosted app that isn't a browser
   loses the sidebar key and the browser-only keys; numbered keys past the window's row counts aren't held), and a Mac
-  key-code table (Carbon kVK). Windows defaults for the new commands: ⌘ → Ctrl, ⌃ → Alt (item-N Ctrl+1…9, space-N
-  Alt+1…9, Quick Tab Ctrl+Alt+N); Windows isn't shipping, so these are a first proposal, listed for Tirth.
+  key-code table (Carbon kVK, checked against Carbon's constants by the app's tests). The newer commands have **no
+  Windows default** yet and are never bound on Windows, whatever a copy sends: the Windows shell's old design keeps its
+  seven keys exactly; the Windows hosted design decides the rest.
 - The old overlay's gate (`active`, `keys_held`, `KeysFront`, `route`, the ⇧⌘L Safari sidebar key) stays for the
   Windows shell until it's hosted, then goes.
-- FFI: the Mac asks for its bindings only when an input changes (the copy's `keys`, the front app, whether it's a
-  browser, the row counts, quitting): one typed call returning a flat array of {kVK, modifiers, command id}; Swift
-  keeps the id → action table and Carbon. Nothing runs per key press but today's array lookup.
+- FFI (`ffi/src/keys.rs`): the rare calls answer JSON (the copy's keys, what's held, a guard held or let go); a
+  press, a release and a repeat's tick are typed calls, nothing allocated; the core's holder registers through the
+  Swift side's Carbon by two C callbacks. Swift keeps the command → action table (runHosted), Carbon and the timer.
+  Done 2026-11-22: Shortcuts.swift's rules deleted, the app's 2156 checks pass, the core's and the FFI's tests cover
+  the rules, the gates, the guards and the repeat.
 - Later (noted, not this step): the default combos also live in extension/shared/app-keys.ts; once the core is the
   source, the build writes them out for the extension instead of a hand copy.
 

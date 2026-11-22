@@ -13,6 +13,7 @@ crate-type = ["staticlib", "rlib"]
 
 [dependencies]
 margin-core = { path = "../core" }
+serde_json.workspace = true
 
 [lints]
 workspace = true

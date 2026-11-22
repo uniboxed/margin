@@ -49,4 +49,42 @@ bool margin_layout_home(const MarginPlacement *placement, MarginRect *out);
 // Whether a window of these bounds is a full-screen window's strip for this placement (host/kinds.rs).
 bool margin_kinds_is_strip(MarginRect bounds, const MarginPlacement *placement);
 
+// Margin's keys (shortcuts.rs, ffi keys.rs): combinations as the Mac's Carbon key code and modifier bits. The JSON
+// answers are freed with margin_buffer_free; a press, a release and a repeat's tick are typed.
+typedef struct {
+    bool ok;
+    uint16_t key_code;
+    uint32_t modifiers;
+} MarginKeyCombo;
+
+typedef struct {
+    uint8_t kind;  // 0 nothing, 1 one of Margin's keys, 2 the quit guard, 3 a hosted app's key
+    uint8_t index; // into the constants' commands; the quit guard: 1 keeps the windows; into appKeys
+    bool repeat;   // a held key's repeat
+} MarginKeyHit;
+
+typedef struct MarginKeys MarginKeys;
+typedef bool (*MarginKeyRegister)(void *ctx, uint32_t id, uint16_t key_code, uint32_t modifiers);
+typedef void (*MarginKeyUnregister)(void *ctx, uint32_t id);
+
+MarginKeyCombo margin_keys_parse(const uint8_t *text, size_t len);
+uint8_t *margin_keys_describe(uint16_t key_code, uint32_t modifiers, size_t *out_len);
+uint8_t *margin_keys_bindings(const uint8_t *keys_json, size_t len, size_t *out_len);
+uint8_t *margin_keys_held(const uint8_t *bindings_json, size_t len, bool margin_in_front, bool browser, int32_t spaces, int32_t items, size_t *out_len);
+uint8_t margin_keys_gate(int64_t front_pid, int64_t own_pid, bool front_hosted, bool window_open, bool on_current_space, bool asks, bool quitting);
+bool margin_keys_is_browser_app(const uint8_t *bundle, size_t len, const uint8_t *linked_json, size_t linked_len);
+bool margin_keys_is_chromium(const uint8_t *bundle, size_t len);
+uint8_t *margin_keys_constants(size_t *out_len);
+MarginKeys *margin_keys_new(void *ctx, MarginKeyRegister reg, MarginKeyUnregister unreg);
+void margin_keys_free(MarginKeys *keys);
+uint8_t *margin_keys_rebind(MarginKeys *keys, const uint8_t *bindings_json, size_t len, size_t *out_len);
+uint8_t *margin_keys_set_active(MarginKeys *keys, bool active, size_t *out_len);
+uint8_t *margin_keys_set_quit_guard(MarginKeys *keys, bool active, size_t *out_len);
+uint8_t *margin_keys_set_app_key_guard(MarginKeys *keys, bool active, size_t *out_len);
+MarginKeyHit margin_keys_press(MarginKeys *keys, uint32_t id, double now, double delay, double interval);
+void margin_keys_release(MarginKeys *keys, uint32_t id);
+double margin_keys_next_tick(MarginKeys *keys);
+MarginKeyHit margin_keys_tick(MarginKeys *keys, double now, uint32_t modifiers_down);
+uint8_t *margin_keys_state(MarginKeys *keys, size_t *out_len);
+
 #endif
