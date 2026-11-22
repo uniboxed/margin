@@ -15,6 +15,7 @@
 // action returns a request (`requests`) for the hosting phase (Library.swift's delegate), with the item and its
 // target resolved.
 import * as M from '../../../extension/state/model.ts';
+import { frontItemOf } from '../../../extension/shared/front-item.ts';
 import { matchAirTrafficRule } from '../../../extension/shared/air-traffic.ts';
 import { fingerprint } from '../../../extension/shared/data-set.ts';
 import type { State } from '../../../types/margin';
@@ -195,8 +196,7 @@ const spaceOf = (s: LibState, id: string) => s.spaces.find((sp) => sp.id === id)
 const windowSpace = (s: LibState, w: string | null) => (w != null && hasSpace(s, s.activeSpaceByWindow[w as any]) ? s.activeSpaceByWindow[w as any] : s.spaces[0]?.id ?? null);
 const itemsOf = (s: LibState, spaceId: string) => Object.values(s.keptTabs ?? {}).filter((k) => k.spaceId === spaceId);
 /** A space's item used last (the selected one breaks a tie). */
-const frontOf = (s: LibState, spaceId: string, except: string | null = null) => itemsOf(s, spaceId).filter((k) => k.id !== except)
-  .sort((a, b) => finite(b.lastActive) - finite(a.lastActive) || Number(!!b.wasActive) - Number(!!a.wasActive) || a.id.localeCompare(b.id))[0] ?? null;
+const frontOf = (s: LibState, spaceId: string, except: string | null = null) => frontItemOf(Object.values(s.keptTabs ?? {}), spaceId, except);
 const lastPlace = (s: LibState) => Math.max(-1, ...Object.values(s.keptTabs ?? {}).map((k) => finite(k.order)));
 const targetOfItem = (k: any): Target => targetOf(k?.target) ?? webTarget('safari', null);
 /** The target a new web item of this space gets: the space's browser and profile. */

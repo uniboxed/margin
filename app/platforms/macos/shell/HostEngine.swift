@@ -3655,6 +3655,11 @@ final class HostEngine {
     // way, which showed as a flash of that Space on a first open (2026-11-17: `1 Space change undone … no freeze`).
     // What's frozen is Margin's window with its loader.
     private func enterFullScreen(_ host: Host, frozen: inout Bool) async -> Entry {
+        // (A page area its full-screen window can't be put at (a pane's rect past the display's edge: no plan): never
+        // asked. Asked, its own Space was made, the slow path ran and the place failed anyway, each time: the real screen,
+        // 2026-11-21 19:32, Safari's pane at 949…1523 beside Notes, five Spaces made and dropped in 12 s.)
+        let target = fitted(host)
+        if HostLayout.plan(target) == nil { return .failed("no room for it: its page area can't be reached from the display's (\(target.text))") }
         func ownSpace() -> UInt64? {
             guard let list = sys.spaces(window: host.window) else { return nil }
             return list.first { $0 != marginSpace && sys.spaceType($0) == ManagedSpace.fullScreenType }
@@ -3898,7 +3903,7 @@ final class HostEngine {
     // let go as soon as its own Space is gone (nothing of macOS's change can show after that; its window is under its
     // own loader until its layout is done), not after the settle.
     private func early(_ host: Host, before: Set<UInt64>, refused: () -> Bool, switched already: Bool = false) async -> Early {
-        guard var edges = HostLayout.plan(fitted(host)) else { return .slow("no plan for the page area (\(placement.text))") }
+        guard var edges = HostLayout.plan(fitted(host)) else { return .slow("no plan for its page area (\(fitted(host).text))") }
         // (Live resize: its tile moved into Margin's Space in place of the window alone, below.)
         let tiling = await tilesReady(for: host)
         let t0 = sys.now()
@@ -4074,7 +4079,7 @@ final class HostEngine {
         // (Its window's own minimum, from its own Space's tile: reserved for no less.)
         if let t = ownTile(host, in: own) { learnMinimum(host, tile: t) }
         guard let edges = HostLayout.plan(fitted(host)) else {
-            Diagnostics.note("host: place \(host.id): no plan (\(placement.text))")
+            Diagnostics.note("host: place \(host.id): no plan (\(fitted(host).text))")
             return false
         }
         let page = frame(host)

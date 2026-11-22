@@ -18,6 +18,27 @@ func splitRealUseTests() {
     splitRealUseMinimumTests()
     splitRealUseDragTests()
     splitRealUseGlueTests()
+    splitRoomTests()
+}
+
+// Which panes leave a split laid out without room (HostedSession.noRoom), the real screen's numbers (2026-11-21 19:32:02):
+// the page area 240,41 1264×933, Safari's least 574×220, Notes' 701×53.
+private func splitRoomTests() {
+    let page = CGRect(x: 240, y: 41, width: 1264, height: 933)
+    let safari = CGSize(width: 574, height: 220), notes = CGSize(width: 701, height: 53)
+    let past = HostedSession.noRoom([("s", .main, CGRect(x: 949, y: 41, width: 574, height: 933), safari), ("n", .pane, CGRect(x: 240, y: 41, width: 701, height: 933), notes)], page: page, had: [])
+    check("split room: a pane past the page area (Safari's at 949…1523): the one coming in leaves (Notes), main never", past == ["n"], "\(String(describing: past))")
+    let fits = HostedSession.noRoom([("s", .main, CGRect(x: 240, y: 41, width: 628, height: 933), safari), ("n", .pane, CGRect(x: 876, y: 41, width: 628, height: 933), CGSize(width: 560, height: 53))], page: page, had: [])
+    check("split room: two at 628 within the page area, each above its least: nothing leaves", fits == nil, "\(String(describing: fits))")
+    let under = HostedSession.noRoom([("s", .main, CGRect(x: 240, y: 41, width: 628, height: 933), safari), ("n", .pane, CGRect(x: 876, y: 41, width: 628, height: 933), notes)], page: page, had: ["s", "n"])
+    check("split room: Notes' least grown to 701 in a split it was in (at 628): it leaves, main stays", under == ["n"], "\(String(describing: under))")
+    let third = HostedSession.noRoom([("a", .main, CGRect(x: 240, y: 41, width: 416, height: 933), safari), ("b", .pane, CGRect(x: 664, y: 41, width: 416, height: 933), safari), ("c", .pane, CGRect(x: 1088, y: 41, width: 416, height: 933), safari)], page: page, had: ["a", "b"])
+    check("split room: a third Safari pane squeezing all three under 574: only the newcomer leaves", third == ["c"], "\(String(describing: third))")
+    let card = HostedSession.noRoom([("s", .main, page, safari), ("k", .card, CGRect(x: 0, y: 0, width: 3000, height: 3000), safari)], page: page, had: [])
+    check("split room: the preview card isn't a pane (its own rect, never checked)", card == nil, "\(String(describing: card))")
+    let edge = HostedSession.noRoom([("s", .main, CGRect(x: 239.5, y: 41, width: 628, height: 933), safari), ("n", .pane, CGRect(x: 876, y: 41, width: 628.6, height: 933), CGSize(width: 629, height: 53))], page: page, had: [])
+    check("split room: within a point either way (rounding): fits", edge == nil, "\(String(describing: edge))")
+    check("split room: the reasons that mean no room", HostedSession.isNoRoom(HostedSession.noRoomReason) && HostedSession.isNoRoom("its pane rect 1,2 3×4 is below its window's minimum 5×6") && HostedSession.isNoRoom("no room for it: its page area can't be reached from the display's (page …)") && !HostedSession.isNoRoom("main wasn't shown"))
 }
 
 // The session's world: a Safari web page shown alone, the split made from it (`createSplit`), then more panes.
@@ -176,14 +197,15 @@ private func splitRealUseSessionTests() {
     let after = panes()
     check("split real use 2: a pane below Safari's known minimum: refused before anything is made for it (no window asked, none made)",
           !links.types(since: mark).contains("newWindow") && engine.hosts[pane2] == nil
-          && lines.contains { $0.contains("\(pane2)") && $0.contains("below its window's minimum 574×220") && $0.contains("none made") },
+          && (lines.contains { $0.contains("\(pane2)") && $0.contains("below its window's minimum 574×220") && $0.contains("none made") }
+              || lines.contains { $0.contains("no room in the page area") && $0.contains("least 574×220") && $0.contains("nothing moved") }),
           "\(links.types(since: mark)) \(lines.filter { $0.contains("minimum") })")
     check("split real use 3: …out of the split at once (the page lays out the rest, never an empty box), said in a toast",
           library.split(sp)?.panes == [a, b] && window.pushed.dropFirst(pushes).contains { $0.contains(#""type":"toast""#) && $0.contains("Not enough room") },
           "\(String(describing: library.split(sp)?.panes)) \(window.pushed.dropFirst(pushes).filter { $0.contains("toast") })")
     check("split real use 3: …the two panes as they were, at their rects, the one with the keys keeping them",
           engine.visible.count == 2 && bounds(safari) == after[a] && bounds(pane1) == after[b] && session.shown[1] == b && session.layout[1]?.split == sp,
-          "\(engine.visible) \(after) \(String(describing: bounds(safari))) \(String(describing: session.shown[1]))")
+          "\(engine.visible) \(after) \(String(describing: bounds(safari))) pane1 \(String(describing: bounds(pane1))) \(String(describing: session.shown[1])) layout \(String(describing: session.layout[1]?.split)) \(lines.filter { $0.contains("layout") || $0.contains("room") }.suffix(12))")
 
     // ---- 3. a pane whose window never comes: out of the split; the one left at the page area ----
     run { _ = library.perform("newTab", ["windowId": 1, "url": "https://d.example/"]) }
@@ -207,6 +229,26 @@ private func splitRealUseSessionTests() {
           "\(String(describing: library.split(ofItem: a))) \(engine.visible) \(String(describing: bounds(safari))) \(window.pushed.dropFirst(pushes2).filter { $0.contains("toast") }) \(lines.filter { $0.contains("pane1") || $0.contains("idle") || $0.contains("Safari window") || $0.contains("layout") }.suffix(14))")
     check("split real use 3: …main never left at a pane's rect meanwhile (it kept the page area: the pane never came in)",
           !lines.contains { $0.contains("host: \(safari): its tile sized to the page area") && !$0.contains(r(page)) }, "\(lines.filter { $0.contains("tile sized") })")
+
+    // ---- 7. a pane laid out past the page area (the real screen, 2026-11-21 19:32:02: Notes' 701 beside a Safari tab's 574
+    // in 1264 pt, Safari's pane at 949…1523): refused before any window moves, no full screen asked, the newcomer out of
+    // the split and the person told, the item shown before kept at the page area ----
+    window.paneRectsAs = { panes in panes.enumerated().map { i, p in i == 1 ? PagePane(item: p.item, rect: p.rect.offsetBy(dx: 30, dy: 0)) : p } }
+    let mark7 = links.asked.count, pushes7 = window.pushed.count, spaces7 = w.nextId
+    lines = []
+    run { _ = library.perform("addToSplit", ["windowId": 1, "tabId": c]) }
+    window.paneRectsAs = nil
+    check("split real use 7: a pane past the page area: nothing asked of Safari (no window, no full screen), no Space made",
+          !links.types(since: mark7).contains { $0 == "newWindow" || $0 == "setWindowState" } && w.nextId == spaces7,
+          "\(links.types(since: mark7)) ids \(spaces7) → \(w.nextId)")
+    check("split real use 7: …the newcomer out of the split, said in a toast; the log says why (each pane's rect and least)",
+          library.split(ofItem: a) == nil && library.split(ofItem: c) == nil
+          && window.pushed.dropFirst(pushes7).contains { $0.contains(#""type":"toast""#) && $0.contains("Not enough room") }
+          && lines.contains { $0.contains("no room in the page area") && $0.contains("nothing moved") },
+          "\(String(describing: library.split(ofItem: a))) \(window.pushed.dropFirst(pushes7).filter { $0.contains("toast") }) \(lines.filter { $0.contains("room") })")
+    check("split real use 7: …the item shown before still shown alone at the page area, with the keys",
+          engine.visible.count == 1 && engine.shown == safari && bounds(safari) == page && session.shown[1] == a,
+          "\(engine.visible) \(String(describing: bounds(safari))) \(String(describing: session.shown[1]))")
     w.onClock = nil
 }
 

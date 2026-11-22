@@ -879,6 +879,18 @@ final class HostedSession: LibraryDelegate {
             // (The preview card over the split keeps its own rect, its <m-preview-page>'s: it's no pane. HostedPeek.swift.)
             for i in parts.indices where parts[i].role != .card { parts[i].rect = rects[parts[i].item] }
             guard parts.allSatisfy({ $0.rect != nil }) else { note("layout: split \(split.id): a pane with no rect from the page: not shown"); settleHosting(); return }
+            // (Room, before any window moves: every pane within the page area and at its window's known minimum. One that
+            // isn't can't be placed (a rect past the display's edge has no full-screen plan), and trying made and dropped
+            // its window's own Space at each ask. The real screen, 2026-11-21 19:32:02: Notes (701) added beside a Safari
+            // tab (574) in 1264 pt, Safari's pane laid out at 949…1523, past the page area; Safari failed five times, the
+            // split shown as an empty page. The ones coming in go, the person told, the item shown before kept.)
+            if let out = Self.noRoom(parts.map { ($0.item, $0.role, $0.rect, leastSize($0.target)) }, page: placement.page, had: hadItems) {
+                note("layout: split \(split.id): no room in the page area \(Int(placement.page.width))×\(Int(placement.page.height)) (\(parts.filter { $0.role != .card }.map { p in "\(p.item) \(p.rect.map { "\(Int($0.minX))…\(Int($0.maxX))×\(Int($0.height))" } ?? "-") least \(leastSize(p.target).map { "\(Int($0.width))×\(Int($0.height))" } ?? "none")" }.joined(separator: ", "))): nothing moved")
+                let keep = hadFocus.flatMap { f in parts.contains { $0.item == f } && !out.contains(f) ? f : nil } ?? main
+                leaveSplit(split.id, out.map { ($0, .failed(.place, Self.noRoomReason)) }, focus: keep, in: w)
+                settleHosting()
+                return
+            }
         }
         let first = parts[0]
         var wanted: [HostExtra] = []
@@ -913,7 +925,15 @@ final class HostedSession: LibraryDelegate {
             _ = await engine.toolbarsRest(new)
             releaseReveal(w.id)
         }
-        guard shownItems.contains(main) else { settleHosting(); onChange?(); return }
+        guard shownItems.contains(main) else {
+            // (A split's main that found no room beside the panes coming in: they go, so main is laid out again alone.)
+            if let split, case .failed(_, let why)? = results[first.target.id], Self.isNoRoom(why) {
+                let incoming = parts.dropFirst().filter { $0.role == .pane && !hadItems.contains($0.item) }
+                let keep = hadFocus.flatMap { f in parts.contains { $0.item == f } && !incoming.contains { $0.item == f } ? f : nil } ?? main
+                if !incoming.isEmpty { leaveSplit(split.id, incoming.map { ($0.item, .failed(.place, Self.noRoomReason)) }, focus: keep, in: w) }
+            }
+            settleHosting(); onChange?(); return
+        }
         let focus = focused.flatMap { shownItems.contains($0) ? $0 : nil } ?? main
         // (A split's pane that didn't come: out of it, the rest laid out again: `leaveSplit`.)
         if let split {
@@ -938,6 +958,40 @@ final class HostedSession: LibraryDelegate {
         note("layout: \(shownItems.count) item(s) shown in Margin's window \(w.id), \(focus) focused")
     }
 
+    // A target's window's least size: its host's as learnt, else its app's known one (Safari's for a Safari window).
+    private func leastSize(_ t: HostTarget) -> CGSize? {
+        if let m = engine.minimum(of: t.id) { return m }
+        switch t {
+        case .app(let bundle): return engine.knownAppMinimums[bundle]
+        case .safariWindow: return engine.knownAppMinimums[safariIdentifier]
+        }
+    }
+
+    // Why a pane didn't come, as `leaveSplit` and the toast say it: no room for it (below its window's minimum, past the
+    // page area, or its page area can't be reached from the display's: HostEngine `enterFullScreen`).
+    static let noRoomReason = "below its window's minimum or past the page area"
+    static func isNoRoom(_ why: String) -> Bool { why.contains("below its window's minimum") || why.contains("no room for it") }
+
+    // The panes that must leave a split laid out at these rects (nil: every pane fits): one whose rect isn't within the
+    // page area (1 pt either way) or is under its window's known minimum makes it not fit. Then the panes coming in
+    // (not in `had`, main never), else the ones that don't fit (main never), else the last pane: the split as it was
+    // before stays. Cards aren't panes (their own rect).
+    nonisolated static func noRoom(_ panes: [(item: String, role: HostRole, rect: CGRect?, least: CGSize?)], page: CGRect, had: Set<String>) -> [String]? {
+        func fits(_ r: CGRect, _ m: CGSize?) -> Bool {
+            let inside = r.minX >= page.minX - 1 && r.maxX <= page.maxX + 1 && r.minY >= page.minY - 1 && r.maxY <= page.maxY + 1
+            return inside && (m.map { r.width + 1 >= $0.width && r.height + 1 >= $0.height } ?? true)
+        }
+        let laid = panes.enumerated().filter { $0.element.role != .card }
+        let cramped = laid.filter { p in p.element.rect.map { !fits($0, p.element.least) } ?? false }
+        guard !cramped.isEmpty else { return nil }
+        let others = laid.filter { $0.offset > 0 }
+        let incoming = others.filter { !had.contains($0.element.item) }.map(\.element.item)
+        if !incoming.isEmpty { return incoming }
+        let cut = cramped.filter { $0.offset > 0 }.map(\.element.item)
+        if !cut.isEmpty { return cut }
+        return others.last.map { [$0.element.item] }
+    }
+
     // Panes of a split shown in `w` that didn't come (their window refused its rect, below its app's minimum; or it
     // didn't open): out of the split at once, in the library (decided 2026-11-21: the page lays out the library's split,
     // so a pane only marked failed would stay an empty box, its dividers dragging nothing; the item itself stays in its
@@ -950,7 +1004,7 @@ final class HostedSession: LibraryDelegate {
         for (item, result) in failed {
             var why = "not laid out"
             if case .failed(_, let reason)? = result { why = reason }
-            let noRoom = why.contains("below its window's minimum")
+            let noRoom = Self.isNoRoom(why)
             room = room || noRoom
             let title = (library.items().first { $0.id == item }?.value["title"] as? String).flatMap { $0.isEmpty ? nil : $0 }
             names.append(title ?? (noRoom ? "that pane" : "a pane"))

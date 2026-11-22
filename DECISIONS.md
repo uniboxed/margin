@@ -7384,3 +7384,36 @@ sent from another process do nothing.
   Chameleon (`Int(locationInWindow.x)` in its local monitor) 40 ms after it was kept, now guarded in the test app. Real
   apps rarely convert a monitor's location unchecked, and yabai and AltTab send the same record to every app they
   focus, but a crash of a hosted app on being kept would point here first (`MarginPanesActive` NO turns it off).
+
+## A split that can't fit is refused before anything moves (2026-11-21)
+
+The real screen, 19:32:02: "Add to Split View" on the row of the Safari tab in front, Notes used just before it, both
+open in Margin's window. The library splits an added item with the item used last in its space besides it, so it made
+Notes + that tab (Notes first). Notes' window said 701 pt at least, Safari's 574, the page area 1264: they couldn't fit.
+The page's own room check let it through, the page laid Safari's pane at 949…1523 (past the page area and the display),
+Safari's full screen had no plan there, and each of five asks in 12 s made and dropped a Space of its own before failing;
+then both panes "failed" and the page showed the launcher.
+
+- **The page's check pairs as the library does** (`extension/shared/front-item.ts` `frontItemOf`, used by both
+  `app/shared/library/library.ts` `addToSplit` and `extension/ui/behaviors/split.ts` `refusesAdd`): the item used last
+  in the added one's space, not itself, joined to that item's split if it has one. It had measured the front tab beside
+  itself (574 + 574: fits). Its items are the closed ones (`keptTabs`) and the ones open in Margin's window, which the
+  app puts in `tabs` as rows of a number (`mid` the item: HostedSession `liveTab`) and takes out of the kept ones; the
+  menu names an open row by its number. Each add is said in Margin's log (`split add: com.apple.Notes 701 + web 574 +
+  gaps 8 in 1264 (horizontal): refused; apps known: …`).
+- **Margin.app checks again before any window moves** (`HostedSession.noRoom`): every pane within the page area (1 pt)
+  and at its window's known least (its host's as learnt, else its app's). One that isn't: the panes coming in leave the
+  split (main never; else the ones that don't fit; else the last pane), the person told ("Not enough room for … in Split
+  View"), the pane that had the keys keeps them, nothing asked of any window (`layout: split …: no room in the page area
+  … nothing moved`). A split's main that fails for room lets the newcomers go too, so main is shown again alone.
+- **A page area with no full-screen plan is never asked into full screen** (`HostEngine.enterFullScreen`): it fails at
+  once, "no room for it", which `leaveSplit` reads as no room. The no-plan log lines name the host's own page area, not
+  Margin's.
+- Checked: `tests/front-item.test.ts`; `tests/theme/split-view.test.ts` (the real screen's pair, both open by row
+  number, and Notes closed: refused; in 1400 pt: added; each failing on the code before); `split-real-use-tests.swift`
+  (`splitRoomTests`; part 7: a pane past the page area, nothing asked, no Space made, the newcomer out, the item shown
+  before kept). On the real screen with the person's own items: refused by the page with its toast, Notes never opened;
+  and, with the page check bypassed (the build before), refused by Margin.app with nothing moved and no Space made.
+- **Open:** Notes' least as its tile says it changes while it goes full screen: 701×53 first, 501×300 ~90 ms later (its
+  folder column shown or not). Whichever came last is kept, so Notes beside a Safari tab is refused at 701 though Notes
+  can sit at 628 (it did, at 501). Taking the settled reading is a follow-up.

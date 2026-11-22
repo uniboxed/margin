@@ -102,8 +102,9 @@ final class FakeHostedWindow: HostedWindow {
             defer { at += size + gap }
             return PagePane(item: item, rect: s.vertical ? CGRect(x: page.minX, y: at, width: page.width, height: size) : CGRect(x: at, y: page.minY, width: size, height: page.height))
         }
-        return (s.id, panes)
+        return (s.id, paneRectsAs?(panes) ?? panes)
     }
+    var paneRectsAs: (([PagePane]) -> [PagePane])? // (the page's rects changed, as a page that laid a pane past its area)
     var paneLoadingsSaid: [(item: String?, label: String?, app: String?)] = [] // each setPaneLoading, in order
     var onPaneLoading: (() -> Void)? // (as each is said)
     func setPaneLoading(_ item: String?, label: String?, app: String?) { paneLoadingsSaid.append((item, label, app)); onPaneLoading?() }

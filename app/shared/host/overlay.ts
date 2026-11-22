@@ -1102,7 +1102,7 @@ async function start() {
   const text = await post('hello');
   const hello = typeof text === 'string' ? JSON.parse(text) : text;
   if (!hello) return log('warn', 'no window for this overlay');
-  host = createAppHost({ hello, post, onMessage, onNotice: (arg) => notices.run(arg), warn: (...args) => log('warn', ...args) });
+  host = createAppHost({ hello, post, onMessage, onNotice: (arg) => notices.run(arg), warn: (...args) => log('warn', ...args), note: (...args) => log('note', ...args) });
   hostedFrameSaid(hello?.hostedFrame);
   // (Several visible as it starts: the preview card, a split's panes. `hostedFrames` pushes keep it as they change.)
   hostedFramesSaid(hello?.hostedFrames);

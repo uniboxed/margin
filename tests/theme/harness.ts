@@ -323,7 +323,7 @@ const T = {
 
 // `host`, `mock`, `target` and `warnings` are set by mountRuntime and `theme` by loadBuiltin or loadPackage,
 // before any step that reads them (null until then); `runtime` is null again once unmounted.
-const rt: { runtime: Runtime | null, host: MockHost, mock: MockState, el: HTMLElement | null, target: Target, theme: ThemeResult, warnings?: string[], resizing: [boolean, number | null][] } = { runtime: null, host: null!, mock: null!, el: null, target: null!, theme: null!, resizing: [] };
+const rt: { runtime: Runtime | null, host: MockHost, mock: MockState, el: HTMLElement | null, target: Target, theme: ThemeResult, warnings?: string[], resizing: [boolean, number | null][], notes: string[] } = { runtime: null, host: null!, mock: null!, el: null, target: null!, theme: null!, resizing: [], notes: [] };
 
 const starting = () => rt.runtime!.view.rootElement()?.hasAttribute('m-starting') ?? false;
 function startEmpty(pageState: 'empty' | 'loading' | 'shown', name: string | null) {
@@ -383,6 +383,9 @@ const withRuntime = Object.assign(T, {
     const perform = host.perform;
     host.perform = (name: string, arg?: any) => { if (name === 'sidebar.resizing') rt.resizing.push([arg?.on === true, host.layouts.at(-1)?.insets.left ?? null]); return perform(name, arg); };
     rt.resizing = [];
+    // (Margin.app's log lines from the page, `note`: as said, in order.)
+    rt.notes = [];
+    Object.assign(host, { note: (text: string) => { rt.notes.push(text); } });
     let target: Target;
     let el: HTMLElement | null = null;
     if (container === 'document') {
@@ -809,11 +812,27 @@ const withRuntime = Object.assign(T, {
   },
   // Add to Split View (the UI's `split.add`) with the page area `width` wide as Margin.app last measured it: what was
   // sent, and the toast shown.
-  rtSplitAdd(tabId: number, width: number, height = 800) {
+  rtSplitAdd(tabId: number | string, width: number, height = 800) {
     Object.assign(rt.host, { layout: { container: { width, height }, insets: { left: 0, top: 0, right: 0, bottom: 0 } } });
     rt.host.sent.length = 0;
+    rt.notes.length = 0;
     rt.runtime!.dispatch('split.add', tabId, 'behavior');
-    return { sent: rt.host.sent.map((s) => s.type), toast: rt.runtime!.vm?.toast?.text ?? null };
+    return { sent: rt.host.sent.map((s) => s.type), toast: rt.runtime!.vm?.toast?.text ?? null, note: rt.notes.at(-1) ?? null };
+  },
+  // A kept item (Margin.app's library: a web page's, or an app's `app://<bundle id>`) in the state, in the front tab's
+  // space, used last at `lastActive` (the selected one: `wasActive`).
+  // `row`: open in Margin's window, as a row of that number (`tabs[row]`, its `mid` the item) instead.
+  rtKept(id: string, url: string, { lastActive = 0, wasActive = false, name = '', row = null as number | null } = {}) {
+    const s = rt.mock.state as any;
+    const front = Object.values(s.tabs as Record<string, any>).find((t) => t.active)?.id;
+    const app = /^app:\/\/([^/?#]+)/.exec(url)?.[1];
+    // (Open: a row, no longer among the kept ones, as Margin.app puts it (HostedSession `liveTab`).)
+    if (row == null) s.keptTabs = { ...(s.keptTabs ?? {}), [id]: { id, url, title: name || url, spaceId: s.tabSpace[front], lastActive, wasActive, target: app ? { kind: 'app', bundleId: app, name } : { kind: 'web', browser: 'safari', profile: null } } };
+    else {
+      s.tabs = { ...s.tabs, [row]: { ...(s.tabs[front] ?? {}), id: row, url, title: name || url, active: wasActive, lastActive, mid: id } };
+      s.tabSpace = { ...s.tabSpace, [row]: s.tabSpace[front] };
+    }
+    rt.host.setState(rt.mock.state);
   },
   rtVm() { const vm = rt.runtime!.vm!; return { space: vm.space.id, sidebar: vm.window.sidebar, palette: vm.palette.open, rows: vm.palette.rows.length, today: vm.space.today.length }; },
   rtCount(selector: string) { return rt.target.querySelectorAll(selector).length; },
