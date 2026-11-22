@@ -7369,5 +7369,18 @@ sent from another process do nothing.
   coalescing, and its cost), `pane-click-tests.swift` (`paneClickKeptTests`: a kept app's pane is never "key already",
   the window server's way), `e2e-split.swift` (Margin's own window: the split kept, the tap's scene carrying it, let go
   at the split's end and when the windows close), `tests/theme/pane-ring.test.ts`. The real screen: the `panes-active`
-  and `panes-active-crash` parts of `npm run test:screen` (Chameleon's `state` probe: AppKit's own word; written and
-  dry-run only), and TESTING.md M2.7 step 13i (Safari + Notes).
+  and `panes-active-crash` parts of `npm run test:screen` (Chameleon's `state` probe: AppKit's own word), and
+  TESTING.md M2.7 step 13i (Safari + Notes).
+- **Verified on the real screen (2026-11-21, build 7bb83541):** `panes-active` 29 of 29 (both active after every click
+  of 6 flips, the kept pane's inactive gap a median of 12 ms, most 13; let go on the split hidden and on Margin's quit;
+  idle with a split up 0.43% CPU, 0 idle wakeups a second, footprint 104 MB) and `panes-active-crash` 10 of 10 (killed:
+  the kept copy still active; the next launch lets it go). Safari + Notes by hand: Notes kept active beside Safari's
+  pane with the keys (both apps' AXFrontmost true, Notes drawing active); a click in Notes' pane gave it the keys and
+  kept Safari active, a click back on Safari's page 7.2 ms; keys typed then reached only Safari's field; Margin's quit
+  let Notes go before quitting the apps it opened. The click check now takes "already key while kept active" (no new
+  `becameKey` is logged for a window that stayed key).
+- **A real app's risk found by the screen run:** the make-key pair's location is NaN on purpose (the bytes yabai and
+  AltTab send). An app's own mouse monitor that converts the location to an integer traps on it: the first run crashed
+  Chameleon (`Int(locationInWindow.x)` in its local monitor) 40 ms after it was kept, now guarded in the test app. Real
+  apps rarely convert a monitor's location unchecked, and yabai and AltTab send the same record to every app they
+  focus, but a crash of a hosted app on being kept would point here first (`MarginPanesActive` NO turns it off).
