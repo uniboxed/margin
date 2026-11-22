@@ -6,7 +6,7 @@ import { buildTemplate, View } from '../../extension/ui/render.ts';
 import { loadTheme, loadBuiltinTheme, sanitizeTheme } from '../../extension/ui/theme-loader.ts';
 import { createRuntime } from '../../extension/ui/runtime.ts';
 import { createMockHost } from '../../extension/ui/host.ts';
-import { cornerFill, sidebarFixed } from '../../extension/ui/host-app.ts';
+import { cornerFill, hitRects, sidebarFixed } from '../../extension/ui/host-app.ts';
 import { createDispatcher, contextFromState } from '../../extension/ui/actions.ts';
 import { MockState } from './view-model.ts';
 import { auditDom } from './audit.ts';
@@ -802,6 +802,12 @@ const withRuntime = Object.assign(T, {
   // A split's cut panes as Margin.app says them (`paneCut`: docs/PEEK-SPLIT.md §4b), and the one the pointer is over
   // (`paneHover`: its window, null: none).
   rtPaneCuts(cuts: Record<string, any>) { Object.assign(rt.host, { paneCuts: cuts }); rt.host.setState(rt.mock.state); },
+  // What takes the pointer over the page's place, as Margin.app is told it (host-app.ts hitRects over m-page's box).
+  rtPageHits() {
+    const root = rt.target.querySelector('m-page')?.closest('[m-theme-root], .m-root') ?? rt.target.firstElementChild ?? rt.target;
+    const p = rt.target.querySelector('m-page')!.getBoundingClientRect();
+    return hitRects(root as Element, { left: p.left, top: p.top, right: p.right, bottom: p.bottom }).rects;
+  },
   rtPaneHover(window: number | null) { Object.assign(rt.host, { paneHover: window }); rt.host.setState(rt.mock.state); },
   // Each pane's arrows: side, mode, label, whether it's shown and takes the pointer, its box and colours.
   rtPaneArrows() {

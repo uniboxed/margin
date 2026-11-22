@@ -145,6 +145,9 @@ for (const [name, engine] of ENGINES) {
         const cutPane = ar.find((x) => x.id === cutId)!;
         assert.deepEqual(cutPane.arrows.map((a) => [a.side, a.mode]).sort(), [['left', 'reveal'], ['right', 'slide']], `one arrow per hidden side: ${JSON.stringify(cutPane.arrows)}`);
         assert.ok(cutPane.arrows.every((a) => !a.shown && a.pointer === 'none'), `hidden and click-through until hovered: ${JSON.stringify(cutPane.arrows)}`);
+        const inHits = (hits: number[][], a: { x: number, y: number }) => hits.some(([x, y, w, h]) => a.x >= x && a.x <= x + w && a.y >= y && a.y <= y + h);
+        const hitsHidden = await ev(() => T.rtPageHits());
+        assert.ok(cutPane.arrows.every((a) => !inHits(hitsHidden, a)), `hidden arrows never Margin's to take the pointer: ${JSON.stringify(hitsHidden)}`);
         assert.ok(ar.find((x) => x.id !== cutId)!.arrows.length === 0, 'a pane that isn\'t cut: none');
         await ev(() => T.rtPaneHover(20));
         await frames();
@@ -153,6 +156,8 @@ for (const [name, engine] of ENGINES) {
         const lit = ar.find((x) => x.id === cutId)!;
         assert.ok(lit.lit && lit.arrows.every((a) => a.shown && a.pointer === 'auto' && a.inside), `hovered: shown, taking the pointer, inside its box: ${JSON.stringify(lit.arrows)}`);
         const rightArrow = lit.arrows.find((a) => a.side === 'right')!, leftArrow = lit.arrows.find((a) => a.side === 'left')!;
+        const hitsShown = await ev(() => T.rtPageHits());
+        assert.ok(inHits(hitsShown, rightArrow) && inHits(hitsShown, leftArrow), `shown arrows are Margin's to take the pointer (Margin.app told them: hitRects): ${JSON.stringify(hitsShown)}`);
         assert.ok(rightArrow.right < 30 && leftArrow.left < 30, `at its sides: ${JSON.stringify(lit.arrows)}`);
         assert.ok(rightArrow.color !== rightArrow.background && /Show the right of this pane/.test(rightArrow.label ?? ''), `readable, named: ${rightArrow.color} on ${rightArrow.background}, ${rightArrow.label}`);
         await ev(() => T.rtSentClear());

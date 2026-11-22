@@ -169,13 +169,19 @@ export function hitRects(root: Element, slot: { left: number, top: number, right
     for (const child of (el.children as any) as Element[]) {
       if (child.localName === 'template') continue;
       if (child.localName === 'm-page') {
-        // (Nothing of the page's place takes the pointer but a split's dividers, Margin's own: docs/PEEK-SPLIT.md §4;
-        // none while the preview card is up over it, `m-card-clip`: its page is the card's, the dim around it Margin's.)
+        // (Nothing of the page's place takes the pointer but a split's dividers and a cut pane's arrows while they're
+        // shown, Margin's own: docs/PEEK-SPLIT.md §4, §4b; none while the preview card is up over it, `m-card-clip`: its
+        // page is the card's, the dim around it Margin's.)
         if (child.hasAttribute?.('m-card-clip')) continue;
+        const add = (b: DOMRect) => { if (b.width > 0 && b.height > 0 && b.left < slot.right && b.right > slot.left && b.top < slot.bottom && b.bottom > slot.top) found.push(box(b.left, b.top, b.right, b.bottom)); };
         for (const d of (child.children as any) as Element[]) {
-          if (d.localName !== 'm-divider') continue;
-          const b = d.getBoundingClientRect();
-          if (b.width > 0 && b.height > 0 && b.left < slot.right && b.right > slot.left && b.top < slot.bottom && b.bottom > slot.top) found.push(box(b.left, b.top, b.right, b.bottom));
+          if (d.localName === 'm-divider') { add(d.getBoundingClientRect()); continue; }
+          if (d.localName !== 'm-pane') continue;
+          for (const a of (d.children as any) as Element[]) {
+            if (a.localName !== 'm-pane-arrow') continue;
+            const st = getStyle(a);
+            if (st.pointerEvents !== 'none' && st.visibility !== 'hidden') add(a.getBoundingClientRect());
+          }
         }
         continue;
       }

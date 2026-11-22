@@ -965,6 +965,7 @@ final class HostedSession: LibraryDelegate {
         if requested[w.id] == main || requested[w.id] == focus { requested[w.id] = nil }
         onChange?()
         note("layout: \(shownItems.count) item(s) shown in Margin's window \(w.id), \(focus) focused")
+        if w.id == hostingWindow { w.setPaneCuts(paneCutsJSON(shownList)) }
     }
 
     // A pane's least size, Arc's (its split view's `minimumPaneWidth`, 220 pt, also the least height of stacked panes:
@@ -1259,8 +1260,13 @@ final class HostedSession: LibraryDelegate {
     func hostedWindows(_ list: [HostShownWindow]) {
         guard let id = hostingWindow, let w = window(id) else { return }
         w.setVisibleHosts(list)
+        shownList = list
         w.setPaneCuts(paneCutsJSON(list))
     }
+
+    // The engine's last word on the visible windows (`hostedWindows`): its cut panes told again once a layout's new items
+    // are known (the engine says it at the layout's end, before the session has the items of the windows it opened).
+    private var shownList: [HostShownWindow] = []
 
     // A split's cut panes by their items, for the page's arrows (docs/PEEK-SPLIT.md §4b): `{}` for none.
     func paneCutsJSON(_ list: [HostShownWindow]) -> String {

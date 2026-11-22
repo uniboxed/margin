@@ -595,6 +595,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     func setPaneCuts(_ json: String) {
         guard json != paneCuts else { return }
         paneCuts = json
+        Diagnostics.note("Margin's window \(id): cut panes \(json == "{}" ? "none" : json)")
         cutWindows = Set((try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: [String: Any]])?.values.compactMap { $0["window"] as? Int } ?? [])
         push(#"{"type":"paneCut","panes":"# + json + "}")
         if cutWindows.isEmpty, hoveredCut != nil { hoveredCut = nil; push(#"{"type":"paneHover","window":null}"#) }
@@ -608,6 +609,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         let over = visibleHosts.last { cutWindows.contains($0.window) && ($0.revealed ? $0.frame : $0.rect).contains(at) }?.window
         guard over != hoveredCut else { return }
         hoveredCut = over
+        Diagnostics.note("Margin's window \(id): the pointer \(over.map { "over cut pane \($0)" } ?? "off the cut panes")")
         push(#"{"type":"paneHover","window":\#(over.map(String.init) ?? "null")}"#)
     }
 

@@ -155,7 +155,10 @@ keeps Safari's toolbar down). Then it's the preview card: Expand puts it in the 
   the press's own record with its window and its point in it (`PaneRecords.delivered`), never routed: the window
   server's routing is what raises a clicked window (2026-11-22: a press, drags and a release delivered to a window
   behind another, each at its point, nothing raised or activated). Its app brought in front some other way (⌘-Tab):
-  put back under them (`repairCutOrder`).
+  put back under them at once (`repairCutOrder`, on the activation). Its window raised with no activation (the app
+  ordering it front itself, an Accessibility raise; with all panes active a kept app's activation raises nothing, so
+  this is the only way left): no event says so, so the poll looks, from the on-screen list it shares, only while an
+  unrevealed cut pane is shown, and puts it back (at most 1.5 s later at rest). A loop's guard: 3 times in 5 s.
 - **Arrows** (the page's `<m-pane-arrow>`, on each hidden side, while the pointer is over that pane: Margin.app's
   `paneHover`, said as the pointer enters and leaves it): a **slide** where its other alignment shows that side whole
   (its tile's rect moved over 150 ms, eased, one rect a frame: ~0.2 ms each, the window a frame behind at most, with

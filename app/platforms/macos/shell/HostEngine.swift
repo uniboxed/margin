@@ -808,6 +808,21 @@ final class HostEngine {
         let cutFocused = focused.map(tucked) ?? false
         let wanted = others.filter(tucked) + (cutFocused ? [focused!] : []) + others.filter { !tucked($0) } + (cutFocused ? [] : focused.map { [$0] } ?? []) // (back to front)
         guard let top = wanted.last else { return }
+        // (A pane raised over a cut one: an app kept active (PanesActive.swift) takes the window server's activation for
+        // done and its window stays where it is (the real screen, 2026-11-22: raised again and again, never over); let go
+        // first (its deactivated record), its activation is real and AppKit raises its window. It's kept again once the
+        // cut pane has the keys back. With no cut pane, as before.)
+        let firstTucked = wanted.first(where: tucked)
+        func raise(_ h: Host) async -> Bool {
+            // (Over a cut pane, its activation must be a real one for AppKit to raise its window: not kept active by records
+            // (let go first), and not the front app already (the front handed to the cut pane first, without a raise):
+            // the sequence the real screen took, 2026-11-21/22: the neighbour activated then raised, the keys back after.)
+            if let cut = firstTucked, !tucked(h) {
+                if let w = actives.kept[h.pid] { sys.releaseActiveNow([PaneWindow(pid: h.pid, window: w)]) }
+                if (sys.frontProcess() ?? sys.frontApp()) == h.pid { _ = sys.focusWithoutRaise(pid: cut.pid, window: cut.window) }
+            }
+            return await front(h)
+        }
         // (The keys: the focused one's, by a raise when it's in front of the others, without one when it's cut.)
         func keys() async { if cutFocused, let f = focused { _ = sys.focusWithoutRaise(pid: f.pid, window: f.window) } else { _ = await front(top) } }
         let t0 = sys.now()
@@ -828,13 +843,13 @@ final class HostEngine {
         if !bad.contains(where: { $0.1 == topIndex }) {
             let under = Set(pairs.filter { $0.1 == topIndex }.map(\.0))
             let fix = Set(bad.filter { !under.contains($0.0) && !under.contains($0.1) }.flatMap { [$0.0, $0.1] })
-            for k in fix.sorted() where !tucked(wanted[k]) { _ = await front(wanted[k]) }
+            for k in fix.sorted() where !tucked(wanted[k]) { _ = await raise(wanted[k]) }
             await keys()
             return
         }
         // Else the ones from the first out of place that overlap another raised, back to front, the focused one last.
         let from = bad.map(\.0).min() ?? 0
-        for k in from..<wanted.count where (k == topIndex || involved.contains(k)) && !tucked(wanted[k]) { _ = await front(wanted[k]) }
+        for k in from..<wanted.count where (k == topIndex || involved.contains(k)) && !tucked(wanted[k]) { _ = await raise(wanted[k]) }
         if cutFocused { await keys(); return }
         guard wanted.count > 1, top === focused else { return }
         // (Read again: the focused one behind a host it overlaps. Unread: taken as in front, as before.)
@@ -1242,6 +1257,11 @@ final class HostEngine {
                 Task { await serial { await self.strayed(id, marginHere: marginHere) } }
             }
         }
+        // (A cut pane's window raised over a pane it lies under with no app activated (the app itself ordering it
+        // front, an Accessibility raise): no event says so, so the poll looks, from the on-screen list it shares, and
+        // only while an unrevealed cut pane is shown. Activation's case is `frontChanged`'s, at once.)
+        if let cut = visibleHosts.first(where: { isCut($0) && !$0.revealed }), let list = screenList()?.map(\.number),
+           cutWindowOver(cut.pid, list: list) != nil { Task { _ = await self.repairCutOrder(cut.pid) } }
         keepCurrentLate()
         lookOnScreen()
         lookForOthers()
@@ -6070,16 +6090,33 @@ final class HostEngine {
         queueActives()
     }
 
+    private var cutRepairs: [HostID: [Double]] = [:]
+    private var cutRepairSaid: Set<HostID> = []
     // A visible cut pane of `pid`'s app whose window is over a pane it lies under now (the window server's order), nil: none.
-    private func cutWindowOver(_ pid: pid_t) -> Host? {
+    // (`list`: an on-screen list already read, the poll's; nil: read now.)
+    private func cutWindowOver(_ pid: pid_t, list: [Int]? = nil) -> Host? {
         guard let h = visibleHosts.first(where: { $0.pid == pid && isCut($0) && !$0.revealed }) else { return nil }
         let f = frame(h)
-        return visibleHosts.contains { o in o !== h && o.role != .card && (o.rect ?? placement.page).intersects(f) && windowBehind(o.window, h.window) == true } ? h : nil
+        let behind: (Int, Int) -> Bool? = { a, b in
+            guard let list else { return self.windowBehind(a, b) }
+            guard let ia = list.firstIndex(of: a), let ib = list.firstIndex(of: b) else { return nil }
+            return ia > ib
+        }
+        return visibleHosts.contains { o in o !== h && o.role != .card && (o.rect ?? placement.page).intersects(f) && behind(o.window, h.window) == true } ? h : nil
     }
     // That cut pane put back under the panes it lies under, its keys kept without a raise (`frontVisible`). True: it was over.
     func repairCutOrder(_ pid: pid_t) async -> Bool {
         await serial(planned: true) {
             guard let h = self.cutWindowOver(pid) else { return false }
+            // (A loop's guard: 3 tries in 5 s for one pane, then left as it is, said once.)
+            let now = self.sys.now()
+            var tries = (self.cutRepairs[h.id] ?? []).filter { now - $0 < 5 }
+            guard tries.count < 3 else {
+                if self.cutRepairSaid.insert(h.id).inserted { Diagnostics.warn("host: \(h.id): put back under the panes beside it 3 times in 5 s and over them again: left as it is") }
+                return false
+            }
+            tries.append(now)
+            self.cutRepairs[h.id] = tries
             Diagnostics.note("host: \(h.id): its app came in front some other way, its window over a pane it lies under: put back under it")
             await self.frontVisible()
             return true

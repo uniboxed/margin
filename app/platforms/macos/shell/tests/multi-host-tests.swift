@@ -309,6 +309,20 @@ func multiHostTests() {
         let calls2 = w.activeCalls.count
         let again = hostRun { await e.repairCutOrder(notesPid) } ?? true
         check("cut pane: …its app in front again with its window already behind: nothing done", !again && w.activeCalls.count == calls2, "\(w.activeCalls.dropFirst(calls2))")
+        // Its window raised with no app activated (the app ordering it front itself, an Accessibility raise): no event,
+        // the poll finds it over the left pane in the on-screen list it reads, and puts it back.
+        w.raised.removeAll { $0 == n }
+        w.raised.insert(n, at: 0)
+        let calls3 = w.activeCalls.count
+        // (The poll alone, its detached repair waited for: `polls`' press-in-page step fronts the panes itself.)
+        func pollOnly(_ k: Int) { for _ in 0..<k { w.clock += 0.25; e.poll(); _ = hostRun { await w.sleep(0.001); return true }; _ = hostRun { await w.sleep(0.001); return true } } }
+        pollOnly(1)
+        let ei3 = w.raised.firstIndex(of: edit) ?? 99, ni3 = w.raised.firstIndex(of: n) ?? -1
+        check("cut pane: its window raised over the left pane with no activation: the next poll puts it back under, its keys without a raise",
+              ei3 < ni3 && w.activeCalls.dropFirst(calls3).contains { $0.hasPrefix("focusWithoutRaise ") && $0.hasSuffix(" \(n)") }, "\(w.raised) \(w.activeCalls.dropFirst(calls3))")
+        let calls4 = w.activeCalls.count
+        pollOnly(2)
+        check("cut pane: …later polls with it behind: nothing done", w.activeCalls.count == calls4, "\(w.activeCalls.dropFirst(calls4))")
     }
 
     // ---- tiles off: a pane as a plain member, placed at its rect by its own Space's reservation ----
