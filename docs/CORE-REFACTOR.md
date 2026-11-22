@@ -121,6 +121,20 @@ against the core.
   with their browser, profile and epoch, changed, first set, carried, log lines), and the library's flat store (load,
   merge and save, live values) beside it. Swift routes each send to its link's connection and runs the callbacks the
   rest of the app had (`onChange`, `onFirstSet`, `onCarried`, `beforeNeed`'s choice).
+- **The choice for a profile with no set** (ShellProfiles' `needChoice`: carry over, hold, or ask) stays the Mac's
+  (it's about Safari's profile folders), asked by the core through a C callback with everything it needs in the
+  question (the profile, and which profiles of its browser have a set), so the Swift side never calls back into the
+  data object mid-call. The answer (`ask`, `hold`, or `carry` from a profile with its reason) comes back as JSON the
+  core frees.
+- **The library's reads stay cheap:** the library keeps its collections' live values as the core last gave them,
+  refreshed only for the collections a change of its own touched (one answer per change); its lookups (an item's
+  target, space, a split) read that, as they read Swift's dictionaries before. The "newer than what's there" rule for
+  its entries (`max(at, updatedAt + 1)`, deletions as tombstones) moves into the core with the merge and the save.
+- Effects come back as JSON: sends (browser, profile, epoch, the message with its `k`), changed, first set, carried,
+  log lines (note or warn); the Mac sends each on the link with that epoch, schedules a tick at the hold's deadline,
+  and drains `written` when the writer's wake hops to the main thread.
+- Done 2026-11-22: the Rust store's writer, flat mode and collections (7ce551f8); the sync's follow-ups once written
+  (fd209ca8); every Rust data test unchanged and green, the background path tested.
 - **Order of commits:** the Rust store and sync changes with their tests (Mac untouched); the FFI and its tests; the
   Mac switched (DataStore.swift, DataSync.swift, DataSet.swift deleted, the Swift data tests kept against the FFI);
   measured (a 1,000-item set's save, the main thread never blocked on a write).
