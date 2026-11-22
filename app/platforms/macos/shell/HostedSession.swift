@@ -128,9 +128,8 @@ protocol HostedEngine: AnyObject {
     // its full-screen toolbar down over the page), then the layout's focused host given the keys back (HostEngine
     // `focusPages`); nil: none was a Safari window.
     func focusPages(_ ids: [HostID]) async -> String?
-    // A cut pane's arrow (docs/PEEK-SPLIT.md §4b): its side shown, by a slide or a reveal (true: done); a reveal tucked back.
+    // A cut pane's arrow (docs/PEEK-SPLIT.md §4b): its window slid to show that side (true: done).
     func slide(_ id: HostID, side: PaneSide) async -> Bool
-    func tuck(_ id: HostID) async
 }
 
 // One of a profile's hosted Safari windows: its profile and its role (docs/PEEK-SPLIT.md §1).
@@ -187,7 +186,6 @@ extension HostedEngine {
     func toolbarsRest(_ ids: [HostID]) async -> String? { nil }
     func focusPages(_ ids: [HostID]) async -> String? { nil }
     func slide(_ id: HostID, side: PaneSide) async -> Bool { false }
-    func tuck(_ id: HostID) async {}
     func start(bundleId: String) async -> HostApp? { nil }
     func prepare(_ target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64) async -> HostResult { .failed(.launch, "no engine to prepare it") }
 }
@@ -258,8 +256,8 @@ protocol HostedWindow: AnyObject {
     func push(_ json: String)
     // Every visible host's window while more than one is (docs/PEEK-SPLIT.md §1: its holes), [] when one is again.
     func setVisibleHosts(_ list: [HostShownWindow])
-    // A split's cut panes (docs/PEEK-SPLIT.md §4b), told to its page for their arrows: `{ <item>: { window, revealed,
-    // left|right|up|down: "slide"|"reveal" } }` (JSON), `{}` for none. Said only when it changes.
+    // A split's cut panes (docs/PEEK-SPLIT.md §4b), told to its page for their arrows: `{ <item>: { window,
+    // left|right|up|down: "slide" } }` (JSON, each side its arrow slides), `{}` for none. Said only when it changes.
     func setPaneCuts(_ json: String)
     // Where its page draws the preview card page (the theme's <m-preview-page>, top-left screen points), nil: none drawn.
     var cardRect: CGRect? { get }
@@ -1273,26 +1271,17 @@ final class HostedSession: LibraryDelegate {
         var out: [String] = []
         for s in list {
             guard let cut = s.cut, let target = engine.target(ofWindow: s.window), let item = open.first(where: { $0.value.host == target.id })?.key, let key = jsonString(item) else { continue }
-            let sides = PaneSide.allCases.compactMap { side in cut.sides[side].map { #""\#(side.rawValue)":"\#($0.rawValue)""# } }
-            out.append(#"\#(key):{"window":\#(s.window),"revealed":\#(cut.revealed)\#(sides.isEmpty ? "" : "," + sides.joined(separator: ","))}"#)
+            let sides = PaneSide.allCases.filter { cut.sides.contains($0) }.map { #""\#($0.rawValue)":"slide""# }
+            out.append(#"\#(key):{"window":\#(s.window)\#(sides.isEmpty ? "" : "," + sides.joined(separator: ","))}"#)
         }
         return "{" + out.sorted().joined(separator: ",") + "}"
     }
 
-    // A cut pane's arrow pressed in its page (`split.slide`: its item, the side), or its reveal let go (`back`): the engine
-    // slides its window, reveals it over its neighbours, or tucks it back (docs/PEEK-SPLIT.md §4b).
+    // A cut pane's arrow pressed in its page (`split.slide`: its item, the side): the engine slides its window to show
+    // that side (docs/PEEK-SPLIT.md §4b). The focus stays where it is (a press on Margin's own control).
     func slidePane(_ item: String, side: String, in w: HostedWindow) {
-        guard w.id == hostingWindow, layout[w.id]?.items.contains(item) == true, let id = open[item]?.host else { return }
-        Task {
-            if side == "back" { await self.engine.tuck(id); return }
-            guard let s = PaneSide(rawValue: side), await self.engine.slide(id, side: s) else { return }
-            // (A reveal focuses its pane, the engine's word: the layout's focus, the sidebar's highlight and the one shown follow.)
-            guard self.engine.shown == id, var l = self.layout[w.id], l.focused != item, l.items.contains(item) else { return }
-            l.focused = item
-            self.layout[w.id] = l
-            self.shown[w.id] = item
-            self.onChange?()
-        }
+        guard w.id == hostingWindow, layout[w.id]?.items.contains(item) == true, let id = open[item]?.host, let s = PaneSide(rawValue: side) else { return }
+        Task { _ = await self.engine.slide(id, side: s) }
     }
 
     // The one shown's own minimum width (HostEngine `onMinimum`; nil: none): told to the Margin window hosting it.
@@ -1349,7 +1338,6 @@ final class HostedSession: LibraryDelegate {
         guard w.id == hostingWindow, engine.shownWindow != nil else { return }
         // (Several visible: a press in another one's pane focuses it, docs/PEEK-SPLIT.md §1; never main raised over a card.)
         if let point, layout[w.id] != nil, let id = engine.visibleHost(at: point), id != engine.shown {
-            note("a press in Margin's window \(w.id) at \(Int(point.x)),\(Int(point.y)): over \(id)'s pane, focused")
             return pressedHost(id, in: w)
         }
         Task { await self.engine.activateShown(at: point) }

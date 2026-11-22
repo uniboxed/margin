@@ -121,7 +121,6 @@ final class LateHostEngine: HostedEngine {
     func toolbarsRest(_ ids: [HostID]) async -> String? { await resolve()?.toolbarsRest(ids) }
     func focusPages(_ ids: [HostID]) async -> String? { await resolve()?.focusPages(ids) }
     func slide(_ id: HostID, side: PaneSide) async -> Bool { await resolve()?.slide(id, side: side) ?? false }
-    func tuck(_ id: HostID) async { await resolve()?.tuck(id) }
 }
 
 extension Shell {

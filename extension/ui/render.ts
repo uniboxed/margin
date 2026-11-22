@@ -60,10 +60,6 @@ m-pane>m-pane-arrow[m-side=left]::before{transform:translateX(1.5px) rotate(45de
 m-pane>m-pane-arrow[m-side=right]::before{transform:translateX(-1.5px) rotate(-135deg)}
 m-pane>m-pane-arrow[m-side=up]::before{transform:translateY(1.5px) rotate(135deg)}
 m-pane>m-pane-arrow[m-side=down]::before{transform:translateY(-1.5px) rotate(-45deg)}
-m-pane[m-revealed]>m-pane-arrow[m-side=left]::before{transform:translateX(-1.5px) rotate(-135deg)}
-m-pane[m-revealed]>m-pane-arrow[m-side=right]::before{transform:translateX(1.5px) rotate(45deg)}
-m-pane[m-revealed]>m-pane-arrow[m-side=up]::before{transform:translateY(-1.5px) rotate(-45deg)}
-m-pane[m-revealed]>m-pane-arrow[m-side=down]::before{transform:translateY(1.5px) rotate(135deg)}
 @media (prefers-reduced-motion:reduce){m-pane>m-pane-arrow{transition:none}}
 m-divider>m-band-title{position:absolute;left:12px;right:calc(50% + 34px);top:50%;transform:translateY(-50%);display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font:500 12px/16px -apple-system,BlinkMacSystemFont,system-ui,sans-serif;opacity:.72;pointer-events:none;-webkit-user-select:none;user-select:none}
 m-window-controls,m-drag-region,m-palette,m-notice,m-menu,m-editor,m-launcher,m-prompt,m-settings,m-page-loader,m-toast,m-preview{display:block}

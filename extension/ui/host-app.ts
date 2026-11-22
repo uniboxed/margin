@@ -309,10 +309,10 @@ export function chromeRects(root: Element | null): { controls: number[] | null, 
  * state (theme, command, pointer, pressOutside, blur, shown, push), for the page.
  * `onNotice({ id, action })`: a button of a notice the overlay put up.
  * */
-/** A split's cut pane (docs/PEEK-SPLIT.md §4b): its window, whether it's revealed, its hidden sides' arrows. */
+/** A split's cut pane (docs/PEEK-SPLIT.md §4b): its window, and its hidden sides its arrows slide into its pane. */
 export type PaneSide = 'left' | 'right' | 'up' | 'down';
 export const PANE_SIDES: readonly PaneSide[] = Object.freeze(['left', 'right', 'up', 'down']);
-export type PaneCut = { window: number, revealed: boolean } & Partial<Record<PaneSide, 'slide' | 'reveal'>>;
+export type PaneCut = { window: number } & Partial<Record<PaneSide, 'slide'>>;
 
 export function createAppHost({ hello, post, onMessage = () => {}, onNotice = () => {}, warn = (...args) => console.warn('[margin]', ...args), note = (...args) => console.info('[margin]', ...args) }: {
   hello: any,
@@ -365,15 +365,15 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
     return { item: v.item, name: typeof v.label === 'string' ? v.label.slice(0, 120) : '', bundleId: isBundleId(v.bundleId) ? v.bundleId : null };
   };
   let paneLoading = paneLoadingOf(hello?.paneLoading);
-  // A split's cut panes (docs/PEEK-SPLIT.md §4b): each one's window, its sides' arrows (a slide, or a reveal over its
-  // neighbours), whether it's revealed now; at most 4 (a split's panes), each side checked.
+  // A split's cut panes (docs/PEEK-SPLIT.md §4b): each one's window, its sides' arrows (each a slide); at most 4 (a
+  // split's panes), each side checked.
   const paneCutsOf = (v: unknown): Record<string, PaneCut> => {
     const out: Record<string, PaneCut> = {};
     if (!appWindow || !v || typeof v !== 'object' || Array.isArray(v)) return out;
     for (const [item, c] of Object.entries(v as Record<string, any>).slice(0, 4)) {
       if (!/^[A-Za-z0-9_.:-]{1,256}$/.test(item) || !c || typeof c !== 'object' || !Number.isInteger(c.window)) continue;
-      const cut: PaneCut = { window: c.window, revealed: c.revealed === true };
-      for (const side of PANE_SIDES) if (c[side] === 'slide' || c[side] === 'reveal') cut[side] = c[side];
+      const cut: PaneCut = { window: c.window };
+      for (const side of PANE_SIDES) if (c[side] === 'slide') cut[side] = 'slide';
       out[item] = cut;
     }
     return out;
@@ -625,10 +625,10 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           if (!appWindow || typeof arg?.on !== 'boolean') return false;
           void post('perform', { name, arg: { on: arg.on } }).catch(() => {});
           return true;
-        // A cut pane's arrow (behaviors/split.ts, docs/PEEK-SPLIT.md §4b): its window slid or revealed on that side, or
-        // a reveal tucked back (`back`); Margin.app's engine does it.
+        // A cut pane's arrow (behaviors/split.ts, docs/PEEK-SPLIT.md §4b): its window slid to show that side, one it
+        // has; Margin.app's engine does it.
         case 'split.slide':
-          if (!appWindow || typeof arg?.item !== 'string' || !paneCuts[arg.item] || ![...PANE_SIDES, 'back'].includes(arg?.side)) return false;
+          if (!appWindow || typeof arg?.item !== 'string' || !PANE_SIDES.includes(arg?.side) || paneCuts[arg.item]?.[arg.side as PaneSide] !== 'slide') return false;
           void post('perform', { name, arg: { item: arg.item, side: arg.side } }).catch(() => {});
           return true;
         // A space swipe's detent (behaviors/swipe.ts, Arc's feel): the trackpad's alignment tick, as Arc gives it.

@@ -145,36 +145,53 @@ keeps Safari's toolbar down). Then it's the preview card: Expand puts it in the 
 ## 4b. A cut pane (Tirth, 2026-11-21: "allow them in there but show however much can fit", arrows to see the rest)
 
 - **Its window** stays at its own minimum (its tile's, as read now: a tile narrower than its window's minimum makes
-  macOS take the window out of its tile) along the short side, the rest of it hidden: under Margin's window (the
-  sidebar, the frame) or under the pane beside it. Margin's hole stays the pane. The frame is margin-core's
-  `layout::cut`: the window wholly within the display (a tile past the display's edge is taken out of its tile within
-  0.6 s, 2026-11-21), at its start (left, top: the default) or its end along each axis.
-- **Kept under the panes beside it**, the focused one too (`frontVisible`): never raised over them; its keys given
-  without a raise (`_SLPSSetFrontProcessWithOptions` with kCPSNoWindows, 0x400, and the make-key pair: yabai's). A
-  press on it (any button, its drags and its release) goes to its window as the window server's records, built from
-  the press's own record with its window and its point in it (`PaneRecords.delivered`), never routed: the window
-  server's routing is what raises a clicked window (2026-11-22: a press, drags and a release delivered to a window
-  behind another, each at its point, nothing raised or activated). Its app brought in front some other way (⌘-Tab):
-  put back under them at once (`repairCutOrder`, on the activation). Its window raised with no activation (the app
-  ordering it front itself, an Accessibility raise; with all panes active a kept app's activation raises nothing, so
-  this is the only way left): no event says so, so the poll looks, from the on-screen list it shares, only while an
-  unrevealed cut pane is shown, and puts it back (at most 1.5 s later at rest). A loop's guard: 3 times in 5 s.
-- **Arrows** (the page's `<m-pane-arrow>`, on each hidden side, while the pointer is over that pane: Margin.app's
-  `paneHover`, said as the pointer enters and leaves it): a **slide** where its other alignment shows that side whole
-  (its tile's rect moved over 150 ms, eased, one rect a frame: ~0.2 ms each, the window a frame behind at most, with
-  Safari); else, the side against the display's edge, a **reveal**: it comes over its neighbours, its whole window in
-  its hole, until the pointer leaves it (or its arrow is pressed again), then it's tucked back under them.
-- **Raising over another pane** (a neighbour over a cut pane, a revealed one over its neighbour: `raiseOver`): with all
-  panes active the app is kept active by records and takes an activation for done, never raising its window. So it's
-  let go first, the front handed to the pane below without a raise if it's the front app already, then activated, and
-  the window server's order waited for (`orderWait` at most) before the keys move on: handed back 10 ms later, its app
-  never raised its window (2026-11-22, eight tries in a row). A press on Margin's own over the page area (a divider, an
-  arrow) is never a press on the pane under it, and the poll holds off while a window is out to a private Space and back
-  (`outAndBack`): read mid-way, it was a stray brought back alone, and the split was gone (2026-11-22, Notes revealed).
-- Tried and ruled out (2026-11-21/22): a window-mode (non-full-screen) window can hang off the display's edge but draws
-  over full-screen tiles (its hidden part would cover the pane beside it), shows its title bar and stops short of the
-  Dock; transforming or clipping a tile's own Space does nothing (stored, never drawn); showing a second full-screen
-  Space beside Margin's draws it only while it's the current Space, and any click in the other one blanks it.
+  macOS take the window out of its tile) along the short side, the rest of it past its pane; Margin's hole stays the
+  pane. The frame is margin-core's `layout::cut`: along each axis its start (left, top) at the pane's start or its end
+  at the pane's end; not asked, **away from the other panes**: a pane at the page area's end puts the rest past it, any
+  other before it. So a pane at either edge lies under no other pane (its rest past the display's edge, or under
+  Margin's window: the sidebar, the frame), and a pane between two lies under the one before it only (a chain).
+- **Past the display's edge** (2026-11-22, Tirth: move it to the screen's edge properly rather than over the pane
+  beside it): macOS keeps a full-screen window's tile past the display's edge and draws it clipped there: an 800 wide
+  tile 388 past the right edge, 300 past the left, 400 past the bottom and 300 past the top, each held 1.5-2.5 s with
+  Margin paused, no eject. AppKit takes a window out of its tile only when it can't take the tile's **size**
+  (`-[_NSFullScreenContentController reshapeContentForTileFrame:contentFrame:fromFrame:]` and its delayed block, then
+  `exitFullScreenMode:`), never for its position; it reads the tile from `SLSSpaceGetRect`. (The earlier "a tile past
+  the edge is ejected in 0.6 s" was a tile narrower than its window's minimum.) Only a tile may: while a window enters
+  (its own Space reserves its edges, never negative: `layout::plan`), as a member, or with tiles off, its frame is held
+  within the display (`layout::within`), and a slide shows only what that lets it.
+- **Kept under the panes it lies under** (only those: `lyingUnder`), the focused one too (`frontVisible`, several in
+  their chain's order, `tuckedOrder`): never raised over them; its keys given without a raise
+  (`_SLPSSetFrontProcessWithOptions` with kCPSNoWindows, 0x400, and the make-key pair: yabai's). A press on it (any
+  button, its drags and its release) goes to its window as the window server's records, built from the press's own
+  record with its window and its point in it (`PaneRecords.delivered`), never routed: the window server's routing is
+  what raises a clicked window (2026-11-22: a press, drags and a release delivered to a window behind another, each at
+  its point, nothing raised or activated). Its app brought in front some other way (⌘-Tab): put back under them at
+  once (`repairCutOrder`, on the activation). Its window raised with no activation (the app ordering it front itself,
+  an Accessibility raise; with all panes active a kept app's activation raises nothing, so this is the only way left):
+  no event says so, so the poll looks, from the on-screen list it shares, only while a cut pane lying under another is
+  shown, and puts it back (at most 1.5 s later at rest). A loop's guard: 3 times in 5 s. A cut pane lying under none
+  is as any pane: nothing kept, nothing polled.
+- **Arrows** (the page's `<m-pane-arrow m-mode="slide">`, on each hidden side, while the pointer is over that pane:
+  Margin.app's `paneHover`, said as the pointer enters and leaves it): a **slide** to the other alignment along that
+  axis, which shows that side whole (its tile's rect moved over 150 ms, eased, one rect a frame: ~0.2 ms each, the
+  window a frame behind at most, with Safari). Coming in under a pane it will lie under: ordered behind it first, so it
+  never shows over it on its way. Kept while its pane stays that rect (`slid`); a divider's drag or a new layout lays it
+  out away from the other panes again. Never a slide that would put it over a cut pane whose own window lies over it
+  (two panes over each other's: no order shows both): that arrow isn't offered.
+- **Raising over another pane** (a pane over a cut one lying under it: `raiseOver`): with all panes active the app is
+  kept active by records and takes an activation for done, never raising its window. So it's let go first, the front
+  handed to the pane below without a raise if it's the front app already, then activated, and the window server's
+  order waited for (`orderWait` at most) before the keys move on: handed back 10 ms later, its app never raised its
+  window (2026-11-22, eight tries in a row). A press on Margin's own over the page area (a divider, an arrow) is never
+  a press on the pane under it, and the poll holds off while a window is out to a private Space and back
+  (`outAndBack`): read mid-way, it was a stray brought back alone, and the split was gone (2026-11-22).
+- Tried and ruled out (2026-11-21/22): bringing a cut pane over its neighbours to show its side at the display's edge
+  (a "reveal": Notes wouldn't come over Safari, and every order fix it needed; replaced by the slide past the edge); a
+  window-mode (non-full-screen) window hanging off the display's edge (it draws over full-screen tiles, shows its title
+  bar and stops short of the Dock); transforming or clipping a tile's own Space (stored, never drawn); a second
+  full-screen Space shown beside Margin's (drawn only while it's the current Space, blanked by any click in the other).
+- Not seen yet: a second display beside this one (a tile past the edge should stay clipped to its own display: tiles
+  are drawn per display, `TileLimitedClipping` on every tile; check before saying so).
 
 ## 5. Order of work
 

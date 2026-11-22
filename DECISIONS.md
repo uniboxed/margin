@@ -7432,12 +7432,22 @@ however much can fit inside it", arrows on hover on the sides with more to show,
   `layout::cut`, the engine's `frame`), Margin's hole the pane, kept under the panes beside it (`frontVisible`), its keys
   without a raise (kCPSNoWindows + the make-key pair), its presses delivered to its window as records by the pane click
   tap (never routed: routing raises the clicked window), put back under them if its app comes in front another way.
-- **Arrows**: a slide (its tile's rect, 150 ms eased) where its other alignment shows that side whole; at the display's
-  edge, a reveal over its neighbours until the pointer leaves it. Tirth chose "slide where there's room, reveal at the
-  edge" (2026-11-22) after the research below.
+- **Arrows**: a slide (its tile's rect, 150 ms eased) to its other alignment, which shows that side whole. First built
+  as "slide where there's room, reveal over its neighbours at the display's edge" (Tirth's choice, 2026-11-22); then
+  Tirth asked to move the window to the screen's edge properly instead (2026-11-22, below), and the reveal went.
+- **Past the display's edge** (2026-11-22): the earlier finding that macOS ejects a tile past the display's edge was
+  wrong. Read in AppKit (`_NSFullScreenContentController reshapeContentForTileFrame:…` and its delayed block): a window
+  leaves its tile only when it can't take the tile's size, never for its position. Measured with a Chameleon test copy
+  (Margin paused so its keeper didn't put it back): tiles 388 past the right edge, 300 past the left, 400 past the
+  bottom, 300 past the top, each kept, drawn clipped at the edge. So a cut pane's window lies away from the other
+  panes (`layout::cut` with no alignment asked): an edge pane's rest goes past the display's edge or under the sidebar,
+  under no pane (nothing kept behind, nothing polled, its focus and presses as any pane's); a middle pane's under the
+  pane before it (a chain, ordered by `tuckedOrder`); a slide that would put two cut panes over each other's isn't
+  offered. Only tiles may pass the edge: a window entering, a member and tiles off keep a frame within the display
+  (`layout::within`), since a full-screen Space's reservation can't be negative (`layout::plan`); `layout::tile` takes
+  a page past the area now.
 - **Research that ruled things out** (2026-11-21/22, on the real screen with Chameleon test copies and a Safari test
-  page; lab dev hook on `lab/split-overflow`, never merged): a tile past the display's edge is taken out of its tile
-  within 0.6 s; a window-mode window can hang off the edge but draws above full-screen tiles (its hidden part over the
+  page; lab dev hook on `lab/split-overflow`, never merged): a window-mode window can hang off the edge but draws above full-screen tiles (its hidden part over the
   neighbour), shows its title bar and stops short of the Dock; a tile's own Space ignores `SLSBridgedSpaceSet
   {Transform,Shape}Operation` (stored, never drawn); Codex's two-root scene (two full-screen Spaces shown together,
   clipped and translated) draws the second Space only while it's the current Space here too, and any click in the
@@ -7445,6 +7455,7 @@ however much can fit inside it", arrows on hover on the sides with more to show,
   window behind another, routed by the window server, raises it; the same click as the window's own record doesn't.
 - **Cost**: nothing at rest. The tap now also hears every button's drags and releases while a split is up (one
   comparison each, a cut pane's taken); `paneHover` is said only as the pointer enters or leaves a cut pane; a slide is
-  ~9 rects of ~0.2 ms; a press on a cut pane reads its window's origin once. No timer, no polling.
-- **Open**: on the real screen with real apps (Safari, Notes): the slide's feel, the reveal, presses, drags and right
-  clicks through records in each, ⌘-Tab's repair; the screen suite's scenario for it.
+  ~9 rects of ~0.2 ms; a press on a cut pane lying under another reads its window's origin once. The poll's look at the
+  window order runs only while a cut pane lies under another (not for edge panes). No timer.
+- **Open**: on the real screen with real apps (Safari, Notes past the edge), a second display beside this one, the
+  screen suite's scenario for it.

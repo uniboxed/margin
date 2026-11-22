@@ -297,9 +297,9 @@ private func splitRealUseMinimumTests() {
     var shownCut = false
     if case .shown? = res[notes.id] { shownCut = true }
     let notesFrame = w3.bounds(window: e3.hosts[notes.id]?.window ?? 0)
-    let wanted = HostLayout.cut(right, min: CGSize(width: 700, height: 400), in: FakeHostWorld.display, endX: false, endY: false)
-    check("split real use 2: a pane's rect below its app's known minimum (456 of 700): opened and shown cut, its window 700 wide as far right as the display allows (812…1512), its pane the hole",
-          shownCut && w3.calls.filter { $0.hasPrefix("launch") }.count == launches + 1 && notesFrame == wanted && wanted == CGRect(x: 812, y: 41, width: 700, height: 933)
+    let wanted = HostLayout.cut(right, min: CGSize(width: 700, height: 400), in: FakeHostWorld.display, page: placement.page, endX: nil, endY: nil)
+    check("split real use 2: a pane's rect below its app's known minimum (456 of 700): opened and shown cut, its window 700 wide from its pane's start, the rest past the display's edge (1048…1748), its pane the hole",
+          shownCut && w3.calls.filter { $0.hasPrefix("launch") }.count == launches + 1 && notesFrame == wanted && wanted == CGRect(x: 1048, y: 41, width: 700, height: 933)
           && e3.visible[notes.id]?.rect == right && e3.visible.count == 2,
           "\(res) \(e3.visible) \(String(describing: notesFrame)) want \(wanted)")
 }

@@ -90,14 +90,19 @@ nonisolated struct HostExtra: Equatable, Sendable {
 
 // A visible host's window, as Margin's window is told it (`HostEngine.hostedWindows`): its window, where it should be
 // (its rect), its role, its place back to front, whether it's in place (shown at its rect: its hole may open).
-// A cut pane's sides (docs/PEEK-SPLIT.md §4b): each one where part of its window is hidden, and how its arrow shows it:
-// a slide (its window moved within its pane, its tile's rect: never past the display), or a reveal (brought over its
-// neighbours: what a slide can't show, its window's part past the display's edge side).
+// A cut pane's sides (docs/PEEK-SPLIT.md §4b): each one where part of its window is hidden that its arrow slides into
+// its pane (its tile's rect: past the display's edge too); none that would put it over a cut pane lying over it.
 nonisolated enum PaneSide: String, Sendable, CaseIterable { case left, right, up, down }
-nonisolated enum PaneCutMode: String, Sendable { case slide, reveal }
 nonisolated struct PaneCut: Equatable, Sendable {
-    var sides: [PaneSide: PaneCutMode] = [:]
-    var revealed = false
+    var sides: Set<PaneSide> = []
+}
+
+// A cut pane's window slid by its arrow (docs/PEEK-SPLIT.md §4b): the pane it was slid in, its alignment along each axis
+// (true: its end at the pane's end; nil: away from the other panes).
+nonisolated struct PaneSlide: Equatable, Sendable {
+    var pane: CGRect
+    var endX: Bool?
+    var endY: Bool?
 }
 
 nonisolated struct HostShownWindow: Equatable, Sendable {
@@ -109,9 +114,8 @@ nonisolated struct HostShownWindow: Equatable, Sendable {
     // Its window's frame: wider or taller than `rect` for a cut pane (docs/PEEK-SPLIT.md §4b); `rect` otherwise.
     var frame: CGRect = .zero
     // Cut and lying under another pane: kept behind it (a press on it delivered to its window without a raise:
-    // PaneClickTap.swift). Revealed: brought over its neighbours, its whole window shown (its hole its frame).
+    // PaneClickTap.swift).
     var tucked = false
-    var revealed = false
     var cut: PaneCut? // its sides' arrows (nil: not cut)
 }
 
@@ -320,11 +324,17 @@ nonisolated enum HostLayout {
     }
 
     // A split pane's window frame (docs/PEEK-SPLIT.md §4b): the pane itself when its window can be that small, else the
-    // window at its own minimum within the area, at its start (left, top) or end (right, bottom) along each axis
-    // (margin-core's `cut`): the rest of it hidden under Margin's window or a neighbour pane, never past the display.
-    static func cut(_ pane: CGRect, min: CGSize?, in area: CGRect, endX: Bool, endY: Bool) -> CGRect {
-        CGRect(margin_layout_cut(pane.marginRect, Double(min?.width ?? 0), Double(min?.height ?? 0), area.marginRect, endX, endY))
+    // window at its own minimum, at its start (left, top) or end (right, bottom) along each axis, nil away from the other
+    // panes of `page` (the split's page area): margin-core's `cut`. The rest of it past the display's edge, under Margin's
+    // window or under a neighbour pane.
+    static func cut(_ pane: CGRect, min: CGSize?, in area: CGRect, page: CGRect, endX: Bool?, endY: Bool?) -> CGRect {
+        func end(_ v: Bool?) -> Int8 { v.map { $0 ? 1 : 0 } ?? -1 }
+        return CGRect(margin_layout_cut(pane.marginRect, Double(min?.width ?? 0), Double(min?.height ?? 0), area.marginRect, page.marginRect, end(endX), end(endY)))
     }
+
+    // A frame held within the area, moved, never resized (margin-core's `within`): a cut pane's window while it isn't a
+    // tile in Margin's Space (its own Space's reservation can't pass the display).
+    static func within(_ frame: CGRect, _ area: CGRect) -> CGRect { CGRect(margin_layout_within(frame.marginRect, area.marginRect)) }
 
     // Margin's own tile: the display's whole frame, from its top left (nil: the display isn't known).
     static func home(_ p: HostPlacement) -> CGRect? {

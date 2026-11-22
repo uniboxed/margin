@@ -42,7 +42,8 @@ void margin_buffer_free(uint8_t *ptr, size_t len);
 bool margin_layout_plan(const MarginPlacement *placement, MarginEdges *out);
 bool margin_layout_tile(const MarginPlacement *placement, MarginRect home, MarginRect *out);
 MarginRect margin_layout_fit(MarginRect page, double min_width, double min_height, MarginRect area);
-MarginRect margin_layout_cut(MarginRect pane, double min_width, double min_height, MarginRect area, bool end_x, bool end_y);
+MarginRect margin_layout_cut(MarginRect pane, double min_width, double min_height, MarginRect area, MarginRect page, int8_t end_x, int8_t end_y);
+MarginRect margin_layout_within(MarginRect frame, MarginRect area);
 bool margin_layout_home(const MarginPlacement *placement, MarginRect *out);
 
 // Whether a window of these bounds is a full-screen window's strip for this placement (host/kinds.rs).

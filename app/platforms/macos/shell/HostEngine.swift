@@ -321,12 +321,10 @@ final class HostEngine {
         var role = HostRole.main
         var rect: CGRect?
         // A split pane whose window can't be as small as its pane (docs/PEEK-SPLIT.md §4b): its window at its own minimum
-        // (`frame`: HostLayout.cut), the rest under Margin's window or a neighbour pane; aligned at its pane's end along an
-        // axis when these are true (an arrow's slide), else at its start. Back to the start when it leaves a split.
-        var endX = false
-        var endY = false
-        // Brought over its neighbours to show what a slide can't (an arrow at the display's edge), until it's tucked back.
-        var revealed = false
+        // (`frame`: HostLayout.cut), the rest away from the other panes; after an arrow's slide, where the slide put it
+        // (its pane then, its alignment along each axis: true its end at the pane's end), as long as its pane stays that
+        // rect (a divider's drag, a new layout: away from the other panes again). Nil when it leaves a split.
+        var slid: PaneSlide?
         // Its own look at being off screen while it's visible (`backOnScreen`, docs/PEEK-SPLIT.md §4: every visible host
         // its own budget, never one shared by a split's panes): when it was last shown (made visible, or the one shown),
         // the times it was brought back, whether giving up was said, the show the look acted for with nothing to move.
@@ -631,7 +629,6 @@ final class HostEngine {
         await serial(planned: true) {
             guard self.isVisible(id), let host = self.hosts[id] else { return false }
             if let card = self.visibleHosts.last(where: { $0.role == .card }), card !== host { return false }
-            if self.shown != id { Diagnostics.note("host: \(id) focused (it had \(self.shown?.description ?? "nothing"))\(fronted ? ", fronted already" : "")") }
             self.focusWanted = id
             if self.shown != id { self.shown = id }
             if !fronted { await self.frontVisible() }
@@ -749,7 +746,7 @@ final class HostEngine {
             visible = [id: HostVisible(rect: nil, role: .main, z: 0)]
             h.rect = nil
             h.role = .main
-            h.endX = false; h.endY = false; h.revealed = false; cutOrderRight(h.id)
+            h.slid = nil; cutOrderRight(h.id)
             let placed = await place(h)
             Diagnostics.note("host: layout: \(id) left alone of the layout asked: at the page area \(r(placement.page))\(placed ? "" : " (not placed there yet)")")
         }
@@ -802,22 +799,23 @@ final class HostEngine {
     // Nothing more is done for an order among non-overlapping hosts, whatever Safari does to its own windows' order.
     private func frontVisible(fresh: Set<HostID> = []) async {
         let focused = shown.flatMap { id in hosts[id].flatMap { $0.phase == .shown ? $0 : nil } }
-        // (A cut pane, docs/PEEK-SPLIT.md §4b: behind every other, the focused one too, so the part of its window past its
-        // pane stays under the panes beside it; it gets the keys without a raise. One revealed is in front, as any.)
-        let tucked = { (h: Host) in self.isCut(h) && !h.revealed }
+        // (A cut pane lying under another pane, docs/PEEK-SPLIT.md §4b: behind the panes it lies under, the focused one too,
+        // so the part of its window past its pane stays under them; it gets the keys without a raise. Several: each behind
+        // the ones it lies under (`tuckedOrder`). A cut pane lying under none (its rest past the display's edge or under
+        // Margin's window) is as any pane.)
+        let tucked = { (h: Host) in self.tucked(h) }
         let others = visibleHosts.filter { $0 !== focused }
         let cutFocused = focused.map(tucked) ?? false
-        let wanted = others.filter(tucked) + (cutFocused ? [focused!] : []) + others.filter { !tucked($0) } + (cutFocused ? [] : focused.map { [$0] } ?? []) // (back to front)
+        let wanted = tuckedOrder(others.filter(tucked) + (cutFocused ? [focused!] : [])) + others.filter { !tucked($0) } + (cutFocused ? [] : focused.map { [$0] } ?? []) // (back to front)
         guard let top = wanted.last else { return }
-        // (A pane raised over a cut one: an app kept active (PanesActive.swift) takes the window server's activation for
-        // done and its window stays where it is (the real screen, 2026-11-22: raised again and again, never over); let go
-        // first (its deactivated record), its activation is real and AppKit raises its window. It's kept again once the
-        // cut pane has the keys back. With no cut pane, as before.)
-        let firstTucked = wanted.first(where: tucked)
+        // (A pane raised over a cut one lying under it: an app kept active (PanesActive.swift) takes the window server's
+        // activation for done and its window stays where it is (the real screen, 2026-11-22: raised again and again, never
+        // over); let go first (its deactivated record), its activation is real and AppKit raises its window: `raiseOver`.
+        // It's kept again once the cut pane has the keys back. Over none, as before.)
         func raise(_ h: Host) async -> Bool {
-            // (Over a cut pane, a neighbour; a revealed cut pane over its neighbours: `raiseOver`. Else, as before.)
-            if let cut = firstTucked, !tucked(h) { return await raiseOver(h, cut) }
-            if h.revealed, isCut(h), let n = neighbour(of: h) { return await raiseOver(h, n) }
+            if let i = wanted.firstIndex(where: { $0 === h }), let below = wanted[..<i].last(where: { tucked($0) && self.lyingUnder($0).contains { $0 === h } }) {
+                return await raiseOver(h, below)
+            }
             return await front(h)
         }
         // (The keys: the focused one's, by a raise when it's in front of the others, without one when it's cut.)
@@ -835,9 +833,12 @@ final class HostEngine {
         // (In the order that shows already, or nothing overlapping: only the focused one's keys.)
         if bad.isEmpty { await keys(); return }
         let involved = Set(pairs.flatMap { [$0.0, $0.1] })
+        // (Two cut panes out of order, one lying under the other (four panes or more): every one from the first out of place
+        // raised, back to front, the cut ones too, so each ends behind the ones it lies under.)
+        let tuckedPair = bad.contains { tucked(wanted[$0.0]) && tucked(wanted[$0.1]) }
         // (The focused one in front of every host it overlaps: none of those raised over it (its raise may not take);
         // two others out of order between them only when neither overlaps it, then it last, for its keys.)
-        if !bad.contains(where: { $0.1 == topIndex }) {
+        if !tuckedPair, !bad.contains(where: { $0.1 == topIndex }) {
             let under = Set(pairs.filter { $0.1 == topIndex }.map(\.0))
             let fix = Set(bad.filter { !under.contains($0.0) && !under.contains($0.1) }.flatMap { [$0.0, $0.1] })
             for k in fix.sorted() where !tucked(wanted[k]) { _ = await raise(wanted[k]) }
@@ -846,7 +847,7 @@ final class HostEngine {
         }
         // Else the ones from the first out of place that overlap another raised, back to front, the focused one last.
         let from = bad.map(\.0).min() ?? 0
-        for k in from..<wanted.count where (k == topIndex || involved.contains(k)) && !tucked(wanted[k]) { _ = await raise(wanted[k]) }
+        for k in from..<wanted.count where (k == topIndex || involved.contains(k)) && (tuckedPair || !tucked(wanted[k])) { _ = await raise(wanted[k]) }
         if cutFocused { await keys(); return }
         guard wanted.count > 1, top === focused else { return }
         // (Read again: the focused one behind a host it overlaps. Unread: taken as in front, as before.)
@@ -1262,9 +1263,13 @@ final class HostEngine {
         }
         // (A cut pane's window raised over a pane it lies under with no app activated (the app itself ordering it
         // front, an Accessibility raise): no event says so, so the poll looks, from the on-screen list it shares, and
-        // only while an unrevealed cut pane is shown. Activation's case is `frontChanged`'s, at once.)
-        if let cut = visibleHosts.first(where: { isCut($0) && !$0.revealed }), let list = screenList()?.map(\.number) {
-            if cutWindowOver(cut.pid, list: list) != nil { Task { _ = await self.repairCutOrder(cut.pid) } } else { cutOrderRight(cut.id) }
+        // only while a cut pane lying under another is shown (none for one whose rest is past the display's edge or under
+        // Margin's window). Activation's case is `frontChanged`'s, at once.)
+        let tuckedNow = visibleHosts.filter { tucked($0) }
+        if !tuckedNow.isEmpty, let list = screenList()?.map(\.number) {
+            for cut in tuckedNow {
+                if overPaneItLiesUnder(cut, list: list) { Task { _ = await self.repairCutOrder(cut.pid) }; break } else { cutOrderRight(cut.id) }
+            }
         }
         keepCurrentLate()
         lookOnScreen()
@@ -2260,9 +2265,9 @@ final class HostEngine {
                 q.page = liveRects[h.id] ?? h.rect ?? p.page
                 return frame(h, q)
             } ?? frame(h)
-            let tucked = !h.revealed && isCut(h) && list.contains { o in o !== h && o.role != .card && (o.rect ?? placement.page).insetBy(dx: options.tolerance, dy: options.tolerance).intersects(window) }
+            let tucked = isCut(h) && list.contains { o in o !== h && o.role != .card && (o.rect ?? placement.page).insetBy(dx: options.tolerance, dy: options.tolerance).intersects(window) }
             return HostShownWindow(window: h.window, rect: rect, role: visible[h.id]?.role ?? h.role, z: visible[h.id]?.z ?? 0, focused: h.id == shown,
-                                   frame: window, tucked: tucked, revealed: h.revealed && isCut(h), cut: live == nil ? cutOf(h) : nil)
+                                   frame: window, tucked: tucked, cut: live == nil ? cutOf(h) : nil)
         } : []
         guard now != hostedWindowsSaid else { return }
         hostedWindowsSaid = now
@@ -3709,7 +3714,7 @@ final class HostEngine {
         // (A page area its full-screen window can't be put at (a pane's rect past the display's edge: no plan): never
         // asked. Asked, its own Space was made, the slow path ran and the place failed anyway, each time: the real screen,
         // 2026-11-21 19:32, Safari's pane at 949…1523 beside Notes, five Spaces made and dropped in 12 s.)
-        let target = fitted(host)
+        let target = entryFitted(host)
         if HostLayout.plan(target) == nil { return .failed("no room for it: its page area can't be reached from the display's (\(target.text))") }
         func ownSpace() -> UInt64? {
             guard let list = sys.spaces(window: host.window) else { return nil }
@@ -3954,11 +3959,11 @@ final class HostEngine {
     // let go as soon as its own Space is gone (nothing of macOS's change can show after that; its window is under its
     // own loader until its layout is done), not after the settle.
     private func early(_ host: Host, before: Set<UInt64>, refused: () -> Bool, switched already: Bool = false) async -> Early {
-        guard var edges = HostLayout.plan(fitted(host)) else { return .slow("no plan for its page area (\(fitted(host).text))") }
+        guard var edges = HostLayout.plan(entryFitted(host)) else { return .slow("no plan for its page area (\(entryFitted(host).text))") }
         // (Live resize: its tile moved into Margin's Space in place of the window alone, below.)
         let tiling = await tilesReady(for: host)
         let t0 = sys.now()
-        var page = frame(host)
+        var page = entryFitted(host).page
         var space: UInt64?
         var reservedAt = t0
         var memberAt: Double? // when the window server first had the window in its own Space: macOS's change brought it there
@@ -4001,7 +4006,7 @@ final class HostEngine {
                     saveMarker()
                     if inOwn(s) { memberAt = sys.now(); mark("in its Space") }
                     // (Its window's own minimum, from its new Space's tile: reserved for no less, never a size it can't take.)
-                    if let t = ownTile(host, in: s), learnMinimum(host, tile: t), let e = HostLayout.plan(fitted(host)) { edges = e; page = frame(host); mark("its minimum \(Int(host.minSize?.width ?? 0)) wide") }
+                    if let t = ownTile(host, in: s), learnMinimum(host, tile: t), let e = HostLayout.plan(entryFitted(host)) { edges = e; page = entryFitted(host).page; mark("its minimum \(Int(host.minSize?.width ?? 0)) wide") }
                     _ = sys.reserve(edges, space: s)
                     reservedAt = sys.now()
                     mark("reserved \(edges.text)")
@@ -4035,6 +4040,7 @@ final class HostEngine {
             switch await tileIn(host, from: own, each: keepCurrent) {
             case .placed:
                 tiled = true
+                page = frame(host) // (a tile now: a cut pane's window where its tile puts it, past the display's edge too)
                 mark("its tile in Margin's Space at the page area")
             case .notMoved(let why):
                 turnOffTiles("a tile didn't move into Margin's Space (\(why))")
@@ -4129,11 +4135,11 @@ final class HostEngine {
         guard let own = host.fullScreenSpace else { return false }
         // (Its window's own minimum, from its own Space's tile: reserved for no less.)
         if let t = ownTile(host, in: own) { learnMinimum(host, tile: t) }
-        guard let edges = HostLayout.plan(fitted(host)) else {
-            Diagnostics.note("host: place \(host.id): no plan (\(fitted(host).text))")
+        guard let edges = HostLayout.plan(entryFitted(host)) else {
+            Diagnostics.note("host: place \(host.id): no plan (\(entryFitted(host).text))")
             return false
         }
-        let page = frame(host)
+        let page = entryFitted(host).page
         func there() -> Bool { sys.bounds(window: host.window).map { HostLayout.near($0, page, within: options.tolerance) } ?? false }
         for attempt in 1...2 {
             // (At the page area with its Space reserved for it: a window at the page area's frame as a window, mid-way into
@@ -4501,24 +4507,95 @@ final class HostEngine {
         let pl = p ?? placementFor(host)
         if host.mode == .window { return pl.page }
         // (A card: its own rect. A split's pane: cut, its window never below its own minimum, Arc's 220 its pane's least.)
-        if host.rect != nil { return host.role == .card ? pl.page : HostLayout.cut(pl.page, min: paneMinimum(host), in: pl.area, endX: host.endX, endY: host.endY) }
+        if host.rect != nil {
+            if host.role == .card { return pl.page }
+            // (Where its arrow slid it while its pane is still the one it was slid in; else away from the other panes.)
+            let slid = host.slid.flatMap { HostLayout.near($0.pane, pl.page, within: options.tolerance) ? $0 : nil }
+            return paneFrame(host, pl.page, area: pl.area, endX: slid?.endX, endY: slid?.endY)
+        }
         return HostLayout.fit(pl.page, min: host.minSize, in: pl.area)
     }
+    // A pane's window frame at an alignment (HostLayout.cut, away from the other panes when nil), held within the display
+    // while it isn't a tile in Margin's Space: macOS keeps a tile past the display's edge, never a full-screen Space's
+    // reservation (its window entering, a member's, tiles off: HostLayout.plan).
+    private func paneFrame(_ host: Host, _ pane: CGRect, area: CGRect, endX: Bool?, endY: Bool?) -> CGRect {
+        let f = HostLayout.cut(pane, min: paneMinimum(host), in: area, page: livePage ?? placement.page, endX: endX, endY: endY)
+        return f != pane && (host.tile == nil || host.noTiles) ? HostLayout.within(f, area) : f
+    }
+    // Its placement as its own full-screen Space reserves it (its window entering, a member placed): its frame held within
+    // the display (`paneFrame`), whatever its tile's would be.
+    private func entryFitted(_ host: Host) -> HostPlacement {
+        var pl = fitted(host)
+        if isCut(host) { pl.page = HostLayout.within(pl.page, pl.area) }
+        return pl
+    }
+    // The page area of a drag of the sidebar's edge as it's followed (a split's panes are laid out away from each other
+    // within it: `frame`), nil: none under way.
+    private var livePage: CGRect?
     // A pane's window's minimum as it's laid out now: its own as read (never its app's narrowest: a tile narrower than its
     // window's minimum now makes it leave the tile), else its app's known one before any of its windows was read.
     private func paneMinimum(_ host: Host) -> CGSize? { host.minSize ?? appMinimum(appKey(host.target), pid: host.pid) }
-    // A cut pane's sides (docs/PEEK-SPLIT.md §4b): each one with part of its window hidden, shown by a slide when its other
-    // alignment shows it whole, else by a reveal. Nil: not cut.
+    // A cut pane's sides (docs/PEEK-SPLIT.md §4b): each one with part of its window hidden, which its arrow slides into its
+    // pane (its other alignment along that axis: never held within the display). None that would put its window over
+    // a cut pane whose own window lies over this pane (two panes each over the other's: no order shows both). Nil: not
+    // cut.
     func cutOf(_ host: Host) -> PaneCut? {
         guard isCut(host), let r = host.rect else { return nil }
-        let f = frame(host), area = placementFor(host).area, m = paneMinimum(host), tol = options.tolerance
-        func hidden(_ side: PaneSide, _ w: CGRect) -> CGFloat {
-            switch side { case .left: r.minX - w.minX; case .right: w.maxX - r.maxX; case .up: r.minY - w.minY; case .down: w.maxY - r.maxY }
+        let f = frame(host), tol = options.tolerance
+        var out = PaneCut()
+        for side in PaneSide.allCases where hidden(side, pane: r, window: f) > tol {
+            let to = slidFrame(host, side)
+            // (Its window held within the display, not a tile: only a slide that shows more of it.)
+            guard hidden(side, pane: r, window: to) < hidden(side, pane: r, window: f) - tol else { continue }
+            let mine = r.insetBy(dx: tol, dy: tol)
+            let crossing = visibleHosts.contains { o in
+                o !== host && o.role != .card && (o.rect ?? placement.page).insetBy(dx: tol, dy: tol).intersects(to) && isCut(o) && frame(o).intersects(mine)
+            }
+            if !crossing { out.sides.insert(side) }
         }
-        var out = PaneCut(revealed: host.revealed)
-        for side in PaneSide.allCases where hidden(side, f) > tol {
-            let other = HostLayout.cut(r, min: m, in: area, endX: side == .left ? false : side == .right ? true : host.endX, endY: side == .up ? false : side == .down ? true : host.endY)
-            out.sides[side] = hidden(side, other) <= tol ? .slide : .reveal
+        return out
+    }
+    // How far a pane's window passes it on `side` (points; 0 or less: not at all).
+    private func hidden(_ side: PaneSide, pane r: CGRect, window w: CGRect) -> CGFloat {
+        switch side { case .left: r.minX - w.minX; case .right: w.maxX - r.maxX; case .up: r.minY - w.minY; case .down: w.maxY - r.maxY }
+    }
+    // A cut pane's alignment that shows `side` (its window's start at the pane's for its left or top, its end at the
+    // pane's for its right or bottom), the other axis as it is now.
+    private func slideFor(_ host: Host, _ side: PaneSide) -> PaneSlide? {
+        guard let r = host.rect else { return nil }
+        let f = frame(host), tol = options.tolerance
+        // (Along an axis now: true when its window passes its pane's start, false its end, nil neither.)
+        func now(_ start: CGFloat, _ end: CGFloat, _ ws: CGFloat, _ we: CGFloat) -> Bool? { ws < start - tol ? true : we > end + tol ? false : nil }
+        let x = now(r.minX, r.maxX, f.minX, f.maxX), y = now(r.minY, r.maxY, f.minY, f.maxY)
+        switch side {
+        case .left: return PaneSlide(pane: r, endX: false, endY: y)
+        case .right: return PaneSlide(pane: r, endX: true, endY: y)
+        case .up: return PaneSlide(pane: r, endX: x, endY: false)
+        case .down: return PaneSlide(pane: r, endX: x, endY: true)
+        }
+    }
+    // Its window's frame once slid to show `side`.
+    private func slidFrame(_ host: Host, _ side: PaneSide) -> CGRect {
+        guard let r = host.rect, let s = slideFor(host, side) else { return frame(host) }
+        return paneFrame(host, r, area: placementFor(host).area, endX: s.endX, endY: s.endY)
+    }
+    // The visible panes a cut pane's window lies under (it passes its own pane into theirs): it's kept behind them. None
+    // for one that isn't cut, or whose rest is past the display's edge or under Margin's window.
+    private func lyingUnder(_ h: Host) -> [Host] {
+        guard isCut(h) else { return [] }
+        let f = frame(h), tol = options.tolerance
+        return visibleHosts.filter { o in o !== h && o.role != .card && (o.rect ?? placement.page).insetBy(dx: tol, dy: tol).intersects(f) }
+    }
+    private func tucked(_ h: Host) -> Bool { !lyingUnder(h).isEmpty }
+    // Cut panes lying under others, back to front: each behind every one it lies under, else as given (the focused one,
+    // given last, as far in front as that lets it). A loop (two over each other's, which `cutOf` never offers): as given.
+    private func tuckedOrder(_ list: [Host]) -> [Host] {
+        guard list.count > 1 else { return list }
+        var left = list, out: [Host] = []
+        while !left.isEmpty {
+            // (The first one no other left lies under: nothing left must be behind it.)
+            guard let i = left.firstIndex(where: { h in !left.contains { o in o !== h && lyingUnder(o).contains { $0 === h } } }) else { return out + left }
+            out.append(left.remove(at: i))
         }
         return out
     }
@@ -4635,7 +4712,7 @@ final class HostEngine {
         if let id = shown {
             // (Alone at the page area from now: its rect and role as the layout says, never a pane's rect kept on it,
             // which every placing reads: `pageOf`.)
-            if visible[id] == nil { visible = [id: HostVisible(rect: nil, role: .main, z: 0)]; hosts[id]?.rect = nil; hosts[id]?.role = .main; hosts[id]?.endX = false; hosts[id]?.endY = false; hosts[id]?.revealed = false }
+            if visible[id] == nil { visible = [id: HostVisible(rect: nil, role: .main, z: 0)]; hosts[id]?.rect = nil; hosts[id]?.role = .main; hosts[id]?.slid = nil }
         } else if let was {
             visible[was] = nil
         }
@@ -5084,6 +5161,7 @@ final class HostEngine {
         liveHeld = false
         livePending = nil
         liveRects = [:]
+        livePage = nil
         if tilesOK { _ = sys.setLiveResizing(marginSpace, false) }
         Diagnostics.note("host: live resize: in \(ms(since: liveStats.since)) ms: \(liveStats.line) (wait \(Int(options.liveWait * 1000)) ms)")
         lastLive = liveStats
@@ -5105,6 +5183,7 @@ final class HostEngine {
         if let last = liveStats.lastAsk { liveStats.gaps.append(liveLast - last) }
         liveStats.lastAsk = liveLast
         livePending = p
+        livePage = p.page
         if !rects.isEmpty, rects != liveRects {
             liveRects = rects
             // (Several visible: Margin's window told every one's rect in this frame at once, its holes and the pointer's
@@ -5533,27 +5612,19 @@ final class HostEngine {
 
     // ---- a cut pane's arrows (docs/PEEK-SPLIT.md §4b) ----
 
-    // `side` of a cut pane's window shown: by a slide (its window's other alignment, its tile's rect moved there over
-    // `slideTime`, eased, one rect a frame: ~0.2 ms each, the window a frame behind at most, measured 2026-11-21 with
-    // Safari), or by a reveal (brought over its neighbours, its whole window in its hole, until `tuck`). A member (no
-    // tile) moves at once. False: not a cut pane's side, or not shown.
+    // `side` of a cut pane's window shown: its window slid to its other alignment along that axis (`slideFor`: past the
+    // display's edge too), its tile's rect moved there over `slideTime`, eased, one rect a frame (~0.2 ms each, the window
+    // a frame behind at most, measured 2026-11-21 with Safari). Coming in under a pane it will lie under: ordered behind
+    // it first, so it never shows over it on its way. A member (no tile) moves at once. False: not a side its arrow shows
+    // (`cutOf`), or not shown.
     @discardableResult func slide(_ id: HostID, side: PaneSide) async -> Bool {
         await serial(planned: true) {
-            guard let h = self.hosts[id], h.phase == .shown, self.isVisible(id), let cut = self.cutOf(h), let mode = cut.sides[side] else { return false }
-            if mode == .reveal {
-                h.revealed = true
-                Diagnostics.note("host: \(id): its \(side.rawValue) side shown over its neighbours (a slide can't: the display's edge)")
-                // (Focused, as a press in it would: the focus asked for, so the operation's settle keeps it (it went back to
-                // the pane focused before, and Margin's keys with it, 2026-11-22), the session's layout following it.)
-                self.focusWanted = id
-                self.shown = id
-                if let n = self.neighbour(of: h) { _ = await self.raiseOver(h, n) } else { _ = await self.front(h) }
-                self.sayHostedWindows()
-                return true
-            }
+            guard let h = self.hosts[id], h.phase == .shown, self.isVisible(id), let cut = self.cutOf(h), cut.sides.contains(side), let to = self.slideFor(h, side) else { return false }
             let from = self.frame(h)
-            switch side { case .left: h.endX = false; case .right: h.endX = true; case .up: h.endY = false; case .down: h.endY = true }
-            let to = self.frame(h)
+            let wasUnder = self.tucked(h)
+            h.slid = to
+            let target = self.frame(h)
+            if self.tucked(h), !wasUnder { await self.frontVisible() }
             if let tile = h.tile, !h.noTiles, let home = self.tileHome {
                 let t0 = self.sys.now()
                 var steps = 0
@@ -5561,32 +5632,20 @@ final class HostEngine {
                     let k = min(1, (self.sys.now() - t0) / self.options.slideTime)
                     let e = 1 - pow(1 - k, 3) // (ease out)
                     var p = self.placement
-                    p.page = CGRect(x: from.minX + (to.minX - from.minX) * e, y: from.minY + (to.minY - from.minY) * e, width: to.width, height: to.height)
+                    p.page = CGRect(x: from.minX + (target.minX - from.minX) * e, y: from.minY + (target.minY - from.minY) * e, width: target.width, height: target.height)
                     if let rect = HostLayout.tile(p, home: home) { self.sendTileRect(h, tile, rect) }
                     steps += 1
                     if k >= 1 { break }
                     await self.sys.sleep(self.options.liveFrame)
                 }
-                Diagnostics.note("host: \(id): slid to show its \(side.rawValue) side, \(self.r(from)) → \(self.r(to)) in \(self.ms(since: t0)) ms (\(steps) rects)")
+                Diagnostics.note("host: \(id): slid to show its \(side.rawValue) side, \(self.r(from)) → \(self.r(target)) in \(self.ms(since: t0)) ms (\(steps) rects)\(self.tucked(h) ? ", under the pane beside it" : "")")
             } else {
                 _ = await self.place(h)
-                Diagnostics.note("host: \(id): moved to show its \(side.rawValue) side, \(self.r(from)) → \(self.r(to)) (no tile: at once)")
+                Diagnostics.note("host: \(id): moved to show its \(side.rawValue) side, \(self.r(from)) → \(self.r(target)) (no tile: at once)")
             }
+            if !self.tucked(h) { self.cutOrderRight(h.id) }
             self.sayHostedWindows()
             return true
-        }
-    }
-
-    // A revealed pane tucked back under its neighbours (the pointer left it, Esc, another press): the others raised over
-    // it again, it keeps the keys without a raise (`frontVisible`).
-    func tuck(_ id: HostID) async {
-        await serial(planned: true) {
-            guard let h = self.hosts[id], h.revealed else { return }
-            h.revealed = false
-            Diagnostics.note("host: \(id): tucked back under its neighbours")
-            self.sayHostedWindows()
-            if self.isVisible(id) { await self.frontVisible() }
-            self.queueActives() // (no card-like pane any more: the split's other apps kept again)
         }
     }
 
@@ -6091,7 +6150,7 @@ final class HostEngine {
         // (A cut pane's app made the front one some other way (⌘-Tab, the app itself): macOS raised its window over a pane
         // it lies under: the order put right again, its keys kept without a raise. Only then: one read of the window list,
         // nothing for any other app or a cut pane still behind (Margin's own focus without a raise).)
-        if let pid, cutWindowOver(pid) != nil { Task { _ = await self.repairCutOrder(pid) } }
+        if let pid, visibleHosts.contains(where: { $0.pid == pid && overPaneItLiesUnder($0) }) { Task { _ = await self.repairCutOrder(pid) } }
         // (No split shown and nothing kept: nothing, whatever app comes in front.)
         guard activeScene != nil || !actives.kept.isEmpty, sys.keepsPanesActive || !actives.kept.isEmpty else { return }
         if let pid, (sys.frontProcess() ?? sys.frontApp()) == pid { actives.heardFront(pid) }
@@ -6101,14 +6160,13 @@ final class HostEngine {
     private var cutRepairs: [HostID: [Double]] = [:]
     private var cutRepairSaid: Set<HostID> = []
     private var cutRepairsFailed: [HostID: Int] = [:]
-    // A visible cut pane of `pid`'s app whose window is over a pane it lies under now (the window server's order), nil: none.
-    // `h`'s window raised over `below`'s (overlapping: a neighbour over a cut pane, a revealed cut pane over a neighbour).
-    // Its activation must be a real one for AppKit to raise its window: not kept active by records (let go first;
-    // PanesActive keeps it again later), and not the front app already (the front handed to `below` first, without a
-    // raise): the sequence the real screen took, 2026-11-21/22. Its app raises its window as it takes the activation, on
-    // its own thread: the keys moved on before then and it never does (2026-11-22: a neighbour activated and the keys
-    // back 10 ms later, its window still under, eight tries; a reveal of Notes, kept active, never over Safari, then
-    // taken out and back). Waited for until the window server shows it over, `orderWait` at most; unread: not waited for.
+    // `h`'s window raised over `below`'s (overlapping: a neighbour over a cut pane lying under it, a cut pane over another
+    // lying under it). Its activation must be a real one for AppKit to raise its window: not kept active by records (let
+    // go first; PanesActive keeps it again later), and not the front app already (the front handed to `below` first,
+    // without a raise): the sequence the real screen took, 2026-11-21/22. Its app raises its window as it takes the
+    // activation, on its own thread: the keys moved on before then and it never does (2026-11-22: a neighbour activated
+    // and the keys back 10 ms later, its window still under, eight tries). Waited for until the window server shows it
+    // over, `orderWait` at most; unread: not waited for.
     private func raiseOver(_ h: Host, _ below: Host) async -> Bool {
         if let w = actives.kept[h.pid] { sys.releaseActiveNow([PaneWindow(pid: h.pid, window: w)]) }
         if (sys.frontProcess() ?? sys.frontApp()) == h.pid { _ = sys.focusWithoutRaise(pid: below.pid, window: below.window) }
@@ -6116,22 +6174,20 @@ final class HostEngine {
         _ = await wait(options.orderWait, every: options.memberEvery) { self.windowBehind(below.window, h.window) ?? true }
         return ok
     }
-    // A visible pane `h`'s window lies over (a cut pane's neighbour), nil: none.
-    private func neighbour(of h: Host) -> Host? {
-        let f = frame(h)
-        return visibleHosts.first { $0 !== h && $0.role != .card && ($0.rect ?? placement.page).intersects(f) }
-    }
-    // (`list`: an on-screen list already read, the poll's; nil: read now.)
-    private func cutWindowOver(_ pid: pid_t, list: [Int]? = nil) -> Host? {
-        guard let h = visibleHosts.first(where: { $0.pid == pid && isCut($0) && !$0.revealed }) else { return nil }
-        let f = frame(h)
+    // Whether a visible cut pane's window is over a pane it lies under (the window server's order; `list`: an on-screen
+    // list already read, the poll's; nil: read now). False: it isn't, it lies under none, or unread.
+    private func overPaneItLiesUnder(_ h: Host, list: [Int]? = nil) -> Bool {
+        let under = lyingUnder(h)
+        guard !under.isEmpty else { return false }
         let behind: (Int, Int) -> Bool? = { a, b in
             guard let list else { return self.windowBehind(a, b) }
             guard let ia = list.firstIndex(of: a), let ib = list.firstIndex(of: b) else { return nil }
             return ia > ib
         }
-        return visibleHosts.contains { o in o !== h && o.role != .card && (o.rect ?? placement.page).intersects(f) && behind(o.window, h.window) == true } ? h : nil
+        return under.contains { behind($0.window, h.window) == true }
     }
+    // A visible cut pane of `pid`'s app whose window is over a pane it lies under now, nil: none.
+    private func cutWindowOver(_ pid: pid_t) -> Host? { visibleHosts.first { $0.pid == pid && overPaneItLiesUnder($0) } }
     // That cut pane put back under the panes it lies under, its keys kept without a raise (`frontVisible`). True: it was over.
     func repairCutOrder(_ pid: pid_t) async -> Bool {
         await serial(planned: true) {
@@ -6189,13 +6245,7 @@ final class HostEngine {
         } else {
             let scene = activeScene
             let front = sys.frontProcess() ?? sys.frontApp()
-            // (A revealed cut pane over its neighbours is as a card is: the split's other apps left as they are, none kept
-            // anew. An app told it's active orders its windows front: Safari, kept as Notes was revealed, came back over
-            // it at once, 2026-11-22.)
-            let over = Set(visibleHosts.filter { $0.revealed && isCut($0) }.map(\.window))
-            var panes = scene?.panes ?? []
-            for i in panes.indices where over.contains(panes[i].window) { panes[i].card = true }
-            actions = actives.step(panes: panes, focused: scene?.focused, front: front, margin: ownPid,
+            actions = actives.step(panes: scene?.panes ?? [], focused: scene?.focused, front: front, margin: ownPid,
                                    hosted: { pid in self.hosts.values.contains { $0.pid == pid } },
                                    allowed: { p in self.exiting[p.pid] == nil && self.hosts.values.contains { $0.window == p.window && $0.pid == p.pid && $0.phase == .shown } },
                                    ending: { pid in self.exiting[pid] != nil || self.quitAsked.contains(pid) }, now: sys.now())
