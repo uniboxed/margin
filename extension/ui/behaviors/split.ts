@@ -406,7 +406,10 @@ export function installSplit(rt: Rt) {
       if (!h.appWindow || !vm || !g) return null;
       const st: any = rt.state;
       const kept: Record<string, any> = st?.keptTabs ?? {};
-      const item = typeof tabId === 'string' ? kept[tabId] : null;
+      // (Its library item: by its id, or, open in Margin's window, by its row's number: that row's `mid`. The real
+      // screen's add came by the open Safari tab's row number, 2026-11-21.)
+      const mid = typeof tabId === 'string' ? tabId : typeof tabId === 'number' ? st?.tabs?.[tabId]?.mid : null;
+      const item = typeof mid === 'string' ? kept[mid] : null;
       let axis = 'horizontal';
       let panes: { id: string, url: string }[];
       if (item) {

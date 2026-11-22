@@ -158,8 +158,9 @@ for (const [name, engine] of ENGINES) {
         await ev((m) => T.rtAppMin(m), { web: [574, 220], 'com.apple.Notes': [701, 53] });
         await ev(() => T.rtNoSplit());
         await ev(() => T.rtKept('t-notes', 'app://com.apple.Notes', { lastActive: 1000, name: 'Notes' }));
-        await ev(() => T.rtKept('t-web', 'https://maps.example/', { lastActive: 2000, wasActive: true }));
-        const ownRow = await ev(({ w }) => T.rtSplitAdd('t-web', w), { w: 1264 });
+        await ev(() => T.rtKept('t-web', 'https://maps.example/', { lastActive: 2000, wasActive: true, row: 901 }));
+        // (Open in Margin's window, its row is a number: the menu's add names it so.)
+        const ownRow = await ev(({ w }) => T.rtSplitAdd(901, w), { w: 1264 });
         assert.deepEqual(ownRow.sent, [], 'the front tab\'s own row, Notes used before it: nothing asked of the library');
         assert.equal(ownRow.toast, 'Not enough room for another pane');
         assert.match(ownRow.note ?? '', /^split add: com\.apple\.Notes 701 \+ web 574 \+ gaps \d+ in 1264 \(horizontal\): refused; apps known: web, com\.apple\.Notes$/, `the check said: ${ownRow.note}`);
