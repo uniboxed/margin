@@ -413,6 +413,11 @@ recovery after `taskkill /f`; the budgets.
    can). *Recommend: accept; Safari stays the Dock-less default browser.*
 6. **Old Windows overlay path:** removed once the hosted path is daily use (step 9), as on the Mac. *Recommend: yes.*
 
+**Tirth's answers (2026-11-22):** 1. leave them for now. 2. **neither QuickJS nor a web view: the library's rules move
+into margin-core (Rust) right after the current core work** (docs/CORE-REFACTOR.md), so Windows never gets a stopgap;
+until then the Windows hosted session waits for them. 3. the watchdog (~2 MB is fine). 4. quits. 5. accept for now.
+6. yes.
+
 ## 10. Needs from the core (the parent work; nothing of it re-implemented for Windows)
 
 Each is the API Windows would consume. Until it lands, Windows' side is written against these shapes with a narrow
