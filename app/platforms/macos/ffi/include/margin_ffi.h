@@ -1,4 +1,4 @@
-// margin-core's hosting core behind a C interface (app/shared/ffi/src/lib.rs, Rust): what Margin.app's Swift calls
+// margin-core's hosting core behind a C interface (app/platforms/macos/ffi/src/lib.rs, Rust): what Margin.app's Swift calls
 // through `import MarginCore`. Every function takes null or bad input without harm; nothing here keeps global state.
 #ifndef MARGIN_FFI_H
 #define MARGIN_FFI_H

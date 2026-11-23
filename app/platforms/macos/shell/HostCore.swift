@@ -1,5 +1,5 @@
 // The hosting core (margin-core's `host` module, Rust: app/shared/core/src/host; docs/ARCHITECTURE-PLAN.md) as
-// Margin.app calls it, through margin-ffi's C interface (app/shared/ffi, `import MarginCore`). Everything that decides
+// Margin.app calls it, through margin-ffi's C interface (app/platforms/macos/ffi, `import MarginCore`). Everything that decides
 // is there, the same on every OS: the window kinds, the window choice, the reconciler, the layout, the loop guard,
 // the causes, the routes. This file only turns Swift's values into the core's JSON and back; the layout's hot path
 // (every frame of a drag) uses the typed calls, no JSON.

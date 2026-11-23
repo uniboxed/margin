@@ -25,7 +25,7 @@ fi
 LINK_SOURCES=(link-server/main.swift ../../app/platforms/macos/shell/ExtensionLink.swift ../../app/platforms/macos/shell/RelayLink.swift ../../app/platforms/macos/shell/LinkMessage.swift ../../app/platforms/macos/shell/StateMirror.swift ../../app/platforms/macos/shell/Diagnostics.swift)
 CORE_LIB=$(sh ../../scripts/build-core.sh host) || exit 1
 if [ ! -x "$BUILD/link-server" ] || [ -n "$(find "${LINK_SOURCES[@]}" -newer "$BUILD/link-server" 2>/dev/null)" ] || [ "$CORE_LIB/libmargin_ffi.a" -nt "$BUILD/link-server" ]; then
-  swiftc -swift-version 5 -default-isolation MainActor -enable-upcoming-feature InferIsolatedConformances -enable-upcoming-feature NonisolatedNonsendingByDefault -I ../../app/shared/ffi/include -L "$CORE_LIB" "${LINK_SOURCES[@]}" -o "$BUILD/link-server" || exit 1
+  swiftc -swift-version 5 -default-isolation MainActor -enable-upcoming-feature InferIsolatedConformances -enable-upcoming-feature NonisolatedNonsendingByDefault -I ../../app/platforms/macos/ffi/include -L "$CORE_LIB" "${LINK_SOURCES[@]}" -o "$BUILD/link-server" || exit 1
 fi
 export MARGIN_LINK_SERVER="$BUILD/link-server"
 

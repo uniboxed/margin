@@ -7478,3 +7478,7 @@ however much can fit inside it", arrows on hover on the sides with more to show,
     `extension/ui/` before. It still reaches the e2e suite and the WebKit host.
   - The manifest tests also scan the UI's files for third-party URLs, `corner-shape` and fetches in themes.
   - `tsconfig.json` type-checks the new folder.
+- **margin-ffi moves too** (Tirth, 2026-11-22): `app/shared/ffi/` is now `app/platforms/macos/ffi/`. Only the Mac's
+  Swift needs the C interface; the Windows shell and the connector use margin-core directly. A pure move: the
+  workspace's member list, the crate's path to margin-core, build-core.sh, safari.sh, and the app tests' and the
+  WebKit host's `-I` paths. The library, its header and its module map are otherwise the same.

@@ -12,7 +12,7 @@ name = "margin_ffi"
 crate-type = ["staticlib", "rlib"]
 
 [dependencies]
-margin-core = { path = "../core" }
+margin-core = { path = "../../../shared/core" }
 serde_json.workspace = true
 
 [lints]

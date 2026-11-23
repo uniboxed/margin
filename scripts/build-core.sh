@@ -1,6 +1,6 @@
 #!/bin/sh
-# margin-ffi (app/shared/ffi/: margin-core's hosting core behind a C interface) as the static library Margin.app's
-# Swift links through `import MarginCore` (app/shared/ffi/include/module.modulemap's `link "margin_ffi"`).
+# margin-ffi (app/platforms/macos/ffi/: margin-core's hosting core behind a C interface) as the static library Margin.app's
+# Swift links through `import MarginCore` (app/platforms/macos/ffi/include/module.modulemap's `link "margin_ffi"`).
 #   sh scripts/build-core.sh            both kinds of Mac (macOS 14 or later), lipo'd: what scripts/safari.sh links
 #   sh scripts/build-core.sh host       this Mac's only: what tools/app-tests/run.sh links (faster)
 # Prints the folder that holds libmargin_ffi.a.

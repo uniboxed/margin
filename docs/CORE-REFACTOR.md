@@ -45,7 +45,7 @@ WebAssembly).
   refactor/core-hosting, refactor/core-session), `npm run test:quick` per commit, `npm run gate` and the screen suite
   (Chameleon parts; `--real-apps` when Tirth is away and says so) before each merge.
 - **The Windows thread** owns app/platforms/windows/**, the chromium extension side and docs/HOSTED-WINDOWS-CHROMIUM.md;
-  these steps own app/platforms/macos/**, app/shared/ffi/** and margin-core's data/, protocol, link, socket,
+  these steps own app/platforms/macos/**, app/platforms/macos/ffi/** and margin-core's data/, protocol, link, socket,
   websocket, relay, shortcuts, shell/, host/. Its "Needs from the core" list is input to steps 2-3.
 
 ## The FFI
@@ -232,6 +232,9 @@ its old ownership of spaces) import from there until step 4 removes them. The Wi
 In the same pass, its own commit: `app/shared/ffi` moves to `app/platforms/macos/ffi` (Tirth, 2026-11-22: only the Mac's
 Swift needs the C bridge; Windows uses the core directly): the workspace, build-core.sh, safari.sh, the app tests' and
 the WebKit host's run scripts, the module map, the docs.
+
+**Done (the FFI move):** margin-ffi is at `app/platforms/macos/ffi/` (its `margin-core` path dependency
+`../../../shared/core`); the crate, its C header and the static library are unchanged.
 
 ## Step 2: hosting decisions into the core
 
