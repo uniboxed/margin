@@ -681,7 +681,7 @@ the Mac adapter's policy. Part 8 isn't done.
 | 2 | 1a: the model (handles, fields into the core, computed properties, options). **Done 2026-11-22** for `Host`'s fields (step2/parts-9-1a); the engine's own state (`visible`, `shown`, the hold…) and `options`' configure wait for 1b, where the decisions that read them move; idle-cost and live-resize not measured yet | ~15 | | idle-cost, live-resize |
 | 3 | 5: app minimums. **Done 2026-11-22** (step2/parts-5-1b; `appKey` and the per-process version read stay Swift: the OS's; `shownMinimumWidth` with 1b, it reads the visible set) | ~70 | 1a | |
 | 4 | 1b: the layout's decisions. **Done 2026-11-22** (step2/parts-5-1b, two commits: the layout, the one shown, the hold and applyLayout's decisions; then `bringIn` and the window-mode frame. `visibleHost(at:)`, `livePage`, `belowSaid`, `liveCandidates` and `focus`'s card rule left for parts 3 and 6; a switch's time not measured on the real screen: no screen suite on that branch) | ~175 | 1a, 5 | a switch |
-| 5 | 3: cut panes and the slide | ~130 | 1b, 5 | |
+| 5 | 3: cut panes and the slide. **Done 2026-11-23** (step2/parts-3-2, two commits: the core's rules with CGRect's edge rules beside the Swift, then the Swift switched and its copies deleted; `fitted` stays a two-line Swift composition of the core's frame, `overPaneItLiesUnder`'s unread-list case reads the window server as before; the slide's 150 ms and one rect a frame unchanged, its sleep Swift's) | ~130 | 1b, 5 | |
 | 6 | 2: window order | ~55 | 3 | |
 | 7 | 4: the budgets and the full-screen ladder | ~45 | 1a | |
 | 8 | 7: strays, off screen, exits, close, recovery's predicates | ~170 | 4 | idle-cost |

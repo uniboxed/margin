@@ -7702,3 +7702,32 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   whose minimum that call reads, and the answer is the one the Swift gave. An unreadable version is read once a call
   (the Swift read it at each look within a call): the same answers, fewer reads.
 - Swift's `HostCore` gains the typed wrappers; the engine switches to them, and its copies go, in the next commit.
+
+## Core refactor step 2, part 3 (second commit): the engine asks the core where each window goes and of its cut panes (2026-11-23)
+
+- `frame`, `entryFitted`, `tileRect(for:)`, `isCut`, `cutOf`, `slideFor`, `lyingUnder`, `tucked`, `tuckedOrder`,
+  `overPaneItLiesUnder` with the poll's list, the `tucked` copy in `sayHostedWindows` (now `tucked(h, at: window)`) and
+  the drag's page area are the core's, asked at the same points; `paneFrame`, `paneMinimum`, `hidden`, `slidFrame`
+  and the Swift `livePage` are gone. `fitted` stays a two-line Swift composition (its placement as given, the core's
+  frame in it), so a placement handed in keeps its own rects exactly. `overPaneItLiesUnder` without a list still asks
+  the window server per pane (`windowBehind`), the core's panes in hand.
+- The slide: its decision reads the core (the side allowed, its alignment, tucked before and after: the same calls
+  at the same points), and each frame's rect and tile rect are the core's from the time it is (`slideStep`), sent by
+  the engine; the frame's pace is the same sleep of one `liveFrame`, the last frame when the slide's time is up, as
+  before. No new wait.
+- One Swift helper (`versioned`) makes every such call read a noted host's version through `minimum` and ask again
+  (the first commit's note). Nothing allocated on the hot path: a frame is one typed call (the Swift's was a dozen:
+  its fields, the placement, the minimum, `near`, `cut`, `within`).
+- Checked before the Swift went: the deleted Swift (copied verbatim, `self`'s members aside) against the engine's new
+  calls on two cores built alike from 100,000 generated worlds (1 to 5 hosts, every role, mode and phase, rects on a
+  grid of touching edges, zero and half sizes and 5% anywhere with negative sizes, slides on their pane, beside it and
+  elsewhere, tiles and tiles off, own minimums and their apps' kept ones per version with readable and unreadable
+  versions, a drag's page area, tolerances 0 to 3; every query for every host and side, given placements, frames
+  given, on-screen lists with missing windows, tucked orders of random subsets, 400,000 slide frames): 17,190,982
+  checks, no difference, the versions read at the same calls. Two placements given with a negative height answer
+  standardized (the same rect by CGRect's `==`; every reader of a frame standardizes, and no caller hands one in).
+  The harness was itself checked by breaking the old Swift on purpose (a slide's "shows more" at equality, no inset in
+  "lies under", the crossing rule without its cut check, tiles off ignored, the loop fallback reversed, an alignment's
+  tolerance at equality, the ease's exponent off by 1e-7, the slide kept on another pane, a version never read): each
+  caught. And with the core's "lies under" on `Rect`'s own edges instead of CGRect's: 4,406 differences, so the
+  vectors reach the zero-size and touching cases. The app's 2038 checks pass unchanged.

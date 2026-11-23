@@ -2312,10 +2312,10 @@ final class HostEngine {
                 q.page = liveRects[h.id] ?? h.rect ?? p.page
                 return frame(h, q)
             } ?? frame(h)
-            let tucked = isCut(h) && list.contains { o in o !== h && o.role != .card && (o.rect ?? placement.page).insetBy(dx: options.tolerance, dy: options.tolerance).intersects(window) }
+            let under = tucked(h, at: window)
             let placed = core.layout(h.id)
             return HostShownWindow(window: h.window, rect: rect, role: placed?.role ?? h.role, z: placed?.z ?? 0, focused: h.id == shown,
-                                   frame: window, tucked: tucked, cut: live == nil ? cutOf(h) : nil)
+                                   frame: window, tucked: under, cut: live == nil ? cutOf(h) : nil)
         } : []
         guard now != hostedWindowsSaid else { return }
         hostedWindowsSaid = now
@@ -4520,116 +4520,59 @@ final class HostEngine {
     // The tile rect that puts a full-screen window at the page area (nil: none, or the tiles aren't checked).
     private func tileRect(_ p: HostPlacement? = nil) -> CGRect? { tileHome.flatMap { HostLayout.tile(p ?? placement, home: $0) } }
 
-    // ---- a window's own minimum (docs/HOSTING-CORE.md "A window's minimum size") ----
+    // ---- a window's own minimum (docs/HOSTING-CORE.md "A window's minimum size") and cut panes (docs/PEEK-SPLIT.md §4b) ----
+    // The core's (host/model/panes.rs), each asked where it was decided here before, typed (`frame` per follower per
+    // frame of a drag): a host's window frame, its tile's rect, a cut pane's sides and slides, the panes it lies under.
 
-    // Where a full-screen host's window goes for a page area (`p`, else Margin's): the page area, or (its own minimum
-    // wider or taller) that minimum, its right edge and top the page area's (HostLayout.fit). A window-mode one: the
-    // page area (Accessibility keeps its own limits, centred).
-    // Its page area is its own rect when it's visible in another role (a card, a pane: docs/PEEK-SPLIT.md §1), and
-    // such a rect is never overflowed under the sidebar: one below its minimum isn't laid out (`belowMinimum`).
-    private func frame(_ host: Host, _ p: HostPlacement? = nil) -> CGRect {
-        let pl = p ?? placementFor(host)
-        if host.mode == .window { return pl.page }
-        // (A card: its own rect. A split's pane: cut, its window never below its own minimum, Arc's 220 its pane's least.)
-        if host.rect != nil {
-            if host.role == .card { return pl.page }
-            // (Where its arrow slid it while its pane is still the one it was slid in; else away from the other panes.)
-            let slid = host.slid.flatMap { HostLayout.near($0.pane, pl.page, within: options.tolerance) ? $0 : nil }
-            return paneFrame(host, pl.page, area: pl.area, endX: slid?.endX, endY: slid?.endY)
+    // A rule that read a host's minimum as its app's kept one with its process's version unread (`wanted`): each such
+    // version read now (`minimum`: once per process; unreadable, the kept one holds) and the rule asked again, so it's
+    // read in the same call as before and the answer is the one with it.
+    private func versioned<R>(_ ask: () -> (R, wanted: Bool)) -> R {
+        var (r, wanted) = ask()
+        var tried: [UInt32] = []
+        while wanted {
+            let new = core.versionsWanted().filter { !tried.contains($0) }
+            if new.isEmpty { break }
+            for h in new {
+                tried.append(h)
+                if let host = byHandle[h] { _ = minimum(host) }
+            }
+            (r, wanted) = ask()
         }
-        return HostLayout.fit(pl.page, min: host.minSize, in: pl.area)
+        return r
     }
-    // A pane's window frame at an alignment (HostLayout.cut, away from the other panes when nil), held within the display
-    // while it isn't a tile in Margin's Space: macOS keeps a tile past the display's edge, never a full-screen Space's
-    // reservation (its window entering, a member's, tiles off: HostLayout.plan).
-    private func paneFrame(_ host: Host, _ pane: CGRect, area: CGRect, endX: Bool?, endY: Bool?) -> CGRect {
-        let f = HostLayout.cut(pane, min: paneMinimum(host), in: area, page: livePage ?? placement.page, endX: endX, endY: endY)
-        return f != pane && (host.tile == nil || host.noTiles) ? HostLayout.within(f, area) : f
-    }
-    // Its placement as its own full-screen Space reserves it (its window entering, a member placed): its frame held within
-    // the display (`paneFrame`), whatever its tile's would be.
-    private func entryFitted(_ host: Host) -> HostPlacement {
-        var pl = fitted(host)
-        if isCut(host) { pl.page = HostLayout.within(pl.page, pl.area) }
-        return pl
-    }
+
+    // Where a host's window goes for a page area (`p`, else its own): window mode, a card: the page area; a split's pane:
+    // cut at its window's own minimum (Arc's 220 its pane's least), at its slide while its pane is still the one it was
+    // slid in, else away from the other panes, held within the display unless it's a tile (macOS keeps a tile past the
+    // display's edge, never a full-screen Space's reservation); else the page area, or (its own minimum wider or taller)
+    // that minimum, its right edge and top the page area's (HostLayout.fit). A card's or a pane's rect is never
+    // overflowed under the sidebar: one below its minimum isn't laid out (`belowMinimum`).
+    private func frame(_ host: Host, _ p: HostPlacement? = nil) -> CGRect { versioned { core.frame(host.handle, p) } }
+    // Its placement as its own full-screen Space reserves it (its window entering, a member placed): a cut pane's frame
+    // held within the display, whatever its tile's would be.
+    private func entryFitted(_ host: Host) -> HostPlacement { versioned { core.entryFitted(host.handle) } }
     // The page area of a drag of the sidebar's edge as it's followed (a split's panes are laid out away from each other
-    // within it: `frame`), nil: none under way.
-    private var livePage: CGRect?
-    // A pane's window's minimum as it's laid out now: its own as read (never its app's narrowest: a tile narrower than its
-    // window's minimum now makes it leave the tile), else its app's known one before any of its windows was read.
-    private func paneMinimum(_ host: Host) -> CGSize? { minimum(host) }
+    // within it: `frame`), nil: none under way. The core's.
+    private func setLivePage(_ page: CGRect?) { core.setLivePage(page) }
     // A cut pane's sides (docs/PEEK-SPLIT.md §4b): each one with part of its window hidden, which its arrow slides into its
     // pane (its other alignment along that axis: never held within the display). None that would put its window over
     // a cut pane whose own window lies over this pane (two panes each over the other's: no order shows both). Nil: not
     // cut.
-    func cutOf(_ host: Host) -> PaneCut? {
-        guard isCut(host), let r = host.rect else { return nil }
-        let f = frame(host), tol = options.tolerance
-        var out = PaneCut()
-        for side in PaneSide.allCases where hidden(side, pane: r, window: f) > tol {
-            let to = slidFrame(host, side)
-            // (Its window held within the display, not a tile: only a slide that shows more of it.)
-            guard hidden(side, pane: r, window: to) < hidden(side, pane: r, window: f) - tol else { continue }
-            let mine = r.insetBy(dx: tol, dy: tol)
-            let crossing = visibleHosts.contains { o in
-                o !== host && o.role != .card && (o.rect ?? placement.page).insetBy(dx: tol, dy: tol).intersects(to) && isCut(o) && frame(o).intersects(mine)
-            }
-            if !crossing { out.sides.insert(side) }
-        }
-        return out
-    }
-    // How far a pane's window passes it on `side` (points; 0 or less: not at all).
-    private func hidden(_ side: PaneSide, pane r: CGRect, window w: CGRect) -> CGFloat {
-        switch side { case .left: r.minX - w.minX; case .right: w.maxX - r.maxX; case .up: r.minY - w.minY; case .down: w.maxY - r.maxY }
-    }
+    func cutOf(_ host: Host) -> PaneCut? { versioned { core.cut(host.handle) } }
     // A cut pane's alignment that shows `side` (its window's start at the pane's for its left or top, its end at the
     // pane's for its right or bottom), the other axis as it is now.
-    private func slideFor(_ host: Host, _ side: PaneSide) -> PaneSlide? {
-        guard let r = host.rect else { return nil }
-        let f = frame(host), tol = options.tolerance
-        // (Along an axis now: true when its window passes its pane's start, false its end, nil neither.)
-        func now(_ start: CGFloat, _ end: CGFloat, _ ws: CGFloat, _ we: CGFloat) -> Bool? { ws < start - tol ? true : we > end + tol ? false : nil }
-        let x = now(r.minX, r.maxX, f.minX, f.maxX), y = now(r.minY, r.maxY, f.minY, f.maxY)
-        switch side {
-        case .left: return PaneSlide(pane: r, endX: false, endY: y)
-        case .right: return PaneSlide(pane: r, endX: true, endY: y)
-        case .up: return PaneSlide(pane: r, endX: x, endY: false)
-        case .down: return PaneSlide(pane: r, endX: x, endY: true)
-        }
-    }
-    // Its window's frame once slid to show `side`.
-    private func slidFrame(_ host: Host, _ side: PaneSide) -> CGRect {
-        guard let r = host.rect, let s = slideFor(host, side) else { return frame(host) }
-        return paneFrame(host, r, area: placementFor(host).area, endX: s.endX, endY: s.endY)
-    }
+    private func slideFor(_ host: Host, _ side: PaneSide) -> PaneSlide? { versioned { core.slideFor(host.handle, side) } }
     // The visible panes a cut pane's window lies under (it passes its own pane into theirs): it's kept behind them. None
     // for one that isn't cut, or whose rest is past the display's edge or under Margin's window.
-    private func lyingUnder(_ h: Host) -> [Host] {
-        guard isCut(h) else { return [] }
-        let f = frame(h), tol = options.tolerance
-        return visibleHosts.filter { o in o !== h && o.role != .card && (o.rect ?? placement.page).insetBy(dx: tol, dy: tol).intersects(f) }
-    }
-    private func tucked(_ h: Host) -> Bool { !lyingUnder(h).isEmpty }
+    private func lyingUnder(_ h: Host) -> [Host] { versioned { core.lyingUnder(h.handle) }.compactMap { byHandle[$0] } }
+    // (At `at`: its window's frame as a drag lays it out.)
+    private func tucked(_ h: Host, at: CGRect? = nil) -> Bool { versioned { core.tucked(h.handle, at: at) } }
     // Cut panes lying under others, back to front: each behind every one it lies under, else as given (the focused one,
     // given last, as far in front as that lets it). A loop (two over each other's, which `cutOf` never offers): as given.
-    private func tuckedOrder(_ list: [Host]) -> [Host] {
-        guard list.count > 1 else { return list }
-        var left = list, out: [Host] = []
-        while !left.isEmpty {
-            // (The first one no other left lies under: nothing left must be behind it.)
-            guard let i = left.firstIndex(where: { h in !left.contains { o in o !== h && lyingUnder(o).contains { $0 === h } } }) else { return out + left }
-            out.append(left.remove(at: i))
-        }
-        return out
-    }
-
+    private func tuckedOrder(_ list: [Host]) -> [Host] { versioned { core.tuckedOrder(list.map(\.handle)) }.compactMap { byHandle[$0] } }
     // Whether a visible pane's window is wider or taller than its pane (cut), and so lies partly under another.
-    func isCut(_ host: Host) -> Bool {
-        guard host.mode != .window, host.role != .card, let r = host.rect else { return false }
-        let f = frame(host)
-        return f.width > r.width + options.tolerance || f.height > r.height + options.tolerance
-    }
+    func isCut(_ host: Host) -> Bool { versioned { core.isCut(host.handle) } }
     private func fitted(_ host: Host, _ p: HostPlacement? = nil) -> HostPlacement {
         var pl = p ?? placementFor(host)
         pl.page = frame(host, pl)
@@ -4761,7 +4704,7 @@ final class HostEngine {
         if core.generation != was.0 || shown != was.1 || !hostedWindowsSaid.isEmpty || core.layoutCount > 1 { announceHosted() }
     }
     // Its tile's rect for a page area: never narrower than its window's minimum.
-    private func tileRect(for host: Host, _ p: HostPlacement? = nil) -> CGRect? { tileHome.flatMap { HostLayout.tile(fitted(host, p), home: $0) } }
+    private func tileRect(for host: Host, _ p: HostPlacement? = nil) -> CGRect? { tileHome.flatMap { home in versioned { core.tileRect(host.handle, p, home: home) } } }
 
     // Its window's tile in a full-screen Space of its own (by its window; the only one there).
     private func ownTile(_ host: Host, in space: UInt64) -> UInt64? {
@@ -5168,7 +5111,7 @@ final class HostEngine {
         liveHeld = false
         livePending = nil
         liveRects = [:]
-        livePage = nil
+        setLivePage(nil)
         if tilesOK { _ = sys.setLiveResizing(marginSpace, false) }
         Diagnostics.note("host: live resize: in \(ms(since: liveStats.since)) ms: \(liveStats.line) (wait \(Int(options.liveWait * 1000)) ms)")
         lastLive = liveStats
@@ -5190,7 +5133,7 @@ final class HostEngine {
         if let last = liveStats.lastAsk { liveStats.gaps.append(liveLast - last) }
         liveStats.lastAsk = liveLast
         livePending = p
-        livePage = p.page
+        setLivePage(p.page)
         if !rects.isEmpty, rects != liveRects {
             liveRects = rects
             // (Several visible: Margin's window told every one's rect in this frame at once, its holes and the pointer's
@@ -5637,13 +5580,11 @@ final class HostEngine {
                 let t0 = self.sys.now()
                 var steps = 0
                 while true {
-                    let k = min(1, (self.sys.now() - t0) / self.options.slideTime)
-                    let e = 1 - pow(1 - k, 3) // (ease out)
-                    var p = self.placement
-                    p.page = CGRect(x: from.minX + (target.minX - from.minX) * e, y: from.minY + (target.minY - from.minY) * e, width: target.width, height: target.height)
-                    if let rect = HostLayout.tile(p, home: home) { self.sendTileRect(h, tile, rect) }
+                    // (This frame's rect from the time it is, the core's: eased out, one a frame; its tile's sent here.)
+                    let step = self.core.slideStep(from: from, to: target, elapsed: self.sys.now() - t0, time: self.options.slideTime, home: home)
+                    if let rect = step.tile { self.sendTileRect(h, tile, rect) }
                     steps += 1
-                    if k >= 1 { break }
+                    if step.last { break }
                     await self.sys.sleep(self.options.liveFrame)
                 }
                 Diagnostics.note("host: \(id): slid to show its \(side.rawValue) side, \(self.r(from)) → \(self.r(target)) in \(self.ms(since: t0)) ms (\(steps) rects)\(self.tucked(h) ? ", under the pane beside it" : "")")
@@ -6185,14 +6126,8 @@ final class HostEngine {
     // Whether a visible cut pane's window is over a pane it lies under (the window server's order; `list`: an on-screen
     // list already read, the poll's; nil: read now). False: it isn't, it lies under none, or unread.
     private func overPaneItLiesUnder(_ h: Host, list: [Int]? = nil) -> Bool {
-        let under = lyingUnder(h)
-        guard !under.isEmpty else { return false }
-        let behind: (Int, Int) -> Bool? = { a, b in
-            guard let list else { return self.windowBehind(a, b) }
-            guard let ia = list.firstIndex(of: a), let ib = list.firstIndex(of: b) else { return nil }
-            return ia > ib
-        }
-        return under.contains { behind($0.window, h.window) == true }
+        if let list { return versioned { core.overUnder(h.handle, list) } }
+        return lyingUnder(h).contains { windowBehind($0.window, h.window) == true }
     }
     // A visible cut pane of `pid`'s app whose window is over a pane it lies under now, nil: none.
     private func cutWindowOver(_ pid: pid_t) -> Host? { visibleHosts.first { $0.pid == pid && overPaneItLiesUnder($0) } }
