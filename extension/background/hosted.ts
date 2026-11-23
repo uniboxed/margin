@@ -1,6 +1,7 @@
-// Margin.app hosting Safari in its own page area (docs/MARGIN-APP.md, behind the app's `MarginHosted`): the app owns
-// the spaces and their items (its library) and keeps one Safari window per profile in use as the page area's; this
-// copy only drives the tabs of that window. Two requests (link.ts APP_REQUESTS, docs/PROTOCOL.md "Hosted windows"):
+// Margin.app hosting a browser's windows in its own page area (docs/MARGIN-APP.md; Chrome and Edge as Safari:
+// docs/HOSTED-WINDOWS-CHROMIUM.md §3.2): the app owns the spaces and their items (its library) and keeps one window
+// per profile in use (and role: a card's, a split's panes) as the page area's; this copy only drives the tabs of
+// those windows. The same code in every engine: it uses only the tabs API both have. Two requests (link.ts APP_REQUESTS, docs/PROTOCOL.md "Hosted windows"):
 //
 // - `hostShow { windowId, itemId, url }`: the item's page shown in that window. The tab tagged with the item before
 //   (still open, in that window) is used again; else a tab of that window at the same address no other item has;
@@ -60,6 +61,10 @@ export const CARD_ITEM = 'peek-card';
 export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = async (d) => d, push: (windowId: number, msg: Record<string, unknown>) => unknown = () => false) {
   const byItem = new Map<string, number>();
   const cards = new Set<number>(); // the card windows (one per copy: its profile's)
+  // The windows made for the app (its `newWindow`), before any item is shown in them: with `shownIn` and `cards`, the
+  // windows the app hosts (`isHosted`), whose state is the app's (Chromium's own "Margin full screen" leaves them
+  // alone: background.ts).
+  const made = new Set<number>();
   // Tabs of items that are a pin's or a favorite's in Margin.app's library (`hostShow`'s `pinned`): their pages'
   // links to other sites open in the preview card (auto-preview). The copy's own state doesn't have the library's pins.
   const pinnedTabs = new Set<number>();
@@ -129,6 +134,10 @@ export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = asy
       for (const [item, id] of byItem) if (id === tabId) return item;
       return null;
     },
+    /** A window made for the app (its `newWindow`): hosted from now on, until it closes. */
+    madeForApp(windowId: number) { if (Number.isInteger(windowId)) made.add(windowId); },
+    /** Whether the app hosts `windowId`: made for it, or an item (or the card) shown in it. */
+    isHosted: (windowId: number) => made.has(windowId) || shownIn.has(windowId) || cards.has(windowId),
     /** Whether `windowId` is the card's window (the preview card's, Margin.app's `hostShow` with `role: 'card'`). */
     isCard: (windowId: number) => cards.has(windowId),
     /** Whether a tab shows a pin's or favorite's item in Margin.app (auto-preview). */
@@ -313,6 +322,6 @@ export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = asy
       return true;
     },
     /** A window closed: not the card's any more. */
-    windowRemoved(windowId: number) { cards.delete(windowId); shownIn.delete(windowId); },
+    windowRemoved(windowId: number) { cards.delete(windowId); shownIn.delete(windowId); made.delete(windowId); },
   };
 }

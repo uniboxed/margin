@@ -83,6 +83,14 @@ impl RegKey {
         e.is_ok().then_some(Self(key))
     }
 
+    /// Opened to read only (a key under HKEY_LOCAL_MACHINE, which a normal user can't open to write).
+    pub fn open_read(root: HKEY, subkey: &str) -> Option<Self> {
+        let mut key = HKEY::default();
+        // SAFETY: as in `create`.
+        let e = unsafe { RegOpenKeyExW(root, &HSTRING::from(subkey), None, KEY_QUERY_VALUE, &mut key) };
+        e.is_ok().then_some(Self(key))
+    }
+
     /// Sets a REG_SZ value (`None`: the key's default value).
     pub fn set_string(&self, name: Option<&str>, value: &str) -> Result<(), String> {
         let wide: Vec<u16> = value.encode_utf16().chain(std::iter::once(0)).collect();

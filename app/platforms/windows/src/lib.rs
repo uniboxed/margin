@@ -10,12 +10,20 @@
 // OS-neutral.
 pub mod args;
 pub mod bridge;
+// Chrome and Edge for the hosted design: a copy's window found by its mark, the browser started, its profiles.
+pub mod chromium;
+// Margin's own window: the holes cut from it for the windows it hosts, and its frame's hit test.
+pub mod hole;
 pub mod host;
 // Hosting on Windows: margin-core's reconcile driver with Windows's own calls (compile- and unit-checked only).
 pub mod hosting;
+// `--host-check`: the hosted mechanism on a real PC, before the session drives it.
+pub mod hostcheck;
 pub mod instance;
 pub mod keys;
 pub mod log;
+// What Margin did to other apps' windows, on disk, given back after a crash.
+pub mod marker;
 pub mod paths;
 pub mod pointer;
 pub mod queue;
@@ -26,6 +34,8 @@ pub mod tcp;
 // Windows.
 #[cfg(windows)]
 pub mod app;
+#[cfg(windows)]
+pub mod appwindow;
 #[cfg(windows)]
 pub mod browsers;
 #[cfg(windows)]

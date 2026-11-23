@@ -167,6 +167,33 @@ fn top_level() -> Vec<HWND> {
     out
 }
 
+/// The top-level windows a copy's new window may be (chromium.rs `bind`): every Chromium frame window (its class), with
+/// its process's browser main process (`root`), its title (the mark is in it), whether it's owned or a tool window,
+/// visible, and its visible frame in pixels.
+pub fn candidates(root: impl Fn(u32) -> u32) -> Vec<crate::chromium::Candidate> {
+    top_level()
+        .into_iter()
+        .filter(|h| class_name(*h) == crate::chromium::WINDOW_CLASS)
+        .filter_map(|h| {
+            let f = facts(h);
+            let frame = frame_px(h)?;
+            let mut buf = [0u16; 512];
+            // SAFETY: `buf` is a live buffer of the length passed; another process's top-level window's title is
+            // read by the system for us (WM_GETTEXT marshalled), cut to the buffer.
+            let n = unsafe { windows::Win32::UI::WindowsAndMessaging::GetWindowTextW(h, &mut buf) };
+            Some(crate::chromium::Candidate {
+                hwnd: hwnd_value(h) as i64,
+                root: root(f.pid),
+                class: crate::chromium::WINDOW_CLASS.into(),
+                title: String::from_utf16_lossy(&buf[..n.max(0) as usize]),
+                owned: f.owned || f.ex_style & WS_EX_TOOLWINDOW.0 != 0,
+                visible: f.visible && !f.cloaked,
+                bounds: Rect::new(frame.left as f64, frame.top as f64, frame.width() as f64, frame.height() as f64),
+            })
+        })
+        .collect()
+}
+
 /// The OS's windows, for the shell and the binder.
 #[derive(Default)]
 pub struct WinWindowSource {

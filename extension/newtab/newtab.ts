@@ -48,12 +48,15 @@ async function send<K extends MessageType>(type: K, payload: Request<K> = ({} as
 // app's palette opens over this page (background/handlers.ts newTabPage).
 // `?again`: a page from a copy of Margin that's gone, loaded again at this
 // copy's address (background/cut-off.ts oldOwnPageAddress), not a new tab.
+// `?mark=<mark>`: a window Margin.app asked for (background/handlers.ts newWindow `mark`): its title carries the mark,
+// which Windows finds the window by, until the app shows an item there; never a new tab to hand off.
 const nav = (performance.getEntriesByType?.('navigation')?.[0] as PerformanceNavigationTiming | undefined);
-const pageTitle = () => { document.title = location.hash === '#settings' ? 'Settings' : 'Margin'; };
+const mark = /^[A-Za-z0-9]{8,40}$/.exec(new URLSearchParams(location.search).get('mark') ?? '')?.[0] ?? null;
+const pageTitle = () => { document.title = mark ? `Margin ${mark}` : location.hash === '#settings' ? 'Settings' : 'Margin'; };
 pageTitle();
 addEventListener('hashchange', pageTitle);
 const isLauncher = location.hash === '#launcher' || location.hash === '#settings';
-const fresh = history.length <= 1 && (!nav || nav.type === 'navigate') && !isLauncher && !/[?&]again\b/.test(location.search);
+const fresh = history.length <= 1 && (!nav || nav.type === 'navigate') && !isLauncher && !/[?&]again\b/.test(location.search) && !mark;
 if (fresh) void send('newTabPage');
 
 const self = await Promise.resolve(api.tabs.getCurrent()).catch(() => null);

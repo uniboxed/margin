@@ -38,3 +38,6 @@ pub mod shell;
 // The hosting core (HostEngine.swift's decisions: layout, window kinds, the reconciler, the loop guard, the causes,
 // the routes), sans IO: docs/ARCHITECTURE-PLAN.md.
 pub mod host;
+
+// The windows a browser's copy makes and drives for the app (hosted.ts's requests), any browser, any OS.
+pub mod hosted_browser;
