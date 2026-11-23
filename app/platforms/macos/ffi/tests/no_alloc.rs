@@ -290,6 +290,9 @@ fn the_budgets_allocate_nothing_after_a_cut_panes_first_repair() {
             margin_model_full_screen_failed(core, h);
             margin_model_adopted(core, h, true);
             margin_model_moved_to_window(core, h);
+            // (Each tiles' sizing asks whether a hold is in force.)
+            std::hint::black_box(margin_guard_held_until(core, 100.05));
+            std::hint::black_box(margin_guard_held_until(core, 300.0));
         }
     });
     assert_eq!(n, 0, "the budgets allocated {n} times");

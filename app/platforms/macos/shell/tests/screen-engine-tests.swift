@@ -189,6 +189,47 @@ private func screenLeftFullScreenTests() {
               && l.all.contains { $0.contains("left full screen by itself (its own toolbar window") } && !l.all.contains { $0.contains("kept as it was") },
               "\(String(describing: w.bounds(window: edit))) \(l.all.filter { $0.contains("TextEdit") }.suffix(8))")
     }
+
+    // ---- a re-entry held by the loop guard's per-second hold, in the tiles' sizing after a page change: asked again
+    // once, when the hold ends (the core's time), never again and again at once (a spin while the hold lasts) ----
+    do {
+        let (w, e, _) = world()
+        _ = hostRun { await e.open(app: notes, in: placement, marginWindow: FakeHostWorld.marginWindow, marginSpace: FakeHostWorld.marginSpace) }
+        _ = hostRun { await e.open(app: textEdit, in: placement, marginWindow: FakeHostWorld.marginWindow, marginSpace: FakeHostWorld.marginSpace) }
+        let edit = window(w, "com.apple.TextEdit")
+        w.clock += 5
+        polls(w, e, 4)
+        let set = e.hosts[textEdit.id]?.tile != nil && e.hosts[notes.id]?.tile != nil && e.hosts[notes.id]?.phase == .parked && e.shown == textEdit.id
+        // The page area moves: the one shown placed, then the parked one's tile sized (`sizeTilesSoon`). While that one is
+        // sized, the one shown leaves full screen by itself, its page taken for stale (its tile next in the sizing), and
+        // the loop guard's second fills: eleven reactions beside the parked one's sizing, so the re-entry is the
+        // thirteenth (held, the hold starting then).
+        let moved = HostPlacement(page: CGRect(x: 248, y: 41, width: 1256, height: 933), area: FakeHostWorld.display)
+        var filled: Double?
+        var heldAt: [Double] = [], backAt: [Double] = [], lines: [String] = []
+        let echo = Diagnostics.echo
+        Diagnostics.echo = { line in
+            echo?(line)
+            lines.append(line)
+            if filled == nil, line.contains("\(notes.id): parked"), line.contains("size its tile") {
+                filled = w.clock
+                leaves(w, edit)
+                e.hosts[textEdit.id]?.placedPage = nil
+                for i in 0..<11 { _ = e.core.react(now: w.clock, host: "test:\(i)", key: "k") }
+            }
+            if line.contains("\(textEdit.id): back into full screen held") { heldAt.append(w.clock) }
+            if line.contains("\(textEdit.id): its window left full screen by itself") { backAt.append(w.clock) }
+        }
+        _ = hostRun { await e.pageRectChanged(moved) }
+        _ = hostRun { await w.sleep(3); return true }
+        Diagnostics.echo = echo
+        let end = heldAt.first.map { $0 + 1 } ?? -1 // (the hold starts at its refusal: a second from it)
+        check("screen: set up: two tiled hosts, the parked one's tile sized after a page change, the one shown out of full screen then, the guard's second full",
+              set && filled != nil, "\(String(describing: filled)) \(lines.suffix(6))")
+        check("screen: a re-entry held by the loop guard's hold: asked once, again only when the hold ends (no spin), then back in full screen",
+              heldAt.count == 1 && backAt.count == 1 && backAt[0] + 1e-9 >= end && backAt[0] < end + 0.05 && w.wins[edit]?.fullScreen == true,
+              "held \(heldAt.count) at \(heldAt.prefix(3)), back at \(backAt), the hold's end \(end); \(lines.suffix(10))")
+    }
 }
 
 // ---- Margin's own window back at its width later than `tileWait` after a tile came in (the real Mac under load,

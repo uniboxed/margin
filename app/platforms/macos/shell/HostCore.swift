@@ -664,6 +664,13 @@ nonisolated final class HostCore: @unchecked Sendable {
         defer { lock.unlock() }
         margin_model_moved_to_window(core, h)
     }
+    // When the loop guard's per-second hold in force now ends (nil: none): a step found held asks again then.
+    func guardHeldUntil(now: Double) -> Double? {
+        lock.lock()
+        defer { lock.unlock() }
+        let t = margin_guard_held_until(core, now)
+        return t.isNaN ? nil : t
+    }
 }
 
 // As the core numbers a cut pane's sides (host/model/panes.rs `Side`).

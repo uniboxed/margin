@@ -107,6 +107,7 @@ void margin_budget_cut_order_right(MarginHostCore *core, uint32_t handle);
 bool margin_model_full_screen_failed(MarginHostCore *core, uint32_t handle); // true: tried again at its next show
 void margin_model_adopted(MarginHostCore *core, uint32_t handle, bool can_full_screen);
 void margin_model_moved_to_window(MarginHostCore *core, uint32_t handle);
+double margin_guard_held_until(MarginHostCore *core, double now); // the loop guard's hold in force ends then; NaN: none
 // The poll and its looks (host/model/watch.rs), per host: a place is 0 unread, 1 in no Space, 2 in Margin's Space
 // alone, 3 elsewhere. poll_read: read 0 closed by its app, 1 unread, 2 read -> 0 gone, 1 skip, 2 read. poll_gone: runs
 // -1 not read -> 0 read it and ask again, 1 nothing, 2 reopen at its next show, 3 the one shown's, 4 gone as any.

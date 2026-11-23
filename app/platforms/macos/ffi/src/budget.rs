@@ -99,3 +99,13 @@ pub unsafe extern "C" fn margin_model_moved_to_window(core: *mut HostCore, h: Ha
         c.model.moved_to_window(h);
     }
 }
+
+/// When the loop guard's per-second hold in force at `now` ends (NaN: none): a step found held is asked again then.
+///
+/// # Safety
+/// `core` null or a live core (one thread at a time).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_guard_held_until(core: *mut HostCore, now: f64) -> f64 {
+    // SAFETY: the contract above.
+    unsafe { core.as_mut() }.and_then(|c| c.driver.guard.held_until(now)).unwrap_or(f64::NAN)
+}

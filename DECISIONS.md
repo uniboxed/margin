@@ -7899,3 +7899,23 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   take-back without its launch time, overdue half a second late). Rust tests pin each predicate and the exits.
   Nothing allocated on the reads asked often (no_alloc.rs). The app's 2038 checks pass unchanged.
 
+## Core refactor step 2: a held step of the tiles' sizing asked again when the loop guard's hold ends, not at once (2026-11-23)
+
+- The spin: `sizeTilesSoon` queues one host's step; a step that didn't act (its host gone, its re-entry into full
+  screen done, or its sizing not admitted) asks `sizeTilesSoon` again at once. With the loop guard's per-second hold
+  in force, a step's re-entry (counted toward the hold since part 4's second commit) or its sizing (`admitted`, as
+  before) is held, the same host's step is queued again at once and held again: a busy loop through the serial queue
+  for up to the hold's second (the stand-in's run: 9 held re-entries at one instant, back in full screen 2 s after
+  the hold's end). Pre-existing for a held sizing; part 4 added the held re-entry to it.
+- Now the core answers when the hold in force ends (guard.rs `held_until`, typed `margin_guard_held_until`: a read,
+  nothing allocated), and `sizeTilesSoon` takes no step while it's in force: one retry waits for that moment on the
+  engine's clock (`sys.sleep` to the core's deadline, as the engine's other waits; one at a time), then sizes as
+  before. Every step it skips would have been held (each is guarded: the re-entry budgeted, the sizing admitted with
+  the guard), so only the timing changes: no repeated attempts during the hold, the retry at its end. The
+  reconciler's own path (`reconcile`, one step per poll) doesn't spin and is unchanged: a held correction there is
+  asked again at the next poll.
+- Pinned by an engine test with the stand-in (T/screen-engine-tests.swift): a page change sizes a parked tile, the
+  one shown leaves full screen meanwhile and the guard's second fills, its re-entry is held once and made at the
+  hold's end, never again in between (failing first: 9 attempts without the fix); and a Rust test of the hold's end
+  (answered until it lapses, a read only). The app's 2040 checks pass.
+

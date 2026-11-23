@@ -117,6 +117,12 @@ impl LoopGuard {
         None
     }
 
+    /// When the per-second hold now in force ends (None: nothing held at `now`): a caller that found its step held
+    /// waits for this moment instead of asking again at once. Reads only.
+    pub fn held_until(&self, now: f64) -> Option<f64> {
+        self.held_until.filter(|until| now < *until)
+    }
+
     /// The person acted (on `host`, or on everything: a drag, a theme, a display change): nothing they caused is a
     /// loop, so the counts start again. A stopped host stays stopped until its route changes (`cleared`).
     pub fn person(&mut self, host: Option<&str>) {
@@ -220,6 +226,25 @@ mod tests {
         for i in 0..100 {
             assert_eq!(g.budgeted(i as f64 * 0.1), None, "{i}");
         }
+        assert_eq!(g.held_until(10.0), None);
+    }
+
+    #[test]
+    fn the_holds_end_is_answered_until_it_lapses() {
+        let mut g = LoopGuard::new();
+        assert_eq!(g.held_until(0.0), None, "nothing held");
+        for i in 0..PER_SECOND {
+            g.react(0.01 * i as f64, &format!("h{i}"), "k");
+        }
+        assert_eq!(g.held_until(0.5), None, "twelve in, none refused yet: no hold in force");
+        assert_eq!(g.budgeted(0.5), Some(1.5));
+        assert_eq!(g.held_until(0.5), Some(1.5), "the moment to ask again");
+        assert_eq!(g.held_until(1.4999), Some(1.5));
+        assert_eq!(g.held_until(1.5), None, "lapsed at its end");
+        // Only a read: asking it changes nothing; the next action at the end goes.
+        assert_eq!(g.held_until(0.9), Some(1.5));
+        assert_eq!(g.budgeted(1.5), None);
+        assert_eq!(g.held_until(1.5), None);
     }
 
     #[test]

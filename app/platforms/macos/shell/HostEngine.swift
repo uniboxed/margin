@@ -553,8 +553,9 @@ final class HostEngine {
     // Told when an app whose row was closed while it was asking something didn't quit (its sheet or alert holds it):
     // it's kept in Margin (parked by the next show, or still shown), never put on the Desktop; the sidebar says why.
     var onAsking: ((HostID) -> Void)?
-    // Its own hosting core: its loop guard, its causes, its routes (never shared with another engine).
-    private let core: HostCore
+    // Its own hosting core: its loop guard, its causes, its routes (never shared with another engine). Read by the
+    // tests to drive the loop guard (its hold), never written from outside.
+    let core: HostCore
 
     // Live resize: hosted windows' tiles in Margin's Space (docs/HOSTING-CORE.md "Live resize: tiles in Margin's Space").
     // Checked once per Margin Space (`tilesReady`); off for the run once a tile step didn't take (`tilesOff`, said once):
@@ -1485,6 +1486,10 @@ final class HostEngine {
     // them; it sizes its own tile first). Nothing while a drag is under way.
     private func sizeTilesSoon() {
         guard !quitting, !liveOn, tilesOK, !reconcileQueued else { return }
+        // (The loop guard holding every reaction this second: no step now, since each would be held (its re-entry
+        // budgeted, its sizing admitted) and ask for the next at once, again and again while the hold lasts. Asked once
+        // more when the hold ends, the core's time.)
+        if let until = core.guardHeldUntil(now: sys.now()) { return sizeTilesWhenHeldEnds(until) }
         for id in hosts.keys.sorted(by: { (rank($0), $0.raw) < (rank($1), $1.raw) }) {
             guard let host = hosts[id], host.tile != nil, host.phase != .preparing else { continue }
             guard decide(host) == .sizeTile else { continue }
@@ -1498,6 +1503,20 @@ final class HostEngine {
                 await self.apply(.sizeTile, host, now, tried: tried)
             } }
             return
+        }
+    }
+
+    // One retry of the tiles' sizing when the loop guard's hold ends (`until`, the core's), waited for on the engine's
+    // clock as its other deadlines are; one at a time (a hold asked of again meanwhile keeps the one waiting).
+    private var sizeRetryWaiting = false
+    private func sizeTilesWhenHeldEnds(_ until: Double) {
+        guard !sizeRetryWaiting else { return }
+        sizeRetryWaiting = true
+        Task { [weak self] in
+            guard let self else { return }
+            await self.sys.sleep(max(0, until - self.sys.now()))
+            self.sizeRetryWaiting = false
+            self.sizeTilesSoon()
         }
     }
 
