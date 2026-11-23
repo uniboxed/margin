@@ -1057,7 +1057,11 @@ T/screen-card-tests.swift. Ported: the rect, `webAddress`.
 Rust has no Foundation; a small RFC 3986 check of the scheme and the characters `URL(string:)` refuses, with vectors
 run against the Swift first (spaces, Unicode, `http:` alone, 2,048 grapheme clusters vs scalars). hosted_browser's
 `valid_shown_url` (hosted_browser.rs:31) is another rule (it allows `about:blank`): not merged. ~330 Swift lines
-deleted.
+deleted. *Corrected in commit 1:* since macOS 14 `URL(string:)` percent-encodes invalid characters, so only the
+authority refuses an http(s) text (a port that isn't digits, something after an IP literal, an IP literal's address,
+a host outside RFC 3986's characters); a host with letters outside ASCII goes through ICU's UTS #46 IDNA, which the
+core can't port: session/card.rs answers "the host's IDNA decides" and the OS answers that one question (the Mac:
+`URL(string: "http://<host>/")`, SessionRules.swift). The cap counts scalars (step 1's rule).
 
 #### Part 5: an item shown in another Margin window
 
@@ -1156,6 +1160,11 @@ never drops the item (HS:2256-2261).
 **Windows:** §4.2's `layout` op; W/hole.rs's `page_layout` and `PageLayout` (W/hole.rs:162-177) go for the core's
 (one parser of the op).
 
+*Commit 1 did:* the parse is protocol.rs `PageLayout::from_geometry` with the missing fields (`outside`, `hosted`,
+`fills`, `split`, `panes`; `rounded` leaves them out, so the old overlay's outbox compares as before), read by the
+typed `margin_page_layout_read` (the report's JSON in, numbers and the texts' places out, the texts in the caller's
+buffer): 14 µs a report on the Swift side, was 10. Commit 6 keeps it in the window's Page.
+
 **Risks.** Two FFI hops a frame where there were none: measured against step 2's `live-resize` numbers (followed
 median and p95 no worse). ~70 Swift lines deleted.
 
@@ -1234,9 +1243,12 @@ rows), 1909-1946 (`hostedShellTests`), T/margin-window-tests.swift (8-362); E/e2
 the `app-window` hello built by the core (its `host`, `pageHosted`, `pageState`, `pageMinWidth`, `apps`, `paneCut`,
 `themes`, `marginPage`).
 
-**Risks.** `searchUrl` encodes everything but `CharacterSet.alphanumerics` and `-_.!~*'()` (HS:2604-2606):
-`alphanumerics` is Unicode's letters, marks and digits, so "café" keeps its "é" unencoded; Rust ports that set (the
-general categories L*, M*, N*) with vectors against the Swift (open question 8). ~200 Swift lines deleted.
+**Risks.** `searchUrl` encodes everything but `CharacterSet.alphanumerics` and `-_.!~*'()` (HS:2604-2606).
+*Corrected in commit 0:* Foundation's `addingPercentEncoding` ignores whatever of the allowed set isn't ASCII, so
+"café" was always `caf%C3%A9` (encodeURIComponent's set): no Unicode table needed, and open question 8's change was
+the behaviour already. The learned template's checks (`contains("%s")`, `hasPrefix("https://")`) are Swift's
+characters and its replacing NSString's composed sequences: the core keeps both with three tables of the scalars that
+join an ASCII character (session/unicode.rs, made from this Mac's Swift). ~200 Swift lines deleted.
 
 #### Part 11: page states, holes and the ground
 
@@ -1352,8 +1364,8 @@ until step 4 (open question 6).
 
 | # | Commit | Swift deleted | Rust in (with tests) | Measured after |
 | --- | --- | --- | --- | --- |
-| 0 | Baseline (`idle-cost`, `idle-profile`, `live-resize`, `page-frames`, a switch's time) and tests added against the Swift: the four pin/favourite paths, `noRoom`'s edges, `lastItem`'s tie, `webAddress`, `searchUrl`, UP's caps, HostID's logged form, holes with zero-size and touching rects, pass-through with holes | 0 | 0 | the baseline |
-| 1 | The pure rules into the core, Swift switched, its copies deleted: `noRoom`/`paneLeast`/`isNoRoom`, `defaultCardRect`, `webAddress`, `searchUrl`, `resolve`, `loaderApp`, `dragLine`, `lastItem`, UP's sanitiser, `PageLayout`'s parse | ~180 | ~600 | |
+| 0 | Baseline (`idle-cost`, `idle-profile`, `live-resize`, `page-frames`, a switch's time) and tests added against the Swift: the four pin/favourite paths, `noRoom`'s edges, `lastItem`'s tie, `webAddress`, `searchUrl`, UP's caps, HostID's logged form, holes with zero-size and touching rects, pass-through with holes. **Tests done 2026-11-23** (c0b09ce4); the baseline is the screen suite's | 0 | 0 | the baseline |
+| 1 | The pure rules into the core, Swift switched, its copies deleted: `noRoom`/`paneLeast`/`isNoRoom`, `defaultCardRect`, `webAddress`, `searchUrl`, `resolve`, `loaderApp`, `dragLine`, `lastItem`, UP's sanitiser, `PageLayout`'s parse. **Done 2026-11-23** (COMMIT1) | ~180 | ~600 | |
 | 2 | passthrough.rs with several holes; the pointer typed; PT's rules deleted. **Done 2026-11-23** (step3/passthrough: one commit; MWC's pointer decisions, the one-host rule and the tap's read are the core's; PointerWant's message reading, the hole lists' choice (part 11) and the mechanism stay Swift; `pane-clicks` not measured: no screen suite on that branch) | ~95 (+~220 of facade and the page object's wrapper) | ~1,000 (half tests) | `pane-clicks` |
 | 3 | The Page (part 11, and the page area's placement of part 7): MWC's decisions deleted, its mechanism over the Page | ~450 | ~1,100 | `page-frames`, `idle-cost` |
 | 4 | The session's skeleton: executor, ports, commands, the facade, the re-entrance test adapter; `navigate` (HS:2378-2385) the first flow moved, as the proof; `SafariWaker` split out in Swift (no behaviour moved). **Done 2026-11-23** (step3/skeleton, three commits: SafariWaker.swift, a move only; navigate's checks against the Swift; core/session/ with exec.rs, state.rs, host_id.rs, navigate.rs, ffi session.rs and the facade, `shown`, `open`, `safariWindows` and `done` the core's, Swift's `enqueue` in the core's queue. Inputs run nothing in their call, the one finding; nothing per frame) | ~10 | ~700 | |
@@ -1405,7 +1417,8 @@ The three changes come after the pure moves, each its own commit with tests pinn
    now (an empty Personal space and a warning). *Default: kept.*
 7. **Chrome and Edge** stay "isn't hosted yet" in the core's session though it's browser-keyed. *Default: yes, until
    §11 step 7.*
-8. **`searchUrl`'s Unicode letters** left unencoded (`CharacterSet.alphanumerics`). *Default: ported exactly.*
+8. **`searchUrl`'s Unicode letters** left unencoded (`CharacterSet.alphanumerics`). *Default: ported exactly.* (Wrong
+   premise, found in commit 0: Foundation already encoded every non-ASCII character; Tirth's answer is the behaviour.)
 9. **The session's log lines built in Rust** (their words unchanged), as step 2 kept them Swift's. *Default: Rust,
    since every line is a decision's.*
 

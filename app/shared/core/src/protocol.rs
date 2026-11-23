@@ -44,10 +44,11 @@ fn count(s: &str) -> usize {
     s.chars().count()
 }
 
-/// `PageLayout`: where the theme put the page in one browser window (ui/host.ts Geometry): `<m-page>`'s content box
-/// as insets from the window's edges, in points (CSS pixels at zoom 1 in the overlay, which is exactly over the
-/// window).
-#[derive(Clone, Debug, PartialEq)]
+/// `PageLayout`: where the theme put the page in one browser window or in Margin's own window (ui/host.ts Geometry,
+/// the Mac's PageLayout.swift): `<m-page>`'s content box as insets from the window's edges, in points (CSS pixels at
+/// zoom 1 in the overlay, which is exactly over the window), its corners, and in Margin's own window what it was
+/// measured for, the colours around its corners and a split's panes.
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct PageLayout {
     pub left: f64,
     pub top: f64,
@@ -60,11 +61,52 @@ pub struct PageLayout {
     pub width: f64,
     pub height: f64,
     pub mode: String,
+    /// Measured with no page area of its own (Margin's own window hosting beside it: the sidebar alone, `pageOutside`).
+    pub outside: bool,
+    /// Measured while hosting in its page area (`pageHosted`): the sidebar as the person keeps it, not the launcher's.
+    /// A hosted window is placed only by such a layout.
+    pub hosted: bool,
+    /// What the theme draws around the page area's rounded corners (Margin's own window only: host-app.ts
+    /// cornerFill): each corner's colour outside the card (CSS colours, top left clockwise; "": not said), four or none.
+    pub fills: Vec<String>,
+    /// A split shown (docs/PEEK-SPLIT.md §4): its id, and each pane's box as Margin's renderer laid it out in `<m-page>`
+    /// (`<m-pane>`, in the page's coordinates, top left), in the split's order; none: no split.
+    pub split: Option<String>,
+    pub panes: Vec<PagePane>,
+}
+
+/// One pane of a split as the page laid it out (`PageLayout::panes`): its item and its box in the page, top left.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PagePane {
+    pub item: String,
+    pub rect: Rect,
+}
+
+impl PagePane {
+    /// An item's id as a pane names it: 1 to 256 ASCII letters, digits and `-_:.`.
+    pub fn id_ok(s: &str) -> bool {
+        !s.is_empty() && s.len() <= 256 && s.bytes().all(|b| b.is_ascii_alphanumeric() || b"-_:.".contains(&b))
+    }
+
+    /// `{ id, rect: [x, y, width, height] }`, a finite box with a size; `None` for anything else.
+    fn from_json(v: &Value) -> Option<PagePane> {
+        let o = v.as_object()?;
+        let item = json::string(o.get("id")).filter(|s| Self::id_ok(s))?;
+        let r = json::array(o.get("rect")).filter(|r| r.len() == 4)?;
+        let n: Vec<f64> = r.iter().filter_map(|v| json::num(Some(v))).collect();
+        if n.len() != 4 || !(n[2] > 0.0 && n[3] > 0.0) {
+            return None;
+        }
+        Some(PagePane { item: item.to_owned(), rect: Rect::new(n[0], n[1], n[2], n[3]) })
+    }
 }
 
 impl PageLayout {
-    /// `init?(geometry:)`: from the page's report (`{ insets, radius, radii, container, mode }`); `None` if it isn't
-    /// one (insets and a positive size needed).
+    /// `init?(geometry:)`: from the page's report (`{ insets, radius, radii, container, mode, pageOutside, pageHosted,
+    /// fills, split, panes }`); `None` if it isn't one (insets and a positive size needed). What's past the box is
+    /// read as the Swift read it: a bool as `as? Bool` (a number 1 is one), at most four fills each a string of at
+    /// most 80 Unicode scalars (else ""; the Swift counted characters), a split only with 2 to 4 panes, each a finite
+    /// box with a size and an item of its own.
     pub fn from_geometry(g: &Object) -> Option<Self> {
         let insets = json::object(g.get("insets"))?;
         let left = json::num(insets.get("left"))?;
@@ -81,18 +123,46 @@ impl PageLayout {
         let radii: Vec<f64> = json::array(g.get("radii"))
             .map(|a| a.iter().filter_map(|v| json::num(Some(v))).collect())
             .unwrap_or_default();
-        Some(Self {
-            left,
-            top,
-            right,
-            bottom,
-            radius: radius.max(0.0),
-            // (As the Swift: four radii or the radius as given, before it's kept from going below 0.)
-            radii: if radii.len() == 4 { radii } else { vec![radius; 4] },
-            width,
-            height,
-            mode: json::string(g.get("mode")).unwrap_or("fullscreen").to_owned(),
-        })
+        Some(
+            Self {
+                left,
+                top,
+                right,
+                bottom,
+                radius: radius.max(0.0),
+                // (As the Swift: four radii or the radius as given, before it's kept from going below 0.)
+                radii: if radii.len() == 4 { radii } else { vec![radius; 4] },
+                width,
+                height,
+                mode: json::string(g.get("mode")).unwrap_or("fullscreen").to_owned(),
+                outside: json::flag(g.get("pageOutside")) == Some(true),
+                hosted: json::flag(g.get("pageHosted")) == Some(true),
+                fills: Self::fills(g),
+                split: None,
+                panes: Vec::new(),
+            }
+            .with_split(g),
+        )
+    }
+
+    fn fills(g: &Object) -> Vec<String> {
+        let Some(said) = json::array(g.get("fills")) else { return Vec::new() };
+        if said.len() < 4 {
+            return Vec::new();
+        }
+        said.iter().take(4).map(|v| json::string(Some(v)).filter(|s| count(s) <= 80).unwrap_or("").to_owned()).collect()
+    }
+
+    fn with_split(mut self, g: &Object) -> Self {
+        let Some(id) = json::string(g.get("split")).filter(|s| PagePane::id_ok(s)) else { return self };
+        let Some(list) = json::array(g.get("panes")).filter(|l| (2..=4).contains(&l.len())) else { return self };
+        let parsed: Vec<PagePane> = list.iter().filter_map(PagePane::from_json).collect();
+        let unique = parsed.iter().enumerate().all(|(i, p)| parsed[..i].iter().all(|q| q.item != p.item));
+        if parsed.len() == list.len() && unique {
+            self.split = Some(id.to_owned());
+            self.panes = parsed;
+        }
+        self
     }
 
     /// `inWindow(overlay:window:)`: measured in an overlay at `overlay` over a window at `window` (both top left),
@@ -112,10 +182,12 @@ impl PageLayout {
             width: window.width,
             height: window.height,
             mode: self.mode.clone(),
+            ..self.clone()
         }
     }
 
-    /// `rounded`: to half a point, what the page box can show (and what's compared before sending again).
+    /// `rounded`: to half a point, what the page box can show (and what's compared before sending again): the box and
+    /// its corners only (what Margin's own window reads past them isn't sent).
     pub fn rounded(&self) -> PageLayout {
         let half = |v: f64| (v * 2.0).round() / 2.0;
         PageLayout {
@@ -128,6 +200,7 @@ impl PageLayout {
             width: half(self.width),
             height: half(self.height),
             mode: self.mode.clone(),
+            ..PageLayout::default()
         }
     }
 
@@ -1376,6 +1449,7 @@ mod tests {
             width: 1280.0,
             height: 800.0,
             mode: "fullscreen".into(),
+            ..PageLayout::default()
         };
         let s = sent(&AppMessage::SetLayout { epoch: "e".into(), window_id: 7, seq: 2, layout: layout.clone() });
         assert_eq!(s.get("k"), Some(&json!("setLayout")));
@@ -1440,6 +1514,7 @@ mod tests {
             width: 1.0,
             height: 1.0,
             mode: "fullscreen".into(),
+            ..PageLayout::default()
         };
         assert_eq!(AppMessage::SetLayout { epoch: "e".into(), window_id: 1, seq: 1, layout }.encode(AT), None);
         assert_eq!(AppMessage::Tick.encode(f64::INFINITY), None);
@@ -1480,6 +1555,73 @@ mod tests {
         assert_eq!(bare.mode, "fullscreen");
     }
 
+    // ---- T/session-rules-tests.swift pageLayoutReportTests: what Margin's own window reads past the box ----
+
+    #[test]
+    fn layout_reports_past_the_box() {
+        let base = json!({"insets":{"left":260,"top":8,"right":8,"bottom":8},"container":{"width":1512,"height":949}});
+        let layout = |extra: Value| {
+            let mut g = obj(base.clone());
+            g.extend(obj(extra));
+            PageLayout::from_geometry(&g)
+        };
+        let Some(bare) = layout(json!({})) else { panic!("a report") };
+        assert_eq!(
+            (bare.outside, bare.hosted, bare.fills.len(), bare.split.as_deref(), bare.panes.len()),
+            (false, false, 0, None, 0)
+        );
+        let flags = layout(json!({"pageOutside":1,"pageHosted":true})).map(|l| (l.outside, l.hosted));
+        assert_eq!(flags, Some((true, true)), "a number 1 is a bool, as Swift reads one");
+        assert_eq!(
+            layout(json!({"pageOutside":"true","pageHosted":2})).map(|l| (l.outside, l.hosted)),
+            Some((false, false))
+        );
+        assert_eq!(layout(json!({"radius":4,"radii":[1,"2",3,4,5]})).map(|l| l.radii), Some(vec![1.0, 3.0, 4.0, 5.0]));
+        assert_eq!(layout(json!({"mode":3})).map(|l| l.mode), Some("fullscreen".to_owned()));
+        let fills = layout(json!({"fills":["#111",2,"c".repeat(81),"#444","#555"]})).map(|l| l.fills);
+        assert_eq!(fills, Some(vec!["#111".to_owned(), String::new(), String::new(), "#444".to_owned()]));
+        assert_eq!(layout(json!({"fills":["#111","#222"]})).map(|l| l.fills.len()), Some(0));
+        let pane = |id: Value, rect: Value| json!({"id": id, "rect": rect});
+        let two = layout(
+            json!({"split":"sp-1","panes":[pane(json!("a"), json!([260,8,600,900])), pane(json!("b:c.d_e-f"), json!([870,8,600,900]))]}),
+        );
+        let Some(two) = two else { panic!("a split") };
+        assert_eq!(two.split.as_deref(), Some("sp-1"));
+        assert_eq!(
+            two.panes,
+            vec![
+                PagePane { item: "a".into(), rect: Rect::new(260.0, 8.0, 600.0, 900.0) },
+                PagePane { item: "b:c.d_e-f".into(), rect: Rect::new(870.0, 8.0, 600.0, 900.0) }
+            ]
+        );
+        let refused = [
+            json!({"split":"sp-1","panes":[pane(json!("a"), json!([0,0,1,1]))]}),
+            json!({"split":"sp-1","panes":(0..5).map(|i| pane(json!(format!("p{i}")), json!([0,0,1,1]))).collect::<Vec<_>>()}),
+            json!({"split":"sp-1","panes":[pane(json!("a"), json!([0,0,1,1])), pane(json!("a"), json!([2,0,1,1]))]}),
+            json!({"split":"sp-1","panes":[pane(json!("a"), json!([0,0,1,1])), pane(json!("b"), json!([2,0,0,1]))]}),
+            json!({"split":"sp-1","panes":[pane(json!("a"), json!([0,0,1,1])), pane(json!("b"), json!([2,0,1]))]}),
+            json!({"split":"sp-1","panes":[pane(json!("a"), json!([0,0,1,1])), pane(json!("b"), json!([2,0,1,true]))]}),
+            json!({"split":"sp-1","panes":[pane(json!("a"), json!([0,0,1,1])), pane(json!("b c"), json!([2,0,1,1]))]}),
+            json!({"split":"sp-1","panes":[pane(json!("a"), json!([0,0,1,1])), pane(json!("é"), json!([2,0,1,1]))]}),
+            json!({"split":"sp-1","panes":[pane(json!("a"), json!([0,0,1,1])), pane(json!(""), json!([2,0,1,1]))]}),
+            json!({"split":"sp-1","panes":[pane(json!("a"), json!([0,0,1,1])), pane(json!("x".repeat(257)), json!([2,0,1,1]))]}),
+            json!({"split":"sp 1","panes":[pane(json!("a"), json!([0,0,1,1])), pane(json!("b"), json!([2,0,1,1]))]}),
+            json!({"split":7,"panes":[pane(json!("a"), json!([0,0,1,1])), pane(json!("b"), json!([2,0,1,1]))]}),
+            json!({"split":"sp-1","panes":"a"}),
+        ];
+        for r in refused {
+            let l = layout(r.clone());
+            assert!(l.is_some_and(|l| l.split.is_none() && l.panes.is_empty()), "{r}: no split, the layout kept");
+        }
+        let wide = layout(
+            json!({"split":"s","panes":[pane(json!("x".repeat(256)), json!([0,0,1,1])), pane(json!("b"), json!([2,0,1,1]))]}),
+        );
+        assert_eq!(wide.map(|l| l.panes.len()), Some(2), "a 256-character id is one");
+        // (What's past the box isn't what's sent, nor what's compared before sending again.)
+        let Some(full) = layout(json!({"pageHosted":true,"fills":["a","b","c","d"]})) else { panic!() };
+        assert_eq!(full.rounded(), bare.rounded());
+    }
+
     #[test]
     fn layout_in_window() {
         let l = PageLayout {
@@ -1492,6 +1634,7 @@ mod tests {
             width: 800.0,
             height: 600.0,
             mode: "fullscreen".into(),
+            ..PageLayout::default()
         };
         let window = Rect::new(0.0, 0.0, 1000.0, 700.0);
         assert_eq!(l.in_window(window, window), l);

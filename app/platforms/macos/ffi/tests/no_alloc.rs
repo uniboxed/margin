@@ -596,3 +596,25 @@ fn the_pointer_allocates_nothing() {
     // SAFETY: the live page, freed once.
     unsafe { margin_page_free(page) };
 }
+
+#[test]
+fn a_web_address_and_the_card_rect_allocate_nothing() {
+    // (The session's typed rules, step 3 commit 1: an address checked per peek and Quick Tab, the card's default rect.)
+    let addresses = [
+        "https://docs.example.org/guide?q=1#top",
+        "http://[::1]:80/",
+        "http://a:xx/",
+        "about:blank",
+        "http://é.com/x",
+        "http://u:p@@a/%zz",
+    ];
+    let n = allocations(|| {
+        let (mut at, mut len) = (0usize, 0usize);
+        for s in addresses {
+            // SAFETY: the text's bytes, two writable lengths.
+            std::hint::black_box(unsafe { margin_web_address(s.as_ptr(), s.len(), &mut at, &mut len) });
+        }
+        std::hint::black_box(margin_card_default_rect(MarginRect { x: 260.0, y: 41.0, width: 1244.0, height: 933.0 }));
+    });
+    assert_eq!(n, 0, "a web address and the card rect allocated {n} times");
+}

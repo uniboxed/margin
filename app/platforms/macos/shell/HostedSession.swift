@@ -54,6 +54,7 @@
 // One Margin window hosts at a time (the engine has one page area); the others draw the library as kept items.
 
 import AppKit
+import MarginCore
 
 // What the session asks of the host engine (HostEngine.swift; a test's stand-in).
 protocol HostedEngine: AnyObject {
@@ -1151,33 +1152,27 @@ final class HostedSession: LibraryDelegate {
         if w.id == hostingWindow { w.setPaneCuts(paneCutsJSON(shownList)) }
     }
 
-    // A pane's least size, Arc's (its split view's `minimumPaneWidth`, 220 pt, also the least height of stacked panes:
-    // read from Arc 1.174.0's binary, 2026-11-21). A pane's window may be wider: it's shown cut (docs/PEEK-SPLIT.md §4b).
-    nonisolated static let paneLeast = CGSize(width: 220, height: 220)
+    // A pane's least size, Arc's 220×220 (the core's session/layout.rs `PANE_LEAST`). A pane's window may be wider:
+    // it's shown cut (docs/PEEK-SPLIT.md §4b).
+    nonisolated static let paneLeast: CGSize = {
+        let n = (SessionRules.constants["paneLeast"] as? [NSNumber])?.map(\.doubleValue) ?? []
+        return n.count == 2 ? CGSize(width: n[0], height: n[1]) : .zero
+    }()
 
-    // Why a pane didn't come, as `leaveSplit` and the toast say it: no room for it (below its window's minimum, past the
-    // page area, or its page area can't be reached from the display's: HostEngine `enterFullScreen`).
-    static let noRoomReason = "below a pane's least (220 pt) or past the page area"
-    static func isNoRoom(_ why: String) -> Bool { why.contains("below a pane's least") || why.contains("below its window's minimum") || why.contains("no room for it") }
+    // Why a pane didn't come, as `leaveSplit` and the toast say it, and whether a failure's words mean no room for it
+    // (the core's `NO_ROOM_REASON`, `is_no_room`).
+    static let noRoomReason = SessionRules.constants["noRoomReason"] as? String ?? ""
+    static func isNoRoom(_ why: String) -> Bool { KeysCore.bytes(why) { margin_session_is_no_room($0, $1) } }
 
-    // The panes that must leave a split laid out at these rects (nil: every pane fits): one whose rect isn't within the
-    // page area (1 pt either way) or is under its window's known minimum makes it not fit. Then the panes coming in
-    // (not in `had`, main never), else the ones that don't fit (main never), else the last pane: the split as it was
-    // before stays. Cards aren't panes (their own rect).
+    // The panes that must leave a split laid out at these rects (nil: every pane fits): the core's `no_room`.
     nonisolated static func noRoom(_ panes: [(item: String, role: HostRole, rect: CGRect?, least: CGSize?)], page: CGRect, had: Set<String>) -> [String]? {
-        func fits(_ r: CGRect, _ m: CGSize?) -> Bool {
-            let inside = r.minX >= page.minX - 1 && r.maxX <= page.maxX + 1 && r.minY >= page.minY - 1 && r.maxY <= page.maxY + 1
-            return inside && (m.map { r.width + 1 >= $0.width && r.height + 1 >= $0.height } ?? true)
+        let rooms = panes.map { p in
+            MarginPaneRoom(role: p.role == .main ? 0 : p.role == .pane ? 1 : 2, has_rect: p.rect != nil, rect: (p.rect ?? CGRect.zero).marginRect,
+                           has_least: p.least != nil, least: MarginSize(width: Double(p.least?.width ?? 0), height: Double(p.least?.height ?? 0)), had: had.contains(p.item))
         }
-        let laid = panes.enumerated().filter { $0.element.role != .card }
-        let cramped = laid.filter { p in p.element.rect.map { !fits($0, p.element.least) } ?? false }
-        guard !cramped.isEmpty else { return nil }
-        let others = laid.filter { $0.offset > 0 }
-        let incoming = others.filter { !had.contains($0.element.item) }.map(\.element.item)
-        if !incoming.isEmpty { return incoming }
-        let cut = cramped.filter { $0.offset > 0 }.map(\.element.item)
-        if !cut.isEmpty { return cut }
-        return others.last.map { [$0.element.item] }
+        var leave = [Bool](repeating: false, count: panes.count)
+        guard margin_session_no_room(rooms, rooms.count, page.marginRect, &leave) else { return nil }
+        return zip(panes, leave).filter(\.1).map(\.0.item)
     }
 
     // Panes of a split shown in `w` that didn't come (their window refused its rect, below its app's minimum; or it
@@ -1758,31 +1753,20 @@ final class HostedSession: LibraryDelegate {
     static let resumeKey = "MarginResumeLast"
     static func resumesLast(setting: Any?) -> Bool { setting as? Bool != false }
 
-    // The item a Margin window showed last: the one selected in its space (the newest used if several), if it can be
-    // hosted; its target and the name its loader says.
+    // The item a Margin window showed last, of its space's items (the core's session/start.rs `last_item`: the one
+    // selected, the newest used if several, if it can be hosted); its target and the name its loader says (an app's
+    // own name first, when it has one).
     func lastItem(ofWindow id: Int) -> (item: String, target: ItemTarget, name: String)? {
         let space = library.space(ofWindow: id) ?? library.spaces().first?.id
-        let last = library.items(space: space).filter { $0.value["selected"] as? Bool == true }
-            .max { (num($0.value["lastUsed"]) ?? 0, $1.id) < (num($1.value["lastUsed"]) ?? 0, $0.id) }
-        guard let last, let target = library.target(ofItem: last.id) else { return nil }
-        switch target {
-        case .app(let bundle, let n):
-            return (last.id, target, appName(bundle) ?? (n.isEmpty ? bundle : n))
-        case .web(let browser, _):
-            guard browser == "safari" else { return nil }
-            return (last.id, target, (last.value["title"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "Safari")
-        case .margin:
-            return (last.id, target, (last.value["title"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "Margin")
-        }
+        let items: [Any] = library.items(space: space).map { ["id": $0.id, "value": $0.value, "target": library.target(ofItem: $0.id)?.json as Any? ?? NSNull()] }
+        let out = SessionRules.call(["rule": "lastItem", "items": items])
+        guard let item = out["item"] as? String, let name = out["name"] as? String, let target = library.target(ofItem: item) else { return nil }
+        return (item, target, (out["app"] as? String).flatMap { appName($0) } ?? name)
     }
 
-    // The app whose icon the loader shows for an item: an app's own, Safari for a web item, none for Margin's own page.
+    // The app whose icon the loader shows for an item (the core's `loader_app`).
     static func loaderApp(_ target: ItemTarget) -> String? {
-        switch target {
-        case .app(let bundle, _): return bundle
-        case .web: return safariIdentifier
-        case .margin: return nil
-        }
+        SessionRules.call(["rule": "loaderApp", "target": target.json])["app"] as? String
     }
 
     func resumeLast(_ w: HostedWindow) {
@@ -2351,18 +2335,7 @@ final class HostedSession: LibraryDelegate {
     // A drag's line in the log: what's dragged (a split's divider, the sidebar's edge) and how many hosted windows follow
     // it live, the others (plain members) placed again when it's let go.
     static func dragLine(divider: Bool, window: Int, following: Bool, _ counts: (follow: Int, visible: Int)) -> String {
-        let what = divider ? "a split's divider" : "the sidebar's edge"
-        let all = counts.visible
-        func windows(_ n: Int) -> String { "\(n) hosted window\(n == 1 ? "" : "s")" }
-        let how: String
-        if !following || counts.follow == 0 {
-            how = "the page area's changes held until it's let go (\(windows(all)) placed again then)"
-        } else if counts.follow >= all {
-            how = all == 1 ? "the hosted window follows it live" : "\(windows(all)) follow it live"
-        } else {
-            how = "\(counts.follow) of \(windows(all)) follow it live, the other\(all - counts.follow == 1 ? "" : "s") placed again when it's let go"
-        }
-        return "\(what) dragged in Margin's window \(window): \(how)"
+        SessionRules.call(["rule": "dragLine", "divider": divider, "window": window, "following": following, "follow": counts.follow, "visible": counts.visible])["line"] as? String ?? ""
     }
 
     // ---- the palette ----
@@ -2492,12 +2465,11 @@ final class HostedSession: LibraryDelegate {
 
     // ---- helpers ----
 
-    // A web item's Safari profile: its own, else the default profile's copy (or, when only others have linked, the first).
+    // A web item's Safari profile: its own, else the default profile's copy (or, when only others have linked, the
+    // first): the core's session/choice.rs `resolve`.
     func resolve(_ profile: String?) -> String {
         if let profile { return profile }
-        let linked = links.safariProfiles()
-        if linked.isEmpty || linked.contains(Self.defaultSafariProfile) { return Self.defaultSafariProfile }
-        return linked.sorted()[0]
+        return SessionRules.call(["rule": "resolve", "profile": NSNull(), "linked": links.safariProfiles()])["profile"] as? String ?? Self.defaultSafariProfile
     }
 
     func wait(_ seconds: Double, _ done: () -> Bool) async -> Bool {
@@ -2621,14 +2593,10 @@ final class LibraryWindowSource: MarginWindowSource {
     }
 
     // The search's address: the engine Safari searches with as the copy learned it (shared/search.ts safariEngine),
-    // else Google's, as Safari's default.
+    // else Google's, as Safari's default (the core's session/ui.rs `search_url`).
     static func searchUrl(_ query: String, settings: JSONObject?) -> String {
         let learned = (settings?["safariSearch"] as? JSONObject)?["template"] as? String
-        let template = learned.flatMap { $0.contains("%s") && $0.hasPrefix("https://") ? $0 : nil }
-            ?? "https://www.google.com/search?client=safari&rls=en&q=%s&ie=UTF-8&oe=UTF-8"
-        var allowed = CharacterSet.alphanumerics
-        allowed.insert(charactersIn: "-_.!~*'()")
-        return template.replacingOccurrences(of: "%s", with: query.addingPercentEncoding(withAllowedCharacters: allowed) ?? query)
+        return SessionRules.call(["rule": "searchUrl", "query": query, "template": learned ?? NSNull()])["url"] as? String ?? ""
     }
 }
 

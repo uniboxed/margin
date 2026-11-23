@@ -465,4 +465,46 @@ uint8_t *margin_session_done(const MarginSession *session, size_t *out_len);
 bool margin_session_idle(const MarginSession *session);
 uint64_t margin_session_rev(const MarginSession *session, uint32_t field);
 
+// The session's pure rules (margin-core's session: ffi session_rules.rs), no object: the rare ones by one JSON call
+// (`{ rule, … }`: constants, resolve, loaderApp, lastItem, searchUrl, dragLine, pushEmpty), a split's room, the card's
+// rect and a web address typed (a web address: 0 no, 1 yes, 2 yes if the OS's IDNA makes a valid name of its host,
+// those bytes), a push for the page (the UI's numbers asked through `tab`, negative: none), the page's layout report
+// (typed, its texts in the caller's buffer). Answers freed with margin_buffer_free.
+typedef struct MarginPaneRoom {
+    uint8_t role; // 0 main, 1 a pane, 2 a card
+    bool has_rect;
+    MarginRect rect;
+    bool has_least;
+    MarginSize least;
+    bool had;
+} MarginPaneRoom;
+typedef int64_t (*MarginPushTab)(void *ctx, const uint8_t *entry, size_t len);
+typedef struct MarginText {
+    size_t at; // its bytes in the caller's buffer
+    size_t len;
+} MarginText;
+typedef struct MarginPageLayout {
+    double left, top, right, bottom, radius;
+    double radii[4];
+    double width, height;
+    bool outside, hosted;
+    MarginText mode;
+    uint8_t fill_count; // 0 or 4
+    MarginText fills[4];
+    bool has_split;
+    MarginText split;
+    uint8_t pane_count; // 0, or 2 to 4
+    MarginText pane_items[4];
+    MarginRect pane_rects[4];
+} MarginPageLayout;
+
+uint8_t *margin_session_rule(const uint8_t *request, size_t len, size_t *out_len);
+bool margin_session_is_no_room(const uint8_t *why, size_t len);
+bool margin_session_no_room(const MarginPaneRoom *panes, size_t n, MarginRect page, bool *leave);
+MarginRect margin_card_default_rect(MarginRect page);
+uint8_t margin_web_address(const uint8_t *s, size_t len, size_t *host_at, size_t *host_len);
+uint8_t *margin_push_page(const uint8_t *msg, size_t len, void *ctx, MarginPushTab tab, size_t *out_len);
+// The layout report read: the bytes its texts take (more than cap: nothing written), -1: not one.
+ptrdiff_t margin_page_layout_read(const uint8_t *geometry, size_t len, MarginPageLayout *out, uint8_t *text, size_t cap);
+
 #endif

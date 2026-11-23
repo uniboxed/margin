@@ -8142,3 +8142,55 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   open question 8 are corrected with commit 1's.
 - The baseline numbers the commit also asks for (`idle-cost`, `idle-profile`, `live-resize`, `page-frames`, a
   switch) are measured on the screen, not here.
+
+## Core refactor step 3, commit 1: the session's pure rules in the core, the Swift's copies deleted (2026-11-23)
+
+- margin-core gains `session` (app/shared/core/src/session/, plain functions, no state yet): a split's room and a
+  drag's line (layout.rs: `PANE_LEAST`, `NO_ROOM_REASON`, `is_no_room`, `no_room`, `drag_line`), the card's default
+  rect and a web address (card.rs), a web item's profile (choice.rs `resolve`), the item a window showed last and its
+  loader's app (start.rs), a target as the Swift writes it (target.rs), a search's address (ui.rs), the copies'
+  pushes for the page (push.rs: UIPush's table, `page`, `empty`, the image rule), and the page's layout report with
+  the fields it lacked (protocol.rs `PageLayout`: `outside`, `hosted`, `fills`, `split`, `panes`; `rounded` leaves them
+  out, so the old overlay's outbox compares as before). The Swift keeps its names (HostedSession.noRoom, isNoRoom,
+  paneLeast, noRoomReason, lastItem, loaderApp, dragLine, resolve, LibraryWindowSource.searchUrl,
+  HostedSession.defaultCardRect, webAddress, UIPush, PageLayout) over margin-ffi's session_rules.rs: the rare ones one
+  JSON call (`margin_session_rule`), a split's room, the card's rect, a web address and the layout report typed, a push
+  with the UI's numbers asked through a C callback in the entries' order (as the Swift's `compactMap` asked them,
+  twice a list's cap read). App Swift: 191 lines out, 142 in (SessionRules.swift's 44 among them).
+- Exact, as Foundation and Swift answered: `webAddress` is `URL(string:)` as macOS 14 and later parse (RFC 3986 with
+  invalid characters encoded: only a port that isn't digits, something after an IP literal, an IP literal's address
+  or a host outside RFC 3986's characters refuse an http(s) text; swift-foundation's masks copied); a host with letters
+  outside ASCII goes through ICU's UTS #46 IDNA, which the core can't port, so the core answers "its IDNA decides" and
+  the Mac asks Foundation that one question (`URL(string: "http://<host>/")`). The search template's checks are
+  Swift's characters (`contains`, `hasPrefix`) and its replacing NSString's composed sequences, as is `isNoRoom`'s
+  `contains`: kept with three tables of the scalars that join an ASCII character (session/unicode.rs, generated from
+  this Mac's Swift over every scalar). `addingPercentEncoding` ignores the non-ASCII part of
+  `CharacterSet.alphanumerics`, so the query's encoding is encodeURIComponent's set (no Unicode table). Image data URLs
+  as NSRegularExpression's `$` matches (before one final line terminator too). `lastItem`'s `selected` as Swift's
+  `as? Bool` (a number 1 is one), its tie the smallest id.
+- Accepted differences, at edges only: caps count Unicode scalars, as step 1's (a web address's 2,048, a push's
+  texts, a fill's 80): a text with combining marks or joined emoji can be cut shorter or refused; ids and profiles are
+  ordered by their UTF-8 (Swift's String order differs only for non-ASCII that isn't NFC; both are ASCII); a layout
+  report with a NaN (WebKit's message can carry one, JSON can't) is read as the page's JSON would say it (null): a NaN
+  radius now gives radii of 0 (the Swift gave four NaNs), a NaN among the radii the radius four times (the Swift kept
+  the NaN). The workspace's serde_json reads floats exactly now (`float_roundtrip`): its default was 1 ulp off on some
+  (1e-9 read as 9.999999999999999e-10, found by the comparison), which every JSON the core reads gains.
+- Checked before the Swift went: the deleted Swift (copied verbatim) against the new Swift over the core in a scratch
+  harness, 13.3 million vectors over eight runs (740,065 or 2,220,065 each, five seeds): split rooms at the slack's and the
+  least's edges with negative and zero sizes, card rects at the rounding's halves and -0, 150,000 addresses from a
+  grammar (schemes, user info, IP literals, every ASCII and IDN hosts, ports, paths with marks), the 2,048 edge,
+  queries and templates with marks, joiners and prepended marks, profiles, last items with JSON's every kind of
+  `selected` and `lastUsed`, drag lines, pushes with images at the limit and every line end, flags, times and lists past
+  their caps (each tab ask compared), layout reports with every kind of number, fills, ids and panes: no difference
+  but the accepted ones and one more, the core's the right one: JSONSerialization reads a long decimal as an
+  NSDecimalNumber whose `doubleValue` can be 2 ulp off (0.011969999916118468 read as …464), where the core reads the
+  text exactly (a WebKit message's numbers are doubles: none there). The harness caught each of 32 deliberate breaks of
+  the core (every rule's edges: the slack, the least, the tie, the rounding, the masks, the port, the IDNA question,
+  the marks' tables, the caps, the flags, the times, the image's line ends, the splits, the floats' parsing); two
+  more were found to be no break at all (a least height the 7% always covers, a "[" before a scheme's colon, which
+  http(s) can't have), and two were caught only once the generator made clean splits. The app's checks: 2145 pass (the
+  commit-0 pins of the three scalar caps changed to the new edge).
+- Cost (release, `--ignored` session_cost): a web address 53 ns (was 490 ns in the Swift), the card rect 1.4 ns, a
+  split's room 240 ns, a layout report read 3.6 µs in the core and 14 µs a report on the Swift side (was 10: its JSON
+  made, the answer typed; commit 6 keeps it in the Page); a push 31 µs (was 5.5: a few a second while media plays).
+  The typed web address and card rect allocate nothing (no_alloc.rs).

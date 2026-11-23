@@ -25,6 +25,7 @@
 // chosen opens as the space's new tab at once (decided here, DECISIONS.md).
 
 import AppKit
+import MarginCore
 
 // One profile's card.
 struct PeekCard: Equatable {
@@ -51,15 +52,9 @@ extension HostedSession {
     static func cardItem(_ profile: String) -> String { cardPrefix + profile }
     static func isCardItem(_ item: String?) -> Bool { item?.hasPrefix(cardPrefix) == true }
 
-    // Margin's default card rect in a page area (a theme with no `<m-preview-page>`): centred, 8% each side and 7% above
-    // and below at most (at least 420 wide, 320 tall for its page), its page under a 52 pt bar (at least Safari's full-screen toolbar window, which rests just above the card window, never seen through the dim).
-    nonisolated static func defaultCardRect(page: CGRect) -> CGRect {
-        let bar: CGFloat = 52
-        let w = max(min(page.width, 420), page.width - 2 * min(page.width * 0.08, max(0, (page.width - 420) / 2)))
-        let h = max(min(page.height, 320 + bar), page.height - 2 * min(page.height * 0.07, max(0, (page.height - 320 - bar) / 2)))
-        let x = page.minX + (page.width - w) / 2, y = page.minY + (page.height - h) / 2
-        return CGRect(x: x.rounded(), y: (y + bar).rounded(), width: w.rounded(), height: max(0, h - bar).rounded())
-    }
+    // Margin's default card rect in a page area (a theme with no `<m-preview-page>`): the core's session/card.rs
+    // `default_card_rect` (centred, 8% each side and 7% above and below at most, its page under a 52 pt bar).
+    nonisolated static func defaultCardRect(page: CGRect) -> CGRect { CGRect(margin_card_default_rect(page.marginRect)) }
 
     // An item that's a pin's or a favorite's tab (the library's `pinnedBy`, `favoriteId`): its page's links to other
     // sites open in a card (auto-preview, settings.autoPeekPins). Told to the copy with each hostShow (`pinned`): the copy's
@@ -431,8 +426,7 @@ extension HostedSession {
         if let json = jsonString(body) { w.push(json) }
     }
 
-    nonisolated static func webAddress(_ s: String) -> Bool {
-        guard s.count <= 2048, let u = URL(string: s), let scheme = u.scheme?.lowercased() else { return false }
-        return scheme == "http" || scheme == "https"
-    }
+    // An http or https address Foundation's URL(string:) makes a URL of, at most 2,048 scalars (the core's
+    // session/card.rs `web_address`; a host outside ASCII by the OS's IDNA: SessionRules.webAddress).
+    nonisolated static func webAddress(_ s: String) -> Bool { SessionRules.webAddress(s) }
 }

@@ -197,6 +197,7 @@ mod tests {
             width: 1000.0,
             height: 800.0,
             mode: "fullscreen".into(),
+            ..PageLayout::default()
         }
     }
 

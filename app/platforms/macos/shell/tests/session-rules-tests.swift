@@ -280,9 +280,10 @@ private func webAddressTests() {
     let head = "https://a/"
     let at = head + String(repeating: "x", count: 2048 - head.count)
     check("web address: 2,048 characters at most", HostedSession.webAddress(at) && !HostedSession.webAddress(at + "x"))
-    // (Characters: a combining mark makes no character of its own.)
+    // (Counted in Unicode scalars since the core's rule, step 1's for every cap: 2,048 characters but 2,049 scalars was
+    // one when the Swift counted characters, isn't now.)
     let marks = head + String(repeating: "x", count: 2047 - head.count) + "e\u{301}"
-    check("web address: counted in characters (2,048 of them, 2,049 Unicode scalars)", marks.count == 2048 && marks.unicodeScalars.count == 2049 && HostedSession.webAddress(marks))
+    check("web address: counted in Unicode scalars (2,048 characters, 2,049 scalars: not one)", marks.count == 2048 && marks.unicodeScalars.count == 2049 && !HostedSession.webAddress(marks))
 }
 
 // ---- a search's address (LibraryWindowSource.searchUrl) ----
@@ -318,7 +319,7 @@ private func uiPushCapTests() {
     check("ui push caps: a toast's text at 140 characters, nothing else passed", (toast?["text"] as? String)?.count == 140 && toast?["extra"] == nil && toast?["type"] as? String == "toast", "\(String(describing: toast))")
     let marks = String(repeating: "e\u{301}", count: 141)
     let cut = UIPush.page(["type": "toast", "text": marks], tab: tab)?["text"] as? String ?? ""
-    check("ui push caps: counted in characters (a letter and its combining mark one)", cut.count == 140 && cut.unicodeScalars.count == 280, "\(cut.count) \(cut.unicodeScalars.count)")
+    check("ui push caps: counted in Unicode scalars (a letter and its combining mark two: 70 characters kept)", cut.count == 70 && cut.unicodeScalars.count == 140, "\(cut.count) \(cut.unicodeScalars.count)")
     check("ui push caps: a text that isn't one: empty", UIPush.page(["type": "toast", "text": 5], tab: tab)?["text"] as? String == "")
     check("ui push caps: a type not passed on: none", UIPush.page(["type": "secret", "text": "x"], tab: tab) == nil && UIPush.page(["text": "x"], tab: tab) == nil)
     let image = "data:image/png;base64," + String(repeating: "A", count: UIPush.imageLimit - 22)
@@ -448,7 +449,8 @@ private func pageLayoutReportTests() {
     let fills = layout(["fills": ["#111", 2, String(repeating: "c", count: 81), "#444", "#555"]])?.fills
     check("layout report: fills: the first four, one that isn't a string or is past 80 characters empty", fills == ["#111", "", "", "#444"], "\(String(describing: fills))")
     check("layout report: fills: fewer than four: none", layout(["fills": ["#111", "#222"]])?.fills == [])
-    check("layout report: fills: 80 characters counted as characters", layout(["fills": [String(repeating: "e\u{301}", count: 80), "a", "b", "c"]])?.fills.first?.count == 80)
+    check("layout report: fills: 80 at most counted in Unicode scalars (80 characters of 160 scalars: not said)",
+          layout(["fills": [String(repeating: "e\u{301}", count: 80), "a", "b", "c"]])?.fills.first == "" && layout(["fills": [String(repeating: "e\u{301}", count: 40), "a", "b", "c"]])?.fills.first?.count == 40)
     let pane = { (id: Any, rect: [Any]) -> JSONObject in ["id": id, "rect": rect] }
     let two = layout(["split": "sp-1", "panes": [pane("a", [260, 8, 600, 900]), pane("b:c.d_e-f", [870, 8, 600, 900])]])
     check("layout report: a split of two panes, each its item and box", two?.split == "sp-1" && two?.panes == [PagePane(item: "a", rect: CGRect(x: 260, y: 8, width: 600, height: 900)), PagePane(item: "b:c.d_e-f", rect: CGRect(x: 870, y: 8, width: 600, height: 900))])

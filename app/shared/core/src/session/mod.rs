@@ -16,15 +16,28 @@
 //! Re-entrant like the Swift class: every entry takes `&self`, the state is in `Cell`/`RefCell`, no borrow is held
 //! across a port call or an await (computed, dropped, then called out), and a call made while the session is
 //! already in one (a port's callback calling back in) only changes state and queues tasks: the outer call runs them.
+//!
+//! Its pure rules (step 3's commit 1), one module each by the part of the design they belong to: a split's room and a
+//! drag's line (`layout`), the preview card's rect and a web address (`card`), a web item's profile (`choice`), the
+//! item a window showed last and its loader's app (`start`), an item's target (`target`), a search's address (`ui`),
+//! the copies' pushes for the page (`push`).
 
 #![deny(clippy::await_holding_refcell_ref)]
 
+pub mod card;
+pub mod choice;
 mod exec;
 pub mod host_id;
+pub mod layout;
 mod navigate;
+pub mod push;
+pub mod start;
 pub mod state;
+pub mod target;
 #[cfg(test)]
 mod tests;
+pub mod ui;
+mod unicode;
 
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeSet, VecDeque};
@@ -491,4 +504,13 @@ impl Core {
             left -= every;
         }
     }
+}
+
+/// Swift's `min` (`y < x ? y : x`) and `max` (`y >= x ? y : x`), which CGFloat's arithmetic in the Swift used: the
+/// same answer to the bit, a zero's sign included (Rust's `f64::min`/`max` may pick either zero).
+pub(crate) fn swift_min(x: f64, y: f64) -> f64 {
+    if y < x { y } else { x }
+}
+pub(crate) fn swift_max(x: f64, y: f64) -> f64 {
+    if y >= x { y } else { x }
 }

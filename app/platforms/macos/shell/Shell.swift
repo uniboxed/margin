@@ -281,7 +281,7 @@ final class Shell: ExtensionLinkDelegate {
             }
             // What its UI shows for that window (UIPush.swift: only the types passed on, checked there), to the Margin
             // window it belongs in (HostedSession.copyPush). Any other push: not the page's.
-            if UIPush.forwarded[type] != nil { hosted?.copyPush(profile: connection.hello.profile, windowId: windowId, msg: msg) }
+            if UIPush.forwarded.contains(type) { hosted?.copyPush(profile: connection.hello.profile, windowId: windowId, msg: msg) }
         case .keys(let epoch, let bindings):
             guard epoch == connection.epoch else { return }
             entry.keys = bindings
