@@ -7570,3 +7570,27 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
 - `liveFollowers` and `liveFollowersList` share their candidates and their "follows a drag" rule; the list's own
   difference stays explicit (the shown ones only, the one shown first). `tucked` in `sayHostedWindows` waits for
   part 3.
+
+## Core refactor step 2, part 1a: each host's state in the core (2026-11-22)
+
+- The engine's core (`HostCore`, Rust) gains `model` (host/model.rs): every host by a `u32` handle, made with its
+  `Host` and freed in its `deinit`. The fields the design lists for a host (window, role, rect, slid, phase, mode,
+  resizable, placedPage, member, tiled, noTiles, minSize, narrowestHeld, unread, strays, returns, offScreenReads,
+  offPageReads, the off-screen look's tries and says, visibleAt, reentries, reentrySaid, fullScreenFailures,
+  retryFullScreen, gone, goneAt, freshFront) are now computed properties of `Host` reading and writing the core by
+  typed calls (`margin_model_get/set`, `_real`, `_rect`, `_times`), under `HostCore`'s lock. No decision moved; the
+  engine's code and the tests are unchanged (the app's 2038 checks pass).
+- `Host` is a class, so every reference reads the same host, as before; nothing copies one. Its starting values are
+  the core's `HostState::new` (the same ones). `tile` stays the Mac's (the tile's id) and sets the core's `tiled` as
+  it changes; `pid` stays a `let` beside the core's copy (it never changes). A slide is kept as its pane and two
+  alignments; a minimum size as a rect at 0,0 (zero sizes kept as sizes).
+- Nothing allocated in the core on a field's read or write: a margin-ffi test (tests/no_alloc.rs, a counting global
+  allocator) checks the model's calls and every typed rule the engine asks per frame, wait or poll. Lists of times
+  have room for 8 from the start (the engine keeps at most 4). On the Swift side, a list's read makes a Swift array,
+  as the copy of a stored one did not: only on strays, re-entries and the off-screen look, never per frame.
+- Left for 1b, deliberately: the engine's own state (`visible`, `shown`, `shownAt`, `focusWanted`, `placement`, the
+  hold, `applyingLayout`…) and `options`' `configure`. Nothing in the core reads them before the decisions move, and a
+  computed `visible` would build its dictionary at every one of its many reads (more CPU for no gain). The app's
+  version beside its key waits for part 5 (the minimums are the only reader).
+- Not measured here (no screen suite on this branch): `idle-cost` and `live-resize` before and after, as the plan asks
+  before the merge.

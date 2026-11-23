@@ -196,12 +196,14 @@ pub enum Request {
     FrontUnsteady,
 }
 
-/// The hosting core's state across calls: the loop (its guard, the routes, the corrections' tries) and the causes.
+/// The hosting core's state across calls: the loop (its guard, the routes, the corrections' tries), the causes, and
+/// the hosts' model (read and written by typed calls: margin-ffi's `margin_model_*`).
 #[derive(Debug, Default)]
 pub struct HostCore {
     pub driver: Driver,
     pub causes: Causes,
     pub others: Others,
+    pub model: super::model::HostModel,
 }
 
 impl HostCore {

@@ -12,11 +12,13 @@
 mod data;
 mod keys;
 mod link;
+mod model;
 mod profiles;
 mod themes;
 pub use data::*;
 pub use keys::*;
 pub use link::*;
+pub use model::*;
 pub use profiles::*;
 pub use themes::*;
 

@@ -67,6 +67,21 @@ double margin_schedule_next_poll(bool hosting, bool links, bool pending, double 
 // Whether a running app is the launch known (host/exits.rs): launch times in seconds, NaN not known.
 bool margin_exits_same_launch(double then, double now);
 
+// The hosts' model on a hosting core (host/model.rs, ffi model.rs): a host by its handle, its fields by number
+// (host/model.rs `Field`: 0-31 whole numbers and flags, 32-63 times and lengths with NaN none, 64-95 rects, 96-127
+// lists of times). Typed, nothing allocated but an add. One thread at a time per core, as margin_host_call.
+#define MARGIN_MODEL_NONE UINT32_MAX
+uint32_t margin_model_add(MarginHostCore *core, const uint8_t *id, size_t id_len, const uint8_t *app, size_t app_len, int64_t window, int64_t pid);
+void margin_model_remove(MarginHostCore *core, uint32_t handle);
+int64_t margin_model_get(MarginHostCore *core, uint32_t handle, uint32_t field);
+void margin_model_set(MarginHostCore *core, uint32_t handle, uint32_t field, int64_t value);
+double margin_model_get_real(MarginHostCore *core, uint32_t handle, uint32_t field);
+void margin_model_set_real(MarginHostCore *core, uint32_t handle, uint32_t field, double value);
+bool margin_model_get_rect(MarginHostCore *core, uint32_t handle, uint32_t field, MarginRect *out);
+void margin_model_set_rect(MarginHostCore *core, uint32_t handle, uint32_t field, const MarginRect *value); // NULL: none
+size_t margin_model_times(MarginHostCore *core, uint32_t handle, uint32_t field, double *out, size_t cap);   // the count; `cap` written at most
+void margin_model_set_times(MarginHostCore *core, uint32_t handle, uint32_t field, const double *values, size_t len);
+
 // Margin's keys (shortcuts.rs, ffi keys.rs): combinations as the Mac's Carbon key code and modifier bits. The JSON
 // answers are freed with margin_buffer_free; a press, a release and a repeat's tick are typed.
 typedef struct {

@@ -66,6 +66,84 @@ nonisolated final class HostCore: @unchecked Sendable {
 
     func constant(_ key: String) -> Double? { (constants[key] as? NSNumber)?.doubleValue }
     func budget(_ family: String) -> Int? { ((constants["budgets"] as? [String: Any])?[family] as? NSNumber)?.intValue }
+
+    // ---- the hosts' model (host/model.rs): each host's fields by its handle, typed (read dozens of times an operation
+    // and every frame of a drag: no JSON, nothing allocated in the core), under the same lock as `call` ----
+
+    // A field's number (host/model.rs `Field`): whole numbers and flags, times (nil: none), rects, lists of times.
+    enum Field: UInt32 {
+        case window = 0, pid, role, phase, mode, resizable, member, tiled, noTiles, unread, strays, offScreenReads, offPageReads,
+             offSaid, reentrySaid, fullScreenFailures, retryFullScreen, gone, freshFront, slidEndX, slidEndY
+        case visibleAt = 32, goneAt, offActedFor, offInPlaceSaid, narrowestHeld
+        case rect = 64, placedPage, minSize, slidPane
+        case returns = 96, offTries, reentries
+    }
+
+    // A new host's handle (its first open), and its going (its `Host` gone).
+    func modelAdd(id: String, app: String, window: Int, pid: pid_t) -> UInt32 {
+        var id = id, app = app
+        lock.lock()
+        defer { lock.unlock() }
+        return id.withUTF8 { i in app.withUTF8 { a in margin_model_add(core, i.baseAddress, i.count, a.baseAddress, a.count, Int64(window), Int64(pid)) } }
+    }
+    func modelRemove(_ h: UInt32) {
+        lock.lock()
+        defer { lock.unlock() }
+        margin_model_remove(core, h)
+    }
+
+    func int(_ h: UInt32, _ f: Field) -> Int64 {
+        lock.lock()
+        defer { lock.unlock() }
+        return margin_model_get(core, h, f.rawValue)
+    }
+    func setInt(_ h: UInt32, _ f: Field, _ v: Int64) {
+        lock.lock()
+        defer { lock.unlock() }
+        margin_model_set(core, h, f.rawValue, v)
+    }
+    func flag(_ h: UInt32, _ f: Field) -> Bool { int(h, f) != 0 }
+    func setFlag(_ h: UInt32, _ f: Field, _ v: Bool) { setInt(h, f, v ? 1 : 0) }
+
+    func real(_ h: UInt32, _ f: Field) -> Double? {
+        lock.lock()
+        defer { lock.unlock() }
+        let v = margin_model_get_real(core, h, f.rawValue)
+        return v.isNaN ? nil : v
+    }
+    func setReal(_ h: UInt32, _ f: Field, _ v: Double?) {
+        lock.lock()
+        defer { lock.unlock() }
+        margin_model_set_real(core, h, f.rawValue, v ?? .nan)
+    }
+
+    func rect(_ h: UInt32, _ f: Field) -> CGRect? {
+        var out = MarginRect()
+        lock.lock()
+        defer { lock.unlock() }
+        return margin_model_get_rect(core, h, f.rawValue, &out) ? CGRect(out) : nil
+    }
+    func setRect(_ h: UInt32, _ f: Field, _ v: CGRect?) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard var r = v?.marginRect else { margin_model_set_rect(core, h, f.rawValue, nil); return }
+        margin_model_set_rect(core, h, f.rawValue, &r)
+    }
+
+    func times(_ h: UInt32, _ f: Field) -> [Double] {
+        lock.lock()
+        defer { lock.unlock() }
+        let n = margin_model_times(core, h, f.rawValue, nil, 0)
+        guard n > 0 else { return [] }
+        return [Double](unsafeUninitializedCapacity: n) { buffer, count in
+            count = min(n, margin_model_times(core, h, f.rawValue, buffer.baseAddress, n))
+        }
+    }
+    func setTimes(_ h: UInt32, _ f: Field, _ v: [Double]) {
+        lock.lock()
+        defer { lock.unlock() }
+        v.withUnsafeBufferPointer { margin_model_set_times(core, h, f.rawValue, $0.baseAddress, $0.count) }
+    }
 }
 
 // ---- JSON shapes (host/api.rs) ----
@@ -107,6 +185,23 @@ nonisolated extension ServerWindow {
 }
 
 nonisolated func coreOptional(_ v: Any?) -> Any { v ?? NSNull() }
+
+// As the core's model numbers them (host/model.rs `Role`, `Mode`).
+nonisolated extension HostRole {
+    init(model v: Int64) { self = v == 1 ? .pane : v == 2 ? .card : .main }
+    var model: Int64 {
+        switch self {
+        case .main: return 0
+        case .pane: return 1
+        case .card: return 2
+        }
+    }
+}
+
+nonisolated extension HostMode {
+    init(model v: Int64) { self = v == 1 ? .window : .fullScreen }
+    var model: Int64 { self == .window ? 1 : 0 }
+}
 
 // ---- the loop guard, the causes, the routes (host/guard.rs, causes.rs, routes.rs) ----
 

@@ -249,30 +249,52 @@ final class HostEngine {
         var activesCoalesced = true
     }
 
-    enum Phase: Equatable { case preparing, shown, parked }
+    enum Phase: Equatable {
+        case preparing, shown, parked
+        // As the core's model numbers it (host/model.rs `Phase`).
+        init(model v: Int64) { self = v == 1 ? .shown : v == 2 ? .parked : .preparing }
+        var model: Int64 {
+            switch self {
+            case .preparing: return 0
+            case .shown: return 1
+            case .parked: return 2
+            }
+        }
+    }
 
+    // A host. What the hosting decisions read of it is the core's (host/model.rs, by `handle`: docs/CORE-REFACTOR.md
+    // step 2 part 1a): each such field below reads and writes the engine's core, nothing kept here. The OS's own (its
+    // Spaces, tile, toolbars, Accessibility's bookkeeping) is kept here. A class: every reference reads the same host.
     final class Host {
+        private let model: HostCore
+        let handle: UInt32
         let id: HostID
         let target: HostTarget
-        let pid: pid_t
-        var window: Int // (an app's: chosen again just before it's first moved, HostWindowChoice)
+        let pid: pid_t // (also the core's, given at its making: it never changes)
+        // (An app's: chosen again just before it's first moved, HostWindowChoice.)
+        var window: Int { get { Int(model.int(handle, .window)) } set { model.setInt(handle, .window, Int64(newValue)) } }
         let launchedByMargin: Bool // its app was started by Margin (with no Dock icon)
         let madeByMargin: Bool // a Safari window Margin's extension made in a Safari Margin didn't start
         let safariWindow: Int? // a Safari window a copy made for Margin: the copy's id for it (full screen and close go through it)
-        var phase = Phase.preparing
+        var phase: Phase { get { Phase(model: model.int(handle, .phase)) } set { model.setInt(handle, .phase, newValue.model) } }
         var fullScreenSpace: UInt64? // its own full-screen Space while it has one (a first open, a re-placing)
         var privateSpace: UInt64? // while parked
-        var member = false // its full-screen window is a member of Margin's Space (its own Space destroyed), shown or parked
-        var placedPage: CGRect? // the page area a member's frame was reserved for
+        // Its full-screen window is a member of Margin's Space (its own Space destroyed), shown or parked.
+        var member: Bool { get { model.flag(handle, .member) } set { model.setFlag(handle, .member, newValue) } }
+        // The page area a member's frame was reserved for.
+        var placedPage: CGRect? { get { model.rect(handle, .placedPage) } set { model.setRect(handle, .placedPage, newValue) } }
         var promoted = false
         var outsideOpens = 0
-        var unread = 0 // polls in a row its window's bounds didn't read
-        var strays = 0 // polls in a row it was found where it mustn't be (shown: outside Margin's Space; parked: in a user Space)
-        var returns: [Double] = [] // when it was last brought back into Margin's Space after straying (`returnsMax`)
+        // Polls in a row its window's bounds didn't read.
+        var unread: Int { get { Int(model.int(handle, .unread)) } set { model.setInt(handle, .unread, Int64(newValue)) } }
+        // Polls in a row it was found where it mustn't be (shown: outside Margin's Space; parked: in a user Space).
+        var strays: Int { get { Int(model.int(handle, .strays)) } set { model.setInt(handle, .strays, Int64(newValue)) } }
+        // When it was last brought back into Margin's Space after straying (`returnsMax`).
+        var returns: [Double] { get { model.times(handle, .returns) } set { model.setTimes(handle, .returns, newValue) } }
         var askedFullScreenAt: Double? // when it was last asked into full screen (for the log of a stray)
         var windowsBeforeAsk: Set<Int> = [] // its app's windows right before that ask (a toolbar strip it makes is new)
-        var mode = HostMode.fullScreen
-        var resizable = true
+        var mode: HostMode { get { HostMode(model: model.int(handle, .mode)) } set { model.setInt(handle, .mode, newValue.model) } }
+        var resizable: Bool { get { model.flag(handle, .resizable) } set { model.setFlag(handle, .resizable, newValue) } }
         var unseen = false // Accessibility didn't list its window (on another Space): read once it's in Margin's Space
         var taken = false // its frame and Space recorded (before anything moved it)
         var original: CGRect? // its frame before Margin moved it (top-left coordinates)
@@ -283,8 +305,8 @@ final class HostEngine {
         var axRefused = false // Accessibility didn't take its frame as it was given back: its close button isn't pressed either
         // In window mode only because its full screen failed (it can go full screen): tried again the next time it's
         // shown from parked, once (`fullScreenFailures` counts the failures).
-        var retryFullScreen = false
-        var fullScreenFailures = 0
+        var retryFullScreen: Bool { get { model.flag(handle, .retryFullScreen) } set { model.setFlag(handle, .retryFullScreen, newValue) } }
+        var fullScreenFailures: Int { get { Int(model.int(handle, .fullScreenFailures)) } set { model.setInt(handle, .fullScreenFailures, Int64(newValue)) } }
         var bundleId: String?
         var appLaunchedAt: Double?
         // The reconciler's (HostReconciler.swift): its app's windows when its first show ended (an app Margin started:
@@ -293,52 +315,66 @@ final class HostEngine {
         // adopted, before it's given up). The corrections tried and when are the core's (host/driver.rs: a budget per
         // 30 s, a window's framing per show).
         var launchWindows: Set<Int> = []
-        var offScreenReads = 0
-        var offPageReads = 0 // polls in a row a shown member wasn't at the page area
-        var gone = false
+        var offScreenReads: Int { get { Int(model.int(handle, .offScreenReads)) } set { model.setInt(handle, .offScreenReads, Int64(newValue)) } }
+        // Polls in a row a shown member wasn't at the page area.
+        var offPageReads: Int { get { Int(model.int(handle, .offPageReads)) } set { model.setInt(handle, .offPageReads, Int64(newValue)) } }
+        var gone: Bool { get { model.flag(handle, .gone) } set { model.setFlag(handle, .gone, newValue) } }
         // Its row closed while its app was asking something (a sheet or an alert of its own on screen): when it was asked
         // to quit, with its window left where it was; and whether its not quitting has been said (`onAsking`).
         var quitAskedAt: Double?
         var askingSaid = false
-        var goneAt: Double?
+        var goneAt: Double? { get { model.real(handle, .goneAt) } set { model.setReal(handle, .goneAt, newValue) } }
         // Its full-screen window's own toolbar windows (`ownToolbar`): left as they are while they're where it is.
         var toolbars: Set<Int> = []
         // Live resize: its window's own tile, moved into Margin's Space (its window sized by the tile's rect, shown or
         // parked; `placedPage` the page area that rect was set for and seen taken). Nil: a plain member, or window mode.
-        var tile: UInt64?
+        // (The tile's id is the Mac's; whether it has one, the core's `tiled`, set with it.)
+        var tile: UInt64? { didSet { if (tile != nil) != (oldValue != nil) { model.setFlag(handle, .tiled, tile != nil) } } }
         // Its route held below tiles (the hosting core's routes: its app kept fighting its tile, now or in an earlier
         // run of this version of it): a plain member from its next placing, never a tile again this run.
-        var noTiles = false
+        var noTiles: Bool { get { model.flag(handle, .noTiles) } set { model.setFlag(handle, .noTiles, newValue) } }
         // Its window's own minimum (its tile's `SizeConstraints`' `Min`, read as its tile comes into Margin's Space or its
         // own full-screen Space is listed, again at each drag's start and each sizing): its tile never sized below it
         // (`frame`: the page area, or that minimum with its right edge the page area's). Nil: none known.
-        var minSize: CGSize?
+        var minSize: CGSize? { get { model.rect(handle, .minSize)?.size } set { model.setRect(handle, .minSize, newValue.map { CGRect(origin: .zero, size: $0) }) } }
         // The narrowest its window was seen holding in its tile (a rect it followed): with no minimum said by its tile, the
         // one it's taken to have once it leaves a narrower one (the first rect it didn't take).
-        var narrowestHeld: CGFloat?
+        var narrowestHeld: CGFloat? { get { model.real(handle, .narrowestHeld).map { CGFloat($0) } } set { model.setReal(handle, .narrowestHeld, newValue.map { Double($0) }) } }
         var minUnreadSaid = false
         // Its role and rect in Margin's page area as it was last laid out (docs/PEEK-SPLIT.md §1): main at the page area
         // (nil) unless a layout gave it a card's or a pane's rect (`setLayout`).
-        var role = HostRole.main
-        var rect: CGRect?
+        var role: HostRole { get { HostRole(model: model.int(handle, .role)) } set { model.setInt(handle, .role, newValue.model) } }
+        var rect: CGRect? { get { model.rect(handle, .rect) } set { model.setRect(handle, .rect, newValue) } }
         // A split pane whose window can't be as small as its pane (docs/PEEK-SPLIT.md §4b): its window at its own minimum
         // (`frame`: HostLayout.cut), the rest away from the other panes; after an arrow's slide, where the slide put it
         // (its pane then, its alignment along each axis: true its end at the pane's end), as long as its pane stays that
         // rect (a divider's drag, a new layout: away from the other panes again). Nil when it leaves a split.
-        var slid: PaneSlide?
+        var slid: PaneSlide? {
+            get {
+                guard let pane = model.rect(handle, .slidPane) else { return nil }
+                func end(_ v: Int64) -> Bool? { v < 0 ? nil : v == 1 }
+                return PaneSlide(pane: pane, endX: end(model.int(handle, .slidEndX)), endY: end(model.int(handle, .slidEndY)))
+            }
+            set {
+                model.setRect(handle, .slidPane, newValue?.pane)
+                guard let s = newValue else { return }
+                model.setInt(handle, .slidEndX, s.endX.map { $0 ? 1 : 0 } ?? -1)
+                model.setInt(handle, .slidEndY, s.endY.map { $0 ? 1 : 0 } ?? -1)
+            }
+        }
         // Its own look at being off screen while it's visible (`backOnScreen`, docs/PEEK-SPLIT.md §4: every visible host
         // its own budget, never one shared by a split's panes): when it was last shown (made visible, or the one shown),
         // the times it was brought back, whether giving up was said, the show the look acted for with nothing to move.
-        var visibleAt = 0.0
-        var offTries: [Double] = []
-        var offSaid = false
-        var offActedFor: Double?
-        var offInPlaceSaid: Double?
+        var visibleAt: Double { get { model.real(handle, .visibleAt) ?? 0 } set { model.setReal(handle, .visibleAt, newValue) } }
+        var offTries: [Double] { get { model.times(handle, .offTries) } set { model.setTimes(handle, .offTries, newValue) } }
+        var offSaid: Bool { get { model.flag(handle, .offSaid) } set { model.setFlag(handle, .offSaid, newValue) } }
+        var offActedFor: Double? { get { model.real(handle, .offActedFor) } set { model.setReal(handle, .offActedFor, newValue) } }
+        var offInPlaceSaid: Double? { get { model.real(handle, .offInPlaceSaid) } set { model.setReal(handle, .offInPlaceSaid, newValue) } }
         // When its window was last put back into full screen after leaving it by itself (`reenterFullScreen`: Safari's
         // own Esc, 2026-11-21), and whether giving up on that was said: `returnsMax` within `returnsWithin`, then left to
         // the reconciler's own corrections.
-        var reentries: [Double] = []
-        var reentrySaid = false
+        var reentries: [Double] { get { model.times(handle, .reentries) } set { model.setTimes(handle, .reentries, newValue) } }
+        var reentrySaid: Bool { get { model.flag(handle, .reentrySaid) } set { model.setFlag(handle, .reentrySaid, newValue) } }
         // A card's or a pane's new Safari window (asked in full screen, born in a full-screen Space of its own: `openNew`):
         // the full-screen Spaces listed before its ask (its own is the new one), the freeze taken at that ask and handed to
         // its placing (macOS's switch to its Space comes as the window does), and whether that switch was seen and undone
@@ -349,16 +385,20 @@ final class HostEngine {
         // Its window came into Margin's Space with its tile a moment ago (its first open): a raise doesn't take for it
         // (made a moment ago, moved between Spaces), so it's brought in front by the move out and back at once
         // (`frontVisible`). Cleared once it has been fronted.
-        var freshFront = false
-        init(id: HostID, target: HostTarget, pid: pid_t, window: Int, launchedByMargin: Bool, madeByMargin: Bool, safariWindow: Int? = nil) {
+        var freshFront: Bool { get { model.flag(handle, .freshFront) } set { model.setFlag(handle, .freshFront, newValue) } }
+        // Made in the engine's core (`model`) as a new host: preparing, main at the page area, full screen, resizable,
+        // nothing counted (host/model.rs `HostState::new`, as these fields started here); gone from it with this object.
+        init(model: HostCore, app: String, id: HostID, target: HostTarget, pid: pid_t, window: Int, launchedByMargin: Bool, madeByMargin: Bool, safariWindow: Int? = nil) {
+            self.model = model
+            handle = model.modelAdd(id: id.raw, app: app, window: window, pid: pid)
             self.id = id
             self.target = target
             self.pid = pid
-            self.window = window
             self.launchedByMargin = launchedByMargin
             self.madeByMargin = madeByMargin
             self.safariWindow = safariWindow
         }
+        deinit { model.modelRemove(handle) }
         // An app the person opened (running before Margin hosted it, its Dock icon): never quit, given back as it was.
         var personApp: Bool {
             if case .app = target { return !launchedByMargin }
@@ -2486,7 +2526,7 @@ final class HostEngine {
                                                   : "no new Safari window in the window server's list within \(Int(options.windowWait)) s")
             }
             times.append("window \(ms(since: windowStarted)) (by the window server\(bornFrozen ? ", under the freeze from its ask" : ""))")
-            let host = Host(id: id, target: target, pid: app.pid, window: window, launchedByMargin: launchedByMargin, madeByMargin: !launchedByMargin, safariWindow: asked.id)
+            let host = Host(model: core, app: appKey(target), id: id, target: target, pid: app.pid, window: window, launchedByMargin: launchedByMargin, madeByMargin: !launchedByMargin, safariWindow: asked.id)
             host.bornBefore = bornBefore
             host.bornFrozen = bornFrozen
             host.bornSwitched = undone > 0
@@ -2614,7 +2654,7 @@ final class HostEngine {
         let seen = [serverSeenAt.map { "the window server listed one at \(Int((($0 - windowStarted) * 1000).rounded()))" }, axSeenAt.map { "Accessibility at \(Int((($0 - windowStarted) * 1000).rounded()))" }].compactMap { $0 }
         times.append("window \(ms(since: windowStarted))\(info == nil ? " (by the window server: on another Space)" : "")\(personal ? ", an app the person opened" : "")\(seen.isEmpty ? "" : " (\(seen.joined(separator: ", ")))")")
         if let rule { Diagnostics.note("host: \(id): its window \(window) chosen as \(rule.rawValue)") }
-        let host = Host(id: id, target: target, pid: app.pid, window: window, launchedByMargin: launchedByMargin, madeByMargin: false)
+        let host = Host(model: core, app: appKey(target), id: id, target: target, pid: app.pid, window: window, launchedByMargin: launchedByMargin, madeByMargin: false)
         host.bundleId = bundle
         host.appLaunchedAt = app.launchedAt
         if case .app = target {
