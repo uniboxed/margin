@@ -207,9 +207,80 @@ pub fn near(a: &Rect, b: &Rect, within: f64) -> bool {
         && (a.height - b.height).abs() <= within
 }
 
+/// A rect narrower or lower than a window's minimum, past the tolerance (a card never laid out so).
+pub fn below(r: &Rect, min: Size, tolerance: f64) -> bool {
+    r.width < min.width - tolerance || r.height < min.height - tolerance
+}
+
+/// A window of `size` centred in `page`, its top left at whole points (Swift's `rounded()`: half away from zero, as
+/// Rust's `round`), never left of or above the page's own (a window bigger than the page: at its top left).
+pub fn inside(page: &Rect, size: Size) -> Rect {
+    Rect::new(
+        (page.x + ((page.width - size.width) / 2.0).max(0.0)).round(),
+        (page.y + ((page.height - size.height) / 2.0).max(0.0)).round(),
+        size.width,
+        size.height,
+    )
+}
+
+/// A window-mode window's frame in its page area, from where it is now (`now`): resizable, the page area; a fixed
+/// size, its own centred. None: it's there already, or (placed by Margin before, `placed_before`) at its own limits
+/// centred within it (a switch to it sets nothing).
+pub fn window_frame(page: &Rect, now: &Rect, resizable: bool, placed_before: bool, tolerance: f64) -> Option<Rect> {
+    let size = Size::new(now.width, now.height);
+    let want = if resizable { *page } else { inside(page, size) };
+    if near(now, &want, tolerance) {
+        return None;
+    }
+    if placed_before
+        && now.width <= page.width + tolerance
+        && now.height <= page.height + tolerance
+        && near(now, &inside(page, size), tolerance)
+    {
+        return None;
+    }
+    Some(want)
+}
+
+/// Whether a window-mode window (its bounds `b`) is where `window_frame` puts it: within its page area, at it or
+/// its own size centred in it.
+pub fn at_page_area(b: &Rect, area: &Rect, tolerance: f64) -> bool {
+    b.width <= area.width + tolerance
+        && b.height <= area.height + tolerance
+        && (near(b, area, tolerance) || near(b, &inside(area, Size::new(b.width, b.height)), tolerance))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_window_in_its_page_area() {
+        let page = Rect::new(240.0, 41.0, 1264.0, 933.0);
+        // Centred at whole points (half away from zero), never past the page's top left.
+        assert_eq!(inside(&page, Size::new(600.0, 400.0)), Rect::new(572.0, 308.0, 600.0, 400.0));
+        assert_eq!(inside(&page, Size::new(601.0, 401.0)), Rect::new(572.0, 307.0, 601.0, 401.0), "571.5 → 572, 307.0");
+        assert_eq!(inside(&page, Size::new(2000.0, 1000.0)), Rect::new(240.0, 41.0, 2000.0, 1000.0));
+        assert_eq!(inside(&Rect::ZERO, Size::new(0.0, 0.0)), Rect::ZERO);
+        // Resizable: the page area; a fixed size: its own, centred; there already: nothing to set.
+        let off = Rect::new(10.0, 10.0, 800.0, 600.0);
+        assert_eq!(window_frame(&page, &off, true, false, 1.0), Some(page));
+        assert_eq!(window_frame(&page, &off, false, false, 1.0), Some(inside(&page, Size::new(800.0, 600.0))));
+        assert_eq!(window_frame(&page, &Rect::new(241.0, 40.0, 1263.0, 934.0), true, false, 1.0), None, "within 1");
+        assert!(window_frame(&page, &Rect::new(241.5, 41.0, 1264.0, 933.0), true, false, 1.0).is_some());
+        // At its own limits centred, placed before: left so; never placed: the page area asked.
+        let limits = inside(&page, Size::new(1000.0, 700.0));
+        assert_eq!(window_frame(&page, &limits, true, true, 1.0), None);
+        assert_eq!(window_frame(&page, &limits, true, false, 1.0), Some(page));
+        let big = inside(&page, Size::new(1266.0, 700.0));
+        assert_eq!(window_frame(&page, &big, true, true, 1.0), Some(page), "wider than the page: not at its limits");
+        assert!(at_page_area(&page, &page, 1.0) && at_page_area(&limits, &page, 1.0));
+        assert!(!at_page_area(&big, &page, 1.0) && !at_page_area(&off, &page, 1.0));
+        assert!(at_page_area(&Rect::new(240.0, 41.0, 1265.0, 934.0), &page, 1.0), "the edge itself");
+        assert!(below(&Rect::new(0.0, 0.0, 698.9, 400.0), Size::new(700.0, 400.0), 1.0));
+        assert!(!below(&Rect::new(0.0, 0.0, 699.0, 399.0), Size::new(700.0, 400.0), 1.0), "within 1");
+        assert!(!below(&Rect::ZERO, Size::new(0.0, 0.0), 1.0));
+    }
 
     fn kit() -> Placement {
         Placement {

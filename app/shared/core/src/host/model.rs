@@ -4,12 +4,21 @@
 //! the OS's own (its Space ids, tiles, toolbars, Accessibility's bookkeeping) stays on that side.
 //!
 //! The state (part 1a), and the decisions that read it as they move in: each app's kept minimum and each host's own
-//! (part 5, `minimums`). Reading and writing a field never allocates; a list of times (returns, tries) is kept within
-//! its capacity (room for 8 from the start: the Mac keeps at most `returnsMax` + 1, 4).
+//! (part 5, `minimums`); the engine's layout of Margin's page area, the one shown, and the layout's decisions (part 1b,
+//! `visible`). Reading and writing a field never allocates; a list of times (returns, tries) is kept within its
+//! capacity (room for 8 from the start: the Mac keeps at most `returnsMax` + 1, 4).
 
-use super::layout::Size;
+use std::collections::BTreeMap;
+
+use super::layout::{Placement, Size};
 use super::minimums::AppMinimums;
 use crate::geometry::Rect;
+
+mod visible;
+pub use visible::{
+    BringIn, BringInFacts, BringInPoint, Hold, HoldKind, LayoutBegun, LayoutExtra, ModelOptions, Refusal, ShownSet,
+    Visible,
+};
 
 pub type Handle = u32;
 
@@ -248,6 +257,19 @@ pub struct HostModel {
     free: Vec<Handle>,
     /// Every app's kept minimum (minimums.json, part 5).
     pub minimums: AppMinimums,
+    // The engine's own (part 1b, visible.rs): the hosts it holds by id, the layout of Margin's page area, the one
+    // focused, the focus asked, the placement, a whole layout being applied, a layout held while one host is placed.
+    listed: BTreeMap<String, Handle>,
+    layout: BTreeMap<String, Visible>,
+    generation: u64,
+    shown: Option<String>,
+    shown_at: f64,
+    focus_wanted: Option<String>,
+    placement: Placement,
+    applying: bool,
+    hold: Option<Hold>,
+    held: Vec<(String, Visible)>,
+    pub opts: ModelOptions,
 }
 
 /// A host's minimum as a decision reads it (`HostModel::minimum`).
@@ -308,8 +330,12 @@ impl HostModel {
     /// The host gone: its handle free again. An unknown one: nothing.
     pub fn remove(&mut self, h: Handle) {
         if let Some(slot) = self.slots.get_mut(h as usize)
-            && slot.take().is_some()
+            && let Some(s) = slot.take()
         {
+            // (Still held by the engine as its id, which the OS side never leaves so: no longer.)
+            if self.listed.get(&s.id) == Some(&h) {
+                self.listed.remove(&s.id);
+            }
             self.free.push(h);
         }
     }

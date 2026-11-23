@@ -15,6 +15,7 @@ use super::front::{Look, Others};
 use super::guard::Verdict;
 use super::kinds::{self, AppFacts, Window};
 use super::layout::Placement;
+use super::model::{LayoutExtra, ModelOptions, Refusal, Role};
 use super::reconciler::{self, Correction, Desired, Situation};
 use super::routes::{Route, Routes};
 use crate::geometry::Rect;
@@ -143,6 +144,24 @@ pub enum Request {
     SaveMinimums,
     /// The apps a minimum is kept for (any version).
     MinimumApps,
+    /// What the model's decisions read of the engine's options (sent whenever they change).
+    Configure {
+        tolerance: f64,
+    },
+    /// A layout's extras refused before anything is made (model/visible.rs `layout_refuse`).
+    LayoutRefuse {
+        main: String,
+        extras: Vec<LayoutHost>,
+    },
+    /// A layout's start, its extras accepted (`layout_begin`).
+    #[serde(rename_all = "camelCase")]
+    LayoutBegin {
+        main: String,
+        main_rect: Option<Rect>,
+        extras: Vec<LayoutHost>,
+    },
+    /// The layout as it is (the tests' and the log's).
+    Layout,
     /// The earliest time the core has something to do on its own (none: wake it with the next event).
     NextWake,
     /// The windows of `pid` Margin could host, front first (choice.rs `candidates`).
@@ -201,6 +220,36 @@ pub enum Request {
     /// Nothing hosted (`FrontReset`); Margin's Space not at rest (`FrontUnsteady`).
     FrontReset,
     FrontUnsteady,
+}
+
+/// One of a layout's hosts other than main, as the caller sends it: its id, its role ("pane", "card"), its rect,
+/// its window's known minimum (a card's).
+#[derive(Clone, Debug, Deserialize)]
+pub struct LayoutHost {
+    pub id: String,
+    pub role: String,
+    pub rect: Rect,
+    #[serde(default)]
+    pub min: Option<super::layout::Size>,
+}
+
+impl LayoutHost {
+    fn extra(&self) -> LayoutExtra {
+        let role = match self.role.as_str() {
+            "pane" => Role::Pane,
+            "card" => Role::Card,
+            _ => Role::Main,
+        };
+        LayoutExtra { id: self.id.clone(), role, rect: self.rect, min: self.min }
+    }
+}
+
+fn role_name(r: Role) -> &'static str {
+    match r {
+        Role::Main => "main",
+        Role::Pane => "pane",
+        Role::Card => "card",
+    }
 }
 
 /// The hosting core's state across calls: the loop (its guard, the routes, the corrections' tries), the causes, and
@@ -292,6 +341,36 @@ impl HostCore {
             },
             Request::SaveMinimums => json!({ "minimums": self.model.minimums.to_json() }),
             Request::MinimumApps => json!({ "apps": self.model.minimums.by_app.keys().collect::<Vec<_>>() }),
+            Request::Configure { tolerance } => {
+                self.model.opts = ModelOptions { tolerance };
+                json!({})
+            }
+            Request::LayoutRefuse { main, extras } => {
+                let extras: Vec<LayoutExtra> = extras.iter().map(LayoutHost::extra).collect();
+                let refused: Vec<Value> = self
+                    .model
+                    .layout_refuse(&main, &extras)
+                    .into_iter()
+                    .map(|(i, r)| match r {
+                        Refusal::Twice => json!({ "index": i, "why": "twice" }),
+                        Refusal::Below(m) => json!({ "index": i, "why": "below", "min": m }),
+                    })
+                    .collect();
+                json!({ "refused": refused })
+            }
+            Request::LayoutBegin { main, main_rect, extras } => {
+                let extras: Vec<LayoutExtra> = extras.iter().map(LayoutHost::extra).collect();
+                let b = self.model.layout_begin(&main, main_rect, &extras);
+                json!({ "before": b.before, "arriving": b.arriving, "held": b.held, "deferring": b.deferring })
+            }
+            Request::Layout => {
+                let entries: Vec<Value> = self
+                    .model
+                    .layout()
+                    .map(|(id, v)| json!({ "id": id, "rect": v.rect, "role": role_name(v.role), "z": v.z }))
+                    .collect();
+                json!({ "entries": entries, "shown": self.model.shown(), "focus": self.model.focus_wanted() })
+            }
             Request::NextWake => json!({ "at": self.driver.guard.next_wake() }),
             Request::Candidates { server, pid, excluded } => {
                 let list: Vec<ServerWindow> = server.iter().map(ServerWindow::from).collect();

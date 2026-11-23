@@ -228,6 +228,174 @@ nonisolated final class HostCore: @unchecked Sendable {
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? data.write(to: url, options: .atomic)
     }
+
+    // ---- the layout of Margin's page area and its decisions (host/model/visible.rs: docs/CORE-REFACTOR.md step 2 part
+    // 1b). Typed: the visible hosts, a host's page area, whether one is visible are read dozens of times an operation
+    // and every poll. Ids as their UTF-8 bytes (nothing copied), hosts by handle. ----
+
+    private func withID<R>(_ id: HostID?, _ body: (UnsafePointer<UInt8>?, Int) -> R) -> R {
+        guard var raw = id?.raw else { return body(nil, 0) }
+        return raw.withUTF8 { body($0.baseAddress, $0.count) }
+    }
+    private func locked<R>(_ body: () -> R) -> R {
+        lock.lock()
+        defer { lock.unlock() }
+        return body()
+    }
+
+    // The host the engine holds as `id` (nil: none now). Made for a layout being applied: its role and rect in it.
+    func list(_ id: HostID, _ h: UInt32?) { locked { withID(id) { margin_model_list(core, $0, $1, h ?? UInt32(MARGIN_MODEL_NONE)) } } }
+
+    // `id`'s place in the layout (nil: not laid out), set (nil: out of it).
+    func layout(_ id: HostID) -> HostVisible? {
+        var out = MarginVisible()
+        return locked { withID(id) { margin_model_layout_get(core, $0, $1, &out) } } ? HostVisible(out) : nil
+    }
+    func setLayout(_ id: HostID, _ v: HostVisible?) {
+        locked {
+            withID(id) { p, n in
+                guard var m = v?.margin else { return margin_model_layout_set(core, p, n, nil) }
+                margin_model_layout_set(core, p, n, &m)
+            }
+        }
+    }
+    var layoutCount: Int { locked { margin_model_layout_count(core) } }
+    var generation: UInt64 { locked { margin_model_generation(core) } }
+    // A page area's change moved a laid-out host's rect (its host's and its place's).
+    func layoutMove(_ id: HostID, _ r: CGRect) { locked { withID(id) { margin_model_layout_move(core, $0, $1, r.marginRect) } } }
+    // Every place in the layout (rare: the tests', a log's).
+    func layoutEntries() -> [HostID: HostVisible] {
+        var out: [HostID: HostVisible] = [:]
+        for e in call(["type": "layout"])["entries"] as? [[String: Any]] ?? [] {
+            guard let id = e["id"] as? String, let role = (e["role"] as? String).flatMap(HostRole.init(rawValue:)) else { continue }
+            out[HostID(raw: id)] = HostVisible(rect: CGRect(coreJSON: e["rect"]), role: role, z: (e["z"] as? NSNumber)?.intValue ?? 0)
+        }
+        return out
+    }
+
+    // The one shown set (nil: none) at `now`: the layout follows outside a layout's change.
+    func setShown(_ id: HostID?, now: Double) { locked { withID(id) { margin_model_set_shown(core, $0, $1, now) } } }
+    var shownAt: Double { locked { margin_model_shown_at(core) } }
+    func setFocus(_ id: HostID?) { locked { withID(id) { margin_model_set_focus(core, $0, $1) } } }
+    var placement: HostPlacement {
+        get {
+            var p = MarginPlacement()
+            locked { margin_model_placement(core, &p) }
+            return HostPlacement(page: CGRect(p.page), area: CGRect(p.area), display: CGRect(p.display))
+        }
+        set {
+            var p = newValue.margin
+            locked { margin_model_set_placement(core, &p) }
+        }
+    }
+    var applying: Bool { locked { margin_model_applying(core) } }
+    func isVisible(_ id: HostID) -> Bool { locked { withID(id) { margin_model_is_visible(core, $0, $1) } } }
+    // The visible hosts back to front, by handle.
+    func visible() -> [UInt32] {
+        locked {
+            withUnsafeTemporaryAllocation(of: UInt32.self, capacity: 16) { buf in
+                let n = margin_model_visible(core, buf.baseAddress, 16)
+                if n <= 16 { return Array(buf.prefix(n)) }
+                return [UInt32](unsafeUninitializedCapacity: n) { out, count in count = margin_model_visible(core, out.baseAddress, n) }
+            }
+        }
+    }
+    private func handle(_ h: UInt32) -> UInt32? { h == UInt32(MARGIN_MODEL_NONE) ? nil : h }
+    var mainHost: UInt32? { handle(locked { margin_model_main_host(core) }) }
+    func alone(_ id: HostID) -> Bool { locked { withID(id) { margin_model_alone(core, $0, $1) } } }
+    func pageOf(_ h: UInt32) -> CGRect {
+        var r = MarginRect()
+        locked { margin_model_page_of(core, h, &r) }
+        return CGRect(r)
+    }
+    func placementFor(_ h: UInt32) -> HostPlacement {
+        var p = MarginPlacement()
+        locked { margin_model_placement_for(core, h, &p) }
+        return HostPlacement(page: CGRect(p.page), area: CGRect(p.area), display: CGRect(p.display))
+    }
+    func rank(_ id: HostID) -> Int { Int(locked { withID(id) { margin_model_rank(core, $0, $1) } }) }
+    func before(_ id: HostID) -> UInt32? { handle(locked { withID(id) { margin_model_before(core, $0, $1) } }) }
+    // A card's rect (nil: its own) below its window's minimum, and whether its process's version is wanted first.
+    func belowMinimum(_ h: UInt32, _ rect: CGRect?) -> (below: Bool, needsVersion: Bool) {
+        let a: UInt8 = locked {
+            guard var r = rect?.marginRect else { return margin_model_below_minimum(core, h, nil) }
+            return margin_model_below_minimum(core, h, &r)
+        }
+        return (a & 1 != 0, a & 2 != 0)
+    }
+    var shownMinWidth: CGFloat? {
+        let w = locked { margin_model_shown_min_width(core) }
+        return w.isNaN ? nil : CGFloat(w)
+    }
+    // An operation's end: nil nothing settled (a layout applied); else the host to show when none is (nil: none).
+    func settleBegin() -> UInt32?? {
+        let a = locked { margin_model_settle_begin(core) }
+        return a == -2 ? nil : .some(a < 0 ? nil : UInt32(a))
+    }
+    func settleFocus() -> UInt32? { handle(locked { margin_model_settle_focus(core) }) }
+
+    // A decision's word on the one shown: as it is, or set (nil: none).
+    enum ShownSet: Equatable { case keep, set(UInt32?) }
+    private func shownSet(_ a: Int64) -> ShownSet { a == -2 ? .keep : .set(a < 0 ? nil : UInt32(a)) }
+    // The layout held while `id` is placed on its own (`page`: by a page area's change): false, nothing to hold.
+    func hold(_ id: HostID, page: Bool) -> Bool { locked { withID(id) { margin_model_hold(core, $0, $1, page ? 1 : 0) } } }
+    func release() -> ShownSet { shownSet(locked { margin_model_release(core) }) }
+
+    // A layout's steps (`setLayout`): its extras refused first (each one's index, why, a card's minimum), its start,
+    // the held ones laid out again, its end (the one left alone at the page area), the focus.
+    enum Refusal: Equatable { case twice, below(CGSize) }
+    func layoutRefuse(main: HostID, extras: [(extra: HostExtra, min: CGSize?)]) -> [(Int, Refusal)] {
+        let list: [[String: Any]] = extras.map { x in
+            var d: [String: Any] = ["id": x.extra.target.id.raw, "role": x.extra.role.rawValue, "rect": x.extra.rect.coreJSON]
+            if let m = x.min { d["min"] = ["width": Double(m.width), "height": Double(m.height)] }
+            return d
+        }
+        let a = call(["type": "layoutRefuse", "main": main.raw, "extras": list])
+        return (a["refused"] as? [[String: Any]] ?? []).compactMap { r in
+            guard let i = (r["index"] as? NSNumber)?.intValue else { return nil }
+            if r["why"] as? String == "below", let m = r["min"] as? [String: Any] {
+                return (i, .below(CGSize(width: (m["width"] as? NSNumber)?.doubleValue ?? 0, height: (m["height"] as? NSNumber)?.doubleValue ?? 0)))
+            }
+            return (i, .twice)
+        }
+    }
+    struct LayoutBegun { var before: [UInt32]; var arriving: [HostID]; var held: [HostID]; var deferring: Bool }
+    func layoutBegin(main: HostID, mainRect: CGRect?, extras: [HostExtra]) -> LayoutBegun {
+        let list: [[String: Any]] = extras.map { ["id": $0.target.id.raw, "role": $0.role.rawValue, "rect": $0.rect.coreJSON] }
+        let a = call(["type": "layoutBegin", "main": main.raw, "mainRect": coreOptional(mainRect?.coreJSON), "extras": list])
+        return LayoutBegun(before: (a["before"] as? [NSNumber] ?? []).map(\.uint32Value),
+                           arriving: (a["arriving"] as? [String] ?? []).map(HostID.init(raw:)),
+                           held: (a["held"] as? [String] ?? []).map(HostID.init(raw:)),
+                           deferring: a["deferring"] as? Bool ?? false)
+    }
+    func layoutRelayHeld() -> [UInt32] {
+        locked {
+            withUnsafeTemporaryAllocation(of: UInt32.self, capacity: 64) { buf in
+                let n = margin_model_layout_relay_held(core, buf.baseAddress, 64)
+                return Array(buf.prefix(min(n, 64)))
+            }
+        }
+    }
+    func layoutEndAlone() -> UInt32? { handle(locked { margin_model_layout_end_alone(core) }) }
+    func layoutFocus(focused: HostID?, main: HostID) -> ShownSet {
+        shownSet(locked { withID(focused) { f, fn in withID(main) { margin_model_layout_focus(core, f, fn, $0, $1) } } })
+    }
+
+    // `bringIn`'s decision at each of its points (host/model/visible.rs `bring_in`).
+    enum BringInPoint: UInt8 { case start = 0, take, route, placed }
+    enum BringIn: UInt8 { case go = 0, reopen, take, fullScreenAgain, window, placedAgain, sizeFirst, switchIn, placedElsewhere, placeFullScreen }
+    func bringIn(_ h: UInt32, _ point: BringInPoint, isNew: Bool = false, isApp: Bool = false, taken: Bool = false, retrying: Bool = false, preparing: Bool = false) -> BringIn {
+        let facts: UInt32 = (isNew ? 1 : 0) | (isApp ? 2 : 0) | (taken ? 4 : 0) | (retrying ? 8 : 0) | (preparing ? 16 : 0)
+        return BringIn(rawValue: locked { margin_model_bring_in(core, h, point.rawValue, facts) }) ?? .go
+    }
+
+    // What the model's decisions read of the engine's options (one call per change of them).
+    func configure(tolerance: CGFloat) { _ = call(["type": "configure", "tolerance": Double(tolerance)]) }
+}
+
+nonisolated extension HostVisible {
+    init(_ v: MarginVisible) { self.init(rect: v.has_rect ? CGRect(v.rect) : nil, role: HostRole(model: Int64(v.role)), z: Int(v.z)) }
+    var margin: MarginVisible { MarginVisible(rect: rect?.marginRect ?? MarginRect(), has_rect: rect != nil, role: UInt8(role.model), z: Int64(z)) }
 }
 
 // ---- JSON shapes (host/api.rs) ----

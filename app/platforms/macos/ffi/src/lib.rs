@@ -15,12 +15,14 @@ mod link;
 mod model;
 mod profiles;
 mod themes;
+mod visible;
 pub use data::*;
 pub use keys::*;
 pub use link::*;
 pub use model::*;
 pub use profiles::*;
 pub use themes::*;
+pub use visible::*;
 
 use margin_core::geometry::Rect;
 use margin_core::host::api::HostCore;

@@ -79,6 +79,16 @@ fn the_hot_paths_allocate_nothing() {
         let (id2, w2) = ("safari:#pane2", 42);
         margin_model_add(core, id2.as_ptr(), id2.len(), app.as_ptr(), app.len(), w2, 500)
     };
+    // (Both held by the engine, a split of the two laid out, one shown: rare, before the count.)
+    let (id2, pane) = ("safari:#pane2", MarginVisible { rect: page, has_rect: true, role: 1, z: 1 });
+    // SAFETY: a live core, valid buffers.
+    unsafe {
+        margin_model_list(core, id.as_ptr(), id.len(), h);
+        margin_model_list(core, id2.as_ptr(), id2.len(), other);
+        margin_model_set_shown(core, id.as_ptr(), id.len(), 1.0);
+        margin_model_layout_set(core, id2.as_ptr(), id2.len(), &pane);
+        margin_model_set_focus(core, id2.as_ptr(), id2.len());
+    }
     let n = allocations(|| {
         // SAFETY: a live core, valid pointers.
         unsafe {
@@ -138,6 +148,45 @@ fn the_hot_paths_allocate_nothing() {
                 version.len(),
                 &mut size,
             ));
+            // The layout's reads (part 1b), dozens an operation and every poll; an operation's end with nothing to
+            // change; the one shown set to itself; an entry set as it is; bringIn's points; a window-mode frame.
+            let mut handles = [0u32; 16];
+            std::hint::black_box(margin_model_visible(core, handles.as_mut_ptr(), handles.len()));
+            for i in [id, id2] {
+                std::hint::black_box(margin_model_is_visible(core, i.as_ptr(), i.len()));
+                std::hint::black_box(margin_model_rank(core, i.as_ptr(), i.len()));
+                std::hint::black_box(margin_model_alone(core, i.as_ptr(), i.len()));
+                std::hint::black_box(margin_model_before(core, i.as_ptr(), i.len()));
+                let mut v = MarginVisible::default();
+                std::hint::black_box(margin_model_layout_get(core, i.as_ptr(), i.len(), &mut v));
+            }
+            let mut q = MarginPlacement::default();
+            for x in [h, other] {
+                margin_model_page_of(core, x, &mut r);
+                margin_model_placement_for(core, x, &mut q);
+                std::hint::black_box(margin_model_below_minimum(core, x, &page));
+                std::hint::black_box(margin_model_below_minimum(core, x, std::ptr::null()));
+                for point in 0..4 {
+                    std::hint::black_box(margin_model_bring_in(core, x, point, 2));
+                }
+            }
+            std::hint::black_box(margin_model_main_host(core));
+            std::hint::black_box(margin_model_layout_count(core));
+            std::hint::black_box(margin_model_generation(core));
+            std::hint::black_box(margin_model_applying(core));
+            std::hint::black_box(margin_model_shown_at(core));
+            std::hint::black_box(margin_model_shown_min_width(core));
+            margin_model_placement(core, &mut q);
+            margin_model_set_placement(core, &p);
+            margin_model_set_shown(core, id.as_ptr(), id.len(), 2.0);
+            margin_model_layout_set(core, id2.as_ptr(), id2.len(), &pane);
+            margin_model_layout_move(core, id2.as_ptr(), id2.len(), page);
+            margin_model_set_focus(core, id2.as_ptr(), id2.len());
+            std::hint::black_box(margin_model_settle_begin(core));
+            std::hint::black_box(margin_model_settle_focus(core));
+            std::hint::black_box(margin_layout_inside(page, 600.0, 400.0));
+            std::hint::black_box(margin_layout_window_frame(page, area, true, true, 1.0, &mut r));
+            std::hint::black_box(margin_layout_at_page_area(page, page, 1.0));
         }
     });
     assert_eq!(n, 0, "the hot paths allocated {n} times");

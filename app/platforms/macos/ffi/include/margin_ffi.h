@@ -100,6 +100,55 @@ double margin_model_learn_from_leaving(MarginHostCore *core, uint32_t handle); /
 bool margin_minimums_has(MarginHostCore *core, const uint8_t *app, size_t len);
 bool margin_minimums_known(MarginHostCore *core, const uint8_t *app, size_t app_len, const uint8_t *version, size_t version_len, MarginSize *out); // version NULL: not known
 
+// The layout of Margin's page area and its decisions (host/model/visible.rs, ffi visible.rs): typed (read dozens of
+// times an operation and every poll); ids as UTF-8 bytes (NULL: none), hosts by handle (MARGIN_MODEL_NONE: none).
+// A layout's start and its refusals are JSON (margin_host_call: layoutRefuse, layoutBegin; `layout`, `configure`).
+// A decision on the one shown answers -2 leave it, -1 none shown, else the host to show (through the shell's setter).
+typedef struct MarginVisible {
+    MarginRect rect;
+    bool has_rect; // false: the page area
+    uint8_t role;  // 0 main, 1 pane, 2 card
+    int64_t z;     // back to front, 0 the backmost
+} MarginVisible;
+void margin_model_list(MarginHostCore *core, const uint8_t *id, size_t len, uint32_t handle); // the engine holds it as `id` (NONE: none)
+bool margin_model_layout_get(MarginHostCore *core, const uint8_t *id, size_t len, MarginVisible *out);
+void margin_model_layout_set(MarginHostCore *core, const uint8_t *id, size_t len, const MarginVisible *v); // NULL: out of it
+size_t margin_model_layout_count(MarginHostCore *core);
+uint64_t margin_model_generation(MarginHostCore *core); // counts the layout's changes
+void margin_model_layout_move(MarginHostCore *core, const uint8_t *id, size_t len, MarginRect rect);
+void margin_model_set_shown(MarginHostCore *core, const uint8_t *id, size_t len, double now); // the layout follows
+double margin_model_shown_at(MarginHostCore *core);
+void margin_model_set_focus(MarginHostCore *core, const uint8_t *id, size_t len);
+void margin_model_placement(MarginHostCore *core, MarginPlacement *out);
+void margin_model_set_placement(MarginHostCore *core, const MarginPlacement *p);
+bool margin_model_applying(MarginHostCore *core);
+bool margin_model_is_visible(MarginHostCore *core, const uint8_t *id, size_t len);
+size_t margin_model_visible(MarginHostCore *core, uint32_t *out, size_t cap); // back to front; the count, `cap` written at most
+uint32_t margin_model_main_host(MarginHostCore *core);
+bool margin_model_alone(MarginHostCore *core, const uint8_t *id, size_t len);
+void margin_model_page_of(MarginHostCore *core, uint32_t handle, MarginRect *out);
+void margin_model_placement_for(MarginHostCore *core, uint32_t handle, MarginPlacement *out);
+uint8_t margin_model_rank(MarginHostCore *core, const uint8_t *id, size_t len); // 0 shown, 1 visible, 2 the rest
+uint32_t margin_model_before(MarginHostCore *core, const uint8_t *id, size_t len);
+uint8_t margin_model_below_minimum(MarginHostCore *core, uint32_t handle, const MarginRect *rect); // bit 0 below, bit 1 its version wanted
+double margin_model_shown_min_width(MarginHostCore *core); // NaN: none
+int64_t margin_model_settle_begin(MarginHostCore *core); // -2 nothing settled (a layout applied), -1 none to show, else the host
+uint32_t margin_model_settle_focus(MarginHostCore *core);
+bool margin_model_hold(MarginHostCore *core, const uint8_t *id, size_t len, uint8_t kind); // 0 one host's placing, 1 a page area's change
+int64_t margin_model_release(MarginHostCore *core);
+size_t margin_model_layout_relay_held(MarginHostCore *core, uint32_t *out, size_t cap);
+uint32_t margin_model_layout_end_alone(MarginHostCore *core);
+int64_t margin_model_layout_focus(MarginHostCore *core, const uint8_t *focused, size_t focused_len, const uint8_t *main, size_t main_len);
+// bringIn's decision at `point` (0 start, 1 take, 2 route, 3 placed), the shell's facts as bits (1 new, 2 an app's,
+// 4 taken, 8 retrying, 16 made ready out of sight): 0 go on, 1 reopen, 2 take, 3 full screen again, 4 window mode,
+// 5 placed again, 6 its tile sized first, 7 switched in, 8 placed for another page area, 9 placed full screen.
+uint8_t margin_model_bring_in(MarginHostCore *core, uint32_t handle, uint8_t point, uint32_t facts);
+// A window-mode window's frame (host/layout.rs): centred at whole points; its frame from where it is (false: there
+// already); where it should be.
+MarginRect margin_layout_inside(MarginRect page, double width, double height);
+bool margin_layout_window_frame(MarginRect page, MarginRect now, bool resizable, bool placed_before, double tolerance, MarginRect *out);
+bool margin_layout_at_page_area(MarginRect bounds, MarginRect area, double tolerance);
+
 // Margin's keys (shortcuts.rs, ffi keys.rs): combinations as the Mac's Carbon key code and modifier bits. The JSON
 // answers are freed with margin_buffer_free; a press, a release and a repeat's tick are typed.
 typedef struct {

@@ -413,7 +413,9 @@ final class HostEngine {
         }
     }
 
-    var options: Options
+    // The engine's options. What the core's decisions read of them (host/model/visible.rs `ModelOptions`) is sent to it
+    // whenever they change (a test's change after init too): one call each.
+    var options: Options { didSet { core.configure(tolerance: options.tolerance) } }
     private let sys: HostSystem
     private let markerURL: URL?
     private let ownPid: Int32
@@ -425,18 +427,42 @@ final class HostEngine {
     private var activeDue: DispatchWorkItem?
     private var activeTerminate: NSObjectProtocol?
     var onKeptActive: ((Set<pid_t>) -> Void)? // the apps kept active changed (the pane click tap's word)
+    // The hosts, by id; also by handle (the core's decisions answer hosts by handle). The core knows which host the
+    // engine holds as each id (`setHost`, the only writer).
     private(set) var hosts: [HostID: Host] = [:]
+    private var byHandle: [UInt32: Host] = [:]
+    private func setHost(_ id: HostID, _ host: Host?) {
+        if let old = hosts[id] { byHandle[old.handle] = nil }
+        hosts[id] = host
+        if let host { byHandle[host.handle] = host }
+        core.list(id, host?.handle)
+    }
+    private func host(_ h: UInt32?) -> Host? { h.flatMap { byHandle[$0] } }
     // The focused host (docs/PEEK-SPLIT.md §1): the visible host with the keys. With one visible host, the one shown.
-    private(set) var shown: HostID? { didSet { if let id = shown, shown != oldValue { shownAt = sys.now(); hosts[id]?.visibleAt = shownAt }; followShown(oldValue); announceHosted() } }
+    // The core's (host/model/visible.rs `shown`): set through it (a new one's time it was shown; the layout follows it
+    // outside a whole layout's change: `set_shown`), then Margin's window told. Its id read here without a call, kept as
+    // last set: nothing else sets it.
+    private var shownID: HostID?
+    private(set) var shown: HostID? {
+        get { shownID }
+        set {
+            shownID = newValue
+            core.setShown(newValue, now: sys.now())
+            announceHosted()
+        }
+    }
     // Every host visible in Margin's page area now (`shown` among them), each at its rect (nil: the page area), its role
     // and its place back to front. With one visible host: `[shown: main at the page area]`, kept so by `shown` itself.
-    private(set) var visible: [HostID: HostVisible] = [:]
-    // A whole layout being applied (`setLayout`): `visible` is the layout's, not `shown`'s, until it's done.
-    private var applyingLayout = false
+    // The core's (its layout): read by the decisions there; here as a whole only for the tests.
+    var visible: [HostID: HostVisible] { core.layoutEntries() }
+    // A whole layout being applied (`setLayout`), or held (`holdLayout`): the layout is the layout's, not `shown`'s,
+    // until it's done. The core's.
+    private var applyingLayout: Bool { core.applying }
     private(set) var launched: [pid_t: HostApp] = [:] // apps Margin started, while they run
     private(set) var leftSpaces: Set<UInt64> = [] // hosted windows' own full-screen Spaces a destroy hasn't taken yet
     private(set) var leftSafariWindows: [HostMarker.SafariWindow] = [] // Safari windows Margin asked for, their close not confirmed
-    private(set) var placement = HostPlacement.zero // the page area and the display's area (top-left coordinates)
+    // The page area and the display's area (top-left coordinates): the core's (every host's own page area is read there).
+    private(set) var placement: HostPlacement { get { core.placement } set { core.placement = newValue } }
     var pageRect: CGRect { placement.page }
     private(set) var marginWindow = 0
     private(set) var marginSpace: UInt64 = 0
@@ -496,7 +522,7 @@ final class HostEngine {
     private var retired: [UInt64: Double] = [:] // private Spaces a window was moved out of, and when: destroyed later (`privateRetire`)
     // The last full-screen ask: when, and the full-screen Spaces listed before it (the poll's late watch, `lateWatch`).
     private var lateAsk: (at: Double, before: Set<UInt64>)?
-    private var shownAt = 0.0 // when the one shown was last shown or placed
+    private var shownAt: Double { core.shownAt } // when the one shown was last shown or placed (the core's: `set_shown`)
     // The poll's look at the window server's on-screen list: reads in a row something of Margin's Space wasn't on
     // screen, when it was last acted on, and whether giving up was said.
     private var offReads = 0
@@ -602,6 +628,7 @@ final class HostEngine {
         ownPid = pid
         let core = HostCore()
         self.core = core
+        core.configure(tolerance: options.tolerance)
         observer = HostObserver(system: system, source: observation, core: core)
         observer.onHeard = { [weak self] in self?.heardSomething() }
         sys.onAppQuit = { [weak self] pid in self?.appQuit(pid) }
@@ -669,17 +696,15 @@ final class HostEngine {
         await serial(planned: true) {
             guard self.isVisible(id), let host = self.hosts[id] else { return false }
             if let card = self.visibleHosts.last(where: { $0.role == .card }), card !== host { return false }
-            self.focusWanted = id
+            self.core.setFocus(id)
             if self.shown != id { self.shown = id }
             if !fronted { await self.frontVisible() }
             return true
         }
     }
 
-    // One host at most is visible, main at the page area, and `id` would be too: today's one-host way.
-    private func alone(_ id: HostID) -> Bool {
-        visible.count <= 1 && visible.values.allSatisfy { $0.role == .main && $0.rect == nil } && hosts[id].map { $0.role == .main && $0.rect == nil } != false
-    }
+    // One host at most is visible, main at the page area, and `id` would be too: today's one-host way (the core's).
+    private func alone(_ id: HostID) -> Bool { core.alone(id) }
 
     // (The session's word: a show of `id` is today's one-host way, else a layout of it alone. HostedEngine.)
     func showsAlone(_ id: HostID) -> Bool { alone(id) }
@@ -690,7 +715,7 @@ final class HostEngine {
         return (list.filter(followsLive).count, list.count)
     }
     // The hosts a drag of the sidebar's edge moves: every visible one with several, else the one shown.
-    private var liveCandidates: [Host] { visible.count > 1 ? visibleHosts : shown.flatMap { hosts[$0] }.map { [$0] } ?? [] }
+    private var liveCandidates: [Host] { core.layoutCount > 1 ? visibleHosts : shown.flatMap { hosts[$0] }.map { [$0] } ?? [] }
     // A host that follows a drag live: a tile, or a window-mode window.
     private func followsLive(_ h: Host) -> Bool { h.tile != nil || h.mode == .window }
 
@@ -702,61 +727,51 @@ final class HostEngine {
     // visible, that one is at the page area (never left at a pane's rect: 13:27, main at 775 wide, the rest blank).
     private func applyLayout(main: HostTarget, mainRect: CGRect?, extras: [HostExtra], focused: HostID?) async -> [HostID: HostResult] {
         var results: [HostID: HostResult] = [:]
+        // (One in the layout twice, and a card below its app's known minimum: refused before anything is made for it, a
+        // window it would only refuse. A pane never is: its window is cut, docs/PEEK-SPLIT.md §4b. The core's.)
+        let refused = Dictionary(core.layoutRefuse(main: main.id, extras: extras.map { ($0, $0.role == .card ? knownMinimum(of: $0.target) : nil) }), uniquingKeysWith: { a, _ in a })
         var accepted: [HostExtra] = []
-        for x in extras {
+        for (i, x) in extras.enumerated() {
             let id = x.target.id
-            if id == main.id || accepted.contains(where: { $0.target.id == id }) { results[id] = .failed(.place, "in the layout twice"); continue }
-            // (A card below its app's known minimum: refused before anything is made for it, a window it would only
-            // refuse. A pane never is: its window is cut, docs/PEEK-SPLIT.md §4b.)
-            if x.role == .card, let m = knownMinimum(of: x.target), x.rect.width < m.width - options.tolerance || x.rect.height < m.height - options.tolerance {
+            switch refused[i] {
+            case .twice?: results[id] = .failed(.place, "in the layout twice"); continue
+            case .below(let m)?:
                 results[id] = fail(id, .place, "its \(x.role.rawValue) rect \(r(x.rect)) is below its window's minimum \(Int(m.width))×\(Int(m.height))\(hosts[id] == nil ? " (its app's, known before its window is made: none made)" : "")")
                 continue
+            case nil: accepted.append(x)
             }
-            accepted.append(x)
         }
-        let before = visibleHosts
-        let was = Set(before.map(\.id))
-        var next: [HostID: HostVisible] = [main.id: HostVisible(rect: mainRect, role: .main, z: 0)]
-        for (i, x) in accepted.enumerated() { next[x.target.id] = HostVisible(rect: x.rect, role: x.role, z: i + 1) }
-        let order = [main] + accepted.map(\.target)
-        let shownNow = { (id: HostID) in self.hosts[id].map { $0.phase == .shown && was.contains(id) } ?? false }
-        let arriving = order.map(\.id).filter { !shownNow($0) }
         // (Main shown already and staying: the others come in beside it, the ones shown laid out again after them; only
         // when those can be laid out again in place, a tile's rect or a window's frame: a plain member's placing is out of
         // full screen and in, its app activated after, under its own loader: placed first, as before, so the newcomer
-        // still comes in last, in front.)
-        let relaid = next.keys.filter { id in shownNow(id) && hosts[id].map { $0.rect != next[id]?.rect || $0.role != next[id]?.role } == true }
-        let inPlace = relaid.allSatisfy { id in hosts[id].map { ($0.tile != nil && !$0.noTiles) || $0.mode == .window } ?? false }
-        let deferring = !arriving.isEmpty && shownNow(main.id) && inPlace
-        var held: [HostID: HostVisible] = [:]
-        for (id, v) in next {
-            guard let h = hosts[id] else { continue } // (a new one's as it's made: `opened`)
-            if deferring, shownNow(id), h.rect != v.rect || h.role != v.role { held[id] = v; continue }
-            h.role = v.role
-            h.rect = v.rect
-        }
+        // still comes in last, in front. The ones shown take their new role and rect now unless they're held so; the
+        // layout is the layout's from now: the core's `layout_begin`.)
+        let order = [main] + accepted.map(\.target)
+        let roles = Dictionary([(main.id, HostRole.main)] + accepted.map { ($0.target.id, $0.role) }, uniquingKeysWith: { a, _ in a })
+        let begun = core.layoutBegin(main: main.id, mainRect: mainRect, extras: accepted)
+        let before = begun.before.compactMap { byHandle[$0] }
+        let was = Set(before.map(\.id))
+        let arriving = begun.arriving
+        let held = Set(begun.held)
         let t0 = sys.now()
-        applyingLayout = true
-        visible = next
-        for (id, v) in held { visible[id] = HostVisible(rect: hosts[id]?.rect, role: hosts[id]?.role ?? v.role, z: v.z) }
-        loadingHeld = deferring
+        loadingHeld = begun.deferring
         // Main first (the one it replaces parked as today's switch does: in before it leaves), then each extra back to
         // front beside it, never in its place.
         var mainFailed = false
         var fresh: Set<HostID> = []
         for target in order {
             let id = target.id
-            if mainFailed { results[id] = .failed(.window, "main wasn't shown"); visible[id] = nil; continue }
+            if mainFailed { results[id] = .failed(.window, "main wasn't shown"); core.setLayout(id, nil); continue }
             let r: HostResult
             if let h = hosts[id], h.phase == .shown, was.contains(id) {
-                if held[id] != nil { results[id] = .shown(id, placed: true); continue } // (laid out again below, with the rest)
+                if held.contains(id) { results[id] = .shown(id, placed: true); continue } // (laid out again below, with the rest)
                 r = .shown(id, placed: await place(h))
             } else {
                 r = await openNow(target)
             }
             results[id] = r
             if case .failed = r {
-                visible[id] = nil
+                core.setLayout(id, nil)
                 if id == main.id { mainFailed = true }
             } else if !was.contains(id), let h = hosts[id] {
                 h.visibleAt = sys.now()
@@ -768,15 +783,14 @@ final class HostEngine {
         // (One that didn't come: they stay as they were; the session lays out what's left, or one alone at the page area.)
         let cameIn = arriving.allSatisfy { if case .shown? = results[$0] { return true }; return false }
         if !held.isEmpty, cameIn {
-            for (id, v) in held { hosts[id]?.role = v.role; hosts[id]?.rect = v.rect; visible[id] = v }
-            let list = held.keys.compactMap { hosts[$0] }.sorted { (next[$0.id]?.z ?? 0) < (next[$1.id]?.z ?? 0) }
+            let list = core.layoutRelayHeld().compactMap { byHandle[$0] }
             let t1 = sys.now()
             await placeTogether(list)
             for h in list { results[h.id] = .shown(h.id, placed: isVisible(h.id)) }
             Diagnostics.note("host: layout: \(list.map(\.id.description).joined(separator: ", ")) laid out again with \(arriving.map(\.description).joined(separator: ", ")) in \(ms(since: t1)) ms, once \(arriving.count == 1 ? "it was" : "they were") in place")
         }
         // What's no longer in the layout: parked (a member as it is, a window-mode window at its frame).
-        for h in before where next[h.id] == nil && h.phase == .shown && hosts[h.id] === h {
+        for h in before where roles[h.id] == nil && h.phase == .shown && hosts[h.id] === h {
             if await !retire(h) {
                 let frozen = holdFreeze()
                 await backOut(h)
@@ -785,28 +799,23 @@ final class HostEngine {
             }
             if shown == h.id { shown = nil }
         }
-        applyingLayout = false
-        visible = visible.filter { isVisible($0.key) }
-        // (One left of a layout of several asked: it alone, at the page area.)
-        if visible.count == 1, let id = visible.keys.first, let h = hosts[id], h.rect != nil || h.role != .main {
-            visible = [id: HostVisible(rect: nil, role: .main, z: 0)]
-            h.rect = nil
-            h.role = .main
-            h.slid = nil; cutOrderRight(h.id)
+        // (The layout no longer applied, what's visible of it; one left of a layout of several asked: it alone, at the
+        // page area. The core's.)
+        if let h = host(core.layoutEndAlone()) {
+            cutOrderRight(h.id)
             let placed = await place(h)
-            Diagnostics.note("host: layout: \(id) left alone of the layout asked: at the page area \(r(placement.page))\(placed ? "" : " (not placed there yet)")")
+            Diagnostics.note("host: layout: \(h.id) left alone of the layout asked: at the page area \(r(placement.page))\(placed ? "" : " (not placed there yet)")")
         }
-        let want = focused.flatMap { visible[$0] != nil ? $0 : nil } ?? (visible[main.id] != nil ? main.id : visibleHosts.last?.id)
-        focusWanted = visible.count > 1 ? want : nil
-        if let want, shown != want { shown = want } else if shown.map({ visible[$0] == nil }) == true { shown = nil }
-        if visible.count > 1 || was.count > 1 { await frontVisible(fresh: fresh) }
+        // (The focus: the one asked when it's visible, else main, else the frontmost. The core's.)
+        if case .set(let h) = core.layoutFocus(focused: focused, main: main.id) { shown = host(h)?.id }
+        if core.layoutCount > 1 || was.count > 1 { await frontVisible(fresh: fresh) }
         for h in hosts.values where h.freshFront { h.freshFront = false }
         hostedSaid = nil
         announceHosted()
         // (The arriving one's loader off last: its hole and the others' new ones are said just before.)
         if loadingHeld { loadingHeld = false; say(loading: nil) }
-        Diagnostics.note("host: layout: \(order.map { "\($0.id) \(next[$0.id]?.role.rawValue ?? "?") \(results[$0.id].map { if case .shown = $0 { return "shown" }; return "failed" } ?? "?")" }.joined(separator: ", "))"
-                         + "\(before.filter { next[$0.id] == nil }.isEmpty ? "" : "; parked: " + before.filter { next[$0.id] == nil }.map(\.id.description).joined(separator: ", "))"
+        Diagnostics.note("host: layout: \(order.map { "\($0.id) \(roles[$0.id]?.rawValue ?? "?") \(results[$0.id].map { if case .shown = $0 { return "shown" }; return "failed" } ?? "?")" }.joined(separator: ", "))"
+                         + "\(before.filter { roles[$0.id] == nil }.isEmpty ? "" : "; parked: " + before.filter { roles[$0.id] == nil }.map(\.id.description).joined(separator: ", "))"
                          + ", focused \(shown.map(\.description) ?? "none") in \(ms(since: t0)) ms")
         return results
     }
@@ -1046,22 +1055,19 @@ final class HostEngine {
     func pageRectChanged(_ placement: HostPlacement, rects: [HostID: CGRect]) async -> Bool {
         await serial(planned: true) {
             self.placement = placement
-            for (id, r) in rects where self.visible[id] != nil { self.hosts[id]?.rect = r; self.visible[id]?.rect = r }
+            for (id, r) in rects { self.core.layoutMove(id, r) } // (each laid out one's rect, its host's and its place's)
             // (Live resize: the parked ones' tiles then, one at a time, by the reconciler: `sizeTile`.)
             defer { self.sizeTilesSoon() }
             guard let id = self.shown, let host = self.hosts[id] else { return true }
             // (Several visible: the layout held as it is while each is placed again; a plain member's placing goes out of
             // full screen and in, the one shown with it, which alone would make it the layout by itself and the others
-            // never placed: docs/PEEK-SPLIT.md §4, a split's divider let go.)
-            let several = self.visible.count > 1
-            let kept = self.visible
-            if several { self.applyingLayout = true }
+            // never placed: docs/PEEK-SPLIT.md §4, a split's divider let go. The core's hold, as `holdLayout`'s, the
+            // page's own way: every one still laid out kept, the one placed shown when nothing is.)
+            let several = self.core.hold(id, page: true)
             let placed = await self.place(host)
             for h in self.visibleHosts where h !== host { _ = await self.place(h) }
             if several {
-                self.applyingLayout = false
-                self.visible = kept.filter { self.isVisible($0.key) }
-                if self.shown == nil, self.isVisible(id) { self.shown = id }
+                if case .set(let h) = self.core.release() { self.shown = self.host(h)?.id }
                 self.settleVisible()
                 await self.frontVisible()
                 self.hostedSaid = nil
@@ -1385,7 +1391,7 @@ final class HostEngine {
             taken.append("\(h.id) \(ok ? "taken" : "not taken") after \(ms(since: t1)) ms")
         }
         // (Each focus made its window key: the layout's order and keys as they should be again, the focused one last.)
-        if visible.count > 1 { await frontVisible() } else if let s = shown.flatMap({ hosts[$0] }) { _ = await front(s) }
+        if core.layoutCount > 1 { await frontVisible() } else if let s = shown.flatMap({ hosts[$0] }) { _ = await front(s) }
         let line = "host: new windows' pages given their keys (\(taken.joined(separator: ", "))), the keys back to \(shown.map(\.description) ?? "none") in \(ms(since: t0)) ms"
         Diagnostics.note(line)
         return line
@@ -2307,7 +2313,8 @@ final class HostEngine {
                 return frame(h, q)
             } ?? frame(h)
             let tucked = isCut(h) && list.contains { o in o !== h && o.role != .card && (o.rect ?? placement.page).insetBy(dx: options.tolerance, dy: options.tolerance).intersects(window) }
-            return HostShownWindow(window: h.window, rect: rect, role: visible[h.id]?.role ?? h.role, z: visible[h.id]?.z ?? 0, focused: h.id == shown,
+            let placed = core.layout(h.id)
+            return HostShownWindow(window: h.window, rect: rect, role: placed?.role ?? h.role, z: placed?.z ?? 0, focused: h.id == shown,
                                    frame: window, tucked: tucked, cut: live == nil ? cutOf(h) : nil)
         } : []
         guard now != hostedWindowsSaid else { return }
@@ -2664,9 +2671,8 @@ final class HostEngine {
 
     private func opened(_ host: Host, started: Double, times: [String]) async -> HostResult {
         let id = host.id, pid = host.pid
-        hosts[id] = host
-        // (Made for a layout: its role and rect in it from the start, its first placing at its rect.)
-        if applyingLayout, let v = visible[id] { host.role = v.role; host.rect = v.rect }
+        setHost(id, host)
+        // (Made for a layout: its role and rect in it from the start, its first placing at its rect: the core's, as it's held.)
         applyHeldRoute(host)
         saveMarker()
         if !sys.watchOpens(pid: pid, { [weak self] code in self?.heard(code, pid: pid) }) {
@@ -3176,7 +3182,7 @@ final class HostEngine {
         if isNew, case .app = host.target, !host.taken, let (failed, why) = await take(host) {
             guard host.taken else {
                 // (Nothing of it was touched: forgotten, never backed out of a full screen that's the person's.)
-                hosts[host.id] = nil
+                setHost(host.id, nil)
                 core.resetTries(host: host.id.raw)
                 if !hosts.values.contains(where: { $0.pid == host.pid }) { sys.stopWatchingOpens(pid: host.pid) }
                 saveMarker()
@@ -3310,19 +3316,13 @@ final class HostEngine {
     // The layout as it is, held while `host` (visible, beside others) is placed on its own, outside a whole layout's
     // change (`applyingLayout`); nil: nothing to hold (one visible host, or a layout being applied already). The release
     // puts back each one still shown at its rect, the focus where it was asked, fronts them back to front and tells
-    // Margin's window.
+    // Margin's window. (The core's hold, one for this and a page area's change: `pageRectChanged`.)
     private func holdLayout(for host: Host) -> (() async -> Void)? {
-        guard !applyingLayout, visible.count > 1, visible[host.id] != nil else { return nil }
-        let kept = visible, focus = focusWanted ?? shown
-        applyingLayout = true
+        guard core.hold(host.id, page: false) else { return nil }
         return { [self] in
-            applyingLayout = false
-            visible = kept.filter { hosts[$0.key]?.phase == .shown }
-            for (id, v) in visible { hosts[id]?.role = v.role; hosts[id]?.rect = v.rect }
-            if let f = focus, isVisible(f) { if focusWanted == nil, visible.count > 1 { focusWanted = f }; if shown != f { shown = f } }
-            else if shown.map({ visible[$0] == nil }) ?? true { shown = visibleHosts.last?.id }
+            if case .set(let h) = core.release() { shown = self.host(h)?.id }
             settleVisible()
-            if visible.count > 1 { await frontVisible() }
+            if core.layoutCount > 1 { await frontVisible() }
             hostedSaid = nil
             hostedWindowsSaid = []
             announceHosted()
@@ -4639,32 +4639,29 @@ final class HostEngine {
     }
 
     // ---- several visible hosts per Margin window (docs/PEEK-SPLIT.md §1) ----
+    // The layout, the one shown and what's decided of them are the core's (host/model/visible.rs); each read here is a
+    // typed call, nothing copied.
 
     // A host's own page area: its rect in its role (a card's, a pane's; a split's main pane's), else Margin's page area.
     // Kept on the host while it's parked, so a parked card is never sized for the page area.
-    private func pageOf(_ host: Host) -> CGRect { host.rect ?? placement.page }
+    private func pageOf(_ host: Host) -> CGRect { core.pageOf(host.handle) }
     // Margin's placement with the host's own page area in it.
-    private func placementFor(_ host: Host) -> HostPlacement {
-        guard let rect = host.rect else { return placement }
-        var p = placement
-        p.page = rect
-        return p
-    }
+    private func placementFor(_ host: Host) -> HostPlacement { core.placementFor(host.handle) }
     // Visible now: in the layout and shown (with one host: the one shown).
-    private func isVisible(_ id: HostID) -> Bool { visible[id] != nil && hosts[id]?.phase == .shown }
+    private func isVisible(_ id: HostID) -> Bool { core.isVisible(id) }
     // The hosts visible now, back to front (`z`), the focused one last among equals.
-    private var visibleHosts: [Host] {
-        visible.sorted { ($0.value.z, $0.key == shown ? 1 : 0, $0.key.raw) < ($1.value.z, $1.key == shown ? 1 : 0, $1.key.raw) }
-            .compactMap { hosts[$0.key] }.filter { $0.phase == .shown }
-    }
+    private var visibleHosts: [Host] { core.visible().compactMap { byHandle[$0] } }
     // The visible host at the page area's own role (main), else the focused one.
-    private var mainHost: Host? { visibleHosts.first { $0.role == .main } ?? shown.flatMap { hosts[$0] } }
+    private var mainHost: Host? { host(core.mainHost) }
     // A card's or a pane's rect narrower or lower than its window's own minimum: never laid out so (never under the
-    // sidebar, never below its minimum: the UI clamps first, §4).
+    // sidebar, never below its minimum: the UI clamps first, §4). (A split's pane never is: its window is cut, `frame`.
+    // A card only.)
     private func belowMinimum(_ host: Host, _ rect: CGRect? = nil) -> Bool {
-        // (A split's pane never is: its window is cut, `frame`. A card only.)
-        guard host.mode != .window, host.role == .card, let m = minimum(host), let r = rect ?? host.rect else { return false }
-        return r.width < m.width - options.tolerance || r.height < m.height - options.tolerance
+        let a = core.belowMinimum(host.handle, rect)
+        // (Its app's kept minimum, its process's version read now, once: unreadable, the one kept holds.)
+        guard a.needsVersion, let v = version(of: host.pid) else { return a.below }
+        core.setVersion(host.handle, v)
+        return core.belowMinimum(host.handle, rect).below
     }
 
     // ---- every app's own window minimum, known before its window is made (docs/PEEK-SPLIT.md §4) ----
@@ -4738,19 +4735,10 @@ final class HostEngine {
     private func saveMinimums() {
         if let minimumsURL { core.saveMinimums(to: minimumsURL) }
     }
-    // `shown` changed outside a whole layout's change: the layout is it alone (main at the page area), or what's left.
-    private func followShown(_ was: HostID?) {
-        guard !applyingLayout else { return }
-        if let id = shown {
-            // (Alone at the page area from now: its rect and role as the layout says, never a pane's rect kept on it,
-            // which every placing reads: `pageOf`.)
-            if visible[id] == nil { visible = [id: HostVisible(rect: nil, role: .main, z: 0)]; hosts[id]?.rect = nil; hosts[id]?.role = .main; hosts[id]?.slid = nil }
-        } else if let was {
-            visible[was] = nil
-        }
-    }
+    // (`shown` changed outside a whole layout's change: the layout is it alone (main at the page area, never a pane's
+    // rect kept on it, which every placing reads: `pageOf`), or what's left. The core's, as it's set: `set_shown`.)
     // The order hosts are looked at in: the focused one, the others visible, the rest.
-    private func rank(_ id: HostID) -> Int { id == shown ? 0 : isVisible(id) ? 1 : 2 }
+    private func rank(_ id: HostID) -> Int { core.rank(id) }
     // A card's or a pane's rect below its window's minimum, said once for that rect (and told as a failed placing).
     private var belowSaid: [HostID: CGRect] = [:]
     private func sayBelowMinimum(_ host: Host) {
@@ -4762,29 +4750,17 @@ final class HostEngine {
     }
     // The one shown before `id` comes in, to be parked as it does: none while both are in the layout (a card or a pane
     // comes in beside main, never in its place).
-    private func before(_ id: HostID) -> Host? {
-        guard let s = shown, s != id, let h = hosts[s] else { return nil }
-        return visible[id] != nil && visible[s] != nil ? nil : h
-    }
-    // Hosts no longer visible (parked, gone) out of the layout; never the one shown.
-    private func pruneVisible() {
-        guard !applyingLayout else { return }
-        visible = visible.filter { $0.key == shown || hosts[$0.key].map { $0.phase != .parked } == true }
-    }
-    // The focus asked for (`setLayout`, `focus`): kept while it's visible (a step that shows another host in the layout
-    // moves `shown` to it on its way). Nil: with one visible host, always.
-    private var focusWanted: HostID?
-    // At the end of each operation: the layout as it is (hosts parked or gone out of it), the focus where it was asked
-    // (or on the frontmost one left when the focused one went), said to Margin's window if any of it changed. Nothing
-    // with one visible host (nothing changes then).
+    private func before(_ id: HostID) -> Host? { host(core.before(id)) }
+    // At the end of each operation: the layout as it is (hosts parked or gone out of it, never the one shown), the focus
+    // where it was asked (`setLayout`, `focus`: forgotten with one visible host; or on the frontmost one left when the
+    // focused one went), said to Margin's window if any of it changed. Nothing with one visible host (nothing changes
+    // then). Each step the core's, the one shown set here (Margin's window told as it is).
     private func settleVisible() {
-        guard !applyingLayout else { return }
-        let was = (visible, shown)
-        pruneVisible()
-        if visible.count <= 1 { focusWanted = nil }
-        if shown == nil, let next = visibleHosts.last { shown = next.id }
-        if let f = focusWanted, f != shown, isVisible(f) { shown = f }
-        if visible != was.0 || shown != was.1 || !hostedWindowsSaid.isEmpty || visible.count > 1 { announceHosted() }
+        let was = (core.generation, shown)
+        guard let next = core.settleBegin() else { return }
+        if let next { shown = host(next)?.id }
+        if let f = core.settleFocus() { shown = host(f)?.id }
+        if core.generation != was.0 || shown != was.1 || !hostedWindowsSaid.isEmpty || core.layoutCount > 1 { announceHosted() }
     }
     // Its tile's rect for a page area: never narrower than its window's minimum.
     private func tileRect(for host: Host, _ p: HostPlacement? = nil) -> CGRect? { tileHome.flatMap { HostLayout.tile(fitted(host, p), home: $0) } }
@@ -4834,7 +4810,7 @@ final class HostEngine {
     var onMinimum: ((CGFloat?) -> Void)?
     private func sayMinimum() { onMinimum?(shownMinimumWidth) }
     // (Several visible: main's, the one at the page area; a card's or a pane's minimum never stops the sidebar's edge.)
-    var shownMinimumWidth: CGFloat? { mainHost.flatMap { $0.phase == .shown && $0.mode != .window && $0.rect == nil ? $0.minSize?.width : nil } }
+    var shownMinimumWidth: CGFloat? { core.shownMinWidth }
 
     // Its window's own tile (in its own full-screen Space `own`) into Margin's Space at the end of its layout (its window
     // with it, still full screen), the tile limit raised first, then every rect set again, its own to the page area.
@@ -5372,7 +5348,7 @@ final class HostEngine {
                 await park(h)
                 emit(.parked(h.id))
             }
-            visible[h.id] = nil
+            core.setLayout(h.id, nil)
             saveMarker()
             Diagnostics.note("host: \(h.id) parked (\(why)) in \(ms(since: t0)) ms")
             emit(.unshown(h.id))
@@ -5790,7 +5766,7 @@ final class HostEngine {
         }
         if atQuit, let left = unfinished(host) { leftWindows.append(left) }
         if let priv = host.privateSpace { retirePrivate(priv) }
-        hosts[id] = nil
+        setHost(id, nil)
         core.resetTries(host: id.raw)
         if !hosts.values.contains(where: { $0.pid == host.pid }) { sys.stopWatchingOpens(pid: host.pid) }
         saveMarker()
@@ -6096,7 +6072,7 @@ final class HostEngine {
             if let tile = host.tile { goneTiles.insert(tile) } // (its tile, a placeholder now: destroyed at the next look)
             if let priv = host.privateSpace { retirePrivate(priv) }
             if let own = host.fullScreenSpace, sys.spaceExists(own) == true { leftSpaces.insert(own) }
-            hosts[host.id] = nil
+            setHost(host.id, nil)
             core.resetTries(host: host.id.raw)
             if shown == host.id { shown = nil }
             sys.stopWatchingOpens(pid: pid)
@@ -6112,7 +6088,7 @@ final class HostEngine {
         if let tile = host.tile { goneTiles.insert(tile); host.tile = nil; lookAtTiles(force: true) } // (its placeholder: destroyed now)
         if let priv = host.privateSpace { retirePrivate(priv) }
         if let own = host.fullScreenSpace, sys.spaceExists(own) == true { leftSpaces.insert(own) }
-        hosts[host.id] = nil
+        setHost(host.id, nil)
         core.resetTries(host: host.id.raw)
         if shown == host.id { shown = nil }
         saveMarker()

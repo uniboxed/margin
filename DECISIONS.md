@@ -7619,3 +7619,40 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   40,000 files of every shape, 200,000 known/remember steps, 240,000 learn/held/leave steps): no difference. The
   typed calls allocate nothing (no_alloc.rs: a pane's minimum, a tile's read, the narrowest held, a kept one asked).
   The app's 2038 checks pass unchanged.
+
+## Core refactor step 2, part 1b (first of two commits): the layout of Margin's page area and its decisions in the core (2026-11-22)
+
+- The engine's own state is the core's now (host/model/visible.rs, on the model): the layout (`visible`: each host's
+  rect, role and place back to front, ids a layout names before their hosts exist), the one shown and when it was
+  shown, the focus asked, the placement, a whole layout being applied, the hold, the layout's held hosts; and which
+  host the engine holds as each id (`setHost`, the five places `hosts` was written, tells the core).
+- The decisions read there, each asked at the point it's made today (no plan made up front): the visible hosts'
+  order (z, the one shown last among equals, then the id's bytes: ids are ASCII, so as Swift's `<`), visible, main,
+  alone, a host's own page area and placement, the poll's rank, the one shown before another comes in, a card below
+  its minimum (with part 5's tri-state: the version read only when a kept minimum needs it), the one shown's minimum
+  width; `shown`'s follow (`set_shown`: the setter asks it, then tells Margin's window, as the didSet did), an
+  operation's end (`settle_begin`, then the shown set, then `settle_focus`, then the shown set again: two calls
+  because the setter's own effects run between them as before; "did the layout change" by a generation count, no
+  copy), applyLayout's refusals, its start (`layoutBegin`: the layout, arriving, held, deferring, each one's role and
+  rect), the held ones laid out again, its end (the one left alone at the page area), its focus. The per-target
+  bookkeeping between them (a failed one out of the layout, a newcomer's time and its off-screen word) stays where it
+  was, the layout's entry removed by a typed call.
+- `holdLayout` and `pageRectChanged`'s copy are one hold (`hold`/`release`), its two kinds' differences kept as they
+  were and named: a placing's hold (only beside others, never inside a layout; puts each one's role and rect back;
+  the focus kept) and a page area's (whenever several are visible; keeps only those still laid out; the host placed
+  shown when nothing is). The fronting after it stays the callers' (a page's always, a placing's with several).
+- `options` is sent to the core in its `didSet` (one JSON call per change; only the tolerance is read there so far:
+  the other options join as their parts' decisions move). `shown` keeps its id here as last set (it's read hundreds
+  of times an operation; a string out of the core each read would allocate): only its setter writes it, through the
+  core. `visible` is a computed dictionary built from the core for the tests only; the engine reads the layout by
+  typed calls. `livePage`, `belowSaid`, `liveCandidates` and the cut panes' state stay Swift for parts 3 and 6 (their
+  readers move there); so does `focus`'s card rule (not in 1b's list).
+- Checked before the Swift went: the deleted Swift against the core over 238,268 checks in 4,000 generated runs of
+  40 operations each (28,262 whole layouts with refusals, deferring, newcomers made mid-layout, failures, relays,
+  parkings, the alone rule, the focus; both holds with changes while held; settles; shown set and cleared; every
+  query after every step): no difference. The harness was itself checked by mutating the old Swift (a tie's order,
+  the noTiles rule in deferring, the hold's focus, the slide's reset, the page hold's filter, the focus kept with one):
+  each caught. The typed calls allocate nothing (no_alloc.rs: every read, an operation's end with nothing to change,
+  the shown set to itself, an entry set as it is). The app's 2038 checks pass unchanged.
+- The core also gains `bring_in` and the window-mode frame (`layout::inside`, `window_frame`, `at_page_area`) with
+  their Rust tests; the Swift switches to them in the next commit (one adds, the next deletes, as the design asks).
