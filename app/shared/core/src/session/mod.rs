@@ -54,7 +54,7 @@ use exec::Exec;
 pub use hosting::HostTarget;
 pub use items::Split;
 pub use requests::{By, Request};
-pub use state::{Field, OpenItem, State};
+pub use state::{Field, OpenItem, Row, State};
 pub use target::Target;
 
 /// The log lines kept (HostedSession `done`).
@@ -471,6 +471,33 @@ impl Session {
     /// A field's revision (a change of it since: read it again).
     pub fn rev(&self, f: Field) -> u64 {
         self.0.revs[f as usize].get()
+    }
+
+    /// A field's rows, typed (the facade's read, no JSON). `emit` must not call back into the session (it's given
+    /// each row while the state is read); a read made during an edit of the state gives none.
+    pub fn rows(&self, f: Field, emit: &mut dyn FnMut(&Row)) {
+        if let Ok(state) = self.0.state.try_borrow() {
+            state.rows(f, emit);
+        }
+    }
+
+    /// One row of a field put or taken out (the facade's write, no JSON): whether it was one, and the field's
+    /// revision after it.
+    pub fn edit_row(&self, f: Field, del: bool, row: &Row) -> (bool, u64) {
+        let ok = match self.0.state.try_borrow_mut() {
+            Ok(mut state) => state.edit_row(f, del, row),
+            Err(_) => false,
+        };
+        if ok {
+            self.0.bump(f);
+        }
+        (ok, self.rev(f))
+    }
+
+    /// Whether an answer has more than its readiness and deadline to say (commands to start, warnings, a reply, an
+    /// error): the Mac reads its JSON only then.
+    pub fn has_more(out: &Out) -> bool {
+        !out.start.is_empty() || !out.log.is_empty() || out.reply.is_some() || out.error.is_some()
     }
 
     #[cfg(test)]

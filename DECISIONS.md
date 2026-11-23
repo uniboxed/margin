@@ -8355,3 +8355,38 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   on the Swift side: 2.5 µs (3.7 with a split), was 6.6 (12.0) before commit 1 and 10.7 (15.0) after it. Nothing
   allocated by the holes' placing, the setters of a drag's frame, the reads, keepFront or the poll's read once warm
   (no_alloc.rs). `page-frames` and `idle-cost` not measured: no screen suite on this branch.
+
+## A switch costs no more than the Swift's: the session's ports, answers and fields typed (2026-11-23)
+
+- Tirth's rule (no CPU increase) against commit 5's measure: a switch through the facade cost about twice the old
+  Swift's (a web tab switch 220 µs of the main thread against 115-125, an app switch 220 against 88-96), the JSON of
+  a dozen ports a show, every core answer read as JSON, and each field the show changed read again as JSON. Now:
+  - The ports a show asks are one typed C callback (`MarginSessionCall`: the port's number, a window, a flag and up
+    to three texts as bytes; it answers a number, `INT64_MIN` for none, and gives texts and lists back through
+    `margin_port_out_text`/`_int` during the call): the window, the engine's reads, the links' profiles and epochs,
+    the app's name, `setShowing`, `setMarginPage`, `push`, `changed`, the waker's two reads, `log`, and the Swift flows
+    of later parts a show calls (the card's leaving and returning, `pinnedOrFavorite`, `settleHosting`,
+    `refreshLoading`, `leaveMarginPage`, the layout's reads and clearing, the elsewhere card's). The JSON port stays
+    for the rare ones (`layoutsWith`, `cardUrl`, `paneFor`, the wall clock) and for a session made with no callback
+    (the Rust tests).
+  - `margin_session_input`, `_answer` and `_tick` write readiness and the deadline into a `MarginSessionStatus` and
+    answer JSON only when there's more to say (commands to start, a reply, a warning): most answers of a switch are
+    nothing to read.
+  - The facade's fields are read and edited as typed rows (`margin_session_rows` to a sink, `margin_session_edit_row`),
+    not the JSON `state` input; the `state` input stays for the core's own tests.
+  - The interim `prepare` hands the core a number for its placement, kept on the Swift side for the engine's open
+    (the core only passes it on): no placement's JSON there and back.
+- Measured (the scratch bench's 5,000 switches, the main thread's own CPU time per switch, median, two quiet rounds;
+  the Mac was shared, so CPU time, not wall time): a web tab switch 84-88 µs (the old Swift 115-125, commit 5 229-231),
+  an app switch 79-87 µs (old 88-96, commit 5 218-222). Under the Swift's in both.
+- Nothing changes in what the session does: the 450-vector comparison rerun against the build it starts from
+  (551d3016, commit 5 and change 3), all 450 the same to the line (26,469 steps, 18,989 requests and asks, 11,086
+  engine opens and copy requests); against the old Swift, the differences are change 3's (a reset overtaken: not shown)
+  and commit 5's four ties. The
+  waker's look and a field's typed rows allocate nothing (no_alloc.rs). The app's checks: 2150 pass.
+- The one extra main-actor turn a Swift caller of a core flow waits (commit 5: a `Reply`'s continuation resumes in the
+  next turn) is scheduling, not work: one job hop, about a microsecond, unchanged by typing the ports. It goes when
+  its callers are the core's: the Swift flows that still call `show` and `close` (part 4's `expandCard`, part 5's
+  `focused`, part 6's resume and `enteredFullScreen`, `profileNamesChanged`) as their parts move. The engine's asks
+  keep it (the engine is the Mac's and awaits the session's answer): removing it there would need the engine to take
+  the answer through a callback in the same turn instead of awaiting, a change of the engine's own flow for one hop.

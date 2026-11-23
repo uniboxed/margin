@@ -453,15 +453,31 @@ uint8_t *margin_themes_protocol(const uint8_t *request, size_t len, size_t *out_
 // 3 done, 4 requested ... 17 made). Typed, nothing allocated: `link_wanted` (a show waiting on a profile's link still
 // wanted: the Safari waker's look) and `open_wanted` (a new app's open for an item in a Margin window still wanted:
 // the engine's).
+// The typed ports (`call`, by their number: ffi session.rs `PortKind`, SessionCore.swift's) answer a number
+// (INT64_MIN: none) and give their texts and lists back through margin_port_out_text / _int during the call. Given a
+// MarginSessionStatus, `input`, `answer` and `tick` write their readiness and deadline (NaN: none) there and answer
+// JSON only when there's more (else NULL). The facade's fields typed: `rows` (each to a sink, its texts valid during
+// the call) and `edit_row`.
 typedef struct MarginSession MarginSession;
+typedef struct MarginPortOut MarginPortOut;
+typedef struct MarginBytes { const uint8_t *ptr; size_t len; } MarginBytes;
+typedef struct MarginPortArgs { int64_t window; bool has_window; bool flag; MarginBytes a; MarginBytes b; MarginBytes c; } MarginPortArgs;
+typedef struct MarginSessionStatus { bool ready; double deadline; } MarginSessionStatus;
+typedef struct MarginRow { int64_t i0; double f; bool b0; bool b1; MarginBytes s0; MarginBytes s1; MarginBytes s2; } MarginRow;
 typedef double (*MarginSessionNow)(void *ctx);
 typedef uint8_t *(*MarginSessionPort)(void *ctx, const uint8_t *ask, size_t len, size_t *out_len);
+typedef int64_t (*MarginSessionCall)(void *ctx, uint32_t kind, const MarginPortArgs *args, MarginPortOut *out);
+typedef void (*MarginRowSink)(void *ctx, const MarginRow *row);
 
-MarginSession *margin_session_new(MarginLibrary *library, const uint8_t *options, size_t len, void *ctx, MarginSessionNow now, MarginSessionPort port);
+MarginSession *margin_session_new(MarginLibrary *library, const uint8_t *options, size_t len, void *ctx, MarginSessionNow now, MarginSessionPort port, MarginSessionCall call);
 void margin_session_free(MarginSession *session);
-uint8_t *margin_session_input(const MarginSession *session, const uint8_t *input, size_t len, size_t *out_len);
-uint8_t *margin_session_answer(const MarginSession *session, uint64_t id, const uint8_t *reply, size_t len, size_t *out_len);
-uint8_t *margin_session_tick(const MarginSession *session, double due, size_t *out_len);
+void margin_port_out_text(MarginPortOut *out, const uint8_t *ptr, size_t len);
+void margin_port_out_int(MarginPortOut *out, int64_t n);
+uint8_t *margin_session_input(const MarginSession *session, const uint8_t *input, size_t len, MarginSessionStatus *status, size_t *out_len);
+uint8_t *margin_session_answer(const MarginSession *session, uint64_t id, const uint8_t *reply, size_t len, MarginSessionStatus *status, size_t *out_len);
+uint8_t *margin_session_tick(const MarginSession *session, double due, MarginSessionStatus *status, size_t *out_len);
+void margin_session_rows(const MarginSession *session, uint32_t field, void *ctx, MarginRowSink sink);
+bool margin_session_edit_row(const MarginSession *session, uint32_t field, bool del, const MarginRow *row, uint64_t *rev);
 uint8_t *margin_session_done(const MarginSession *session, size_t *out_len);
 bool margin_session_idle(const MarginSession *session);
 uint64_t margin_session_rev(const MarginSession *session, uint32_t field);

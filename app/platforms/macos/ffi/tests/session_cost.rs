@@ -68,12 +68,12 @@ fn the_sessions_calls_cost() {
     let options = br#"{"every":0.05}"#;
     // SAFETY: the library, the options' bytes, no ctx needed.
     let s = unsafe {
-        margin_session_new(lib, options.as_ptr(), options.len(), std::ptr::null_mut(), Some(now), Some(port))
+        margin_session_new(lib, options.as_ptr(), options.len(), std::ptr::null_mut(), Some(now), Some(port), None)
     };
     let input = |v: &str| {
         let mut n = 0;
         // SAFETY: the live session, the input's bytes.
-        take(unsafe { margin_session_input(s, v.as_ptr(), v.len(), &mut n) }, n)
+        take(unsafe { margin_session_input(s, v.as_ptr(), v.len(), std::ptr::null_mut(), &mut n) }, n)
     };
     input(
         r#"{"type":"state","set":{"shown":{"put":[[1,"t1"]]},"open":{"put":[["t1","safari:p","p"]]},"safariWindows":{"put":[["p","main",90]]}}}"#,
@@ -87,7 +87,7 @@ fn the_sessions_calls_cost() {
     let tick = per_call(100_000, || {
         let mut n = 0;
         // SAFETY: the live session.
-        take(unsafe { margin_session_tick(s, 0.0, &mut n) }, n);
+        take(unsafe { margin_session_tick(s, 0.0, std::ptr::null_mut(), &mut n) }, n);
     });
     let rev = per_call(1_000_000, || {
         // SAFETY: the live session.
@@ -98,12 +98,15 @@ fn the_sessions_calls_cost() {
         input(r#"{"type":"navigate","kind":"goBack","window":1}"#);
         let mut n = 0;
         // SAFETY: the live session; the reply's bytes.
-        let mut out = take(unsafe { margin_session_tick(s, 0.0, &mut n) }, n);
+        let mut out = take(unsafe { margin_session_tick(s, 0.0, std::ptr::null_mut(), &mut n) }, n);
         for _ in 0..2 {
             let id = out["start"][0]["id"].as_u64().unwrap_or(0);
             // SAFETY: as above.
-            take(unsafe { margin_session_tick(s, 0.0, &mut n) }, n);
-            out = take(unsafe { margin_session_answer(s, id, reply.as_ptr(), reply.len(), &mut n) }, n);
+            take(unsafe { margin_session_tick(s, 0.0, std::ptr::null_mut(), &mut n) }, n);
+            out = take(
+                unsafe { margin_session_answer(s, id, reply.as_ptr(), reply.len(), std::ptr::null_mut(), &mut n) },
+                n,
+            );
         }
     });
     // SAFETY: the live session.
@@ -117,10 +120,10 @@ fn the_sessions_calls_cost() {
         input(&format!(r#"{{"type":"library","request":{{"type":"activateTab","item":"{item}","windowId":1}}}}"#));
         let mut n = 0;
         // SAFETY: the live session; the reply's bytes.
-        let out = take(unsafe { margin_session_tick(s, 0.0, &mut n) }, n);
+        let out = take(unsafe { margin_session_tick(s, 0.0, std::ptr::null_mut(), &mut n) }, n);
         let id = out["start"][0]["id"].as_u64().unwrap_or(0);
-        take(unsafe { margin_session_tick(s, 0.0, &mut n) }, n);
-        take(unsafe { margin_session_answer(s, id, shown.as_ptr(), shown.len(), &mut n) }, n);
+        take(unsafe { margin_session_tick(s, 0.0, std::ptr::null_mut(), &mut n) }, n);
+        take(unsafe { margin_session_answer(s, id, shown.as_ptr(), shown.len(), std::ptr::null_mut(), &mut n) }, n);
     });
     // SAFETY: the live session.
     assert!(unsafe { margin_session_idle(s) }, "each switch over");

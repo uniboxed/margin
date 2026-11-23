@@ -863,6 +863,12 @@ Margin's window as the adapter's contract, Safari's own window mechanics, NSPast
   `done`), the field is the core's and the facade's computed property reads it again only when its revision changed
   and writes the difference (`state` input: `put`, `del`); each part moves its fields in the same way. Swift's
   `enqueue` puts its bodies in the core's queue (a `Run` command at their turn): one queue for both while flows move.
+  *As built (commit 5's follow-up, step3/typed-ports, Tirth's no-CPU-increase rule):* the ports a show asks are one
+  typed callback (`MarginSessionCall`: a port's number, a window, a flag, three texts as bytes; texts and lists given
+  back through `margin_port_out_text`/`_int`), the JSON `port` kept for the rare ones; `_input`, `_answer` and `_tick`
+  write readiness and the deadline into a `MarginSessionStatus` and answer JSON only when there's more (commands, a
+  reply); the facade's fields are read and edited as typed rows (`margin_session_rows`, `_edit_row`), not the `state`
+  input. A switch's Margin-side CPU is now under the old Swift's (DECISIONS.md).
 - **Windows** implements the same ports in Rust over its adapter (W/hosting.rs) and Margin's window (W/appwindow.rs),
   with no FFI: §10 item 1's `Session::handle(now, Input) -> Vec<Command>` is `_input`/`_answer`/`_tick` with the
   commands above; its `EnsureBrowserWindow` is the engine's `requestSafariWindow` (part 2) browser-keyed.

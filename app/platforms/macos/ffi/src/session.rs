@@ -1,12 +1,17 @@
 //! The session (margin-core's `session`: HostedSession's flows as async steps, docs/CORE-REFACTOR.md step 3) for the
 //! Mac app's Swift. One object per app, made with the library object (its reads go straight to the library's set) and
-//! the Swift side's ports: `now` (typed: read at every sleep) and `port` (JSON in, JSON out allocated with `malloc`,
-//! freed here with `free`, as `MarginDataNeed`), both called during a call, on its thread, and free to call back in.
+//! the Swift side's ports: `now` (typed: read at every sleep), `call` (typed: the ports a show asks, by their number,
+//! their texts as bytes and the texts they answer given back through `margin_port_out_text`, nothing in JSON) and
+//! `port` (JSON in, JSON out allocated with `malloc`, freed here with `free`, as `MarginDataNeed`: the rare ones, and
+//! every one when there's no `call`), all called during a call, on its thread, and free to call back in.
 //!
 //! - `margin_session_input`: an input (`{ type, … }`); `margin_session_answer`: a command's answer by its id;
 //!   `margin_session_tick`: the commands handed out are started, and the deadlines up to `due` are over. Each answers
 //!   `{ start?, deadline, log?, reply?, error? }`: the commands to start at once, in order, before calling `tick`; the
 //!   earliest deadline (null: none); the log lines since; a read's reply; a bad input's error, logged once a kind.
+//!   Given a `MarginSessionStatus`, its readiness and deadline are written there and the JSON comes only when there's
+//!   more to say (null otherwise): most answers of a switch are nothing to read.
+//! - The facade's fields, typed: `margin_session_rows` (a field's rows to a callback) and `margin_session_edit_row`.
 //! - Typed reads: `margin_session_done` (the last 200 lines, JSON), `margin_session_idle`,
 //!   `margin_session_rev` (a field's revision: the facade reads it again only when it changed),
 //!   `margin_session_link_wanted` (the Safari waker's look, every 0.05 s while it waits: nothing allocated),
@@ -19,7 +24,7 @@ use std::ffi::c_void;
 
 use margin_core::data::library::LibraryStore;
 use margin_core::json;
-use margin_core::session::{Field, LibraryView, Ports, Session};
+use margin_core::session::{Field, LibraryView, Out, Ports, Row, Session};
 use serde_json::{Map, Value, json};
 
 use crate::data::{MarginLibrary, answer, text};
@@ -34,6 +39,106 @@ pub type MarginSessionNow = extern "C" fn(ctx: *mut c_void) -> f64;
 pub type MarginSessionPort =
     extern "C" fn(ctx: *mut c_void, ask: *const u8, len: usize, out_len: *mut usize) -> *mut u8;
 
+/// Text as bytes (UTF-8; a null `ptr`: none).
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct MarginBytes {
+    pub ptr: *const u8,
+    pub len: usize,
+}
+
+impl MarginBytes {
+    fn of(s: Option<&str>) -> Self {
+        s.map_or(MarginBytes { ptr: std::ptr::null(), len: 0 }, |s| MarginBytes { ptr: s.as_ptr(), len: s.len() })
+    }
+    fn text<'a>(self) -> Option<&'a str> {
+        if self.ptr.is_null() { None } else { text(self.ptr, self.len) }
+    }
+}
+
+/// A typed port's question: a window (`has_window`: one named; else the front one), a flag, up to three texts.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct MarginPortArgs {
+    pub window: i64,
+    pub has_window: bool,
+    pub flag: bool,
+    pub a: MarginBytes,
+    pub b: MarginBytes,
+    pub c: MarginBytes,
+}
+
+/// What a typed port answers besides its number: texts and whole numbers, given back during the call.
+#[derive(Default)]
+pub struct MarginPortOut {
+    texts: Vec<String>,
+    ints: Vec<i64>,
+}
+
+/// A typed port (`kind`: session.rs `PortKind`'s number): its answer, a number (`i64::MIN`: none).
+pub type MarginSessionCall =
+    extern "C" fn(ctx: *mut c_void, kind: u32, args: *const MarginPortArgs, out: *mut MarginPortOut) -> i64;
+
+/// A text a typed port answers (`out` from the call: its texts in order).
+///
+/// # Safety
+/// `out` as the port was given it, during its call; `ptr` points at `len` readable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_port_out_text(out: *mut MarginPortOut, ptr: *const u8, len: usize) {
+    // SAFETY: the port's `out`, alive for its call (the caller's contract).
+    if let (Some(out), Some(t)) = (unsafe { out.as_mut() }, text(ptr, len)) {
+        out.texts.push(t.to_owned());
+    }
+}
+
+/// A whole number a typed port answers (its list's next).
+///
+/// # Safety
+/// As [`margin_port_out_text`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_port_out_int(out: *mut MarginPortOut, n: i64) {
+    // SAFETY: as margin_port_out_text.
+    if let Some(out) = unsafe { out.as_mut() } {
+        out.ints.push(n);
+    }
+}
+
+/// The typed ports' numbers (SessionCore.swift `PortKind`).
+#[derive(Clone, Copy)]
+#[repr(u32)]
+enum PortKind {
+    Window = 0,
+    WindowIds = 1,
+    EngineShown = 2,
+    IsHosted = 3,
+    SafariProfiles = 4,
+    LinkEpoch = 5,
+    AppName = 6,
+    AppRuns = 7,
+    ShowsAlone = 8,
+    StopHidingWoken = 9,
+    WindowIdsOf = 10,
+    SetShowing = 11,
+    SetMarginPage = 12,
+    Push = 13,
+    Changed = 14,
+    WokenByMenu = 15,
+    Unopenable = 16,
+    Log = 17,
+    CardLeaving = 20,
+    CardReturning = 21,
+    PinnedOrFavorite = 22,
+    SettleHosting = 23,
+    RefreshLoading = 24,
+    LeaveMarginPage = 25,
+    HasLayout = 26,
+    ClearLayout = 27,
+    ClearElsewhere = 28,
+    ForgetElsewhere = 29,
+}
+
+const NONE: i64 = i64::MIN;
+
 pub struct MarginSession {
     session: Session,
 }
@@ -42,9 +147,43 @@ struct SwiftPorts {
     ctx: *mut c_void,
     now: Option<MarginSessionNow>,
     port: Option<MarginSessionPort>,
+    call: Option<MarginSessionCall>,
 }
 
 impl SwiftPorts {
+    /// A typed port: its number, its texts in `out`.
+    fn typed(
+        &self,
+        call: MarginSessionCall,
+        kind: PortKind,
+        window: Option<i64>,
+        flag: bool,
+        texts: [Option<&str>; 3],
+        out: &mut MarginPortOut,
+    ) -> i64 {
+        let args = MarginPortArgs {
+            window: window.unwrap_or(0),
+            has_window: window.is_some(),
+            flag,
+            a: MarginBytes::of(texts[0]),
+            b: MarginBytes::of(texts[1]),
+            c: MarginBytes::of(texts[2]),
+        };
+        call(self.ctx, kind as u32, &args, out)
+    }
+
+    /// A typed port asked for its number alone.
+    fn number(
+        &self,
+        call: MarginSessionCall,
+        kind: PortKind,
+        window: Option<i64>,
+        flag: bool,
+        texts: [Option<&str>; 3],
+    ) -> i64 {
+        self.typed(call, kind, window, flag, texts, &mut MarginPortOut::default())
+    }
+
     fn ask(&self, q: Value) -> Value {
         let Some(port) = self.port else { return Value::Null };
         let q = q.to_string();
@@ -76,37 +215,82 @@ impl Ports for SwiftPorts {
         self.now.map_or(0.0, |now| now(self.ctx))
     }
     fn window(&self, id: Option<i64>) -> Option<i64> {
+        if let Some(c) = self.call {
+            let w = self.number(c, PortKind::Window, id, false, [None; 3]);
+            return (w != NONE).then_some(w);
+        }
         json::int(self.ask(json!({ "port": "window", "id": id })).get("id"))
     }
     fn window_ids(&self) -> Vec<i64> {
+        if let Some(c) = self.call {
+            let mut out = MarginPortOut::default();
+            self.typed(c, PortKind::WindowIds, None, false, [None; 3], &mut out);
+            return out.ints;
+        }
         let v = self.ask(json!({ "port": "windowIds" }));
         json::array(v.get("ids")).map(|l| l.iter().filter_map(|i| json::int(Some(i))).collect()).unwrap_or_default()
     }
     fn engine_shown(&self) -> Option<String> {
+        if let Some(c) = self.call {
+            return self.text(c, PortKind::EngineShown, None, [None; 3]);
+        }
         Self::string(&self.ask(json!({ "port": "engineShown" })), "host")
     }
     fn is_hosted(&self, host: &str) -> bool {
+        if let Some(c) = self.call {
+            return self.number(c, PortKind::IsHosted, None, false, [Some(host), None, None]) == 1;
+        }
         self.ask(json!({ "port": "isHosted", "host": host })).get("hosted").and_then(Value::as_bool) == Some(true)
     }
     fn safari_profiles(&self) -> Vec<String> {
+        if let Some(c) = self.call {
+            let mut out = MarginPortOut::default();
+            self.typed(c, PortKind::SafariProfiles, None, false, [None; 3], &mut out);
+            return out.texts;
+        }
         Self::strings(&self.ask(json!({ "port": "safariProfiles" })), "profiles")
     }
     fn link_epoch(&self, profile: &str) -> Option<String> {
+        if let Some(c) = self.call {
+            return self.text(c, PortKind::LinkEpoch, None, [Some(profile), None, None]);
+        }
         Self::string(&self.ask(json!({ "port": "linkEpoch", "profile": profile })), "epoch")
     }
     fn app_name(&self, bundle: &str) -> Option<String> {
+        if let Some(c) = self.call {
+            return self.text(c, PortKind::AppName, None, [Some(bundle), None, None]);
+        }
         Self::string(&self.ask(json!({ "port": "appName", "bundle": bundle })), "name")
     }
     fn app_runs(&self, bundle: &str) -> Option<bool> {
+        if let Some(c) = self.call {
+            return match self.number(c, PortKind::AppRuns, None, false, [Some(bundle), None, None]) {
+                1 => Some(true),
+                0 => Some(false),
+                _ => None,
+            };
+        }
         self.ask(json!({ "port": "appRuns", "bundle": bundle })).get("runs").and_then(Value::as_bool)
     }
     fn shows_alone(&self, host: &str) -> bool {
+        if let Some(c) = self.call {
+            return self.number(c, PortKind::ShowsAlone, None, false, [Some(host), None, None]) != 0;
+        }
         self.ask(json!({ "port": "showsAlone", "host": host })).get("alone").and_then(Value::as_bool) != Some(false)
     }
     fn stop_hiding_woken(&self, bundle: &str) {
+        if let Some(c) = self.call {
+            self.number(c, PortKind::StopHidingWoken, None, false, [Some(bundle), None, None]);
+            return;
+        }
         self.ask(json!({ "port": "stopHidingWoken", "bundle": bundle }));
     }
     fn window_ids_of(&self, profile: &str) -> Vec<i64> {
+        if let Some(c) = self.call {
+            let mut out = MarginPortOut::default();
+            self.typed(c, PortKind::WindowIdsOf, None, false, [Some(profile), None, None], &mut out);
+            return out.ints;
+        }
         let v = self.ask(json!({ "port": "windowIdsOf", "profile": profile }));
         json::array(v.get("ids")).map(|l| l.iter().filter_map(|i| json::int(Some(i))).collect()).unwrap_or_default()
     }
@@ -114,30 +298,96 @@ impl Ports for SwiftPorts {
         json::num(self.ask(json!({ "port": "wall" })).get("now")).unwrap_or(0.0)
     }
     fn set_showing(&self, window: i64, label: Option<&str>, app: Option<&str>, slow: bool) {
+        if let Some(c) = self.call {
+            self.number(c, PortKind::SetShowing, Some(window), slow, [label, app, None]);
+            return;
+        }
         self.ask(json!({ "port": "setShowing", "window": window, "label": label, "app": app, "slow": slow }));
     }
     fn set_margin_page(&self, window: i64, page: Option<&str>) {
+        if let Some(c) = self.call {
+            self.number(c, PortKind::SetMarginPage, Some(window), false, [page, None, None]);
+            return;
+        }
         self.ask(json!({ "port": "setMarginPage", "window": window, "page": page }));
     }
     fn push(&self, window: i64, json: &str) {
+        if let Some(c) = self.call {
+            self.number(c, PortKind::Push, Some(window), false, [Some(json), None, None]);
+            return;
+        }
         self.ask(json!({ "port": "push", "window": window, "json": json }));
     }
     fn changed(&self) {
+        if let Some(c) = self.call {
+            self.number(c, PortKind::Changed, None, false, [None; 3]);
+            return;
+        }
         self.ask(json!({ "port": "changed" }));
     }
     fn woken_by_menu(&self, profile: &str) -> bool {
+        if let Some(c) = self.call {
+            return self.number(c, PortKind::WokenByMenu, None, false, [Some(profile), None, None]) == 1;
+        }
         self.ask(json!({ "port": "wokenByMenu", "profile": profile })).get("woken").and_then(Value::as_bool)
             == Some(true)
     }
     fn unopenable(&self, profile: &str) -> bool {
+        if let Some(c) = self.call {
+            return self.number(c, PortKind::Unopenable, None, false, [Some(profile), None, None]) == 1;
+        }
         self.ask(json!({ "port": "unopenable", "profile": profile })).get("unopenable").and_then(Value::as_bool)
             == Some(true)
     }
     fn log(&self, warn: bool, text: &str) {
+        if let Some(c) = self.call {
+            self.number(c, PortKind::Log, None, warn, [Some(text), None, None]);
+            return;
+        }
         self.ask(json!({ "port": "log", "warn": warn, "text": text }));
     }
     fn swift(&self, call: &str, args: Value) -> Value {
+        // (The ones a show asks, typed; the rare ones by JSON.)
+        if let Some(c) = self.call {
+            let w = args.get("window").and_then(|w| json::int(Some(w)));
+            let item = args.get("item").and_then(Value::as_str);
+            let kind = match call {
+                "cardLeaving" => Some(PortKind::CardLeaving),
+                "cardReturning" => Some(PortKind::CardReturning),
+                "pinnedOrFavorite" => Some(PortKind::PinnedOrFavorite),
+                "settleHosting" => Some(PortKind::SettleHosting),
+                "refreshLoading" => Some(PortKind::RefreshLoading),
+                "leaveMarginPage" => Some(PortKind::LeaveMarginPage),
+                "hasLayout" => Some(PortKind::HasLayout),
+                "clearLayout" => Some(PortKind::ClearLayout),
+                "clearElsewhere" => Some(PortKind::ClearElsewhere),
+                "forgetElsewhere" => Some(PortKind::ForgetElsewhere),
+                _ => None,
+            };
+            if let Some(kind) = kind {
+                let n = self.number(c, kind, w, false, [item, None, None]);
+                return match kind {
+                    PortKind::PinnedOrFavorite | PortKind::HasLayout => Value::Bool(n == 1),
+                    _ => Value::Null,
+                };
+            }
+        }
         self.ask(json!({ "port": "swift", "call": call, "args": args })).get("value").cloned().unwrap_or(Value::Null)
+    }
+}
+
+impl SwiftPorts {
+    /// A typed port's one text (none: it gave none).
+    fn text(
+        &self,
+        call: MarginSessionCall,
+        kind: PortKind,
+        window: Option<i64>,
+        texts: [Option<&str>; 3],
+    ) -> Option<String> {
+        let mut out = MarginPortOut::default();
+        self.typed(call, kind, window, false, texts, &mut out);
+        out.texts.into_iter().next()
     }
 }
 
@@ -170,7 +420,8 @@ fn session<'a>(s: *const MarginSession) -> Option<&'a Session> {
 }
 
 /// The session over `library` (alive as long as it), with `options` (`len` bytes of the Swift struct's JSON) and the
-/// Swift side's ports (`ctx` passed back to each; alive as long as the session).
+/// Swift side's ports (`ctx` passed back to each; alive as long as the session): `call`, the typed ones (null: every
+/// port through `port`).
 ///
 /// # Safety
 /// `library` from `margin_library_new` (or null: an empty library); `options` points at `len` readable bytes.
@@ -182,9 +433,10 @@ pub unsafe extern "C" fn margin_session_new(
     ctx: *mut c_void,
     now: Option<MarginSessionNow>,
     port: Option<MarginSessionPort>,
+    call: Option<MarginSessionCall>,
 ) -> *mut MarginSession {
     let options = text(options, len).and_then(|t| serde_json::from_str(t).ok()).unwrap_or(Value::Null);
-    let ports = SwiftPorts { ctx, now, port };
+    let ports = SwiftPorts { ctx, now, port, call };
     let session = Session::new(Box::new(ports), Box::new(LibraryRef(library)), &options);
     Box::into_raw(Box::new(MarginSession { session }))
 }
@@ -199,6 +451,35 @@ pub unsafe extern "C" fn margin_session_free(s: *mut MarginSession) {
     }
 }
 
+/// A call's answer as the Mac reads it most often: whether tasks are ready, the earliest deadline (NaN: none).
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct MarginSessionStatus {
+    pub ready: bool,
+    pub deadline: f64,
+}
+
+/// An answer: with `status`, its readiness and deadline there and its JSON only when there's more (else null, 0
+/// bytes); without, all of it as JSON.
+fn give(out: &Out, status: *mut MarginSessionStatus, out_len: *mut usize) -> *mut u8 {
+    // SAFETY: a writable status or null (the caller's contract).
+    match unsafe { status.as_mut() } {
+        Some(st) => {
+            *st = MarginSessionStatus { ready: out.ready, deadline: out.deadline.unwrap_or(f64::NAN) };
+            if Session::has_more(out) {
+                answer(&out.to_json(), out_len)
+            } else {
+                if !out_len.is_null() {
+                    // SAFETY: writable (the caller's contract).
+                    unsafe { *out_len = 0 };
+                }
+                std::ptr::null_mut()
+            }
+        }
+        None => answer(&out.to_json(), out_len),
+    }
+}
+
 /// An input → its answer.
 ///
 /// # Safety
@@ -208,11 +489,12 @@ pub unsafe extern "C" fn margin_session_input(
     s: *const MarginSession,
     input: *const u8,
     len: usize,
+    status: *mut MarginSessionStatus,
     out_len: *mut usize,
 ) -> *mut u8 {
     let Some(s) = session(s) else { return answer(&json!({ "error": "no session" }), out_len) };
     let input = text(input, len).and_then(|t| serde_json::from_str::<Value>(t).ok()).unwrap_or(Value::Null);
-    answer(&s.input(&input).to_json(), out_len)
+    give(&s.input(&input), status, out_len)
 }
 
 /// A command's answer (`len` bytes of JSON) → the call's answer.
@@ -225,11 +507,12 @@ pub unsafe extern "C" fn margin_session_answer(
     id: u64,
     reply: *const u8,
     len: usize,
+    status: *mut MarginSessionStatus,
     out_len: *mut usize,
 ) -> *mut u8 {
     let Some(s) = session(s) else { return answer(&json!({ "error": "no session" }), out_len) };
     let reply = text(reply, len).and_then(|t| serde_json::from_str::<Value>(t).ok()).unwrap_or(Value::Null);
-    answer(&s.answer(id, reply).to_json(), out_len)
+    give(&s.answer(id, reply), status, out_len)
 }
 
 /// The commands handed out are started, the deadlines up to `due` over → the call's answer.
@@ -237,9 +520,82 @@ pub unsafe extern "C" fn margin_session_answer(
 /// # Safety
 /// `s` from [`margin_session_new`], not freed; `out_len` writable.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn margin_session_tick(s: *const MarginSession, due: f64, out_len: *mut usize) -> *mut u8 {
+pub unsafe extern "C" fn margin_session_tick(
+    s: *const MarginSession,
+    due: f64,
+    status: *mut MarginSessionStatus,
+    out_len: *mut usize,
+) -> *mut u8 {
     let Some(s) = session(s) else { return answer(&json!({ "error": "no session" }), out_len) };
-    answer(&s.tick(due).to_json(), out_len)
+    give(&s.tick(due), status, out_len)
+}
+
+/// One row of a field, typed (session/state.rs `Row`; `s0`…`s2`: texts, a null pointer none).
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct MarginRow {
+    pub i0: i64,
+    pub f: f64,
+    pub b0: bool,
+    pub b1: bool,
+    pub s0: MarginBytes,
+    pub s1: MarginBytes,
+    pub s2: MarginBytes,
+}
+
+/// A row handed to the caller, its texts valid during the call only.
+pub type MarginRowSink = extern "C" fn(ctx: *mut c_void, row: *const MarginRow);
+
+/// A field's rows (`field`: its revision's number), each to `sink` in the field's order. The sink must not call
+/// into the session. Nothing for a null session or another number.
+///
+/// # Safety
+/// `s` from [`margin_session_new`] (or null), not freed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_session_rows(
+    s: *const MarginSession,
+    field: u32,
+    ctx: *mut c_void,
+    sink: Option<MarginRowSink>,
+) {
+    let (Some(s), Some(f), Some(sink)) = (session(s), Field::from_index(field), sink) else { return };
+    s.rows(f, &mut |r| {
+        let row = MarginRow {
+            i0: r.i0,
+            f: r.f,
+            b0: r.b0,
+            b1: r.b1,
+            s0: MarginBytes::of(r.s0),
+            s1: MarginBytes::of(r.s1),
+            s2: MarginBytes::of(r.s2),
+        };
+        sink(ctx, &row);
+    });
+}
+
+/// One row of a field put or (`del`) taken out: whether it was one; the field's revision after it in `rev`.
+///
+/// # Safety
+/// As [`margin_session_rows`]; `row` readable (its texts as said), `rev` writable or null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_session_edit_row(
+    s: *const MarginSession,
+    field: u32,
+    del: bool,
+    row: *const MarginRow,
+    rev: *mut u64,
+) -> bool {
+    // SAFETY: readable or null (the caller's contract).
+    let (Some(s), Some(f), Some(r)) = (session(s), Field::from_index(field), unsafe { row.as_ref() }) else {
+        return false;
+    };
+    let row = Row { i0: r.i0, f: r.f, b0: r.b0, b1: r.b1, s0: r.s0.text(), s1: r.s1.text(), s2: r.s2.text() };
+    let (ok, now) = s.edit_row(f, del, &row);
+    if !rev.is_null() {
+        // SAFETY: writable (the caller's contract).
+        unsafe { *rev = now };
+    }
+    ok
 }
 
 /// The log lines kept (the last 200), oldest first, as a JSON array.
@@ -334,7 +690,7 @@ mod tests {
         let r = br#"{"type":"state","get":["shown"]}"#;
         let mut n = 0;
         // SAFETY: the live session; the request's bytes.
-        let back = unsafe { margin_session_input(s, r.as_ptr(), r.len(), &mut n) };
+        let back = unsafe { margin_session_input(s, r.as_ptr(), r.len(), std::ptr::null_mut(), &mut n) };
         // SAFETY: a buffer the call made.
         unsafe { crate::margin_buffer_free(back, n) };
         let a = if q["port"] == json!("window") { r#"{"id":1}"# } else { "{}" };
@@ -351,7 +707,7 @@ mod tests {
         let t = v.to_string();
         let mut len = 0;
         // SAFETY: the live session, the input's bytes.
-        let out = unsafe { margin_session_input(s, t.as_ptr(), t.len(), &mut len) };
+        let out = unsafe { margin_session_input(s, t.as_ptr(), t.len(), std::ptr::null_mut(), &mut len) };
         read(out, len)
     }
 
@@ -385,6 +741,7 @@ mod tests {
                 &swift as *const Swift as *mut c_void,
                 Some(now),
                 Some(port),
+                None,
             )
         };
         *swift.session.borrow_mut() = s;
@@ -399,7 +756,7 @@ mod tests {
         assert_eq!((asked["ready"].clone(), asked.get("start")), (json!(true), None));
         let mut n = 0;
         // SAFETY: the live session.
-        let out = read(unsafe { margin_session_tick(s, 0.0, &mut n) }, n);
+        let out = read(unsafe { margin_session_tick(s, 0.0, std::ptr::null_mut(), &mut n) }, n);
         assert_eq!(
             out["start"],
             json!([{ "op": "ask", "id": 1, "profile": "p", "kind": "hostShow", "payload": { "windowId": 90, "itemId": "t1", "url": "https://a/" } }])
@@ -408,10 +765,11 @@ mod tests {
         // SAFETY: the live session.
         assert!(!unsafe { margin_session_idle(s) });
         // SAFETY: the live session.
-        read(unsafe { margin_session_tick(s, 0.0, &mut n) }, n);
+        read(unsafe { margin_session_tick(s, 0.0, std::ptr::null_mut(), &mut n) }, n);
         let reply = br#"{"result":{"tabId":7},"error":null}"#;
         // SAFETY: the live session, the reply's bytes.
-        let out = read(unsafe { margin_session_answer(s, 1, reply.as_ptr(), reply.len(), &mut n) }, n);
+        let out =
+            read(unsafe { margin_session_answer(s, 1, reply.as_ptr(), reply.len(), std::ptr::null_mut(), &mut n) }, n);
         assert_eq!(out["start"][0]["kind"], json!("goBack"));
         assert_eq!(out["start"][0]["payload"], json!({ "tabId": 7 }));
         let bad = call(s, json!({ "type": "nonsense" }));
@@ -433,7 +791,99 @@ mod tests {
         unsafe {
             assert!(margin_session_idle(std::ptr::null()));
             assert_eq!(margin_session_rev(std::ptr::null(), 0), 0);
-            assert!(read(margin_session_tick(std::ptr::null(), 0.0, &mut n), n)["error"].is_string());
+            assert!(
+                read(margin_session_tick(std::ptr::null(), 0.0, std::ptr::null_mut(), &mut n), n)["error"].is_string()
+            );
         }
+    }
+
+    /// The typed ports' questions, as the test's Swift heard them.
+    #[derive(Default)]
+    struct Typed {
+        heard: RefCell<Vec<String>>,
+    }
+
+    extern "C" fn typed(ctx: *mut c_void, kind: u32, args: *const MarginPortArgs, out: *mut MarginPortOut) -> i64 {
+        // SAFETY: ctx is the test's Typed, args the call's.
+        let (t, a) = unsafe { (&*(ctx as *const Typed), &*args) };
+        let text = a.a.text().map(str::to_owned);
+        t.heard.borrow_mut().push(format!("{kind} {} {} {:?} {}", a.has_window, a.window, text, a.flag));
+        match kind {
+            0 => 1,
+            4 => {
+                let p = "s-work";
+                // SAFETY: the call's out, a text's bytes.
+                unsafe { margin_port_out_text(out, p.as_ptr(), p.len()) };
+                0
+            }
+            _ => 0,
+        }
+    }
+
+    #[test]
+    fn the_typed_ports_and_rows() {
+        let t = Typed::default();
+        let options = br#"{"every":0.05}"#;
+        // SAFETY: no library, the options' bytes, the test's Typed as ctx (alive for the test); no JSON port.
+        let s = unsafe {
+            margin_session_new(
+                std::ptr::null_mut(),
+                options.as_ptr(),
+                options.len(),
+                &t as *const Typed as *mut c_void,
+                Some(now),
+                None,
+                Some(typed),
+            )
+        };
+        let row = |s0: Option<&'static str>, i0: i64| MarginRow {
+            i0,
+            f: 0.0,
+            b0: false,
+            b1: false,
+            s0: MarginBytes::of(s0),
+            s1: MarginBytes::of(None),
+            s2: MarginBytes::of(None),
+        };
+        let mut rev = 0;
+        // SAFETY: the live session, a row, a writable revision.
+        assert!(unsafe { margin_session_edit_row(s, Field::Requested as u32, false, &row(Some("t1"), 1), &mut rev) });
+        assert_eq!(rev, 1);
+        // SAFETY: as above.
+        assert!(
+            !unsafe { margin_session_edit_row(s, Field::Requested as u32, false, &row(None, 2), &mut rev) },
+            "an item needed"
+        );
+        // A note logged through the typed port; the overtaken check's window read through it.
+        let mut n = 0;
+        let mut status = MarginSessionStatus::default();
+        let q = br#"{"type":"overtaken","item":"t2","window":1}"#;
+        // SAFETY: the live session, the input's bytes, a status.
+        let out = unsafe { margin_session_input(s, q.as_ptr(), q.len(), &mut status, &mut n) };
+        assert_eq!(read(out, n)["reply"], json!(true), "a reply: JSON");
+        assert!(!status.ready && status.deadline.is_nan());
+        assert_eq!(
+            *t.heard.borrow(),
+            ["0 true 1 None false", "17 false 0 Some(\"hosted: t2: not shown, t1 asked for since\") false"]
+        );
+        // Nothing more to say: no JSON.
+        let q = br#"{"type":"cycled","window":1}"#;
+        // SAFETY: as above.
+        let out = unsafe { margin_session_input(s, q.as_ptr(), q.len(), &mut status, &mut n) };
+        assert!(out.is_null() && n == 0);
+        // The rows, typed.
+        extern "C" fn sink(ctx: *mut c_void, r: *const MarginRow) {
+            // SAFETY: ctx is the test's list, the row the call's.
+            let (rows, r) = unsafe { (&*(ctx as *const RefCell<Vec<(i64, Option<String>, f64)>>), &*r) };
+            rows.borrow_mut().push((r.i0, r.s0.text().map(str::to_owned), r.f));
+        }
+        let rows: RefCell<Vec<(i64, Option<String>, f64)>> = RefCell::default();
+        for f in [Field::Requested, Field::CycledAt] {
+            // SAFETY: the live session, the list as ctx.
+            unsafe { margin_session_rows(s, f as u32, &rows as *const _ as *mut c_void, Some(sink)) };
+        }
+        assert_eq!(*rows.borrow(), [(1, Some("t1".to_owned()), 0.0), (1, None, 5.0)]);
+        // SAFETY: from margin_session_new, freed once.
+        unsafe { margin_session_free(s) };
     }
 }

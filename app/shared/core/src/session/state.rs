@@ -394,6 +394,120 @@ impl State {
     }
 }
 
+/// One row of a field, typed: what the Mac's facade reads and edits with no JSON (`margin_session_rows`,
+/// `margin_session_edit_row`). Each field uses the parts its rows have: `shown`, `requested`, `marginPages` (`i0` the
+/// window, `s0` the item or page); `open` (`s0` item, `s1` host, `s2` profile); `safariWindows` (`s0` profile, `s1`
+/// role, `i0` window); `labels`, `showing` (`s0` host, `s1` label or item); `cycledAt` (`i0`, `f`); `safariTabs`
+/// (`s0`, `i0`); `safariAudio` (`s0`, `b0` audible, `b1` muted); the sets `marginOpen`, `safariMuted`, `requesting`
+/// (`s0`) and `made` (`i0`); the one values `hostingWindow`, `preparingWindow` (`i0`), `preparingProfile` (`s0`).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Row<'a> {
+    pub i0: i64,
+    pub f: f64,
+    pub b0: bool,
+    pub b1: bool,
+    pub s0: Option<&'a str>,
+    pub s1: Option<&'a str>,
+    pub s2: Option<&'a str>,
+}
+
+impl State {
+    /// A field's rows, in its order (as `field_json` gives them).
+    pub fn rows(&self, f: Field, emit: &mut dyn FnMut(&Row)) {
+        let d = Row::default();
+        match f {
+            Field::Shown => self.shown.iter().for_each(|(w, i)| emit(&Row { i0: *w, s0: Some(i), ..d })),
+            Field::Open => self
+                .open
+                .iter()
+                .for_each(|(i, o)| emit(&Row { s0: Some(i), s1: Some(&o.host), s2: o.profile.as_deref(), ..d })),
+            Field::SafariWindows => {
+                for ((p, r), id) in &self.safari_windows {
+                    let role = role_name(*r);
+                    emit(&Row { s0: Some(p), s1: Some(&role), i0: *id, ..d });
+                }
+            }
+            Field::Done => {}
+            Field::Requested => self.requested.iter().for_each(|(w, i)| emit(&Row { i0: *w, s0: Some(i), ..d })),
+            Field::HostingWindow => self.hosting_window.iter().for_each(|w| emit(&Row { i0: *w, ..d })),
+            Field::Labels => self.labels.iter().for_each(|(h, l)| emit(&Row { s0: Some(h), s1: Some(l), ..d })),
+            Field::Showing => self.showing.iter().for_each(|(h, i)| emit(&Row { s0: Some(h), s1: Some(i), ..d })),
+            Field::MarginPages => self.margin_pages.iter().for_each(|(w, p)| emit(&Row { i0: *w, s0: Some(p), ..d })),
+            Field::MarginOpen => self.margin_open.iter().for_each(|i| emit(&Row { s0: Some(i), ..d })),
+            Field::CycledAt => self.cycled_at.iter().for_each(|(w, t)| emit(&Row { i0: *w, f: *t, ..d })),
+            Field::SafariTabs => self.safari_tabs.iter().for_each(|(i, t)| emit(&Row { s0: Some(i), i0: *t, ..d })),
+            Field::SafariMuted => self.safari_muted.iter().for_each(|i| emit(&Row { s0: Some(i), ..d })),
+            Field::SafariAudio => {
+                self.safari_audio.iter().for_each(|(i, (a, m))| emit(&Row { s0: Some(i), b0: *a, b1: *m, ..d }))
+            }
+            Field::PreparingWindow => self.preparing_window.iter().for_each(|w| emit(&Row { i0: *w, ..d })),
+            Field::PreparingProfile => self.preparing_profile.iter().for_each(|p| emit(&Row { s0: Some(p), ..d })),
+            Field::Requesting => self.requesting.iter().for_each(|p| emit(&Row { s0: Some(p), ..d })),
+            Field::Made => self.made.iter().for_each(|w| emit(&Row { i0: *w, ..d })),
+        }
+    }
+
+    /// One row put (`del` false) or taken out (`del`: by its key; a one value cleared whatever the row): false when
+    /// the row lacks what the field needs.
+    pub fn edit_row(&mut self, f: Field, del: bool, r: &Row) -> bool {
+        let s0 = r.s0.map(str::to_string);
+        let need = |v: Option<String>| v.ok_or(());
+        let done: Result<(), ()> = (|| match f {
+            Field::Shown => edit_map(&mut self.shown, r.i0, del, || need(s0.clone())),
+            Field::Requested => edit_map(&mut self.requested, r.i0, del, || need(s0.clone())),
+            Field::MarginPages => edit_map(&mut self.margin_pages, r.i0, del, || need(s0.clone())),
+            Field::Open => edit_map(&mut self.open, need(s0.clone())?, del, || {
+                Ok(OpenItem { host: need(r.s1.map(str::to_string))?, profile: r.s2.map(str::to_string) })
+            }),
+            Field::SafariWindows => {
+                let key = (need(s0.clone())?, r.s1.and_then(role_named).ok_or(())?);
+                edit_map(&mut self.safari_windows, key, del, || Ok(r.i0))
+            }
+            Field::Labels => edit_map(&mut self.labels, need(s0.clone())?, del, || need(r.s1.map(str::to_string))),
+            Field::Showing => edit_map(&mut self.showing, need(s0.clone())?, del, || need(r.s1.map(str::to_string))),
+            Field::CycledAt => edit_map(&mut self.cycled_at, r.i0, del, || Ok(r.f)),
+            Field::SafariTabs => edit_map(&mut self.safari_tabs, need(s0.clone())?, del, || Ok(r.i0)),
+            Field::SafariAudio => edit_map(&mut self.safari_audio, need(s0.clone())?, del, || Ok((r.b0, r.b1))),
+            Field::MarginOpen => edit_set(&mut self.margin_open, need(s0.clone())?, del),
+            Field::SafariMuted => edit_set(&mut self.safari_muted, need(s0.clone())?, del),
+            Field::Requesting => edit_set(&mut self.requesting, need(s0.clone())?, del),
+            Field::Made => edit_set(&mut self.made, r.i0, del),
+            Field::HostingWindow => {
+                self.hosting_window = (!del).then_some(r.i0);
+                Ok(())
+            }
+            Field::PreparingWindow => {
+                self.preparing_window = (!del).then_some(r.i0);
+                Ok(())
+            }
+            Field::PreparingProfile => {
+                self.preparing_profile = if del { None } else { Some(need(s0.clone())?) };
+                Ok(())
+            }
+            Field::Done => Err(()),
+        })();
+        done.is_ok()
+    }
+}
+
+fn edit_map<K: Ord, V>(m: &mut BTreeMap<K, V>, k: K, del: bool, v: impl FnOnce() -> Result<V, ()>) -> Result<(), ()> {
+    if del {
+        m.remove(&k);
+    } else {
+        m.insert(k, v()?);
+    }
+    Ok(())
+}
+
+fn edit_set<K: Ord>(s: &mut BTreeSet<K>, k: K, del: bool) -> Result<(), ()> {
+    if del {
+        s.remove(&k);
+    } else {
+        s.insert(k);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -412,6 +526,53 @@ mod tests {
         assert_eq!(s.field_json(Field::SafariWindows), json!([["p", "pane2", 91]]));
         assert_eq!(s.edit("nope", &json!({})), (None, 1));
         assert_eq!(role_named(&role_name(Role::Card)), Some(Role::Card));
+    }
+
+    #[test]
+    fn rows_as_the_json_has_them() {
+        let mut s = State::default();
+        let r = |i0: i64, s0: Option<&'static str>| Row { i0, s0, ..Row::default() };
+        assert!(s.edit_row(Field::Shown, false, &r(1, Some("a"))));
+        assert!(!s.edit_row(Field::Shown, false, &r(2, None)), "an item needed");
+        assert!(s.edit_row(
+            Field::Open,
+            false,
+            &Row { s0: Some("a"), s1: Some("safari:p"), s2: Some("p"), ..Row::default() }
+        ));
+        assert!(s.edit_row(
+            Field::SafariWindows,
+            false,
+            &Row { s0: Some("p"), s1: Some("pane2"), i0: 91, ..Row::default() }
+        ));
+        assert!(!s.edit_row(
+            Field::SafariWindows,
+            false,
+            &Row { s0: Some("p"), s1: Some("x"), i0: 9, ..Row::default() }
+        ));
+        assert!(s.edit_row(Field::SafariAudio, false, &Row { s0: Some("a"), b0: true, ..Row::default() }));
+        assert!(s.edit_row(Field::HostingWindow, false, &r(4, None)));
+        assert!(s.edit_row(Field::Made, false, &r(90, None)));
+        assert!(s.edit_row(Field::CycledAt, false, &Row { i0: 1, f: 2.5, ..Row::default() }));
+        for f in [
+            Field::Shown,
+            Field::Open,
+            Field::SafariWindows,
+            Field::SafariAudio,
+            Field::HostingWindow,
+            Field::Made,
+            Field::CycledAt,
+        ] {
+            let mut rows = Vec::new();
+            s.rows(f, &mut |row| {
+                rows.push(format!("{} {} {} {} {:?} {:?} {:?}", row.i0, row.f, row.b0, row.b1, row.s0, row.s1, row.s2))
+            });
+            assert_eq!(rows.len(), s.field_json(f).as_array().map_or(0, Vec::len), "{f:?}");
+        }
+        assert!(s.edit_row(Field::Shown, true, &r(1, None)));
+        assert!(s.edit_row(Field::HostingWindow, true, &r(0, None)));
+        assert_eq!((s.shown.len(), s.hosting_window), (0, None));
+        assert!(s.edit_row(Field::SafariWindows, true, &Row { s0: Some("p"), s1: Some("pane2"), ..Row::default() }));
+        assert!(s.safari_windows.is_empty());
     }
 
     #[test]

@@ -383,105 +383,93 @@ final class HostedSession: LibraryDelegate {
     var activateMargin: () -> Void = {}
 
     // Each Margin window's item shown; each item with a page; each Safari profile's hosted window (the copy's id).
-    // (The core's, core/session/state.rs: read again only when its revision changed, written as the difference.)
+    // (The core's, core/session/state.rs: read again only when its revision changed, written as the difference, both
+    // as typed rows.)
     private(set) var shown: [Int: String] {
-        get { fresh(.shown); return kept.shown }
-        set {
-            let old = shown
-            kept.shown = newValue
-            edit(.shown, put: newValue.filter { old[$0.key] != $0.value }.map { [$0.key, $0.value] }, del: old.keys.filter { newValue[$0] == nil })
-        }
+        get { field(.shown) { Self.intText($0) } }
+        set { setMap(.shown, old: shown, newValue) { CoreRow(i0: $0, s0: $1) } }
     }
     private(set) var open: [String: OpenItem] {
-        get { fresh(.open); return kept.open }
-        set {
-            let old = open
-            kept.open = newValue
-            edit(.open, put: newValue.filter { old[$0.key] != $0.value }.map { [$0.key, $0.value.host.raw, $0.value.profile ?? NSNull()] },
-                 del: old.keys.filter { newValue[$0] == nil })
-        }
+        get { field(.open) { rows in Dictionary(rows.compactMap { r in r.s0.flatMap { i in r.s1.map { (i, OpenItem(host: HostID(raw: $0), profile: r.s2)) } } }, uniquingKeysWith: { a, _ in a }) } }
+        set { setMap(.open, old: open, newValue) { CoreRow(s0: $0, s1: $1?.host.raw, s2: $1?.profile) } }
     }
     // (Each profile's hosted windows by role, docs/PEEK-SPLIT.md §1: its main one, its card, a split's panes.)
     private(set) var safariWindows: [SafariKey: Int] {
-        get { fresh(.safariWindows); return kept.safariWindows }
-        set {
-            let old = safariWindows
-            kept.safariWindows = newValue
-            edit(.safariWindows, put: newValue.filter { old[$0.key] != $0.value }.map { [$0.key.profile, $0.key.role.description, $0.value] },
-                 del: old.keys.filter { newValue[$0] == nil }.map { [$0.profile, $0.role.description] })
+        get {
+            field(.safariWindows) { rows in
+                Dictionary(rows.compactMap { r in r.s0.flatMap { p in r.s1.flatMap(SafariRole.init(name:)).map { (SafariKey(p, $0), r.i0) } } }, uniquingKeysWith: { a, _ in a })
+            }
         }
+        set { setMap(.safariWindows, old: safariWindows, newValue) { CoreRow(i0: $1 ?? 0, s0: $0.profile, s1: $0.role.description) } }
     }
     // Each Margin window's layout while more than its item shown is visible (the preview card, a split's panes): main, the
     // others with their roles and rects, the focused one (`shown[w]`). None: one item shown, as before.
     private(set) var layout: [Int: HostedLayout] = [:]
     private(set) var hostingWindow: Int? {
-        get { field(.hostingWindow) { $0.first.flatMap { int($0.first) } } }
-        set { let old = hostingWindow; if old != newValue { setField(.hostingWindow, newValue, put: newValue.map { [[$0]] } ?? [], del: newValue == nil ? [NSNull()] : []) } }
+        get { field(.hostingWindow) { $0.first?.i0 } }
+        set { setOne(.hostingWindow, old: hostingWindow, newValue) { CoreRow(i0: $0) } }
     }
     // Each Margin window's own page shown (ItemTarget.margin's page: Settings), drawn by the window itself, and the items
     // of Margin's pages shown this session (open tabs in the UI, as items with a page are: `live`).
     private(set) var marginPages: [Int: String] {
-        get { field(.marginPages) { Self.intStrings($0) } }
-        set { setMap(.marginPages, old: marginPages, newValue) { [$0, $1] } }
+        get { field(.marginPages) { Self.intText($0) } }
+        set { setMap(.marginPages, old: marginPages, newValue) { CoreRow(i0: $0, s0: $1) } }
     }
     private(set) var marginOpen: Set<String> {
-        get { field(.marginOpen) { Self.strings($0) } }
+        get { field(.marginOpen) { Self.texts($0) } }
         set { setSet(.marginOpen, old: marginOpen, newValue) }
     }
     // When each Margin window's next/previous-tab key was last pressed (its repeats too): the picks a cycle makes.
     private var cycledAt: [Int: Double] {
-        get { field(.cycledAt) { rows in Dictionary(rows.compactMap { r in r.count == 2 ? int(r[0]).flatMap { w in num(r[1]).map { (w, $0) } } : nil }, uniquingKeysWith: { a, _ in a }) } }
-        set { setMap(.cycledAt, old: cycledAt, newValue) { [$0, $1] } }
+        get { field(.cycledAt) { rows in Dictionary(rows.map { ($0.i0, $0.f) }, uniquingKeysWith: { a, _ in a }) } }
+        set { setMap(.cycledAt, old: cycledAt, newValue) { CoreRow(i0: $0, f: $1 ?? 0) } }
     }
     // Each Margin window's item shown when macOS took the window out of full screen: hosted again once it's back in.
     private(set) var resume: [Int: String] = [:]
     // What the loading animation names for a host (the app's name; Safari).
     var labels: [HostID: String] {
-        get { field(.labels) { rows in Dictionary(Self.stringStrings(rows).map { (HostID(raw: $0.key), $0.value) }, uniquingKeysWith: { a, _ in a }) } }
-        set { setMap(.labels, old: labels, newValue) { [$0.raw, $1] } }
+        get { field(.labels) { Self.hostText($0) } }
+        set { setMap(.labels, old: labels, newValue) { CoreRow(s0: $0.raw, s1: $1) } }
     }
     // The loading bar (setLoadingTabs): the engine's slow step now (its host), the item each host is being shown for,
     // each web item's tab in its Safari window (the copy's id, from hostShow), the tabs each profile's copy says are
     // loading in its hosted window (its `loading` push), and what each Margin window was told last.
     private var appLoading: HostID?
     private var showing: [HostID: String] {
-        get { field(.showing) { rows in Dictionary(Self.stringStrings(rows).map { (HostID(raw: $0.key), $0.value) }, uniquingKeysWith: { a, _ in a }) } }
-        set { setMap(.showing, old: showing, newValue) { [$0.raw, $1] } }
+        get { field(.showing) { Self.hostText($0) } }
+        set { setMap(.showing, old: showing, newValue) { CoreRow(s0: $0.raw, s1: $1) } }
     }
     private(set) var safariTabs: [String: Int] {
-        get { field(.safariTabs) { rows in Dictionary(rows.compactMap { r in r.count == 2 ? (r[0] as? String).flatMap { i in int(r[1]).map { (i, $0) } } : nil }, uniquingKeysWith: { a, _ in a }) } }
-        set { setMap(.safariTabs, old: safariTabs, newValue) { [$0, $1] } }
+        get { field(.safariTabs) { rows in Dictionary(rows.compactMap { r in r.s0.map { ($0, r.i0) } }, uniquingKeysWith: { a, _ in a }) } }
+        set { setMap(.safariTabs, old: safariTabs, newValue) { CoreRow(i0: $1 ?? 0, s0: $0) } }
     }
     private(set) var safariMuted: Set<String> {
-        get { field(.safariMuted) { Self.strings($0) } }
+        get { field(.safariMuted) { Self.texts($0) } }
         set { setSet(.safariMuted, old: safariMuted, newValue) }
     }
     // Each web item's tab's sound, as its profile's copy says (copyTabs): playing, muted. (None: not heard yet.)
     private(set) var safariAudio: [String: (audible: Bool, muted: Bool)] {
         get {
             field(.safariAudio) { rows in
-                Dictionary(rows.compactMap { r -> (String, (audible: Bool, muted: Bool))? in
-                    guard r.count == 3, let i = r[0] as? String, let a = r[1] as? Bool, let m = r[2] as? Bool else { return nil }
-                    return (i, (audible: a, muted: m))
-                }, uniquingKeysWith: { a, _ in a })
+                Dictionary(rows.compactMap { r -> (String, (audible: Bool, muted: Bool))? in r.s0.map { ($0, (audible: r.b0, muted: r.b1)) } }, uniquingKeysWith: { a, _ in a })
             }
         }
         set {
             let old = safariAudio
-            var put: [[Any]] = []
+            var put: [CoreRow] = []
             for (k, v) in newValue {
                 if let o = old[k], o.audible == v.audible, o.muted == v.muted { continue }
-                put.append([k, v.audible, v.muted])
+                put.append(CoreRow(b0: v.audible, b1: v.muted, s0: k))
             }
-            setField(.safariAudio, newValue, put: put, del: old.keys.filter { newValue[$0] == nil })
+            write(.safariAudio, newValue, puts: put, dels: old.keys.filter { newValue[$0] == nil }.map { CoreRow(s0: $0) })
         }
     }
     private var copyLoading: [String: Set<Int>] = [:]
     private(set) var loadingSaid: [Int: [Int]] = [:]
     // Each Margin window's item asked to be shown and not shown yet (the newest): drawn in front at once.
     var requested: [Int: String] {
-        get { field(.requested) { Self.intStrings($0) } }
-        set { setMap(.requested, old: requested, newValue) { [$0, $1] } }
+        get { field(.requested) { Self.intText($0) } }
+        set { setMap(.requested, old: requested, newValue) { CoreRow(i0: $0, s0: $1) } }
     }
     // The first run's space (the library was empty), for the UI's editor once a window's page is drawn.
     var firstSpace: String?
@@ -492,9 +480,10 @@ final class HostedSession: LibraryDelegate {
     // What was done, newest last (the tests read it; numbers, item ids and bundle ids only): the core's, the last 200.
     var done: [String] {
         let rev = core.rev(.done)
-        if rev != kept.doneRev { kept.done = core.done; kept.doneRev = rev }
-        return kept.done
+        if rev != doneKept.rev { doneKept = (rev, core.done) }
+        return doneKept.lines
     }
+    private var doneKept: (rev: UInt64, lines: [String]) = (0, [])
     // The preview cards and Quick Tab (HostedPeek.swift, docs/PEEK-SPLIT.md §2, §3): each profile's card, when each card
     // window was last used (closed after `cardIdle` unused), the Margin windows with Quick Tab's field up, the card
     // whose window's first open is under way (its own loader, never the page card's).
@@ -518,73 +507,42 @@ final class HostedSession: LibraryDelegate {
     // state they share, the log. Its ports (`port`, `now`) call back here during a call.
     let core: SessionCore
     // The core's fields as last read, by their revisions (`fresh`).
-    private var kept = Kept()
-    private struct Kept {
-        var shown: [Int: String] = [:], open: [String: OpenItem] = [:], safariWindows: [SafariKey: Int] = [:]
-        var revs: [UInt64] = [0, 0, 0]
-        var done: [String] = [], doneRev: UInt64 = 0
-    }
-
-    private static let fieldNames: [SessionCore.Field: String] = [.shown: "shown", .open: "open", .safariWindows: "safariWindows"]
-
-    // The core's other fields as last read, by their revisions (`field`): read again only when one changed there, and
-    // written as the difference (`setMap`, `setSet`), the value written kept with the revision it made.
+    // The core's fields as last read, by their revisions (`field`): read again only when one changed there, and
+    // written as the difference (`setMap`, `setSet`, `setOne`), the value written kept with the revision it made. Rows
+    // both ways, no JSON.
     private var cache: [UInt32: (rev: UInt64, value: Any)] = [:]
-    private func field<T>(_ f: SessionCore.Field, _ decode: ([[Any]]) -> T) -> T {
+    private func field<T>(_ f: SessionCore.Field, _ decode: ([CoreRow]) -> T) -> T {
         let rev = core.rev(f)
         if let c = cache[f.rawValue], c.rev == rev, let v = c.value as? T { return v }
-        let rows = (drive(core.input(["type": "state", "get": [f.name]]))["reply"] as? JSONObject)?[f.name] as? [[Any]] ?? []
-        let v = decode(rows)
+        let v = decode(core.rows(f))
         cache[f.rawValue] = (rev, v)
         return v
     }
-    private func setField<T>(_ f: SessionCore.Field, _ value: T, put: [[Any]], del: [Any]) {
-        guard !put.isEmpty || !del.isEmpty else { return }
-        let reply = drive(core.input(["type": "state", "set": [f.name: ["put": put, "del": del]]]))["reply"] as? JSONObject
-        if let revs = reply?["revs"] as? [Any], revs.count > Int(f.rawValue), let r = (revs[Int(f.rawValue)] as? NSNumber)?.uint64Value { cache[f.rawValue] = (r, value) }
+    // (What's gone first, then what's put, as a field's edit always did.)
+    private func write<T>(_ f: SessionCore.Field, _ value: T, puts: [CoreRow], dels: [CoreRow]) {
+        guard !puts.isEmpty || !dels.isEmpty else { return }
+        var rev: UInt64 = 0
+        for d in dels { rev = core.edit(f, del: true, d) }
+        for p in puts { rev = core.edit(f, del: false, p) }
+        cache[f.rawValue] = (rev, value)
     }
-    private func setMap<K: Hashable, V: Equatable>(_ f: SessionCore.Field, old: [K: V], _ new: [K: V], row: (K, V) -> [Any]) {
-        setField(f, new, put: new.filter { old[$0.key] != $0.value }.map { row($0.key, $0.value) }, del: old.keys.filter { new[$0] == nil }.map { k in row(k, new[k] ?? old[k]!)[0] })
+    private func setMap<K: Hashable, V: Equatable>(_ f: SessionCore.Field, old: [K: V], _ new: [K: V], row: (K, V?) -> CoreRow) {
+        write(f, new, puts: new.filter { old[$0.key] != $0.value }.map { row($0.key, $0.value) }, dels: old.keys.filter { new[$0] == nil }.map { row($0, nil) })
     }
-    private func setSet<K: Hashable>(_ f: SessionCore.Field, old: Set<K>, _ new: Set<K>) {
-        setField(f, new, put: new.subtracting(old).map { [$0] }, del: Array(old.subtracting(new)))
+    private func setSet(_ f: SessionCore.Field, old: Set<String>, _ new: Set<String>) {
+        write(f, new, puts: new.subtracting(old).map { CoreRow(s0: $0) }, dels: old.subtracting(new).map { CoreRow(s0: $0) })
     }
-    private static func intStrings(_ rows: [[Any]]) -> [Int: String] {
-        Dictionary(rows.compactMap { r in r.count == 2 ? int(r[0]).flatMap { w in (r[1] as? String).map { (w, $0) } } : nil }, uniquingKeysWith: { a, _ in a })
+    private func setOne<V: Equatable>(_ f: SessionCore.Field, old: V?, _ new: V?, row: (V) -> CoreRow) {
+        guard old != new else { return }
+        write(f, new, puts: new.map { [row($0)] } ?? [], dels: new == nil ? [CoreRow()] : [])
     }
-    private static func stringStrings(_ rows: [[Any]]) -> [String: String] {
-        Dictionary(rows.compactMap { r in r.count == 2 ? (r[0] as? String).flatMap { k in (r[1] as? String).map { (k, $0) } } : nil }, uniquingKeysWith: { a, _ in a })
+    private static func intText(_ rows: [CoreRow]) -> [Int: String] {
+        Dictionary(rows.compactMap { r in r.s0.map { (r.i0, $0) } }, uniquingKeysWith: { a, _ in a })
     }
-    private static func strings(_ rows: [[Any]]) -> Set<String> { Set(rows.compactMap { $0.first as? String }) }
-
-    // A field read again from the core if it changed there since.
-    private func fresh(_ f: SessionCore.Field) {
-        let rev = core.rev(f)
-        guard rev != kept.revs[Int(f.rawValue)], let name = Self.fieldNames[f] else { return }
-        let rows = (drive(core.input(["type": "state", "get": [name]]))["reply"] as? JSONObject)?[name] as? [[Any]] ?? []
-        switch f {
-        case .shown:
-            kept.shown = [:]
-            for r in rows where r.count == 2 { if let w = int(r[0]), let item = r[1] as? String { kept.shown[w] = item } }
-        case .open:
-            kept.open = [:]
-            for r in rows where r.count == 3 { if let item = r[0] as? String, let host = r[1] as? String { kept.open[item] = OpenItem(host: HostID(raw: host), profile: r[2] as? String) } }
-        case .safariWindows:
-            kept.safariWindows = [:]
-            for r in rows where r.count == 3 {
-                if let p = r[0] as? String, let role = (r[1] as? String).flatMap(SafariRole.init(name:)), let id = int(r[2]) { kept.safariWindows[SafariKey(p, role)] = id }
-            }
-        default: return
-        }
-        kept.revs[Int(f.rawValue)] = rev
+    private static func hostText(_ rows: [CoreRow]) -> [HostID: String] {
+        Dictionary(rows.compactMap { r in r.s0.flatMap { h in r.s1.map { (HostID(raw: h), $0) } } }, uniquingKeysWith: { a, _ in a })
     }
-
-    // A field's change written to the core (what's put, what's gone), its revision taken as the one now kept.
-    private func edit(_ f: SessionCore.Field, put: [[Any]], del: [Any]) {
-        guard !put.isEmpty || !del.isEmpty, let name = Self.fieldNames[f] else { return }
-        let reply = drive(core.input(["type": "state", "set": [name: ["put": put, "del": del]]]))["reply"] as? JSONObject
-        if let revs = reply?["revs"] as? [Any], revs.count > Int(f.rawValue), let r = (revs[Int(f.rawValue)] as? NSNumber)?.uint64Value { kept.revs[Int(f.rawValue)] = r }
-    }
+    private static func texts(_ rows: [CoreRow]) -> Set<String> { Set(rows.compactMap(\.s0)) }
 
     // A call's answer carried out: its log lines said, the timer at its deadline, each command it handed out started at
     // once in order, then the core told they are (its run goes on), until one hands out none; tasks an input made ready
@@ -661,7 +619,8 @@ final class HostedSession: LibraryDelegate {
             let args = c["args"] as? JSONObject ?? [:]
             switch c["name"] as? String {
             case "open":
-                guard let target = Self.hostTarget(args["target"]), let placement = Self.placement(args["placement"]), let wid = int(args["window"]) else {
+                guard let target = Self.hostTarget(args["target"]), let placement = int(args["placement"]).flatMap({ placements.removeValue(forKey: $0) }),
+                      let wid = int(args["window"]) else {
                     drive(core.answer(id, ["failed": HostStep.margin.rawValue, "why": "the core's open wasn't one"]))
                     return
                 }
@@ -713,7 +672,13 @@ final class HostedSession: LibraryDelegate {
                 guard let w = held(int(args["window"])), let target = Self.hostTarget(args["target"]) else { drive(core.answer(id, [:])); return }
                 startNow {
                     let made = await self.prepare(w, for: target)
-                    self.drive(self.core.answer(id, made.map { ["placement": Self.json($0.0), "space": NSNumber(value: $0.1)] } ?? [:]))
+                    // (The placement kept here, the core given its number: it only passes it to the engine's open.)
+                    let answer: JSONObject = made.map { made in
+                        self.nextPlacement += 1
+                        self.placements[self.nextPlacement] = made.0
+                        return ["placement": self.nextPlacement, "space": NSNumber(value: made.1)]
+                    } ?? [:]
+                    self.drive(self.core.answer(id, answer))
                 }
             case "showSplit":
                 guard let w = held(int(args["window"])), let split = (args["split"] as? String).flatMap({ library.split($0) }), let focus = args["focus"] as? String else {
@@ -800,6 +765,49 @@ final class HostedSession: LibraryDelegate {
         }
     }
 
+    // The typed ports (margin-ffi session.rs `PortKind`), the ones a show asks: a number back (`SessionCore.none`:
+    // none), texts and lists given back through `out` during the call.
+    func typedPort(_ kind: UInt32, _ a: MarginPortArgs, _ out: OpaquePointer?) -> Int64 {
+        let none = SessionCore.none
+        let text = { SessionCore.text(a.a) }
+        let w = a.has_window ? Int(a.window) : nil
+        switch SessionCore.PortKind(rawValue: kind) {
+        case .window?:
+            guard let win = window(w) else { return none }
+            if seen[win.id] !== win { seen[win.id] = win }
+            return Int64(win.id)
+        case .windowIds?: for id in windowIds() { SessionCore.give(id, out) }
+        case .engineShown?: if let h = engine.shown { SessionCore.give(h.raw, out) }
+        case .isHosted?: return engine.isHosted(HostID(raw: text() ?? "")) ? 1 : 0
+        case .safariProfiles?: for p in links.safariProfiles() { SessionCore.give(p, out) }
+        case .linkEpoch?: if let e = links.linkEpoch(of: text() ?? "") { SessionCore.give(e, out) }
+        case .appName?: if let n = appName(text() ?? "") { SessionCore.give(n, out) }
+        case .appRuns?: return engine.appRuns(bundleId: text() ?? "").map { $0 ? 1 : 0 } ?? none
+        case .showsAlone?: return engine.showsAlone(HostID(raw: text() ?? "")) ? 1 : 0
+        case .stopHidingWoken?: engine.stopHidingWoken(bundleId: text() ?? safariIdentifier)
+        case .windowIdsOf?: for id in links.windowIds(of: text() ?? "") { SessionCore.give(id, out) }
+        case .setShowing?: held(w)?.setShowing(text(), app: SessionCore.text(a.b), slow: a.flag)
+        case .setMarginPage?: held(w)?.setMarginPage(text())
+        case .push?: if let json = text() { held(w)?.push(json) }
+        case .changed?: onChange?()
+        case .wokenByMenu?: return wokenByMenu[text() ?? ""] != nil ? 1 : 0
+        case .unopenable?: return unopenable.contains(text() ?? "") ? 1 : 0
+        case .log?: if let t = text() { if a.flag { Diagnostics.warn(t) } else { Diagnostics.note(t) } }
+        case .cardLeaving?: if let win = held(w) { cardLeaving(win, for: text()) }
+        case .cardReturning?: if let win = held(w), let item = text() { cardReturning(win, to: item) }
+        case .pinnedOrFavorite?: return pinnedOrFavorite(text() ?? "") ? 1 : 0
+        case .settleHosting?: settleHosting()
+        case .refreshLoading?: refreshLoading()
+        case .leaveMarginPage?: if let win = held(w) { leaveMarginPage(win) }
+        case .hasLayout?: return w.map { layout[$0] != nil } == true ? 1 : 0
+        case .clearLayout?: if let w { layout[w] = nil }
+        case .clearElsewhere?: if let win = held(w), elsewhere[win.id] != nil { elsewhere[win.id] = nil; win.setElsewhere(nil, app: nil) }
+        case .forgetElsewhere?: forgetElsewhere(item: text())
+        case nil: Diagnostics.warn("hosted: the core asked for port \(kind), which isn't one")
+        }
+        return 0
+    }
+
     // A Margin window the core named, as its flow had it: one closed since is still the one told (Swift's flows held
     // the window they were for), until nothing is under way (`drive`).
     private var seen: [Int: HostedWindow] = [:]
@@ -850,7 +858,12 @@ final class HostedSession: LibraryDelegate {
         }
     }
 
-    // A host target, a placement and an engine's result as the core's commands carry them.
+    // The placements Margin's windows were made ready with (the interim `prepare`), by the number the core passes on to
+    // the engine's open (one each: taken there).
+    private var placements: [Int: HostPlacement] = [:]
+    private var nextPlacement = 0
+
+    // A host target and an engine's result as the core's commands carry them.
     private static func hostTarget(_ v: Any?) -> HostTarget? {
         guard let o = v as? JSONObject else { return nil }
         switch o["kind"] as? String {
@@ -858,18 +871,6 @@ final class HostedSession: LibraryDelegate {
         case "safari": return (o["role"] as? String).flatMap(SafariRole.init(name:)).map { .safariWindow(o["profile"] as? String, $0) }
         default: return nil
         }
-    }
-    private static func rect(_ v: Any?) -> CGRect? {
-        guard let r = v as? [Any], r.count == 4, let x = num(r[0]), let y = num(r[1]), let w = num(r[2]), let h = num(r[3]) else { return nil }
-        return CGRect(x: x, y: y, width: w, height: h)
-    }
-    private static func placement(_ v: Any?) -> HostPlacement? {
-        guard let o = v as? JSONObject, let page = rect(o["page"]), let area = rect(o["area"]) else { return nil }
-        return HostPlacement(page: page, area: area, display: rect(o["display"]) ?? .zero)
-    }
-    private static func json(_ p: HostPlacement) -> JSONObject {
-        func r(_ c: CGRect) -> [Double] { [Double(c.minX), Double(c.minY), Double(c.width), Double(c.height)] }
-        return ["page": r(p.page), "area": r(p.area), "display": r(p.display)]
     }
     private static func json(_ r: HostResult) -> JSONObject {
         switch r {
@@ -1983,12 +1984,12 @@ final class HostedSession: LibraryDelegate {
     }
     // The Margin window a browser's window is made ready over (covered by it), and its profile.
     private(set) var preparingWindow: Int? {
-        get { field(.preparingWindow) { $0.first.flatMap { int($0.first) } } }
-        set { if preparingWindow != newValue { setField(.preparingWindow, newValue, put: newValue.map { [[$0]] } ?? [], del: newValue == nil ? [NSNull()] : []) } }
+        get { field(.preparingWindow) { $0.first?.i0 } }
+        set { setOne(.preparingWindow, old: preparingWindow, newValue) { CoreRow(i0: $0) } }
     }
     private var preparingProfile: String? {
-        get { field(.preparingProfile) { $0.first?.first as? String } }
-        set { if preparingProfile != newValue { setField(.preparingProfile, newValue, put: newValue.map { [[$0]] } ?? [], del: newValue == nil ? [NSNull()] : []) } }
+        get { field(.preparingProfile) { $0.first?.s0 } }
+        set { setOne(.preparingProfile, old: preparingProfile, newValue) { CoreRow(s0: $0) } }
     }
 
     // ---- the engine's Safari windows (HostEngine's requestSafariWindow, closeSafariWindow, safariFullScreen, safariLinked) ----
@@ -2031,8 +2032,8 @@ final class HostedSession: LibraryDelegate {
     }
     // The profiles a window is being asked of right now, every Safari window Margin has made (the copies' ids): never
     // swept. (The core's, written by its window asks.)
-    var requesting: Set<String> { field(.requesting) { Self.strings($0) } }
-    var made_: Set<Int> { field(.made) { Set($0.compactMap { int($0.first) }) } }
+    var requesting: Set<String> { field(.requesting) { Self.texts($0) } }
+    var made_: Set<Int> { field(.made) { Set($0.map(\.i0)) } }
 
     // A profile's copy linked, waking it through Safari's menu if it has no window (SafariWaker.linked).
     func safariLinked(_ profile: String?, wakeIf wanted: (() -> Bool)? = nil) async -> Bool {

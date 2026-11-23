@@ -715,11 +715,15 @@ fn a_web_address_and_the_card_rect_allocate_nothing() {
 fn the_wakers_look_allocates_nothing() {
     // (The session's `link_wanted`, step 3 commit 5: the Safari waker reads it every 0.05 s while a profile links.)
     // SAFETY: a session over no library, with no ports; freed once.
-    let s = unsafe { margin_session_new(std::ptr::null_mut(), std::ptr::null(), 0, std::ptr::null_mut(), None, None) };
+    let s = unsafe {
+        margin_session_new(std::ptr::null_mut(), std::ptr::null(), 0, std::ptr::null_mut(), None, None, None)
+    };
     let set = br#"{"type":"state","set":{"showing":{"put":[["safari:s-default","t1"],["app:com.a","t2"]]},"requested":{"put":[[1,"t1"],[2,"t1"]]},"preparingProfile":{"put":[["s-prep"]]}}}"#;
     let mut len = 0;
     // SAFETY: the live session, the input's bytes; its answer freed.
-    unsafe { margin_buffer_free(margin_session_input(s, set.as_ptr(), set.len(), &mut len), len) };
+    unsafe {
+        margin_buffer_free(margin_session_input(s, set.as_ptr(), set.len(), std::ptr::null_mut(), &mut len), len)
+    };
     let mut wanted = 0;
     let n = allocations(|| {
         for p in ["s-default", "s-prep", "s-other", "app:com.a"] {
@@ -728,6 +732,20 @@ fn the_wakers_look_allocates_nothing() {
         }
     });
     assert_eq!(n, 0, "the waker's look allocated {n} times");
+    // (The facade's typed read of a field that changed in a show: its rows to a sink, the texts lent.)
+    extern "C" fn count(ctx: *mut std::ffi::c_void, _: *const MarginRow) {
+        // SAFETY: ctx is the test's counter.
+        unsafe { *(ctx as *mut usize) += 1 };
+    }
+    let mut rows = 0usize;
+    let n = allocations(|| {
+        use margin_core::session::Field as F;
+        for f in [F::Requested, F::Showing, F::Shown] {
+            // SAFETY: the live session, the counter as ctx.
+            unsafe { margin_session_rows(s, f as u32, &mut rows as *mut usize as *mut std::ffi::c_void, Some(count)) };
+        }
+    });
+    assert_eq!((n, rows), (0, 4), "a field's typed rows allocated {n} times");
     assert_eq!(wanted, 3, "t1 the only one asked for; the preparation's: something is; none shown: wanted");
     // SAFETY: from margin_session_new, freed once.
     unsafe { margin_session_free(s) };
