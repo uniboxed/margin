@@ -504,9 +504,12 @@ screen by itself), T/host-tests.swift:2737-2757 and 4373 (off screen), T/multi-h
 repair), T/host-tests.swift:3027 (window mode → full screen once); T/loop-guard-tests.swift unchanged. Ported: each
 budget's behaviour (budget.rs tests). Screen: `behaviours-*`, `cut-panes`.
 
-**Needs Tirth:** "the retry-once ladder joins routes.rs's step down" would make it per app version and saved
-(routes.json) instead of per host and per run: a change of behaviour; the design keeps it per host until he says. Also
-whether these budgets should count toward guard.rs's 12-a-second hold (today they don't). ~45 lines deleted.
+**Tirth's answers (2026-11-22):** the retry-once ladder stays per host and per run (it doesn't join routes.rs: no
+change of behaviour). The four budgets DO count toward guard.rs's 12-a-second hold from now on: each budget's action
+is one of the guard's actions, so a loop between Margin and an app through any of them is held as the core's other
+actions are. That's the one change of behaviour in step 2: new tests pin it (a budget's actions past 12 a second
+held), and the screen suite's `behaviours-*`, `cut-panes` and `real-apps-loop` parts must show no hold they didn't
+before. ~45 lines deleted.
 
 #### Part 5: app minimums
 
@@ -644,9 +647,9 @@ no lock, nothing allocated (the tap's thread; macOS turns off a tap that takes ~
 (45-110: stay Swift); T/pane-click-tests.swift's decide part (105-128: ported), its timing tests (stay Swift). Screen:
 `pane-clicks`, `panes-active`, `panes-active-crash`.
 
-**Needs Tirth:** both are macOS-only today (records through SLPS; WebKit's first-mouse refusal): on Windows a first
-click goes through and there's no record to send. They're one copy already (Swift only); moving them buys testability
-on any OS, not reuse. Proposed: move (small, pure), last; or leave them as the Mac adapter's policy. ~170 lines.
+**Tirth's answer (2026-11-22): left in Swift.** Both are macOS-only (records through SLPS; WebKit's first-mouse
+refusal): on Windows a first click goes through and there's no record to send. They're one copy already, so they stay
+the Mac adapter's policy. Part 8 isn't done.
 
 #### Part 9: duplicates removed
 
@@ -683,14 +686,15 @@ on any OS, not reuse. Proposed: move (small, pure), last; or leave them as the M
 | 7 | 4: the budgets and the full-screen ladder | ~45 | 1a | |
 | 8 | 7: strays, off screen, exits, close, recovery's predicates | ~170 | 4 | idle-cost |
 | 9 | 6: the live pump | ~120 | 3, 5 | live-resize, idle-cost |
-| 10 | 8: panes active, pane clicks (after Tirth's word) | ~170 | | pane-clicks |
+| ~~10~~ | 8: panes active, pane clicks: left in Swift (Tirth, 2026-11-22) | 0 | | |
 
 About 1,000 Swift lines deleted (not ~1,500: most of the "mixed" lines are macOS mechanism that stays: the waits,
 Accessibility, the private calls, the logs), ~2,300 Rust lines in (half of them tests). Budgets as step 1: idle < 0.5%
 CPU, < 150 MB, a switch < 16 ms of Margin's work; a drag's p95 no worse than the baseline.
 
-**Open, for Tirth:** the full-screen ladder per host or per app version (part 4); the budgets inside guard.rs's
-12-a-second hold or not (part 4); part 8 moved or left as Mac policy.
+**Tirth's answers (2026-11-22):** the full-screen ladder stays per host and per run; the four budgets count toward
+guard.rs's 12-a-second hold (part 4's one change of behaviour, pinned by new tests); part 8 left as the Mac's policy.
+So about 830 Swift lines deleted.
 
 ## Step 3: the session into the core
 
