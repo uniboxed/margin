@@ -2185,6 +2185,13 @@ step 3's merge before the switch (commit 6).
     that (no behaviour change), or parse them as the browsers' copies do (the `url` crate, ready in js.rs: one constant,
     `RULES_PARSE_URLS`, and the vectors' JSC answers re-recorded; +0.22 MB)? *Default: keep today's (the constant false).*
 
+**Tirth's answers to these (2026-11-23):** 1 **(b), the system's sorter**: the platform hands the core a comparator
+(the Mac: libicucore's `ucol_strcoll` with the person's locale, the one JSC calls; Windows: its own icu.dll), ICU4X's
+collation removed from the core's dependencies (0 bytes added); the core's tests use a stand-in comparator and the Mac's
+vectors pin the system one. 11 **fix it, as its own commit**: the rules move first with today's behaviour exactly
+(`RULES_PARSE_URLS` false), then one commit turns URL parsing on with tests (link rules route in the app; `https://a.com`
+and `https://a.com/` match as the browsers' copies match them), the vectors' JSC answers re-recorded for it.
+
 ## Order and checks
 
 1. Step 1 (1.1 → 1.5), merged after the gate and the screen suite.
