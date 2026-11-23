@@ -7656,3 +7656,24 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   the shown set to itself, an entry set as it is). The app's 2038 checks pass unchanged.
 - The core also gains `bring_in` and the window-mode frame (`layout::inside`, `window_frame`, `at_page_area`) with
   their Rust tests; the Swift switches to them in the next commit (one adds, the next deletes, as the design asks).
+
+## Core refactor step 2, part 1b (second commit): how a host is brought in, and a window-mode window's frame (2026-11-22)
+
+- `bringIn`'s tree is the core's (`bring_in`), asked at each of its four points in turn, between the same waits as
+  before: its window gone (reopen), a new app's window taken first, its route (full screen again after a failed one,
+  window mode, a tile held below tiles placed again, a tile sized first), then switched in or placed (for another
+  page area: said). The facts only the Mac has (a new one, an app's, taken, retrying, made ready out of sight) are
+  passed as bits. The full screen again's model change (its mode, its retry spent) and the held tile's forgotten page
+  are made by the core as it decides; the marker's save, the log lines and every wait stay where they were.
+- A window-mode window's frame is the core's (host/layout.rs `inside`, `window_frame`, `at_page_area`: the one the
+  Windows thread asked for): centred at whole points (Swift's `rounded()`, half away from zero, as Rust's `round`),
+  never past the page's top left; the page area for a resizable one, its own size centred for a fixed one; nothing
+  to set when it's there, or placed before and at its own limits centred. The live pump's window-mode target uses
+  the same `inside`.
+- Left in Swift: `visibleHost(at:)` (a loop over the window server's bounds and each pane's frame, part 3's), the
+  reopen and take themselves, and the gone check after the reopen (it reads whether the engine still holds the host).
+- Checked before the Swift went: the deleted Swift against the core in the same scratch run as the first commit's
+  (bringIn's tree at every point with every fact and model state, in the 4,000 runs; the window-mode frame, its
+  "there" check and the centring over 2,000,000 generated rects at and around each tolerance, zero sizes and
+  half-point centres included): no difference. Rust tests pin each point and the frames' edges. The app's 2038
+  checks pass unchanged.

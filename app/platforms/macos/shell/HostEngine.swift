@@ -2976,15 +2976,12 @@ final class HostEngine {
     // The page area for a window-mode host (Margin's own layout's, its window its whole width).
     private func windowArea(_ host: Host) -> CGRect { pageOf(host) }
 
-    private func centredIn(_ page: CGRect, _ size: CGSize) -> CGRect {
-        CGRect(x: (page.minX + max(0, (page.width - size.width) / 2)).rounded(), y: (page.minY + max(0, (page.height - size.height) / 2)).rounded(), width: size.width, height: size.height)
-    }
     // Whether a window-mode host's window is where `placeWindow` puts it: the page area, or its own size centred in it
-    // (a fixed size, or a resizable one at its own limits).
+    // (a fixed size, or a resizable one at its own limits). The core's: `at_page_area`.
     private func atPageArea(_ host: Host) -> Bool {
         let area = windowArea(host)
-        guard let b = sys.bounds(window: host.window), b.width <= area.width + options.tolerance, b.height <= area.height + options.tolerance else { return false }
-        return HostLayout.near(b, area, within: options.tolerance) || HostLayout.near(b, centredIn(area, b.size), within: options.tolerance)
+        guard let b = sys.bounds(window: host.window) else { return false }
+        return HostLayout.atPageArea(b, area, within: options.tolerance)
     }
 
 
@@ -3003,12 +3000,10 @@ final class HostEngine {
             emit(.failed(host.id, .place, "its window's bounds didn't read"))
             return false
         }
-        func centred(_ size: CGSize) -> CGRect { centredIn(page, size) }
-        var want = host.resizable ? page : centred(now.size)
-        if HostLayout.near(now, want, within: options.tolerance) { return true }
-        // (Placed by Margin before and still there: at its own limits, centred. A switch to it sets nothing.)
-        if host.frameChanged, now.width <= page.width + options.tolerance, now.height <= page.height + options.tolerance,
-           HostLayout.near(now, centred(now.size), within: options.tolerance) { return true }
+        func centred(_ size: CGSize) -> CGRect { HostLayout.inside(page, size) }
+        // (There already, or placed by Margin before and still there: at its own limits, centred. A switch to it sets
+        // nothing. The core's: `window_frame`.)
+        guard var want = HostLayout.windowFrame(page, now: now, resizable: host.resizable, placedBefore: host.frameChanged, within: options.tolerance) else { return true }
         if host.original == nil { host.original = now }
         host.frameChanged = true
         saveMarker()
@@ -3157,6 +3152,8 @@ final class HostEngine {
 
     // ---- showing ----
 
+    // How a host is shown: each of its points decided by the core (host/model/visible.rs `bring_in`), in turn, between
+    // the same waits as before (a reopen, a take, a tile's sizing).
     private func bringIn(_ host: Host, isNew: Bool, retrying: Bool = false) async -> HostResult {
         jumps = 0
         // (Shown again after a close its prompt held off: Margin's as before, its quit no longer waited on.)
@@ -3167,7 +3164,7 @@ final class HostEngine {
         host.offScreenReads = 0
         // (Its window went while it was parked, its app still running: a Dock-icon click first, the window it makes
         // adopted, behind the loader; nothing came: gone as a closed window.)
-        if host.gone {
+        if core.bringIn(host.handle, .start) == .reopen {
             say(loading: host.id)
             await reopen(host)
             say(loading: nil)
@@ -3179,7 +3176,8 @@ final class HostEngine {
         }
         // A new app's window as it was (its frame, its Space) before anything moves it; then how it's shown.
         defer { say(cover: nil) } // (the window taken in to be read: shown by now, or given back)
-        if isNew, case .app = host.target, !host.taken, let (failed, why) = await take(host) {
+        let isApp: Bool = { if case .app = host.target { return true }; return false }()
+        if core.bringIn(host.handle, .take, isNew: isNew, isApp: isApp, taken: host.taken) == .take, let (failed, why) = await take(host) {
             guard host.taken else {
                 // (Nothing of it was touched: forgotten, never backed out of a full screen that's the person's.)
                 setHost(host.id, nil)
@@ -3190,29 +3188,29 @@ final class HostEngine {
             }
             return await giveUp(host, isNew: isNew, failed, why, previous: nil)
         }
-        if host.mode == .window, host.retryFullScreen, !isNew, !retrying, !preparing {
-            // (Window mode only after its full screen failed: full screen tried again as it's shown, behind the loader.)
-            host.retryFullScreen = false
-            host.mode = .fullScreen
+        switch core.bringIn(host.handle, .route, isNew: isNew, retrying: retrying, preparing: preparing) {
+        case .fullScreenAgain:
+            // (Window mode only after its full screen failed: full screen tried again as it's shown, behind the loader;
+            // its mode full screen from now, its retry spent.)
             saveMarker()
             Diagnostics.note("host: \(host.id): in window mode since its full screen failed (it can go full screen): full screen tried again as it's shown")
             return await placeFullScreen(host, isNew: false, retrying: false)
-        }
-        if host.mode == .window { return await bringInWindow(host, isNew: isNew, retrying: retrying) }
+        case .window: return await bringInWindow(host, isNew: isNew, retrying: retrying)
         // (Live resize: a tile placed for another page area sized first, out of sight (a switch never shows the old size:
-        // the target ahead of any other tile's sizing); one whose rect doesn't take is placed again the old way.)
-        if host.member, host.tile != nil, host.noTiles {
-            // (Held below tiles since it was parked: out of its tile, placed again as a plain member, behind the loader.)
-            host.placedPage = nil
-        } else if host.member, host.tile != nil {
+        // the target ahead of any other tile's sizing); one whose rect doesn't take is placed again the old way. Held
+        // below tiles since it was parked: out of its tile, placed again as a plain member, behind the loader (its
+        // placed page forgotten).)
+        case .sizeFirst:
             // (Its rect read, not only the page area it was sized for: a parked tile laid out again meanwhile is left so.)
             let stale = !tileAtPage(host)
             if await sizeTile(host), stale { Diagnostics.note("host: \(host.id): its tile sized to the page area before it's shown") }
+        default: break
         }
-        if host.member, let placed = host.placedPage, HostLayout.near(placed, pageOf(host), within: options.tolerance) {
-            return await switchIn(host)
+        switch core.bringIn(host.handle, .placed) {
+        case .switchIn: return await switchIn(host)
+        case .placedElsewhere: Diagnostics.note("host: \(host.id): placed for another page area (\(host.placedPage.map(r) ?? "none")): placed again as it's shown")
+        default: break
         }
-        if host.member { Diagnostics.note("host: \(host.id): placed for another page area (\(host.placedPage.map(r) ?? "none")): placed again as it's shown") }
         return await placeFullScreen(host, isNew: isNew, retrying: retrying)
     }
 
@@ -5219,7 +5217,7 @@ final class HostEngine {
             observer.sized(pid: host.pid, rects: [rect, page]) // (no cause noted a frame: a drag is the person's)
             guard sys.setTileRect(tile, rect) else { return nil }
         } else if host.mode == .window {
-            let want = host.resizable ? page : centredIn(page, sys.bounds(window: host.window)?.size ?? page.size)
+            let want = host.resizable ? page : HostLayout.inside(page, sys.bounds(window: host.window)?.size ?? page.size)
             guard await sys.setFrame(pid: host.pid, window: host.window, want, size: host.resizable) else { return nil }
             host.frameChanged = true
         } else { return nil }

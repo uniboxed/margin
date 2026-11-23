@@ -348,6 +348,16 @@ nonisolated enum HostLayout {
     // ask it every few milliseconds).
     static func near(_ a: CGRect, _ b: CGRect, within: CGFloat = 1) -> Bool { margin_layout_near(a.marginRect, b.marginRect, Double(within)) }
 
+    // A window-mode window (margin-core's `inside`, `window_frame`, `at_page_area`): its own size centred in its page
+    // area at whole points; its frame from where it is now (nil: there already, or placed before and at its own limits
+    // centred); whether its bounds are where that puts it.
+    static func inside(_ page: CGRect, _ size: CGSize) -> CGRect { CGRect(margin_layout_inside(page.marginRect, Double(size.width), Double(size.height))) }
+    static func windowFrame(_ page: CGRect, now: CGRect, resizable: Bool, placedBefore: Bool, within: CGFloat) -> CGRect? {
+        var out = MarginRect()
+        return margin_layout_window_frame(page.marginRect, now.marginRect, resizable, placedBefore, Double(within), &out) ? CGRect(out) : nil
+    }
+    static func atPageArea(_ bounds: CGRect, _ area: CGRect, within: CGFloat) -> Bool { margin_layout_at_page_area(bounds.marginRect, area.marginRect, Double(within)) }
+
     // A full-screen window's room above it for its own toolbar window (margin-core's `TOOLBAR_ROOM`: 52 pt).
     static var toolbarRoom: CGFloat { CGFloat(margin_layout_toolbar_room()) }
 }
