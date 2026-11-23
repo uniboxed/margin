@@ -1660,17 +1660,17 @@ Size: LT 954 lines, of which the actions are 57 (LT:283-807; the plan said about
 
   | JS | Where | Rust |
   | --- | --- | --- |
-  | `s.slice(0, max)`, `.length` count **UTF-16 units** | `str(v, max)` LT:43 (every title 2000, name 200, icon 100,000, profile 256), `FOLDER_NAME_MAX` M:1250, `CUSTOM_TITLE_MAX` M:1314, AT:22's 200, `nsId`'s 256 LT:868 | `js::slice16(s, max)`: cut at `max` units. A cut between a surrogate pair can't be a Rust `String`: see open question 3 (the Mac's own outcome today is pinned in commit 0 first) |
+  | `s.slice(0, max)`, `.length` count **UTF-16 units** | `str(v, max)` LT:43 (every title 2000, name 200, icon 100,000, profile 256), `FOLDER_NAME_MAX` M:1250, `CUSTOM_TITLE_MAX` M:1314, AT:22's 200, `nsId`'s 256 LT:868 | `js::slice16(s, max) -> &str`: cut at `max` units, a prefix of the input (no copy). A cut between a surrogate pair drops the pair (Tirth's answer 3: 1,999 units) |
   | `trim()`, `/\s/` (WhiteSpace + LineTerminator: U+0009, 000A–000D, 0020, 00A0, 1680, 2000–200A, 2028, 2029, 202F, 205F, 3000, **FEFF**) | M:1116, 1139, 1251, 1315, 1503, 1546; AT:21-22; M:1476 | `js::trim`, `js::is_space`: that list exactly. Rust's `str::trim` differs: it trims U+0085 and not U+FEFF |
   | `.sort()` with no comparator: UTF-16 unit order | LT:168-169 (`diff`'s ids), LT:498 (`clearToday`'s items) | `js::cmp16(a, b) = a.encode_utf16().cmp(b.encode_utf16())`; Rust's `str` order is code points, which differs past U+FFFF vs U+E000–U+FFFF |
-  | `a.localeCompare(b)` (ICU collation, the default locale) | tie-breaks: spaces' and link rules' equal `order` (LT:89, 96, 885), the archive's equal `closedAt` (LT:119), `openMarginPage` (LT:394), FI:15, M:1482 (`keptOfFavorite`) | `js::locale_compare`: ICU collation as JSC runs it (open question 1). Every id Margin makes is ASCII (`sp-`, `t-`, `a-`, `p-`, `fav-`, `atc-`, `spv-`, `f-` + `[a-z0-9]`, `t-` + hex, `<browser>:<profile>:<id>`), where it's still not byte order (`a` < `A` < `b`, `_` < `-` < `:` < digits < letters) |
+  | `a.localeCompare(b)` (ICU collation, the default locale) | tie-breaks: spaces' and link rules' equal `order` (LT:89, 96, 885), the archive's equal `closedAt` (LT:119), `openMarginPage` (LT:394), FI:15, M:1482 (`keptOfFavorite`) | `js::Collation::new(locale)` (`compare`): ICU4X's collation for the locale JSC takes, the person's preferred language (`en-US` here; a tailored one reorders ASCII: Danish `aa` after `z`), so the app gives it (commit 6). Measured against JSC (commit 1): every ASCII pair and 70,000 id-shaped and mixed pairs the same; 2,133 Han pairs and 31 Unicode 17 characters differ (open question 1, asked again). Every id Margin makes is ASCII (`sp-`, `t-`, `a-`, `p-`, `fav-`, `atc-`, `spv-`, `f-` + `[a-z0-9]`, `t-` + hex, `<browser>:<profile>:<id>`), where it's still not byte order (`a` < `A` < `b`, `_` < `-` < `:` < digits < letters) |
   | Sort stability, comparators `x - y \|\| …` | every `.sort` | `sort_by` (stable) over `partial_cmp` of finite numbers (always finite: `finite()` first): a total order, so Rust's sort never panics on it (it may, since 1.81, on one that isn't) |
   | Numbers are doubles | `order` midpoints M:530, `TIGHT` 1e-6 M:398, ratios M:1636, `Math.max(-1, …)` M:396 | f64 throughout, the same operations in the same order (no `mul_add`, folds from `0.0` written out as LT:106 and M:1635 do, never `Iterator::sum`, whose empty sum is `-0.0`); `js::round` = JS's `Math.round` (ties toward +∞; Rust's `round` is away from zero: the same for the positive ratios, written as JS's anyway); `js::max` for `Math.max`'s `+0` over `-0` |
   | `JSON.parse` of a number, `String(n)`, `JSON.stringify(n)` | every payload number; `win(p)` LT:192 (`String(p.windowId)`) | every number read as f64 (`9007199254740993` is `…992` in JS); `js::number_string` is ECMAScript's Number::toString (shortest digits, exponent past 1e21 and under 1e-6: `1e+21`); a number written into a value goes through `protocol::number` (integral below 2^53: an integer, `5` not `5.0`), so the text is JS's for every number the library makes |
   | Truthiness, `??`, `typeof`, `Number.isFinite`, `Number.isInteger` | `!!p.front` LT:366, `g.pinned ?` LT:111, `p?.title ?? ''` LT:574, `finite` LT:44 | `js::truthy(&Value)` (false: missing, null, false, 0, -0, NaN, ""), `js::nullish`, `json::num` (a JSON number only: `"5"` isn't finite, as `Number.isFinite`) |
   | `String(x)` on a payload value, `obj[key]` with a non-string key | `M.renamePin(…, p?.title ?? '')` → `String(name)` M:1315 (`123` → `"123"`, `[1,2]` → `"1,2"`, `{}` → `"[object Object]"`); `s.keptTabs[p?.tabId]` LT:372 (a number `5` looks up `"5"`, `["t-a"]` looks up `"t-a"`) | `js::to_string(&Value)` and `js::property_key(&Value)`: ECMAScript's ToString / ToPropertyKey for JSON values. Not reproduced: the prototype's members as ids (`"constructor"`, `"toString"` find a function in JS): open question 4 |
   | A TypeError thrown inside an action | `name?.trim()` M:1116 on a non-string name (`createSpace {name: 5}`), any `.trim`/`.replace` on a payload value that isn't a string: caught at LT:825, `{ ok: false, error: "failed: <the engine's message>" }` | each throw site found by commit 0's survey (random payload types per action against LT), returned at the same point with JSC's words (open question 5) |
-  | `new URL(…)` (WHATWG) | `normalizeUrl` M:594-603 (pins, favorites, archive dedupe, `keptForUrl`, `openFavorite`), AT:39-46 (`hostname`, `pathname`) | the `url` crate (WHATWG, IDNA UTS 46): `protocol + "//" + host (with port) + path ("/" → "") + search`, as M:597. Open question 2 (a dependency) |
+  | `new URL(…)` (WHATWG) | `normalizeUrl` M:594-603 (pins, favorites, archive dedupe, `keptForUrl`, `openFavorite`), AT:39-46 (`hostname`, `pathname`) | **None in Margin.app today** (found by commit 1): a bare `JSContext` has no `URL` (WebCore's), so `new URL` throws a ReferenceError that both sites catch: `normalizeUrl` gives the address as it is (`url ?? ''`) and `patternMatchesUrl` is false, so a link rule never routes in the app and `https://a.com` and `https://a.com/` are two addresses there (the browsers' copies parse). `js::normalize_url`/`rules_url` keep that (`RULES_PARSE_URLS = false`); `normalize_url_whatwg`/`url_parts` (the `url` crate: `protocol + "//" + host + path ("/" → "") + search`, as M:597) are the browsers', for open question 11 |
   | `toLowerCase` | AT:24 (a pattern's host), before an ASCII-only check (AT:16) | `str::to_lowercase` (full mapping, final sigma; only the Kelvin sign and dotted I can change the ASCII outcome, the same in both) |
   | JS object key order (integer-like keys first, ascending; then insertion) | `Object.values(s.keptTabs)` (LT:546, 562, 617: "the first that…"), `Object.entries(values.windows)` | `IndexMap` in the set's order (the store's `DataSet` is a `BTreeMap`: ids in byte order). Today's order is **neither**: L:207 hands JSC the values through `JSONSerialization` (Swift dictionaries: per-launch hash order), so the "first of several equal" today changes from launch to launch; Rust's is the ids' order, every time. Never visible for one match (the usual case); for two equal candidates it's a fixed pick where today's was random (noted in the parts) |
   | `fingerprint` (FNV-1a over `JSON.stringify(v)`'s UTF-16 units, DS:105-113) | `nsId`, `nsTabId` LT:866-873 (imported ids: must be the same ids, or an import run again doubles) | `js::fingerprint(&str)`: JSON.stringify's string escaping (`\"`, `\\`, `\b\f\n\r\t`, other controls `\u00xx` lowercase, everything else raw, U+2028/2029 raw), FNV over its UTF-16 units, `wrapping_mul`, `{:08x}` |
@@ -1701,7 +1701,9 @@ Size: LT 954 lines, of which the actions are 57 (LT:283-807; the plan said about
 **Today.** Implicit in V8/JSC: the table above. The core has two pieces already: `set.rs:37-39` counts UTF-16 units,
 `protocol.rs:33-41` writes integral numbers as integers.
 
-**Core.** `core/library/js.rs`: `pub fn slice16(s: &str, max: usize) -> Cow<str>`, `len16`, `trim`, `is_space`,
+**Core.** `core/library/js.rs` (done, commit 1: also `Collation`, `min`, `max_of`, `num_cmp` for a comparator's `x - y`,
+`rules_url`/`url_parts`/`normalize_url_whatwg` with `RULES_PARSE_URLS`, `Ids` and `random_letters`; `slice16` returns `&str`):
+`pub fn slice16(s: &str, max: usize) -> Cow<str>`, `len16`, `trim`, `is_space`,
 `squash_spaces` (`/\s+/g → ' '`), `cmp16`, `locale_compare`, `round`, `max`, `number_string`, `to_string`,
 `property_key`, `truthy`, `nullish`, `finite`, `fingerprint`, `normalize_url`, `is_web_page` (`/^(https?|file):/i`),
 `is_http` (`/^https?:/i`), `favorite_url_ok`'s `/^https?:\/\/[^\s/]/i`. All pure, `#[inline]` where hot
@@ -1721,6 +1723,18 @@ ids' shapes (with JSC's default locale on this Mac), `number_string` over ±0, 2
 backslashes, `%7e`, IPv4 in hex, empty path, `file:`).
 
 **Windows:** the same code.
+
+**Measured (commit 1).** Against JSC on this Mac (a `JSContext`, as LR) and Node: spaces over every code point, `\s`
+the same list as `trim`; every number, round, string, key and fingerprint edge of the table the same. `localeCompare`:
+all 9,025 ASCII pairs, 20,000 two-character ASCII pairs, 20,000 id pairs, 3,000 ids in JSC's sorted order and 30,000
+random pairs over accents, marks, Hangul, CJK, emoji and ignorables the same; over every BMP character in JSC's order
+1,880 adjacent pairs differ, and 284 in a supplementary sample, all Han (Apple's ICU orders Han by radical and stroke,
+ICU4X's compiled data by code point: exact needs ICU4X data baked with `unihan` Han) but 31 characters new in Unicode 17
+(ICU4X 2.1 has 16; 2.2+ needs Rust 1.86+). The `url` crate against WebKit (an off-screen WKWebView) and Node on 90
+addresses: the same but `https://xn--a.com` (the browsers take it, the crate refuses it). Size (a release binary,
+the workspace's profile): the collation +1.26 MB per architecture (1,618,816 against 356,976 bytes, arm64; x86_64 the
+same), the WHATWG parser +0.22 MB, both +1.48 MB: over the ~1 MB, so open question 1 is asked again. Neither reaches
+the app until commit 6 (margin-ffi doesn't call them; the linker drops them).
 
 **Risks.** ICU collation and the WHATWG URL parser are the two pieces Rust can't write in a page; both are libraries
 (open questions 1 and 2), checked against JSC by the vectors. ICU's and Apple's ICU's CLDR versions differ only for
@@ -1875,6 +1889,10 @@ person's, then the rest; `imports.done` with `at`, `sets`, the counts; the resul
 so the next action changes nothing, LT:933). Swift `importOnce` L:249-276: once (`imports.done`), every profile's set
 the data store has (Safari first, then by name), each browser's person's order from `BrowserProfiles.resolve` (the
 slots rule, already the core's: data/profiles.rs since step 1.4), the counts' log line.
+
+**Done in commit 1** (step4/js, import.rs): `import_values(current: &Map, sets: &[ImportSet], order, now, &Collation) ->
+Imported { values, counts }`, LT:875-931 (the values with the import in them), with `ImportSet::from_json` (LT:881's
+filter), `ns_id`, `ns_tab_id`; LT:933-934 (`valuesOf(stateOf(next))` and `diff`) join it with part 2's state.rs.
 
 **Core.** `core/library/import.rs`: `pub fn import_values(current: &DataSet, sets: &[ImportSet], order: &[(String,
 String, String)], now: f64) -> (Vec<Change>, Counts)` (LT:875), and `Library::import_once(&self, data: &DataSync) ->
@@ -2084,7 +2102,7 @@ commit 7 only).
 | # | Commit | Swift / TS deleted | Rust in (with tests) | Measured after |
 | --- | --- | --- | --- | --- |
 | 0 | The vectors and the edges, against the TS (Node and JSC) before any Rust: the recorder and its ~70 tests' vectors, the generated sequences, `js.json` from JSC on this Mac, the throw survey (every throw site and JSC's words), the Mac's outcome for a 2000-unit cut through an emoji (LT:43 → JSON → `JSONSerialization` → the store), the shadow harness in T/ (JSC only for now). Baselines (off screen, T/ timings): a perform, a draw's snapshot over 50/500/2,000 items, the app's binary size and footprint | 0 | 0 (~400 TS and JSON, ~150 Swift test lines) | the baselines |
-| 1 | Part 1: `js.rs`, the `url` and collation dependencies (open questions 1, 2) | 0 | ~450 + ~300 tests | binary size |
+| 1 | **Done** (step4/js): part 1: `js.rs`, the `url` and collation dependencies (open questions 1, 2), and part 5's `import_values` up to its normalising (import.rs) | 0 | ~450 + ~300 tests | binary size: +1.26 MB a architecture (collation), +0.22 MB (URL) |
 | 2 | Part 2: the typed state, `state_of`, `values_of`, `diff`, `target_of`, the snapshot's text; the snapshot vectors pass | 0 | ~850 | |
 | 3 | Part 3: M's rules, PR, AT, FI (parallel: spaces + order; kept + archive + favorites; splits + link rules) | 0 | ~1,400 | |
 | 4 | Part 4: the 57 actions and `perform`; every perform vector and the generated sequences pass | 0 | ~900 | a perform (Rust alone) |
@@ -2150,6 +2168,22 @@ fallback goes. The others take the defaults above (2 the `url` crate; 4 Rust's "
 Swift's 4 ids kept, the rest from the core's random; 7 library.ts kept as the vectors' reference; 8 not in step 4).
 Branch: refactor/core-library, started off refactor/core-session for the Rust-only commits 0-4 (no Swift), rebased on
 step 3's merge before the switch (commit 6).
+
+**Asked again after commit 1 (2026-11-23), each with the default commit 1 takes:**
+
+1. (again) **The collation's size**: ICU4X's compiled collation is +1.26 MB per architecture (about 2.5 MB in the
+   universal app), and still not exact for Han (radical-stroke order in Apple's ICU, code-point order in ICU4X's
+   compiled data) nor for Unicode 17's new characters. Choices: (a) keep it (exact for every id Margin makes, every ASCII
+   pair, the mixed texts measured and every BMP character outside Han and Unicode 17's); (b) the system's ICU, which is what JSC calls:
+   libicucore's `ucol_strcoll` on the Mac (and Windows' icu.dll), given to the core by the platform as a comparator: 0
+   bytes, exact on the Mac by construction, an OS call through the FFI per compare (ties only); (c) the ASCII table
+   from JSC with code points past it (a few hundred bytes; exact for root and `en` on ASCII, not for a tailored locale).
+   *Default: (a), as in commit 1, until you say.*
+11. **Link rules and address matching in Margin.app** (found by commit 1): the app's rules run in a bare JSContext,
+    which has no `URL`, so today a link rule never routes a new tab or `routeUrl`, and pins, favorites, the archive and
+    `keptForUrl` match addresses as given (`https://a.com` and `https://a.com/` are two; a `#fragment` counts). Keep
+    that (no behaviour change), or parse them as the browsers' copies do (the `url` crate, ready in js.rs: one constant,
+    `RULES_PARSE_URLS`, and the vectors' JSC answers re-recorded; +0.22 MB)? *Default: keep today's (the constant false).*
 
 ## Order and checks
 

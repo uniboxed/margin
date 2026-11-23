@@ -21,6 +21,11 @@ getrandom = "0.4"
 hex = "0.4"
 tempfile = "3"
 libc = "0.2"
+# The library's rules (app/shared/core/src/library/js.rs): JavaScript's `localeCompare` (ICU collation) and its `new URL`
+# (WHATWG). 2.1 is the newest ICU4X for the workspace's rust-version.
+icu_collator = "2.1"
+icu_locale_core = "2.1"
+url = "2.5"
 
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "deny"

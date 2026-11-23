@@ -8744,3 +8744,61 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   of it the profile's part 1.19 ms → 75 µs and 12.7 → 0.50 ms (the site icons' read); a UI search request's route
   1.24 / 13.4 ms → 47 µs (it built the whole State for the settings). Nothing per frame changed.
 - Swift: 140 lines out, 59 in.
+
+## Core refactor step 4, commit 1: the JavaScript the library's rules rely on, in the core (2026-11-23)
+
+- margin-core gains `library` (app/shared/core/src/library/), its first two files: `js.rs`, what library.ts and
+  model.ts get from the engine without saying so, as JavaScriptCore runs it in Margin.app (a bare `JSContext`, as
+  LibraryRules.swift makes it): UTF-16 lengths and cuts (`len16`, `slice16`, a prefix of the input: no copy), `.sort()`'s
+  unit order (`cmp16`), JS's one list of spaces for `trim` and `\s` (`is_space`, `trim`, `squash_spaces`: U+FEFF is
+  one, U+0085 and U+180E aren't, the other way round from Rust's), `localeCompare` (`Collation`, ICU4X for a locale),
+  `Math.round`/`max`/`min` (-0 and NaN as JS), a comparator's `x - y` (`num_cmp`: NaN goes on to the tie, as `||`),
+  `String(n)` (`number_string`: `1e+21`, `1e-7`), `!!v`, `??`, `Number.isFinite`, `String(v)` and `obj[v]`'s key for
+  JSON values, the address regexes (`/i` as JS folds it without `u`: ASCII only), shared/data-set.ts's `fingerprint`
+  (JSON.stringify's escapes, FNV-1a over UTF-16), and library.ts's `idMaker` (`Ids`: the given ids first, used up
+  one each whether they pass or not; then the core's random letters, Swift's rule: a byte mod 36). And `import.rs`:
+  library.ts `importValues` up to its last step (the values with the import in them and its counts, `nsId`,
+  `nsTabId`, the sets' filter); its normalising through `stateOf`/`valuesOf` and the `diff` join it with part 2.
+- Found: **a bare JSContext has no `URL`** (it's WebCore's), so in Margin.app `new URL` always throws and both sites
+  catch it: model.ts `normalizeUrl` gives the address as it is, air-traffic.ts `patternMatchesUrl` is false. Measured
+  with dist/app/library.js in a JSContext: `routeUrl` of an address a rule matches answers null (Node: the rule), and
+  `addFavorite` of `https://a.com` beside `https://a.com/` adds a second (Node: refused). So a link rule never routes
+  in the app today, and pins, favorites, the archive and `keptForUrl` match addresses exactly as given. The core keeps
+  that (`RULES_PARSE_URLS = false`: `normalize_url` returns its input, `rules_url` nothing); the WHATWG reads
+  (`url_parts`, `normalize_url_whatwg`, the `url` crate: Tirth's answer 2) are there for when he decides the app's
+  rules should parse addresses as the browsers' copies do (the design's open question 11, asked).
+- Measured against JSC on this Mac and Node 25 (scratch harness: edges.js through a JSContext and through Node,
+  compared by a Rust tool over js.rs): every code point's space the same (1,112,064, `trim` and `\s` one list in
+  both engines), the cuts, the sort, 43 numbers' strings, 24 rounds, the max/min signs, 22 values' strings and keys,
+  17 fingerprints, 23 addresses' regexes, the lowercase of 6 hosts; `localeCompare` (`en-US`, what JSC resolves here)
+  the same on all 9,025 printable ASCII pairs, 20,000 two-character ASCII pairs, 20,000 id-shaped pairs, 3,000 ids in
+  JSC's sorted order and 30,000 random pairs over accents, combining marks, Hangul, CJK, emoji, joiners and
+  ignorables. It differs on 1,880 of 63,487 adjacent BMP characters in JSC's order and 284 of 12,858 in a
+  supplementary sample: all Han but 31 (Apple's ICU orders Han by radical and stroke, ICU4X's compiled data by code
+  point; the 31 are new in Unicode 17, which ICU4X 2.1 lacks and 2.2+ has, needing Rust 1.86+). Node and JSC differ
+  only there too (their CLDR versions). No id Margin makes has a Han character. A locale's tailoring reorders ASCII
+  (Danish `aa` after `z`), so the collation takes the locale: the app must give JSC's (the person's preferred
+  language) at the switch, commit 6. The `url` crate against WebKit (an off-screen WKWebView, Safari's parser) and Node
+  on 90 WPT-like addresses: the same parts and `normalizeUrl` for all but `https://xn--a.com` (the browsers take it,
+  the crate refuses: its `normalizeUrl` is the same either way).
+- Size (a release binary with the workspace's profile; arm64, x86_64 the same within 7 KB): the collation +1.26 MB
+  (1,618,816 bytes against 356,976), the WHATWG parser +0.22 MB, both +1.48 MB. Over the ~1 MB of Tirth's answer 1, so
+  it's asked again (open question 1, with the system's ICU and the ASCII table as the other choices); ICU4X stays
+  until he answers. Nothing reaches the app yet: margin-ffi calls neither, and the linker drops them.
+- The import: 2,000 generated imports (random sets of every browser, profiles long enough to be hashed, odd values
+  everywhere, sets given twice, orders with unknown and repeated entries, every kind of `now`) against library.ts in
+  Node, two ways: the Rust's values before normalising against library.ts's own (its last step taken off a copy made
+  at run time), 14,225 values, and after library.ts's normalising and diff, 13,257 changes: no difference, once a cut
+  through an emoji drops its broken half on both sides (Tirth's answer 3); a second seed, 5,000 imports (35,018
+  values, 32,619 changes): none either. 42 deliberate breaks of js.rs and import.rs, each alone, all caught (33 by the
+  unit tests, 9 by the harness): the spaces, the cut, the sort, the collation's strength, punctuation and bytes, the
+  rounding's half and -0, the max's -0 and NaN, the number strings' thresholds and `+`, arrays' nulls, falsy 0,
+  `"undefined"`, the fingerprint's escapes and prime, the regexes' spaces and case, the ids' length, the URL's `/`,
+  the URL switch, and the import's cuts, icon case, a repeated order entry's place, both tie-breaks, the archive's
+  fallback, `open`, `selected`, `now`, the folders' ids, `file:` items, the 256-unit hashing by units, the tab id's
+  key, unranked spaces' place, a pin with no address and `finite` on places.
+- Cost (release, scratch bench): a cut 1 ns when short (the input back, no copy) and about 0.3 µs for 3,000 ASCII units,
+  `trim` 9 ns, a number's string 33 ns, a fingerprint 0.2-0.3 µs, a collation's compare 0.13-0.4 µs (ties only), a
+  `Collation` made 0.7-1.5 µs (once per library, not per call).
+- Not done here: the vectors' `js.json` (commit 0's, recorded by its own branch: these edges are its cases, and its
+  JSC answers must equal the tables in js_tests.rs), the import's normalising (part 2).
