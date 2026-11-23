@@ -8042,3 +8042,20 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   15 ns, the slot looked at again 9 ns, a placing 37 ns, the tap's read 10 ns. The Swift side's whole pointer event
   (the scratch bench, -O) fell from 172 to 63 ns, the tap's read from 18 to 16 ns. The app's 2040 checks and 321
   end-to-end checks pass unchanged; `pane-clicks` not measured (no screen suite on this branch).
+
+## Core refactor step 3, commit 4 (first part): Safari's waker its own Swift type, nothing moved (2026-11-23)
+
+- Safari's own window mechanics, which step 3 leaves the Mac's (docs/CORE-REFACTOR.md part 2, "What should not
+  move"), out of HostedSession into SafariWaker.swift: the presses' ladder (`linked`, was `safariLinked`'s body), the
+  windows opened to wake a profile closed again (`closeWoken`) and their private Space released, the windows a Safari
+  Margin started restored from its last session swept (the poll's half of `sweepRestoredSafariWindows`), the profiles
+  Safari's menu has no item for (`unopenable`, forgotten by `namesChanged`). Its state is its own (`wokenByMenu`,
+  `wokenAtLink`, `wokenLinkedAt`, `wokenHeld`, `unopenable`, `swept`); what it reads of the session (the links, the
+  engine, the options, the clock and sleep, the log, `resolve`, `linkWanted`, which windows are Margin's: `safariWindows`,
+  `made_`, `requesting`) it reads at each look, as before.
+- A move only: every line the same but for `session.` before what's the session's (checked line by line against the
+  deleted Swift). HostedSession keeps its API (`safariLinked`, `closeWoken`, `wokenByMenu`, `unopenable`,
+  `profileNamesChanged`, `sweepRestoredSafariWindows`) as one-line calls into the waker, so the engine's hooks and the
+  tests are unchanged; `linkWanted`, `secs`, `requesting` and `made_` lose their `private` for it. When the session's
+  flows are the core's (commit 5), the waker reads the session's `linkWanted` through a typed call instead.
+- HostedSession 172 lines out, 16 in; SafariWaker.swift 199 lines. The app's 2040 checks pass.
