@@ -1,6 +1,6 @@
 # Writing a Margin theme
 
-A theme is HTML and CSS, no JavaScript. Margin's runtime (`extension/ui/`)
+A theme is HTML and CSS, no JavaScript. Margin's runtime (`app/shared/ui/`)
 renders it from a view model, runs its buttons as checked actions, and
 gives it behaviors (drag and drop, resizing, menus…) through attributes.
 The built-in themes are packages like any other: `arcadia/` (Margin's

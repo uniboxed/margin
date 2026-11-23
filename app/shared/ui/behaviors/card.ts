@@ -20,7 +20,7 @@
 // - Escape anywhere in Margin's UI while the card is open (no menu, palette or field of another kind in the way)
 //   closes it; ⌘↩ expands it.
 import type { Rt } from '../runtime.ts';
-import { resolveInput } from '../../shared/search.ts';
+import { resolveInput } from '../../../../extension/shared/search.ts';
 
 /** The card's open and close: about 150 ms (Tirth, 2026-11-21), transform and opacity only. */
 export const CARD_MOTION_MS = 150;

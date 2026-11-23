@@ -1,15 +1,15 @@
-// The launcher's Settings form (extension/ui/settings-form.ts): every setting
+// The launcher's Settings form (app/shared/ui/settings-form.ts): every setting
 // of the form before Margin 2 (themes/arcadia/newtab.js), less keep-ready,
 // the warm-up and the switch log; what each field saves, checked; the inputs
 // the sanitizer allows for it; the view model and the action that run it.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { settingsFields, saveField, runField, shortcutTaken, wokeText, SHORTCUT_HELP, SETTINGS_CATEGORIES, SETTINGS_CATEGORY_IDS, categoryOf, categoryNamed, fieldsIn, type SettingsField } from '../extension/ui/settings-form.ts';
-import type { CleanElement, CleanNode } from '../extension/ui/sanitize.ts';
-import type { UiState } from '../extension/ui/view-model.ts';
-import { sanitizeTemplate } from '../extension/ui/sanitize.ts';
-import { checkAction, contextFromState, requestFor } from '../extension/ui/actions.ts';
-import { buildViewModel } from '../extension/ui/view-model.ts';
+import { settingsFields, saveField, runField, shortcutTaken, wokeText, SHORTCUT_HELP, SETTINGS_CATEGORIES, SETTINGS_CATEGORY_IDS, categoryOf, categoryNamed, fieldsIn, type SettingsField } from '../app/shared/ui/settings-form.ts';
+import type { CleanElement, CleanNode } from '../app/shared/ui/sanitize.ts';
+import type { UiState } from '../app/shared/ui/view-model.ts';
+import { sanitizeTemplate } from '../app/shared/ui/sanitize.ts';
+import { checkAction, contextFromState, requestFor } from '../app/shared/ui/actions.ts';
+import { buildViewModel } from '../app/shared/ui/view-model.ts';
 import { smallState, W } from './ui/fixtures.ts';
 import { wrap } from './theme/payloads.ts';
 

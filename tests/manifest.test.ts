@@ -3,19 +3,25 @@ import assert from 'node:assert/strict';
 import * as shortcuts from '../extension/shared/shortcuts.ts';
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { PACKAGE_THEMES } from '../extension/themes/packages.ts';
+import { PACKAGE_THEMES } from '../app/shared/ui/themes/packages.ts';
 
 const root = new URL('../extension/', import.meta.url);
 const manifest = JSON.parse(readFileSync(new URL('manifest.json', root), 'utf8'));
 // What the tests read of a manifest (parsed JSON): a command, a content script's entry, an exposed resource.
 type ManifestCommand = { suggested_key?: { default?: string, mac?: string }, description?: string };
 type Commands = Record<string, ManifestCommand>;
-const exists = (path: string) => existsSync(new URL(path, root));
-// Every source file under extension/ with one of these extensions.
-const sources = (exts: string[], dir = ''): string[] => readdirSync(new URL(dir || '.', root)).flatMap((name) => {
+// Margin's window's UI and its themes (app/shared/ui/, from extension/ until 2026-11-22): the build copies the themes'
+// files into each extension build's themes/ (scripts/build.ts buildTo).
+const ui = new URL('../app/shared/ui/', import.meta.url);
+const exists = (path: string, base = root) => existsSync(new URL(path, base));
+// Every source file under extension/ (or `base`) with one of these extensions.
+const sources = (exts: string[], dir = '', base = root): string[] => readdirSync(new URL(dir || '.', base)).flatMap((name) => {
   const path = `${dir}${name}`;
-  return statSync(new URL(path, root)).isDirectory() ? sources(exts, `${path}/`) : exts.some((e) => name.endsWith(e)) ? [path] : [];
+  return statSync(new URL(path, base)).isDirectory() ? sources(exts, `${path}/`, base) : exts.some((e) => name.endsWith(e)) ? [path] : [];
 });
+// Both: the extension's files, then the UI's (as ui/…), read with `read`.
+const allSources = (exts: string[]) => [...sources(exts), ...sources(exts, '', ui).map((f) => `ui/${f}`)];
+const source = (f: string) => readFileSync(f.startsWith('ui/') ? new URL(f.slice(3), ui) : new URL(f, root), 'utf8');
 
 test('manifest follows the SPEC constraints', () => {
   assert.equal(manifest.manifest_version, 3);
@@ -44,9 +50,9 @@ test('every file the manifest and new tab reference exists', () => {
     ...manifest.content_scripts.flatMap((c: { js: string[] }) => c.js),
     ...(manifest.web_accessible_resources ?? []).flatMap((w: { resources: string[] }) => w.resources),
     manifest.chrome_url_overrides.newtab,
-    // Each built-in theme's package (read by the background and the new-tab page).
-    ...PACKAGE_THEMES.flatMap((id) => ['theme.json', 'theme.html', 'theme.css'].map((f) => `themes/${id}/${f}`)),
   ];
+  // Each built-in theme's package (read by the background and the new-tab page).
+  for (const f of PACKAGE_THEMES.flatMap((id) => ['theme.json', 'theme.html', 'theme.css'].map((f) => `themes/${id}/${f}`))) assert.ok(exists(f, ui), f);
   const html = readFileSync(new URL('newtab/newtab.html', root), 'utf8');
   for (const [, ref] of html.matchAll(/(?:src|href)="([^"]+)"/g)) files.push(new URL(ref, new URL('newtab/', root)).pathname.split('/extension/')[1]);
   for (const f of files) assert.ok(exists(f), f);
@@ -59,8 +65,8 @@ test('all extension scripts parse', () => {
 
 test('no third-party URLs in extension code (search engine templates excepted)', () => {
   const allowed = /duckduckgo\.com|google\.com|bing\.com|ecosia\.org|startpage\.com|www\.w3\.org/;
-  for (const f of sources(['.js', '.css', '.html'])) {
-    const text = readFileSync(new URL(f, root), 'utf8');
+  for (const f of allSources(['.js', '.css', '.html'])) {
+    const text = source(f);
     for (const [url] of text.matchAll(/https?:\/\/[^\s'"`)$]+/g)) if (!url.endsWith("://")) assert.match(url, allowed, `${f}: ${url}`);
   }
 });
@@ -68,8 +74,8 @@ test('no third-party URLs in extension code (search engine templates excepted)',
 test('nothing exposed to web pages, and nothing on web pages fetches or draws a theme', () => {
   assert.equal(manifest.web_accessible_resources, undefined, 'nothing exposed to web pages');
   assert.doesNotMatch(readFileSync(new URL('content/core.ts', root), 'utf8'), /themePackage|ui\/runtime|ui\/host/, 'pages draw no theme (Margin.app does)');
-  for (const f of sources(['.js']).filter((p) => p.startsWith('content/') || p.startsWith('themes/'))) {
-    assert.ok(!readFileSync(new URL(f, root), 'utf8').includes('fetch('), `${f} must not fetch`);
+  for (const f of allSources(['.js']).filter((p) => p.startsWith('content/') || p.startsWith('ui/themes/'))) {
+    assert.ok(!source(f).includes('fetch('), `${f} must not fetch`);
   }
 });
 
@@ -80,7 +86,7 @@ test('the navigation commands have no keys of their own: the Settings shortcuts 
 });
 
 test('Arcadia\'s page card: its corner radius, shadow and frame, in plain CSS', () => {
-  const read = (f: string) => readFileSync(new URL(f, root), 'utf8');
+  const read = (f: string) => readFileSync(new URL(f, ui), 'utf8');
   const decl = (css: string, selector: string, prop: string) => {
     const block = css.slice(css.indexOf(selector));
     return block.match(new RegExp(`\\b${prop}: ([^;]+?)( !important)?;`))![1]; // a missing one fails the test here
@@ -101,11 +107,11 @@ test('no CSS corner-shape (yet): Safari\'s experimental version passes @supports
   // corner Margin gave a squircle draw square; WebKitGTK 2.52 with the same
   // flag draws them round. @supports can't tell, so Margin doesn't use it until
   // Safari ships it working (DECISIONS.md, Follow-ups).
-  for (const f of sources(['.css', '.js'])) assert.doesNotMatch(readFileSync(new URL(f, root), 'utf8'), /corner-shape/, f);
+  for (const f of allSources(['.css', '.js'])) assert.doesNotMatch(source(f), /corner-shape/, f);
 });
 
 test('Settings toggles are switches where supported (checkboxes elsewhere): Margin makes them so', () => {
-  const render = readFileSync(new URL('ui/render.ts', root), 'utf8');
+  const render = readFileSync(new URL('render.ts', ui), 'utf8');
   assert.match(render, /value === 'setting-toggle'\) \{ copy\.setAttribute\('type', 'checkbox'\); copy\.setAttribute\('switch', ''\);/);
 });
 

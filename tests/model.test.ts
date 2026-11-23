@@ -1,4 +1,4 @@
-import { checkIconUrl } from '../extension/ui/sanitize.ts';
+import { checkIconUrl } from '../app/shared/ui/sanitize.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as model from '../extension/state/model.ts';

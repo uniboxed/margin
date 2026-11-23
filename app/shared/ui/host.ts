@@ -13,9 +13,9 @@
 // and the page's own start) and hands it to the host (`source`), with its
 // own `send` (deadlines, hints, retries) and `perform` (notices, prompts).
 // Margin's new-tab page uses the host's own reads.
-import type { State } from '../../types/margin';
-import * as V from '../shared/view.ts';
-import { fromStorage, onlyMark, readForPage, takesChanges, withChanges } from '../shared/stored.ts';
+import type { State } from '../../../types/margin';
+import * as V from '../../../extension/shared/view.ts';
+import { fromStorage, onlyMark, readForPage, takesChanges, withChanges } from '../../../extension/shared/stored.ts';
 
 /**
  * Where the theme put the page (ui/render.ts View.measure): `<m-page>`'s

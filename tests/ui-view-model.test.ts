@@ -1,10 +1,10 @@
-// The theme view model (extension/ui/view-model.ts): today's sidebar's
+// The theme view model (app/shared/ui/view-model.ts): today's sidebar's
 // sections and order (shared/view.ts sidebar), the fields PLAN.md §3 and §14
 // list, and structural sharing: what didn't change is the same object.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as V from '../extension/shared/view.ts';
-import { buildViewModel, paletteItems, abbreviate, VM_VERSION, type FolderRow, type UiState, type ViewModel, type ViewModelInput } from '../extension/ui/view-model.ts';
+import { buildViewModel, paletteItems, abbreviate, VM_VERSION, type FolderRow, type UiState, type ViewModel, type ViewModelInput } from '../app/shared/ui/view-model.ts';
 import { smallState, icon, W } from './ui/fixtures.ts';
 import type { ArchiveEntry, State } from '../types/margin.d.ts';
 import { bigState, WINDOW, type MockStored } from './theme/view-model.ts';

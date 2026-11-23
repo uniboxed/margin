@@ -31,7 +31,7 @@ final class ThemeStore {
     static let format = int(ThemesCore.constants["format"]) ?? 2
     static let maxBytes = int(ThemesCore.constants["maxBytes"]) ?? 4_718_592 // ui/theme-loader.ts PACKAGE_LIMITS.storedBytes (4.5 MB)
     static let maxThemes = int(ThemesCore.constants["maxThemes"]) ?? 50
-    // The built-ins' ids and an earlier name of one (extension/themes/packages.ts): an imported theme takes neither.
+    // The built-ins' ids and an earlier name of one (app/shared/ui/themes/packages.ts): an imported theme takes neither.
     static let builtins = Set(ThemesCore.constants["builtins"] as? [String] ?? [])
     // ui/theme-schema.ts: a theme's id.
     static func idOK(_ id: String) -> Bool { ThemesCore.call(["type": "idOK", "id": id])["ok"] as? Bool == true }

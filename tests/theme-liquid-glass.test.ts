@@ -1,13 +1,13 @@
-// Liquid Glass (extension/themes/liquid-glass/): the package itself, read in Node. It passes the sanitizer whole,
+// Liquid Glass (app/shared/ui/themes/liquid-glass/): the package itself, read in Node. It passes the sanitizer whole,
 // asks for the system's materials in its manifest, and keeps to the rules the real glass needs (seen off screen,
 // DECISIONS.md "Liquid Glass"): every use of `-apple-visual-effect` inside `@supports`, on a few elements only, none
 // with an outer shadow, and no `backdrop-filter` anywhere. In real engines: tests/theme/liquid-glass.test.ts.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { sanitizeTheme } from '../extension/ui/theme-loader.ts';
-import { VISUAL_EFFECTS } from '../extension/ui/sanitize.ts';
-import { wantsSystemMaterials } from '../extension/ui/theme-schema.ts';
-import { PACKAGE_THEMES, PACKAGE_THEME_NAMES } from '../extension/themes/packages.ts';
+import { sanitizeTheme } from '../app/shared/ui/theme-loader.ts';
+import { VISUAL_EFFECTS } from '../app/shared/ui/sanitize.ts';
+import { wantsSystemMaterials } from '../app/shared/ui/theme-schema.ts';
+import { PACKAGE_THEMES, PACKAGE_THEME_NAMES } from '../app/shared/ui/themes/packages.ts';
 import { motionNotes } from '../scripts/theme-motion.ts';
 import { auditTree } from './theme/audit.ts';
 import { readTheme, GLASS } from './theme/package.ts';

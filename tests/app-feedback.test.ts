@@ -14,7 +14,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fakeBrowser, type FakeBrowserApi, type FakeInjection } from './fake-browser.ts';
 import type { Said } from '../extension/background/link.ts';
-import type { UiState } from '../extension/ui/view-model.ts';
+import type { UiState } from '../app/shared/ui/view-model.ts';
 
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -122,10 +122,10 @@ notices.useLinkForTests(stand);
 pageLoads.useLinkForTests(stand);
 const { repairCutOff, forgetCurrent } = await import('../extension/background/tabs.ts');
 const words = await import('../extension/shared/notices.ts');
-const { createAppNotices, createGestureFeedback, GESTURE_DONE_MS, GESTURE_LEAVE_MS } = await import('../extension/ui/app-feedback.ts');
-const { createGestureMotion, TAU_MS } = await import('../extension/ui/gesture-motion.ts');
-const { createAppHost } = await import('../extension/ui/host-app.ts');
-const { buildViewModel } = await import('../extension/ui/view-model.ts');
+const { createAppNotices, createGestureFeedback, GESTURE_DONE_MS, GESTURE_LEAVE_MS } = await import('../app/shared/ui/app-feedback.ts');
+const { createGestureMotion, TAU_MS } = await import('../app/shared/ui/gesture-motion.ts');
+const { createAppHost } = await import('../app/shared/ui/host-app.ts');
+const { buildViewModel } = await import('../app/shared/ui/view-model.ts');
 const { startLoads, TRANSITION_MS } = await import('../extension/content/loads.ts');
 const { gestureTeller, GESTURE_TELL_MS } = await import('../extension/content/trackpad.ts');
 type Shown = Parameters<Parameters<typeof createGestureFeedback>[0]['set']>[0];

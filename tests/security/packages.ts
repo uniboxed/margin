@@ -6,12 +6,12 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PACKAGE_THEMES } from '../../extension/themes/packages.ts';
+import { PACKAGE_THEMES } from '../../app/shared/ui/themes/packages.ts';
 import { readTheme } from '../theme/package.ts';
-import { packageFromFiles, packageFromZip, type ReadResult } from '../../extension/ui/theme-import.ts';
+import { packageFromFiles, packageFromZip, type ReadResult } from '../../app/shared/ui/theme-import.ts';
 import { folderFiles } from '../../scripts/pack-theme.ts';
 
-const THEMES = fileURLToPath(new URL('../../extension/themes/', import.meta.url));
+const THEMES = fileURLToPath(new URL('../../app/shared/ui/themes/', import.meta.url));
 
 export type Pkg = { manifest: string, html: string, css: string, files: Record<string, Uint8Array> };
 // One of the suite's: read at once (`read`), or, a .margintheme, unzipped (`readAsync`).

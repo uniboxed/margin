@@ -6,7 +6,7 @@
 // too, some of which only they may run (BEHAVIOR_ONLY). Nothing here runs an
 // action: the runtime does, once it's checked against the state. An unknown
 // action or a bad argument is ignored and logged.
-import type { State } from '../../types/margin';
+import type { State } from '../../../types/margin';
 
 // What each action's argument must be:
 //   none   — no argument (anything given is refused);

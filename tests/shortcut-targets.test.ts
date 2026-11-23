@@ -4,8 +4,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as M from '../extension/state/model.ts';
-import { buildViewModel } from '../extension/ui/view-model.ts';
-import { numberedAction, numberedRows, pinToggle, togglePin } from '../extension/ui/shortcut-targets.ts';
+import { buildViewModel } from '../app/shared/ui/view-model.ts';
+import { numberedAction, numberedRows, pinToggle, togglePin } from '../app/shared/ui/shortcut-targets.ts';
 import type { State } from '../types/margin';
 
 function state() {

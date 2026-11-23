@@ -30,7 +30,7 @@ export { SITES };
 
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 const FILES = join(HERE, 'files');
-const FONTS = fileURLToPath(new URL('../../../extension/themes/neubrutalism/fonts/', import.meta.url));
+const FONTS = fileURLToPath(new URL('../../../app/shared/ui/themes/neubrutalism/fonts/', import.meta.url));
 const TYPES: Record<string, string> = { '.webm': 'video/webm', '.woff2': 'font/woff2', '.svg': 'image/svg+xml', '.png': 'image/png', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json' };
 
 let made: ReturnType<typeof media>; // the raster files, made once a process (startSite, before any request)

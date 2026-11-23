@@ -18,15 +18,15 @@ import { themeChoices } from './space-theme.ts';
 import type { Host } from './host.ts';
 import type { LoadedTheme } from './theme-loader.ts';
 import type { UiState, ViewModel } from './view-model.ts';
-import type { State } from '../../types/margin';
+import type { State } from '../../../types/margin';
 import { View } from './render.ts';
 import { checkIconUrl } from './sanitize.ts';
 import { buildViewModel, paletteItems } from './view-model.ts';
 import { BEHAVIOR_ONLY, checkAction, contextFromState, requestFor } from './actions.ts';
 import { resolveSettings } from './theme-loader.ts';
 import { menuItems } from './behaviors/menu-items.ts';
-import * as V from '../shared/view.ts';
-import { createSwitching, NEW_TAB, opensNewTab } from '../shared/switching.ts';
+import * as V from '../../../extension/shared/view.ts';
+import { createSwitching, NEW_TAB, opensNewTab } from '../../../extension/shared/switching.ts';
 import { installPalette } from './behaviors/palette.ts';
 import { installPeek } from './behaviors/peek.ts';
 import { installCard } from './behaviors/card.ts';
@@ -124,7 +124,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   onSwitchFailed?: () => void,
   onPalette?: (what: 'run' | 'close', request?: any) => void,
   onSwitching?: (tabId: number | string | null) => void,
-  onSwitchRun?: (run: import('../shared/switching.ts').SwitchRun) => void,
+  onSwitchRun?: (run: import('../../../extension/shared/switching.ts').SwitchRun) => void,
 }) {
   // (Always with a palette: closed, or as it's open.)
   let ui: Ui = { sidebar: null, palette: CLOSED_PALETTE, menu: null, editing: null, editor: null, notice: null, prompt: null, toast: null, focused: true, switchingTo: null, newTabPending: false, opening: null, ...start };

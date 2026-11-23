@@ -7,8 +7,8 @@
 import { readFileSync, readdirSync, lstatSync, writeFileSync } from 'node:fs';
 import { join, resolve, basename } from 'node:path';
 import { deflateRawSync } from 'node:zlib';
-import { packageFromFiles, crc32, IMPORT_LIMITS } from '../extension/ui/theme-import.ts';
-import { checkPackage, sanitizeTheme } from '../extension/ui/theme-loader.ts';
+import { packageFromFiles, crc32, IMPORT_LIMITS } from '../app/shared/ui/theme-import.ts';
+import { checkPackage, sanitizeTheme } from '../app/shared/ui/theme-loader.ts';
 import { motionAdvice, motionNotes } from './theme-motion.ts';
 
 const KEEP = /^(theme\.(json|html|css)|.+\.(woff2|png|jpe?g|gif|webp|avif|svg|txt|md))$/i;

@@ -106,7 +106,7 @@ const pick = (t: string, reason: string) => { if (!why.has(t)) why.set(t, reason
 const changedJs = abs.filter((f) => /\.m?[jt]s$/.test(f) && !f.includes('/tests/e2e/'));
 // Non-JS files the JS side loads: a theme's HTML and CSS, the new-tab page, manifests, fixtures
 // (never Swift or docs, which comments mention without testing them).
-const changedOther = abs.filter((f) => !/\.m?[jt]s$/.test(f) && /^(extension|app\/shared\/host|tests\/fixtures)\//.test(rel(f)) && !/\.(swift|md)$/.test(f));
+const changedOther = abs.filter((f) => !/\.m?[jt]s$/.test(f) && /^(extension|app\/shared\/(host|ui)|tests\/fixtures)\//.test(rel(f)) && !/\.(swift|md)$/.test(f));
 for (const t of [...UNIT, ...SECURITY, ...THEME]) {
   if (all) { pick(t, 'all'); continue; }
   if (abs.includes(t)) { pick(t, 'changed'); continue; }
@@ -120,10 +120,10 @@ for (const t of [...UNIT, ...SECURITY, ...THEME]) {
   if (named) pick(t, `names ${rel(named)}`);
 }
 // A theme changed (any of its files): every theme and security test, and the unit tests about themes.
-const themeChanged = changed.some((f) => f.startsWith('extension/themes/') || f.startsWith('extension/ui/'));
+const themeChanged = changed.some((f) => f.startsWith('app/shared/ui/'));
 if (themeChanged) for (const t of [...THEME, ...SECURITY, ...UNIT.filter((u) => /theme/.test(basename(u)))]) pick(t, 'a theme or the UI runtime changed');
 // The build's inputs: the build and manifest tests.
-if (changed.some((f) => /^(extension|app\/shared\/host)\/|^scripts\/build\.ts$|^package\.json$/.test(f))) {
+if (changed.some((f) => /^(extension|app\/shared\/(host|ui))\/|^scripts\/build\.ts$|^package\.json$/.test(f))) {
   for (const n of ['build.test.ts', 'manifest.test.ts']) { const t = join(ROOT, 'tests', n); if (existsSync(t)) pick(t, 'the build\'s inputs changed'); }
 }
 // (The app's Swift: app/platforms/macos/, each engine's app side (app/engines/), the connector, and the Swift tests.)
@@ -132,8 +132,8 @@ const swift = all || changed.some((f) => /^(app\/platforms\/macos|app\/engines|a
 const rust = all || changed.some((f) => /\.rs$|(^|\/)Cargo\.(toml|lock)$|^rustfmt\.toml$/.test(f));
 const e2eFiles = all ? [] : E2E.filter((t) => abs.includes(t));
 const notRun: string[] = [];
-if (changed.some((f) => /^(extension|app\/shared\/host|tests\/e2e)\//.test(f)) && !e2eFiles.length) notRun.push('the e2e suite (npm run test:e2e)');
-if (changed.some((f) => /^(extension|tools\/webkit-host)\//.test(f))) notRun.push('the WebKit host (npm run test:webkit)');
+if (changed.some((f) => /^(extension|app\/shared\/(host|ui)|tests\/e2e)\//.test(f)) && !e2eFiles.length) notRun.push('the e2e suite (npm run test:e2e)');
+if (changed.some((f) => /^(extension|app\/shared\/ui|tools\/webkit-host)\//.test(f))) notRun.push('the WebKit host (npm run test:webkit)');
 if (swift) notRun.push('the app\'s e2e checks (tools/app-tests/run.sh e2e)');
 
 const sel = (list: string[]) => list.filter((t) => why.has(t));

@@ -1,4 +1,4 @@
-// Arcadia as a theme package (extension/themes/arcadia/) in real engines:
+// Arcadia as a theme package (app/shared/ui/themes/arcadia/) in real engines:
 // Playwright's WebKit and Chromium, headless, every network request refused.
 // It loads as a built-in theme, passes the sanitizer with nothing removed,
 // renders the sidebar and every part (palette, menu, space editor, notice,
@@ -15,7 +15,7 @@ import { harnessScript, themeForPage, ARCADIA } from './package.ts';
 import { pageLoaderChecks, rgba, near } from './page-card.ts';
 import { settingsPageChecks } from './settings-page.ts';
 import type { Harness, HarnessRt } from './harness.ts';
-import { hitRects } from '../../extension/ui/host-app.ts';
+import { hitRects } from '../../app/shared/ui/host-app.ts';
 
 // What the harness puts on the page's window (harness.ts), as the page functions below read it.
 declare const T: Harness;

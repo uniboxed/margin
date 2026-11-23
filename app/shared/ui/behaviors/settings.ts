@@ -11,8 +11,8 @@
 import { spaceThemesOn } from '../space-theme.ts';
 import type { Rt } from '../runtime.ts';
 import { saveField, saveThemeField, runField, removePrompt, shortcutTaken, wokeText, SHORTCUT_HELP } from '../settings-form.ts';
-import * as shortcuts from '../../shared/shortcuts.ts';
-import { appKeyValue, isAppKey } from '../../shared/app-keys.ts';
+import * as shortcuts from '../../../../extension/shared/shortcuts.ts';
+import { appKeyValue, isAppKey } from '../../../../extension/shared/app-keys.ts';
 
 const NAMES: Set<string | undefined> = new Set(['setting-number', 'setting-toggle', 'setting-choice', 'setting-list', 'setting-shortcut', 'setting-color']); // (asked of any element's)
 // A colour well shows #rrggbb only: a theme's other colours show as their nearest it can.

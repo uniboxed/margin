@@ -1,20 +1,20 @@
 // The browser side of the theme tests and the benchmark, bundled into one
 // script (tests/theme/package.ts harnessScript) and added to a blank page.
 // Node drives it with page.evaluate through `window.T`.
-import { sanitizeCss } from '../../extension/ui/sanitize.ts';
-import { buildTemplate, View } from '../../extension/ui/render.ts';
-import { loadTheme, loadBuiltinTheme, sanitizeTheme } from '../../extension/ui/theme-loader.ts';
-import { createRuntime } from '../../extension/ui/runtime.ts';
-import { createMockHost } from '../../extension/ui/host.ts';
-import { cornerFill, hitRects, sidebarFixed } from '../../extension/ui/host-app.ts';
-import { createDispatcher, contextFromState } from '../../extension/ui/actions.ts';
+import { sanitizeCss } from '../../app/shared/ui/sanitize.ts';
+import { buildTemplate, View } from '../../app/shared/ui/render.ts';
+import { loadTheme, loadBuiltinTheme, sanitizeTheme } from '../../app/shared/ui/theme-loader.ts';
+import { createRuntime } from '../../app/shared/ui/runtime.ts';
+import { createMockHost } from '../../app/shared/ui/host.ts';
+import { cornerFill, hitRects, sidebarFixed } from '../../app/shared/ui/host-app.ts';
+import { createDispatcher, contextFromState } from '../../app/shared/ui/actions.ts';
 import { MockState } from './view-model.ts';
 import { auditDom } from './audit.ts';
 import { HTML_PAYLOADS, CSS_PAYLOADS, CSS_TARGET, EVIL_VM, wrap } from './payloads.ts';
-import type { LoadedTheme, ThemePackage } from '../../extension/ui/theme-loader.ts';
-import type { Layout } from '../../extension/ui/render.ts';
-import type { CleanNode } from '../../extension/ui/sanitize.ts';
-import type { UiState, ViewModel } from '../../extension/ui/view-model.ts';
+import type { LoadedTheme, ThemePackage } from '../../app/shared/ui/theme-loader.ts';
+import type { Layout } from '../../app/shared/ui/render.ts';
+import type { CleanNode } from '../../app/shared/ui/sanitize.ts';
+import type { UiState, ViewModel } from '../../app/shared/ui/view-model.ts';
 import type { MockTab } from './view-model.ts';
 
 // A theme package as Node hands it over (tests/theme/package.ts themeForPage): its files in base64.

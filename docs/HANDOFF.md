@@ -179,7 +179,7 @@ A switch's target is a **window**, not just a profile: `Target { link, space, nu
 - **The space.** If B's active space (`openTabs.activeSpaceByWindow`, `ShellProfiles.swift:189-199`) isn't the target, `setSpace { windowId: B, spaceId }` goes to B's copy now. Safari switches B's tab behind, and R3 later probes the new tab in front.
 - **Blockers** (§1.10).
 - **Drafts**, whenever this switch may close A (the `close` choice, or `park` with a close possible after a failed park): `windowDrafts { windowId: A }`, at most 400 ms (§4.5).
-- **The cover** in A's overlay (§7). The freeze starts when A's overlay says `coverShown`, or 250 ms after the start, whichever comes first. The sidebar's swipe settles for `SETTLE_MS` (220 ms) after the release (`extension/ui/behaviors/swipe.ts:16`, `:63-72`). The freeze is screen-wide, so it must not start mid-slide.
+- **The cover** in A's overlay (§7). The freeze starts when A's overlay says `coverShown`, or 250 ms after the start, whichever comes first. The sidebar's swipe settles for `SETTLE_MS` (220 ms) after the release (`app/shared/ui/behaviors/swipe.ts:16`, `:63-72`). The freeze is screen-wide, so it must not start mid-slide.
 - **The cooldown.** At least 1 s since a watchdog reveal (gate G7 may shorten it), and at least 300 ms since any reveal.
 
 ### 1.6 The target has no window: create under the freeze
@@ -382,7 +382,7 @@ Built (WP9): the shell is the switch's `HandoffWorld` (`app/platforms/macos/shel
 Today a window that leaves full screen is `wanted: false`, so after 1.5 s (`Grace.notWanted`) its copy hears `drawn: false` and its pages lose their box (`Shell.swift:72-128`, `:902-951`).
 
 - `wanted` becomes `((fullscreen || windowedToo) || registry.isParked(number) || switcher.isTarget(key)) && theme != nil`, in both places it's computed (`Shell.swift:790`, `:905`). A parked window's pages keep their box at its full-screen insets, and B is wanted for the whole entry, however late its copy reports.
-- **Mode pinned to full screen.** The overlay page takes its mode from its own window's state in every `windows` push (`extension/ui/host-app.ts:133`, `:322-329`), and `PageLayout` carries the mode that `LayoutOutbox` compares (`LinkMessage.swift:37`, `Shell.swift:50-57`). So:
+- **Mode pinned to full screen.** The overlay page takes its mode from its own window's state in every `windows` push (`app/shared/ui/host-app.ts:133`, `:322-329`), and `PageLayout` carries the mode that `LayoutOutbox` compares (`LinkMessage.swift:37`, `Shell.swift:50-57`). So:
   - the shell doesn't forward a copy's `windows` list (`Shell.swift:556-567`) to the overlay of a parked window or of the switch's target until that copy's list says the window is full screen. Then the latest list is sent;
   - `hello` says `mode: 'fullscreen'` for those windows (`Shell.swift:1150`);
   - `layoutChanged` (`Shell.swift:1171-1179`) does nothing for a parked key, or for any overlay that isn't shown.
@@ -732,12 +732,12 @@ The lab only ever closed A under a second freeze after B's reveal (`S/handoff/la
 
 ## 7. The UX before the freeze
 
-What exists today: `across.switching { profile, space, phase, notice }` (`ShellProfiles.swift:182-187`), the target chip's `switching: true` (`extension/ui/view-model.ts:393`, `:412`), and a notice for "needs profile" and failures (`view-model.js:567`). There's no cover.
+What exists today: `across.switching { profile, space, phase, notice }` (`ShellProfiles.swift:182-187`), the target chip's `switching: true` (`app/shared/ui/view-model.ts:393`, `:412`), and a notice for "needs profile" and failures (`view-model.js:567`). There's no cover.
 
 New, kept small:
 
 - **`switchCover`** in the view model, only in A's overlay and only while `phase` is `preparing`, `waitingForLink` or `frozen`: `{ profile: { name, emoji, color, symbol? }, space: { name, emoji } }`.
-- **A guarded slot `<m-switch-cover>`** drawn over the page slot, like the launcher (`extension/themes/README.md:69`; slots in `ui/render.ts:38-69`, `ui/sanitize.ts:294`, `:373-385`). Every word is Margin's: "Switching to {profile}…", with the space's name under it. It's the one other exception, besides the launcher, to "never paint under `<m-page>`".
+- **A guarded slot `<m-switch-cover>`** drawn over the page slot, like the launcher (`app/shared/ui/themes/README.md:69`; slots in `ui/render.ts:38-69`, `ui/sanitize.ts:294`, `:373-385`). Every word is Margin's: "Switching to {profile}…", with the space's name under it. It's the one other exception, besides the launcher, to "never paint under `<m-page>`".
 - **Margin's default part** when a theme has none: a centred card in the theme's colours. Arcadia and Neubrutalism each get their own part.
 - No fade in the first build. The "animated later" that was mentioned is a later change.
 - **`coverShown`:** the overlay page posts `perform('switch.coverShown')` after the cover has been in the DOM for 2 animation frames and no swipe is settling (`m-settling`, `swipe.ts:63-72`).
@@ -751,7 +751,7 @@ New, kept small:
   - more than one display: today's slide (0.4-0.65 s);
   - today's slide, for comparison: 0.4-0.65 s, with Margin's overlay gone for about 180 ms (`PLAN.md` §15).
 
-Built (WP10, the overlay's side): `switchCover` in `ui/view-model.ts`, the guarded `<m-switch-cover>` slot and `switch-cover` part (`ui/sanitize.ts`, `ui/render.ts`, Margin's default in `DEFAULT_PARTS`), parts in Arcadia and Neubrutalism, `extension/ui/switch-cover.ts` (`createCoverWatch`, `answerFramed`) wired in `app/shared/host/overlay.ts`, and the switch's notices by kind; tests in `tests/handoff-ui.test.ts`, `tests/theme/switch-cover.test.ts` and `app/platforms/macos/shell/tests/handoff-ui-tests.swift`. Settled on the way:
+Built (WP10, the overlay's side): `switchCover` in `ui/view-model.ts`, the guarded `<m-switch-cover>` slot and `switch-cover` part (`ui/sanitize.ts`, `ui/render.ts`, Margin's default in `DEFAULT_PARTS`), parts in Arcadia and Neubrutalism, `app/shared/ui/switch-cover.ts` (`createCoverWatch`, `answerFramed`) wired in `app/shared/host/overlay.ts`, and the switch's notices by kind; tests in `tests/handoff-ui.test.ts`, `tests/theme/switch-cover.test.ts` and `app/platforms/macos/shell/tests/handoff-ui-tests.swift`. Settled on the way:
 
 - **Which overlay is A's:** `across.switching.from { profile, windowId }` (the switcher's `from`). The view model draws the cover only when that's its own profile and window. Today's machine has none of the three phases, so it never shows one.
 - **The cover's shape:** `{ id, text, label, hasSpace, profile: { name, emoji, color, initial, symbol }, space: { name, emoji } }`. `text` is "Switching to Work…", with Margin's words in the view model.

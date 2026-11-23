@@ -20,7 +20,7 @@
 // window), the host hands its positions in (runtime.pointer, pointerLeft).
 import type { Rt } from '../runtime.ts';
 import type { ViewModel } from '../view-model.ts';
-import * as V from '../../shared/view.ts';
+import * as V from '../../../../extension/shared/view.ts';
 
 export const HIDE_DELAY_MS = 300;
 export const FLASH_MS = 1200;

@@ -25,7 +25,7 @@
 import { createHash } from 'node:crypto';
 import type { Browser, Page } from 'playwright';
 import type { Said } from '../../../extension/background/link.ts';
-import type { Geometry } from '../../../extension/ui/host.ts';
+import type { Geometry } from '../../../app/shared/ui/host.ts';
 import { startFakeApp } from '../../fake-app.ts';
 
 type FakeApp = Awaited<ReturnType<typeof startFakeApp>>;

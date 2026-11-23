@@ -33,7 +33,7 @@
 //   with a toast before anything is opened (`refusesAdd`, runtime.ts dispatch); so is stacking (or unstacking) panes
 //   that wouldn't fit along the other axis (`refusesAxis`). The sidebar's edge stops where the panes would no longer fit
 //   (`floor`, behaviors/resize.ts).
-import { frontItemOf } from '../../shared/front-item.ts';
+import { frontItemOf } from '../../../../extension/shared/front-item.ts';
 import type { Rt } from '../runtime.ts';
 import type { ViewModel } from '../view-model.ts';
 

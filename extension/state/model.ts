@@ -4,8 +4,8 @@
 // background can write only the keys that changed.
 import { capabilities } from '../shared/capabilities.ts';
 import { NAVIGATION_DEFAULTS } from '../shared/navigation-defaults.ts';
-import { THEMES, DEFAULT_THEME } from '../themes/index.ts';
-import { PACKAGE_THEMES, USER_THEME_ID } from '../themes/packages.ts';
+import { THEMES, DEFAULT_THEME } from '../../app/shared/ui/themes/index.ts';
+import { PACKAGE_THEMES, USER_THEME_ID } from '../../app/shared/ui/themes/packages.ts';
 import { neverSleeps, oldSleepPage, siteList } from '../shared/sleep.ts';
 import { isAwayPage } from '../shared/away.ts';
 import { normalizePattern } from '../shared/air-traffic.ts';

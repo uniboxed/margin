@@ -4,9 +4,9 @@
 //
 // - the workflow, the lockfiles, the build script or this plan changed, a nightly run, by hand, or no base to compare
 //   with: everything, every theme, both engines (the theme tests on two Macs);
-// - a theme's folder changed (extension/themes/<id>/): that theme's own browser tests (tests/theme/<id>.test.ts) and
+// - a theme's folder changed (app/shared/ui/themes/<id>/): that theme's own browser tests (tests/theme/<id>.test.ts) and
 //   its entries in the tests that loop over the themes (those calling themesInScope), nobody else's;
-// - what the theme suite's code reaches changed (extension/ui/, app/shared/host/, the harness and helpers in
+// - what the theme suite's code reaches changed (app/shared/ui/, app/shared/host/, the harness and helpers in
 //   tests/theme/, the fixtures, or any module those import): the theme-agnostic browser tests (every
 //   tests/theme/*.test.ts but a theme's own) against the reference theme (MARGIN_TEST_THEMES=reference: Arcadia,
 //   tests/theme/package.ts themesInScope);
@@ -20,7 +20,7 @@
 import { existsSync, readFileSync, readdirSync, statSync, appendFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PACKAGE_THEMES } from '../extension/themes/packages.ts';
+import { PACKAGE_THEMES } from '../app/shared/ui/themes/packages.ts';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -32,7 +32,7 @@ const ALL = /^(\.github\/workflows\/ci\.yml|package(-lock)?\.json|tsconfig(\.tes
 // connector for the Chromium relay's test.)
 const REACH = {
   unit: /^(extension|app|tests|types|scripts|tools)\//,
-  e2e: /^(extension|app\/shared\/(host|connector)|types|scripts|tests\/(e2e|fixtures))\/|^tests\/fake-app\.ts$/,
+  e2e: /^(extension|app\/shared\/(host|connector|ui)|types|scripts|tests\/(e2e|fixtures))\/|^tests\/fake-app\.ts$/,
   rust: /\.rs$|(^|\/)Cargo\.(toml|lock)$|^rustfmt\.toml$|^scripts\/rust-test\.sh$|^tests\/fixtures\//,
   app: /^(app|tools|extension|tests\/fixtures)\/|\.swift$/,
 };
@@ -41,7 +41,7 @@ const TEST_FILE = /^[a-z0-9-]+\.test\.ts$/;
 const listTests = (root: string, dir: string): string[] => (existsSync(join(root, dir)) ? readdirSync(join(root, dir)).filter((n) => TEST_FILE.test(n)).sort().map((n) => `${dir}/${n}`) : []);
 
 // Every module the theme suite's code can load: what tests/theme/ imports (the harness is bundled by path, so every
-// file there is a start), and all of extension/ui/ (preview.test.ts bundles from it by name), followed through every
+// file there is a start), and all of app/shared/ui/ (preview.test.ts bundles from it by name), followed through every
 // relative import and package.json's own (#engine).
 const IMPORT = /(?:import|export)\s[^'"`;]*?from\s*['"]([^'"]+)['"]|import\s*['"]([^'"]+)['"]|import\(\s*['"]([^'"]+)['"]\s*\)/g;
 function walk(dir: string, out: string[] = []): string[] {
@@ -67,7 +67,7 @@ function resolveImport(from: string, spec: string, root: string): string[] {
 }
 export function themeSuiteReach(root = ROOT) {
   const seen = new Set<string>();
-  const stack = [...walk(join(root, 'tests/theme')), ...walk(join(root, 'extension/ui'))];
+  const stack = [...walk(join(root, 'tests/theme')), ...walk(join(root, 'app/shared/ui'))];
   while (stack.length) {
     const f = stack.pop()!;
     if (seen.has(f)) continue;
@@ -100,13 +100,13 @@ export function plan(files: string[], { everything = false, root = ROOT } = {}):
   let themes: Plan['themes'];
   if (all) themes = { files: themeTests, scope: '', shards: 2, why: everything ? 'everything runs' : 'the workflow, a lockfile, the build or the plan changed' };
   else {
-    const inTheme = (f: string) => PACKAGE_THEMES.some((id) => f.startsWith(`extension/themes/${id}/`));
-    const changedThemes = PACKAGE_THEMES.filter((id) => files.some((f) => f.startsWith(`extension/themes/${id}/`)));
+    const inTheme = (f: string) => PACKAGE_THEMES.some((id) => f.startsWith(`app/shared/ui/themes/${id}/`));
+    const changedThemes = PACKAGE_THEMES.filter((id) => files.some((f) => f.startsWith(`app/shared/ui/themes/${id}/`)));
     const changedTests = files.filter((f) => themeTests.includes(f));
     const reach = themeSuiteReach(root);
     const runtime = files.filter((f) => !inTheme(f) && !themeTests.includes(f) && (reach.has(f)
-      || /^(extension\/ui|app\/shared\/host|tests\/fixtures|tests\/theme)\//.test(f)
-      || /^extension\/themes\/[^/]+$/.test(f)
+      || /^(app\/shared\/ui|app\/shared\/host|tests\/fixtures|tests\/theme)\//.test(f)
+      || /^app\/shared\/ui\/themes\/[^/]+$/.test(f)
       || /\/OverlayWebView\.swift$/.test(f)));
     const picked = new Set<string>();
     if (runtime.length) for (const f of agnostic) picked.add(f);

@@ -221,6 +221,9 @@ the loading bar, `copyTabs`) is the session's: step 3.
 
 ## Between steps 1 and 2: the UI and its themes out of the extension (Tirth, 2026-11-22)
 
+**Done (the UI move):** the folders are at `app/shared/ui/` and `app/shared/ui/themes/`, and the built output is the same
+byte for byte except the themes' README (DECISIONS.md, "The UI and its themes move to app/shared/ui").
+
 `extension/ui` and `extension/themes` are Margin's window's now (the hosted design draws them in Margin's own window on
 the Mac, on Windows next); the extension's content scripts and new-tab page use neither. A pure move into
 `app/shared/ui/` (themes at `app/shared/ui/themes/`; its own commit, no behaviour change: the build, the theme tests, pack-theme, the CI plan and the docs'

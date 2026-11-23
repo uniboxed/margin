@@ -16,7 +16,7 @@ unknown is listed below so nothing is claimed twice.
 ```
 Margin.app (a regular app: its Dock icon, its menu bar, Mission Control shows "Margin")
  ├─ Margin's window: windowed or full screen
- │    ├─ the UI (today's sidebar, palette, settings, themes: extension/ui, unchanged code)
+ │    ├─ the UI (today's sidebar, palette, settings, themes: app/shared/ui, unchanged code)
  │    └─ the page area: a hole the hosted window is fitted to
  ├─ Spaces, owned by the app (its data set on disk; nothing read from Safari's storage)
  │    └─ items: a web tab (in Safari, a profile) | an app (bundle id) | pins, folders as today

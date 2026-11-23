@@ -1,9 +1,9 @@
 // The page Margin.app draws its UI with (on the Mac, Margin's own window:
 // app/platforms/macos/shell/MarginWindowController.swift; the overlay over a
 // browser's window was removed 2026-11-16, and is still the Windows shell's): the
-// UI runtime (extension/ui/runtime.ts) drawing the theme around the page
+// UI runtime (app/shared/ui/runtime.ts) drawing the theme around the page
 // slot, with the app's host
-// (extension/ui/host-app.ts). Built into dist/app/overlay.js (scripts/
+// (app/shared/ui/host-app.ts). Built into dist/app/overlay.js (scripts/
 // build.js), served at margin-app://app/ with a policy that allows no
 // network (app/platforms/macos/shell/OverlayWebView.swift).
 //
@@ -23,19 +23,19 @@
 // draws the window's buttons and its drag regions (`chrome`), a layer over the whole window (the palette's) takes the
 // pointer there (hitRects keepEqual), it never says it's reconnecting to a browser, and with
 // no theme package from the app it draws Arcadia, bundled beside it, as its own (no notice: nothing failed).
-import { createRuntime } from '../../../extension/ui/runtime.ts';
-import { createGestureMotion } from '../../../extension/ui/gesture-motion.ts';
-import { loadTheme, encodeStoredTheme } from '../../../extension/ui/theme-loader.ts';
-import { wantsSystemMaterials } from '../../../extension/ui/theme-schema.ts';
-import { readThemeFile } from '../../../extension/ui/theme-import.ts';
-import { createPreviewBar } from '../../../extension/ui/theme-preview.ts';
-import { chromeRects, cornerFill, createAppHost, hitRects, sidebarFixed } from '../../../extension/ui/host-app.ts';
-import { createAppNotices, createGestureFeedback } from '../../../extension/ui/app-feedback.ts';
+import { createRuntime } from '../ui/runtime.ts';
+import { createGestureMotion } from '../ui/gesture-motion.ts';
+import { loadTheme, encodeStoredTheme } from '../ui/theme-loader.ts';
+import { wantsSystemMaterials } from '../ui/theme-schema.ts';
+import { readThemeFile } from '../ui/theme-import.ts';
+import { createPreviewBar } from '../ui/theme-preview.ts';
+import { chromeRects, cornerFill, createAppHost, hitRects, sidebarFixed } from '../ui/host-app.ts';
+import { createAppNotices, createGestureFeedback } from '../ui/app-feedback.ts';
 import { backgroundSwitches, describeSwitchRun, OVERLAY_SWITCH_PREFIX, pickNavTab } from '../../../extension/shared/switching.ts';
 import { cycleSpace, cycleTab } from '../../../extension/shared/view.ts';
-import { pickBridge } from '../../../extension/ui/overlay-bridge.ts';
-import { numberedAction, numberedRows, togglePin } from '../../../extension/ui/shortcut-targets.ts';
-import { nextSplitPane } from '../../../extension/ui/behaviors/split.ts';
+import { pickBridge } from '../ui/overlay-bridge.ts';
+import { numberedAction, numberedRows, togglePin } from '../ui/shortcut-targets.ts';
+import { nextSplitPane } from '../ui/behaviors/split.ts';
 
 // WebKit's handler on the Mac, WebView2's on Windows (ui/overlay-bridge.ts).
 const bridge = pickBridge(globalThis);

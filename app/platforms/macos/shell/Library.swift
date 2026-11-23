@@ -129,7 +129,7 @@ final class Library {
 
     var isImported: Bool { liveValues("imports")["done"] != nil }
 
-    // What the UI draws (library.ts snapshot): its stored values' shape (extension/ui/host-app.ts, shared/stored.ts
+    // What the UI draws (library.ts snapshot): its stored values' shape (app/shared/ui/host-app.ts, shared/stored.ts
     // fromStorage), the items as kept tabs with their targets, and `library: { v, imported }`.
     func snapshot() -> JSONObject {
         guard let o = rules.call("snapshot", [values]) as? JSONObject else {

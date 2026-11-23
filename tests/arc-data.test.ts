@@ -8,10 +8,10 @@ import assert from 'node:assert/strict';
 import * as M from '../extension/state/model.ts';
 import * as V from '../extension/shared/view.ts';
 import * as L from '../app/shared/library/library.ts';
-import { buildViewModel } from '../extension/ui/view-model.ts';
-import { menuItems } from '../extension/ui/behaviors/menu-items.ts';
-import { checkAction, contextFromState, requestFor } from '../extension/ui/actions.ts';
-import { settingsFields, saveField, runField, fieldsIn } from '../extension/ui/settings-form.ts';
+import { buildViewModel } from '../app/shared/ui/view-model.ts';
+import { menuItems } from '../app/shared/ui/behaviors/menu-items.ts';
+import { checkAction, contextFromState, requestFor } from '../app/shared/ui/actions.ts';
+import { settingsFields, saveField, runField, fieldsIn } from '../app/shared/ui/settings-form.ts';
 import type { State } from '../types/margin.d.ts';
 
 const NOW = 1_000_000;

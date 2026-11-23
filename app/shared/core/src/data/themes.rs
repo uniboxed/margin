@@ -38,7 +38,7 @@ pub const MAX_BYTES: usize = 4_718_592;
 pub const MAX_THEMES: usize = 50;
 /// A package's files, at most.
 pub const MAX_PACKAGE_FILES: usize = 64;
-/// The built-ins' ids (extension/themes/packages.ts `PACKAGE_THEMES`), and an earlier name of one that saved settings
+/// The built-ins' ids (app/shared/ui/themes/packages.ts `PACKAGE_THEMES`), and an earlier name of one that saved settings
 /// still mean it by (Neubrutalism's until 2026-11-10: the extension's state/model.ts OLD_NAMES): an imported theme
 /// takes neither.
 pub const BUILTINS: [&str; 6] = ["arcadia", "neubrutalism", "pixel", "liquid-glass", "material", "neo-brutalism"];

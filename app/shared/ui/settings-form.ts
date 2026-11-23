@@ -8,11 +8,11 @@
 // The same settings as the form before Margin 2 (themes/arcadia/newtab.js),
 // less keep-ready and the warm-up (gone in Margin 2 Phase 2 step 8) and the switch
 // log (development diagnostics). Pure: runs in Node.
-import * as S from '../shared/search.ts';
-import * as shortcuts from '../shared/shortcuts.ts';
-import { APP_KEYS, appKeysFor, appKeyValue, combosOf, formatAppKey, isAppKey, isDigitKey } from '../shared/app-keys.ts';
-import { siteList } from '../shared/sleep.ts';
-import { PACKAGE_THEMES, PACKAGE_THEME_NAMES, USER_THEME_ID } from '../themes/packages.ts';
+import * as S from '../../../extension/shared/search.ts';
+import * as shortcuts from '../../../extension/shared/shortcuts.ts';
+import { APP_KEYS, appKeysFor, appKeyValue, combosOf, formatAppKey, isAppKey, isDigitKey } from '../../../extension/shared/app-keys.ts';
+import { siteList } from '../../../extension/shared/sleep.ts';
+import { PACKAGE_THEMES, PACKAGE_THEME_NAMES, USER_THEME_ID } from './themes/packages.ts';
 import { settingValueOk } from './theme-schema.ts';
 import { SETTINGS_CATEGORY_IDS } from './actions.ts';
 

@@ -1,4 +1,4 @@
-// The runtime's behaviors (extension/ui/behaviors/) with Neubrutalism,
+// The runtime's behaviors (app/shared/ui/behaviors/) with Neubrutalism,
 // Pixel and Liquid Glass (the built-in themes that share the sidebar's classes) in real engines, Playwright's WebKit and Chromium, headless, on a blank page
 // whose every network request is refused; real pointer, wheel and keyboard
 // input through Playwright. The host is the mock (ui/host.ts): each test

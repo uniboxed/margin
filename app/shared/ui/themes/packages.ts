@@ -1,4 +1,4 @@
-// The themes Margin ships as HTML and CSS packages (extension/themes/<id>/
+// The themes Margin ships as HTML and CSS packages (app/shared/ui/themes/<id>/
 // theme.json, theme.html, theme.css: ui/theme-loader.ts loads them). Plain
 // data, so the background can check a package theme's id without loading the
 // UI code. Arcadia (the default) first.

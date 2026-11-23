@@ -89,7 +89,7 @@ The script runs Apple's converter on the Safari build:
 xcrun safari-web-extension-converter dist/webkit --project-location xcode --app-name Margin --bundle-identifier com.unibox.margin --macos-only --swift --no-open
 ```
 
-It then fixes the bundle IDs (the converter names the app `com.unibox.Margin`, the extension `com.unibox.margin.Extension`, and Xcode refuses an extension whose ID isn't prefixed by the app's: the script sets the app to `com.unibox.margin` and `extensionBundleIdentifier` in the app's Swift to match), turns the app's App Sandbox off (Developer ID: it listens on 127.0.0.1), and adds Margin.app's own code: `app/platforms/macos/startup/` (the set-up window, the app delegate, the extension handler), `app/platforms/macos/shell/` (the link to the extension, window tracking, the overlays drawn around the browser's windows, the data store) and the overlays' page (`dist/app/`, built from `app/shared/host/` and `extension/ui/`). Choose the **Margin (macOS)** scheme and Run (⌘R), with the same Team on both targets under Signing & Capabilities.
+It then fixes the bundle IDs (the converter names the app `com.unibox.Margin`, the extension `com.unibox.margin.Extension`, and Xcode refuses an extension whose ID isn't prefixed by the app's: the script sets the app to `com.unibox.margin` and `extensionBundleIdentifier` in the app's Swift to match), turns the app's App Sandbox off (Developer ID: it listens on 127.0.0.1), and adds Margin.app's own code: `app/platforms/macos/startup/` (the set-up window, the app delegate, the extension handler), `app/platforms/macos/shell/` (the link to the extension, window tracking, the overlays drawn around the browser's windows, the data store) and the overlays' page (`dist/app/`, built from `app/shared/host/` and `app/shared/ui/`). Choose the **Margin (macOS)** scheme and Run (⌘R), with the same Team on both targets under Signing & Capabilities.
 
 **After pulling new changes,** re-run `npm run safari`. By hand: re-run `scripts/make-xcode.sh` whenever files under `dist/webkit/` or `app/` are added or removed, else just Run again in Xcode.
 
@@ -157,4 +157,4 @@ npm run icons       # regenerate extension/icons
 
 ### Adding a theme
 
-A theme is HTML and CSS, no JavaScript: a package in `extension/themes/<id>/` (`theme.json`, `theme.html`, `theme.css`, bundled fonts), listed in `themes/packages.ts`. `extension/themes/README.md` is the guide.
+A theme is HTML and CSS, no JavaScript: a package in `app/shared/ui/themes/<id>/` (`theme.json`, `theme.html`, `theme.css`, bundled fonts), listed in `themes/packages.ts`. `app/shared/ui/themes/README.md` is the guide.

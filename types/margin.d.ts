@@ -157,7 +157,7 @@ export interface Settings {
   favoritesScope?: 'global' | 'profile';
   /** Auto-open external-domain links from Pinned tabs and Favorites in Peek (default true) */
   autoPeekPins?: boolean;
-  theme: string; // extension/themes/index.ts
+  theme: string; // app/shared/ui/themes/index.ts
   themes: Record<string, Record<string, unknown>>; // each theme's own settings
 }
 export interface State {

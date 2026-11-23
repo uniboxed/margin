@@ -5,9 +5,9 @@
 // in tests/theme/security.test.ts.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { sanitizeTemplate, sanitizeCss, RESERVED_IDS, type CleanElement, type Removed } from '../../extension/ui/sanitize.ts';
-import { checkManifest } from '../../extension/ui/theme-schema.ts';
-import { checkPackage, contentMatches, svgStarts } from '../../extension/ui/theme-loader.ts';
+import { sanitizeTemplate, sanitizeCss, RESERVED_IDS, type CleanElement, type Removed } from '../../app/shared/ui/sanitize.ts';
+import { checkManifest } from '../../app/shared/ui/theme-schema.ts';
+import { checkPackage, contentMatches, svgStarts } from '../../app/shared/ui/theme-loader.ts';
 import { TEMPLATE_PAYLOADS_2, CSS_PAYLOADS_2, CSS_KEPT_2, MANIFEST_PAYLOADS, MANIFEST_REMOVED, FILE_PAYLOADS, wrap } from '../theme/payloads.ts';
 import { auditTree } from '../theme/audit.ts';
 

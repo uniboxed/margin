@@ -12,8 +12,8 @@
 // open ends a switch under way (ui/runtime.ts).
 //
 // Pure: no DOM, no timers (the runtime re-draws at `nextDeadline`); `now` is given.
-import type { State } from '../../types/margin';
-import * as V from '../shared/view.ts';
+import type { State } from '../../../types/margin';
+import * as V from '../../../extension/shared/view.ts';
 
 /** A pin's open waits this long for the state to have it in front (a hosted app's show takes seconds). */
 export const OPEN_MS = 8000;

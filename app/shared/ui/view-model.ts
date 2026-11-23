@@ -17,18 +17,18 @@
 // row whose item is the same object (ui/render.ts), so this is what keeps an
 // update down to the rows that changed. Pure: no browser APIs, runs in Node.
 import { themeChoices, spaceThemeId, spaceThemesOn } from './space-theme.ts';
-import type { State } from '../../types/margin';
-import * as V from '../shared/view.ts';
-import { NEW_TAB } from '../shared/switching.ts';
-import { hostOf } from '../shared/dom.ts';
-import { rankPalette } from '../shared/search.ts';
+import type { State } from '../../../types/margin';
+import * as V from '../../../extension/shared/view.ts';
+import { NEW_TAB } from '../../../extension/shared/switching.ts';
+import { hostOf } from '../../../extension/shared/dom.ts';
+import { rankPalette } from '../../../extension/shared/search.ts';
 import { checkIconUrl } from './sanitize.ts';
-import { appIcon, appOfItem, isBundleId } from '../shared/apps.ts';
-import type { InstalledApp } from '../shared/apps.ts';
+import { appIcon, appOfItem, isBundleId } from '../../../extension/shared/apps.ts';
+import type { InstalledApp } from '../../../extension/shared/apps.ts';
 import { CONFIRM_LABEL, SPACE_COLORS, menuItems } from './behaviors/menu-items.ts';
 import type { MenuTarget } from './behaviors/menu-items.ts';
 import { SETTINGS_CATEGORIES, categoryNamed, fieldsIn, settingsFields } from './settings-form.ts';
-import { selectBackgroundMedia, type MediaSource } from '../shared/media.ts';
+import { selectBackgroundMedia, type MediaSource } from '../../../extension/shared/media.ts';
 
 /** The view model's version: a theme reads what this version documents. */
 export const VM_VERSION = 1;

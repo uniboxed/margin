@@ -15,9 +15,9 @@
 import { checkCssValue, sanitizeCss, sanitizeTemplate } from './sanitize.ts';
 import { checkManifest, settingValueOk } from './theme-schema.ts';
 import { buildTemplate } from './render.ts';
-import { PACKAGE_THEMES, USER_THEMES_KEY } from '../themes/packages.ts';
+import { PACKAGE_THEMES, USER_THEMES_KEY } from './themes/packages.ts';
 
-/** The themes Margin ships as packages (extension/themes/<id>/, themes/packages.ts). */
+/** The themes Margin ships as packages (app/shared/ui/themes/<id>/, themes/packages.ts). */
 export const BUILTIN_THEMES = PACKAGE_THEMES;
 
 // Caps on a package, beyond the sanitizer's own (template and stylesheet
@@ -272,7 +272,7 @@ export async function loadTheme(pkg: ThemePackage, { document: doc = globalThis.
 
 /**
  * Reads a built-in theme's package from the extension's files:
- * `readFile(path)` gives a file of `extension/themes/<id>/` as text or
+ * `readFile(path)` gives a file of `app/shared/ui/themes/<id>/` as text or
  * bytes. theme.json first: it lists the fonts and images to read.
  * @param options default: the extension's own URL (runtime.getURL)
  * */

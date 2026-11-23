@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DIST, TARGETS, buildTo, manifestFor } from '../scripts/build.ts';
-import { PACKAGE_THEMES } from '../extension/themes/packages.ts';
+import { PACKAGE_THEMES } from '../app/shared/ui/themes/packages.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 // What the tests read of a built manifest (parsed JSON): a content script's entry, a command.

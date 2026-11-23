@@ -45,7 +45,7 @@ Development happens on a real Mac (macOS 27), with Xcode, Safari, Chrome, Edge, 
 
 ## Repo layout (target)
 
-Margin 2 adds `extension/ui/` (the UI runtime: view model, renderer, actions, behaviors, host adapters), turns `extension/themes/<id>/` into theme packages, and grows `app/` into Margin.app. The tree below is the first prototype's.
+Margin 2 adds the UI runtime (view model, renderer, actions, behaviors, host adapters; `app/shared/ui/` since 2026-11-22, first `extension/ui/`), turns the themes into theme packages (`app/shared/ui/themes/<id>/`, first `extension/themes/<id>/`), and grows `app/` into Margin.app. The tree below is the first prototype's.
 
 ```
 margin/

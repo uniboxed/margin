@@ -993,7 +993,7 @@ The honest numbers, until gate G16 measures them:
 - [ ] The handoff's gate (`MarginHandoff`) is decided by the gates' results, not left to a default someone set.
 ## Margin 2 Phase 6: user themes (2026-11-06)
 
-Build with `npm run safari`. Use a copy of a theme to import, never one of Margin's folders as it is: `cp -R extension/themes/neubrutalism ~/Desktop/my-neo`, then in `~/Desktop/my-neo/theme.json` set `"id": "my-neo"` and `"name": "My Neo"`, and delete `first-paint.css`. Check it first: `MARGIN_THEMES=~/Desktop/my-neo npm run test:security`. Make a `.margintheme` too: `npm run theme:pack ~/Desktop/my-neo ~/Desktop/my-neo.margintheme`.
+Build with `npm run safari`. Use a copy of a theme to import, never one of Margin's folders as it is: `cp -R app/shared/ui/themes/neubrutalism ~/Desktop/my-neo`, then in `~/Desktop/my-neo/theme.json` set `"id": "my-neo"` and `"name": "My Neo"`, and delete `first-paint.css`. Check it first: `MARGIN_THEMES=~/Desktop/my-neo npm run test:security`. Make a `.margintheme` too: `npm run theme:pack ~/Desktop/my-neo ~/Desktop/my-neo.margintheme`.
 
 1. **Import a folder over full screen.** Safari in full screen, Margin's new-tab page, Settings › Import Theme…. The file panel shows over full-screen Safari, not on another Space. Choose `my-neo`. The window draws My Neo at once, with a dark bar at the top: "Previewing “My Neo” 1.0.0 by Margin. Use this theme?". The pages move to My Neo's box.
 2. **Cancel.** Press Cancel: the theme from before comes back. Import again and press Escape: the same. Import again and wait 30 s: it ends by itself and Settings says so.

@@ -10,10 +10,10 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as M from '../extension/state/model.ts';
-import { settingsFields, APP_SHORTCUT_FIELDS, SHORTCUT_FIELDS, SHORTCUT_HELP } from '../extension/ui/settings-form.ts';
-import { menuItems } from '../extension/ui/behaviors/menu-items.ts';
-import { buildViewModel } from '../extension/ui/view-model.ts';
-import { sanitizeTemplate } from '../extension/ui/sanitize.ts';
+import { settingsFields, APP_SHORTCUT_FIELDS, SHORTCUT_FIELDS, SHORTCUT_HELP } from '../app/shared/ui/settings-form.ts';
+import { menuItems } from '../app/shared/ui/behaviors/menu-items.ts';
+import { buildViewModel } from '../app/shared/ui/view-model.ts';
+import { sanitizeTemplate } from '../app/shared/ui/sanitize.ts';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const rel = (p: string) => relative(ROOT, p).split('\\').join('/');
@@ -74,14 +74,14 @@ test('feature names: no string in the extension, Margin\'s UI or Margin.app name
   for (const f of swift) for (const s of strings(readFileSync(f, 'utf8'), true)) if (found(s)) bad.push(`${rel(f)}: ${JSON.stringify(s.slice(0, 120))}`);
   assert.ok(sources.length > 50 && swift.length > 20, `the sources found: ${sources.length} TypeScript, ${swift.length} Swift`);
   // (The scanner sees the words it should: Margin's own names, in a TypeScript and a Swift file.)
-  assert.ok(strings(readFileSync(join(ROOT, 'extension/ui/settings-form.ts'), 'utf8')).includes('Link Rules'));
+  assert.ok(strings(readFileSync(join(ROOT, 'app/shared/ui/settings-form.ts'), 'utf8')).includes('Link Rules'));
   assert.ok(strings(readFileSync(join(ROOT, 'app/platforms/macos/shell/HostedPeek.swift'), 'utf8'), true).some((s) => s.startsWith('Quick Tab open')));
   assert.ok(found('Arc’s look') && found('Little Arc') && found('Open in Peek') && !found('Arcadia') && !found('the sidebar peeks'), 'what counts as Arc\'s names');
   assert.deepEqual(bad, []);
 });
 
 test('feature names: the built-in themes\' templates, styles and descriptions use Margin\'s names (the sidebar\'s m-peek reveal aside)', () => {
-  const themes = join(ROOT, 'extension/themes');
+  const themes = join(ROOT, 'app/shared/ui/themes');
   const ids = readdirSync(themes).filter((d) => statSync(join(themes, d)).isDirectory());
   assert.deepEqual(ids.sort(), ['arcadia', 'liquid-glass', 'material', 'neubrutalism', 'pixel']);
   for (const id of ids) {

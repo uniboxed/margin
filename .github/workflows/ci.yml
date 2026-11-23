@@ -54,7 +54,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      # (No npm ci: the plan is plain Node, with the theme list from extension/themes/packages.ts.)
+      # (No npm ci: the plan is plain Node, with the theme list from app/shared/ui/themes/packages.ts.)
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}

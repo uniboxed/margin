@@ -1,4 +1,4 @@
-// Margin.app's host adapter (extension/ui/host-app.ts) against a stand-in
+// Margin.app's host adapter (app/shared/ui/host-app.ts) against a stand-in
 // for the app's bridge, and the app's overlay page build (dist/app, from
 // app/shared/host/). The app's own end is tested in Swift: npm run test:app.
 import { test } from 'node:test';
@@ -7,11 +7,11 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { applyChanges, chromeRects, cornerFill, createAppHost, hitRects, modeOf, sidebarFixed, splitShadows, type HitStyle } from '../extension/ui/host-app.ts';
+import { applyChanges, chromeRects, cornerFill, createAppHost, hitRects, modeOf, sidebarFixed, splitShadows, type HitStyle } from '../app/shared/ui/host-app.ts';
 import { toStorage } from '../extension/shared/stored.ts';
-import { buildViewModel } from '../extension/ui/view-model.ts';
+import { buildViewModel } from '../app/shared/ui/view-model.ts';
 import { APP_FILES, BUILTIN_THEMES, buildApp, builtinThemeFile } from '../scripts/build.ts';
-import { PACKAGE_THEMES } from '../extension/themes/packages.ts';
+import { PACKAGE_THEMES } from '../app/shared/ui/themes/packages.ts';
 import { smallState, W } from './ui/fixtures.ts';
 import type { State } from '../types/margin.d.ts';
 
@@ -324,7 +324,7 @@ test('cornerFill: what the theme draws around the page\'s rounded corners, from 
 });
 
 test('the sidebar\'s width: fixed only beside a tile; under a hosted window it\'s dragged, the host told when a change begins and ends', async () => {
-  const { installResize } = await import('../extension/ui/behaviors/resize.ts');
+  const { installResize } = await import('../app/shared/ui/behaviors/resize.ts');
   const listeners: Record<string, (e: any) => void> = {};
   const handle = { classList: { add() {}, remove() {} }, setPointerCapture() {}, releasePointerCapture() {} };
   const saved: any[] = [];
@@ -387,7 +387,7 @@ test('the sidebar\'s width: fixed only beside a tile; under a hosted window it\'
 });
 
 test('the sidebar\'s edge stops where the page area would be narrower than the hosted window\'s own minimum (Split View\'s divider), slow or fast, a reset too', async () => {
-  const { installResize } = await import('../extension/ui/behaviors/resize.ts');
+  const { installResize } = await import('../app/shared/ui/behaviors/resize.ts');
   const listeners: Record<string, (e: any) => void> = {};
   const handle = { classList: { add() {}, remove() {} }, setPointerCapture() {}, releasePointerCapture() {} };
   const live: number[] = [];
@@ -734,8 +734,8 @@ test('dist/app/arcadia.js: Arcadia\'s package for the overlay to fall back on, a
   const pkg = JSON.parse(m[1]);
   assert.equal(pkg.id, 'arcadia');
   assert.deepEqual(Object.keys(pkg).sort(), ['css', 'files', 'html', 'id', 'manifest']);
-  assert.equal(pkg.manifest, readFileSync(join(root, 'extension/themes/arcadia/theme.json'), 'utf8'));
-  const { sanitizeTheme, checkPackage } = await import('../extension/ui/theme-loader.ts');
+  assert.equal(pkg.manifest, readFileSync(join(root, 'app/shared/ui/themes/arcadia/theme.json'), 'utf8'));
+  const { sanitizeTheme, checkPackage } = await import('../app/shared/ui/theme-loader.ts');
   assert.deepEqual(checkPackage({ ...pkg, files: Object.fromEntries(Object.entries(pkg.files).map(([k, v]) => [k, new Uint8Array(Buffer.from(String(v), 'base64'))])) }), []);
   const r = sanitizeTheme({ ...pkg, files: Object.keys(pkg.files) });
   assert.deepEqual([r.errors, r.removed], [[], []]);

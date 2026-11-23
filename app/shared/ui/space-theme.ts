@@ -2,7 +2,7 @@
 // by default; changed in its editor, its menu's Theme, or Settings' Theme for the space shown). A space keeps a theme's
 // id (state/model.ts `theme`); none (spaces from before) is the profile's settings.theme. One that isn't there (an
 // imported theme removed since) is drawn with the profile's, else Arcadia: never an error, the space's choice kept.
-import { PACKAGE_THEMES, PACKAGE_THEME_NAMES } from '../themes/packages.ts';
+import { PACKAGE_THEMES, PACKAGE_THEME_NAMES } from './themes/packages.ts';
 import { userThemeList } from './settings-form.ts';
 
 export type ThemeChoice = { id: string, name: string };

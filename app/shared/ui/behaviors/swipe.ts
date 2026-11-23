@@ -26,8 +26,8 @@
 // do), the space nearest that place the one swiped from.
 import type { Rt } from '../runtime.ts';
 import type { ViewModel } from '../view-model.ts';
-import { canScrollX } from '../../shared/gestures.ts';
-import { createSpaceSwipe, settle, rubberBand, settleArc, rubberBandArc, rubberBandArcInverse, springArc, springKeyframes, ARC, FEELS, DEFAULTS as SWIPE } from '../../shared/space-swipe.ts';
+import { canScrollX } from '../../../../extension/shared/gestures.ts';
+import { createSpaceSwipe, settle, rubberBand, settleArc, rubberBandArc, rubberBandArcInverse, springArc, springKeyframes, ARC, FEELS, DEFAULTS as SWIPE } from '../../../../extension/shared/space-swipe.ts';
 import { View } from '../render.ts';
 
 export const SETTLE_MS = 220;

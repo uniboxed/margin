@@ -5,12 +5,12 @@
 // ones included: the view model shows only the label (ui/view-model.ts),
 // the runtime keeps the action. Pure: runs in Node.
 
-import type { State } from '../../../types/margin';
+import type { State } from '../../../../types/margin';
 import type { FavoriteRow, FolderRow, PinRow, SpaceView } from '../view-model.ts';
-import { FAVORITES_CAP, MAX_FOLDER_DEPTH, favoriteScopeOf, folderDepth } from '../../shared/pinned-rules.ts';
-import { normalizeUrl } from '../../shared/view.ts';
+import { FAVORITES_CAP, MAX_FOLDER_DEPTH, favoriteScopeOf, folderDepth } from '../../../../extension/shared/pinned-rules.ts';
+import { normalizeUrl } from '../../../../extension/shared/view.ts';
 import { themeChoices, spaceThemeId, spaceThemesOn } from '../space-theme.ts';
-import { matchAirTrafficRule } from '../../shared/air-traffic.ts';
+import { matchAirTrafficRule } from '../../../../extension/shared/air-traffic.ts';
 
 // The space editor's swatches (Arcadia's).
 export const SPACE_COLORS = Object.freeze(['#6c5ce7', '#0984e3', '#00b894', '#fdcb6e', '#e17055', '#d63031', '#e84393', '#636e72']);

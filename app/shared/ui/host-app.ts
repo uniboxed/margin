@@ -62,10 +62,10 @@
 //
 // No browser API here: only the DOM and `post`.
 import type { Geometry, Host } from './host.ts';
-import { fromStorage } from '../shared/stored.ts';
-import { isLauncherPage } from '../shared/view.ts';
-import { appsOf, isBundleId } from '../shared/apps.ts';
-import { capabilities } from '../shared/capabilities.ts';
+import { fromStorage } from '../../../extension/shared/stored.ts';
+import { isLauncherPage } from '../../../extension/shared/view.ts';
+import { appsOf, isBundleId } from '../../../extension/shared/apps.ts';
+import { capabilities } from '../../../extension/shared/capabilities.ts';
 
 /**
  * The stored values with a change applied, as storage.onChanged reports it

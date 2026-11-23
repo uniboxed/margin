@@ -2,9 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as M from '../extension/state/model.ts';
 import { isAuthFlowUrl, isPeekableUrl, peekCardRect, shouldAutoPeek, siteDomain } from '../extension/shared/peek.ts';
-import { buildViewModel } from '../extension/ui/view-model.ts';
-import { checkAction, contextFromState } from '../extension/ui/actions.ts';
-import { sanitizeTemplate } from '../extension/ui/sanitize.ts';
+import { buildViewModel } from '../app/shared/ui/view-model.ts';
+import { checkAction, contextFromState } from '../app/shared/ui/actions.ts';
+import { sanitizeTemplate } from '../app/shared/ui/sanitize.ts';
 import { createHostedTabs, type HostedTabsApi } from '../extension/background/hosted.ts';
 
 test('M2.5 Preview: external-domain auto-peek triggers on pinned/favorite tabs and excludes same-site and OAuth/SSO flows', () => {

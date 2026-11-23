@@ -8,8 +8,8 @@
 // tests/theme/arcadia.test.ts (npm run test:theme).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { sanitizeTemplate, sanitizeCss, guardText, GUARDED_PARTS, TEXT_ATTRS, type CleanElement, type CleanNode, type Removed } from '../extension/ui/sanitize.ts';
-import { sanitizeTheme, BUILTIN_THEMES } from '../extension/ui/theme-loader.ts';
+import { sanitizeTemplate, sanitizeCss, guardText, GUARDED_PARTS, TEXT_ATTRS, type CleanElement, type CleanNode, type Removed } from '../app/shared/ui/sanitize.ts';
+import { sanitizeTheme, BUILTIN_THEMES } from '../app/shared/ui/theme-loader.ts';
 import { readTheme } from './theme/package.ts';
 
 const root = (inner: string) => `<div class="t">${inner}<m-page></m-page></div>`;
@@ -168,7 +168,7 @@ test('every built-in theme passes the rule with nothing removed (Neubrutalism bi
   assert.ok(BUILTIN_THEMES.includes('neubrutalism'));
   assert.ok(BUILTIN_THEMES.includes('pixel'));
   for (const id of BUILTIN_THEMES) {
-    const t = readTheme(new URL(`../extension/themes/${id}/`, import.meta.url).pathname);
+    const t = readTheme(new URL(`../app/shared/ui/themes/${id}/`, import.meta.url).pathname);
     const r = sanitizeTheme({ ...t, files: Object.keys(t.files) });
     assert.deepEqual([r.errors, r.removed], [[], []], id);
   }

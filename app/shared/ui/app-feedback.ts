@@ -4,7 +4,7 @@
 // or found by the overlay itself (a switch it asked for that didn't happen).
 // Pure: no DOM, no browser API; the overlay gives it the runtime's setUi.
 
-import { NOTICES, fillNotice, isNotice, switchFailure } from '../shared/notices.ts';
+import { NOTICES, fillNotice, isNotice, switchFailure } from '../../../extension/shared/notices.ts';
 
 /**
  * One notice at a time, in the theme's guarded `notice` part with Margin's
