@@ -7520,3 +7520,31 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   request in `hosted_browser::Ask::SetWindowState`. The Mac's FFI (`margin_link_protocol`'s `setWindowState`) now uses
   the hosted one, and `HandoffRequest` is the old handoff's only again. Its times are whole milliseconds written as
   integers (`protocol::number`), as every other request's are: it had sent `1800000002000.0`.
+
+## Arcadia's "a settle caught" test: held within the settle's own travel (2026-11-22)
+
+- It failed now and then in the gate and never alone: "held where it's drawn (-80.35 → -82)", a 1.65 px gap against
+  1.5 px allowed. The swipe was right. WebKit reads a running transition at the moment it's read, and the catch
+  (`catchSettle`) reads it itself a little after the test's read, then holds it there to within 0.01 px. The catch's
+  dispatch takes 15-23 ms; on a busy machine the settle moves on in between. Earlier "passes alone" runs with
+  `--test-name-pattern` ran nothing (this file's tests are subtests), so they proved nothing.
+- Now the harness (`rtPhaseRead`) sends the phase inside the test's own frames, with no extra frame: an extra one
+  moved the early catch past halfway. Each read carries its time, and the frame before is read too. A hold passes
+  within 1.5 px, or in the way the settle was moving, as far as its speed carries it in the dispatch's time.
+- Checked: a jump of 30 px or of 5 px against the motion, put into `catchSettle` by hand, fails the test. The code as
+  it is passes 3 of 3 alone and 8 of 8 with four runs at once.
+
+## A sidebar click hands the keys back: k1 checks that, as Arc does (Tirth, 2026-11-22)
+
+- The screen suite's k1 had failed since 2026-11-17, and not as a flake. A press in Margin's panel moves the keyboard
+  to Margin. macOS does that for any press in another app's window, even a non-activating panel that refuses to be key.
+  So the hosted app's window resigns key, and Margin hands it back 80 ms after the release (`afterPress` →
+  `keysBack`): 185-193 ms in all on the real screen. The app stays the front app throughout, and a key typed meanwhile
+  reaches it (the key relay).
+- Tirth: as in Arc, where a click in the sidebar takes the focus from the page, a feature, not a bug. Margin gives
+  the focus back to the app shown, so its field is focused again after the click.
+- k1 now passes when every resign is followed by the window becoming key again within 0.5 s, and the window is key
+  at the end. The rest of the check is unchanged: the app front, the panel's press, the key reaching the app, Margin
+  never active.
+- Not done: taking presses on the panel through an event tap so the keyboard never moves (mouse events only, no
+  Input Monitoring). Its cost was put to Tirth, who chose the hand-back.
