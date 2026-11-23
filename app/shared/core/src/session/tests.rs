@@ -230,6 +230,12 @@ struct World {
     panes: RefCell<Option<PaneLayout>>,
     minimums: RefCell<BTreeMap<String, Size>>,
     follows: Cell<bool>,
+    // (Margin's windows not in full screen, with no page area while hosting or at their launcher; the engine's
+    // full-screen read out of sight and its Space; Margin the active app.)
+    no_hosted_place: RefCell<Vec<i64>>,
+    no_idle_place: RefCell<Vec<i64>>,
+    out_of_sight: Cell<bool>,
+    inactive: Cell<bool>,
 }
 
 impl World {
@@ -342,6 +348,42 @@ impl Ports for Reentrant {
     fn changed(&self) {
         self.reenter("changed");
         self.0.act(json!(["changed"]));
+    }
+    fn engine_shows(&self) -> bool {
+        self.reenter("engineShows");
+        self.0.shown.borrow().is_some()
+    }
+    fn set_elsewhere(&self, window: i64, label: Option<&str>, app: Option<&str>, picture: Option<&str>) {
+        self.reenter("setElsewhere");
+        self.0.act(json!(["setElsewhere", window, label, app, picture]));
+    }
+    fn set_startup_stuck(&self, window: i64, why: Option<&str>) {
+        self.reenter("setStartupStuck");
+        self.0.act(json!(["setStartupStuck", window, why]));
+    }
+    fn clear_cover(&self, window: i64) {
+        self.reenter("clearCover");
+        self.0.act(json!(["clearCover", window]));
+    }
+    fn has_hosted_placement(&self, window: i64) -> bool {
+        self.reenter("hasHostedPlacement");
+        !self.0.no_hosted_place.borrow().contains(&window)
+    }
+    fn has_idle_placement(&self, window: i64) -> bool {
+        self.reenter("hasIdlePlacement");
+        !self.0.no_idle_place.borrow().contains(&window)
+    }
+    fn prepares_out_of_sight(&self) -> bool {
+        self.reenter("preparesOutOfSight");
+        self.0.out_of_sight.get()
+    }
+    fn margin_active(&self) -> bool {
+        self.reenter("marginActive");
+        !self.0.inactive.get()
+    }
+    fn activate_margin(&self) {
+        self.reenter("activateMargin");
+        self.0.act(json!(["activateMargin"]));
     }
     fn woken_by_menu(&self, p: &str) -> bool {
         self.reenter("wokenByMenu");
@@ -759,3 +801,5 @@ mod routing_tests;
 
 #[path = "layouts_tests.rs"]
 mod layouts_tests;
+#[path = "start_tests.rs"]
+mod start_tests;

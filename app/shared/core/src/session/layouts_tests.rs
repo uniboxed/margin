@@ -189,11 +189,9 @@ fn prepare_parks_the_other_windows_item_and_waits_for_full_screen_and_the_page_a
     s.core().edit(Field::Shown, |st| st.shown.insert(2, "a1".into()));
     world.not_full_screen.borrow_mut().push(1);
     let out = s.input(&json!({ "type": "library", "request": { "type": "activateTab", "item": "a1", "windowId": 1 } }));
-    let seen = pump(&s, &world, out, &mut |c| match c {
-        Command::Swift { call, .. } if call == "pagePicture" => json!({ "picture": "data:image/png;base64,AA" }),
-        c => usual(c),
-    });
-    assert_eq!(kinds(&seen), ["swift pagePicture", "engine parkShown", "engine open"]);
+    // (An app's item: no picture asked, its card the app's name: elsewhere.rs, the core's.)
+    let seen = pump(&s, &world, out, &mut usual);
+    assert_eq!(kinds(&seen), ["engine parkShown", "engine open"]);
     let a = acts(&world);
     let order: Vec<String> = a
         .iter()
@@ -206,14 +204,16 @@ fn prepare_parks_the_other_windows_item_and_waits_for_full_screen_and_the_page_a
         })
         .collect();
     let at = |n: &str| order.iter().position(|o| o == n).unwrap_or(usize::MAX);
-    assert!(at("setHosted") < at("showElsewhere") && at("toFullScreen") < at("setAppMinimums"), "{order:?}");
+    assert!(at("setHosted") < at("setElsewhere") && at("toFullScreen") < at("setAppMinimums"), "{order:?}");
     assert_eq!(named(&a, "setHosting"), [json!(["setHosting", 2, false]), json!(["setHosting", 1, true])]);
-    assert_eq!(
-        named(&a, "showElsewhere"),
-        [json!(["swift", "showElsewhere", { "window": 2, "item": "a1", "picture": "data:image/png;base64,AA" }])]
-    );
+    assert_eq!(named(&a, "setElsewhere"), [json!(["setElsewhere", 2, "A", "com.a", null])]);
     assert_eq!(s.core().hosting(), Some(1));
-    assert_eq!(s.done()[0], "Margin's window 1 not in full screen (it always is while hosting is on: test): asked");
+    // (The card's line first, the core's own now: it was the Swift's, not in `done`.)
+    assert_eq!(
+        s.done()[0],
+        "Margin's window 2: its item a1 shown in another window now: its card, until it's in front again"
+    );
+    assert_eq!(s.done()[1], "Margin's window 1 not in full screen (it always is while hosting is on: test): asked");
     // No page area within its wait: nothing hosted, said, its looks remeasured (3 s at 0.05: 62 looks).
     *world.placement.borrow_mut() = None;
     item(&shelf, "a2", json!({ "target": { "kind": "app", "bundleId": "com.b", "name": "B" } }));
@@ -329,9 +329,14 @@ fn a_placing_out_of_full_screen_shown_again_once_after_its_pause() {
     let a = acts(&world);
     assert_eq!(
         named(&a, "setShowing"),
-        [json!(["setShowing", 1, "B", "com.b", false]), json!(["setShowing", 1, null, null, false])]
+        // (The last the hosting settled: nothing shown, its launcher.)
+        [
+            json!(["setShowing", 1, "B", "com.b", false]),
+            json!(["setShowing", 1, null, null, false]),
+            json!(["setShowing", 1, null, null, false])
+        ]
     );
-    assert_eq!(named(&a, "settleHosting").len(), 1);
+    assert_eq!(named(&a, "clearCover").len(), 1, "the hosting settled once");
     assert_eq!(world.now.get(), 1.5, "after its pause");
 }
 

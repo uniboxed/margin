@@ -141,7 +141,7 @@ impl Core {
         });
     }
 
-    fn margin_page(&self, w: i64) -> Option<String> {
+    pub(crate) fn margin_page(&self, w: i64) -> Option<String> {
         self.read(|s| s.margin_pages.get(&w).cloned())
     }
 
@@ -161,12 +161,6 @@ impl Core {
 
     fn forget_audio(&self, item: &str) {
         self.edit(Field::SafariAudio, |s| s.safari_audio.remove(item));
-    }
-
-    // ---- the Swift flows of later parts (interim) ----
-
-    pub(crate) fn settle_hosting(&self) {
-        self.swift("settleHosting", Value::Null);
     }
 
     // ---- the library's requests ----
@@ -222,7 +216,7 @@ impl Core {
                     if r.kind == "setSpace"
                         && let Some(w) = self.ports.window(r.window())
                     {
-                        self.swift("leaveMarginPage", json!({ "window": w }));
+                        self.leave_margin_page(w);
                     }
                     return;
                 };
@@ -443,7 +437,7 @@ impl Core {
                 self.set_margin_page_of(w, Some(&page));
                 self.edit(Field::MarginOpen, |s| s.margin_open.insert(item.to_string()));
                 self.ports.set_margin_page(w, Some(&page));
-                self.swift("clearElsewhere", json!({ "window": w }));
+                self.clear_elsewhere(w);
                 if self.ports.engine_shown().is_some() && self.hosting() == Some(w) {
                     let why = format!("Margin's {page} page shown in Margin's window");
                     self.engine("parkShown", json!({ "why": why })).await;
@@ -542,7 +536,7 @@ impl Core {
     // ---- closing ----
 
     pub(crate) async fn close(&self, item: &str, target: Option<Target>) {
-        self.swift("forgetElsewhere", json!({ "item": item }));
+        self.forget_elsewhere(None, Some(item));
         let target = target.or_else(|| self.target_of(item));
         let had = self.open_item(item);
         self.set_open(item, None);

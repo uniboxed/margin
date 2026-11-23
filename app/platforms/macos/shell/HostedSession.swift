@@ -481,7 +481,11 @@ final class HostedSession: LibraryDelegate {
         set { setMap(.cycledAt, old: cycledAt, newValue) { CoreRow(i0: $0, f: $1 ?? 0) } }
     }
     // Each Margin window's item shown when macOS took the window out of full screen: hosted again once it's back in.
-    private(set) var resume: [Int: String] = [:]
+    // (The core's: the start writes it too.)
+    private(set) var resume: [Int: String] {
+        get { field(.resume) { Self.intText($0) } }
+        set { setMap(.resume, old: resume, newValue) { CoreRow(i0: $0, s0: $1) } }
+    }
     // What the loading animation names for a host (the app's name; Safari).
     var labels: [HostID: String] {
         get { field(.labels) { Self.hostText($0) } }
@@ -624,6 +628,7 @@ final class HostedSession: LibraryDelegate {
         }
         // (Nothing under way any more: the windows closed meanwhile are let go, as the Swift flows let go of theirs.)
         if core.idle, calls.isEmpty, !seen.isEmpty { seen = seen.filter { window($0.key) != nil } }
+        if let o = opened, resuming != o.id, !startupShown { opened = nil }
         if core.idle, !idleWaiters.isEmpty {
             let waiting = idleWaiters
             idleWaiters = []
@@ -729,6 +734,23 @@ final class HostedSession: LibraryDelegate {
                     let placed = if let rects { await self.engine.pageRectChanged(placement, rects: rects) } else { await self.engine.pageRectChanged(placement) }
                     self.drive(self.core.answer(id, ["placed": placed]))
                 }
+            case "start":
+                let bundle = args["bundle"] as? String ?? ""
+                startNow {
+                    let app = await self.engine.start(bundleId: bundle)
+                    self.drive(self.core.answer(id, ["started": app != nil]))
+                }
+            case "prepare":
+                // (At that window's launcher's page area, as the core checked it just now.)
+                guard let target = Self.hostTarget(args["target"]), let mw = held(int(args["window"])), let placement = mw.idlePlacement else {
+                    drive(core.answer(id, ["failed": HostStep.margin.rawValue, "why": "the core's prepare wasn't one"]))
+                    return
+                }
+                let space = (args["space"] as? NSNumber)?.uint64Value ?? 0
+                startNow {
+                    let result = await self.engine.prepare(target, in: placement, marginWindow: mw.number, marginSpace: space)
+                    self.drive(self.core.answer(id, Self.json(result)))
+                }
             default:
                 drive(core.answer(id, ["error": "not an engine operation"]))
             }
@@ -736,8 +758,10 @@ final class HostedSession: LibraryDelegate {
             let args = c["args"] as? JSONObject ?? [:], profile = args["profile"] as? String ?? ""
             switch c["name"] as? String {
             case "ensureLinked":
+                // (The launch's preparation: woken only while it can still happen, the core's `prepare_wanted`.)
+                let prepare = args["prepare"] as? Bool == true
                 startNow {
-                    let linked = await self.waker.linked(profile)
+                    let linked = await self.waker.linked(profile, wakeIf: prepare ? { self.core.prepareWanted } : nil)
                     self.drive(self.core.answer(id, ["linked": linked]))
                 }
             case "closeWoken":
@@ -749,19 +773,9 @@ final class HostedSession: LibraryDelegate {
             default:
                 drive(core.answer(id, ["error": "not the waker's"]))
             }
-        case "swift":
-            // (The flows of the parts not moved yet, docs/CORE-REFACTOR.md step 3's later commits.)
-            let args = c["args"] as? JSONObject ?? [:]
-            switch c["name"] as? String {
-            case "pagePicture":
-                let item = args["item"] as? String ?? ""
-                startNow {
-                    let picture = await self.pagePicture(of: item)
-                    self.drive(self.core.answer(id, ["picture": picture ?? NSNull()]))
-                }
-            default:
-                drive(core.answer(id, ["error": "not a swift flow"]))
-            }
+        case "done":
+            if let then = (c["then"] as? NSNumber).flatMap({ thens.removeValue(forKey: $0.uint64Value) }) { then() }
+            drive(core.answer(id, [:]))
         case "reply":
             if let to = (c["to"] as? NSNumber)?.uint64Value, let k = calls.removeValue(forKey: to) {
                 replied = true
@@ -787,8 +801,10 @@ final class HostedSession: LibraryDelegate {
         timer?.cancel()
         timer = nil
         timerAt = at
-        guard let at else { return }
+        // (A timer let go, its deadline dropped, never ticks: a cancelled sleep ends early, and its tick would move the
+        // core's time to a deadline still ahead.)
         timerGen += 1
+        guard let at else { return }
         let gen = timerGen
         timer = Task { [weak self] in
             guard let self else { return }
@@ -907,10 +923,6 @@ final class HostedSession: LibraryDelegate {
         case .wall?: return SessionCore.bits(Date().timeIntervalSince1970)
         case .cardRect?: return SessionCore.give(held(w)?.cardRect, out)
         case .hostedPage?: return SessionCore.give(held(w)?.hostedPlacement?.page, out)
-        case .settleHosting?: settleHosting()
-        case .leaveMarginPage?: if let win = held(w) { leaveMarginPage(win) }
-        case .clearElsewhere?: if let win = held(w), elsewhere[win.id] != nil { elsewhere[win.id] = nil; win.setElsewhere(nil, app: nil) }
-        case .forgetElsewhere?: forgetElsewhere(item: text())
         // (Margin's window made ready to host: a show's.)
         case .windowNumber?: return held(w).map { Int64($0.number) } ?? none
         case .windowFullScreen?: return held(w)?.isFullScreen == true ? 1 : 0
@@ -939,6 +951,15 @@ final class HostedSession: LibraryDelegate {
         case .setLoading?: held(w)?.setLoading(text(), app: SessionCore.text(a.b))
         case .setPaneLoading?: held(w)?.setPaneLoading(text(), label: SessionCore.text(a.b), app: SessionCore.text(a.c))
         case .setLoadingTabs?: held(w)?.setLoadingTabs((text() ?? "").split(separator: ",").compactMap { Int($0) })
+        case .setElsewhere?: held(w)?.setElsewhere(text(), app: SessionCore.text(a.b), picture: SessionCore.text(a.c))
+        case .setStartupStuck?: held(w)?.setStartupStuck(text())
+        case .clearCover?: held(w)?.cover(nil)
+        case .hasHostedPlacement?: return held(w)?.hostedPlacement != nil ? 1 : 0
+        case .hasIdlePlacement?: return held(w)?.idlePlacement != nil ? 1 : 0
+        case .preparesOutOfSight?: return engine.preparesOutOfSight ? 1 : 0
+        case .marginActive?: return marginActive() ? 1 : 0
+        case .activateMargin?: activateMargin()
+        case .engineShows?: return engine.shown != nil ? 1 : 0
         case nil: Diagnostics.warn("hosted: the core asked for port \(kind), which isn't one")
         }
         return 0
@@ -949,23 +970,14 @@ final class HostedSession: LibraryDelegate {
     private var seen: [Int: HostedWindow] = [:]
     private func held(_ id: Int?) -> HostedWindow? {
         guard let id else { return nil }
-        return window(id) ?? seen[id]
+        return window(id) ?? seen[id] ?? (opened?.id == id ? opened : nil)
     }
 
     // The Swift flows of the parts not moved yet, as the core's flows call them (session/mod.rs `Ports::swift`).
     private func swiftCall(_ call: String, _ a: JSONObject) -> Any? {
         let w = held(int(a["window"]))
         switch call {
-        case "settleHosting": settleHosting()
         case "uiSettings": return uiSettings() ?? NSNull()
-        case "startupRetry": startupRetry()
-        case "startupSkip": startupSkip()
-        case "openLauncher": openLauncher(windowId: int(a["window"]), settings: a["settings"] as? Bool == true)
-        case "leaveMarginPage": if let w { leaveMarginPage(w) }
-        case "clearElsewhere": if let w, elsewhere[w.id] != nil { elsewhere[w.id] = nil; w.setElsewhere(nil, app: nil) }
-        case "forgetElsewhere": forgetElsewhere(item: a["item"] as? String)
-        // (Part 5's: an item shown in another Margin window.)
-        case "showElsewhere": if let w, let item = a["item"] as? String { showElsewhere(item, in: w, picture: a["picture"] as? String) }
         // (Part 9's: a split's cut panes said again.)
         case "paneCuts": if let w { w.setPaneCuts(paneCutsJSON(shownList)) }
         default: Diagnostics.warn("hosted: the core asked for \(call), which isn't a Swift flow")
@@ -1383,198 +1395,75 @@ final class HostedSession: LibraryDelegate {
 
     // Asked by Tirth (2026-11-17): "open Margin and that's it, show a loader until the data is shown". As a browser
     // reopens its last tab: the first Margin window opened in a run shows the item selected in its space when Margin
-    // last quit (the library's `selected`, the newest if several), and nothing else of the page area first: called as
-    // the window is made, before its page loads, so its page's hello already says hosting and `loading` with the item's
-    // name (no launcher for a frame) and the sidebar has its row lit. The show itself waits for the window to be in full
-    // screen with its page area measured, then runs as any pick: an app's first open, or a web item (its browser made
-    // ready at launch if that got there first, else started now: the loader stays the 4-5 s a cold Safari takes).
-    // No selected item, or one that can't be hosted: the launcher, as before. A show that fails: the launcher.
-    // `defaults write com.unibox.margin MarginResumeLast -bool NO`: never (the launcher at every launch; the on-screen
-    // checks set it, so nothing of the person's is opened by them).
-    private(set) var resuming: Int? // the Margin window whose last item is being shown at launch (it keeps hosting meanwhile)
-    private var resumed = false
+    // last quit, behind the loader from its first frame; the start screen first while the default browser gets ready.
+    // The core's (core/session/start.rs `resume_last`); `defaults write com.unibox.margin MarginResumeLast -bool NO`:
+    // never (the launcher at every launch).
+    func resumeLast(_ w: HostedWindow) {
+        if opened == nil { opened = w } // (as given: held while the core resumes it or its start screen is up)
+        drive(core.input(["type": "windowOpened", "window": w.id]))
+    }
+    // The Margin window whose last item is being shown at launch (it keeps hosting meanwhile): the core's.
+    var resuming: Int? { field(.resuming) { $0.first?.i0 } }
+    // The window given to `resumeLast`, held as the Swift flow held it (`held`), let go once it's no longer resumed.
+    private var opened: HostedWindow?
 
     // ---- an item in another Margin window (Tirth, 2026-11-18) ----
 
-    // One Margin window hosts at a time. Another one's item stays on it as a card, faded ("… is in another window. Click to show it here.", the
-    // page's words); the window brought in front (`focused`, a click on it) takes the item back: the app's one window
-    // follows the window in use. Each window's item, by window.
-    private(set) var elsewhere: [Int: String] = [:]
-    private func showElsewhere(_ item: String, in w: HostedWindow, picture: String? = nil) {
-        guard let value = library.items().first(where: { $0.id == item })?.value else { return }
-        elsewhere[w.id] = item
-        let target = library.target(ofItem: item)
-        let name: String
-        let app: String
-        switch target {
-        case .app(let bundle, let n)?: name = appName(bundle) ?? n; app = bundle
-        default: name = (value["title"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? (value["url"] as? String) ?? "the page"; app = safariIdentifier
-        }
-        w.setElsewhere(String(name.prefix(120)), app: app, picture: picture)
-        note("Margin's window \(w.id): its item \(item) shown in another window now: its card\(picture != nil ? " with its page's picture" : ""), until it's in front again")
-    }
-    // A web item's page as its Safari window shows it now (the copy's `hostPicture`), or nil: not a web item, its copy
-    // not linked, no picture, or none within `pictureWait` (the move doesn't wait longer: the card alone then).
-    private func pagePicture(of item: String) async -> String? {
-        guard options.pictureWait > 0, let open = open[item], let p = open.profile, open.host == HostTarget.safariWindow(p).id,
-              let windowId = safariWindows[SafariKey(p)] else { return nil }
-        let first = FirstOf<String?>()
-        let links = links
-        return await withCheckedContinuation { (k: CheckedContinuation<String?, Never>) in
-            first.then = { k.resume(returning: $0) }
-            Task { @MainActor in
-                let (result, _) = await links.request(profile: p, "hostPicture", ["windowId": windowId, "itemId": item])
-                let data = result?["data"] as? String
-                first.give(data.flatMap { $0.hasPrefix("data:image/jpeg;base64,") || $0.hasPrefix("data:image/png;base64,") ? $0 : nil })
-            }
-            Task { @MainActor [wait = options.pictureWait] in
-                try? await Task.sleep(for: .seconds(wait))
-                first.give(nil)
-            }
-        }
+    // One Margin window hosts at a time. Another one's item stays on it as a card, faded; the window brought in front
+    // takes the item back (the core's, core/session/elsewhere.rs). Each window's item, by window.
+    var elsewhere: [Int: String] {
+        get { field(.elsewhere) { Self.intText($0) } }
+        set { setMap(.elsewhere, old: elsewhere, newValue) { CoreRow(i0: $0, s0: $1) } }
     }
     // A Margin window brought in front: its item from another window shown here again.
-    func focused(_ windowId: Int) {
-        guard let item = elsewhere[windowId], hostingWindow != windowId, let w = window(windowId) else { return }
-        guard library.items().contains(where: { $0.id == item }) else {
-            elsewhere[windowId] = nil
-            return w.setElsewhere(nil, app: nil)
-        }
-        requested[windowId] = item
-        onChange?()
-        let target = library.target(ofItem: item)
-        enqueue {
-            guard self.requested[windowId] == item, self.hostingWindow != windowId else { return }
-            await self.show(item, url: nil, target: target, windowId: windowId)
-            if self.requested[windowId] == item { self.requested[windowId] = nil }
-        }
-    }
-    // A Margin window closing while it hosts (its close button): only that window goes (Margin keeps running, its items
-    // stay open, tabs of their spaces). What it shows is parked first, while its Space is still there; `done` closes it.
-    // Not queued behind the session's own work: the engine takes it next.
+    func focused(_ windowId: Int) { drive(core.input(["type": "windowFocused", "window": windowId])) }
+    // A Margin window closing while it hosts (its close button): what it shows parked first, then `done` (it closes).
     func windowClosing(_ w: HostedWindow, then done: @escaping () -> Void) {
-        guard w.id == hostingWindow, engine.shown != nil else { return done() }
-        note("Margin's window \(w.id) closing while it hosts: the one shown parked first")
-        Task {
-            await self.engine.parkShown(why: "its Margin window closed")
-            done()
+        nextThen += 1
+        let then = nextThen
+        thens[then] = done
+        guard drive(core.input(["type": "windowClosing", "window": w.id, "then": then]))["reply"] as? Bool == true else {
+            thens[then] = nil
+            return done()
         }
     }
-
-    // A Margin window closed: what the session kept for it goes (its card, its item shown, asked for or to resume, its
-    // Margin page). It hosted: nothing hosts until another window shows something (parked already by `windowClosing`;
-    // now if that didn't get there in time). The window in front next takes its own item back (`focused`).
+    private var thens: [UInt64: () -> Void] = [:]
+    private var nextThen: UInt64 = 0
+    // A Margin window closed: what the session kept for it goes (the core's, its loading bar's too).
     func windowClosed(_ id: Int) {
-        note("Margin's window \(id) closed: its items stay open (parked)\(elsewhere[id].map { ", its card for \($0) gone" } ?? "")")
-        forgetElsewhere(windowId: id)
-        requested[id] = nil
-        shown[id] = nil
-        marginPages[id] = nil
-        resume[id] = nil
-        cycledAt[id] = nil
-        drive(core.input(["type": "loadingForget", "window": id, "standing": true]))
-        if hostingWindow == id {
-            hostingWindow = nil
-            if engine.shown != nil { Task { await self.engine.parkShown(why: "its Margin window closed") } }
-        }
-        refreshLoading()
-        drive(core.input(["type": "loadingForget", "window": id, "said": true]))
-        onChange?()
-    }
-
-    // A window gone, or its item closed: its card goes.
-    func forgetElsewhere(windowId: Int? = nil, item: String? = nil) {
-        for (w, i) in elsewhere where w == windowId || i == item {
-            elsewhere[w] = nil
-            window(w)?.setElsewhere(nil, app: nil)
-        }
+        drive(core.input(["type": "windowClosed", "window": id]))
     }
 
     // ---- the start (Tirth, 2026-11-18): the default browser first, behind "Getting you started" ----
 
-    // The person's default browser always starts with Margin, its window made ready out of sight, before the item a
-    // window showed last (an app or a page): ⌘T and a search work at once whatever that item was. Margin's window says
-    // "Getting you started" meanwhile, then that item's name while it opens. `waiting`: the preparation hasn't run;
-    // `preparing`: under way; `done`: ready, or not done (no browser Margin hosts, turned off, failed, the person picked
-    // something else first). Never held longer than `startupWait`.
-    enum Startup: Equatable { case waiting, preparing, done }
-    private(set) var startup = Startup.waiting
-    static let startupLabel = "Getting you started"
-    private var startupWaiting = false // a window's last item waits for the preparation (it wakes the browser's profile)
     // The start screen (Tirth, 2026-11-19): while the default browser gets ready, Margin's window is the start screen
-    // alone, the theme's loader over the whole window (no sidebar, no app's icon, no words), nothing of Margin's usable
-    // (its page ignores the keys, ⌘N opens no window). Held up, what's wrong is said there with Try again and Continue
-    // without Safari: still not ready after `startupWait`, or given up because the browser's extension didn't link.
-    private(set) var startupShown = false
-    private(set) var startupStuck: String? // what the start screen says is wrong now
-    private var startupFailure: String? // the preparation given up for a reason the person can fix (said on the screen)
-    private var startupSkipped = false // Continue without Safari
-    private(set) var startupRetries = 0 // Try again, each time
-    private var preparedSetting: String? // the default browser setting the preparation ran with (Try again runs it again)
-    static let startupSlow = "Safari is taking longer than usual to start."
-    static let startupNoLink = "Safari started, but Margin’s Safari extension didn’t connect. Check that Margin is turned on in Safari › Settings › Extensions."
+    // alone, nothing of Margin's usable; held up, what's wrong is said with Try again and Continue without Safari. The
+    // core's (core/session/start.rs); its state read here.
+    enum Startup: Equatable { case waiting, preparing, done }
+    var startup: Startup {
+        field(.start) { rows in rows.first?.s1.map { $0 == "preparing" ? .preparing : $0 == "done" ? .done : .waiting } ?? .waiting }
+    }
+    // (Typed: read per key press and menu check.)
+    var startupShown: Bool { core.startScreen }
+    var startupStuck: String? { field(.start) { $0.first?.s0 } }
+    var startupRetries: Int { field(.start) { $0.first?.i0 ?? 0 } }
+    static let startupLabel = SessionRules.constants["startupLabel"] as? String ?? ""
+    static let startupSlow = SessionRules.constants["startupSlow"] as? String ?? ""
+    static let startupNoLink = SessionRules.constants["startupNoLink"] as? String ?? ""
 
-    // The start screen's Try again: the preparation run again if it was given up, else waited for again (its limit anew).
-    func startupRetry() {
-        guard startupShown, startupStuck != nil else { return }
-        startupRetries += 1
-        note("the start screen: Try again (\(startupRetries))")
-        guard startup == .done, startupFailure != nil else { return }
-        startupFailure = nil
-        startup = .waiting
-        Task { await self.prepareBrowser(setting: self.preparedSetting) }
-    }
-
-    // The start screen's Continue without Safari: Margin usable now, the browser made ready when it can be (a web item
-    // opens it then).
-    func startupSkip() {
-        guard startupShown, startupStuck != nil, !startupSkipped else { return }
-        startupSkipped = true
-        note("the start screen: Continue without Safari")
-    }
-
-    // Until the browser is ready, Continue without Safari is picked, or another item is asked for: `startupWait`, then
-    // (still not ready) what's wrong said with the two choices, waited on as long as it takes; given up because its
-    // extension didn't link: said at once.
-    private func holdStartup(_ w: HostedWindow, last: String?) async {
-        var limit = options.startupWait
-        let moved = { last.map { self.requested[w.id] != $0 } ?? false }
-        while true {
-            _ = await wait(limit) { self.startup == .done || self.startupSkipped || moved() }
-            if startupSkipped || moved() || (startup == .done && startupFailure == nil) { break }
-            let why = startupFailure ?? Self.startupSlow
-            if startupStuck != why {
-                startupStuck = why
-                w.setStartupStuck(why)
-                note("the start screen held up: \(startupFailure == nil ? "the default browser not ready within \(Int(limit)) s" : "its extension didn't link"): Try again or Continue without Safari")
-            }
-            let retries = startupRetries
-            _ = await wait(.infinity) { self.startupSkipped || moved() || self.startupRetries != retries || (self.startup == .done && self.startupFailure == nil) }
-            if startupRetries != retries, !startupSkipped, !moved() {
-                startupStuck = nil
-                w.setStartupStuck(nil)
-                limit = options.startupWait
-            }
-        }
-        if startupStuck != nil { startupStuck = nil; w.setStartupStuck(nil) }
-    }
-    func preparationOver() {
-        guard startup != .done else { return }
-        startup = .done
-        onChange?()
-    }
+    // The start screen's Try again and Continue without Safari; the preparation over (ready, or not done).
+    func startupRetry() { drive(core.input(["type": "startupRetry"])) }
+    func startupSkip() { drive(core.input(["type": "startupSkip"])) }
+    func preparationOver() { drive(core.input(["type": "preparationOver"])) }
     static let resumeKey = "MarginResumeLast"
     static func resumesLast(setting: Any?) -> Bool { setting as? Bool != false }
 
-    // The item a Margin window showed last, of its space's items (the core's session/start.rs `last_item`: the one
-    // selected, the newest used if several, if it can be hosted); its target and the name its loader says (an app's
-    // own name first, when it has one).
+    // The item a Margin window showed last, of its space's items (the core's `last_item`), its target and the name its
+    // loader says.
     func lastItem(ofWindow id: Int) -> (item: String, target: ItemTarget, name: String)? {
-        let space = library.space(ofWindow: id) ?? library.spaces().first?.id
-        let items: [Any] = library.items(space: space).map { ["id": $0.id, "value": $0.value, "target": library.target(ofItem: $0.id)?.json as Any? ?? NSNull()] }
-        let out = SessionRules.call(["rule": "lastItem", "items": items])
-        guard let item = out["item"] as? String, let name = out["name"] as? String, let target = library.target(ofItem: item) else { return nil }
-        return (item, target, (out["app"] as? String).flatMap { appName($0) } ?? name)
+        guard let out = drive(core.input(["type": "lastItem", "window": id]))["reply"] as? JSONObject, let item = out["item"] as? String,
+              let name = out["name"] as? String, let target = ItemTarget(json: out["target"]) else { return nil }
+        return (item, target, name)
     }
 
     // The app whose icon the loader shows for an item (the core's `loader_app`).
@@ -1582,127 +1471,15 @@ final class HostedSession: LibraryDelegate {
         SessionRules.call(["rule": "loaderApp", "target": target.json])["app"] as? String
     }
 
-    func resumeLast(_ w: HostedWindow) {
-        guard !resumed, hostingWindow == nil, engine.shown == nil else { return }
-        resumed = true
-        // (MarginResumeLast NO: no item shown again, the start screen still: nothing's usable before the browser is.)
-        let last = options.resumesLast ? lastItem(ofWindow: w.id) : nil
-        let gate = options.preparesBrowser && startup != .done
-        if let last, case .margin(let page) = last.target, !gate {
-            // Margin's own page (Settings) shown last: drawn by the window itself from its page's first frame (its
-            // hello says it), nothing hosted, nothing to wait for.
-            marginPages[w.id] = page
-            marginOpen.insert(last.item)
-            shown[w.id] = last.item
-            w.setMarginPage(page)
-            note("Margin's window \(w.id): the item it showed last (\(last.item)), Margin's \(page) page, shown again")
-            onChange?()
-            return
-        }
-        guard last != nil || gate else { return }
-        resuming = w.id
-        hostingWindow = w.id
-        if let last { requested[w.id] = last.item }
-        w.setHosting(true)
-        if gate {
-            startupWaiting = true
-            startupShown = true
-            w.setShowing(Self.startupLabel, app: safariIdentifier, slow: true)
-            note("Margin's window \(w.id): \"\(Self.startupLabel)\" while the default browser starts\(last.map { ", then the item it showed last (\($0.item))" } ?? "")")
-        } else if let (item, target, name) = last {
-            w.setShowing(name, app: Self.loaderApp(target), slow: true)
-            note("Margin's window \(w.id): the item it showed last (\(item)) shown again, behind the loader from its first frame")
-        }
-        onChange?()
-        Task { @MainActor in
-            if gate {
-                // (Outside the session's queue: the preparation's own step is in it.)
-                await self.holdStartup(w, last: last?.item)
-                self.startupWaiting = false
-                self.startupShown = false
-                if self.startup != .done { self.note("the start screen left before the default browser was ready (Continue without Safari): the browser when it's ready") }
-            }
-            guard let (item, target, name) = last, self.requested[w.id] == item else {
-                // (No item to show again, or another picked meanwhile: the loader goes, its own show decides.)
-                self.resuming = nil
-                if last == nil { self.settleHosting() } else { w.setShowing(nil) }
-                return
-            }
-            if gate { w.setShowing(name, app: Self.loaderApp(target), slow: true) }
-            self.resumeShow(w, item: item, target: target)
-        }
-    }
-
-    private func resumeShow(_ w: HostedWindow, item: String, target: ItemTarget) {
-        enqueue {
-            defer {
-                self.resuming = nil
-                w.setShowing(nil)
-                // (Something else asked for meanwhile: its own show decides; else nothing shown is the launcher.)
-                if self.requested[w.id] == nil || self.requested[w.id] == item { self.requested[w.id] = nil; self.settleHosting() }
-            }
-            // (Something else asked for meanwhile ends the wait: its own show is next in line, not held up by this one.)
-            // (Margin's own page needs no page area to host into: drawn at once.)
-            let own: Bool = { if case .margin = target { return true }; return false }()
-            let ready = own ? true : await self.wait(self.options.prepareWindowWait) { (w.isFullScreen && w.hostedPlacement != nil) || self.requested[w.id] != item }
-            if self.overtaken(item, windowId: w.id) { return }
-            guard self.requested[w.id] == item else { return }
-            guard ready else {
-                // (Margin's window not up in time: the launcher for now, and the item hosted once the window is in full
-                // screen, as after macOS took it out: `enteredFullScreen`.)
-                if !w.isFullScreen { self.resume[w.id] = item }
-                return self.note("\(item): not shown at launch: Margin's window \(w.id) wasn't in full screen with its page area within \(Int(self.options.prepareWindowWait)) s\(w.isFullScreen ? "" : ": shown once it is")")
-            }
-            await self.show(item, url: nil, target: target, windowId: w.id)
-        }
-    }
-
-    // Margin's window hosts only while the engine shows something in it: nothing shown, its launcher in the page area
-    // again (after each of the session's steps, and the engine's events, once the engine is done). Not while its last
-    // item is still on its way at launch (`resuming`).
-    func settleHosting() {
-        guard engine.shown == nil, let id = hostingWindow, resuming != id else { return }
-        // (Another item asked for and not shown yet: its show is next and decides; no launcher for a frame in between.)
-        if let next = requested[id], next != shown[id] { return }
-        hostingWindow = nil
-        if marginPages[id] == nil { shown[id] = nil } // (Margin's own page shown there: still the one shown)
-        window(id)?.setHosted(nil)
-        window(id)?.cover(nil)
-        // (Hosting off before the loader's words go: words cleared on a card still loading draw "Opening…" for a frame.)
-        window(id)?.setHosting(false)
-        window(id)?.setLoading(nil)
-        window(id)?.setShowing(nil)
-        refreshLoading()
-        onChange?()
-    }
+    // Margin's window hosts only while the engine shows something in it (the core's `settle_hosting`).
+    func settleHosting() { drive(core.settle()) }
 
     // ---- the launcher asked for ----
 
-    // The palette's Settings or Archive in Margin's window (the UI's openLauncher). Settings (Tirth, 2026-11-20): its
-    // own tab, `margin://settings`, the space's one shown again or a new one (library.ts openMarginPage), drawn by
-    // Margin's window in its page area (`show`, ItemTarget.margin). Archive: the launcher in the page area, the item
-    // shown there parked (its row shows it again). Until 2026-11-19 refused while hosting, and nothing happened.
+    // The palette's Settings or Archive in Margin's window (the UI's openLauncher): the core's (`open_launcher`).
     func openLauncher(windowId: Int?, settings: Bool) {
-        guard let id = window(windowId)?.id else { return note("the launcher asked for: no Margin window") }
-        if settings {
-            let out = library.perform("openMarginPage", ["windowId": id, "page": "settings"])
-            return note("Margin's window \(id): Settings asked for\(out.ok ? "" : ", refused (\(out.error ?? "?"))")")
-        }
-        enqueue {
-            if self.engine.shown != nil, self.hostingWindow == id { await self.engine.parkShown(why: "the launcher asked for in Margin's window") }
-            self.settleHosting()
-            if let w = self.window(id) { self.leaveMarginPage(w) }
-            self.note("Margin's window \(id): its launcher in the page area")
-        }
-    }
-
-    // Margin's own page a window shows, gone: its launcher in the page area (nothing shown there now).
-    private func leaveMarginPage(_ w: HostedWindow) {
-        guard marginPages[w.id] != nil else { return }
-        marginPages[w.id] = nil
-        w.setMarginPage(nil)
-        if hostingWindow != w.id { shown[w.id] = nil }
-        onChange?()
+        let args: JSONObject = ["window": windowId ?? NSNull(), "settings": settings]
+        drive(core.input(["type": "call", "flow": "openLauncher", "args": args]))
     }
 
     // ---- closing ----
@@ -1713,80 +1490,11 @@ final class HostedSession: LibraryDelegate {
 
     // ---- the default browser made ready at launch ----
 
-    // Decided by Tirth (2026-11-16): the person's default browser (`DefaultBrowser`) is made ready
-    // in the background at Margin's launch, so the first web item is a switch-in plus its page load: started with no
-    // Dock icon if it isn't running (the person's running one used as it is, never restarted), its copy for the profile
-    // web items will use linked (the front Margin window's space's profile, else the default one), Margin's window asked
-    // of it (a blank page) and taken all the way to ready by the engine's early full screen, then parked out of sight
-    // (never seen on screen, in Mission Control or the Dock). Not possible out of sight (no early full screen, something
-    // shown): not prepared, said; its first use opens it as before. Another profile's window: on its first use, as before.
-    // Called by the shell once the library and the engine are up; it never delays Margin's own window.
+    // Decided by Tirth (2026-11-16): the person's default browser made ready in the background at Margin's launch, out
+    // of sight (the core's `prepare_browser`, its four steps). Called by the shell once the library and the engine are
+    // up; it never delays Margin's own window.
     func prepareBrowser(setting: String?) async {
-        guard options.preparesBrowser else { return preparationOver() }
-        preparedSetting = setting
-        startup = .preparing
-        let started = now()
-        let browser = DefaultBrowser.resolve(setting)
-        func skip(_ why: String) { note("browser not prepared: \(why)"); preparationOver() }
-        guard browser.name == "safari" else { return skip("\(browser.name) isn't hosted yet") }
-        guard engine.preparesOutOfSight else { return skip("the early full screen isn't available, so it can't be made ready out of sight") }
-        // 1. the browser started at once, beside Margin's own window going full screen, not after it (the real Mac,
-        // 2026-11-18: Margin's window took 2.7 s; Safari then takes ~1.3 s to its first window and 2.5–3 s to its
-        // extension whatever Margin's window does: step 0's timings, docs/ARCHITECTURE-PLAN.md).
-        let starting = Task { await self.engine.start(bundleId: browser.bundleId) }
-        // 2. a Margin window in full screen, its page area measured.
-        guard await wait(options.prepareWindowWait, { self.window(nil).map { $0.isFullScreen && $0.idlePlacement != nil } ?? false }), let w = window(nil) else {
-            return skip("no Margin window in full screen with its page area within \(Int(options.prepareWindowWait)) s")
-        }
-        let space = library.space(ofWindow: w.id) ?? library.spaces().first?.id
-        let spaceProfile = (library.spaces().first { $0.id == space }?.value["profile"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-        // 3. its copy linked (outside the session's and the engine's queues: the person's picks meanwhile aren't held up).
-        guard await starting.value != nil else { return skip("\(browser.bundleId) couldn't be started with no Dock icon") }
-        var p = resolve(spaceProfile)
-        // (A profile with no window is woken through Safari's menu only for a preparation that can still happen: nothing
-        // shown, nothing on its way, nothing asked for. 2026-11-17 14:05: woken 0.9 s after Maps was shown, the
-        // preparation then given up and the woken window left open over Maps.)
-        let wanted = { self.engine.shown == nil && (self.startupWaiting || (self.resuming == nil && self.requested.isEmpty)) }
-        var linked = await safariLinked(p, wakeIf: wanted)
-        // (One Margin can't open, its name unknown: the default profile made ready instead, never the start held up for
-        // it; its page says so when it's shown, `profileFallback`. 2026-11-18 23:02: four presses, 15 s, nothing.)
-        if !linked, unopenable.contains(p), p != Self.defaultSafariProfile {
-            note("browser: the space's Safari profile can't be opened (its name unknown): the default profile made ready instead")
-            p = Self.defaultSafariProfile
-            linked = await safariLinked(p, wakeIf: wanted)
-        }
-        guard linked else {
-            await closeWoken(p, why: " (its preparation given up)")
-            // (Said on the start screen while it's up: the person can turn the extension on, then Try again.)
-            if wanted(), startupShown { startupFailure = Self.startupNoLink }
-            return skip(wanted() ? "its extension didn't link" : "something is shown in Margin's window (its profile not woken for it)")
-        }
-        let target = HostTarget.safariWindow(p)
-        // 4. its window made ready out of sight, one at a time with the person's requests.
-        enqueue {
-            // (Given up below, a window opened to wake its profile is closed: it was only for this.)
-            @MainActor func skip(_ why: String) async { await self.closeWoken(p, why: " (its preparation given up)"); self.note("browser not prepared: \(why)"); self.preparationOver() }
-            guard !self.engine.isHosted(target.id) else { return await skip("its window is hosted already") }
-            guard self.engine.shown == nil else { return await skip("something is shown in Margin's window") }
-            guard let mw = self.window(w.id), let placement = mw.idlePlacement, let marginSpace = self.engine.fullScreenSpace(ofWindow: mw.number) else {
-                return await skip("Margin's window isn't in full screen with its page area")
-            }
-            let wasActive = self.marginActive()
-            self.preparingWindow = mw.id
-            self.preparingProfile = p
-            let t0 = self.now()
-            let result = await self.engine.prepare(target, in: placement, marginWindow: mw.number, marginSpace: marginSpace)
-            self.preparingWindow = nil
-            self.preparingProfile = nil
-            if wasActive, !self.marginActive() { self.activateMargin() }
-            switch result {
-            case .shown:
-                self.note("browser prepared in \(Int(((self.now() - started) * 1000).rounded())) ms (its window \(Int(((self.now() - t0) * 1000).rounded())) ms), parked out of sight")
-                self.preparationOver()
-            case .failed(let step, let why):
-                await skip("\(step.rawValue): \(why)")
-            }
-        }
+        _ = await call("prepareBrowser", ["setting": setting ?? NSNull()])
     }
     // The Margin window a browser's window is made ready over (covered by it), and its profile.
     private(set) var preparingWindow: Int? {
@@ -2197,17 +1905,5 @@ extension SafariRole {
         if name == "main" { self = .main; return }
         guard let role = SafariRole(suffix: Substring(name)) else { return nil }
         self = role
-    }
-}
-
-// The first of several answers, given once (a request raced against its time limit).
-@MainActor final class FirstOf<T> {
-    var then: ((T) -> Void)?
-    private var given = false
-    func give(_ value: T) {
-        guard !given, let then else { return }
-        given = true
-        self.then = nil
-        then(value)
     }
 }

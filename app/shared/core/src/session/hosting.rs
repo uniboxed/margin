@@ -221,7 +221,13 @@ impl Core {
 
     /// A profile's copy linked, woken through Safari's menu if it has no window (the Mac's SafariWaker).
     async fn ensure_linked(&self, p: &str) -> bool {
-        let answer = self.waker("ensureLinked", json!({ "profile": p })).await;
+        self.ensure_linked_for(p, false).await
+    }
+
+    /// The same for the launch's preparation (`prepare`): the waker's look is `prepare_wanted`, not `link_wanted`.
+    pub(crate) async fn ensure_linked_for(&self, p: &str, prepare: bool) -> bool {
+        let args = if prepare { json!({ "profile": p, "prepare": true }) } else { json!({ "profile": p }) };
+        let answer = self.waker("ensureLinked", args).await;
         answer.get("linked").and_then(Value::as_bool) == Some(true)
     }
 
@@ -408,6 +414,8 @@ impl Core {
             "safariFullScreen",
             "safariFocus",
             "applyLayout",
+            "prepareBrowser",
+            "openLauncher",
         ];
         if !FLOWS.contains(&flow) {
             return self.refused("call", &format!("no flow {flow:?}"));
@@ -471,6 +479,14 @@ impl Core {
                         let focused = s("focused");
                         c.apply_layout(window, &main, main_rect, extras, focused.as_deref(), split).await;
                     }
+                    Value::Null
+                }
+                "prepareBrowser" => {
+                    c.prepare_browser(s("setting")).await;
+                    Value::Null
+                }
+                "openLauncher" => {
+                    c.open_launcher(window, args.get("settings").and_then(Value::as_bool) == Some(true)).await;
                     Value::Null
                 }
                 _ => Value::Null,

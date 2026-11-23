@@ -836,3 +836,42 @@ fn a_drags_frame_allocates_nothing() {
     // SAFETY: the live page, freed once.
     unsafe { margin_page_free(page) };
 }
+
+#[test]
+fn the_start_screens_read_and_the_preparations_look_allocate_nothing() {
+    // (Step 3 commit 8: the start screen read per key press and menu check; the Safari waker's look for the launch's
+    // preparation, every 0.05 s while it links. The engine's `shown` asked through the typed port: nothing shown.)
+    extern "C" fn typed(_: *mut std::ffi::c_void, _: u32, _: *const MarginPortArgs, _: *mut MarginPortOut) -> i64 {
+        0
+    }
+    // SAFETY: a session over no library, with the typed port only; freed once.
+    let s = unsafe {
+        margin_session_new(std::ptr::null_mut(), std::ptr::null(), 0, std::ptr::null_mut(), None, None, Some(typed))
+    };
+    let (up, wanted) = (std::cell::Cell::new(0), std::cell::Cell::new(0));
+    let look = || {
+        for _ in 0..10 {
+            // SAFETY: the live session.
+            up.set(up.get() + usize::from(unsafe { margin_session_start_screen(s) }));
+            // SAFETY: as above.
+            wanted.set(wanted.get() + usize::from(unsafe { margin_session_prepare_wanted(s) }));
+        }
+    };
+    let n = allocations(look);
+    assert_eq!(
+        (n, up.get(), wanted.get()),
+        (0, 0, 10),
+        "the start screen's read and the preparation's look allocated {n} times"
+    );
+    wanted.set(0);
+    let set = br#"{"type":"state","set":{"requested":{"put":[[1,"t1"]]}}}"#;
+    let mut len = 0;
+    // SAFETY: the live session, the input's bytes; its answer freed.
+    unsafe {
+        margin_buffer_free(margin_session_input(s, set.as_ptr(), set.len(), std::ptr::null_mut(), &mut len), len)
+    };
+    let n = allocations(look);
+    assert_eq!((n, wanted.get()), (0, 0), "something asked for: not wanted ({n} allocations)");
+    // SAFETY: from margin_session_new, freed once.
+    unsafe { margin_session_free(s) };
+}

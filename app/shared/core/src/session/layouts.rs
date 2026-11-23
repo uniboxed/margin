@@ -729,14 +729,9 @@ impl Core {
             // as a card, faded, and takes it back once it's in front. A web item's page pictured first, while its
             // window still shows it: its card there is that, faded.)
             let item = self.shown_in(other);
-            let mut picture = Value::Null;
+            let mut picture = None;
             if let Some(item) = &item {
-                picture = self
-                    .swift_flow("pagePicture", json!({ "item": item }))
-                    .await
-                    .get("picture")
-                    .cloned()
-                    .unwrap_or(Value::Null);
+                picture = self.page_picture(item).await;
             }
             self.engine("parkShown", json!({ "why": "another Margin window hosts" })).await;
             self.edit(Field::Shown, |s| s.shown.remove(&other));
@@ -745,7 +740,7 @@ impl Core {
             self.ports.set_showing(was, None, None, false);
             self.ports.window_set_hosting(was, false);
             if let Some(item) = item {
-                self.swift("showElsewhere", json!({ "window": was, "item": item, "picture": picture }));
+                self.show_elsewhere(&item, was, picture.as_deref());
             }
         }
         // (This window's own card stays until it hosts (below): cleared before, its launcher was drawn in between.)
@@ -773,7 +768,7 @@ impl Core {
         let m = self.page_app_minimums();
         self.ports.set_app_minimums(w, &m);
         // (Its card, if it had one, goes now that it hosts: straight to the loader, never its launcher for a frame.)
-        self.swift("clearElsewhere", json!({ "window": w }));
+        self.clear_elsewhere(w);
         // (Asked to measure again at every look: a size the window took may not have been drawn yet.)
         let wait = self.options.borrow().page_wait;
         let measured = self

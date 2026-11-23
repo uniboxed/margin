@@ -128,6 +128,42 @@ fn the_sessions_calls_cost() {
     // SAFETY: the live session.
     assert!(unsafe { margin_session_idle(s) }, "each switch over");
     println!("a web tab switch (a library request, the show, the copy's hostShow, every port its JSON) {switch:.0} ns");
+    // (Commit 8's: the start screen read per key press, the preparation's look every 0.05 s while it links, hosting
+    // settled after an engine event, a Margin window brought in front with nothing to take back.)
+    let screen = per_call(1_000_000, || {
+        // SAFETY: the live session.
+        std::hint::black_box(unsafe { margin_session_start_screen(s) });
+    });
+    let look = per_call(100_000, || {
+        // SAFETY: the live session.
+        std::hint::black_box(unsafe { margin_session_prepare_wanted(s) });
+    });
+    let settle = per_call(100_000, || {
+        let mut n = 0;
+        // SAFETY: the live session.
+        take(unsafe { margin_session_settle(s, std::ptr::null_mut(), &mut n) }, n);
+    });
+    let focused = per_call(100_000, || {
+        input(r#"{"type":"windowFocused","window":1}"#);
+    });
+    extern "C" fn typed(_: *mut c_void, _: u32, _: *const MarginPortArgs, _: *mut MarginPortOut) -> i64 {
+        0
+    }
+    // SAFETY: no library, the typed port only (as the Mac's: the engine's read typed); freed below.
+    let t = unsafe {
+        margin_session_new(std::ptr::null_mut(), std::ptr::null(), 0, std::ptr::null_mut(), None, None, Some(typed))
+    };
+    let typed_look = per_call(1_000_000, || {
+        // SAFETY: the live session.
+        std::hint::black_box(unsafe { margin_session_prepare_wanted(t) });
+    });
+    // SAFETY: from margin_session_new, freed once.
+    unsafe { margin_session_free(t) };
+    println!(
+        "commit 8 (release): the start screen read {screen:.1} ns, the preparation's look {typed_look:.1} ns typed \
+         ({look:.0} ns with its engine read through the JSON port), hosting settled with something shown {settle:.0} ns \
+         (its engine read as JSON), a window in front {focused:.0} ns"
+    );
     println!(
         "session calls (release): a note {note:.0} ns, a field read {read:.0} ns, a tick with nothing due {tick:.0} ns, \
          a revision {rev:.1} ns, a whole navigate (an input, four ticks, two answers, one port) {navigate:.0} ns"

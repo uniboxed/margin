@@ -122,7 +122,6 @@ impl Exec {
     }
 
     /// A detached task (Swift's `Task {}`): polled after what's ready now, the task that spawned it first.
-    #[allow(dead_code)] // (the first flows with detached tasks come with parts 4 and 6)
     pub(crate) fn spawn(&self, fut: impl Future<Output = ()> + 'static) {
         let id = self.add(Box::pin(fut));
         self.wake(id, false);
@@ -275,7 +274,6 @@ impl Exec {
 }
 
 /// A leaf the executor wakes, and when what it waited for happened (`first_of`).
-#[allow(dead_code)] // (the first races come with parts 4 and 5: a picture against its time)
 pub(crate) trait Event: Future + Unpin {
     fn happened(&self) -> Option<u64>;
 }
@@ -380,7 +378,6 @@ impl Drop for Sleep<'_> {
 }
 
 /// Which of two came first.
-#[allow(dead_code)]
 #[derive(Debug, PartialEq)]
 pub(crate) enum Either<A, B> {
     A(A),
@@ -390,12 +387,10 @@ pub(crate) enum Either<A, B> {
 /// The first of two answers, given once (HostedSession's `FirstOf`: a request raced against its time limit). The
 /// other is let go: a command's later answer is ignored, a sleep's deadline dropped. When both came before the task
 /// was polled, the one that came first.
-#[allow(dead_code)]
 pub(crate) fn first_of<A: Event, B: Event>(a: A, b: B) -> FirstOf<A, B> {
     FirstOf { a: Some(a), b: Some(b) }
 }
 
-#[allow(dead_code)]
 pub(crate) struct FirstOf<A, B> {
     a: Option<A>,
     b: Option<B>,
@@ -434,4 +429,14 @@ impl<A: Event, B: Event> Future for FirstOf<A, B> {
             None => Poll::Pending,
         }
     }
+}
+
+/// A future polled once now and awaited later (Swift's `let t = Task { await op }` … `await t.value`): a command's
+/// first poll hands it out, started when the flow next suspends, its answer kept for the later await.
+pub(crate) async fn begin<F: Future + Unpin>(f: &mut F) {
+    std::future::poll_fn(|cx| {
+        let _ = Pin::new(&mut *f).poll(cx);
+        Poll::Ready(())
+    })
+    .await
 }

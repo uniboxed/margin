@@ -32,6 +32,9 @@ fn rule(req: &Object) -> Value {
             "pushForwarded": push::FORWARDED.iter().map(|(k, _)| *k).collect::<Vec<_>>(),
             "pushStanding": push::STANDING,
             "imageLimit": push::IMAGE_LIMIT,
+            "startupLabel": start::STARTUP_LABEL,
+            "startupSlow": start::STARTUP_SLOW,
+            "startupNoLink": start::STARTUP_NO_LINK,
         }),
         "resolve" => {
             let linked = strings(req.get("linked"));

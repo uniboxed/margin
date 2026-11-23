@@ -30,6 +30,7 @@ pub(super) fn pump(s: &Session, world: &World, first: Out, answer: &mut dyn FnMu
         for (id, c) in starts {
             seen.push(c.clone());
             let a = answer(&c);
+            engine_after(world, &c, &a);
             if matches!(c, Command::Perform { .. }) {
                 s.answer(id, a);
             } else {
@@ -46,6 +47,33 @@ pub(super) fn pump(s: &Session, world: &World, first: Out, answer: &mut dyn FnMu
         out = next;
     }
     seen
+}
+
+/// What the engine shows after an operation (its `shown`, read by the hosting's settle): what an open or show showed,
+/// nothing after a park; the rest leave it.
+pub(super) fn engine_after(world: &World, c: &Command, a: &Value) {
+    if let Command::Engine { op, .. } = c {
+        match op.as_str() {
+            "open" | "show" | "prepare" => {
+                if let Some(id) = a.get("shown").and_then(Value::as_str)
+                    && op != "prepare"
+                {
+                    *world.shown.borrow_mut() = Some(id.to_string());
+                }
+            }
+            "setLayout" => {
+                // (The layout's first result shown is the one shown: its main.)
+                let main = a.get("results").and_then(Value::as_array).and_then(|r| r.first());
+                if let Some(id) = main.and_then(|r| r.get(0)).and_then(Value::as_str)
+                    && main.and_then(|r| r.get(1)).and_then(|v| v.get("shown")).is_some()
+                {
+                    *world.shown.borrow_mut() = Some(id.to_string());
+                }
+            }
+            "parkShown" => *world.shown.borrow_mut() = None,
+            _ => {}
+        }
+    }
 }
 
 /// The usual answers: the engine's open shown, a copy's hostShow a tab.
@@ -71,6 +99,7 @@ pub(super) fn kinds(cs: &[Command]) -> Vec<String> {
             Command::Waker { op, .. } => format!("waker {op}"),
             Command::Swift { call, .. } => format!("swift {call}"),
             Command::Reply { .. } => "reply".into(),
+            Command::Done { .. } => "done".into(),
         })
         .collect()
 }
@@ -112,7 +141,7 @@ fn a_show_request_drawn_in_front_at_once_then_an_app_hosted() {
     assert_eq!(s.core().label("app:com.apple.Notes").as_deref(), Some("Notes"));
     let a = acts(&world);
     // (The loader with the app's name and icon, cleared once it's shown; the loading bar refreshed; the windows told;
-    // the hosting settled after the request.)
+    // the hosting settled after the request: the core's now, nothing to settle, nothing hosting.)
     assert_eq!(
         named(&a, "setShowing"),
         [json!(["setShowing", 1, "Notes", "com.apple.Notes", false]), json!(["setShowing", 1, null, null, false])]
@@ -120,7 +149,10 @@ fn a_show_request_drawn_in_front_at_once_then_an_app_hosted() {
     let order: Vec<String> = a.iter().map(|v| v[1].as_str().or(v[0].as_str()).unwrap_or("").to_string()).collect();
     let at = |n: &str| order.iter().position(|o| o == n).unwrap_or(usize::MAX);
     // (The loading bar refreshed before them is the core's now: nothing loading, no window told.)
-    assert!(at("changed") < at("settleHosting") && at("setLoadingTabs") == usize::MAX, "{order:?}");
+    assert!(
+        at("changed") < usize::MAX && at("setLoadingTabs") == usize::MAX && at("clearCover") == usize::MAX,
+        "{order:?}"
+    );
     assert!(s.idle());
 }
 
@@ -140,7 +172,8 @@ fn a_show_overtaken_before_it_started_is_skipped_and_a_failed_one_draws_the_one_
     assert_eq!(s.core().shown_in(1), None);
     assert_eq!(s.core().requested_in(1), None, "no longer asked for");
     let a = acts(&world);
-    assert_eq!(named(&a, "changed").len(), 3, "two asks, and the failure drawing the one before: {a:?}");
+    // (And the hosting settled after it: nothing shown, Margin's window not hosting, its launcher.)
+    assert_eq!(named(&a, "changed").len(), 4, "two asks, the failure drawing the one before, the settle: {a:?}");
     assert_eq!(s.input(&json!({ "type": "overtaken", "item": "x", "window": 1 })).reply, Some(json!(false)));
 }
 
@@ -323,7 +356,7 @@ fn closing_its_page_closed_the_next_one_shown_and_the_split_around_it_again() {
     );
     let seen = pump(&s, &world, out, &mut usual);
     // (The next item shown in window 1, then the split around it in window 2: window 1's parked first, pictured.)
-    assert_eq!(kinds(&seen), ["ask hostClose", "engine open", "swift pagePicture", "engine parkShown", "engine open"]);
+    assert_eq!(kinds(&seen), ["ask hostClose", "engine open", "engine parkShown", "engine open"]);
     assert_eq!(s.done()[0], "w1: closed");
     assert_eq!(s.core().open_item("w1"), None);
     // Clear today: each closed, a list of strings only.

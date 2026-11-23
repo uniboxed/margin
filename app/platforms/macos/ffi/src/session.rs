@@ -15,7 +15,11 @@
 //! - Typed reads: `margin_session_done` (the last 200 lines, JSON), `margin_session_idle`,
 //!   `margin_session_rev` (a field's revision: the facade reads it again only when it changed),
 //!   `margin_session_link_wanted` (the Safari waker's look, every 0.05 s while it waits: nothing allocated),
-//!   `margin_session_open_wanted` (the engine's, while a new app's window is awaited).
+//!   `margin_session_prepare_wanted` (its look for the launch's preparation), `margin_session_open_wanted` (the
+//!   engine's, while a new app's window is awaited), `margin_session_start_screen` (the start screen up: read per
+//!   key press).
+//! - `margin_session_settle`: hosting settled (HostedSession `settleHosting`, for the Swift flows of later parts and
+//!   the engine's events), answered as an input.
 //!
 //! Every function takes the object as a shared pointer: a call made inside another (a port's callback calling back
 //! in) only changes state and queues tasks. Nothing here panics on what it's given.
@@ -147,10 +151,6 @@ enum PortKind {
     Wall = 18,
     CardRect = 19,
     HostedPage = 30,
-    SettleHosting = 23,
-    LeaveMarginPage = 25,
-    ClearElsewhere = 28,
-    ForgetElsewhere = 29,
     // (Commit 9's: the loading bar's three.)
     SetLoading = 31,
     SetPaneLoading = 32,
@@ -164,6 +164,16 @@ enum PortKind {
     FullScreenSpace = 45,
     KnownAppMinimums = 46,
     SetAppMinimums = 47,
+    // (Commit 8's: Margin's windows' and the engine's for an item elsewhere and the start.)
+    SetElsewhere = 60,
+    SetStartupStuck = 61,
+    ClearCover = 62,
+    HasHostedPlacement = 63,
+    HasIdlePlacement = 64,
+    PreparesOutOfSight = 65,
+    MarginActive = 66,
+    ActivateMargin = 67,
+    EngineShows = 68,
 }
 
 const NONE: i64 = i64::MIN;
@@ -423,6 +433,44 @@ impl Ports for SwiftPorts {
         }
         self.ask(json!({ "port": "changed" }));
     }
+    fn engine_shows(&self) -> bool {
+        if let Some(c) = self.call {
+            return self.number(c, PortKind::EngineShows, None, false, [None; 3]) == 1;
+        }
+        self.ask(json!({ "port": "engineShown" })).get("host").is_some_and(Value::is_string)
+    }
+    fn set_elsewhere(&self, window: i64, label: Option<&str>, app: Option<&str>, picture: Option<&str>) {
+        if let Some(c) = self.call {
+            self.number(c, PortKind::SetElsewhere, Some(window), false, [label, app, picture]);
+            return;
+        }
+        self.ask(json!({ "port": "setElsewhere", "window": window, "label": label, "app": app, "picture": picture }));
+    }
+    fn set_startup_stuck(&self, window: i64, why: Option<&str>) {
+        if let Some(c) = self.call {
+            self.number(c, PortKind::SetStartupStuck, Some(window), false, [why, None, None]);
+            return;
+        }
+        self.ask(json!({ "port": "setStartupStuck", "window": window, "why": why }));
+    }
+    fn clear_cover(&self, window: i64) {
+        self.act(PortKind::ClearCover, "clearCover", window, false);
+    }
+    fn has_hosted_placement(&self, window: i64) -> bool {
+        self.act(PortKind::HasHostedPlacement, "hasHostedPlacement", window, false) == 1
+    }
+    fn has_idle_placement(&self, window: i64) -> bool {
+        self.act(PortKind::HasIdlePlacement, "hasIdlePlacement", window, false) == 1
+    }
+    fn prepares_out_of_sight(&self) -> bool {
+        self.act(PortKind::PreparesOutOfSight, "preparesOutOfSight", 0, false) == 1
+    }
+    fn margin_active(&self) -> bool {
+        self.act(PortKind::MarginActive, "marginActive", 0, false) == 1
+    }
+    fn activate_margin(&self) {
+        self.act(PortKind::ActivateMargin, "activateMargin", 0, false);
+    }
     fn woken_by_menu(&self, profile: &str) -> bool {
         if let Some(c) = self.call {
             return self.number(c, PortKind::WokenByMenu, None, false, [Some(profile), None, None]) == 1;
@@ -445,22 +493,7 @@ impl Ports for SwiftPorts {
         self.ask(json!({ "port": "log", "warn": warn, "text": text }));
     }
     fn swift(&self, call: &str, args: Value) -> Value {
-        // (The ones a show asks, typed; the rare ones by JSON.)
-        if let Some(c) = self.call {
-            let w = args.get("window").and_then(|w| json::int(Some(w)));
-            let item = args.get("item").and_then(Value::as_str);
-            let kind = match call {
-                "settleHosting" => Some(PortKind::SettleHosting),
-                "leaveMarginPage" => Some(PortKind::LeaveMarginPage),
-                "clearElsewhere" => Some(PortKind::ClearElsewhere),
-                "forgetElsewhere" => Some(PortKind::ForgetElsewhere),
-                _ => None,
-            };
-            if let Some(kind) = kind {
-                self.number(c, kind, w, false, [item, None, None]);
-                return Value::Null;
-            }
-        }
+        // (The rare ones left, by JSON: none a show asks.)
         self.ask(json!({ "port": "swift", "call": call, "args": args })).get("value").cloned().unwrap_or(Value::Null)
     }
     // (The preview card's, commit 7: rare, JSON.)
@@ -679,6 +712,19 @@ impl SwiftPorts {
         }
         let n = |i: usize| f64::from_bits(out.ints[i] as u64);
         Some(Rect::new(n(0), n(1), n(2), n(3)))
+    }
+
+    /// A typed port of one window and a flag (its JSON port by `name`: `{ port, window, on }` → `{ value }`), its number.
+    fn act(&self, kind: PortKind, name: &str, window: i64, on: bool) -> i64 {
+        if let Some(c) = self.call {
+            return self.number(c, kind, Some(window), on, [None; 3]);
+        }
+        let v = self.ask(json!({ "port": name, "window": window, "on": on }));
+        match v.get("value") {
+            Some(Value::Bool(b)) => i64::from(*b),
+            Some(n) => json::int(Some(n)).unwrap_or(NONE),
+            None => NONE,
+        }
     }
 
     /// A typed port's one text (none: it gave none).
@@ -983,6 +1029,40 @@ pub unsafe extern "C" fn margin_session_pinned(s: *const MarginSession, item: *c
         (Some(s), Some(i)) => s.pinned_or_favorite(i),
         _ => false,
     }
+}
+
+/// Whether the launch's preparation may still wake its profile (the Safari waker's look for it; false for a null
+/// session). Nothing allocated.
+///
+/// # Safety
+/// `s` from [`margin_session_new`] (or null), not freed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_session_prepare_wanted(s: *const MarginSession) -> bool {
+    session(s).is_some_and(Session::prepare_wanted)
+}
+
+/// Whether the start screen is up (nothing of Margin's usable: read per key press and menu check; false for a null
+/// session). Nothing allocated.
+///
+/// # Safety
+/// As [`margin_session_prepare_wanted`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_session_start_screen(s: *const MarginSession) -> bool {
+    session(s).is_some_and(Session::start_screen)
+}
+
+/// Hosting settled (HostedSession `settleHosting`) → the call's answer, as an input's.
+///
+/// # Safety
+/// As [`margin_session_tick`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_session_settle(
+    s: *const MarginSession,
+    status: *mut MarginSessionStatus,
+    out_len: *mut usize,
+) -> *mut u8 {
+    let Some(s) = session(s) else { return answer(&json!({ "error": "no session" }), out_len) };
+    give(&s.settle(), status, out_len)
 }
 
 /// Whether a new app's open for `item` in Margin window `window` is still wanted (false for a null session).

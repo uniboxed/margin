@@ -8598,3 +8598,81 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   1.29-1.35 µs; a switch the same (web tab 68-97 against 66-88 µs, app 74-120 against 69-94); a peek open with commit
   7's bench median 403-507 against 430-534 µs, best 265-307 against 253-303 (the card's layout now the core's whole,
   `prepare`'s ports typed). The app's checks: 2150 unit and 321 end-to-end pass.
+
+## Core refactor step 3, commit 8: an item shown in another Margin window and the start in the core (2026-11-23)
+
+- Moved (session/elsewhere.rs, start.rs; their Swift deleted): part 5's `showElsewhere` (the card's name: the app's,
+  else the title, else the address, 120 at most), `pagePicture` (the copy's `hostPicture` raced against `pictureWait`
+  with `first_of`, the Swift's rule: a JPEG or PNG data address, no 8 MiB cap, Tirth's answer 4), `focused`,
+  `windowClosing` (parked first, then Swift's `done`), `windowClosed`, `forgetElsewhere`; part 6's start screen
+  (`Startup`, `StartScreen`: its seven fields and the setting it ran with), `startupRetry`/`startupSkip`,
+  `holdStartup`, `preparationOver`, `lastItem`'s and `loaderApp`'s use, `resumeLast`, `resumeShow`, `settleHosting`,
+  `openLauncher`, `leaveMarginPage`, `prepareBrowser`'s four steps (the browser started at once and awaited later: a
+  command handed out when the flow next suspends, `begin`, as Swift's `let t = Task { … }` … `await t.value`). The
+  start screen's words are the core's (`STARTUP_LABEL`, `STARTUP_SLOW`, `STARTUP_NO_LINK`, read by Swift from the
+  rules' constants).
+- The interim `swift` calls the earlier commits left for these parts are gone, the core's flows calling its own: commit
+  5's `settleHosting`, `leaveMarginPage`, `clearElsewhere`, `forgetElsewhere`; commit 9's `startupRetry`,
+  `startupSkip`, `openLauncher` (the UI's request now the core's flow: the launcher's Settings edit a main-actor turn
+  later than the Swift's call made it, as commit 9's `app.open`); commit 6's `pagePicture` (a Swift command) and
+  `showElsewhere` in `prepare`, and its `clearElsewhere`. Left, not these parts': `uiSettings` (the profile source's
+  settings, part 13) and `paneCuts` (the engine's visible windows' cuts, Swift's list).
+- State moved: `elsewhere`, `resume` (also written by `leftFullScreen`, still Swift), `resuming`, and the start screen
+  (read only, one row); the facade reads them as typed rows. `startupShown` is typed (`margin_session_start_screen`,
+  0.5 ns, nothing allocated): the keys' gate reads it per key press, the menu per check.
+- Ports added (typed, numbered from 60, after commit 6's 40-47): `setElsewhere`, `setStartupStuck`, `clearCover`,
+  `hasHostedPlacement`, `hasIdlePlacement` (each read where the Swift read it, the `&&`s short-circuited the same),
+  `preparesOutOfSight`, `marginActive`, `activateMargin`, `engineShows` (the engine's `shown != nil`, allocation free);
+  commit 6's and 9's own used for the rest (`windowSetHosting`, `setHosted`, `windowFullScreen`, `windowNumber` and
+  `fullScreenSpace`, `setLoading`). Fields 24-27 (`elsewhere`, `resume`, `resuming`, `start`).
+  Commands: the engine's `start` and `prepare`, the waker's `ensureLinked` with `prepare` (its look then
+  `margin_session_prepare_wanted`, typed, nothing allocated: the preparation's own `wanted`), `Done` (a callback given
+  with an input). Inputs (JSON, rare): `windowOpened`, `windowFocused`, `windowClosing` (answered: later or now),
+  `windowClosed` (the loading bar's own of the window forgotten in it, commit 9's), `startupRetry`, `startupSkip`,
+  `preparationOver`, `lastItem` (a read); flows Swift calls: `prepareBrowser` (awaited), `openLauncher`. Hosting settled from the Swift flows of later parts and the engine's
+  events: `margin_session_settle`, answered as an input.
+- The window given to `resumeLast` is held by the facade while the core resumes it or its start screen is up, as the
+  Swift flow held it (a closed one is still told, as before).
+- Not moved, and why: the poll's sweep (`closeIdleCards` is part 4's, `closeIdlePaneWindows` reads part 3's layouts,
+  the restored windows' sweep is the waker's): the design's `poll` input comes with them.
+- Accepted differences:
+  - The picture's wait is on the session's clock (its `sleep`, a deadline), as every other wait; the Swift's was the
+    one on `Task.sleep` directly. The same in the app; a test's own sleep now paces it too.
+  - Order against a Swift task: a task the core enqueues during a run starts in that run, where Swift's `enqueue`
+    started it a main-actor turn later, and a Swift caller of a core flow (`prepareBrowser`'s) resumes a turn after the
+    flow returns (commit 5's hop). Seen only as when the harness's `prepareBrowser` caller says it's over and the
+    `onChange` it causes, never in what either flow does.
+  - As step 1's caps: the card's 120 characters are counted as Unicode scalars, Swift's as Characters: only a title
+    with combining marks past 120 differs.
+- A finding the design didn't have, fixed in the facade (commit 4's timer): a deadline dropped before it was due (the
+  picture's wait once the picture came) cancelled the one timer, whose cancelled sleep ended at once and still ticked
+  that deadline: the core's time jumped to it, so the sleeps after counted from a moment still ahead (the next
+  picture's wait 0.05 s longer, in the comparison). A timer let go is now never ticked. No flow before this one
+  dropped a deadline early.
+- Checked before the Swift went: the old Swift (refactor/core-session at f78d6598) and the new over the core, both
+  built whole with the unit tests' stand-ins and commit 5's driver extended: three Margin windows, closings mid-show
+  (parked first, then closed), the start screen held up, retried, skipped, a pick meanwhile, the preparation started,
+  given up (not out of sight, no window in time, not started, never linked), prepared, pictures of every kind racing
+  their wait, windows in and out of full screen and without a page area, the launcher, Settings last; the old Swift's
+  picture wait put on the session's clock and its losing wait let go, so the race is the virtual clock's in both. 720
+  vectors over 18 seeds (42,905 steps, 20,021 requests and asks, 11,889 engine opens, preparations and copy requests;
+  1,450 resumes, 2,630 preparations, 86 start screens held up, 694 window focuses, 546 closings, 557 cards, 68 of them
+  pictured, 740 picture asks, 921 launchers, 954 settles): 602 the same to the line, 114 the same but for when the
+  harness's `prepareBrowser` caller says it's over and the `onChange` around it (the hop above), 4 differ only where
+  the driver makes no order: sleepers due at the same virtual instant, the core's against the Swift's (commit 5's
+  class). Rerun on each new base: on commits 7 and 9, 270 vectors more over 9 seeds (16,011 steps), 231 the same, 37 the
+  same but for the hop, 2 ties of the same class; on commit 6 (the last), 270 over 9 seeds (16,141 steps), 230 the
+  same, 40 the same but for the hop, none different. The harness's breaks (31 of the core's flows, one at a time,
+  three runs at a time, 15 vectors of three seeds against the old Swift's output, the hop's lines left out and the
+  `onChange` lines counted): 20 of 31 caught on the first base, 18 of 31 on the last; 25 caught on one base or
+  another. The 6 never caught are paths the generated sequences seldom reach in that many vectors (a card's name
+  from the address, a window in front that already hosts, a closed window's resume, a window closed while it still
+  hosts with no closing first, the failure kept with no start screen up), or no break at all (Try again's limit read
+  again: the option didn't change meanwhile); each is pinned by the core's own tests (start_tests.rs).
+- The app's checks: 2152 unit and 321 end-to-end pass (a timing check that failed once under the harness's load
+  passed idle). The tests the design names are unchanged; the core's own pin each flow's shape through the re-entrant
+  adapter (elsewhere.rs, start_tests.rs).
+- Cost (release, ffi tests/session_cost.rs, the Mac shared with the harness): the start screen's read 0.5 ns and the
+  preparation's look 39 ns typed, neither allocating (no_alloc.rs); hosting settled 4-6 µs and a window in front 6 µs
+  with every port as JSON (the Mac's are typed); rerun quiet: 0.5 ns, 4.9 ns, 1.4 µs, 0.7 µs. Nothing per frame.
+  Swift: ~400 lines out, ~120 in.

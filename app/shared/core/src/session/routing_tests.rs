@@ -245,14 +245,17 @@ fn the_uis_requests_routed() {
         ui(&s, "peek.go", json!({ "windowId": 1, "query": " " }))["value"],
         json!({ "ok": false, "error": "no address" })
     );
+    // The launcher and the start screen's choices: the core's own flows (start.rs), no Swift asked.
     ui(&s, "openLauncher", json!({ "windowId": 1, "settings": 1 }));
     ui(&s, "startup.retry", json!({}));
-    let a = acts(&world);
-    assert_eq!(
-        named(&a, "swift").iter().map(|v| v[1].clone()).collect::<Vec<_>>(),
-        [json!("openLauncher"), json!("startupRetry")]
-    );
-    assert_eq!(named(&a, "swift")[0][2], json!({ "window": 1, "settings": true }));
+    assert!(named(&acts(&world), "swift").is_empty());
+    let out = s.tick(0.0);
+    let settings =
+        out.start.iter().find(|(_, c)| matches!(c, Command::Perform { action, .. } if action == "openMarginPage"));
+    let Some((id, Command::Perform { payload, .. })) = settings else { panic!("{:?}", out.start) };
+    assert_eq!(Value::Object(payload.clone()), json!({ "windowId": 1, "page": "settings" }));
+    s.answer(*id, json!({ "ok": true, "result": null, "error": null }));
+    s.tick(0.0);
     // The history's in the queue (navigate), an app's open at once (its flow's first part in the call).
     set(&s, json!({ "open": { "put": [["a", "safari:p", "p"]] } }));
     let out = s.input(&json!({ "type": "ui", "kind": "goBack", "payload": { "windowId": 1 } }));

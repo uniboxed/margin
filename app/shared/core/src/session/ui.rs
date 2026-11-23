@@ -182,13 +182,18 @@ impl Core {
                 self.navigate(kind, window);
                 return none();
             }
-            "startup.retry" | "startup.skip" => {
-                self.swift(if kind == "startup.retry" { "startupRetry" } else { "startupSkip" }, Value::Null);
+            "startup.retry" => {
+                self.startup_retry();
+                return none();
+            }
+            "startup.skip" => {
+                self.startup_skip();
                 return none();
             }
             "openLauncher" => {
                 let settings = json::flag(payload.get("settings")) == Some(true);
-                self.swift("openLauncher", json!({ "window": window, "settings": settings }));
+                let args = json!({ "window": window, "settings": settings }).as_object().cloned().unwrap_or_default();
+                self.call_flow(None, "openLauncher", args);
                 return none();
             }
             "addFavorite" => {

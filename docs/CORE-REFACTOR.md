@@ -1123,6 +1123,11 @@ HS:1474-1490, `forgetElsewhere` HS:1493-1498; wired SG:226-231.
 
 **FFI.** `{"type":"windowFocused"|"windowClosing"|"windowClosed","window"}` (rare); `windowClosing`'s `done` is a
 command answered when the park is over.
+*As built (commit 8):* `windowClosing` carries Swift's `then` and is answered at once (`reply`: called later, or close
+now); the `Done { then }` command calls it once the park is over. `prepare`'s move (HS:1037-1051) is commit 6's, still
+Swift here: it reaches the picture and the card through `pagePicture` (a flow it awaits) and `showElsewhere` (an
+input), interim until `prepare` is the core's. The picture's wait is a deadline on the session's clock (the Swift's was
+`Task.sleep` directly: the same in the app).
 
 **Must not change:** the card cleared only once the window hosts again (HS:1068: the card straight to the loader),
 the move never held for the picture (HS:1437-1440).
@@ -1162,6 +1167,15 @@ flows `resume_last`, `resume_show`, `hold_startup`, `prepare_browser`, `settle_h
 `{"type":"prepare","setting"}` (SG:219), `{"type":"poll","now"}` from `track` (SW:339, at the shell's schedule:
 1.5-2 s at rest), and a typed `margin_session_start_screen(s) -> bool` read by `holdsMenu` and the keys' gate
 (each key press).
+*As built (commit 8):* `startupRetry`, `startupSkip`, `preparationOver` and `lastItem` (a read) are inputs; the
+preparation is a flow its Swift caller awaits (`call` `prepareBrowser`), the launcher one it doesn't (`openLauncher`:
+its Settings edit answered in the same turn); `settleHosting` from the Swift flows of later parts and the engine's
+events is `margin_session_settle`; the waker's look for the preparation is its own typed call,
+`margin_session_prepare_wanted` (the engine's `shown` read through a typed port, `engineShows`), not a flag on
+`link_wanted`. The design's `poll` input isn't built: nothing of the poll's sweep is part 6's after all
+(`closeIdleCards` is part 4's, `closeIdlePaneWindows` reads part 3's layouts, the restored windows' sweep is the
+waker's); it comes with them. The browser's start is a command handed out when the flow next suspends and awaited
+later (exec.rs `begin`: Swift's `let t = Task { … }` … `await t.value`).
 
 **Must not change:** nothing usable before the browser is ready unless skipped (SG:322), the words said at once when
 the extension didn't link (HS:1805), the last item shown behind the loader from the window's first frame
@@ -1480,7 +1494,7 @@ until step 4 (open question 6).
 | 5 | Parts 1 and 2: the library's requests, `show`, `close`, `host`, the choices, the engine's window asks. **Done 2026-11-23** (step3/requests, two commits: the move, then Tirth's change 3; session/requests.rs, hosting.rs, items.rs, `ItemTarget(json:)` into target.rs, `DefaultBrowser` into choice.rs; 14 more fields the core's; the Swift of later parts through one `swift` port and a `Swift` command, interim; the notes through a `log` port; the comparison on generated sequences with overtaking, failures and re-entrance; a switch measured) | ~455 (+~335 of facade) | ~2,300 (a third tests) | a switch |
 | 6 | Parts 3 and 7: layouts, splits, the page area moving, the drag's typed path. **Done 2026-11-23** (step3/layouts, one commit, over commits 7 and 9: session/layouts.rs, page_area.rs, page/report.rs; commit 7's `layouts` and commit 9's `panesLaying`/`revealHeld` written by the core's flow, the card's layouts through it and commit 7's interim `applyLayout` command gone; the drag's frame typed end to end; the comparison on generated sequences with splits, refusals, no room, minimums, drags mid-show, the retry and the re-entrant page rect against each base; `live-resize` not measured: no screen suite on this branch) | ~490 (+~230 of facade and ports) | ~3,700 (a third tests) | `live-resize` |
 | 7 | Part 4: the card and Quick Tab. **Done 2026-11-23** (step3/card, one commit: card.rs's flows and `web_host`, `Card`, `cards`, `littleArcs` and part 3's `layouts` the core's fields, HostedPeek.swift the facade; the interim card entries of the `swift` port gone; a peek open measured) | ~350 (+~200: the facade, the ports, the fields' rows) | ~1,580 (a quarter tests) | a peek open |
-| 8 | Parts 5 and 6: elsewhere, the start, `resumeLast`, `settleHosting`, the launcher, the preparation | ~300 | ~900 | `idle-cost` |
+| 8 | Parts 5 and 6: elsewhere, the start, `resumeLast`, `settleHosting`, the launcher, the preparation. **Done 2026-11-23** (step3/start, two commits: the move, then Tirth's change 5; session/elsewhere.rs and start.rs's flows, the interim `swift` calls commits 5, 6 and 9 left for these parts gone (`uiSettings` and `paneCuts` not theirs, left); the poll's sweep not part 6's; the facade's timer fixed; `idle-cost` not measured: no screen suite on this branch, the start screen's idle wakes measured in the harness) | ~265 (385 out, 122 in) | ~1,600 (a third tests) | `idle-cost` |
 | 9 | Parts 8, 9, 10: the loading bar, the pushes and the mini player, `drawn`, the hello and the ops' routing, the UI's requests, `live_plan`. **Done 2026-11-23** (step3/routing, one commit: session/loading.rs, route.rs, ui.rs's requests and rows, page/said.rs, hello.rs; the push as its text from the link, `drawn`'s diff kept by the link object, the page's ops as their text; a push and a draw measured) | ~380 (~450 in: the typed facade, PageCore's said and hello) | ~2,600 (a third tests and measures) | a push, a draw |
 | 10 | Part 13 and the leftovers: `settingsAndIcons`, the facade trimmed to what T/ reads | ~40 | ~50 | a draw |
 

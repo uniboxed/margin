@@ -32,16 +32,17 @@ final class SessionCore {
     enum Field: UInt32 {
         case shown = 0, open, safariWindows, done, requested, hostingWindow, labels, showing, marginPages, marginOpen, cycledAt
         case safariTabs, safariMuted, safariAudio, preparingWindow, preparingProfile, requesting, made, cards, littleArcs, layouts, cardPages, panesLaying, revealHeld
+        case elsewhere, resume, resuming, start
     }
 
     // The typed ports by their numbers (margin-ffi session.rs `PortKind`).
     enum PortKind: UInt32 {
         case window = 0, windowIds, engineShown, isHosted, safariProfiles, linkEpoch, appName, appRuns, showsAlone, stopHidingWoken
         case windowIdsOf, setShowing, setMarginPage, push, changed, wokenByMenu, unopenable, log, wall, cardRect
-        case settleHosting = 23
-        case leaveMarginPage = 25
-        case clearElsewhere = 28, forgetElsewhere, hostedPage, setLoading, setPaneLoading, setLoadingTabs
+        case hostedPage = 30, setLoading, setPaneLoading, setLoadingTabs
         case windowNumber = 40, windowFullScreen, windowLayoutMode, hostedPlacement, setHosting, fullScreenSpace, knownAppMinimums, setAppMinimums
+        case setElsewhere = 60, setStartupStuck, clearCover, hasHostedPlacement, hasIdlePlacement, preparesOutOfSight, marginActive, activateMargin
+        case engineShows
     }
     // A typed port's "none".
     static let none = Int64.min
@@ -135,6 +136,7 @@ final class SessionCore {
     }
 
     func tick(_ due: Double) -> JSONObject { call { margin_session_tick(core, due, $0, $1) } }
+    func settle() -> JSONObject { call { margin_session_settle(core, $0, $1) } }
 
     // A page's click for a preview (the copy's `peekOpen`), typed: its id and address (nil: none), its time (0: none).
     func peekOpen(profile: String, window: Int?, id: String?, url: String?, notAfter: Double) -> JSONObject {
@@ -269,4 +271,7 @@ final class SessionCore {
         return (w < 0 ? nil : Int(w), f)
     }
     func openWanted(window: Int, item: String) -> Bool { KeysCore.bytes(item) { margin_session_open_wanted(core, Int64(window), $0, $1) } }
+    // The launch's preparation may still wake its profile (the waker's look for it); the start screen up (per key press).
+    var prepareWanted: Bool { margin_session_prepare_wanted(core) }
+    var startScreen: Bool { margin_session_start_screen(core) }
 }

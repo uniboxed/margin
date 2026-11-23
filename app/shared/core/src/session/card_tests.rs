@@ -28,6 +28,8 @@ fn hosted() -> (Session, Rc<World>, Rc<Shelf>) {
     *world.shown.borrow_mut() = Some("safari:s-default".into());
     world.card_rects.borrow_mut().insert(1, RECT);
     world.pages.borrow_mut().insert(1, Rect::new(260.0, 41.0, 1244.0, 933.0));
+    // (The engine shows the window Margin's window hosts: hosting settled after a flow keeps it, as in the app.)
+    *world.shown.borrow_mut() = Some("safari:s-default".into());
     (s, world, shelf)
 }
 

@@ -14,11 +14,14 @@
 //! ready, fresh, rect | null, hiddenBy | null, click | null]]` (`rect`: `[x, y, width, height]`), `littleArcs`
 //! `[[window, space]]`; `layouts` `[[window, main, mainRect | null, [[item, role, rect]…], focused, split | null]]`
 //! (part 3's: the core's layouts write it, the card's flows and the facade read it).
+//! Commit 8's (an item in another window, the start): `elsewhere` and `resume` `[[window, item]]`, `resuming`
+//! `[[window]]`, and the start screen `start` (read only: `[[startup, shown, stuck, retries]]`).
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{Value, json};
 
+use super::start::StartScreen;
 use crate::geometry::{Rect, cg};
 use crate::host::model::Role as HostRole;
 use crate::hosted_browser::Role;
@@ -206,10 +209,15 @@ pub enum Field {
     /// whose new pane keeps its loader after the engine's slow step (written by applyLayout, still Swift).
     PanesLaying = 22,
     RevealHeld = 23,
+    Elsewhere = 24,
+    Resume = 25,
+    Resuming = 26,
+    /// The start screen (read only).
+    Start = 27,
 }
 
 impl Field {
-    pub const COUNT: usize = 24;
+    pub const COUNT: usize = 28;
     const ALL: [Field; Field::COUNT] = [
         Field::Shown,
         Field::Open,
@@ -235,6 +243,10 @@ impl Field {
         Field::CardPages,
         Field::PanesLaying,
         Field::RevealHeld,
+        Field::Elsewhere,
+        Field::Resume,
+        Field::Resuming,
+        Field::Start,
     ];
     pub fn from_index(i: u32) -> Option<Field> {
         Self::ALL.get(i as usize).copied()
@@ -266,6 +278,10 @@ impl Field {
             Field::CardPages => "cardPages",
             Field::PanesLaying => "panesLaying",
             Field::RevealHeld => "revealHeld",
+            Field::Elsewhere => "elsewhere",
+            Field::Resume => "resume",
+            Field::Resuming => "resuming",
+            Field::Start => "start",
         }
     }
     pub fn of(name: &str) -> Option<Field> {
@@ -327,6 +343,14 @@ pub struct State {
     pub numbers: BTreeMap<String, i64>,
     pub items: BTreeMap<i64, String>,
     pub next_number: i64,
+    /// Each Margin window's item hosted in another window now (its card there).
+    pub elsewhere: BTreeMap<i64, String>,
+    /// Each Margin window's item to host again once it's back in full screen.
+    pub resume: BTreeMap<i64, String>,
+    /// The Margin window whose last item is being shown at launch, and whether the run's first window had its turn.
+    pub resuming: Option<i64>,
+    pub resumed: bool,
+    pub start: StartScreen,
 }
 
 /// One part of a row (an int as `json::int` reads it, a string, a number, a bool).
@@ -602,6 +626,13 @@ impl State {
                 self.panes_laying.iter().flat_map(|(w, m)| m.iter().map(move |(h, i)| json!([w, h, i]))).collect(),
             ),
             Field::RevealHeld => set_json(&self.reveal_held),
+            Field::Elsewhere => map_json(&self.elsewhere),
+            Field::Resume => map_json(&self.resume),
+            Field::Resuming => one_json(&self.resuming),
+            Field::Start => {
+                let st = &self.start;
+                json!([[st.startup.name(), st.shown, st.stuck, st.retries]])
+            }
         }
     }
 
@@ -636,7 +667,10 @@ impl State {
             Field::CardPages => Some(1),
             Field::RevealHeld => Some(set_edit(&mut self.reveal_held, edit)),
             Field::PanesLaying => Some(panes_edit(&mut self.panes_laying, edit)),
-            Field::Shown | Field::Open | Field::SafariWindows | Field::Done => None,
+            Field::Elsewhere => Some(map_edit(&mut self.elsewhere, edit)),
+            Field::Resume => Some(map_edit(&mut self.resume, edit)),
+            Field::Resuming => Some(one_edit(&mut self.resuming, edit)),
+            Field::Shown | Field::Open | Field::SafariWindows | Field::Done | Field::Start => None,
         };
         if let Some(bad) = bad {
             return (Some(f), bad);
@@ -703,6 +737,8 @@ impl State {
 /// (`s0`) and `made` (`i0`); the one values `hostingWindow`, `preparingWindow` (`i0`), `preparingProfile` (`s0`);
 /// commit 7's `cards` (`s0` profile, `s1` its parts as their JSON row's text), `littleArcs` (`i0`, `s0` space) and
 /// `layouts` (`i0` window, `s0` its parts as JSON text); `cardPages` (`s0` profile, `s1` address, `b0` fresh: read only).
+/// `elsewhere` and `resume` (`i0` the window, `s0` the item), `resuming` (`i0`); the start screen's one row, read
+/// only (`s0` stuck, `s1` the startup's name, `b0` shown, `i0` retries).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Row<'a> {
     pub i0: i64,
@@ -770,6 +806,13 @@ impl State {
                 }
             }
             Field::RevealHeld => self.reveal_held.iter().for_each(|w| emit(&Row { i0: *w, ..d })),
+            Field::Elsewhere => self.elsewhere.iter().for_each(|(w, i)| emit(&Row { i0: *w, s0: Some(i), ..d })),
+            Field::Resume => self.resume.iter().for_each(|(w, i)| emit(&Row { i0: *w, s0: Some(i), ..d })),
+            Field::Resuming => self.resuming.iter().for_each(|w| emit(&Row { i0: *w, ..d })),
+            Field::Start => {
+                let st = &self.start;
+                emit(&Row { i0: st.retries, b0: st.shown, s0: st.stuck.as_deref(), s1: Some(st.startup.name()), ..d })
+            }
         }
     }
 
@@ -814,6 +857,12 @@ impl State {
                 }
                 Ok(())
             }
+            Field::Elsewhere => edit_map(&mut self.elsewhere, r.i0, del, || need(s0.clone())),
+            Field::Resume => edit_map(&mut self.resume, r.i0, del, || need(s0.clone())),
+            Field::Resuming => {
+                self.resuming = (!del).then_some(r.i0);
+                Ok(())
+            }
             Field::HostingWindow => {
                 self.hosting_window = (!del).then_some(r.i0);
                 Ok(())
@@ -837,7 +886,7 @@ impl State {
                 let cells: Value = serde_json::from_str(r.s0.ok_or(())?).map_err(|_| ())?;
                 <Layout as Rest>::read(cells.as_array().ok_or(())?).ok_or(())
             }),
-            Field::Done | Field::CardPages => Err(()),
+            Field::Done | Field::CardPages | Field::Start => Err(()),
         })();
         done.is_ok()
     }

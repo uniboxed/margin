@@ -26,6 +26,7 @@
 
 pub mod card;
 pub mod choice;
+pub mod elsewhere;
 mod exec;
 pub mod host_id;
 mod hosting;
@@ -61,6 +62,7 @@ pub use hosting::HostTarget;
 pub use items::Split;
 pub use page_area::{Frame, PageRect};
 pub use requests::{By, Request};
+pub use start::{STARTUP_LABEL, STARTUP_NO_LINK, STARTUP_SLOW, StartScreen, Startup};
 pub use state::{Card, Extra, Field, Layout, OpenItem, Row, State};
 pub use target::Target;
 pub use ui::LiveRow;
@@ -83,6 +85,8 @@ pub trait Ports {
     fn window_ids(&self) -> Vec<i64>;
     /// The engine's host shown in Margin's Space (`HostedEngine.shown`).
     fn engine_shown(&self) -> Option<String>;
+    /// Whether the engine shows one (`HostedEngine.shown != nil`: the Safari waker's look, nothing allocated).
+    fn engine_shows(&self) -> bool;
     /// Whether the engine hosts it (`HostedEngine.isHosted`).
     fn is_hosted(&self, host: &str) -> bool;
     /// The Safari copies linked now (`HostedLinks.safariProfiles`).
@@ -116,6 +120,20 @@ pub trait Ports {
     fn set_loading_tabs(&self, window: i64, numbers: &[i64]);
     /// What the windows draw changed (HostedSession `onChange`).
     fn changed(&self);
+    /// A Margin window's card for its item hosted in another window (`HostedWindow.setElsewhere`; None: no card).
+    fn set_elsewhere(&self, window: i64, label: Option<&str>, app: Option<&str>, picture: Option<&str>);
+    /// What the start screen says is wrong now (`HostedWindow.setStartupStuck`; None: nothing).
+    fn set_startup_stuck(&self, window: i64, why: Option<&str>);
+    /// None of the engine's windows under a Margin window (`cover(nil)`); its page area measured while hosting and at
+    /// its launcher (`hostedPlacement`, `idlePlacement` there or not: nothing kept for them).
+    fn clear_cover(&self, window: i64);
+    fn has_hosted_placement(&self, window: i64) -> bool;
+    fn has_idle_placement(&self, window: i64) -> bool;
+    /// The engine can make a window ready with nothing seen (`preparesOutOfSight`).
+    fn prepares_out_of_sight(&self) -> bool;
+    /// Margin the active app (`marginActive`), and made so again (`activateMargin`).
+    fn margin_active(&self) -> bool;
+    fn activate_margin(&self);
     /// The Safari waker's: a profile woken through Safari's menu (`wokenByMenu[p] != nil`), and one its menu has no
     /// item for (`unopenable`).
     fn woken_by_menu(&self, profile: &str) -> bool;
@@ -123,10 +141,8 @@ pub trait Ports {
     /// A line for the app's log (Diagnostics), said at once.
     fn log(&self, warn: bool, text: &str);
     /// The Swift flows of the parts not moved yet (step 3's later commits), called synchronously by name, gone as each
-    /// part moves: `settleHosting`, `leaveMarginPage` `{ window }`, `clearElsewhere` `{ window }`,
-    /// `forgetElsewhere` `{ item }`; commit 9's: `uiSettings` → the settings object (the profile source's),
-    /// `startupRetry`, `startupSkip`, `openLauncher` `{ window, settings }`; part 5's `showElsewhere` `{ window, item,
-    /// picture }`; part 9's `paneCuts` `{ window }` (its cut panes said again).
+    /// part moves: commit 9's `uiSettings` → the settings object (the profile source's); part 9's `paneCuts`
+    /// `{ window }` (its cut panes said again).
     fn swift(&self, call: &str, args: Value) -> Value;
     /// Where a Margin window's page draws the preview card's page (the theme's `<m-preview-page>`,
     /// `HostedWindow.cardRect`), None: none drawn. The window as the flow had it.
@@ -207,17 +223,22 @@ pub enum Command {
     /// `{ failed, why }`, `parkShown` `{ why }`, `close` `{ host }`, `show` `{ host }` → a result as `open`'s,
     /// `setLayout` `{ main, mainRect, extras: [{ target, role, rect }], focused, placement, window, space }` →
     /// `{ results: [[host, result, said]] }` (`said`: the result as the Swift writes it), `focusPages` and
-    /// `toolbarsRest` `{ hosts }`, `pageRectChanged` `{ placement, rects? }` → `{ placed }`): answered when it's over.
+    /// `toolbarsRest` `{ hosts }`, `pageRectChanged` `{ placement, rects? }` → `{ placed }`, `start` `{ bundle }` → `{ started }`,
+    /// `prepare` `{ target, window, space }` → as `open`'s, at that window's launcher's page area): answered when it's
+    /// over.
     Engine { op: String, args: Object },
     /// The Safari waker's (Safari's own window mechanics, the Mac's): `ensureLinked` `{ profile }` → `{ linked }`
     /// (woken through Safari's menu if it has no window, `margin_session_link_wanted` read at each look),
-    /// `closeWoken` `{ profile, except, why }`.
+    /// `closeWoken` `{ profile, except, why }`. (The launch's preparation's `ensureLinked` says `prepare`: its look
+    /// is `margin_session_prepare_wanted`.)
     Waker { op: String, args: Object },
-    /// A Swift flow of a part not moved yet (interim): part 5's `pagePicture` `{ item }` → `{ picture }`.
+    /// A Swift flow of a part not moved yet (interim): none is left since commit 8 (the picture the core's own).
     Swift { call: String, args: Object },
     /// The answer to a Swift caller (an engine's ask, a Swift flow's call of one of these): its continuation resumed,
     /// and the run goes on once that caller had its turn (the next main-actor turn).
     Reply { to: u64, value: Value },
+    /// A Swift callback given with an input (a closing window's `done`), called now: answered at once.
+    Done { then: u64 },
 }
 
 impl Command {
@@ -234,6 +255,7 @@ impl Command {
             Command::Waker { op, args } => json!({ "op": "waker", "id": id, "name": op, "args": args }),
             Command::Swift { call, args } => json!({ "op": "swift", "id": id, "name": call, "args": args }),
             Command::Reply { to, value } => json!({ "op": "reply", "id": id, "to": to, "value": value }),
+            Command::Done { then } => json!({ "op": "done", "id": id, "then": then }),
         }
     }
 }
@@ -335,6 +357,14 @@ pub struct Options {
     pub full_screen_wait: f64,
     pub page_wait: f64,
     pub refit_retry_after: f64,
+    /// A web item's picture for its card in the other window: asked before its window leaves, never waited for longer.
+    pub picture_wait: f64,
+    /// At launch: the item a window showed last shown again; the default browser made ready first, the start screen
+    /// held this long before it says it's taking longer; a Margin window in full screen with its page area this soon.
+    pub resumes_last: bool,
+    pub prepares_browser: bool,
+    pub startup_wait: f64,
+    pub prepare_window_wait: f64,
 }
 
 impl Default for Options {
@@ -348,6 +378,11 @@ impl Default for Options {
             full_screen_wait: 6.0,
             page_wait: 3.0,
             refit_retry_after: 1.5,
+            picture_wait: 0.4,
+            resumes_last: true,
+            prepares_browser: true,
+            startup_wait: 15.0,
+            prepare_window_wait: 30.0,
         }
     }
 }
@@ -355,6 +390,7 @@ impl Default for Options {
 impl Options {
     fn read(v: &Value, was: &Options) -> Options {
         let n = |k: &str, was: f64| json::num(v.get(k)).unwrap_or(was);
+        let b = |k: &str, was: bool| v.get(k).and_then(Value::as_bool).unwrap_or(was);
         Options {
             every: n("every", was.every),
             link_say_every: n("linkSayEvery", was.link_say_every),
@@ -366,6 +402,11 @@ impl Options {
             full_screen_wait: n("fullScreenWait", was.full_screen_wait),
             page_wait: n("pageWait", was.page_wait),
             refit_retry_after: n("refitRetryAfter", was.refit_retry_after),
+            picture_wait: n("pictureWait", was.picture_wait),
+            resumes_last: b("resumesLast", was.resumes_last),
+            prepares_browser: b("preparesBrowser", was.prepares_browser),
+            startup_wait: n("startupWait", was.startup_wait),
+            prepare_window_wait: n("prepareWindowWait", was.prepare_window_wait),
         }
     }
 }
@@ -452,6 +493,32 @@ pub enum Input {
         window: i64,
     },
     AppMinimumsChanged,
+    /// A Margin window made, before its page loads (the first of a run: the item it showed last, the start screen).
+    WindowOpened {
+        window: i64,
+    },
+    /// A Margin window brought in front (its item from another window shown here again).
+    WindowFocused {
+        window: i64,
+    },
+    /// A Margin window closing (its close button), `then` Swift's `done`: answered in `reply`, true when it's called
+    /// later (what it shows parked first), false: close it now.
+    WindowClosing {
+        window: i64,
+        then: u64,
+    },
+    /// A Margin window closed.
+    WindowClosed {
+        window: i64,
+    },
+    /// The start screen's Try again and Continue without Safari; the preparation over (ready, or not done).
+    StartupRetry,
+    StartupSkip,
+    PreparationOver,
+    /// The item a Margin window showed last (a read: `reply` `{ item, name, target }`, or null).
+    LastItem {
+        window: i64,
+    },
 }
 
 impl Input {
@@ -505,6 +572,17 @@ impl Input {
                 Ok(Input::RefreshPaneMinimums { window: swift_int(o.get("window")).ok_or("no window")? })
             }
             "appMinimumsChanged" => Ok(Input::AppMinimumsChanged),
+            "windowOpened" => Ok(Input::WindowOpened { window: swift_int(o.get("window")).ok_or("no window")? }),
+            "windowFocused" => Ok(Input::WindowFocused { window: swift_int(o.get("window")).ok_or("no window")? }),
+            "windowClosing" => Ok(Input::WindowClosing {
+                window: swift_int(o.get("window")).ok_or("no window")?,
+                then: o.get("then").and_then(Value::as_u64).ok_or("no then")?,
+            }),
+            "windowClosed" => Ok(Input::WindowClosed { window: swift_int(o.get("window")).ok_or("no window")? }),
+            "startupRetry" => Ok(Input::StartupRetry),
+            "startupSkip" => Ok(Input::StartupSkip),
+            "preparationOver" => Ok(Input::PreparationOver),
+            "lastItem" => Ok(Input::LastItem { window: swift_int(o.get("window")).ok_or("no window")? }),
             other => Err(format!("{other:?} isn't an input")),
         }
     }
@@ -711,6 +789,25 @@ impl Session {
         self.0.done.borrow().iter().cloned().collect()
     }
 
+    /// Margin's window hosts only while the engine shows something in it (HostedSession `settleHosting`, called by
+    /// the Swift flows of later parts and the engine's events).
+    pub fn settle(&self) -> Out {
+        self.0.call(false, |c| {
+            c.settle_hosting();
+            (None, None)
+        })
+    }
+
+    /// The start screen is up: nothing of Margin's usable (read per key press and menu check: nothing allocated).
+    pub fn start_screen(&self) -> bool {
+        self.0.state.try_borrow().is_ok_and(|s| s.start.shown)
+    }
+
+    /// The launch's preparation may still wake its profile (the Safari waker's look, every 0.05 s: nothing allocated).
+    pub fn prepare_wanted(&self) -> bool {
+        self.0.prepare_wanted()
+    }
+
     /// Nothing enqueued is left to do.
     pub fn idle(&self) -> bool {
         self.0.exec.idle()
@@ -860,6 +957,19 @@ impl Core {
             Input::ForgetInLayouts { host } => self.forget_in_layouts(&host),
             Input::RefreshPaneMinimums { window } => self.refresh_pane_minimums(window),
             Input::AppMinimumsChanged => self.app_minimums_changed(),
+            Input::WindowOpened { window } => self.resume_last(window),
+            Input::WindowFocused { window } => self.focused(window),
+            Input::WindowClosing { window, then } => return (Some(json!(self.window_closing(window, then))), None),
+            Input::WindowClosed { window } => self.window_closed(window),
+            Input::StartupRetry => self.startup_retry(),
+            Input::StartupSkip => self.startup_skip(),
+            Input::PreparationOver => self.preparation_over(),
+            Input::LastItem { window } => {
+                let last = self
+                    .last_item_of(window)
+                    .map(|(item, target, name)| json!({ "item": item, "name": name, "target": target.json() }));
+                return (Some(last.unwrap_or(Value::Null)), None);
+            }
         }
         (None, None)
     }
@@ -949,11 +1059,6 @@ impl Core {
 
     pub(crate) async fn waker(&self, op: &str, args: Value) -> Value {
         let command = Command::Waker { op: op.to_string(), args: object(args) };
-        self.exec.command(command, false).await
-    }
-
-    pub(crate) async fn swift_flow(&self, call: &str, args: Value) -> Value {
-        let command = Command::Swift { call: call.to_string(), args: object(args) };
         self.exec.command(command, false).await
     }
 
