@@ -55,6 +55,25 @@ pub struct MarginPlacement {
     pub display: MarginRect,
 }
 
+/// A size in points (a window's minimum).
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct MarginSize {
+    pub width: f64,
+    pub height: f64,
+}
+
+impl From<MarginSize> for Size {
+    fn from(s: MarginSize) -> Self {
+        Size::new(s.width, s.height)
+    }
+}
+impl From<Size> for MarginSize {
+    fn from(s: Size) -> Self {
+        MarginSize { width: s.width, height: s.height }
+    }
+}
+
 impl From<MarginRect> for Rect {
     fn from(r: MarginRect) -> Self {
         Rect::new(r.x, r.y, r.width, r.height)

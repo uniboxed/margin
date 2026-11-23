@@ -340,7 +340,6 @@ final class HostEngine {
         // The narrowest its window was seen holding in its tile (a rect it followed): with no minimum said by its tile, the
         // one it's taken to have once it leaves a narrower one (the first rect it didn't take).
         var narrowestHeld: CGFloat? { get { model.real(handle, .narrowestHeld).map { CGFloat($0) } } set { model.setReal(handle, .narrowestHeld, newValue.map { Double($0) }) } }
-        var minUnreadSaid = false
         // Its role and rect in Margin's page area as it was last laid out (docs/PEEK-SPLIT.md §1): main at the page area
         // (nil) unless a layout gave it a card's or a pane's rect (`setLayout`).
         var role: HostRole { get { HostRole(model: model.int(handle, .role)) } set { model.setInt(handle, .role, newValue.model) } }
@@ -4561,7 +4560,7 @@ final class HostEngine {
     private var livePage: CGRect?
     // A pane's window's minimum as it's laid out now: its own as read (never its app's narrowest: a tile narrower than its
     // window's minimum now makes it leave the tile), else its app's known one before any of its windows was read.
-    private func paneMinimum(_ host: Host) -> CGSize? { host.minSize ?? appMinimum(appKey(host.target), pid: host.pid) }
+    private func paneMinimum(_ host: Host) -> CGSize? { minimum(host) }
     // A cut pane's sides (docs/PEEK-SPLIT.md §4b): each one with part of its window hidden, which its arrow slides into its
     // pane (its other alignment along that axis: never held within the display). None that would put its window over
     // a cut pane whose own window lies over this pane (two panes each over the other's: no order shows both). Nil: not
@@ -4664,7 +4663,7 @@ final class HostEngine {
     // sidebar, never below its minimum: the UI clamps first, §4).
     private func belowMinimum(_ host: Host, _ rect: CGRect? = nil) -> Bool {
         // (A split's pane never is: its window is cut, `frame`. A card only.)
-        guard host.mode != .window, host.role == .card, let m = host.minSize ?? appMinimum(appKey(host.target), pid: host.pid), let r = rect ?? host.rect else { return false }
+        guard host.mode != .window, host.role == .card, let m = minimum(host), let r = rect ?? host.rect else { return false }
         return r.width < m.width - options.tolerance || r.height < m.height - options.tolerance
     }
 
@@ -4674,8 +4673,8 @@ final class HostEngine {
     // doesn't exist yet. Now each app's minimum, as its tile said it (`learnMinimum`: Safari's from any of its windows),
     // is kept per app and per version of it, in minimums.json beside routes.json (as the routes are, so it's known from
     // the next launch on), told to the page for every pane (`appMinimums`), and checked before anything is opened.
-    private struct AppMinimum: Codable, Equatable { var version: String; var width: Double; var height: Double }
-    private var appMinimums: [String: AppMinimum] = [:]
+    // What's kept, the version it holds for and each host's own are the core's (host/minimums.rs, host/model.rs); the
+    // versions are read here, once per process (the core never reads one), and the file read and written here.
     private var minimumsURL: URL? { markerURL?.deletingLastPathComponent().appendingPathComponent("minimums.json") }
     private var versions: [pid_t: String] = [:] // (read once per process: a minimum looked up per frame of a drag reads none)
     // Told whenever an app's known minimum changes (the session tells Margin's window's page: `knownAppMinimums`).
@@ -4693,45 +4692,51 @@ final class HostEngine {
         if let v { versions[pid] = v }
         return v
     }
-    // An app's known minimum (nil: none known, or kept for another version of it than the one running as `pid`).
-    private func appMinimum(_ key: String, pid: pid_t? = nil) -> CGSize? {
-        guard let m = appMinimums[key] else { return nil }
-        if let pid = pid ?? sys.running(bundleId: key).first?.pid, let v = version(of: pid), v != m.version { return nil }
-        return CGSize(width: m.width, height: m.height)
+    // A host's minimum: its own as read, else its app's kept one for its own process's version (nil: none known).
+    // `known`: a target's (a window-mode host's is its own business: none).
+    private func minimum(_ host: Host, known: Bool = false) -> CGSize? {
+        switch core.minimum(host.handle, known: known) {
+        case .none: return nil
+        case .known(let m): return m
+        case .needsVersion(let m):
+            // (Its app's kept one, its process's version read now, once: unreadable, the one kept holds.)
+            guard let v = version(of: host.pid) else { return m }
+            core.setVersion(host.handle, v)
+            if case .known(let m) = core.minimum(host.handle, known: known) { return m }
+            return nil
+        }
+    }
+    // An app's known minimum with no host of it (nil: none known, or kept for another version of it than the one running).
+    private func appMinimum(_ key: String) -> CGSize? {
+        guard core.hasMinimum(key) else { return nil }
+        return core.knownMinimum(key, version: sys.running(bundleId: key).first.flatMap { version(of: $0.pid) })
     }
     // A target's window's minimum: its own host's as learnt, else its app's known one. Nil: none known (a window-mode
     // host's is its own business).
     func knownMinimum(of target: HostTarget) -> CGSize? {
-        if let h = hosts[target.id] { return h.mode == .window ? nil : h.minSize ?? appMinimum(appKey(target), pid: h.pid) }
+        if let h = hosts[target.id] { return minimum(h, known: true) }
         return appMinimum(appKey(target))
     }
     // Every app's known minimum, by bundle id (the running version's only).
     var knownAppMinimums: [String: CGSize] {
         var out: [String: CGSize] = [:]
-        for key in appMinimums.keys { if let m = appMinimum(key) { out[key] = m } }
+        for key in core.minimumApps() { if let m = appMinimum(key) { out[key] = m } }
         for h in hosts.values where h.mode != .window { if let m = h.minSize { out[appKey(h.target)] = m } }
         return out
     }
     // A host's minimum as just learnt, kept as its app's (and saved) when it's new for that app's version.
     private func rememberMinimum(_ host: Host, _ m: CGSize) {
-        let key = appKey(host.target)
-        let v = version(of: host.pid) ?? "?"
-        let next = AppMinimum(version: v, width: Double(m.width), height: Double(m.height))
-        guard appMinimums[key] != next else { return }
-        appMinimums[key] = next
+        let v = version(of: host.pid)
+        guard core.rememberMin(host.handle, version: v) else { return }
         saveMinimums()
-        Diagnostics.note("host: \(key) \(v): its windows' minimum \(Int(m.width))×\(Int(m.height)) kept for it (before any of its windows is made, from now on)")
+        Diagnostics.note("host: \(appKey(host.target)) \(v ?? "?"): its windows' minimum \(Int(m.width))×\(Int(m.height)) kept for it (before any of its windows is made, from now on)")
         onAppMinimums?()
     }
     private func loadMinimums() {
-        guard let url = minimumsURL, let data = try? Data(contentsOf: url),
-              let read = try? JSONDecoder().decode([String: AppMinimum].self, from: data) else { return }
-        appMinimums = read.filter { $0.value.width >= 0 && $0.value.height >= 0 && $0.value.width < 20000 && $0.value.height < 20000 }
+        if let minimumsURL { core.loadMinimums(from: minimumsURL) }
     }
     private func saveMinimums() {
-        guard let url = minimumsURL, let data = try? JSONEncoder().encode(appMinimums) else { return }
-        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? data.write(to: url, options: .atomic)
+        if let minimumsURL { core.saveMinimums(to: minimumsURL) }
     }
     // `shown` changed outside a whole layout's change: the layout is it alone (main at the page area), or what's left.
     private func followShown(_ was: HostID?) {
@@ -4795,14 +4800,16 @@ final class HostEngine {
     // of the tile's values: never per frame of a drag. True: it changed.
     @discardableResult private func learnMinimum(_ host: Host, tile: UInt64? = nil) -> Bool {
         guard host.mode != .window, let t = tile ?? host.tile else { return false }
-        // (A tile that says none now, its minimum read before: kept (an app's minimum doesn't go), said once.)
-        guard let read = sys.tileMinSize(t) else {
-            if host.minSize != nil, !host.minUnreadSaid { host.minUnreadSaid = true; Diagnostics.note("host: \(host.id): its tile \(t) says no minimum now (\(host.phase == .parked ? "parked" : "shown")): its minimum as read before kept") }
+        // (Rounded up to whole points, its own when it's new; a tile that says none now, its minimum read before: kept (an
+        // app's minimum doesn't go), said once. The core's: host/model.rs `learn_min`.)
+        switch core.learnMin(host.handle, sys.tileMinSize(t)) {
+        case .same: return false
+        case .unreadSay:
+            Diagnostics.note("host: \(host.id): its tile \(t) says no minimum now (\(host.phase == .parked ? "parked" : "shown")): its minimum as read before kept")
             return false
+        case .changed: break
         }
-        let m = CGSize(width: read.width.rounded(.up), height: read.height.rounded(.up))
-        guard m != host.minSize else { return false }
-        host.minSize = m
+        let m = host.minSize ?? .zero
         Diagnostics.note("host: \(host.id): its window's own minimum \(Int(m.width))×\(Int(m.height)) (its tile's): never sized smaller, the sidebar's edge stops there while it's shown")
         rememberMinimum(host, m)
         // (A split's pane's too: its page's divider stops there, docs/PEEK-SPLIT.md §4.)
@@ -4810,13 +4817,12 @@ final class HostEngine {
         return true
     }
 
-    private func held(_ host: Host, _ width: CGFloat) { host.narrowestHeld = min(host.narrowestHeld ?? width, width) }
+    private func held(_ host: Host, _ width: CGFloat) { core.held(host.handle, width) }
 
     // No minimum said by its tile, and it left one (`tileBack`): the narrowest it held is taken for its minimum (it took
     // that, and not the rect that made it leave): said once, told like a read one.
     private func learnMinimumFromLeaving(_ host: Host) {
-        guard host.mode != .window, host.minSize == nil, let w = host.narrowestHeld else { return }
-        host.minSize = CGSize(width: w.rounded(.up), height: 0)
+        guard let w = core.learnFromLeaving(host.handle) else { return }
         Diagnostics.note("host: \(host.id): its tile says no minimum and it left one narrower than \(Int(w)): \(Int(w)) taken for its minimum width (never sized narrower)")
         if shown == host.id || mainHost === host { sayMinimum() }
     }

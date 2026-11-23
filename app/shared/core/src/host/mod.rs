@@ -4,6 +4,7 @@
 //!
 //! - `layout`: where a hosted window goes (the page area, a Space's edge reservation, a tile's rect, a minimum size).
 //! - `model`: each host's state the decisions read, by handle (the Mac's `Host` reads its fields from it).
+//! - `minimums`: every app's own window minimum, per version, known before its window is made (minimums.json).
 //! - `kinds`: every window's kind, by what it does (main, auxiliary, dialog, strip, leftover, helper, transient).
 //! - `choice`: which of an app's windows is hosted.
 //! - `reconciler`: what each host should be against what's seen, and the corrections between.
@@ -25,6 +26,7 @@ pub mod front;
 pub mod guard;
 pub mod kinds;
 pub mod layout;
+pub mod minimums;
 pub mod model;
 pub mod reconciler;
 pub mod routes;

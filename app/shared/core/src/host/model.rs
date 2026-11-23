@@ -3,9 +3,12 @@
 //! the OS side through typed calls (the Mac's `Host` reads its own fields from here: no copy kept beside it). What's
 //! the OS's own (its Space ids, tiles, toolbars, Accessibility's bookkeeping) stays on that side.
 //!
-//! No decision here yet (part 1a): the state alone. Reading and writing a field never allocates; a list of times
-//! (returns, tries) is kept within its capacity (room for 8 from the start: the Mac keeps at most `returnsMax` + 1, 4).
+//! The state (part 1a), and the decisions that read it as they move in: each app's kept minimum and each host's own
+//! (part 5, `minimums`). Reading and writing a field never allocates; a list of times (returns, tries) is kept within
+//! its capacity (room for 8 from the start: the Mac keeps at most `returnsMax` + 1, 4).
 
+use super::layout::Size;
+use super::minimums::AppMinimums;
 use crate::geometry::Rect;
 
 pub type Handle = u32;
@@ -54,6 +57,9 @@ pub struct HostState {
     pub id: String,
     /// The app's key: its bundle id (a Safari window's: Safari's).
     pub app: String,
+    /// Its process's app version, once the OS side read it (None: not yet, or unreadable): what its app's kept
+    /// minimum is held against.
+    pub version: Option<String>,
     pub window: i64,
     pub pid: i64,
     pub role: Role,
@@ -68,6 +74,8 @@ pub struct HostState {
     pub tiled: bool,
     pub no_tiles: bool,
     pub min_size: Option<(f64, f64)>,
+    /// Its tile said no minimum after one was read: said once.
+    pub min_unread_said: bool,
     pub narrowest_held: Option<f64>,
     pub unread: i64,
     pub strays: i64,
@@ -94,6 +102,7 @@ impl HostState {
         HostState {
             id: id.to_string(),
             app: app.to_string(),
+            version: None,
             window,
             pid,
             role: Role::Main,
@@ -107,6 +116,7 @@ impl HostState {
             tiled: false,
             no_tiles: false,
             min_size: None,
+            min_unread_said: false,
             narrowest_held: None,
             unread: 0,
             strays: 0,
@@ -156,6 +166,7 @@ pub enum Field {
     FreshFront = 18,
     SlidEndX = 19,
     SlidEndY = 20,
+    MinUnreadSaid = 21,
     // Times and lengths (f64; NaN: none).
     VisibleAt = 32,
     GoneAt = 33,
@@ -198,6 +209,7 @@ impl Field {
             18 => FreshFront,
             19 => SlidEndX,
             20 => SlidEndY,
+            21 => MinUnreadSaid,
             32 => VisibleAt,
             33 => GoneAt,
             34 => OffActedFor,
@@ -234,6 +246,47 @@ fn from_align(v: i64) -> Option<bool> {
 pub struct HostModel {
     slots: Vec<Option<HostState>>,
     free: Vec<Handle>,
+    /// Every app's kept minimum (minimums.json, part 5).
+    pub minimums: AppMinimums,
+}
+
+/// A host's minimum as a decision reads it (`HostModel::minimum`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Minimum {
+    /// None known.
+    None,
+    Known(Size),
+    /// Its app's kept one, its own process's version not read yet: the OS side reads it (`set_version`) and asks
+    /// again; unreadable, this one holds (as a version not known does).
+    NeedsVersion(Size),
+}
+
+impl Minimum {
+    pub fn size(self) -> Option<Size> {
+        match self {
+            Minimum::None => None,
+            Minimum::Known(s) | Minimum::NeedsVersion(s) => Some(s),
+        }
+    }
+}
+
+/// Which minimum a decision reads: a pane's (its own as read, else its app's kept one: `paneMinimum`), or a target's
+/// known one (the same, none for a window-mode host's: `knownMinimum`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MinimumOf {
+    Pane,
+    Known,
+}
+
+/// What a read of its tile's minimum did (`learn_min`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Learnt {
+    /// Nothing new (the same as known).
+    Same,
+    /// Its own minimum is the one read now (rounded up): the caller says it, remembers it for its app, tells the page.
+    Changed,
+    /// Its tile said none, one read before: kept, and this the first time (said once).
+    UnreadSay,
 }
 
 impl HostModel {
@@ -275,6 +328,88 @@ impl HostModel {
         self.len() == 0
     }
 
+    // ---- the minimums (part 5) ----
+
+    /// Its process's app version, as the OS side read it.
+    pub fn set_version(&mut self, h: Handle, v: &str) {
+        if let Some(s) = self.get_mut(h)
+            && s.version.as_deref() != Some(v)
+        {
+            s.version = Some(v.to_string());
+        }
+    }
+
+    /// Its app's kept minimum for its own process's version.
+    fn app_minimum(&self, s: &HostState) -> Minimum {
+        if s.version.is_none() && self.minimums.has(&s.app) {
+            return self.minimums.known(&s.app, None).map_or(Minimum::None, Minimum::NeedsVersion);
+        }
+        self.minimums.known(&s.app, s.version.as_deref()).map_or(Minimum::None, Minimum::Known)
+    }
+
+    /// A host's minimum as `of` reads it: its own as read, else its app's kept one (`Known`: none for a window-mode
+    /// host's, its own business).
+    pub fn minimum(&self, h: Handle, of: MinimumOf) -> Minimum {
+        let Some(s) = self.get(h) else { return Minimum::None };
+        if of == MinimumOf::Known && s.mode == Mode::Window {
+            return Minimum::None;
+        }
+        match s.min_size {
+            Some((w, h)) => Minimum::Known(Size::new(w, h)),
+            None => self.app_minimum(s),
+        }
+    }
+
+    /// Its tile's minimum as just read (None: it said none), rounded up to whole points: its own from now when it's
+    /// new. A tile that says none, one read before: that one kept (an app's minimum doesn't go), said once.
+    pub fn learn_min(&mut self, h: Handle, read: Option<Size>) -> Learnt {
+        let Some(s) = self.get_mut(h) else { return Learnt::Same };
+        let Some(read) = read else {
+            if s.min_size.is_some() && !s.min_unread_said {
+                s.min_unread_said = true;
+                return Learnt::UnreadSay;
+            }
+            return Learnt::Same;
+        };
+        let m = (read.width.ceil(), read.height.ceil());
+        if s.min_size == Some(m) {
+            return Learnt::Same;
+        }
+        s.min_size = Some(m);
+        Learnt::Changed
+    }
+
+    /// Its own minimum kept as its app's, for `version` (its process's; None: unread, kept as "?"), when it's new
+    /// for that app and version. True: kept (the caller saves the file, says it, tells the page).
+    pub fn remember_min(&mut self, h: Handle, version: Option<&str>) -> bool {
+        if let Some(v) = version {
+            self.set_version(h, v);
+        }
+        // (Its key read from its slot while the store is written: the two fields apart.)
+        let Some(Some(s)) = self.slots.get(h as usize) else { return false };
+        let Some((w, ht)) = s.min_size else { return false };
+        self.minimums.remember(&s.app, version.unwrap_or("?"), Size::new(w, ht))
+    }
+
+    /// The narrowest its window was seen holding in its tile.
+    pub fn held(&mut self, h: Handle, width: f64) {
+        if let Some(s) = self.get_mut(h) {
+            s.narrowest_held = Some(s.narrowest_held.map_or(width, |n| n.min(width)));
+        }
+    }
+
+    /// No minimum said by its tile, and it left one: the narrowest it held taken for its minimum width (rounded up),
+    /// the width answered for the caller's line. None: it has one, it never held one, or it's in window mode.
+    pub fn learn_from_leaving(&mut self, h: Handle) -> Option<f64> {
+        let s = self.get_mut(h)?;
+        if s.mode == Mode::Window || s.min_size.is_some() {
+            return None;
+        }
+        let w = s.narrowest_held?;
+        s.min_size = Some((w.ceil(), 0.0));
+        Some(w)
+    }
+
     /// A whole number or a flag (0: an unknown host, or a field of another kind).
     pub fn int(&self, h: Handle, f: Field) -> i64 {
         let Some(s) = self.get(h) else { return 0 };
@@ -300,6 +435,7 @@ impl HostModel {
             Field::FreshFront => flag(s.fresh_front),
             Field::SlidEndX => s.slid.map_or(-1, |x| align(x.end_x)),
             Field::SlidEndY => s.slid.map_or(-1, |x| align(x.end_y)),
+            Field::MinUnreadSaid => flag(s.min_unread_said),
             _ => 0,
         }
     }
@@ -341,6 +477,7 @@ impl HostModel {
             Field::RetryFullScreen => s.retry_full_screen = on,
             Field::Gone => s.gone = on,
             Field::FreshFront => s.fresh_front = on,
+            Field::MinUnreadSaid => s.min_unread_said = on,
             Field::SlidEndX => {
                 if let Some(x) = s.slid.as_mut() {
                     x.end_x = from_align(v)
@@ -514,6 +651,7 @@ mod tests {
             Field::RetryFullScreen,
             Field::Gone,
             Field::FreshFront,
+            Field::MinUnreadSaid,
         ] {
             m.set_int(h, f, 1);
             assert_eq!(m.int(h, f), 1, "{f:?}");
@@ -586,6 +724,72 @@ mod tests {
         let many: Vec<f64> = (0..20).map(f64::from).collect();
         m.set_times(h, Field::Returns, &many);
         assert_eq!(m.times(h, Field::Returns), many.as_slice());
+    }
+
+    #[test]
+    fn a_hosts_minimum_its_own_then_its_apps() {
+        let mut m = HostModel::new();
+        let h = m.add("app:com.apple.Notes", "com.apple.Notes", 1, 1);
+        assert_eq!(m.minimum(h, MinimumOf::Pane), Minimum::None);
+        m.minimums.remember("com.apple.Notes", "4.12 (2700)", Size::new(700.0, 400.0));
+        // Its version not read yet: the OS side asked for it; unreadable, the kept one holds.
+        assert_eq!(m.minimum(h, MinimumOf::Pane), Minimum::NeedsVersion(Size::new(700.0, 400.0)));
+        m.set_version(h, "4.13 (2750)");
+        assert_eq!(m.minimum(h, MinimumOf::Pane), Minimum::None, "another version: none");
+        m.set_version(h, "4.12 (2700)");
+        assert_eq!(m.minimum(h, MinimumOf::Pane), Minimum::Known(Size::new(700.0, 400.0)));
+        // Its own, once read, first; a window-mode host's known one is its own business.
+        m.set_rect(h, Field::MinSize, Some(Rect::new(0.0, 0.0, 701.0, 0.0)));
+        assert_eq!(m.minimum(h, MinimumOf::Known), Minimum::Known(Size::new(701.0, 0.0)));
+        m.set_int(h, Field::Mode, 1);
+        assert_eq!(m.minimum(h, MinimumOf::Known), Minimum::None);
+        assert_eq!(m.minimum(h, MinimumOf::Pane), Minimum::Known(Size::new(701.0, 0.0)));
+        // An app with nothing kept: no version asked for.
+        let t = m.add("app:com.apple.TextEdit", "com.apple.TextEdit", 2, 2);
+        assert_eq!(m.minimum(t, MinimumOf::Known), Minimum::None);
+        assert_eq!(m.minimum(99, MinimumOf::Pane), Minimum::None);
+    }
+
+    #[test]
+    fn a_tiles_minimum_learnt() {
+        let mut m = HostModel::new();
+        let h = m.add("app:com.apple.Notes", "com.apple.Notes", 1, 1);
+        assert_eq!(m.learn_min(h, None), Learnt::Same, "none read, none known: nothing said");
+        assert_eq!(m.learn_min(h, Some(Size::new(699.2, 399.0))), Learnt::Changed);
+        assert_eq!(m.get(h).unwrap().min_size, Some((700.0, 399.0)), "rounded up");
+        assert_eq!(m.learn_min(h, Some(Size::new(699.9, 398.5))), Learnt::Same, "the same once rounded");
+        assert_eq!(m.learn_min(h, None), Learnt::UnreadSay, "unread: the one read before kept, said once");
+        assert_eq!(m.learn_min(h, None), Learnt::Same);
+        assert_eq!(m.get(h).unwrap().min_size, Some((700.0, 399.0)));
+        assert_eq!(m.learn_min(h, Some(Size::new(0.0, 0.0))), Learnt::Changed, "zero is a size");
+        // Remembered for its app's version (unread: "?"), only when new.
+        assert!(m.remember_min(h, Some("4.12 (2700)")));
+        assert!(!m.remember_min(h, Some("4.12 (2700)")));
+        assert_eq!(m.get(h).unwrap().version.as_deref(), Some("4.12 (2700)"));
+        let g = m.add("app:x", "x", 2, 2);
+        assert!(!m.remember_min(g, None), "no minimum of its own: nothing kept");
+        m.learn_min(g, Some(Size::new(10.0, 10.0)));
+        assert!(m.remember_min(g, None));
+        assert_eq!(m.minimums.by_app["x"].version, "?");
+        assert_eq!(m.get(g).unwrap().version, None);
+    }
+
+    #[test]
+    fn the_narrowest_held_taken_when_it_leaves() {
+        let mut m = HostModel::new();
+        let h = m.add("a", "x", 1, 1);
+        assert_eq!(m.learn_from_leaving(h), None, "never held one");
+        m.held(h, 900.0);
+        m.held(h, 640.4);
+        m.held(h, 700.0);
+        assert_eq!(m.get(h).unwrap().narrowest_held, Some(640.4));
+        assert_eq!(m.learn_from_leaving(h), Some(640.4));
+        assert_eq!(m.get(h).unwrap().min_size, Some((641.0, 0.0)), "rounded up, no height");
+        assert_eq!(m.learn_from_leaving(h), None, "one known: kept");
+        let w = m.add("b", "x", 2, 1);
+        m.set_int(w, Field::Mode, 1);
+        m.held(w, 500.0);
+        assert_eq!(m.learn_from_leaving(w), None, "window mode: its own business");
     }
 
     #[test]

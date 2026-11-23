@@ -70,6 +70,15 @@ fn the_hot_paths_allocate_nothing() {
     let page = MarginRect { x: 248.0, y: 41.0, width: 1256.0, height: 933.0 };
     let area = MarginRect { x: 0.0, y: 33.0, width: 1512.0, height: 949.0 };
     let p = MarginPlacement { page, area, display: MarginRect { x: 0.0, y: 0.0, width: 1512.0, height: 982.0 } };
+    // (Its app's minimum kept, its version read: rare, before the count.)
+    let version = "26.2 (21623.1.14.11.9)";
+    // SAFETY: a live core, valid buffers.
+    let other = unsafe {
+        margin_model_learn_min(core, h, &MarginSize { width: 500.0, height: 289.0 });
+        margin_model_remember_min(core, h, version.as_ptr(), version.len());
+        let (id2, w2) = ("safari:#pane2", 42);
+        margin_model_add(core, id2.as_ptr(), id2.len(), app.as_ptr(), app.len(), w2, 500)
+    };
     let n = allocations(|| {
         // SAFETY: a live core, valid pointers.
         unsafe {
@@ -112,6 +121,23 @@ fn the_hot_paths_allocate_nothing() {
             std::hint::black_box(margin_schedule_wake_due(1.0, f64::NEG_INFINITY, false));
             std::hint::black_box(margin_schedule_next_poll(true, false, true, 0.3));
             std::hint::black_box(margin_exits_same_launch(1.0, f64::NAN));
+            // The minimums a drag's frame and a sizing read (part 5): a pane's own, another's its app's kept one (its
+            // version unread, then not), a tile's read, the narrowest held.
+            let mut size = MarginSize::default();
+            std::hint::black_box(margin_model_minimum(core, h, 0, &mut size));
+            std::hint::black_box(margin_model_minimum(core, other, 1, &mut size));
+            std::hint::black_box(margin_model_learn_min(core, h, &MarginSize { width: 499.5, height: 289.0 }));
+            std::hint::black_box(margin_model_learn_min(core, other, std::ptr::null()));
+            margin_model_held(core, other, 640.0);
+            std::hint::black_box(margin_minimums_has(core, app.as_ptr(), app.len()));
+            std::hint::black_box(margin_minimums_known(
+                core,
+                app.as_ptr(),
+                app.len(),
+                version.as_ptr(),
+                version.len(),
+                &mut size,
+            ));
         }
     });
     assert_eq!(n, 0, "the hot paths allocated {n} times");
@@ -119,6 +145,7 @@ fn the_hot_paths_allocate_nothing() {
     // SAFETY: the live core, freed once.
     unsafe {
         margin_model_remove(core, h);
+        margin_model_remove(core, other);
         margin_host_free(core);
     }
 }

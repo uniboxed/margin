@@ -7594,3 +7594,28 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   version beside its key waits for part 5 (the minimums are the only reader).
 - Not measured here (no screen suite on this branch): `idle-cost` and `live-resize` before and after, as the plan asks
   before the merge.
+
+## Core refactor step 2, part 5: every app's window minimum in the core (2026-11-22)
+
+- What's kept per app and version (minimums.json beside routes.json) is the core's (host/minimums.rs `AppMinimums`,
+  on the engine's model): the load's filter (0 ≤ side < 20000; a file not of the shape taken as none, as the Mac's
+  decoder refused the whole file), the version gating (none for another version than the one running; a version not
+  known: the one kept holds), remembered only when new for that app and version (an unread version kept as "?").
+  Each host's own (host/model.rs): its tile's minimum rounded up, a tile that says none keeping the one read (said
+  once: `min_unread_said`, a model field now), the narrowest held, taken for its width when it leaves a tile with
+  none said; a pane's and a target's minimum (its own, else its app's kept one; a window-mode host's none).
+- The file's format is unchanged: Swift reads its bytes and hands them to the core (`loadMinimums`, as
+  `loadRoutes`), and writes the core's answer atomically (`saveMinimums`, sorted keys, as `saveRoutes`). A Rust test
+  loads today's exact JSON (whole numbers without a point, as JSONEncoder wrote them) and writes it back the same.
+- The versions stay read by Swift (`sys.appVersion`, once per process, its cache): the core never reads one. A host's
+  version sits beside its key in the model, set the first time a decision needs it (the core answers "its version
+  not read yet" only when a minimum is kept for its app), so the OS is read exactly when it was before. A target
+  with no host: Swift reads the running app's version only when the core has a minimum for that app.
+- Not as the design sketched: a host's app minimum is looked up by its key at each read (a map of a few entries, no
+  allocation) rather than cached at `add` and `remember` (no copy to keep in step). `appKey` stays Swift (it maps
+  the shell's `HostTarget`; the key is given to the model at `add`, as 1a does). `shownMinimumWidth` moves with 1b
+  (it reads the visible set).
+- Checked before the Swift went: the deleted Swift against the core over 480,000 generated vectors (a scratch run:
+  40,000 files of every shape, 200,000 known/remember steps, 240,000 learn/held/leave steps): no difference. The
+  typed calls allocate nothing (no_alloc.rs: a pane's minimum, a tile's read, the narrowest held, a kept one asked).
+  The app's 2038 checks pass unchanged.

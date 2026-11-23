@@ -136,6 +136,13 @@ pub enum Request {
     },
     /// The routes to save.
     SaveRoutes,
+    /// Every app's kept minimum as read from minimums.json (at launch); `SaveMinimums`: to write.
+    LoadMinimums {
+        minimums: Value,
+    },
+    SaveMinimums,
+    /// The apps a minimum is kept for (any version).
+    MinimumApps,
     /// The earliest time the core has something to do on its own (none: wake it with the next event).
     NextWake,
     /// The windows of `pid` Margin could host, front first (choice.rs `candidates`).
@@ -276,6 +283,15 @@ impl HostCore {
                 json!({})
             }
             Request::SaveRoutes => json!({ "routes": self.driver.routes }),
+            Request::LoadMinimums { minimums } => match super::minimums::AppMinimums::load(&minimums) {
+                Some(m) => {
+                    self.model.minimums = m;
+                    json!({ "loaded": self.model.minimums.by_app.len() })
+                }
+                None => json!({ "loaded": null }),
+            },
+            Request::SaveMinimums => json!({ "minimums": self.model.minimums.to_json() }),
+            Request::MinimumApps => json!({ "apps": self.model.minimums.by_app.keys().collect::<Vec<_>>() }),
             Request::NextWake => json!({ "at": self.driver.guard.next_wake() }),
             Request::Candidates { server, pid, excluded } => {
                 let list: Vec<ServerWindow> = server.iter().map(ServerWindow::from).collect();
@@ -426,6 +442,32 @@ mod tests {
         let r = call(&mut fresh, json!({ "type": "route", "bundle": "b", "version": "1", "available": all }));
         assert_eq!(r["route"], "members");
         assert_eq!(r["held"]["why"], "loop");
+    }
+
+    #[test]
+    fn minimums_through_calls() {
+        // minimums.json as an existing user has it (the Mac's JSONEncoder: whole numbers without a point).
+        let today: Value = serde_json::from_str(
+            r#"{"com.apple.Notes":{"version":"4.12 (2700)","width":700,"height":400},"com.apple.Safari":{"version":"26.2 (21623.1.14.11.9)","width":500,"height":289}}"#,
+        )
+        .unwrap();
+        let mut core = HostCore::new();
+        assert_eq!(call(&mut core, json!({ "type": "loadMinimums", "minimums": today }))["loaded"], 2);
+        assert_eq!(
+            call(&mut core, json!({ "type": "minimumApps" }))["apps"],
+            json!(["com.apple.Notes", "com.apple.Safari"])
+        );
+        let saved = call(&mut core, json!({ "type": "saveMinimums" }));
+        assert_eq!(
+            saved["minimums"]["com.apple.Notes"],
+            json!({ "version": "4.12 (2700)", "width": 700.0, "height": 400.0 })
+        );
+        let mut fresh = HostCore::new();
+        call(&mut fresh, json!({ "type": "loadMinimums", "minimums": saved["minimums"] }));
+        assert_eq!(fresh.model.minimums, core.model.minimums, "written and read back: the same");
+        // Not the file's shape: nothing taken, nothing lost.
+        assert_eq!(call(&mut fresh, json!({ "type": "loadMinimums", "minimums": [1] }))["loaded"], Value::Null);
+        assert_eq!(fresh.model.minimums, core.model.minimums);
     }
 
     #[test]

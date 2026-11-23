@@ -4,9 +4,9 @@
 
 use margin_core::geometry::Rect;
 use margin_core::host::api::HostCore;
-use margin_core::host::model::{Field, Handle};
+use margin_core::host::model::{Field, Handle, Learnt, Minimum, MinimumOf};
 
-use crate::MarginRect;
+use crate::{MarginRect, MarginSize};
 
 /// No host (`margin_model_add`'s answer for bad input).
 pub const MARGIN_MODEL_NONE: u32 = u32::MAX;
@@ -201,6 +201,141 @@ pub unsafe extern "C" fn margin_model_set_times(
     }
 }
 
+// ---- the minimums (host/minimums.rs, part 5): typed, read per frame of a drag (a pane's minimum) ----
+
+/// Its process's app version (UTF-8), as the OS side read it.
+///
+/// # Safety
+/// `core` null or a live core (one thread at a time); `v` null or `len` readable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_model_set_version(core: *mut HostCore, h: Handle, v: *const u8, len: usize) {
+    // SAFETY: the contract above.
+    if let (Some(core), Some(v)) = (unsafe { model(core) }, unsafe { text(v, len) }) {
+        core.model.set_version(h, v);
+    }
+}
+
+/// A host's minimum (`of` 0: a pane's, its own else its app's; 1: a target's known one, none in window mode) into
+/// `out`: 0 none, 1 known, 2 its app's kept one with its version not read yet (`out` holds it: read the version,
+/// `margin_model_set_version`, ask again; unreadable, it holds).
+///
+/// # Safety
+/// `core` null or a live core (one thread at a time); `out` null or writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_model_minimum(core: *mut HostCore, h: Handle, of: u8, out: *mut MarginSize) -> u8 {
+    // SAFETY: the contract above.
+    let Some(core) = (unsafe { model(core) }) else { return 0 };
+    let of = if of == 1 { MinimumOf::Known } else { MinimumOf::Pane };
+    let m = core.model.minimum(h, of);
+    if let (Some(s), false) = (m.size(), out.is_null()) {
+        // SAFETY: out writable.
+        unsafe { *out = s.into() };
+    }
+    match m {
+        Minimum::None => 0,
+        Minimum::Known(_) => 1,
+        Minimum::NeedsVersion(_) => 2,
+    }
+}
+
+/// Its tile's minimum as just read (`read` null: it said none): 0 nothing new, 1 its own from now (rounded up), 2 the
+/// tile said none, one read before kept: say it (once).
+///
+/// # Safety
+/// `core` null or a live core (one thread at a time); `read` null or readable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_model_learn_min(core: *mut HostCore, h: Handle, read: *const MarginSize) -> u8 {
+    // SAFETY: the contract above.
+    let Some(core) = (unsafe { model(core) }) else { return 0 };
+    // SAFETY: read null or readable.
+    let read = unsafe { read.as_ref() }.map(|s| (*s).into());
+    match core.model.learn_min(h, read) {
+        Learnt::Same => 0,
+        Learnt::Changed => 1,
+        Learnt::UnreadSay => 2,
+    }
+}
+
+/// Its own minimum kept as its app's for `version` (null: unread, kept as "?"): true when new (save, say, tell).
+///
+/// # Safety
+/// `core` null or a live core (one thread at a time); `version` null or `len` readable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_model_remember_min(
+    core: *mut HostCore,
+    h: Handle,
+    version: *const u8,
+    len: usize,
+) -> bool {
+    // SAFETY: the contract above.
+    let Some(core) = (unsafe { model(core) }) else { return false };
+    // SAFETY: the contract above.
+    let v = if version.is_null() { None } else { unsafe { text(version, len) } };
+    core.model.remember_min(h, v)
+}
+
+/// The width its window was seen holding in its tile (the narrowest kept).
+///
+/// # Safety
+/// `core` null or a live core (one thread at a time).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_model_held(core: *mut HostCore, h: Handle, width: f64) {
+    // SAFETY: the contract above.
+    if let Some(core) = unsafe { model(core) } {
+        core.model.held(h, width);
+    }
+}
+
+/// It left its tile with no minimum said: the narrowest it held taken for its minimum width; that width (NaN: none
+/// taken).
+///
+/// # Safety
+/// `core` null or a live core (one thread at a time).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_model_learn_from_leaving(core: *mut HostCore, h: Handle) -> f64 {
+    // SAFETY: the contract above.
+    unsafe { model(core) }.and_then(|c| c.model.learn_from_leaving(h)).unwrap_or(f64::NAN)
+}
+
+/// Whether a minimum is kept for `app` (any version).
+///
+/// # Safety
+/// `core` null or a live core (one thread at a time); `app` null or `len` readable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_minimums_has(core: *mut HostCore, app: *const u8, len: usize) -> bool {
+    // SAFETY: the contract above.
+    match (unsafe { model(core) }, unsafe { text(app, len) }) {
+        (Some(core), Some(app)) => core.model.minimums.has(app),
+        _ => false,
+    }
+}
+
+/// `app`'s kept minimum for the version running (`version` null: not known) into `out`; false: none.
+///
+/// # Safety
+/// `core` null or a live core (one thread at a time); `app`, `version` null or their lengths' readable bytes; `out`
+/// null or writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_minimums_known(
+    core: *mut HostCore,
+    app: *const u8,
+    app_len: usize,
+    version: *const u8,
+    version_len: usize,
+    out: *mut MarginSize,
+) -> bool {
+    // SAFETY: the contract above.
+    let (Some(core), Some(app)) = (unsafe { model(core) }, unsafe { text(app, app_len) }) else { return false };
+    // SAFETY: the contract above.
+    let v = if version.is_null() { None } else { unsafe { text(version, version_len) } };
+    let Some(s) = core.model.minimums.known(app, v) else { return false };
+    if !out.is_null() {
+        // SAFETY: out writable.
+        unsafe { *out = s.into() };
+    }
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -258,6 +393,43 @@ mod tests {
             margin_model_remove(core, h);
             assert_eq!(margin_model_get(core, h, Field::Unread as u32), 0, "gone");
             margin_model_remove(std::ptr::null_mut(), h);
+            margin_host_free(core);
+        }
+    }
+
+    #[test]
+    fn minimums_typed() {
+        let core = margin_host_new();
+        let (id, app, v) = ("app:com.apple.Notes", "com.apple.Notes", "4.12 (2700)");
+        unsafe {
+            let h = margin_model_add(core, id.as_ptr(), id.len(), app.as_ptr(), app.len(), 41, 500);
+            let mut out = MarginSize::default();
+            assert_eq!(margin_model_minimum(core, h, 0, &mut out), 0);
+            assert!(!margin_minimums_has(core, app.as_ptr(), app.len()));
+            assert_eq!(margin_model_learn_min(core, h, &MarginSize { width: 699.5, height: 400.0 }), 1);
+            assert_eq!(margin_model_learn_min(core, h, std::ptr::null()), 2);
+            assert_eq!(margin_model_learn_min(core, h, std::ptr::null()), 0);
+            assert!(margin_model_remember_min(core, h, v.as_ptr(), v.len()));
+            assert!(!margin_model_remember_min(core, h, v.as_ptr(), v.len()));
+            assert!(margin_minimums_has(core, app.as_ptr(), app.len()));
+            assert!(margin_minimums_known(core, app.as_ptr(), app.len(), v.as_ptr(), v.len(), &mut out));
+            assert_eq!(out, MarginSize { width: 700.0, height: 400.0 });
+            let other = "4.13";
+            assert!(!margin_minimums_known(core, app.as_ptr(), app.len(), other.as_ptr(), other.len(), &mut out));
+            assert!(margin_minimums_known(core, app.as_ptr(), app.len(), std::ptr::null(), 0, &mut out));
+            // A second window of it: its app's, once its version is read.
+            let g = margin_model_add(core, id.as_ptr(), id.len(), app.as_ptr(), app.len(), 42, 501);
+            assert_eq!(margin_model_minimum(core, g, 1, &mut out), 2);
+            margin_model_set_version(core, g, other.as_ptr(), other.len());
+            assert_eq!(margin_model_minimum(core, g, 1, &mut out), 0);
+            margin_model_held(core, g, 640.2);
+            assert_eq!(margin_model_learn_from_leaving(core, g), 640.2);
+            assert!(margin_model_learn_from_leaving(core, g).is_nan());
+            assert_eq!(margin_model_minimum(core, g, 1, &mut out), 1);
+            assert_eq!(out, MarginSize { width: 641.0, height: 0.0 });
+            // A null core: nothing, no harm.
+            assert_eq!(margin_model_minimum(std::ptr::null_mut(), g, 0, &mut out), 0);
+            assert!(!margin_minimums_has(std::ptr::null_mut(), app.as_ptr(), app.len()));
             margin_host_free(core);
         }
     }

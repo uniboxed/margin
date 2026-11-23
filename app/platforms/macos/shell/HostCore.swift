@@ -73,7 +73,7 @@ nonisolated final class HostCore: @unchecked Sendable {
     // A field's number (host/model.rs `Field`): whole numbers and flags, times (nil: none), rects, lists of times.
     enum Field: UInt32 {
         case window = 0, pid, role, phase, mode, resizable, member, tiled, noTiles, unread, strays, offScreenReads, offPageReads,
-             offSaid, reentrySaid, fullScreenFailures, retryFullScreen, gone, freshFront, slidEndX, slidEndY
+             offSaid, reentrySaid, fullScreenFailures, retryFullScreen, gone, freshFront, slidEndX, slidEndY, minUnreadSaid
         case visibleAt = 32, goneAt, offActedFor, offInPlaceSaid, narrowestHeld
         case rect = 64, placedPage, minSize, slidPane
         case returns = 96, offTries, reentries
@@ -143,6 +143,90 @@ nonisolated final class HostCore: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         v.withUnsafeBufferPointer { margin_model_set_times(core, h, f.rawValue, $0.baseAddress, $0.count) }
+    }
+
+    // ---- every app's own window minimum, per version, and each host's own (host/minimums.rs: docs/CORE-REFACTOR.md
+    // step 2 part 5). Typed: a pane's minimum is read every frame of a drag. The versions are read here (the core never
+    // reads one), the file read and written here (as the routes are). ----
+
+    // A host's minimum as the core holds it: its own as read, else its app's kept one (`known`: none for a window-mode
+    // host's). `needsVersion`: its app's kept one with its process's version not read yet (the engine reads it, sets
+    // it, asks again; unreadable, that one holds).
+    enum Minimum { case none, known(CGSize), needsVersion(CGSize) }
+    func minimum(_ h: UInt32, known: Bool) -> Minimum {
+        var out = MarginSize()
+        lock.lock()
+        defer { lock.unlock() }
+        switch margin_model_minimum(core, h, known ? 1 : 0, &out) {
+        case 1: return .known(CGSize(width: out.width, height: out.height))
+        case 2: return .needsVersion(CGSize(width: out.width, height: out.height))
+        default: return .none
+        }
+    }
+    func setVersion(_ h: UInt32, _ v: String) {
+        var v = v
+        lock.lock()
+        defer { lock.unlock() }
+        v.withUTF8 { margin_model_set_version(core, h, $0.baseAddress, $0.count) }
+    }
+    // Its tile's minimum as just read (nil: it said none): `.changed` its own from now (rounded up), `.unreadSay` the
+    // one read before kept (say it, once), `.same` nothing new.
+    enum Learnt { case same, changed, unreadSay }
+    func learnMin(_ h: UInt32, _ read: CGSize?) -> Learnt {
+        lock.lock()
+        defer { lock.unlock() }
+        let a: UInt8
+        if let read { var s = MarginSize(width: read.width, height: read.height); a = margin_model_learn_min(core, h, &s) } else { a = margin_model_learn_min(core, h, nil) }
+        return a == 1 ? .changed : a == 2 ? .unreadSay : .same
+    }
+    // Its own minimum kept as its app's for its process's `version` (nil: unread, kept as "?"). True: new (saved, said).
+    func rememberMin(_ h: UInt32, version: String?) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard var v = version else { return margin_model_remember_min(core, h, nil, 0) }
+        return v.withUTF8 { margin_model_remember_min(core, h, $0.baseAddress, $0.count) }
+    }
+    func held(_ h: UInt32, _ width: CGFloat) {
+        lock.lock()
+        defer { lock.unlock() }
+        margin_model_held(core, h, Double(width))
+    }
+    // It left its tile with no minimum said: the narrowest it held taken for its minimum width (that width; nil: none).
+    func learnFromLeaving(_ h: UInt32) -> CGFloat? {
+        lock.lock()
+        defer { lock.unlock() }
+        let w = margin_model_learn_from_leaving(core, h)
+        return w.isNaN ? nil : CGFloat(w)
+    }
+    // An app's kept minimum: whether one is kept (any version), and the one for the version running (nil: not known).
+    func hasMinimum(_ app: String) -> Bool {
+        var app = app
+        lock.lock()
+        defer { lock.unlock() }
+        return app.withUTF8 { margin_minimums_has(core, $0.baseAddress, $0.count) }
+    }
+    func knownMinimum(_ app: String, version: String?) -> CGSize? {
+        var app = app, out = MarginSize()
+        lock.lock()
+        defer { lock.unlock() }
+        let found = app.withUTF8 { a in
+            guard var v = version else { return margin_minimums_known(core, a.baseAddress, a.count, nil, 0, &out) }
+            return v.withUTF8 { margin_minimums_known(core, a.baseAddress, a.count, $0.baseAddress, $0.count, &out) }
+        }
+        return found ? CGSize(width: out.width, height: out.height) : nil
+    }
+    // The apps a minimum is kept for (rare: the page told every app's).
+    func minimumApps() -> [String] { call(["type": "minimumApps"])["apps"] as? [String] ?? [] }
+    // minimums.json beside routes.json: read at launch, written after a change (as the routes are; the core's JSON).
+    func loadMinimums(from url: URL) {
+        guard let data = try? Data(contentsOf: url), let minimums = try? JSONSerialization.jsonObject(with: data) else { return }
+        _ = call(["type": "loadMinimums", "minimums": minimums])
+    }
+    func saveMinimums(to url: URL) {
+        guard let minimums = call(["type": "saveMinimums"])["minimums"], JSONSerialization.isValidJSONObject(minimums),
+              let data = try? JSONSerialization.data(withJSONObject: minimums, options: [.sortedKeys]) else { return }
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? data.write(to: url, options: .atomic)
     }
 }
 

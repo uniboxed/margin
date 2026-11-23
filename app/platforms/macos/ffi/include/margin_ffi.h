@@ -14,6 +14,11 @@ typedef struct MarginRect {
     double height;
 } MarginRect;
 
+typedef struct MarginSize {
+    double width;
+    double height;
+} MarginSize;
+
 typedef struct MarginEdges {
     double left;
     double right;
@@ -81,6 +86,19 @@ bool margin_model_get_rect(MarginHostCore *core, uint32_t handle, uint32_t field
 void margin_model_set_rect(MarginHostCore *core, uint32_t handle, uint32_t field, const MarginRect *value); // NULL: none
 size_t margin_model_times(MarginHostCore *core, uint32_t handle, uint32_t field, double *out, size_t cap);   // the count; `cap` written at most
 void margin_model_set_times(MarginHostCore *core, uint32_t handle, uint32_t field, const double *values, size_t len);
+
+// Each app's windows' minimum, kept per version (host/minimums.rs: minimums.json, its bytes read and written by the
+// shell through the loadMinimums/saveMinimums calls), and each host's own. A host's minimum: `of` 0 a pane's (its own,
+// else its app's kept one), 1 a target's known one (none in window mode); answers 0 none, 1 known, 2 its app's kept
+// one with its process's version not read yet (read it, set it, ask again; unreadable, `out` holds).
+void margin_model_set_version(MarginHostCore *core, uint32_t handle, const uint8_t *version, size_t len);
+uint8_t margin_model_minimum(MarginHostCore *core, uint32_t handle, uint8_t of, MarginSize *out);
+uint8_t margin_model_learn_min(MarginHostCore *core, uint32_t handle, const MarginSize *read); // NULL: said none. 0 same, 1 its own now, 2 say the unread one kept
+bool margin_model_remember_min(MarginHostCore *core, uint32_t handle, const uint8_t *version, size_t len); // NULL: unread ("?"). True: new, save it
+void margin_model_held(MarginHostCore *core, uint32_t handle, double width);
+double margin_model_learn_from_leaving(MarginHostCore *core, uint32_t handle); // the width taken; NaN none
+bool margin_minimums_has(MarginHostCore *core, const uint8_t *app, size_t len);
+bool margin_minimums_known(MarginHostCore *core, const uint8_t *app, size_t app_len, const uint8_t *version, size_t version_len, MarginSize *out); // version NULL: not known
 
 // Margin's keys (shortcuts.rs, ffi keys.rs): combinations as the Mac's Carbon key code and modifier bits. The JSON
 // answers are freed with margin_buffer_free; a press, a release and a repeat's tick are typed.
