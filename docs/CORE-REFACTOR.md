@@ -1319,6 +1319,13 @@ p95 no worse than commit 0's.
 
 #### Open questions for Tirth (each with the default this design takes: no change of behaviour)
 
+**Tirth's answers (2026-11-23):** 1 async, the same shape as the Swift; 2 yes, a library edit asked of the TS rules in
+the same turn until step 4; 3 **changed**: a reset (pin or favourite) still navigates back to its address when overtaken,
+but isn't shown (no flash before the item clicked after it); 4 the Swift's picture rule, no 8 MiB cap; 5 **changed**:
+the start screen re-checks only on events (an app, a window, a copy's link), no 50 ms looks; 6 the fallback kept until
+step 4; 7 yes; 8 **changed**: searchUrl percent-encodes every non-ASCII letter (café → caf%C3%A9); 9 Rust, same words.
+The three changes come after the pure moves, each its own commit with tests pinning the new behaviour.
+
 1. **Flows as Rust `async fn`s with the core's own executor**, or hand-written state machines (core/shell/mod.rs's
    `Pending` way, shell/mod.rs:450-460). *Default: async; a transliteration keeps every decision where it is, ~130
    awaits by hand would not.*
