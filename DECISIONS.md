@@ -7949,3 +7949,52 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   tiles first, a held frame kept, a follower gone and made again as its id, the one shown freed first, the counts, a
   forgotten drag). Swift's `HostCore` gains the typed wrappers; the engine switches to them, and its copies go, in the
   next commit. The app's 2040 checks pass unchanged.
+
+## Core refactor step 2, part 6 (second commit): the engine's pump asks the core, its copies deleted (2026-11-23)
+
+- `dragging`, `follow`, `sendLive` and `pumpLive` ask the core at the points they decided: the drag's start and end,
+  each frame, each tick (the flights' bounds read first, outside the lock, then one call), each send (asked again after
+  a version is read, as `frame` is) and its record, the tick's end. `liveFollowersList`, `liveCandidates`,
+  `followsLive`, `livePending`, `liveLast`, `liveHeld` and `setLivePage` are gone; `liveOn` reads the core;
+  `liveFollowers` (the session's count) is the core's, with the drag's own list beside it in one rule: part 9's
+  duplication folded in.
+- Stays Swift, as planned: every write (a tile's rect with the observer's note, a window's frame by
+  Accessibility and the bounds read to centre a fixed one), every read of the window server, every sleep exactly as
+  before (`liveFrame` while held, `tileEvery` otherwise: the same awaits at the same places, no new wait), the pump's
+  task, the window-mode hole's and Margin's window's tellings, and the drag's numbers (`LiveStats`: the core answers
+  each flight's end and the tick's counts, the engine records them). The log line ("host: live resize: in N ms: …",
+  parsed by S/LiveResize.swift, read for "each: " by T/split-real-use-tests.swift) is built by the same Swift as before,
+  word for word, so no Rust pin is needed. HostEngine: 96 lines out, 51 in (the calls and the mechanism around them);
+  HostCore's `setLivePage` gone (its 7 lines).
+- Checked before the Swift went: the deleted Swift (copied verbatim, `self`'s members aside) against the engine's new
+  code (copied verbatim, checked against HostEngine.swift by a script: only the mechanism's stand-ins differ), each on
+  its own core built alike, in a world of virtual time scheduled deterministically (every task on the main actor's
+  queue, sleepers woken by time then order), on 28,008 generated drags in two runs of 14,004 (the second with ticks a
+  frame's time less a microsecond apart, waits a whole number of ticks and frames at those gaps, so the throttle's, the
+  give-up's and the forgotten drag's edges are hit exactly): 1 to 4 hosts (tiles, window-mode windows resizable and
+  fixed, ones that don't follow; shown, parked, preparing; mains, panes, cards; a layout naming a host not made), frames
+  0 to 60 ms apart and coalesced, landing lags 0 to 70 ms, windows landing off by up to 4 pt, never landing, writes
+  refused, window-mode writes awaited (other frames landing meanwhile), tolerances 0 to 3, `liveFrame`, `liveWait` and
+  `tileEvery` varied, operations holding frames, Margin quitting, the drag held, followers parked, untiled and retiled,
+  gone and made again as the same id, the one shown changed or none, rects and minimums changed mid-drag, kept minimums
+  with versions read and unreadable, drags forgotten, ended and begun again while a run sleeps. Every write with its
+  time to the bit, every telling, the pump's life, the drag's numbers (each time to the bit) and the model after:
+  1,996,999 lines compared, no difference. The one difference, accepted as part 3 did: an unreadable version is read
+  once a send now, where the Swift read it at each of its three looks (the same answers, fewer reads). The first run
+  found one: a host freed before the engine said it let it go (its last reference dropped in `setHost`, `list` told
+  after) kept its flight until the give-up wait instead of being forgotten at the next tick, so the pump ran up to two
+  frames longer: fixed in the first commit (`remove` lets it go by its id), pinned by a Rust test. The harness caught
+  each of 23 deliberate breaks of the core (the throttle at equality and without its microsecond, tiles not first, the
+  give-up at equality, the oldest frame winning, the owed not reset, a gated pump stopping with flights out, a frame
+  counted held with nothing owed, the one shown last, the drag's hold ignored, landing without the tolerance, a fixed
+  window's landing read, the frame's rect ignored, the one shown checked against its minimum, the pump ending with a
+  frame pending, a gone host's flight kept, a host made again starting afresh, the narrowest held not kept, the one
+  shown's phase not asked, a drag begun with nothing to follow or while quitting, a fixed window not centred, the
+  forgotten drag at equality); the throttle's edge only once the second run's timings were added. Rust tests pin each
+  rule; the per-frame cost is in ffi tests/live_cost.rs (release: a page frame 2-3 ns, a tick at rest with three in
+  flight 41-48 ns, a tick sending a frame to three 321-323 ns, ~107 ns a host; the engine adds its lock, ~20 ns a call)
+  and the engine's side per tick fell (the scratch bench, -O, three followers: at rest 560 to 171 ns, sending a frame to
+  three 5.6 to 2.1 µs: no dictionaries, sets or arrays a tick but the sends' list). The app's 2040 checks pass
+  unchanged.
+- Not measured on the real screen (no screen suite on this branch): `live-resize` (followed median and p95) and
+  `idle-cost`, before the merge as the plan asks.

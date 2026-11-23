@@ -685,7 +685,7 @@ the Mac adapter's policy. Part 8 isn't done.
 | 6 | 2: window order. **Done 2026-11-23** (step2/parts-3-2, one commit: the order wanted, `overlapping` with the toolbar's room, the violated pairs and the raises as one plan made before the first raise, as the Swift did; the window server's order and the confirm's check typed; the ladder after a failed confirm, the raises and their waits stay Swift) | ~55 | 3 | |
 | 7 | 4: the budgets and the full-screen ladder. **Done 2026-11-23** (step2/parts-4-7, two commits: host/model/budget.rs, behaviour identical; then each budget's action counted toward the guard's 12-a-second hold, the one change of step 2; a stray's returns already counted by its "put back"; screen suite not run on that branch) | ~45 | 1a | |
 | 8 | 7: strays, off screen, exits, close, recovery's predicates. **Done 2026-11-23** (step2/parts-4-7, two commits: the poll's counts, strays and off screen in host/model/watch.rs; the close's tree, the exits and the recovery's launch rule in host/close.rs and exits.rs. Left in Swift: `noteOffScreen`, `noteOffPage`, the left-full-screen sign (lazy read chains), the recovery's `ours`/`safariMade` (lazy reads), the marker and `recoverNow`'s sequence; idle-cost not measured: no screen suite on that branch) | ~170 | 4 | idle-cost |
-| 9 | 6: the live pump | ~120 | 3, 5 | live-resize, idle-cost |
+| 9 | 6: the live pump. **Done 2026-11-23** (step2/part-6, two commits: host/model/live.rs with the typed calls, then the engine switched and its copies deleted, `liveFollowers`' duplicate folded in; every write, read and sleep, the pump's task and the drag's numbers with their line stay Swift, the line word for word; live-resize and idle-cost not measured: no screen suite on that branch) | ~45 | 3, 5 | live-resize, idle-cost |
 | ~~10~~ | 8: panes active, pane clicks: left in Swift (Tirth, 2026-11-22) | 0 | | |
 
 About 1,000 Swift lines deleted (not ~1,500: most of the "mixed" lines are macOS mechanism that stays: the waits,
@@ -695,6 +695,47 @@ CPU, < 150 MB, a switch < 16 ms of Margin's work; a drag's p95 no worse than the
 **Tirth's answers (2026-11-22):** the full-screen ladder stays per host and per run; the four budgets count toward
 guard.rs's 12-a-second hold (part 4's one change of behaviour, pinned by new tests); part 8 left as the Mac's policy.
 So about 830 Swift lines deleted.
+
+### Step 2: done (2026-11-23)
+
+Every part but 8 is done (parts 9, 1a, 5, 1b, 3, 2, 4, 7, 6, in that order; each part's DECISIONS.md entry has its
+checks). What moved into the core (app/shared/core/src/host/, typed calls in app/platforms/macos/ffi/src/, nothing
+allocated on the hot paths: ffi tests/no_alloc.rs):
+
+- **The model** (model.rs): each host's state by a `u32` handle, `Host`'s fields computed properties over it; every
+  app's window minimum per version (minimums.rs, minimums.json unchanged).
+- **The layout** (model/visible.rs, layout.rs): Margin's page area's layout, the one shown, the focus, the hold (two
+  kinds, one rule), `applyLayout`'s and `bringIn`'s decisions at each of their points, the window-mode frame.
+- **Where each window goes** (model/panes.rs, geometry.rs `cg`): frames, cut panes, slides and their frames, "lies
+  under", with CGRect's own edge rules.
+- **Window order** (model/order.rs): the one plan made before the first raise, as the Swift did.
+- **Margin's own corrections** (model/budget.rs, guard.rs): the four budgets and the full-screen ladder; each budgeted
+  action counted toward the loop guard's 12-a-second hold (the step's one change of behaviour, Tirth's), and the
+  tiles' sizing waiting for the hold's end instead of asking again and again.
+- **The poll and the close** (model/watch.rs, close.rs, exits.rs): a window's reads counted, a gone window's tree,
+  strays, off screen, the close's tree at each point, the apps asked to quit, the recovery's launch rule.
+- **The live-resize pump's scheduling** (model/live.rs): who follows, the newest frame, one in flight per host, a
+  frame's throttle, tiles first, the give-up wait, the drag held.
+- **The duplicates** (part 9): near, the strip rule, the sidebar, the wake, the same launch, the toolbar's room, the
+  typed `nextPoll`.
+
+What stayed Swift, and why:
+
+- **Mechanism, by design:** every write to the window server and Accessibility, every read, every wait and sleep (each
+  at its old place and time: no new wait), the private calls, the tasks, the log lines (word for word: the core answers
+  codes and numbers; the live-resize line and its `LiveStats` stay the engine's), Margin's window's tellings.
+- **Lazy read chains**, which would read more (or differently) if decided up front: `noteOffScreen`, `noteOffPage`,
+  the left-full-screen sign, the recovery's `ours` and `safariMade`, `overPaneItLiesUnder` without the poll's list.
+- **The Mac's own:** the marker and `recoverNow`'s sequence (Space, tile and Safari ids), `appKey` and the version
+  reads, `fitted`'s two-line composition, the ladder after a failed confirm, the raises and their waits.
+- **Part 8** (panes active, pane clicks): the Mac adapter's policy (Tirth, 2026-11-22).
+
+Checked part by part: the deleted Swift against the core on generated vectors before each Swift rule went (238,000
+to 17 million checks a part), each harness proven by deliberate breaks; the app's checks unchanged (2040). Two
+accepted differences, both in reads only: an unreadable app version is read once a call (the Swift read it at each look), and a
+fronting's plan uses the state before its first raise throughout (a drag begun between two raises was mixed in
+before). Still to do before the merge: the gate and the screen suite (`idle-cost`, `idle-profile`, `live-resize`,
+`pane-clicks`, a switch), never run on these branches.
 
 ## Step 3: the session into the core
 

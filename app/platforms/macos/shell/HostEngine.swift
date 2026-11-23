@@ -570,16 +570,13 @@ final class HostEngine {
     private var goneTiles: Set<UInt64> = [] // hosted tiles whose host went (its app quit or crashed, its window closed): destroyed if they stay
     private(set) var anchorTiles: [UInt64] = [] // Margin's own empty tiles, its Space's layout's first two (none: not made)
     // The sidebar's edge dragged (`dragging`): the one shown follows (`follow`), one change in flight (`livePump`).
-    private(set) var liveOn = false
-    private var livePending: HostPlacement?
+    // Who follows, the newest frame, each one's flight and when it's free, and the drag held (the one shown left its
+    // tile in it) are the core's (host/model/live.rs): the pump asks it each tick and sends what it says.
+    var liveOn: Bool { core.liveOn }
     private var livePump: Task<Void, Never>?
     private var liveStats = LiveStats()
     private(set) var lastLive: LiveStats? // (the last drag's numbers, as said: the tests read them)
-    private var liveLast = 0.0 // the drag's last page area: a drag never said over is over after `liveForget`
-    // The one shown left its tile during this drag (found out of Margin's Space and brought back): not followed again
-    // until the drag is over, so it can't happen twice in one drag; the drag's end places it once.
-    private var liveHeld = false
-    var liveForget = 10.0
+    var liveForget = 10.0 // (a drag never said over, no page area of it for this long: over)
     // A drag's numbers, said as it ends: the page's frames (and the time between them), the frames sent to every follower
     // (`frames`), the ticks that sent any and how many sent more than one host at once, and per host its sends, how long
     // each took to land (its window at its rect) and the ones given up after `liveWait`.
@@ -699,16 +696,10 @@ final class HostEngine {
 
     // (The session's word: a show of `id` is today's one-host way, else a layout of it alone. HostedEngine.)
     func showsAlone(_ id: HostID) -> Bool { alone(id) }
-    // How many of the hosts a drag would move follow it live, of how many (the session's word, before a drag: every
-    // candidate counted as it is, its phase not asked; `liveFollowersList` is the drag's own, the shown ones only).
-    func liveFollowers() -> (follow: Int, visible: Int) {
-        let list = liveCandidates
-        return (list.filter(followsLive).count, list.count)
-    }
-    // The hosts a drag of the sidebar's edge moves: every visible one with several, else the one shown.
-    private var liveCandidates: [Host] { core.layoutCount > 1 ? visibleHosts : shown.flatMap { hosts[$0] }.map { [$0] } ?? [] }
-    // A host that follows a drag live: a tile, or a window-mode window.
-    private func followsLive(_ h: Host) -> Bool { h.tile != nil || h.mode == .window }
+    // How many of the hosts a drag would move follow it live (a tile, a window-mode window), of how many (the session's
+    // word, before a drag: every visible one with several, else the one shown, each counted as it is, its phase not
+    // asked). The core's, with the drag's own list (the shown ones only, the one shown first).
+    func liveFollowers() -> (follow: Int, visible: Int) { core.liveFollowers() }
 
     // `setLayout`'s steps, in the engine's queue.
     // A host coming in beside the ones shown (a split's new pane: opened, or unparked): the ones shown keep their rects
@@ -1182,7 +1173,7 @@ final class HostEngine {
         }
         pollHeldSince = nil
         // (A drag of the sidebar's edge never said over, no page area of it for `liveForget`: over.)
-        if liveOn, sys.now() - liveLast > liveForget { Diagnostics.note("host: live resize: no page area of the drag for \(Int(liveForget)) s and never said over: over"); dragging(false) }
+        if core.liveForgotten(now: sys.now(), forget: liveForget) { Diagnostics.note("host: live resize: no page area of the drag for \(Int(liveForget)) s and never said over: over"); dragging(false) }
         parkWoken()
         pollScreen = nil
         pollCurrentBefore = nil
@@ -4504,9 +4495,6 @@ final class HostEngine {
     // Its placement as its own full-screen Space reserves it (its window entering, a member placed): a cut pane's frame
     // held within the display, whatever its tile's would be.
     private func entryFitted(_ host: Host) -> HostPlacement { versioned { core.entryFitted(host.handle) } }
-    // The page area of a drag of the sidebar's edge as it's followed (a split's panes are laid out away from each other
-    // within it: `frame`), nil: none under way. The core's.
-    private func setLivePage(_ page: CGRect?) { core.setLivePage(page) }
     // A cut pane's sides (docs/PEEK-SPLIT.md §4b): each one with part of its window hidden, which its arrow slides into its
     // pane (its other alignment along that axis: never held within the display). None that would put its window over
     // a cut pane whose own window lies over this pane (two panes each over the other's: no order shows both). Nil: not
@@ -5038,28 +5026,21 @@ final class HostEngine {
     // after: the hosted app gets one live-resize start and end, not one per frame: the kit's lead 4).
     @discardableResult func dragging(_ on: Bool) -> Bool {
         if on {
-            // (Several visible, docs/PEEK-SPLIT.md §1: every visible tile or window-mode window follows, each its own rect.)
-            let others = visibleHosts.filter { $0.id != shown && ($0.tile != nil || $0.mode == .window) }
-            guard !liveOn, !quitting, let id = shown, let host = hosts[id], host.phase == .shown, host.tile != nil || host.mode == .window || !others.isEmpty else { return false }
-            liveOn = true
-            liveHeld = false
-            liveLast = sys.now()
+            // (Several visible, docs/PEEK-SPLIT.md §1: every visible tile or window-mode window follows, each its own rect.
+            // The core's: none under way, not quitting, the one shown shown, and it or another visible one follows.)
+            guard let others = core.liveStart(now: sys.now(), quitting: quitting), let host = shown.flatMap({ hosts[$0] }) else { return false }
             liveStats = LiveStats(since: sys.now())
             liveRects = [:]
             // (Its minimum read once more as the drag begins (one read, none per frame): the page's edge stops there.)
             if host.tile != nil { learnMinimum(host); _ = sys.setLiveResizing(marginSpace, true) }
-            for o in others where o.tile != nil {
+            for o in others.compactMap({ byHandle[$0] }) where o.tile != nil {
                 learnMinimum(o)
                 if host.tile == nil { _ = sys.setLiveResizing(marginSpace, true) }
             }
             return true
         }
-        guard liveOn else { return false }
-        liveOn = false
-        liveHeld = false
-        livePending = nil
+        guard core.liveEnd() else { return false }
         liveRects = [:]
-        setLivePage(nil)
         if tilesOK { _ = sys.setLiveResizing(marginSpace, false) }
         Diagnostics.note("host: live resize: in \(ms(since: liveStats.since)) ms: \(liveStats.line) (wait \(Int(options.liveWait * 1000)) ms)")
         lastLive = liveStats
@@ -5075,13 +5056,12 @@ final class HostEngine {
     // `rects`: the other visible hosts' rects in this frame of the drag (a card's, a pane's: the page's measure); one
     // not given keeps its own. The newest frame wins for every host at once.
     func follow(_ p: HostPlacement, rects: [HostID: CGRect]) {
-        guard liveOn else { return }
-        liveLast = sys.now()
+        // (The newest frame, the drag's page area: the core's.)
+        let now = sys.now()
+        guard core.liveFollow(now: now, p) else { return }
         liveStats.asked += 1
-        if let last = liveStats.lastAsk { liveStats.gaps.append(liveLast - last) }
-        liveStats.lastAsk = liveLast
-        livePending = p
-        setLivePage(p.page)
+        if let last = liveStats.lastAsk { liveStats.gaps.append(now - last) }
+        liveStats.lastAsk = now
         if !rects.isEmpty, rects != liveRects {
             liveRects = rects
             // (Several visible: Margin's window told every one's rect in this frame at once, its holes and the pointer's
@@ -5097,22 +5077,22 @@ final class HostEngine {
     // area; another visible one at its own, never below its minimum (not sent this frame). What its window should be
     // at after, nil: nothing sent.
     private func sendLive(_ host: Host, _ p: HostPlacement) async -> CGRect? {
-        guard host.phase == .shown, host.tile != nil || host.mode == .window else { return nil }
-        var q = p
-        q.page = liveRects[host.id] ?? host.rect ?? p.page
-        // (Never narrower than its window's own minimum: a comparison, nothing read. The page's divider and the sidebar's
-        // edge stop there already; this holds for a minimum learnt mid-drag too.)
-        if host.id != shown, host.rect != nil || liveRects[host.id] != nil, belowMinimum(host, q.page) { return nil }
-        let page = host.tile != nil ? frame(host, q) : q.page
-        if let tile = host.tile, let rect = tileRect(for: host, q) {
+        // (Which rect, and whether at all: the core's. Never narrower than its window's own minimum: a comparison,
+        // nothing read. The page's divider and the sidebar's edge stop there already; this holds for a minimum learnt
+        // mid-drag too.)
+        switch versioned({ core.liveSend(host.handle, p, given: liveRects[host.id], home: tileHome) }) {
+        case .none: return nil
+        case .tile(let rect, let page):
+            guard let tile = host.tile else { return nil }
             observer.sized(pid: host.pid, rects: [rect, page]) // (no cause noted a frame: a drag is the person's)
             guard sys.setTileRect(tile, rect) else { return nil }
-        } else if host.mode == .window {
-            let want = host.resizable ? page : HostLayout.inside(page, sys.bounds(window: host.window)?.size ?? page.size)
+            return page
+        case .frame(let page, let centred):
+            let want = centred ? HostLayout.inside(page, sys.bounds(window: host.window)?.size ?? page.size) : page
             guard await sys.setFrame(pid: host.pid, window: host.window, want, size: host.resizable) else { return nil }
             host.frameChanged = true
-        } else { return nil }
-        return page
+            return page
+        }
     }
 
     // The drag's frames to every visible host that follows (a tile, a window-mode window): each its own rect, at most one
@@ -5123,73 +5103,48 @@ final class HostEngine {
     // same tick, tiles first (nothing awaited between them), a window-mode window's frame after.
     private func pumpLive() async {
         defer { livePump = nil }
-        // (Each host's rect in flight (where its window should land) and when it was sent; when it was last sent.)
-        var flights: [HostID: (want: CGRect, at: Double, exact: Bool)] = [:]
-        var lastSent: [HostID: Double] = [:]
-        var frame: HostPlacement?
-        var owed: Set<HostID> = [] // followers not yet sent the newest frame
+        // (Each host's flight, when it was last sent, the frame and who's owed it: the core's, for this run.)
+        core.livePumpBegin()
         while liveOn {
             let now = sys.now()
-            // (Landed, or given up on after `liveWait`: free for the next frame.)
-            for (id, f) in flights {
-                guard let h = hosts[id] else { flights[id] = nil; continue }
-                let there = !f.exact || sys.bounds(window: h.window).map { HostLayout.near($0, f.want, within: options.tolerance) } == true
-                if there {
-                    liveStats.landed(id, now - f.at)
-                    if h.tile != nil { held(h, f.want.width) }
-                    flights[id] = nil
-                } else if now - f.at >= options.liveWait {
-                    liveStats.missed(id)
-                    flights[id] = nil
-                }
+            // (Landed (its window's bounds read, near its rect), or given up on after `liveWait`: free for the next frame;
+            // the newest frame owed to every follower; held while an operation runs, Margin quits, or the one shown left
+            // its tile in this drag or isn't shown; then the followers free for it, tiles first.)
+            let t = core.liveTick(now: now, timing: MarginLiveTiming(frame: options.liveFrame, wait: options.liveWait, tolerance: options.tolerance),
+                                  busy: busy, quitting: quitting, bounds: { sys.bounds(window: $0) }) { h, took in
+                guard let id = byHandle[h]?.id else { return }
+                if let took { liveStats.landed(id, took) } else { liveStats.missed(id) }
             }
-            if let p = livePending {
-                livePending = nil
-                frame = p
-                owed = Set(liveFollowersList().map(\.id))
-            }
-            // (An operation running, or the one shown left its tile in this drag: held a frame, the newest kept.)
-            guard !busy, !quitting, !liveHeld, let id = shown, let host = hosts[id], host.phase == .shown else {
-                if frame != nil, !owed.isEmpty { liveStats.held += 1 }
-                if frame == nil || owed.isEmpty, flights.isEmpty { break }
+            guard t.go else {
+                if t.held { liveStats.held += 1 }
+                if t.stop { break }
                 await sys.sleep(options.liveFrame)
                 continue
             }
-            if let p = frame, !owed.isEmpty {
-                let free = liveFollowersList().filter { owed.contains($0.id) && flights[$0.id] == nil && now - (lastSent[$0.id] ?? -.infinity) >= options.liveFrame - 1e-6 }
-                    .sorted { ($0.tile != nil ? 0 : 1) < ($1.tile != nil ? 0 : 1) }
+            if !t.sends.isEmpty, let host = byHandle[t.shown] {
+                let free = t.sends.compactMap { byHandle[$0] }
                 var sentNow: [Host] = []
                 for h in free {
-                    owed.remove(h.id)
                     let at = sys.now()
-                    guard let want = await sendLive(h, p) else { continue }
-                    flights[h.id] = (want, at, h.mode != .window || h.resizable)
-                    lastSent[h.id] = at
+                    guard let want = await sendLive(h, t.frame) else { continue }
+                    core.liveSent(h.handle, at: at, want: want)
                     liveStats.sent(h.id)
                     sentNow.append(h)
                 }
                 if !sentNow.isEmpty {
                     liveStats.ticks += 1
                     if sentNow.count > 1 { liveStats.together += 1 }
-                    if owed.isEmpty { liveStats.frames += 1 }
+                    if t.owedEmpty { liveStats.frames += 1 }
                     // (A window-mode window's hole is its bounds: Margin's window reads them again now it's moved.)
                     if host.mode == .window, sentNow.contains(where: { $0 === host }) { hostedWindow?(host.window) }
-                    if sentNow.contains(where: { $0 !== host && $0.mode == .window }) { hostedWindowsSaid = []; sayHostedWindows(live: liveOn ? p : nil) }
+                    if sentNow.contains(where: { $0 !== host && $0.mode == .window }) { hostedWindowsSaid = []; sayHostedWindows(live: liveOn ? t.frame : nil) }
                 }
-                if owed.isEmpty { frame = nil }
             }
-            if frame == nil, flights.isEmpty, livePending == nil { break }
+            if core.liveDone() { break }
             await sys.sleep(options.tileEvery)
         }
     }
 
-    // The visible hosts that follow a drag live (`followsLive`), the one shown first, each one shown now (unlike
-    // `liveFollowers`' count: a host between its phases isn't written to).
-    private func liveFollowersList() -> [Host] {
-        let list = liveCandidates
-        let shownFirst = list.filter { $0.id == shown } + list.filter { $0.id != shown }
-        return shownFirst.filter { $0.phase == .shown && followsLive($0) }
-    }
     // Live resize: the one shown left its tile for a full-screen Space of its own (its app's answer to a tile it
     // couldn't take: Weather on the real Mac, 2026-11-18 09:08, its tile sent narrower than its minimum): its tile there
     // moved back into Margin's Space and sized (never below its minimum, read from that tile first), that Space
@@ -5303,7 +5258,7 @@ final class HostEngine {
         if isVisible(id) {
             let spaces = sys.spaces(window: host.window)
             // (Mid-drag: not followed again until it's over, whatever comes of it; never twice in one drag.)
-            if liveOn, spaces != [marginSpace] { liveHeld = true }
+            if liveOn, spaces != [marginSpace] { core.liveHold() }
             let seen = "its window in \(spaces.map { $0.isEmpty ? "no user Space" : $0.map { "\($0) (type \(sys.spaceType($0).map(String.init) ?? "?"))" }.joined(separator: ", ") } ?? "Spaces that don't read"), Margin's Space \(marginSpace), Margin's window \(marginHere ? "in it" : "out of it")"
                 + ", its bounds \(sys.bounds(window: host.window).map(r) ?? "unread")" + (host.askedFullScreenAt.map { ", \(ms(since: $0)) ms after it was last asked into full screen" } ?? "")
             // (Read again now, after whatever ran since the poll's read: both where they should be, nothing to do. An

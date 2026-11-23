@@ -413,13 +413,6 @@ nonisolated final class HostCore: @unchecked Sendable {
     }
     private func placement(_ m: MarginPlacement) -> HostPlacement { HostPlacement(page: CGRect(m.page), area: CGRect(m.area), display: CGRect(m.display)) }
 
-    // The page area of a drag being followed (nil: none under way).
-    func setLivePage(_ page: CGRect?) {
-        locked {
-            guard var r = page?.marginRect else { return margin_model_set_live_page(core, nil) }
-            margin_model_set_live_page(core, &r)
-        }
-    }
     // ---- the live-resize pump's scheduling (host/model/live.rs, docs/CORE-REFACTOR.md step 2 part 6): a drag's start
     // and end, each page frame, each tick of the pump, each send. Typed (every frame and tick of a drag), the lists in
     // buffers on the stack (16: the most hosts a drag moves); the bounds read outside the lock. ----
