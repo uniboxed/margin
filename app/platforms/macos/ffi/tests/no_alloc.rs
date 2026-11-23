@@ -251,3 +251,36 @@ fn the_hot_paths_allocate_nothing() {
         margin_host_free(core);
     }
 }
+
+#[test]
+fn the_budgets_allocate_nothing_after_a_cut_panes_first_repair() {
+    let core = margin_host_new();
+    let (id, app) = ("safari:#pane1", "com.apple.Safari");
+    // SAFETY: a live core, valid buffers.
+    let h = unsafe { margin_model_add(core, id.as_ptr(), id.len(), app.as_ptr(), app.len(), 41, 500) };
+    // (A cut pane's first repair keeps its id: rare, before the count.)
+    // SAFETY: a live core.
+    unsafe { margin_budget_spend(core, h, 4, 0.0, std::ptr::null_mut()) };
+    let mut count = 0u32;
+    let n = allocations(|| {
+        // SAFETY: a live core, a writable count.
+        unsafe {
+            // (The poll's, every poll for each cut pane seen right; each budget within its room.)
+            margin_budget_cut_order_right(core, h);
+            margin_budget_cut_order_right(core, 99);
+            for (i, kind) in [0u8, 1, 2, 3, 4].into_iter().enumerate() {
+                std::hint::black_box(margin_budget_spend(core, h, kind, 1.0 + i as f64, &mut count));
+            }
+            margin_budget_repair_took(core, h, false);
+            margin_model_full_screen_failed(core, h);
+            margin_model_adopted(core, h, true);
+            margin_model_moved_to_window(core, h);
+        }
+    });
+    assert_eq!(n, 0, "the budgets allocated {n} times");
+    // SAFETY: the live core, freed once.
+    unsafe {
+        margin_model_remove(core, h);
+        margin_host_free(core);
+    }
+}

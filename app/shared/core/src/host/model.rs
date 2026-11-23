@@ -6,7 +6,8 @@
 //! The state (part 1a), and the decisions that read it as they move in: each app's kept minimum and each host's own
 //! (part 5, `minimums`); the engine's layout of Margin's page area, the one shown, and the layout's decisions (part 1b,
 //! `visible`); where each window goes, cut panes and a slide's frames (part 3, `panes`); the visible windows' order
-//! (part 2, `order`). Reading and writing a field never allocates; a list of times (returns, tries) is kept within its capacity (room for 8 from the start: the Mac
+//! (part 2, `order`); the budgets of Margin's own corrections that outlive a show and the full-screen ladder (part 4,
+//! `budget`). Reading and writing a field never allocates; a list of times (returns, tries) is kept within its capacity (room for 8 from the start: the Mac
 //! keeps at most `returnsMax` + 1, 4).
 
 use std::collections::BTreeMap;
@@ -15,9 +16,11 @@ use super::layout::{Placement, Size};
 use super::minimums::AppMinimums;
 use crate::geometry::Rect;
 
+mod budget;
 mod order;
 mod panes;
 mod visible;
+pub use budget::{CUT_LIMIT, CUT_WITHIN, CutRepair, CutRepairs, Kind as BudgetKind, Limits, Spend};
 pub use order::{Confirm, FrontPlan, server_order, top_behind};
 pub use panes::{Side, SlideStep, slide_rect};
 pub use visible::{
@@ -278,6 +281,9 @@ pub struct HostModel {
     // Cut panes (part 3, panes.rs): the page area of a drag being followed, the hosts whose version a decision wanted.
     live_page: Option<Rect>,
     wanted: panes::Wanted,
+    // The budgets (part 4, budget.rs): their limits from the engine's options, every cut pane's repairs by its id.
+    pub limits: Limits,
+    repairs: CutRepairs,
 }
 
 /// A host's minimum as a decision reads it (`HostModel::minimum`).

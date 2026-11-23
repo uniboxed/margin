@@ -289,8 +289,6 @@ final class HostEngine {
         var unread: Int { get { Int(model.int(handle, .unread)) } set { model.setInt(handle, .unread, Int64(newValue)) } }
         // Polls in a row it was found where it mustn't be (shown: outside Margin's Space; parked: in a user Space).
         var strays: Int { get { Int(model.int(handle, .strays)) } set { model.setInt(handle, .strays, Int64(newValue)) } }
-        // When it was last brought back into Margin's Space after straying (`returnsMax`).
-        var returns: [Double] { get { model.times(handle, .returns) } set { model.setTimes(handle, .returns, newValue) } }
         var askedFullScreenAt: Double? // when it was last asked into full screen (for the log of a stray)
         var windowsBeforeAsk: Set<Int> = [] // its app's windows right before that ask (a toolbar strip it makes is new)
         var mode: HostMode { get { HostMode(model: model.int(handle, .mode)) } set { model.setInt(handle, .mode, newValue.model) } }
@@ -304,9 +302,8 @@ final class HostEngine {
         var exitUnconfirmed = false // its last exit from full screen wasn't confirmed (Accessibility neither took nor read it)
         var axRefused = false // Accessibility didn't take its frame as it was given back: its close button isn't pressed either
         // In window mode only because its full screen failed (it can go full screen): tried again the next time it's
-        // shown from parked, once (`fullScreenFailures` counts the failures).
-        var retryFullScreen: Bool { get { model.flag(handle, .retryFullScreen) } set { model.setFlag(handle, .retryFullScreen, newValue) } }
-        var fullScreenFailures: Int { get { Int(model.int(handle, .fullScreenFailures)) } set { model.setInt(handle, .fullScreenFailures, Int64(newValue)) } }
+        // shown from parked, once (the core's ladder counts the failures: host/model/budget.rs).
+        var retryFullScreen: Bool { model.flag(handle, .retryFullScreen) }
         var bundleId: String?
         var appLaunchedAt: Double?
         // The reconciler's (HostReconciler.swift): its app's windows when its first show ended (an app Margin started:
@@ -363,17 +360,10 @@ final class HostEngine {
         }
         // Its own look at being off screen while it's visible (`backOnScreen`, docs/PEEK-SPLIT.md §4: every visible host
         // its own budget, never one shared by a split's panes): when it was last shown (made visible, or the one shown),
-        // the times it was brought back, whether giving up was said, the show the look acted for with nothing to move.
+        // whether giving up was said (reset when it's newly visible). Its tries, a stray's returns and the re-entries into
+        // full screen are the core's budgets (host/model/budget.rs).
         var visibleAt: Double { get { model.real(handle, .visibleAt) ?? 0 } set { model.setReal(handle, .visibleAt, newValue) } }
-        var offTries: [Double] { get { model.times(handle, .offTries) } set { model.setTimes(handle, .offTries, newValue) } }
         var offSaid: Bool { get { model.flag(handle, .offSaid) } set { model.setFlag(handle, .offSaid, newValue) } }
-        var offActedFor: Double? { get { model.real(handle, .offActedFor) } set { model.setReal(handle, .offActedFor, newValue) } }
-        var offInPlaceSaid: Double? { get { model.real(handle, .offInPlaceSaid) } set { model.setReal(handle, .offInPlaceSaid, newValue) } }
-        // When its window was last put back into full screen after leaving it by itself (`reenterFullScreen`: Safari's
-        // own Esc, 2026-11-21), and whether giving up on that was said: `returnsMax` within `returnsWithin`, then left to
-        // the reconciler's own corrections.
-        var reentries: [Double] { get { model.times(handle, .reentries) } set { model.setTimes(handle, .reentries, newValue) } }
-        var reentrySaid: Bool { get { model.flag(handle, .reentrySaid) } set { model.setFlag(handle, .reentrySaid, newValue) } }
         // A card's or a pane's new Safari window (asked in full screen, born in a full-screen Space of its own: `openNew`):
         // the full-screen Spaces listed before its ask (its own is the new one), the freeze taken at that ask and handed to
         // its placing (macOS's switch to its Space comes as the window does), and whether that switch was seen and undone
@@ -415,7 +405,7 @@ final class HostEngine {
 
     // The engine's options. What the core's decisions read of them (host/model/visible.rs `ModelOptions`) is sent to it
     // whenever they change (a test's change after init too): one call each.
-    var options: Options { didSet { core.configure(tolerance: options.tolerance, toolbarRoom: options.toolbarRoom) } }
+    var options: Options { didSet { core.configure(tolerance: options.tolerance, toolbarRoom: options.toolbarRoom, returnsMax: options.returnsMax, returnsWithin: options.returnsWithin) } }
     private let sys: HostSystem
     private let markerURL: URL?
     private let ownPid: Int32
@@ -628,7 +618,7 @@ final class HostEngine {
         ownPid = pid
         let core = HostCore()
         self.core = core
-        core.configure(tolerance: options.tolerance, toolbarRoom: options.toolbarRoom)
+        core.configure(tolerance: options.tolerance, toolbarRoom: options.toolbarRoom, returnsMax: options.returnsMax, returnsWithin: options.returnsWithin)
         observer = HostObserver(system: system, source: observation, core: core)
         observer.onHeard = { [weak self] in self?.heardSomething() }
         sys.onAppQuit = { [weak self] pid in self?.appQuit(pid) }
@@ -802,7 +792,7 @@ final class HostEngine {
         // (The layout no longer applied, what's visible of it; one left of a layout of several asked: it alone, at the
         // page area. The core's.)
         if let h = host(core.layoutEndAlone()) {
-            cutOrderRight(h.id)
+            cutOrderRight(h)
             let placed = await place(h)
             Diagnostics.note("host: layout: \(h.id) left alone of the layout asked: at the page area \(r(placement.page))\(placed ? "" : " (not placed there yet)")")
         }
@@ -1267,7 +1257,7 @@ final class HostEngine {
         let tuckedNow = visibleHosts.filter { tucked($0) }
         if !tuckedNow.isEmpty, let list = screenList()?.map(\.number) {
             for cut in tuckedNow {
-                if overPaneItLiesUnder(cut, list: list) { Task { _ = await self.repairCutOrder(cut.pid) }; break } else { cutOrderRight(cut.id) }
+                if overPaneItLiesUnder(cut, list: list) { Task { _ = await self.repairCutOrder(cut.pid) }; break } else { cutOrderRight(cut) }
             }
         }
         keepCurrentLate()
@@ -1589,13 +1579,13 @@ final class HostEngine {
     // operation: never a reaction the loop guard counts, its budgets anew, its route kept (it comes back on tiles when
     // they're on). `returnsMax` times within `returnsWithin`; past that, false (left to the reconciler, said once).
     private func reenterFullScreen(_ host: Host, _ why: String) async -> Bool {
-        host.reentries = host.reentries.filter { sys.now() - $0 < options.returnsWithin }
-        guard host.reentries.count < options.returnsMax else {
-            if !host.reentrySaid { host.reentrySaid = true; Diagnostics.warn("host: \(host.id): its window left full screen again (\(why)), \(host.reentries.count) times in \(Int(options.returnsWithin)) s: left to the reconciler") }
+        switch core.spend(host.handle, .reentry, now: sys.now()) {
+        case .go: break
+        case .say(let count, _):
+            Diagnostics.warn("host: \(host.id): its window left full screen again (\(why)), \(count) times in \(Int(options.returnsWithin)) s: left to the reconciler")
             return false
+        case .said: return false
         }
-        host.reentries.append(sys.now())
-        host.reentrySaid = false
         planned = true // (what this changes is Margin's plan, not a reaction)
         let t0 = sys.now()
         Diagnostics.note("host: \(host.id): its window left full screen by itself (\(why)), at \(sys.bounds(window: host.window).map(r) ?? "?") in Margin's Space: back into full screen at \(r(pageOf(host))), behind the loader (no tile's fight: no try counted, its route kept)")
@@ -1800,7 +1790,9 @@ final class HostEngine {
             releaseFreeze(frozen)
         }
         let info = await sys.window(pid: host.pid, number: n)
-        if host.phase == .shown, host.member { host.fullScreenFailures = 0 } // (not a failure: its app's own doing)
+        // (A shown member's failures forgotten: not a failure, its app's own doing. Full screen tried again at its next
+        // show when its window can and it never failed: the core's ladder, per host and per run.)
+        core.adopted(host.handle, canFullScreen: info?.canFullScreen ?? true)
         host.window = n
         host.unread = 0
         host.gone = false
@@ -1816,7 +1808,6 @@ final class HostEngine {
         host.originalSpace = (sys.spaces(window: n) ?? []).first { sys.spaceType($0) == ManagedSpace.desktopType } ?? sys.desktop(onDisplayOf: marginSpace)
         host.resizable = info?.resizable ?? true
         host.mode = .window
-        host.retryFullScreen = (info?.canFullScreen ?? true) && host.fullScreenFailures == 0
         saveMarker()
         switch host.phase {
         case .shown:
@@ -3501,9 +3492,8 @@ final class HostEngine {
             return await placeFullScreen(host, isNew: isNew, retrying: true)
         }
         // (It can go full screen: tried again at its next show, once; window mode for the rest of the session after that.)
-        host.fullScreenFailures += 1
-        host.retryFullScreen = host.fullScreenFailures == 1
-        Diagnostics.note("host: \(host.id): \(step.rawValue) failed (\(reason)): backed out, shown in window mode (it can go full screen: \(host.retryFullScreen ? "tried again the next time it's shown" : "failed again, window mode from now on"))")
+        let retry = core.fullScreenFailed(host.handle)
+        Diagnostics.note("host: \(host.id): \(step.rawValue) failed (\(reason)): backed out, shown in window mode (it can go full screen: \(retry ? "tried again the next time it's shown" : "failed again, window mode from now on"))")
         let frozen = holdFreeze()
         await backOut(host)
         await outForGood(host)
@@ -5014,8 +5004,7 @@ final class HostEngine {
             // (Shown: out of its tile and in again as a plain member now, behind the loader. Parked: at its next show.)
             if shown == host.id, host.phase == .shown { _ = await placeFullScreen(host, isNew: false, retrying: false) }
         case .window:
-            host.retryFullScreen = false
-            host.fullScreenFailures = max(host.fullScreenFailures, 2)
+            core.movedToWindow(host.handle)
             if shown == host.id, host.phase == .shown {
                 _ = await fallBack(host, isNew: false, retrying: true, .place, "the loop guard moved it to window mode", previous: nil)
             } else {
@@ -5303,10 +5292,8 @@ final class HostEngine {
                 Diagnostics.note("host: \(id): shown, found where it mustn't be (\(seen))")
                 return await parkShownNow(why: "its window left Margin's Space, or Margin's window did")
             }
-            host.returns = host.returns.filter { sys.now() - $0 < options.returnsWithin } + [sys.now()]
-            guard host.returns.count <= options.returnsMax else {
-                Diagnostics.note("host: \(id): shown, out of Margin's Space again (\(seen)), \(host.returns.count) times in \(Int(options.returnsWithin)) s: parked")
-                host.returns = []
+            if case .say(let count, _) = core.spend(host.handle, .strayReturns, now: sys.now()) {
+                Diagnostics.note("host: \(id): shown, out of Margin's Space again (\(seen)), \(count) times in \(Int(options.returnsWithin)) s: parked")
                 return await parkShownNow(why: "its window keeps leaving Margin's Space", only: host)
             }
             guard guarded(host, "put back") else { return }
@@ -5388,15 +5375,13 @@ final class HostEngine {
             + ", Margin's Space \(marginSpace), its window in \(sys.spaces(window: marginWindow).map { "\($0)" } ?? "Spaces that don't read")"
             + ", the displays' current Spaces \(sys.currentSpaces().map { $0.joined(separator: ", ") } ?? "unread")"
             + (host.askedFullScreenAt.map { ", \(ms(since: $0)) ms after it was last asked into full screen" } ?? "")
-        // (Its own budget: a split's other panes' tries never use it up, docs/PEEK-SPLIT.md §4.)
-        host.offTries = host.offTries.filter { sys.now() - $0 < options.returnsWithin }
+        // (Its own budget: a split's other panes' tries never use it up, docs/PEEK-SPLIT.md §4. In place: once a show.)
         if look.margin, current == marginSpace, spaces == [marginSpace] {
-            guard host.offActedFor != host.visibleAt, host.offTries.count < options.returnsMax else {
-                if host.offInPlaceSaid != host.visibleAt { host.offInPlaceSaid = host.visibleAt; Diagnostics.note("host: \(id): shown, still not on screen in Margin's Space (\(seen)): left as it is until it's shown again") }
-                return
+            switch core.spend(host.handle, .offInPlace, now: sys.now()) {
+            case .go: break
+            case .say: return Diagnostics.note("host: \(id): shown, still not on screen in Margin's Space (\(seen)): left as it is until it's shown again")
+            case .said: return
             }
-            host.offActedFor = host.visibleAt
-            host.offTries.append(sys.now())
             // (Its app's own first, the reconciler's rungs not tried yet this show: an app that ordered its window out
             // orders it in again at its activation or its reopen (ordersOut after: placing it again only took it out of
             // full screen and back, again and again). Then placed again: macOS's own change that left it undrawn.)
@@ -5413,11 +5398,11 @@ final class HostEngine {
             if case .failed = await placeFullScreen(host, isNew: false, retrying: false), !isVisible(host.id) { emit(.unshown(host.id)) }
             return
         }
-        guard host.offTries.count < options.returnsMax else {
-            if !host.offSaid { host.offSaid = true; Diagnostics.warn("host: \(id): shown, not on screen (\(seen)), \(host.offTries.count) times in \(Int(options.returnsWithin)) s: left as it is") }
-            return
+        switch core.spend(host.handle, .offElsewhere, now: sys.now()) {
+        case .go: break
+        case .say(let count, _): return Diagnostics.warn("host: \(id): shown, not on screen (\(seen)), \(count) times in \(Int(options.returnsWithin)) s: left as it is")
+        case .said: return
         }
-        host.offTries.append(sys.now())
         let t0 = sys.now()
         let makeCurrent = current != marginSpace || !look.margin
         let moveIn = !look.host && (spaces != [marginSpace] || !look.margin)
@@ -5536,7 +5521,7 @@ final class HostEngine {
                 _ = await self.place(h)
                 Diagnostics.note("host: \(id): moved to show its \(side.rawValue) side, \(self.r(from)) → \(self.r(target)) (no tile: at once)")
             }
-            if !self.tucked(h) { self.cutOrderRight(h.id) }
+            if !self.tucked(h) { self.cutOrderRight(h) }
             self.sayHostedWindows()
             return true
         }
@@ -6050,9 +6035,6 @@ final class HostEngine {
         queueActives()
     }
 
-    private var cutRepairs: [HostID: [Double]] = [:]
-    private var cutRepairSaid: Set<HostID> = []
-    private var cutRepairsFailed: [HostID: Int] = [:]
     // `h`'s window raised over `below`'s (overlapping: a neighbour over a cut pane lying under it, a cut pane over another
     // lying under it). Its activation must be a real one for AppKit to raise its window: not kept active by records (let
     // go first; PanesActive keeps it again later), and not the front app already (the front handed to `below` first,
@@ -6082,27 +6064,23 @@ final class HostEngine {
             // (A loop's guard: put back 3 times in 5 s and over again each time (the app raising it again), or 3 put-backs
             // in a row that didn't take (its neighbour's raise refused): left as it is, said once, and not tried again
             // until its window is seen behind them (the poll) or it leaves the split. Never a few tries every 5 s for good.)
-            guard !self.cutRepairSaid.contains(h.id) else { return false }
-            let now = self.sys.now()
-            var tries = (self.cutRepairs[h.id] ?? []).filter { now - $0 < 5 }
-            let failed = self.cutRepairsFailed[h.id] ?? 0
-            guard tries.count < 3, failed < 3 else {
-                self.cutRepairSaid.insert(h.id)
-                Diagnostics.warn("host: \(h.id): " + (failed >= 3 ? "put back under the panes beside it 3 times and it never went under: left as it is" : "put back under the panes beside it 3 times in 5 s and over them again: left as it is"))
+            switch self.core.spend(h.handle, .cutRepair, now: self.sys.now()) {
+            case .go: break
+            case .say(_, let streak):
+                Diagnostics.warn("host: \(h.id): " + (streak ? "put back under the panes beside it 3 times and it never went under: left as it is" : "put back under the panes beside it 3 times in 5 s and over them again: left as it is"))
                 return false
+            case .said: return false
             }
-            tries.append(now)
-            self.cutRepairs[h.id] = tries
             Diagnostics.note("host: \(h.id): its app came in front some other way, its window over a pane it lies under: put back under it")
             await self.frontVisible()
             let took = self.cutWindowOver(pid) == nil
-            self.cutRepairsFailed[h.id] = took ? 0 : failed + 1
-            if !took { Diagnostics.note("host: \(h.id): put back, still over the pane it lies under (\(failed + 1) in a row)") }
+            let failed = self.core.repairTook(h.handle, took)
+            if !took { Diagnostics.note("host: \(h.id): put back, still over the pane it lies under (\(failed) in a row)") }
             return true
         }
     }
     // (Seen behind the panes it lies under, or out of the split: its loop's guard reset.)
-    private func cutOrderRight(_ id: HostID) { cutRepairSaid.remove(id); cutRepairsFailed[id] = nil }
+    private func cutOrderRight(_ h: Host) { core.cutOrderRight(h.handle) }
 
     var keptActive: Set<pid_t> { Set(actives.kept.keys) }
     var paneFronting: PaneFronting? { sys.paneFronting }

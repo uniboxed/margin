@@ -542,7 +542,56 @@ nonisolated final class HostCore: @unchecked Sendable {
     }
 
     // What the model's decisions read of the engine's options (one call per change of them).
-    func configure(tolerance: CGFloat, toolbarRoom: CGFloat) { _ = call(["type": "configure", "tolerance": Double(tolerance), "toolbarRoom": Double(toolbarRoom)]) }
+    func configure(tolerance: CGFloat, toolbarRoom: CGFloat, returnsMax: Int, returnsWithin: Double) {
+        _ = call(["type": "configure", "tolerance": Double(tolerance), "toolbarRoom": Double(toolbarRoom), "returnsMax": max(0, returnsMax), "returnsWithin": returnsWithin])
+    }
+
+    // ---- the budgets of Margin's own corrections that outlive a show, and the full-screen ladder (host/model/budget.rs:
+    // docs/CORE-REFACTOR.md step 2 part 4). Typed: the cut order's is asked by the poll. ----
+
+    enum Budget: UInt8 { case strayReturns = 0, reentry, offInPlace, offElsewhere, cutRepair }
+    // Asked before its action: go (its entries now, this one in), spent and to be said (by its count, or a cut pane's by
+    // its streak of repairs that didn't take), or spent and said already.
+    enum Spend: Equatable { case go(count: Int), say(count: Int, streak: Bool), said(count: Int) }
+    func spend(_ h: UInt32, _ kind: Budget, now: Double) -> Spend {
+        var n: UInt32 = 0
+        lock.lock()
+        defer { lock.unlock() }
+        switch margin_budget_spend(core, h, kind.rawValue, now, &n) {
+        case 0: return .go(count: Int(n))
+        case 1: return .say(count: Int(n), streak: false)
+        case 3: return .say(count: Int(n), streak: true)
+        default: return .said(count: Int(n))
+        }
+    }
+    // A cut pane's repair done: the ones in a row that didn't take now (0: it took).
+    func repairTook(_ h: UInt32, _ took: Bool) -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return Int(margin_budget_repair_took(core, h, took))
+    }
+    func cutOrderRight(_ h: UInt32) {
+        lock.lock()
+        defer { lock.unlock() }
+        margin_budget_cut_order_right(core, h)
+    }
+    // The ladder: a full-screen show backed out (true: tried again at its next show), another window adopted in its
+    // place (asked before its fields change), the loop guard's move to window mode.
+    func fullScreenFailed(_ h: UInt32) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return margin_model_full_screen_failed(core, h)
+    }
+    func adopted(_ h: UInt32, canFullScreen: Bool) {
+        lock.lock()
+        defer { lock.unlock() }
+        margin_model_adopted(core, h, canFullScreen)
+    }
+    func movedToWindow(_ h: UInt32) {
+        lock.lock()
+        defer { lock.unlock() }
+        margin_model_moved_to_window(core, h)
+    }
 }
 
 // As the core numbers a cut pane's sides (host/model/panes.rs `Side`).

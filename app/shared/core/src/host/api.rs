@@ -47,6 +47,12 @@ fn one() -> f64 {
 fn toolbar_room() -> f64 {
     super::layout::TOOLBAR_ROOM
 }
+fn returns_max() -> usize {
+    super::model::Limits::default().returns_max
+}
+fn returns_within() -> f64 {
+    super::model::Limits::default().returns_within
+}
 
 impl From<&ServerWin> for ServerWindow {
     fn from(w: &ServerWin) -> Self {
@@ -153,6 +159,10 @@ pub enum Request {
         tolerance: f64,
         #[serde(default = "toolbar_room")]
         toolbar_room: f64,
+        #[serde(default = "returns_max")]
+        returns_max: usize,
+        #[serde(default = "returns_within")]
+        returns_within: f64,
     },
     /// The visible windows' order: what to raise in what order (model/order.rs `front_plan`), from each wanted host's
     /// bounds (`front_wanted`'s order; null: unread), their windows' order in the window server's, back to front
@@ -356,8 +366,9 @@ impl HostCore {
             },
             Request::SaveMinimums => json!({ "minimums": self.model.minimums.to_json() }),
             Request::MinimumApps => json!({ "apps": self.model.minimums.by_app.keys().collect::<Vec<_>>() }),
-            Request::Configure { tolerance, toolbar_room } => {
+            Request::Configure { tolerance, toolbar_room, returns_max, returns_within } => {
                 self.model.opts = ModelOptions { tolerance, toolbar_room };
+                self.model.limits = super::model::Limits { returns_max, returns_within };
                 json!({})
             }
             Request::LayoutRefuse { main, extras } => {

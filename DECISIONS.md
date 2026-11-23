@@ -7770,3 +7770,33 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   before "lies under", equal places in the order) and were replaced. Rust tests pin the order's rules (side-by-side
   panes keys only, a card raised then confirmed, fresh, the toolbar's room, a cut pane behind with its keys, nothing
   over the focused one, two cut panes out of order). The app's 2038 checks pass unchanged.
+
+## Core refactor step 2, part 4 (first of two commits): the budgets and the full-screen ladder in the core (2026-11-23)
+
+- The four budgets of Margin's own corrections that outlive a show are the core's (host/model/budget.rs, on the
+  model): a stray's returns (filtered, this one in, then checked: past `returnsMax` within `returnsWithin` the list
+  cleared and the host parked, said each time), the re-entry into full screen (filtered, checked, then in; said once,
+  a re-entry made resets the said), off screen in place (once a show, said once a show) and elsewhere (said once until
+  it's newly visible), one list of tries for both, and a cut pane's repair (3 within 5 s or 3 in a row that didn't
+  take; said once and held until its order is seen right). Each keeps the Swift's order of filter, check and append;
+  the engine asks `spend` at the point it checked, and says the line the answer names (the log lines word for word,
+  their counts the core's). `returnsMax` and `returnsWithin` are sent with the tolerance (`configure`).
+- A cut pane's repairs stay kept by its id, as the engine's dictionaries were (a host made again with the same id is
+  still held until its order is seen right); the rest by handle. The poll's "seen right" is typed and allocates
+  nothing (no_alloc.rs); a cut pane's first repair keeps its id (one allocation, rare).
+- The retry-once full-screen ladder stays per host and per run (Tirth, 2026-11-22: it doesn't join routes.rs): a
+  failure backed out (`full_screen_failed`: tried again at its next show the first time), another window adopted
+  (`adopted`, asked before the host's fields change: a shown member's failures forgotten, retried when it can go full
+  screen and never failed), the loop guard's move to window mode (`moved_to_window`). The fields only these wrote
+  (the times lists, the said flags, the failures) are no longer `Host` properties; `retryFullScreen` is read-only.
+- One clock read per budget: the Swift read `sys.now()` once to filter and again to append, with no wait between; the
+  core takes one `now` for both (the same within the same turn of the run loop).
+- Checked before the Swift went: the deleted Swift (copied verbatim) against the core over 11,292,436 checks in 40,000
+  generated runs of 60 steps (three hosts or one, half the runs on one kind, times stepping by 0 to 60 s with exact
+  5 s and 30 s edges, limits 0 to 5 within 0 to 60 s, shows, the said reset, hosts made again with the same id, the
+  ladder's fields written by other paths; every answer, count and field after every step): no difference. The harness
+  caught each deliberate break (the stray's `<=` as `<`, the re-entry's said not reset, the in-place filter at
+  equality, the streak's limit, `adopted` without the member, "seen right" not clearing the said, the elsewhere's try
+  not appended, the cut tries' filter at equality). Rust tests pin each budget and the ladder. The app's 2038 checks
+  pass unchanged.
+

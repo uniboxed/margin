@@ -9,6 +9,7 @@
 //! Every function is safe to call with null or bad input (it answers nothing or an error), never unwinds into the
 //! caller (a panic aborts, as `panic = "abort"`), and keeps no global state: each core is its own.
 
+mod budget;
 mod data;
 mod keys;
 mod link;
@@ -18,6 +19,7 @@ mod panes;
 mod profiles;
 mod themes;
 mod visible;
+pub use budget::*;
 pub use data::*;
 pub use keys::*;
 pub use link::*;
