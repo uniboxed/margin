@@ -447,6 +447,12 @@ func preparedBrowserTests(_ library: Library) {
         let said = spin { r.window.stuck != nil }
         check("start screen: the browser's extension never links: said at once (not after the limit), what to check, Try again and Continue without Safari; nothing shown",
               screen && said && r.window.stuck == HostedSession.startupNoLink && r.engine.shown == nil && r.session.startupShown, "\(String(describing: r.window.stuck))")
+        // (Tirth, 2026-11-23: held up, it re-checks only on events: the preparation given up, nothing wakes.)
+        var looks = 0
+        r.session.sleep = { _ in looks += 1; await Task.yield() }
+        for _ in 0..<10 { hostRun { await r.session.idle() }; RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
+        check("start screen: held up with nothing under way: nothing wakes (no look, no timer)", looks == 0 && r.session.startupShown, "\(looks) looks")
+        r.session.sleep = { _ in await Task.yield() }
         r.links.notInMenu = []
         r.links.profiles = ["s-default"] // (the person turned the extension on)
         r.session.startupRetry()
@@ -1412,6 +1418,13 @@ func hostedResumeTests(script: URL) {
         check("start: a browser not ready within its limit: the start screen held up, saying so; the item NOT shown on its own, nothing usable",
               held && window.stuck == HostedSession.startupSlow && engine.shown == nil && session.startupShown && window.slowShowings == [HostedSession.startupLabel],
               "\(String(describing: window.stuck)) \(String(describing: engine.shown)) \(window.slowShowings)")
+        // (Tirth, 2026-11-23: held up, it re-checks only on events: no looks, nothing wakes while it's up and idle.)
+        var looks = 0
+        let sleep = session.sleep
+        session.sleep = { looks += 1; await sleep($0) }
+        for _ in 0..<10 { run {}; RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
+        check("start: held up and idle: nothing wakes (no look, no timer) while it's up", looks == 0 && window.stuck == HostedSession.startupSlow && session.startupShown,
+              "\(looks) looks")
         let pushedBefore = window.stucks.count
         session.startupRetry()
         let again = spin(run) { window.stucks.count >= pushedBefore + 2 }

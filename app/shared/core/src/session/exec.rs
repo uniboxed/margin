@@ -85,6 +85,8 @@ pub(crate) struct Exec {
     fired: RefCell<BTreeMap<u64, u64>>,
     /// The latest tick's `due`.
     time: Cell<f64>,
+    /// Tasks waiting for the state they read to change (`changed`), and whether each was told since it looked.
+    watchers: RefCell<BTreeMap<u64, (TaskId, bool)>>,
 }
 
 impl Exec {
@@ -266,6 +268,31 @@ impl Exec {
         Answer { exec: self, command: Some(command), id: None, same_turn, done: false }
     }
 
+    /// A wait for the state a task reads to change (`notify`): no deadline, nothing looks meanwhile.
+    pub(crate) fn changed(&self) -> Changed<'_> {
+        Changed { exec: self, key: None }
+    }
+
+    /// What a waiting task reads changed: each one woken, once until it waits again. Nothing when none waits.
+    pub(crate) fn notify(&self) {
+        if self.watchers.borrow().is_empty() {
+            return;
+        }
+        let woken: Vec<TaskId> = self
+            .watchers
+            .borrow_mut()
+            .values_mut()
+            .filter(|(_, told)| !*told)
+            .map(|(task, told)| {
+                *told = true;
+                *task
+            })
+            .collect();
+        for task in woken {
+            self.wake(task, false);
+        }
+    }
+
     /// A sleep of `seconds` from the later of `now` (the caller's clock) and the executor's time.
     pub(crate) fn sleep(&self, now: f64, seconds: f64) -> Sleep<'_> {
         let from = if now.is_finite() { now.max(self.time.get()) } else { self.time.get() };
@@ -330,6 +357,42 @@ impl Drop for Answer<'_> {
     fn drop(&mut self) {
         if let (Some(id), false) = (self.id, self.done) {
             self.exec.waits.borrow_mut().remove(&id);
+        }
+    }
+}
+
+/// A wait for a change (`Exec::changed`), until `notify`.
+pub(crate) struct Changed<'a> {
+    exec: &'a Exec,
+    key: Option<u64>,
+}
+
+impl Future for Changed<'_> {
+    type Output = ();
+    fn poll(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<()> {
+        let this = self.get_mut();
+        let exec = this.exec;
+        let Some(key) = this.key else {
+            let key = exec.id();
+            this.key = Some(key);
+            let task = exec.current.get().unwrap_or(0);
+            exec.watchers.borrow_mut().insert(key, (task, false));
+            return Poll::Pending;
+        };
+        let told = exec.watchers.borrow().get(&key).is_some_and(|(_, told)| *told);
+        if told {
+            exec.watchers.borrow_mut().remove(&key);
+            this.key = None;
+            return Poll::Ready(());
+        }
+        Poll::Pending
+    }
+}
+
+impl Drop for Changed<'_> {
+    fn drop(&mut self) {
+        if let Some(key) = self.key {
+            self.exec.watchers.borrow_mut().remove(&key);
         }
     }
 }

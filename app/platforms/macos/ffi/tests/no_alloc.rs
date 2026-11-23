@@ -839,8 +839,9 @@ fn a_drags_frame_allocates_nothing() {
 
 #[test]
 fn the_start_screens_read_and_the_preparations_look_allocate_nothing() {
-    // (Step 3 commit 8: the start screen read per key press and menu check; the Safari waker's look for the launch's
-    // preparation, every 0.05 s while it links. The engine's `shown` asked through the typed port: nothing shown.)
+    // (Step 3 commit 8: the start screen read per key press and menu check, and whether an edit woke it; the Safari
+    // waker's look for the launch's preparation, every 0.05 s while it links. The engine's `shown` asked through the
+    // typed port: nothing shown.)
     extern "C" fn typed(_: *mut std::ffi::c_void, _: u32, _: *const MarginPortArgs, _: *mut MarginPortOut) -> i64 {
         0
     }
@@ -855,6 +856,9 @@ fn the_start_screens_read_and_the_preparations_look_allocate_nothing() {
             up.set(up.get() + usize::from(unsafe { margin_session_start_screen(s) }));
             // SAFETY: as above.
             wanted.set(wanted.get() + usize::from(unsafe { margin_session_prepare_wanted(s) }));
+            // (The facade's check after an edit of `requested`: whether it woke the start screen held up.)
+            // SAFETY: as above.
+            up.set(up.get() + usize::from(unsafe { margin_session_ready(s) }));
         }
     };
     let n = allocations(look);

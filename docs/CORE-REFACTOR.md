@@ -1124,9 +1124,8 @@ HS:1474-1490, `forgetElsewhere` HS:1493-1498; wired SG:226-231.
 **FFI.** `{"type":"windowFocused"|"windowClosing"|"windowClosed","window"}` (rare); `windowClosing`'s `done` is a
 command answered when the park is over.
 *As built (commit 8):* `windowClosing` carries Swift's `then` and is answered at once (`reply`: called later, or close
-now); the `Done { then }` command calls it once the park is over. `prepare`'s move (HS:1037-1051) is commit 6's, still
-Swift here: it reaches the picture and the card through `pagePicture` (a flow it awaits) and `showElsewhere` (an
-input), interim until `prepare` is the core's. The picture's wait is a deadline on the session's clock (the Swift's was
+now); the `Done { then }` command calls it once the park is over. `prepare`'s move (HS:1037-1051) is commit 6's: its core
+`prepare` calls `page_picture`, `show_elsewhere` and `clear_elsewhere` directly. The picture's wait is a deadline on the session's clock (the Swift's was
 `Task.sleep` directly: the same in the app).
 
 **Must not change:** the card cleared only once the window hosts again (HS:1068: the card straight to the loader),
@@ -1191,6 +1190,9 @@ took the focus (HS:1825).
 **Risks.** `holdStartup` runs outside the queue (HS:1635) while `resumeShow` queues (HS:1655): the executor keeps
 that split. Its `wait(.infinity)` (HS:1559) looks every 50 ms for as long as the start screen is held up (20 wakes a
 second while it's up): kept as is (open question 5). ~230 Swift lines deleted.
+*Tirth's answer 5 (commit 8's second commit):* held up, it re-checks only when what it reads changes (the start
+screen's state, a window's item asked for: each changed by an input or a flow's step), nothing wakes while it's up and
+idle; the first `startupWait` (15 s, before it's held up) keeps its looks.
 
 #### Part 7: the page area moving
 

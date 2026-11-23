@@ -241,7 +241,9 @@ impl Core {
         }
     }
 
-    /// Held up: until Continue without Safari, a pick, Try again, or the browser ready after all.
+    /// Held up: until Continue without Safari, a pick, Try again, or the browser ready after all. Re-checked only when
+    /// what it reads changes (the start screen's state, the window's item asked for: Tirth, 2026-11-23), never on a
+    /// look: nothing wakes while it's up and idle.
     async fn held_up(&self, retries: i64, moved: &dyn Fn() -> bool) {
         let over = || {
             self.start(|st| st.skipped)
@@ -249,7 +251,9 @@ impl Core {
                 || self.start(|st| st.retries != retries)
                 || self.start(|st| st.startup == Startup::Done && st.failure.is_none())
         };
-        self.wait(f64::INFINITY, over).await;
+        while !over() {
+            self.exec.changed().await;
+        }
     }
 
     // ---- at launch: the item the window showed last ----

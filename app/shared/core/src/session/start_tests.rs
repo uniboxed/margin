@@ -646,3 +646,62 @@ fn its_extension_never_linked_with_no_start_screen_nothing_said_on_one() {
     assert!(s.done().contains(&"browser not prepared: its extension didn't link".to_string()));
     assert_eq!(s.core().read(|st| st.start.failure.clone()), None);
 }
+
+#[test]
+fn held_up_it_rechecks_only_on_events() {
+    // (Tirth, 2026-11-23: no looks while the start screen is held up; each thing it reads changes in an input, an
+    // answer, a tick or the facade's edit, and it re-checks then.)
+    for event in ["skip", "retry", "over", "edit", "library", "closed"] {
+        let (s, world, out) = start_screen(0.1);
+        pump(&s, &world, out, 3, &mut shows(&world));
+        assert_eq!(s.core().read(|st| st.start.stuck.clone()).as_deref(), Some(STARTUP_SLOW));
+        let idle = s.tick(0.0);
+        assert!(!idle.ready && idle.deadline.is_none(), "{event}: nothing wakes while it's up and idle");
+        let out = match event {
+            "skip" => input(&s, json!({ "type": "startupSkip" })),
+            "retry" => input(&s, json!({ "type": "startupRetry" })),
+            "over" => input(&s, json!({ "type": "preparationOver" })),
+            "edit" => {
+                let (ok, _) = s.edit_row(Field::Requested, false, &Row { i0: 1, s0: Some("other"), ..Row::default() });
+                assert!(ok && s.ready(), "a facade's edit wakes it: tick in the next turn");
+                s.tick(0.0)
+            }
+            "library" => input(
+                &s,
+                json!({ "type": "library", "request": { "type": "activateTab", "item": "x", "windowId": 1 } }),
+            ),
+            _ => input(&s, json!({ "type": "windowClosed", "window": 1 })),
+        };
+        assert!(event == "edit" || out.ready || !out.start.is_empty(), "{event}: re-checked");
+        pump(&s, &world, out, 0, &mut shows(&world));
+        let held = s.start_screen();
+        let stuck = s.core().read(|st| st.start.stuck.clone());
+        match event {
+            // (Try again: its words gone, its limit anew: a deadline again, no look past it.)
+            "retry" => assert!(held && stuck.is_none() && s.tick(0.0).deadline.is_some(), "{event}"),
+            _ => assert!(!held && stuck.is_none(), "{event}: the start screen gone at once"),
+        }
+    }
+}
+
+#[test]
+fn margins_own_page_left_keeps_the_item_shown_where_the_window_hosts() {
+    let (s, world, _) = session();
+    set(
+        &s,
+        json!({ "marginPages": { "put": [[1, "settings"]] }, "shown": { "put": [[1, "a"]] }, "hostingWindow": { "put": [[1]] } }),
+    );
+    s.core().leave_margin_page(1);
+    assert_eq!(
+        (s.core().margin_page(1), s.core().shown_in(1).as_deref()),
+        (None, Some("a")),
+        "it hosts: its item stays the one shown"
+    );
+    set(&s, json!({ "marginPages": { "put": [[1, "settings"]] }, "hostingWindow": { "del": [null] } }));
+    s.core().leave_margin_page(1);
+    assert_eq!(s.core().shown_in(1), None, "not hosting: nothing shown there now");
+    assert_eq!(
+        named(&acts(&world), "setMarginPage"),
+        [json!(["setMarginPage", 1, null]), json!(["setMarginPage", 1, null])]
+    );
+}

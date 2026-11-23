@@ -808,6 +808,11 @@ impl Session {
         self.0.prepare_wanted()
     }
 
+    /// Tasks are ready to run (a facade's edit woke one: tick in the next turn).
+    pub fn ready(&self) -> bool {
+        self.0.exec.has_ready()
+    }
+
     /// Nothing enqueued is left to do.
     pub fn idle(&self) -> bool {
         self.0.exec.idle()
@@ -992,6 +997,11 @@ impl Core {
         // (A card's address and freshness are read on their own, typed: `cards`' changes are theirs.)
         if f == Field::Cards {
             self.bump(Field::CardPages);
+        }
+        // (What the start screen held up reads: its own state and a window's item asked for. Every change of them is
+        // made here, in an input, an answer, a tick or the facade's edit: it re-checks then, never on a look.)
+        if matches!(f, Field::Start | Field::Requested) {
+            self.exec.notify();
         }
     }
 

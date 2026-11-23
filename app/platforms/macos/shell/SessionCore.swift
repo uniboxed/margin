@@ -274,4 +274,6 @@ final class SessionCore {
     // The launch's preparation may still wake its profile (the waker's look for it); the start screen up (per key press).
     var prepareWanted: Bool { margin_session_prepare_wanted(core) }
     var startScreen: Bool { margin_session_start_screen(core) }
+    // Tasks ready to run (an edit of a field woke the start screen held up).
+    var ready: Bool { margin_session_ready(core) }
 }

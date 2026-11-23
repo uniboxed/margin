@@ -579,6 +579,8 @@ final class HostedSession: LibraryDelegate {
         for d in dels { rev = core.edit(f, del: true, d) }
         for p in puts { rev = core.edit(f, del: false, p) }
         cache[f.rawValue] = (rev, value)
+        // (An item asked for in a window: the start screen held up re-checks on it, in the next turn.)
+        if f == .requested, core.ready { runSoon() }
     }
     private func setMap<K: Hashable, V: Equatable>(_ f: SessionCore.Field, old: [K: V], _ new: [K: V], row: (K, V?) -> CoreRow) {
         write(f, new, puts: new.filter { old[$0.key] != $0.value }.map { row($0.key, $0.value) }, dels: old.keys.filter { new[$0] == nil }.map { row($0, nil) })

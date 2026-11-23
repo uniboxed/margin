@@ -457,7 +457,7 @@ uint8_t *margin_themes_protocol(const uint8_t *request, size_t len, size_t *out_
 // 3 done, 4 requested ... 17 made, 18 cards … 23 revealHeld, 24 elsewhere, 25 resume, 26 resuming, 27 start). Typed, nothing allocated: `link_wanted` (a show waiting on a profile's link still
 // wanted: the Safari waker's look) and `open_wanted` (a new app's open for an item in a Margin window still wanted:
 // the engine's); `prepare_wanted` (the waker's look for the launch's preparation) and `start_screen` (the start
-// screen up: read per key press). `settle`: hosting settled (HostedSession `settleHosting`), answered as `input`.
+// screen up: read per key press); `ready`: tasks ready to run (a field's edit woke one). `settle`: hosting settled (HostedSession `settleHosting`), answered as `input`.
 // The typed ports (`call`, by their number: ffi session.rs `PortKind`, SessionCore.swift's) answer a number
 // (INT64_MIN: none) and give their texts and lists back through margin_port_out_text / _int during the call. Given a
 // MarginSessionStatus, `input`, `answer` and `tick` write their readiness and deadline (NaN: none) there and answer
@@ -531,6 +531,7 @@ bool margin_session_live_plan(const MarginSession *session, void *ctx, MarginLiv
 size_t margin_session_drawn_windows(const MarginSession *session, MarginBytes browser, MarginBytes profile, int64_t *out, size_t cap);
 bool margin_session_prepare_wanted(const MarginSession *session);
 bool margin_session_start_screen(const MarginSession *session);
+bool margin_session_ready(const MarginSession *session);
 uint8_t *margin_session_settle(const MarginSession *session, MarginSessionStatus *status, size_t *out_len);
 
 // The session's pure rules (margin-core's session: ffi session_rules.rs), no object: the rare ones by one JSON call

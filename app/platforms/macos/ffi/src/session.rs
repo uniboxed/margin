@@ -1051,6 +1051,16 @@ pub unsafe extern "C" fn margin_session_start_screen(s: *const MarginSession) ->
     session(s).is_some_and(Session::start_screen)
 }
 
+/// Whether tasks are ready to run (an edit of a field woke one: the start screen held up re-checks on it). Nothing
+/// allocated.
+///
+/// # Safety
+/// As [`margin_session_prepare_wanted`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_session_ready(s: *const MarginSession) -> bool {
+    session(s).is_some_and(Session::ready)
+}
+
 /// Hosting settled (HostedSession `settleHosting`) → the call's answer, as an input's.
 ///
 /// # Safety

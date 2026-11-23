@@ -8676,3 +8676,33 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   preparation's look 39 ns typed, neither allocating (no_alloc.rs); hosting settled 4-6 µs and a window in front 6 µs
   with every port as JSON (the Mac's are typed); rerun quiet: 0.5 ns, 4.9 ns, 1.4 µs, 0.7 µs. Nothing per frame.
   Swift: ~400 lines out, ~120 in.
+
+## The start screen held up re-checks only on events, no 50 ms looks (Tirth, 2026-11-23: step 3's open question 5)
+
+- Tirth's answer to the design's question 5: once held up (its words said, Try again and Continue without Safari),
+  the start screen no longer looks every 50 ms (HS:1559's `wait(.infinity)`, 20 wakes a second for as long as it's
+  up); it re-checks only when what it reads changes, and nothing wakes while it's up and idle. The first `startupWait`
+  (15 s, before it's held up) keeps its looks: the question was the held-up wait's.
+- What the looks read, and where each changes (every one inside a session call, so each is an input or a step of a
+  flow one runs):
+  - Continue without Safari: the `startupSkip` input (the page's `startup.skip`).
+  - Try again's count: the `startupRetry` input (`startup.retry`).
+  - The preparation over, and whether it was given up for a reason the screen says: the `preparationOver` input (the
+    shell's, the preparation off), and the preparation's own flow, run by its commands' answers: the browser
+    started (an app), Margin's window in full screen with its page area (a window), the copy linked or given up
+    (a copy's link: the waker's answer), its window made ready (the engine's).
+  - The window's item asked for (`requested`): a library request (a sidebar pick, the palette), a window in front
+    (`windowFocused`), a window closed (`windowClosed`), the core's own flows, and the Swift flows of later parts
+    that write it through the facade (a split, the card, a window back in full screen): the facade ticks in the next
+    turn when such an edit woke it (`margin_session_ready`, typed, nothing allocated).
+  The looks read nothing else: no port, no window, engine or link directly. So in the core: a task can wait for a
+  change (exec.rs `changed`), woken by any change of the start screen's state or of `requested` (`Core::bump`, the one
+  place every edit of a field passes); it re-checks then, and waits again if it isn't over. No deadline while it waits.
+- Measured (the harness's `idle` mode, real time, the session's own sleeps counted over 3 s once held up): the browser
+  not ready within its limit, no preparation under way: 20.0 wakes a second in the old Swift, 19.7 after commit 8's
+  move, 0 now; its extension never linked, the preparation given up: 19.7, 19.7, 0. Continue without Safari still
+  lifts it at once in each.
+- Pinned: the core's (start_tests.rs `held_up_it_rechecks_only_on_events`: no deadline while held up, then each event
+  (Continue, Try again, the preparation over, a facade's edit, a library request, the window closed) re-checks at
+  once); the Swift's (T/hosted-tests.swift: held up and idle, nothing wakes, in `hostedResumeTests` and the start
+  screen of `preparedBrowserTests`; the checks of Try again, Continue and the browser ready after all unchanged).
