@@ -389,8 +389,121 @@ nonisolated final class HostCore: @unchecked Sendable {
         return BringIn(rawValue: locked { margin_model_bring_in(core, h, point.rawValue, facts) }) ?? .go
     }
 
+    // ---- where each visible host's window goes, and cut panes (host/model/panes.rs: docs/CORE-REFACTOR.md step 2 part
+    // 3). Typed: `frame` is asked per follower per frame of a drag. Each answer says too whether a host's minimum was
+    // read as its app's kept one with its process's version unread (`wanted`): the engine reads those versions
+    // (`versionsWanted`) and asks again. ----
+
+    private var wanted: Bool { margin_model_versions_wanted(core, nil, 0) > 0 }
+    // The hosts the last call noted (rare: only when it said `wanted`).
+    func versionsWanted() -> [UInt32] {
+        locked {
+            withUnsafeTemporaryAllocation(of: UInt32.self, capacity: 8) { buf in
+                Array(buf.prefix(min(margin_model_versions_wanted(core, buf.baseAddress, 8), 8)))
+            }
+        }
+    }
+    // The page area of a drag being followed (nil: none under way).
+    func setLivePage(_ page: CGRect?) {
+        locked {
+            guard var r = page?.marginRect else { return margin_model_set_live_page(core, nil) }
+            margin_model_set_live_page(core, &r)
+        }
+    }
+    private func withPlacement<R>(_ p: HostPlacement?, _ body: (UnsafePointer<MarginPlacement>?) -> R) -> R {
+        guard var m = p?.margin else { return body(nil) }
+        return body(&m)
+    }
+    private func withRect<R>(_ r: CGRect?, _ body: (UnsafePointer<MarginRect>?) -> R) -> R {
+        guard var m = r?.marginRect else { return body(nil) }
+        return body(&m)
+    }
+    private func placement(_ m: MarginPlacement) -> HostPlacement { HostPlacement(page: CGRect(m.page), area: CGRect(m.area), display: CGRect(m.display)) }
+
+    // Where a host's window goes for a page area (`p`, nil: its own).
+    func frame(_ h: UInt32, _ p: HostPlacement?) -> (CGRect, wanted: Bool) {
+        var out = MarginRect()
+        return locked { withPlacement(p) { margin_model_frame(core, h, $0, &out) }; return (CGRect(out), wanted) }
+    }
+    // Its placement as its own full-screen Space reserves it (its window entering, a member placed).
+    func entryFitted(_ h: UInt32) -> (HostPlacement, wanted: Bool) {
+        var out = MarginPlacement()
+        return locked { margin_model_fitted(core, h, nil, true, &out); return (placement(out), wanted) }
+    }
+    // Its tile's rect for a page area from Margin's own tile (nil: none).
+    func tileRect(_ h: UInt32, _ p: HostPlacement?, home: CGRect) -> (CGRect?, wanted: Bool) {
+        var out = MarginRect()
+        return locked {
+            let ok = withPlacement(p) { margin_model_tile_rect(core, h, $0, home.marginRect, &out) }
+            return (ok ? CGRect(out) : nil, wanted)
+        }
+    }
+    func isCut(_ h: UInt32) -> (Bool, wanted: Bool) { locked { (margin_model_is_cut(core, h), wanted) } }
+    // A cut pane's sides its arrows slide to (nil: not cut).
+    func cut(_ h: UInt32) -> (PaneCut?, wanted: Bool) {
+        locked {
+            let bits = margin_model_cut(core, h)
+            guard bits >= 0 else { return (nil, wanted) }
+            return (PaneCut(sides: Set(PaneSide.allCases.filter { bits & $0.bit != 0 })), wanted)
+        }
+    }
+    func slideFor(_ h: UInt32, _ side: PaneSide) -> (PaneSlide?, wanted: Bool) {
+        var out = MarginSlide()
+        return locked {
+            guard margin_model_slide_for(core, h, side.index, &out) else { return (nil, wanted) }
+            func end(_ v: Int8) -> Bool? { v < 0 ? nil : v == 1 }
+            return (PaneSlide(pane: CGRect(out.pane), endX: end(out.end_x), endY: end(out.end_y)), wanted)
+        }
+    }
+    // The visible panes a cut pane's window (at `at`, nil: its frame) lies under, back to front.
+    func lyingUnder(_ h: UInt32, at: CGRect? = nil) -> ([UInt32], wanted: Bool) {
+        locked {
+            withUnsafeTemporaryAllocation(of: UInt32.self, capacity: 16) { buf in
+                let n = withRect(at) { margin_model_lying_under(core, h, $0, buf.baseAddress, 16) }
+                return (Array(buf.prefix(min(n, 16))), wanted)
+            }
+        }
+    }
+    func tucked(_ h: UInt32, at: CGRect? = nil) -> (Bool, wanted: Bool) { locked { (withRect(at) { margin_model_tucked(core, h, $0) }, wanted) } }
+    // Cut panes lying under others, back to front: each behind every one it lies under.
+    func tuckedOrder(_ list: [UInt32]) -> ([UInt32], wanted: Bool) {
+        locked {
+            let out = list.withUnsafeBufferPointer { l in
+                [UInt32](unsafeUninitializedCapacity: l.count) { o, count in count = margin_model_tucked_order(core, l.baseAddress, l.count, o.baseAddress, l.count) }
+            }
+            return (out, wanted)
+        }
+    }
+    // Whether a visible cut pane's window is over a pane it lies under in the on-screen list (front to back).
+    func overUnder(_ h: UInt32, _ frontToBack: [Int]) -> (Bool, wanted: Bool) {
+        locked {
+            let list = frontToBack.map { Int64($0) }
+            return (list.withUnsafeBufferPointer { margin_model_over_under(core, h, $0.baseAddress, $0.count) }, wanted)
+        }
+    }
+    // One frame of a slide `elapsed` seconds in: its page rect, its tile's rect from Margin's own tile `home` in Margin's
+    // placement (nil: none), whether it's the last.
+    func slideStep(from: CGRect, to: CGRect, elapsed: Double, time: Double, home: CGRect?) -> (page: CGRect, tile: CGRect?, last: Bool) {
+        var page = MarginRect(), tile = MarginRect()
+        let a = locked { withRect(home) { margin_model_slide_step(core, from.marginRect, to.marginRect, elapsed, time, $0, &page, &tile) } }
+        return (CGRect(page), a & 2 != 0 ? CGRect(tile) : nil, a & 1 != 0)
+    }
+
     // What the model's decisions read of the engine's options (one call per change of them).
     func configure(tolerance: CGFloat) { _ = call(["type": "configure", "tolerance": Double(tolerance)]) }
+}
+
+// As the core numbers a cut pane's sides (host/model/panes.rs `Side`).
+nonisolated extension PaneSide {
+    var index: UInt8 {
+        switch self {
+        case .left: return 0
+        case .right: return 1
+        case .up: return 2
+        case .down: return 3
+        }
+    }
+    var bit: Int8 { Int8(1 << index) }
 }
 
 nonisolated extension HostVisible {

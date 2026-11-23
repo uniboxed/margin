@@ -7677,3 +7677,28 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   "there" check and the centring over 2,000,000 generated rects at and around each tolerance, zero sizes and
   half-point centres included): no difference. Rust tests pin each point and the frames' edges. The app's 2038
   checks pass unchanged.
+
+## Core refactor step 2, part 3 (first of two commits): where each window goes and cut panes in the core (2026-11-23)
+
+- The core gains the Mac's pane rules (host/model/panes.rs, on the model): a host's window frame for a page area (window
+  mode and a card: the page area; a split's pane cut at its window's minimum, at its slide while its pane is the one it
+  was slid in, held within the display unless a tile; else `fit` at its own minimum), its placement fitted and as its
+  own full-screen Space reserves it, its tile's rect, whether it's cut, a cut pane's sides, the slide that shows a
+  side, the panes its window lies under (at its frame, or at a frame given: the drag's, as `sayHostedWindows`' copy
+  asked), whether it's tucked, the order that keeps each behind the ones it lies under (the loop's fallback as
+  given), whether its window is over a pane it lies under in an on-screen list, and a slide's frames (`slide_rect`:
+  ease-out cubic over the slide's time, the last when the time is up; `slide_step` adds its tile's rect). The page
+  area of a drag being followed (`livePage`) is the core's now (the frame reads it). Typed calls, nothing allocated
+  (no_alloc.rs: each of them on a cut pane whose minimum is its app's kept one).
+- CGRect's edge rules, as these decisions were written and measured with, are the core's `geometry::cg` (standardize,
+  meets, inset, union, intersection, equal): a zero-size rect meets one it starts in or at the start of, touching
+  edges don't meet, an inset past the size is none (CG's null), a union keeps a zero-size rect. Fitted against CGRect
+  itself over 4,000,000 generated pairs of whole and half sizes (zero and negative included): the same answers. The
+  rest of the core keeps `Rect`'s own (a zero size never meets), so nothing else changes.
+- A host's minimum read by these rules may be its app's kept one with its process's version not read yet. Its answer
+  then uses that one (what an unreadable version answers) and notes the host (`versions_wanted`, read in the same
+  lock); the engine reads each noted host's version through its own `minimum` (once per process, as before), sets it
+  and asks again, until nothing new is noted. So a version is read in the same call it was read before, for the hosts
+  whose minimum that call reads, and the answer is the one the Swift gave. An unreadable version is read once a call
+  (the Swift read it at each look within a call): the same answers, fewer reads.
+- Swift's `HostCore` gains the typed wrappers; the engine switches to them, and its copies go, in the next commit.

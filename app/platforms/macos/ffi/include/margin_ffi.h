@@ -149,6 +149,29 @@ MarginRect margin_layout_inside(MarginRect page, double width, double height);
 bool margin_layout_window_frame(MarginRect page, MarginRect now, bool resizable, bool placed_before, double tolerance, MarginRect *out);
 bool margin_layout_at_page_area(MarginRect bounds, MarginRect area, double tolerance);
 
+// Where each visible host's window goes and cut panes (host/model/panes.rs, ffi panes.rs): typed (`frame` per follower
+// per frame of a drag). A placement NULL: the host's own. Each reading call notes the hosts whose minimum it read as
+// their app's kept one with their process's version unread (margin_model_versions_wanted, right after it: read each
+// one's version, set it, ask again). Sides: 0 left, 1 right, 2 up, 3 down; as bits 1, 2, 4, 8.
+typedef struct MarginSlide {
+    MarginRect pane;
+    int8_t end_x; // 0 its start at the pane's, 1 its end, -1 away from the other panes
+    int8_t end_y;
+} MarginSlide;
+void margin_model_set_live_page(MarginHostCore *core, const MarginRect *page); // a drag's page area; NULL: none
+size_t margin_model_versions_wanted(MarginHostCore *core, uint32_t *out, size_t cap);
+void margin_model_frame(MarginHostCore *core, uint32_t handle, const MarginPlacement *p, MarginRect *out);
+void margin_model_fitted(MarginHostCore *core, uint32_t handle, const MarginPlacement *p, bool entry, MarginPlacement *out); // entry: as its own Space reserves it
+bool margin_model_tile_rect(MarginHostCore *core, uint32_t handle, const MarginPlacement *p, MarginRect home, MarginRect *out);
+bool margin_model_is_cut(MarginHostCore *core, uint32_t handle);
+int8_t margin_model_cut(MarginHostCore *core, uint32_t handle); // -1 not cut, else its sides' bits
+bool margin_model_slide_for(MarginHostCore *core, uint32_t handle, uint8_t side, MarginSlide *out);
+size_t margin_model_lying_under(MarginHostCore *core, uint32_t handle, const MarginRect *at, uint32_t *out, size_t cap); // at NULL: its frame
+bool margin_model_tucked(MarginHostCore *core, uint32_t handle, const MarginRect *at);
+size_t margin_model_tucked_order(MarginHostCore *core, const uint32_t *list, size_t n, uint32_t *out, size_t cap);
+bool margin_model_over_under(MarginHostCore *core, uint32_t handle, const int64_t *front_to_back, size_t n);
+uint8_t margin_model_slide_step(MarginHostCore *core, MarginRect from, MarginRect to, double elapsed, double time, const MarginRect *home, MarginRect *page, MarginRect *tile); // bits: 1 last, 2 tile written
+
 // Margin's keys (shortcuts.rs, ffi keys.rs): combinations as the Mac's Carbon key code and modifier bits. The JSON
 // answers are freed with margin_buffer_free; a press, a release and a repeat's tick are typed.
 typedef struct {
