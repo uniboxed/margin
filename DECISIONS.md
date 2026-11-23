@@ -7461,3 +7461,24 @@ however much can fit inside it", arrows on hover on the sides with more to show,
   the edge beside Safari, slid under Safari's pane and back; the screen suite's `cut-panes` part, 14 of 14.
 - **Open**: a second display beside this one (none connected yet): a tile past the edge should stay clipped to its own
   display.
+
+## The UI and its themes move to app/shared/ui (2026-11-22)
+
+- `extension/ui/` is now `app/shared/ui/`, and `extension/themes/` is now `app/shared/ui/themes/` (Tirth, 2026-11-22;
+  docs/CORE-REFACTOR.md "Between steps 1 and 2"). In the hosted design, Margin's own window draws both: the overlay
+  page on the Mac (`app/shared/host/`), and on Windows next. The extension's content scripts, new-tab page and away
+  page use neither.
+- **A pure move**: the built extensions and `dist/app/` are byte-for-byte the same as before, except the themes'
+  README, whose path text changed. The theme files are still copied into each extension build's `themes/<id>/`
+  (`scripts/build.ts` buildTo), because the background still reads the active theme's package from its own URL
+  (`background/theme-package.ts`). The background's theme settings and package import, and the model's theme
+  settings, import from the new folder until step 4 removes them.
+- **The test and CI rules follow it**:
+  - The CI plan and `npm run test:quick` treat `app/shared/ui/` as the theme suite's runtime, the same as
+    `extension/ui/` before. It still reaches the e2e suite and the WebKit host.
+  - The manifest tests also scan the UI's files for third-party URLs, `corner-shape` and fetches in themes.
+  - `tsconfig.json` type-checks the new folder.
+- **margin-ffi moves too** (Tirth, 2026-11-22): `app/shared/ffi/` is now `app/platforms/macos/ffi/`. Only the Mac's
+  Swift needs the C interface; the Windows shell and the connector use margin-core directly. A pure move: the
+  workspace's member list, the crate's path to margin-core, build-core.sh, safari.sh, and the app tests' and the
+  WebKit host's `-I` paths. The library, its header and its module map are otherwise the same.

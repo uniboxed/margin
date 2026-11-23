@@ -1,5 +1,5 @@
-//! The link's WebSocket server, sans IO (app/platforms/macos/shell/ExtensionLink.swift: `SocketLink` and its `Socket`, with
-//! LinkSocket.swift's protocol in [`crate::websocket`]): the copies' TCP connections to 127.0.0.1, each one's HTTP
+//! The link's WebSocket server, sans IO (the Mac's ExtensionLink.swift keeps only the listener and its connections: `SocketLink` and its `Socket`, with
+//! the WebSocket's protocol in [`crate::websocket`]): the copies' TCP connections to 127.0.0.1, each one's HTTP
 //! upgrade (turned away with 403 before any WebSocket for a path other than `/`, a wrong token or an `Origin`
 //! that isn't an extension's), its frames, and the link session over them ([`crate::link::Link`]); the secrets (a
 //! token, the copy's proof that it's Margin, and a key, the app's proof that it's the app: 32 random bytes each, in
@@ -30,9 +30,14 @@
 //! link went (a hello meanwhile keeps them), up to 8 `wantLink`s held before the listener has its port, each
 //! dispatch numbered (`#n`) and its delivery logged (`n in a row` refused).
 //!
-//! Left out (Safari's, on the Mac only): `SafariDispatch`, the distributed notification, `appUp` once Safari has
-//! run 2 s, `onDispatchRefused` (BundleWatch). Chrome's and Edge's relays ([`crate::relay::RelayHub`]) carry the
-//! [`Out::Dispatch`]es here, and say through [`SocketLink::dispatched`] whether they got to one.
+//! Safari's way in, the Mac's (the transport carries out `SFSafariApplication.dispatchMessage` and listens for the
+//! notification): a `wantLink` the extension handler's notification carries ([`SocketLink::woken`]: its JSON, a
+//! nonce of 1–128 characters, else "wantLink without a nonce"), answered into Safari ([`Via::safari`]); `appUp`
+//! into Safari once it has run 2 s ([`SocketLink::say_app_up`], again at [`Out::AppUpDue`] while no link is up, a
+//! hello ending the wait); and the link note the handler reads ([`Out::Note`], with [`SocketLink::publish_notes`]:
+//! written as the listener gets its port, the secrets change and it stops). Chrome's and Edge's relays
+//! ([`crate::relay::RelayHub`]) carry their [`Out::Dispatch`]es; the transport says through
+//! [`SocketLink::dispatched`] whether each got to a copy (`onDispatchRefused`, BundleWatch, is the Mac's).
 
 use std::collections::BTreeMap;
 
@@ -51,7 +56,8 @@ const ASKED: usize = 8;
 /// The Origins a copy may open the socket from: a Safari extension's; Chrome's and Edge's (through their relay).
 pub const ALLOWED_ORIGINS: [&str; 2] = ["safari-web-extension://", "chrome-extension://"];
 
-/// Whose relays a `link` goes to: one browser process's (`pid` 0: every relay).
+/// Where a dispatch goes: Safari's extension (`browser` "safari": `SFSafariApplication.dispatchMessage`), or one
+/// browser process's relays (`pid` 0: every relay).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Via {
     pub pid: u32,
@@ -59,11 +65,28 @@ pub struct Via {
 }
 
 impl Via {
-    /// `RelayDispatch.name`.
+    /// Safari's extension (the Mac's `SafariDispatch`).
+    pub fn safari() -> Self {
+        Self { pid: 0, browser: "safari".into() }
+    }
+
+    pub fn is_safari(&self) -> bool {
+        self.browser == "safari"
+    }
+
+    /// `RelayDispatch.name`, and Safari's.
     pub fn name(&self) -> &'static str {
-        if self.browser == "edge" { "Edge" } else { "Chrome" }
+        match self.browser.as_str() {
+            "safari" => "Safari",
+            "edge" => "Edge",
+            _ => "Chrome",
+        }
     }
 }
+
+/// `Timing.safariSettled`: `appUp` only once Safari has been running this long (`dispatchMessage` would open Safari
+/// if it weren't).
+pub const SAFARI_SETTLED: Secs = 2.0;
 
 /// What the caller does, in order.
 #[derive(Clone, Debug, PartialEq)]
@@ -77,14 +100,19 @@ pub enum Out {
     End {
         conn: ConnId,
     },
-    /// `dispatchMessage(name, userInfo: { e: info })` into the relays of `to`'s browser process; then say whether
-    /// it got to any ([`SocketLink::dispatched`] with `n`).
+    /// `dispatchMessage(name, userInfo: { e: info })` into Safari's extension or the relays of `to`'s browser
+    /// process; then say whether it got to any ([`SocketLink::dispatched`] with `n`).
     Dispatch {
         to: Via,
         name: String,
         info: Object,
         n: u64,
     },
+    /// The link note as things are now (`{ v, port, token, key, app: { version }, pid, at }`), or none (no port,
+    /// stopped): written whole for Safari's extension handler, or removed. Only with [`SocketLink::publish_notes`].
+    Note(Option<Object>),
+    /// `appUp`'s wait is over with no link up: say [`SocketLink::say_app_up`] again with how long Safari has run.
+    AppUpDue,
     /// The link session's news: [`Action::Up`], [`Action::Received`], [`Action::Down`], [`Action::Answer`]
     /// (never a send or a close: those are the writes above).
     Link(Action),
@@ -126,6 +154,13 @@ pub struct SocketLink {
     dispatches: u64,
     refused_in_a_row: u32,
     stopped: bool,
+    /// Added to `now` for the `at`s ([`Link::set_wall_offset`]).
+    wall: Secs,
+    /// `appUp`'s wait: when to look again (cancelled by a hello).
+    app_up_at: Option<Secs>,
+    safari_settled: Secs,
+    /// The app's process, for the link note; `None`: no notes (Windows).
+    note_pid: Option<u32>,
 }
 
 /// `SocketLink.secret`: 32 random bytes, hex. The OS's generator; should it ever fail, std's per-process random
@@ -167,7 +202,49 @@ impl SocketLink {
             dispatches: 0,
             refused_in_a_row: 0,
             stopped: false,
+            wall: 0.0,
+            app_up_at: None,
+            safari_settled: SAFARI_SETTLED,
+            note_pid: None,
         }
+    }
+
+    /// `now` plus this is the wall clock's (seconds since 1970): the `at`s of every message, note and dispatch.
+    pub fn set_wall_offset(&mut self, offset: Secs) {
+        self.wall = if offset.is_finite() { offset } else { 0.0 };
+        self.link.set_wall_offset(self.wall);
+    }
+
+    /// `Timing.keep` (30 s) and `Timing.safariSettled` (2 s), as the tests have them.
+    pub fn set_keep(&mut self, keep: Secs, safari_settled: Secs) {
+        self.keep = keep;
+        self.safari_settled = safari_settled;
+    }
+
+    /// The link note ([`Out::Note`]) written for this process from now on.
+    pub fn publish_notes(&mut self, pid: u32) {
+        self.note_pid = Some(pid);
+    }
+
+    fn at(&self, now: Secs) -> i64 {
+        ((now + self.wall) * 1000.0).round() as i64
+    }
+
+    /// `publish`: the link note as things are now: the port, token and key while listening, none otherwise.
+    fn publish(&self, now: Secs, out: &mut Vec<Out>) {
+        let Some(pid) = self.note_pid else { return };
+        let Some(port) = self.port.filter(|_| !self.stopped) else { return out.push(Out::Note(None)) };
+        let mut app = Object::new();
+        app.insert("version".into(), self.version.clone().into());
+        let mut info = Object::new();
+        info.insert("v".into(), VERSION.into());
+        info.insert("port".into(), port.into());
+        info.insert("token".into(), self.token.clone().into());
+        info.insert("key".into(), self.key.clone().into());
+        info.insert("app".into(), app.into());
+        info.insert("pid".into(), pid.into());
+        info.insert("at".into(), self.at(now).into());
+        out.push(Out::Note(Some(info)));
     }
 
     /// The link session: its connections, who's up.
@@ -197,9 +274,16 @@ impl SocketLink {
     /// for meanwhile are answered.
     pub fn listening(&mut self, port: Option<u16>, now: Secs) -> Vec<Out> {
         let mut out = Vec::new();
-        self.port = port.filter(|_| !self.stopped);
-        let Some(port) = self.port else { return out };
+        if self.stopped {
+            return out;
+        }
+        self.port = port;
+        let Some(port) = self.port else {
+            self.publish(now, &mut out);
+            return out;
+        };
         note(&mut out, format!("listening on 127.0.0.1:{port}"));
+        self.publish(now, &mut out);
         for (nonce, via) in std::mem::take(&mut self.asked) {
             self.answer(&nonce, via, now, &mut out);
         }
@@ -207,6 +291,46 @@ impl SocketLink {
     }
 
     // ---- getting linked ----
+
+    /// `woken`: the extension handler's notification (`com.unibox.margin.setup`), its JSON: a `wantLink` with a
+    /// nonce is answered into Safari (or held until the listener has its port); anything else is left.
+    pub fn woken(&mut self, json: Option<&str>, now: Secs) -> Vec<Out> {
+        let mut out = Vec::new();
+        if self.stopped {
+            return out;
+        }
+        let Some(body) = json.and_then(|j| serde_json::from_str::<serde_json::Value>(j).ok()) else { return out };
+        if crate::json::string(body.get("type")) != Some("wantLink") {
+            return out;
+        }
+        let nonce = crate::json::string(body.get("nonce")).filter(|n| (1..=128).contains(&n.chars().count()));
+        let Some(nonce) = nonce else {
+            warn(&mut out, "wantLink without a nonce".into());
+            return out;
+        };
+        self.want_link(nonce, Via::safari(), now)
+    }
+
+    /// `sayAppUp`: Safari open before the app: its copies are told to ask (`appUp`), only once Safari has been running
+    /// a while (`running_for`: how long it has; `None`: it isn't). Before then, [`Out::AppUpDue`] comes at the time.
+    pub fn say_app_up(&mut self, running_for: Option<Secs>, now: Secs) -> Vec<Out> {
+        let mut out = Vec::new();
+        self.app_up_at = None;
+        let Some(running_for) = running_for.filter(|_| !self.stopped) else { return out };
+        let wait = self.safari_settled - running_for;
+        if wait > 0.0 {
+            self.app_up_at = Some(now + wait);
+            return out;
+        }
+        self.dispatches += 1;
+        let n = self.dispatches;
+        note(&mut out, format!("appUp handed to Safari (#{n})"));
+        let mut info = Object::new();
+        info.insert("v".into(), VERSION.into());
+        info.insert("at".into(), self.at(now).into());
+        out.push(Out::Dispatch { to: Via::safari(), name: "appUp".into(), info, n });
+        out
+    }
 
     /// `wantLink(nonce:via:)`: a copy asked for the link through its relay; answered into that browser process's
     /// relays (or held until the listener has its port). A nonce is 1–128 characters.
@@ -239,7 +363,7 @@ impl SocketLink {
         info.insert("token".into(), self.token.clone().into());
         info.insert("key".into(), self.key.clone().into());
         info.insert("app".into(), app.into());
-        info.insert("at".into(), at(now).into());
+        info.insert("at".into(), self.at(now).into());
         out.push(Out::Dispatch { to: via, name: "link".into(), info, n });
     }
 
@@ -423,6 +547,7 @@ impl SocketLink {
                 Action::Log { level, text } => out.push(Out::Log { level, text }),
                 Action::Up { .. } => {
                     self.rotation = None;
+                    self.app_up_at = None;
                     out.push(Out::Link(a));
                 }
                 Action::Down { .. } => {
@@ -491,7 +616,14 @@ impl SocketLink {
                 self.token = secret();
                 self.key = secret();
                 self.link.set_welcome_key(self.key.clone());
+                self.publish(now, &mut out);
                 note(&mut out, "token changed".into());
+            }
+        }
+        if self.app_up_at.is_some_and(|due| now >= due) {
+            self.app_up_at = None;
+            if self.link.connections().next().is_none() {
+                out.push(Out::AppUpDue);
             }
         }
         out
@@ -501,7 +633,7 @@ impl SocketLink {
     pub fn next_deadline(&self) -> Option<Secs> {
         let hello = self.link.timing().hello;
         let sockets = self.sockets.values().filter(|s| !s.open && !s.ended).map(|s| s.accepted + hello);
-        self.link.next_deadline().into_iter().chain(sockets).chain(self.rotation).reduce(f64::min)
+        self.link.next_deadline().into_iter().chain(sockets).chain(self.rotation).chain(self.app_up_at).reduce(f64::min)
     }
 
     // ---- the link's messages ----
@@ -557,7 +689,9 @@ impl SocketLink {
         self.stopped = true;
         self.port = None;
         self.rotation = None;
+        self.app_up_at = None;
         self.asked.clear();
+        self.publish(now, &mut out);
         let unlinked: Vec<ConnId> = self.sockets.iter().filter(|(_, s)| !s.open && !s.ended).map(|(&c, _)| c).collect();
         for conn in unlinked {
             self.close_socket(conn, 1001, why, now, &mut out);
@@ -566,11 +700,6 @@ impl SocketLink {
         self.carry(actions, now, &mut out);
         out
     }
-}
-
-/// `SocketLink.at()`: now in whole milliseconds.
-fn at(now: Secs) -> i64 {
-    (now * 1000.0).round() as i64
 }
 
 fn note(out: &mut Vec<Out>, text: String) {

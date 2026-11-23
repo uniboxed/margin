@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as M from '../extension/state/model.ts';
-import { buildViewModel } from '../extension/ui/view-model.ts';
-import { checkAction, contextFromState, requestFor } from '../extension/ui/actions.ts';
-import { sanitizeTemplate } from '../extension/ui/sanitize.ts';
-import { menuItems } from '../extension/ui/behaviors/menu-items.ts';
+import { buildViewModel } from '../app/shared/ui/view-model.ts';
+import { checkAction, contextFromState, requestFor } from '../app/shared/ui/actions.ts';
+import { sanitizeTemplate } from '../app/shared/ui/sanitize.ts';
+import { menuItems } from '../app/shared/ui/behaviors/menu-items.ts';
 import * as L from '../app/shared/library/library.ts';
 import { createHostedTabs } from '../extension/background/hosted.ts';
 

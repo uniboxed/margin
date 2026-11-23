@@ -23,8 +23,8 @@
 //! - The RFC 6455 framing, the HTTP upgrade and its refusals, the token's check and the `Origin`'s, the secrets
 //!   and their rotation, Safari's and the relays' `wantLink` answered with `link`: [`crate::socket`] and
 //!   [`crate::websocket`].
-//! - Safari's way in (`SafariDispatch`, the distributed notification `com.unibox.margin.setup`, `appUp` once Safari
-//!   has run 2 s): Safari's, on the Mac only.
+//! - Safari's way in (the distributed notification `com.unibox.margin.setup`'s `wantLink`, `appUp` once Safari has
+//!   run 2 s, the link note): [`crate::socket`]; `SFSafariApplication.dispatchMessage` itself is the Mac's transport.
 //! - The listener and its upkeep (`NWListener`, 127.0.0.1 only, no Nagle, `waiting` 5 s made again on a new
 //!   port, `retryListen`) and `stop`'s 0.3 s wait for the `bye`s to be written before quitting: the transport's.
 //!
@@ -150,6 +150,9 @@ pub struct Link {
     /// The ticker's next time, while any link is up.
     next_tick: Option<Secs>,
     stopped: bool,
+    /// Added to `now` for the messages' `at` (the wall clock's, `Date.now()`), for a caller whose `now` is a
+    /// monotonic clock (the Mac's `systemUptime`: a sleep never reads as 40 s of silence). 0: `now` is the wall's.
+    wall: Secs,
 }
 
 fn whole(s: Secs) -> i64 {
@@ -167,11 +170,22 @@ impl Link {
             ended: BTreeSet::new(),
             next_tick: None,
             stopped: false,
+            wall: 0.0,
         }
     }
 
     pub fn timing(&self) -> &Timing {
         &self.timing
+    }
+
+    /// `now` plus this is the wall clock's time (seconds since 1970), for the messages' `at`.
+    pub fn set_wall_offset(&mut self, offset: Secs) {
+        self.wall = if offset.is_finite() { offset } else { 0.0 };
+    }
+
+    /// The messages' `at` for `now`: the wall clock's milliseconds.
+    pub fn at_ms(&self, now: Secs) -> f64 {
+        (now + self.wall) * 1000.0
     }
 
     /// The key the next connections' `welcome` carries (the secrets changed: [`crate::socket::SocketLink`]).
@@ -231,7 +245,7 @@ impl Link {
         }
         self.opening.insert(conn, accepted);
         note(&mut out, "socket open".into());
-        if let Some(text) = (AppMessage::Welcome { key: self.welcome_key.clone() }).encode(now * 1000.0) {
+        if let Some(text) = (AppMessage::Welcome { key: self.welcome_key.clone() }).encode(self.at_ms(now)) {
             out.push(Action::Send { conn, text });
         }
         out
@@ -252,7 +266,7 @@ impl Link {
         }
         self.heard(conn, now);
         if text.len() > MAX_INCOMING {
-            // (LinkSocket.swift's FrameReader: Failure.tooBig, closed 1002.)
+            // (The frame reader's `TooBig`, closed 1002.)
             self.close_conn(conn, 1002, format!("a message over {MAX_INCOMING} bytes"), now, &mut out);
             return out;
         }
@@ -400,7 +414,7 @@ impl Link {
                 if now - last_heard > dead {
                     warn(&mut out, format!("no word from {key} for {} s", whole(dead)));
                     self.close_conn(conn, 1001, format!("no word for {} s", whole(dead)), now, &mut out);
-                } else if let Some(text) = AppMessage::Tick.encode(now * 1000.0) {
+                } else if let Some(text) = AppMessage::Tick.encode(self.at_ms(now)) {
                     out.push(Action::Send { conn, text });
                 }
             }
@@ -423,8 +437,9 @@ impl Link {
     /// `Err(NotJson)` if it isn't JSON or is over 1 MB (counted in [`Connection::refused`]; the caller logs it:
     /// "not sent to KEY: not JSON, or over 1000000 bytes").
     pub fn send(&mut self, conn: ConnId, message: &AppMessage, now: Secs) -> Result<Action, LinkError> {
+        let at = self.at_ms(now);
         let link = self.links.values_mut().find(|l| l.conn == conn).ok_or(LinkError::Down)?;
-        match message.encode(now * 1000.0) {
+        match message.encode(at) {
             Some(text) => Ok(Action::Send { conn, text }),
             None => {
                 link.refused += 1;
@@ -444,11 +459,12 @@ impl Link {
         now: Secs,
     ) -> Result<(i64, Action), LinkError> {
         let timeout = self.timing.request;
+        let at = self.at_ms(now);
         let link = self.links.values_mut().find(|l| l.conn == conn).ok_or(LinkError::Down)?;
         let id = link.next_id;
         link.next_id += 1;
         let req = AppMessage::Req { id, epoch: link.hello.epoch.clone(), window_id, kind: kind.into(), payload };
-        let text = req.encode(now * 1000.0).ok_or(LinkError::NotJson)?;
+        let text = req.encode(at).ok_or(LinkError::NotJson)?;
         link.waiting.insert(id, now + timeout);
         Ok((id, Action::Send { conn, text }))
     }
@@ -468,7 +484,7 @@ impl Link {
         }
         let links: Vec<ConnId> = self.links.values().map(|l| l.conn).collect();
         for conn in links {
-            if let Some(text) = (AppMessage::Bye { why: why.into() }).encode(now * 1000.0) {
+            if let Some(text) = (AppMessage::Bye { why: why.into() }).encode(self.at_ms(now)) {
                 out.push(Action::Send { conn, text });
             }
             out.push(Action::Close { conn, code: 1001, reason: why.into() });
@@ -663,6 +679,25 @@ mod tests {
         assert_eq!(link.next_deadline(), Some(115.0), "on the 5 s beat, not from when tick was called");
         assert_eq!(sends(&link.tick(131.0)).len(), 2, "missed beats: one tick");
         assert_eq!(link.next_deadline(), Some(136.0));
+    }
+
+    #[test]
+    fn at_is_the_wall_clocks_with_a_monotonic_now() {
+        let mut link = linked();
+        link.set_wall_offset(1_800_000_000.0);
+        let ticks = sends(&link.tick(5.0));
+        assert_eq!(ticks[0].1["at"], json!(1_800_000_005_000_i64));
+        let Ok((_, Action::Send { text, .. })) = link.request(1, "x", Object::new(), None, 6.0) else {
+            panic!("a send")
+        };
+        assert_eq!(
+            serde_json::from_str::<Value>(&text).ok().map(|v| v["at"].clone()),
+            Some(json!(1_800_000_006_000_i64))
+        );
+        // The deadlines stay on `now`'s clock: a sleep (no `now` passing) is never 40 s of silence.
+        assert_eq!(link.next_deadline(), Some(10.0));
+        link.set_wall_offset(f64::NAN);
+        assert_eq!(sends(&link.tick(10.0))[0].1["at"], json!(10_000), "not a number: none added");
     }
 
     #[test]

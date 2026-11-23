@@ -5,8 +5,8 @@
 // the prompt Remove asks first.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { settingsFields, saveThemeField, removePrompt, userThemeList, themeText, type SettingsField } from '../extension/ui/settings-form.ts';
-import { PREVIEW_MS } from '../extension/ui/theme-preview.ts';
+import { settingsFields, saveThemeField, removePrompt, userThemeList, themeText, type SettingsField } from '../app/shared/ui/settings-form.ts';
+import { PREVIEW_MS } from '../app/shared/ui/theme-preview.ts';
 
 const LIST = [{ id: 'mine', name: 'Mine', version: '1.2.0', author: 'Me', bytes: 9 }, { id: 'arcadia', name: 'Fake Arcadia' }, { id: '../x', name: 'Bad' }, { id: 'rtl', name: 'Safe‮txt.exe', version: '1.0.0', author: 'A​B' }];
 const THEME = {

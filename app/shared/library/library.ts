@@ -832,7 +832,7 @@ export function perform(values: Values, action: string, payload: any = {}, env: 
 }
 
 /**
- * What the UI draws (extension/ui/host-app.ts takes it as its stored values: shared/stored.ts fromStorage): the
+ * What the UI draws (app/shared/ui/host-app.ts takes it as its stored values: shared/stored.ts fromStorage): the
  * spaces, pins, folders and archive as the extension stores them, and the items as kept tabs (`openTabs.keptTabs`),
  * each with its target; no open tabs (the hosting adds those it has). `library` says it's the library's.
  */

@@ -42,10 +42,10 @@ done < ../../app/platforms/macos/swift-sources.txt
 FAKE_SAFARI=../../app/engines/webkit/safari/tests/fake-safari.swift
 # Chameleon's switches (tools/screen-tests/apps/Chameleon): the unit checks' stand-in world plays them (behaviour-world.swift).
 CHAMELEON_SWITCHES=../screen-tests/apps/Chameleon/Switches.swift
-# The hosting core (app/shared/ffi, Rust: margin-core's host module) the shell links through `import MarginCore`:
+# The hosting core (app/platforms/macos/ffi, Rust: margin-core's host module) the shell links through `import MarginCore`:
 # built for this Mac (scripts/build-core.sh host), its module map's `link` line linking it.
 CORE_LIB=$(sh ../../scripts/build-core.sh host) || exit 1
-CORE=(-I ../../app/shared/ffi/include -L "$CORE_LIB")
+CORE=(-I ../../app/platforms/macos/ffi/include -L "$CORE_LIB")
 FLAGS=(-swift-version 5 -default-isolation MainActor -enable-upcoming-feature InferIsolatedConformances -enable-upcoming-feature NonisolatedNonsendingByDefault "${CORE[@]}")
 # Compiled on every core (batch mode): about 4x faster than one job.
 JOBS=(-j"$(sysctl -n hw.ncpu 2>/dev/null || echo 4)")

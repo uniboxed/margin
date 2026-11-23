@@ -1,0 +1,266 @@
+// The preview card and Quick Tab in Margin's UI (docs/PEEK-SPLIT.md §2, §3). (Not behaviors/peek.ts: that's the
+// sidebar's hover reveal, an older use of the word; native code calls this one the card, and the runtime's own state,
+// `ui.peek`, keeps its old name: neither is seen by a person or a theme.)
+//
+// The theme draws it: its guarded `<template m-part="preview">` in `<m-preview>` while `preview` is set, with an
+// `<m-preview-page>` where the card's page goes (Margin.app places the card's Safari window exactly there: the element
+// is measured as `<m-page>` is, ui/render.ts View.measurePeekPage, and sent with the page's layout) and a bar for its
+// buttons (`preview.back`, `preview.forward`, `preview.copyUrl`, `preview.expand`, `preview.close`). The dimmed page
+// around it and its frame are the theme's CSS; the theme sees `preview.loading` (its window not in place yet:
+// `<m-preview-page>` covered), `preview.ready` (in place: `<m-preview-page>` clear, the page showing through) and
+// `preview.closing` (going: its open reversed, then gone after CARD_MOTION_MS).
+//
+// What comes from where:
+// - Margin.app says what the card is (`show`: its `peek` push; null: it closed it, animated out here).
+// - Its buttons go to the app (host.perform `peek.*`, the app's own names); Close and Expand also start the card's
+//   going here at once, so the window under `<m-preview-page>` is covered before the app parks or moves it.
+// - Quick Tab (⌥⌘N, `quickTab.open`): the card with Margin's own field (`m-input="preview"`) and no page yet. Return
+//   takes what's typed as the palette does (shared/search.ts resolveInput: an address, else a search) and asks the app
+//   for the card at it (`peek.go`); Escape closes it. A host with no card (no Margin.app): a new tab at it.
+// - Escape anywhere in Margin's UI while the card is open (no menu, palette or field of another kind in the way)
+//   closes it; ⌘↩ expands it.
+import type { Rt } from '../runtime.ts';
+import { resolveInput } from '../../../../extension/shared/search.ts';
+
+/** The card's open and close: about 150 ms (Tirth, 2026-11-21), transform and opacity only. */
+export const CARD_MOTION_MS = 150;
+
+export function installCard(rt: Rt) {
+  const { view, container } = rt;
+  let closing: ReturnType<typeof setTimeout> | null = null;
+  let focusField = false;
+  const isField = (el: EventTarget | null) => !!el && view.inputs.get(el as Element) === 'preview';
+  const spaceNow = () => rt.vm?.space?.id ?? null;
+
+  function stopClosing() { if (closing) { rt.cancel(closing); closing = null; } }
+
+  /** The app's word on the card (its `peek` push): shown as it says; null: it's gone (animated out). */
+  function show(next: any) {
+    if (!next || typeof next !== 'object') return close({ tell: false });
+    stopClosing();
+    const cur = rt.ui.peek;
+    const url = typeof next.url === 'string' ? next.url : '';
+    const littleArc = next.littleArc === true;
+    if (!url && !littleArc && next.loading === false) return close({ tell: false });
+    // (Quick Tab's field keeps what's typed while the app's word comes.)
+    const query = littleArc && cur?.littleArc ? cur.query ?? '' : '';
+    if (littleArc && !cur?.littleArc) focusField = true;
+    rt.setUi({
+      peek: {
+        url, title: typeof next.title === 'string' ? next.title : '', spaceId: typeof next.spaceId === 'string' ? next.spaceId : cur?.spaceId ?? spaceNow(),
+        littleArc, loading: next.loading !== false, closing: false, query,
+        canGoBack: typeof next.canGoBack === 'boolean' ? next.canGoBack : null, canGoForward: typeof next.canGoForward === 'boolean' ? next.canGoForward : null,
+      },
+    });
+    return true;
+  }
+
+  /** The card closed: animated out, then gone; `tell`: the app told (a press here), not when it said so itself. */
+  function close({ tell = true }: { tell?: boolean } = {}) {
+    const cur = rt.ui.peek;
+    if (!cur) return false;
+    if (tell) rt.host.perform?.('peek.close', {});
+    if (cur.closing) return true;
+    rt.setUi({ peek: { ...cur, closing: true } });
+    stopClosing();
+    closing = rt.later(() => { closing = null; if (rt.ui.peek?.closing) rt.setUi({ peek: null }); }, CARD_MOTION_MS);
+    return true;
+  }
+
+  function expand() {
+    const cur = rt.ui.peek;
+    if (!cur || cur.littleArc || !cur.url) return false;
+    const spaceId = cur.spaceId ?? spaceNow();
+    if (rt.host.perform?.('peek.expand', { url: cur.url, spaceId })) { close({ tell: false }); return true; }
+    // (No card host: the page in a new tab of the space, as before.)
+    void rt.send('newTab', { windowId: rt.windowId() ?? undefined, url: cur.url, spaceId: spaceId ?? undefined });
+    close({ tell: false });
+    return true;
+  }
+
+  function openLittleArc() {
+    rt.behaviors.menus?.close?.();
+    if (rt.ui.palette?.open) rt.dispatch('palette.close', undefined, 'behavior');
+    stopClosing();
+    focusField = true;
+    const spaceId = spaceNow();
+    rt.setUi({ peek: { url: '', title: '', spaceId, littleArc: true, loading: false, closing: false, query: '' } });
+    rt.host.perform?.('peek.littleArc', { spaceId });
+    return true;
+  }
+
+  /** Quick Tab's field taken (Return): the card at that address or search. */
+  function go(text: string) {
+    const cur = rt.ui.peek;
+    const target = resolveInput(text);
+    if (!cur?.littleArc || !target) return false;
+    const spaceId = cur.spaceId ?? spaceNow();
+    const payload = target.kind === 'url' ? { url: target.url, spaceId } : { query: target.query, spaceId };
+    if (rt.host.perform?.('peek.go', payload)) {
+      // (A search's address is the app's to make, from the engine Safari searches with: shown as its word comes.)
+      rt.setUi({ peek: { ...cur, littleArc: false, loading: true, url: target.kind === 'url' ? target.url : '', title: target.kind === 'url' ? '' : target.query } });
+      return true;
+    }
+    rt.setUi({ peek: null });
+    if (target.kind === 'url') void rt.send('newTab', { windowId: rt.windowId() ?? undefined, url: target.url, spaceId: spaceId ?? undefined });
+    else void rt.send('search', { windowId: rt.windowId() ?? undefined, query: target.query });
+    return true;
+  }
+
+  rt.listen(container, 'keydown', (e: KeyboardEvent) => {
+    const cur = rt.ui.peek;
+    if (!cur || e.isComposing || e.defaultPrevented) return;
+    if (isField(e.target)) {
+      if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); go((e.target as HTMLInputElement).value); return; }
+      if (e.key === 'Escape') { e.preventDefault(); close(); return; }
+      return;
+    }
+    // (Another of Margin's things open over it has its own Escape: a menu, the palette, a field being edited.)
+    if (rt.ui.menu || rt.ui.palette?.open || rt.ui.editor || rt.ui.editing) return;
+    if (e.key === 'Escape') { e.preventDefault(); close(); }
+    else if (e.key === 'Enter' && e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) { e.preventDefault(); expand(); }
+  });
+
+  // ---- the page area, for the theme's CSS (and Margin's default card) ----
+  // While a card is up, the page's place (`<m-page>`'s content box, as the view measures it) is on the theme's root as
+  // `--m-page-left`, `--m-page-top`, `--m-page-right`, `--m-page-bottom` (px from the window's edges) and
+  // `--m-page-radius`: a theme's `<m-preview>` lays its dim over the page area alone with them.
+  let placedKey = '';
+  function placePage() {
+    const root = view.rootElement() as HTMLElement | null;
+    if (!root?.style) return;
+    const g = rt.ui.peek ? view.measure() : null;
+    const key = g ? JSON.stringify([g.insets, g.radius]) : '';
+    if (key === placedKey) return;
+    placedKey = key;
+    const names = ['left', 'top', 'right', 'bottom'] as const;
+    for (const n of names) {
+      if (g) root.style.setProperty(`--m-page-${n}`, `${g.insets[n]}px`); else root.style.removeProperty(`--m-page-${n}`);
+    }
+    if (g) root.style.setProperty('--m-page-radius', `${g.radius}px`); else root.style.removeProperty('--m-page-radius');
+  }
+
+  // ---- nothing of the page's place painted inside the card's page ----
+  // `<m-preview-page>` is see-through once the card's window is in place, so whatever Margin's page draws in `<m-page>`
+  // under it (a split's dividers and toolbar bands, a pane's loader, a theme's pane ring) would show across the card's
+  // page (the real screen, 2026-11-21: a stacked split's band drawn as a stripe through the card). While a card is up,
+  // `<m-page>` is clipped to everything but the card's page box (`m-card-clip`, an even-odd path in its own border box,
+  // its outer edge far outside it so a theme's frame or shadow on it is never cut), so nothing of it paints or takes a
+  // press there; the dividers aren't reported as taking the pointer meanwhile either (host-app.ts hitRects: the dim
+  // around the card is Margin's, the card's page the card's).
+  let clipped: HTMLElement | null = null;
+  let clipKey = '';
+  function clipPage() {
+    const pageEl = view.pageEl as HTMLElement | null;
+    const box = rt.ui.peek ? view.measurePeekPage() : null;
+    const g = box && pageEl?.isConnected ? view.measure() : null;
+    let key = '';
+    if (box && g && box.width > 0 && box.height > 0) {
+      const n = (v: number) => Math.round(v * 100) / 100;
+      const x = n(box.x - g.outer.left), y = n(box.y - g.outer.top), far = 100000;
+      key = `path(evenodd, "M${-far} ${-far}H${far}V${far}H${-far}Z M${x} ${y}h${n(box.width)}v${n(box.height)}h${n(-box.width)}Z")`;
+    }
+    if (clipped && clipped !== pageEl) { clipped.style.removeProperty('clip-path'); clipped.removeAttribute('m-card-clip'); clipped = null; clipKey = ''; }
+    if (!pageEl?.style || key === clipKey) return;
+    clipKey = key;
+    if (key) {
+      pageEl.style.setProperty('clip-path', key, 'important');
+      pageEl.setAttribute('m-card-clip', '');
+      clipped = pageEl;
+    } else {
+      pageEl.style.removeProperty('clip-path');
+      pageEl.removeAttribute('m-card-clip');
+      clipped = null;
+    }
+  }
+
+  // ---- Margin's default card (a theme with no `preview` part of its own) ----
+  // Centred in the page area, 8% of it each side and 7% above and below (at least 420×320), a 52 pt bar over its page
+  // (back, forward, the address, Copy URL, Open in Space, Close; Quick Tab: the field), the page area around it dimmed
+  // (ui/render.ts BASE_CSS `m-preview[m-default]`, which a theme's CSS can restyle). Margin's own elements, its own words.
+  let dflt: { el: HTMLElement, host: HTMLElement, field: HTMLInputElement } | null = null;
+  function ownPreview(root: Element) {
+    const slot = root.querySelector('m-preview:not([m-default])');
+    return !!slot && slot.childElementCount > 0;
+  }
+  function makeDefault() {
+    const doc = rt.doc;
+    const el = doc.createElement('m-preview');
+    el.setAttribute('m-default', '');
+    const card = doc.createElement('div');
+    card.setAttribute('m-preview-card', '');
+    card.setAttribute('role', 'dialog');
+    const bar = doc.createElement('div');
+    bar.setAttribute('m-preview-bar', '');
+    const button = (action: string, label: string, text: string) => {
+      const b = doc.createElement('button');
+      b.type = 'button';
+      b.setAttribute('m-preview-button', action);
+      b.setAttribute('aria-label', label);
+      b.textContent = text;
+      b.addEventListener('click', (e) => { e.preventDefault(); if (e.isTrusted) rt.dispatch(action, undefined, 'behavior'); });
+      return b;
+    };
+    const host = doc.createElement('span');
+    host.setAttribute('m-preview-host', '');
+    const field = doc.createElement('input');
+    field.setAttribute('m-preview-field', '');
+    field.type = 'text';
+    field.spellcheck = false;
+    field.autocomplete = 'off';
+    field.placeholder = 'Search or enter address';
+    field.addEventListener('keydown', (e) => {
+      if (e.isComposing) return;
+      if (e.key === 'Enter') { e.preventDefault(); go(field.value); } else if (e.key === 'Escape') { e.preventDefault(); close(); }
+    });
+    bar.append(button('preview.back', 'Back', '\u2039'), button('preview.forward', 'Forward', '\u203a'), host, field,
+      button('preview.copyUrl', 'Copy URL', 'Copy URL'), button('preview.expand', 'Open in Space', 'Open in Space'), button('preview.close', 'Close', '\u2715'));
+    const page = doc.createElement('m-preview-page');
+    card.append(bar, page);
+    el.append(card);
+    // (A press on the dimmed page around it while it takes the pointer, Quick Tab's or one loading: closed. Once its
+    // window is in place, Margin.app catches that press itself: docs/PEEK-SPLIT.md §2.)
+    el.addEventListener('click', (e) => { if (e.isTrusted && e.target === el) close(); });
+    return { el, host, field };
+  }
+  function followDefault() {
+    const root = view.rootElement() as HTMLElement | null;
+    const cur = rt.vm?.preview ?? null;
+    if (!root || !cur || ownPreview(root)) { dflt?.el.remove(); if (!cur) dflt = null; return; }
+    dflt ??= makeDefault();
+    const { el, host, field } = dflt;
+    el.toggleAttribute('m-loading', cur.loading);
+    el.toggleAttribute('m-closing', cur.closing);
+    el.toggleAttribute('m-quick-tab', cur.quickTab);
+    if (host.textContent !== cur.host) host.textContent = cur.host;
+    el.querySelector('[m-preview-card]')?.setAttribute('aria-label', cur.title);
+    if (el.parentNode !== root) root.appendChild(el);
+    if (cur.quickTab && focusField) { focusField = false; field.value = cur.query; field.focus(); }
+  }
+
+  return {
+    show, close, expand, openLittleArc, go,
+    onInput(name: string, value: string) {
+      if (name !== 'preview' || !rt.ui.peek?.littleArc) return;
+      // (Kept without drawing again: the field shows it already.)
+      (rt.ui.peek as any).query = String(value).slice(0, 2048);
+    },
+    afterRender() {
+      placePage();
+      followDefault();
+      clipPage();
+      if (!focusField || !rt.ui.peek?.littleArc) return;
+      const field = view.input('preview');
+      if (!field) return;
+      focusField = false;
+      field.focus();
+      field.select?.();
+    },
+    /** The page's place changed (a resize, the sidebar): the page area's variables follow. */
+    layout() { placePage(); clipPage(); },
+    destroy() {
+      stopClosing(); dflt?.el.remove(); dflt = null;
+      if (clipped) { clipped.style.removeProperty('clip-path'); clipped.removeAttribute('m-card-clip'); clipped = null; }
+    },
+  };
+}

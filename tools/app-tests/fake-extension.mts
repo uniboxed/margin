@@ -76,7 +76,7 @@ import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { smallState } from '../../tests/ui/fixtures.ts';
 import { toStorage } from '../../extension/shared/stored.ts';
-import { readBuiltinTheme } from '../../extension/ui/theme-loader.ts';
+import { readBuiltinTheme } from '../../app/shared/ui/theme-loader.ts';
 import { dataSetFromStorage, stateFromDataSet } from '../../extension/shared/data-set.ts';
 import { liveValues } from '../../extension/shared/data-merge.ts';
 import { normalizeState } from '../../extension/state/model.ts';
@@ -119,7 +119,7 @@ function storedState(): Msg {
 const themes = new Map<string, Msg>();
 async function themeMessage(id: string) {
   if (!themes.has(id)) {
-    const dir = fileURLToPath(new URL(`../../extension/themes/${id}/`, import.meta.url));
+    const dir = fileURLToPath(new URL(`../../app/shared/ui/themes/${id}/`, import.meta.url));
     const pkg = await readBuiltinTheme(id, { readFile: async (p: string) => { const b = readFileSync(dir + p); return /\.(json|html|css)$/.test(p) ? b.toString('utf8') : new Uint8Array(b); } });
     // background/theme-package.ts ThemeMessage: the files' bytes as base64.
     themes.set(id, { id, manifest: pkg.manifest, html: pkg.html, css: pkg.css, files: Object.fromEntries(Object.entries(pkg.files).map(([p, b]) => [p, Buffer.from(b).toString('base64')])) });

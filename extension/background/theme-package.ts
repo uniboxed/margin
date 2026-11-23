@@ -5,8 +5,8 @@
 // sanitized, size-capped) before it draws a thing. Pages draw no theme
 // (Phase 2 step 5), and nothing needs web_accessible_resources. Read once
 // per background run and kept.
-import { PACKAGE_THEMES } from '../themes/packages.ts';
-import { DEFAULT_THEME } from '../themes/index.ts';
+import { PACKAGE_THEMES } from '../../app/shared/ui/themes/packages.ts';
+import { DEFAULT_THEME } from '../../app/shared/ui/themes/index.ts';
 import { api } from './store.ts';
 
 const FILE_PATH = /^(?:[A-Za-z0-9_-][A-Za-z0-9_.-]*\/)*[A-Za-z0-9_-][A-Za-z0-9_.-]*$/;
@@ -30,7 +30,7 @@ function base64(bytes: Uint8Array) {
 
 /**
  * Reads a built-in theme's package. `fetchFile(path)`: a file of
- * extension/themes/<id>/ as a Response (default: the extension's own URL).
+ * app/shared/ui/themes/<id>/ as a Response (default: the extension's own URL).
  * */
 export async function readThemePackage(id: string, { fetchFile = (path) => fetch(api.runtime.getURL(`themes/${id}/${path}`)) }: { fetchFile?: (path: string) => Promise<Response> } = {}): Promise<ThemeMessage> {
   if (!PACKAGE_THEMES.includes(id)) throw new Error(`no built-in theme ${JSON.stringify(id)}`);

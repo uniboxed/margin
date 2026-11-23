@@ -14,7 +14,7 @@ extension Shell {
             return
         }
         self.library = library
-        library.importOnce(from: data.store)
+        library.importOnce(from: data)
         Diagnostics.note("hosted: the library has \(library.spaces().count) space(s), \(library.items().count) item(s) (\(Library.folder(in: dataRoot).path))")
     }
 }

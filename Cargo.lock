@@ -190,6 +190,8 @@ name = "margin-ffi"
 version = "0.1.1"
 dependencies = [
  "margin-core",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]

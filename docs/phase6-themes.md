@@ -10,7 +10,7 @@ Plan, 2026-11-06, on `feat/pixel-user-themes` (from `feat/margin-app`). `PLAN.md
 
 ## What exists today
 
-- **Themes.** `extension/themes/arcadia/` and `neubrutalism/` are packages (`theme.json`, `theme.html`, `theme.css`, `first-paint.css`; Neo bundles four woff2 with `OFL-*.txt` and `SOURCES.txt`). `themes/packages.ts` lists them (`PACKAGE_THEMES`, `PACKAGE_THEME_NAMES`). Arcadia also has `theme.ts`, its settings for the background (the one JS file a theme folder keeps).
+- **Themes.** `app/shared/ui/themes/arcadia/` and `neubrutalism/` are packages (`theme.json`, `theme.html`, `theme.css`, `first-paint.css`; Neo bundles four woff2 with `OFL-*.txt` and `SOURCES.txt`). `themes/packages.ts` lists them (`PACKAGE_THEMES`, `PACKAGE_THEME_NAMES`). Arcadia also has `theme.ts`, its settings for the background (the one JS file a theme folder keeps).
 - **Runtime.** `ui/theme-loader.ts` checks and loads a package: `checkPackage` (caps, file kinds), `sanitizeTheme` (manifest, template, CSS), fonts as `FontFace` from bytes. It can also store a user theme (`encodeStoredTheme`, `saveUserTheme`, `loadUserTheme`) in `storage.local` under `userTheme:<id>` and an index `userThemes`. Nothing calls those three yet.
 - **Packages reach the app** from the extension: `background/theme-package.ts` reads the active built-in theme and sends it in `theme` chunks (`docs/PROTOCOL.md` "Chunks"). An unknown `settings.theme` falls back to Arcadia there, in `registered.ts` (first paint) and in Settings.
 - **The overlay** (`app/shared/host/overlay.ts`) loads whatever package the app hands it. If `loadTheme` refuses it, the overlay logs an error and draws nothing: there's no fallback, and the app never shows the overlay (it waits for `ready`).
@@ -22,7 +22,7 @@ Plan, 2026-11-06, on `feat/pixel-user-themes` (from `feat/margin-app`). `PLAN.md
 
 ## 1. Pixel
 
-A new package, `extension/themes/pixel/`, from `Pixel.dc.html`. Dark only: the board has no light version, and Pixel looks the same in both system modes (as Arcadia's palette does).
+A new package, `app/shared/ui/themes/pixel/`, from `Pixel.dc.html`. Dark only: the board has no light version, and Pixel looks the same in both system modes (as Arcadia's palette does).
 
 ### Files
 
@@ -187,7 +187,7 @@ The form stays `ui/settings-form.ts` fields (guarded part, Margin's words, Margi
 
 Arcadia, Neubrutalism and Pixel each already draw `isInfo`, `isButton`, `isGroup`, `isChoice`, `isToggle` and `isNumber` fields generically. Each gets `setting-color` and a check that the new rows look right.
 
-### The guide (for `extension/themes/README.md`, written with the import commit)
+### The guide (for `app/shared/ui/themes/README.md`, written with the import commit)
 
 > **Making and importing a theme.** Start from a copy of `neubrutalism/` (it uses everything). Keep the folder's layout: `theme.json`, `theme.html` and `theme.css` at the top, fonts in `fonts/`, images in `images/`, licences as `.txt` or `.md`. Give it your own `id` (lower-case letters, digits and dashes) and bump `version` when you change it. Fonts: woff2 only, with their licence; no font services. To share it, zip the folder and name the file `something.margintheme` (`npm run theme:pack my-theme/` does it). In Margin: Settings › Theme › Import Theme…, pick the folder or the file, look at the preview, and choose Use Theme. Importing the same `id` again replaces it. If Margin can't draw your theme, it uses Arcadia and says so; Settings shows why. Margin checks every theme when it's imported and every time it loads; the rules are under "Security rules" below.
 
@@ -240,7 +240,7 @@ Run time:
 
 ### CI later (not added now)
 
-There's no CI in the repo, and none is added. When there is, a macOS runner can run `npm ci`, Playwright's WebKit and Chromium, `npm test` and `npm run test:security`, on every push that touches `extension/ui/`, `extension/themes/` or `tests/`. `test:app` needs Xcode and the Swift toolchain, so it'd be a second job on the same runner. Until then, the gate below runs it before every commit.
+There's no CI in the repo, and none is added. When there is, a macOS runner can run `npm ci`, Playwright's WebKit and Chromium, `npm test` and `npm run test:security`, on every push that touches `app/shared/ui/`, `app/shared/ui/themes/` or `tests/`. `test:app` needs Xcode and the Swift toolchain, so it'd be a second job on the same runner. Until then, the gate below runs it before every commit.
 
 ## 5. Work items, in order
 

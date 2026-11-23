@@ -24,7 +24,7 @@ pub const TOMBSTONE_MS: f64 = 60.0 * 24.0 * 3600.0 * 1000.0;
 pub const TOMBSTONE_CAP: usize = 2000;
 
 /// JSON's `true` (a number 1 isn't).
-fn is_true(v: Option<&Value>) -> bool {
+pub(crate) fn is_true(v: Option<&Value>) -> bool {
     v == Some(&Value::Bool(true))
 }
 
@@ -35,7 +35,7 @@ fn usable_key(s: &str) -> bool {
 }
 
 /// A collection's or an item's name: 1–256 UTF-16 units, as the reference (JS `length`) counts them, and usable.
-fn is_name(v: Option<&Value>) -> bool {
+pub(crate) fn is_name(v: Option<&Value>) -> bool {
     json::string(v).is_some_and(|s| (1..=256).contains(&s.encode_utf16().count()) && usable_key(s))
 }
 

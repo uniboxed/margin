@@ -1,4 +1,4 @@
-// Pixel as a theme package (extension/themes/pixel/, the "Sidebar ·
+// Pixel as a theme package (app/shared/ui/themes/pixel/, the "Sidebar ·
 // Pixel / 8-bit" board) in real engines: Playwright's WebKit and Chromium,
 // headless, every network request refused. It loads as a built-in theme with
 // nothing removed and its two fonts from bundled bytes; draws the board's

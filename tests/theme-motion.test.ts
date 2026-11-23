@@ -26,7 +26,7 @@ test('motion: transitions and keyframes of layout properties are noted, with the
 });
 
 test('motion: the built-in themes animate layout only where it\'s deliberate', () => {
-  const notes = (id: string) => motionNotes(readFileSync(new URL(`../extension/themes/${id}/theme.css`, import.meta.url), 'utf8'));
+  const notes = (id: string) => motionNotes(readFileSync(new URL(`../app/shared/ui/themes/${id}/theme.css`, import.meta.url), 'utf8'));
   assert.deepEqual(notes('neubrutalism'), []);
   assert.deepEqual(notes('pixel'), [], 'the playing bars scale, not grow');
   // (Arcadia's card edge used to follow the sidebar by its left side; with Margin's own window the sidebar stays docked.)

@@ -1,4 +1,4 @@
-// The shell's side of user themes (docs/phase6-themes.md §3, ThemeStore.swift).
+// The shell's side of user themes (docs/phase6-themes.md §3, ThemeStore.swift over margin-core's data::themes).
 //
 // What the UI asks (`performTheme`; not wired to Margin's own window yet):
 //   theme.import            the file picker (NSOpenPanel: a folder or a .margintheme file),
@@ -60,11 +60,11 @@ extension Shell {
                 // (The picker needed Margin active; the app shown gets the activation back.)
                 self?.keysBackToShown("the theme picker closed")
                 guard let url else { return Diagnostics.note("themes: the picker closed with nothing chosen") }
-                if url.pathExtension.lowercased() != "margintheme", (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory != true {
-                    reply(jsonString(["type": "themeFile", "error": "That isn’t a theme’s folder or a .margintheme file."] as JSONObject) ?? "{}")
+                let read = ThemeFileReader.read(url, chosen: true)
+                if !read.isTheme {
+                    reply(jsonString(read.message) ?? "{}")
                     return Diagnostics.note("themes: something other than a folder or a .margintheme file chosen")
                 }
-                let read = ThemeFileReader.read(url)
                 Diagnostics.note("themes: a \(read.kind) read (\(read.bytes) bytes)")
                 reply(jsonString(read.message) ?? "{}")
             }

@@ -1,7 +1,7 @@
 // The page card in Margin.app's own window, for the theme tests (page-state.test.ts and each built-in theme's own
 // file): a screenshot's pixels, the points of the page's place read in it, and what every built-in theme's own loader
 // (its `page-loader` part in its `<m-page-loader>`) and start-up skeleton (the root's `m-starting`) must do, in a real
-// engine with every request refused (extension/themes/README.md "The page card's state"):
+// engine with every request refused (app/shared/ui/themes/README.md "The page card's state"):
 // - `loading`: the card exactly over the page's place with its corners, opaque edge to edge (the screenshot's alpha:
 //   what a hosted window would show through), drawn at once, the pointer Margin's, the arrow over it, nothing
 //   selectable, Margin's words in it and no others; what moves changes `transform` and `opacity` only;

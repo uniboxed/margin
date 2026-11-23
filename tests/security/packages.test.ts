@@ -6,9 +6,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { checkPackage, sanitizeTheme } from '../../extension/ui/theme-loader.ts';
+import { checkPackage, sanitizeTheme } from '../../app/shared/ui/theme-loader.ts';
 import { auditTree } from '../theme/audit.ts';
-import { checkImport, missingWaysOut } from '../../extension/ui/theme-import.ts';
+import { checkImport, missingWaysOut } from '../../app/shared/ui/theme-import.ts';
 import { readSuitePackages } from './packages.ts';
 
 const ADDRESS = /https?:\/\/|\/\/[a-z0-9-]+\.[a-z]|fonts\.googleapis|fonts\.gstatic|typekit|use\.fontawesome|cdn\.|@import/i;

@@ -1,11 +1,11 @@
-// A theme's actions (extension/ui/actions.ts): every argument checked against
+// A theme's actions (app/shared/ui/actions.ts): every argument checked against
 // the host's state before anything is sent, and each action mapped to the
 // background's real handler (background/handlers.ts) with the payload
 // Arcadia's sidebar and palette send today.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ACTIONS, ACTION_MAP, BEHAVIOR_ONLY, checkAction, contextFromState, createDispatcher, requestFor, type ActionRequest } from '../extension/ui/actions.ts';
-import { paletteItems } from '../extension/ui/view-model.ts';
+import { ACTIONS, ACTION_MAP, BEHAVIOR_ONLY, checkAction, contextFromState, createDispatcher, requestFor, type ActionRequest } from '../app/shared/ui/actions.ts';
+import { paletteItems } from '../app/shared/ui/view-model.ts';
 import { readFileSync } from 'node:fs';
 import { smallState, W } from './ui/fixtures.ts';
 

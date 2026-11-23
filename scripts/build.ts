@@ -12,6 +12,8 @@ import { fileURLToPath } from 'node:url';
 
 const root = new URL('../', import.meta.url);
 const SOURCE = new URL('extension/', root);
+// The built-in themes' packages (Margin's window's UI: app/shared/ui/).
+const THEMES = new URL('app/shared/ui/themes/', root);
 // The builds by their name (shared/capabilities.ts Capabilities.name: what saved data and the link call them), each
 // one's dist/ folder by its engine, and the package.json "imports" condition that gives `#engine` its engine's code.
 export type Target = 'chrome' | 'safari';
@@ -62,6 +64,9 @@ export function buildTo(outDir: string | URL, { profile, manifest = profile }: {
   // The files pages load as they are. Skip Finder's .DS_Store files (git-ignored) so a Mac build matches CI, and
   // extension/engines/ (each engine's code is bundled from there; its manifest goes through manifestFor).
   cpSync(fileURLToPath(SOURCE), out, { recursive: true, filter: (src) => !src.endsWith('/.DS_Store') && !isEngines(src) });
+  // The built-in themes' files, at themes/<id>/ as before they moved to app/shared/ui/themes/ (2026-11-22): the
+  // background still reads the active one from its own URL (background/theme-package.ts) until step 4 removes it.
+  cpSync(fileURLToPath(THEMES), `${out}/themes`, { recursive: true, filter: (src) => !src.endsWith('/.DS_Store') });
   const built = manifestFor(manifest);
   bundle(out, built, profile);
   dropSources(out);
@@ -130,7 +135,7 @@ function bundle(out: string, manifest: Record<string, any>, profile: Target) {
 }
 
 // Margin.app's overlay page (app/shared/host/: the UI runtime with the app's
-// host, extension/ui/host-app.ts) as one script and its page, for the app's
+// host, app/shared/ui/host-app.ts) as one script and its page, for the app's
 // Resources/app/ (scripts/xcode-add-sources.py), with the library's rules for the app itself (LIBRARY_FILE: not a
 // page's, run by Margin.app in JavaScriptCore: app/platforms/macos/shell/LibraryRules.swift). Safari's profile for now
 // (Margin 2 Phase 2 is Safari's; Chrome and Edge are Phase 5).
@@ -177,7 +182,7 @@ export function fallbackPackage() { return themePackage('arcadia'); }
 // A built-in theme's package in the `theme` message's shape ({ id, manifest, html, css, files }: its fonts and images
 // as base64).
 export function themePackage(id: string) {
-  const dir = new URL(`themes/${id}/`, SOURCE);
+  const dir = new URL(`${id}/`, THEMES);
   const manifest = readFileSync(new URL('theme.json', dir), 'utf8');
   const raw = JSON.parse(manifest);
   const named: string[] = [...(raw.fonts ?? []).map((f: { file: string }) => f.file), ...(raw.images ?? [])];

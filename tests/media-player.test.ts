@@ -11,8 +11,8 @@ import { PAUSE_GRACE_MS, selectBackgroundMedia, type MediaSource } from '../exte
 import { ARTWORK, createArtworkCache, createMediaHub, createMediaRegistry, loadArtwork, type MediaPushSource } from '../extension/background/media.ts';
 import { applyMediaCommand, snapshotMedia, startMedia } from '../extension/content/media.ts';
 import { createHostedTabs } from '../extension/background/hosted.ts';
-import { buildViewModel } from '../extension/ui/view-model.ts';
-import { checkAction, contextFromState, requestFor } from '../extension/ui/actions.ts';
+import { buildViewModel } from '../app/shared/ui/view-model.ts';
+import { checkAction, contextFromState, requestFor } from '../app/shared/ui/actions.ts';
 
 const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 

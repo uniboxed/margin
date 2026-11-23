@@ -28,7 +28,7 @@ test('everything (a nightly, by hand, no base) and the workflow itself: every th
 });
 
 test('the UI runtime, the host page or the harness: the theme-agnostic tests, against the reference theme', () => {
-  for (const f of ['extension/ui/render.ts', 'extension/ui/behaviors/drag.ts', 'app/shared/host/overlay.html', 'tests/theme/harness.ts', 'extension/shared/view.ts', 'extension/themes/packages.ts']) {
+  for (const f of ['app/shared/ui/render.ts', 'app/shared/ui/behaviors/drag.ts', 'app/shared/host/overlay.html', 'tests/theme/harness.ts', 'extension/shared/view.ts', 'app/shared/ui/themes/packages.ts']) {
     const p = plan([f]);
     assert.deepEqual(p.themes.files, AGNOSTIC, f);
     assert.equal(p.themes.scope, 'reference', f);
@@ -37,10 +37,10 @@ test('the UI runtime, the host page or the harness: the theme-agnostic tests, ag
 });
 
 test('a theme\'s folder: its own tests, and its entries in the tests that loop over the themes', () => {
-  const p = plan(['extension/themes/pixel/theme.css']);
+  const p = plan(['app/shared/ui/themes/pixel/theme.css']);
   assert.deepEqual(p.themes.files, [...LOOPED, 'tests/theme/pixel.test.ts'].sort());
   assert.equal(p.themes.scope, 'pixel');
-  const both = plan(['extension/themes/pixel/theme.css', 'extension/ui/render.ts']);
+  const both = plan(['app/shared/ui/themes/pixel/theme.css', 'app/shared/ui/render.ts']);
   assert.deepEqual(both.themes.files, [...AGNOSTIC, 'tests/theme/pixel.test.ts'].sort());
   assert.equal(both.themes.scope, 'reference,pixel');
 });

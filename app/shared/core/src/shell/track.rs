@@ -506,7 +506,7 @@ impl Shell {
             let keys = self.links.get(&k.link).and_then(|e| e.keys.clone()).unwrap_or_default();
             let page_full = self.overlays.get(k).is_some_and(|o| o.page_fullscreen);
             let bindings = shortcuts::bindings_for_front(&keys, self.opts.os, false, page_full);
-            self.shortcuts.rebind(&mut self.registrar, bindings);
+            let _ = self.shortcuts.rebind(&mut self.registrar, bindings);
         }
         let active = shortcuts::active(front_pid, all_pids, front.is_some());
         for (combo, command) in self.shortcuts.set_active(&mut self.registrar, active) {

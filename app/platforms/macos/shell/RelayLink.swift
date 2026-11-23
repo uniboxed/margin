@@ -1,14 +1,13 @@
 // Chrome's and Edge's way to Margin.app (docs/PROTOCOL.md "Transport (Chrome and Edge, on the Mac)"): their copies
 // can't hear SFSafariApplication.dispatchMessage, so the browser starts Margin's connector
 // (Margin.app/Contents/Helpers/margin-connector, app/shared/connector/) through native messaging, and the connector
-// connects here, a Unix socket only this user can open. It does for those copies what Safari's extension handler
-// does for Safari's: each message gets the handler's reply; a `wantLink` is answered into every relay of that
-// browser's process (the copy's lasting port is one of them), as SocketLink answers Safari's into Safari; `appUp`
-// goes to a relay that had to wait for the app. The link itself is the same WebSocket as Safari's (SocketLink).
-//
-// One JSON object per line both ways. The relay's first: `{ k: 'relay', v: 1, version, pid, browser, waited }`,
-// answered `{ k: 'relayWelcome', v: 1, version }`; then each of the browser's messages as `{ msg }`. What the app
-// sends is passed to the browser as it is.
+// connects here, a Unix socket only this user can open. What a relay says, and what it's answered, is margin-core's
+// (app/shared/core/src/relay.rs, joined to the link in link_hub.rs: the relay's hello and `relayWelcome`, each
+// message answered as Safari's extension handler answers, a `wantLink`'s `link` into every relay of that browser's
+// process, `appUp` to a relay that had to wait for the app). This file is the Mac's transport only: the socket, who
+// may connect to it (this user's processes; in a signed build Margin's own relay: relaySignedByUs), each relay's bytes
+// passed to the link's core and the core's lines written back, and the connector's host files. The link itself is the
+// same WebSocket as Safari's (ExtensionLink.swift).
 
 import Foundation
 import Security
@@ -57,14 +56,13 @@ final class RelayHub {
     // Whether a connecting process may be a relay: the same user, and in a signed build Margin's relay
     // (relaySignedByUs). The tests pass their own.
     private let allows: (Peer) -> String?
-    private let version: String
+    // The app's version, as the relays' welcome says it (a relay of another version exits).
+    let version: String
     private weak var link: SocketLink?
     private var listenFD: Int32 = -1
     private var acceptSource: DispatchSourceRead?
-    private var relays: [ObjectIdentifier: RelayConnection] = [:]
-    // Every browser process a relay's hello has named since the app started (gone relays' too): a copy's hello names
-    // its process as its relay told it, so one that matches none is worth a word in the log (Shell.unheardPid).
-    private var heard: Set<pid_t> = []
+    private var relays: [UInt64: RelayConnection] = [:]
+    private var nextId: UInt64 = 1
 
     init(path: String = RelayHub.defaultPath, version: String = RelayHub.appVersion, allows: ((Peer) -> String?)? = nil) {
         self.path = path
@@ -84,8 +82,9 @@ final class RelayHub {
 
     var connected: Int { relays.count }
 
-    // Whether a relay's hello has named this browser process since the app started.
-    func heardPid(_ pid: pid_t) -> Bool { heard.contains(pid) }
+    // Whether a relay's hello has named this browser process since the app started (gone relays' too): a copy's hello
+    // names its process as its relay told it, so one that matches none is worth a word in the log (Shell.unheardPid).
+    func heardPid(_ pid: pid_t) -> Bool { link?.heardPid(pid) ?? false }
 
     func start(link: SocketLink) {
         guard listenFD < 0 else { return }
@@ -150,8 +149,10 @@ final class RelayHub {
                 close(fd)
                 continue
             }
-            let relay = RelayConnection(fd: fd, peer: peer, hub: self)
-            relays[ObjectIdentifier(relay)] = relay
+            let relay = RelayConnection(id: nextId, fd: fd, peer: peer, hub: self)
+            nextId += 1
+            relays[relay.id] = relay
+            link?.relayOpened(relay.id)
             relay.start()
         }
     }
@@ -192,96 +193,35 @@ final class RelayHub {
         return dict[kSecCodeInfoTeamIdentifier as String] as? String
     }
 
-    // ---- what relays say ----
+    // ---- a relay's bytes, to the link's core and back ----
 
-    fileprivate func said(_ relay: RelayConnection, _ message: JSONObject) {
-        if relay.hello == nil {
-            guard message["k"] as? String == "relay", let browser = message["browser"] as? String, ["chrome", "edge"].contains(browser) else {
-                Diagnostics.warn("relay: its first word wasn't its hello: closed")
-                return relay.close()
-            }
-            let pid = (message["pid"] as? Int).map { pid_t($0) } ?? 0
-            if pid > 0 { heard.insert(pid) }
-            relay.hello = RelayConnection.Hello(browser: browser, pid: pid, version: message["version"] as? String ?? "", waited: message["waited"] as? Bool == true)
-            relay.send(["k": "relayWelcome", "v": 1, "version": version])
-            // Waiting for the app, the copies asked in vain: they ask again now (as Safari's do on appUp).
-            if relay.hello?.waited == true { relay.send(Self.dispatched("appUp", ["v": LinkProtocol.version, "at": SocketLink.at()])) }
-            return
-        }
-        guard let hello = relay.hello, let body = message["msg"] as? JSONObject else { return }
-        var reply: JSONObject = ["ok": true, "appOpen": true, "launching": false, "browser": hello.browser]
-        if hello.pid > 0 { reply["pid"] = Int(hello.pid) }
-        switch body["type"] as? String {
-        case "log":
-            if let line = body["line"] as? String { Diagnostics.note("\(hello.browser): \(String(line.prefix(300)))") }
-            relay.send(reply)
-        case "wantLink":
-            relay.send(reply)
-            guard let nonce = body["nonce"] as? String, (1...128).contains(nonce.count) else { return Diagnostics.warn("relay: wantLink without a nonce") }
-            link?.wantLink(nonce: nonce, via: RelayDispatch(hub: self, pid: hello.pid, browser: hello.browser))
-        default:
-            relay.send(reply) // a ping (the lasting port), or anything else: answered as Safari's handler does
-        }
+    fileprivate func read(_ relay: RelayConnection, _ data: Data) {
+        link?.relayBytes(relay.id, data)
     }
 
     fileprivate func gone(_ relay: RelayConnection) {
-        relays[ObjectIdentifier(relay)] = nil
+        guard relays.removeValue(forKey: relay.id) != nil else { return }
+        link?.relayEnded(relay.id)
     }
 
-    // A dispatch as Safari's arrives on the copy's port: { name, userInfo: { e: <JSON string> } }.
-    static func dispatched(_ name: String, _ info: JSONObject) -> JSONObject {
-        ["name": name, "userInfo": ["e": jsonString(info) ?? "{}"]]
-    }
-
-    // Into every relay of one browser process (its copies' lasting ports among them). False if there was none.
-    fileprivate func dispatch(_ name: String, _ info: JSONObject, pid: pid_t) -> Bool {
-        let message = Self.dispatched(name, info)
-        var sent = false
-        for relay in relays.values where relay.hello != nil && (pid <= 0 || relay.hello?.pid == pid) {
-            relay.send(message)
-            sent = true
-        }
-        return sent
-    }
+    // The core's lines to a relay, and its close.
+    func write(_ id: UInt64, _ data: Data) { relays[id]?.send(data) }
+    func end(_ id: UInt64) { relays[id]?.close() }
 }
 
-// What SocketLink answers a relay's wantLink through: that browser process's relays.
-struct RelayDispatch: ExtensionDispatch {
-    weak var hub: RelayHub?
-    let pid: pid_t
-    let browser: String
-
-    func dispatch(_ name: String, _ info: JSONObject, done: @escaping @MainActor (String?) -> Void) {
-        guard let hub else { return done("the relay listener is gone") }
-        done(hub.dispatch(name, info, pid: pid) ? nil : "no relay of \(browser) (pid \(pid))")
-    }
-
-    var name: String { browser == "edge" ? "Edge" : "Chrome" }
-}
-
-// One relay: lines of JSON over its socket.
+// One relay's socket: its bytes as they come, what the core writes back.
 final class RelayConnection {
-    struct Hello {
-        let browser: String
-        let pid: pid_t
-        let version: String
-        let waited: Bool
-    }
-
+    let id: UInt64
     let fd: Int32
     let peer: RelayHub.Peer
-    var hello: Hello?
     private weak var hub: RelayHub?
     private var readSource: DispatchSourceRead?
     private var writeSource: DispatchSourceWrite?
-    private var inbox = Data()
     private var outbox = Data()
     private var closed = false
-    // At most this much of a line not yet ended (Chrome's own cap on a message to a host is 64 MB; a relay sends
-    // the copy's small messages only).
-    static let maxLine = 1 << 20
 
-    init(fd: Int32, peer: RelayHub.Peer, hub: RelayHub) {
+    init(id: UInt64, fd: Int32, peer: RelayHub.Peer, hub: RelayHub) {
+        self.id = id
         self.fd = fd
         self.peer = peer
         self.hub = hub
@@ -302,8 +242,7 @@ final class RelayConnection {
         while !closed {
             let n = read(fd, &buffer, buffer.count)
             if n > 0 {
-                inbox.append(buffer, count: n)
-                lines()
+                hub?.read(self, Data(buffer[0..<n]))
                 continue
             }
             if n < 0, errno == EAGAIN || errno == EINTR { return }
@@ -311,28 +250,9 @@ final class RelayConnection {
         }
     }
 
-    private func lines() {
-        while let end = inbox.firstIndex(of: 0x0A) {
-            let line = inbox[inbox.startIndex..<end]
-            inbox = Data(inbox[inbox.index(after: end)...])
-            guard !line.isEmpty else { continue }
-            guard let message = (try? JSONSerialization.jsonObject(with: line)) as? JSONObject else {
-                Diagnostics.warn("relay: not a JSON line: closed")
-                return close()
-            }
-            hub?.said(self, message)
-            if closed { return }
-        }
-        if inbox.count > Self.maxLine {
-            Diagnostics.warn("relay: a line over \(Self.maxLine) bytes: closed")
-            close()
-        }
-    }
-
-    func send(_ message: JSONObject) {
-        guard !closed, let text = jsonString(message) else { return }
-        outbox.append(contentsOf: Array(text.utf8))
-        outbox.append(0x0A)
+    func send(_ data: Data) {
+        guard !closed else { return }
+        outbox.append(data)
         flush()
     }
 

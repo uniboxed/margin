@@ -1,8 +1,8 @@
-// The overlay page's bridge to its shell (extension/ui/overlay-bridge.ts): WebKit's handler on the Mac, used as
+// The overlay page's bridge to its shell (app/shared/ui/overlay-bridge.ts): WebKit's handler on the Mac, used as
 // it was; WebView2's on Windows, its replies matched to requests by `rid`.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { pickBridge } from '../extension/ui/overlay-bridge.ts';
+import { pickBridge } from '../app/shared/ui/overlay-bridge.ts';
 
 function fakeWebView2() {
   const posted: any[] = [];

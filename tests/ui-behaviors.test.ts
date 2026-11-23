@@ -1,4 +1,4 @@
-// The behaviors' pure parts (extension/ui/behaviors/): where a dragged row
+// The behaviors' pure parts (app/shared/ui/behaviors/): where a dragged row
 // goes (today's rules, themes/arcadia/sidebar.js dropTarget), the action a
 // drop runs, where a moved tab lands in the window's order, and what each
 // context menu holds; and how the view model shows menus and the space
@@ -6,10 +6,10 @@
 // tests/theme/behaviors.test.ts.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { dropAction, dropTarget, levelIds, moveIndex, stays, type Drag, type Over, type Target } from '../extension/ui/behaviors/drop-rules.ts';
-import { CONFIRM_LABEL, SPACE_COLORS, menuItems, type MenuItem } from '../extension/ui/behaviors/menu-items.ts';
-import { buildViewModel, type UiState } from '../extension/ui/view-model.ts';
-import { checkAction, contextFromState } from '../extension/ui/actions.ts';
+import { dropAction, dropTarget, levelIds, moveIndex, stays, type Drag, type Over, type Target } from '../app/shared/ui/behaviors/drop-rules.ts';
+import { CONFIRM_LABEL, SPACE_COLORS, menuItems, type MenuItem } from '../app/shared/ui/behaviors/menu-items.ts';
+import { buildViewModel, type UiState } from '../app/shared/ui/view-model.ts';
+import { checkAction, contextFromState } from '../app/shared/ui/actions.ts';
 import { smallState, W } from './ui/fixtures.ts';
 
 const state = smallState();

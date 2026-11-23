@@ -45,7 +45,6 @@ extension Tests {
     func make() -> Library? {
       let lib = Library.open(dataRoot: dataRoot, script: script, background: false)
       lib?.now = { clock }
-      lib?.store.now = { clock }
       lib?.randomIds = { (0..<4).map { _ in n += 1; return "id\(n)x" } }
       return lib
     }
@@ -85,17 +84,22 @@ extension Tests {
       && delegate.asked.first?.target == .app(bundleId: "com.apple.Notes", name: "Notes") && delegate.asked.first?.item == notes)
     lib.perform("closeTab", ["tabId": page])
     check("library: closeTab: archived, the delegate asked to close it", delegate.asked.last?.type == "closeTab" && delegate.asked.last?.url == "https://example.com/"
-      && lib.dataSet.liveValues("archive").count == 1 && lib.items().map(\.id) == [notes])
+      && lib.liveValues("archive").count == 1 && lib.items().map(\.id) == [notes])
     lib.perform("moveTabToSpace", ["tabId": notes, "spaceId": work])
     check("library: an item moved to another space", lib.items(space: work).map(\.id) == [notes])
     check("library: deleting a space takes its items to the first space", lib.perform("deleteSpace", ["spaceId": work]).ok && lib.items(space: home).map(\.id) == [notes] && lib.space(ofWindow: 2) == home)
 
     // ---- times: always newer than the item's own ----
-    let before = lib.dataSet.item("tabs", notes)?.updatedAt ?? 0
+    // (The item's time as its file has it: the library's store writes at once here.)
+    func stored(_ id: String) -> JSONObject? {
+      ((object(FileManager.default.contents(atPath: dir.appendingPathComponent("items/tabs.json").path))?["items"] as? JSONObject)?[id] as? JSONObject)
+    }
+    let before = num(stored(notes)?["updatedAt"]) ?? 0
     clock = 100 // a clock that went back
     lib.perform("updateItem", ["tabId": notes, "title": "My notes"])
-    let after = lib.dataSet.item("tabs", notes)
-    check("library: a change after the item's own time, whatever the clock", (after?.updatedAt ?? 0) == before + 1 && (after?.value as? JSONObject)?["title"] as? String == "My notes")
+    let after = stored(notes)
+    check("library: a change after the item's own time, whatever the clock", before > 100 && num(after?["updatedAt"]) == before + 1
+      && (after?["value"] as? JSONObject)?["title"] as? String == "My notes" && (lib.liveValues("tabs")[notes] as? JSONObject)?["title"] as? String == "My notes")
     clock = 9000
 
     // ---- the snapshot ----
@@ -123,11 +127,10 @@ extension Tests {
   static func importChecks(script: URL) {
     let root = tempFolder("library-import")
     defer { try? FileManager.default.removeItem(at: root) }
-    let profiles = testStore(root)
+    let profiles = DataSync(root: root, background: false)
+    profiles.testClock(1000)
     func put(_ profile: String, _ items: [String: [String: Any]]) {
-      var set = DataSet()
-      set.merge(items.flatMap { c, list in list.map { change(c, $0.key, 10, $0.value) } })
-      profiles.save(DataProfile(browser: "safari", profile: profile), DataStore.Stored(set: set, acked: 0), changed: nil)
+      profiles.seed(DataProfile(browser: "safari", profile: profile), items.flatMap { c, list in list.map { change(c, $0.key, 10, $0.value) } })
     }
     let tab: (String, String, Double) -> JSONObject = { url, space, order in ["url": url, "title": "", "icon": "", "spaceId": space, "order": order, "lastUsed": 1, "selected": false] }
     put("s-default", [
@@ -140,7 +143,8 @@ extension Tests {
     let browserJSON = root.appendingPathComponent("safari/browser.json")
     let order: JSONObject = ["format": 1, "browser": "safari", "order": [["s-default", "personal"], ["s-OTHER", "personal"], ["s-default", "work"]],
                              "profiles": ["s-default": ["name": "Default", "firstSeen": 1], "s-OTHER": ["name": "Other", "firstSeen": 2]], "savedAt": 1]
-    try? DataStore.writeAtomically(try! JSONSerialization.data(withJSONObject: order), to: browserJSON)
+    try? FileManager.default.createDirectory(at: browserJSON.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try? JSONSerialization.data(withJSONObject: order).write(to: browserJSON, options: .atomic)
     let filesBefore = filesUnder(root)
     guard let lib = Library.open(dataRoot: root, script: script, background: false) else { return check("library import: opens", false) }
     lib.now = { 777 }
@@ -151,10 +155,10 @@ extension Tests {
     let items = lib.items()
     check("library import: the same tab id in two profiles is two items, each in its profile", items.count == 2 && Set(items.map(\.id)).count == 2
       && Set(items.compactMap { lib.target(ofItem: $0.id) }) == [.web(browser: "safari", profile: "s-default"), .web(browser: "safari", profile: "s-OTHER")])
-    check("library import: pins with their space and target", (lib.dataSet.liveValues("pins")["safari:s-default:p-1"] as? JSONObject)?["spaceId"] as? String == "safari:s-default:work")
-    check("library import: no settings", lib.dataSet.liveValues("settings").isEmpty)
-    check("library import: its marker", ((lib.dataSet.liveValues("imports")["done"] as? JSONObject)?["sets"] as? [String]) == ["safari:s-OTHER", "safari:s-default"]
-      || ((lib.dataSet.liveValues("imports")["done"] as? JSONObject)?["sets"] as? [String]) == ["safari:s-default", "safari:s-OTHER"])
+    check("library import: pins with their space and target", (lib.liveValues("pins")["safari:s-default:p-1"] as? JSONObject)?["spaceId"] as? String == "safari:s-default:work")
+    check("library import: no settings", lib.liveValues("settings").isEmpty)
+    check("library import: its marker", ((lib.liveValues("imports")["done"] as? JSONObject)?["sets"] as? [String]) == ["safari:s-OTHER", "safari:s-default"]
+      || ((lib.liveValues("imports")["done"] as? JSONObject)?["sets"] as? [String]) == ["safari:s-default", "safari:s-OTHER"])
     check("library import: never twice", !lib.importOnce(from: profiles))
     let reopened = Library.open(dataRoot: root, script: script, background: false)
     check("library import: never twice, after a relaunch too", reopened?.isImported == true && reopened?.importOnce(from: profiles) == false)
@@ -165,7 +169,7 @@ extension Tests {
     let bare = tempFolder("library-bare")
     defer { try? FileManager.default.removeItem(at: bare) }
     let none = Library.open(dataRoot: bare, script: script, background: false)
-    check("library import: no profiles: marked, empty", none?.importOnce(from: testStore(bare)) == true && none?.isImported == true && none?.spaces().isEmpty == true)
+    check("library import: no profiles: marked, empty", none?.importOnce(from: DataSync(root: bare, background: false)) == true && none?.isImported == true && none?.spaces().isEmpty == true)
   }
 
   // The setting: off, no library and no folder; on, the library opened and imported.

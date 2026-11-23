@@ -1,4 +1,4 @@
-// Theme packages (extension/ui/theme-schema.ts, theme-loader.ts): theme.json
+// Theme packages (app/shared/ui/theme-schema.ts, theme-loader.ts): theme.json
 // against its schema, the settings' value checks and CSS variables, the size
 // caps, reading a built-in theme's files, and the stored format of a user's.
 // Loading into a document (fonts, sheets) runs in real engines:
@@ -6,11 +6,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { THEME_SCHEMA, checkManifest, settingValueOk, MODES } from '../extension/ui/theme-schema.ts';
+import { THEME_SCHEMA, checkManifest, settingValueOk, MODES } from '../app/shared/ui/theme-schema.ts';
 import {
   BUILTIN_THEMES, PACKAGE_LIMITS, checkPackage, sanitizeTheme, resolveSettings, settingsCss, settingVar,
   readBuiltinTheme, encodeStoredTheme, decodeStoredTheme, saveUserTheme, userThemeKey, USER_THEMES, type ThemePackage,
-} from '../extension/ui/theme-loader.ts';
+} from '../app/shared/ui/theme-loader.ts';
 import { readTheme, NEO } from './theme/package.ts';
 
 const base = { format: 2, id: 'my-theme', name: 'My theme', version: '1.2.3' };
@@ -53,7 +53,7 @@ test('theme.json: a full good manifest is kept as written, with defaults filled 
 
 test('theme.json: the built-in themes pass', async () => {
   for (const id of BUILTIN_THEMES) {
-    const t = readTheme(new URL(`../extension/themes/${id}/`, import.meta.url).pathname);
+    const t = readTheme(new URL(`../app/shared/ui/themes/${id}/`, import.meta.url).pathname);
     const r = checkManifest(t.manifest, { files: Object.keys(t.files) });
     assert.deepEqual([r.errors, r.removed], [[], []], id);
     assert.equal(r.manifest.id, id);

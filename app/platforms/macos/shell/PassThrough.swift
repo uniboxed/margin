@@ -7,7 +7,7 @@
 //
 // Over the slot the theme can still draw things that take the pointer (the
 // palette, a menu, a notice, the sidebar out over the page): the overlay's
-// page reports their boxes (`hits`, extension/ui/host-app.ts), and the
+// page reports their boxes (`hits`, app/shared/ui/host-app.ts), and the
 // overlay takes the mouse over them, as the in-page host's pass-through does
 // (its root ignores the pointer, its children keep theirs). While a button
 // is held, nothing changes: a drag that started on the page stays the

@@ -2,11 +2,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as M from '../extension/state/model.ts';
 import * as V from '../extension/shared/view.ts';
-import { buildViewModel } from '../extension/ui/view-model.ts';
-import { menuItems } from '../extension/ui/behaviors/menu-items.ts';
-import { dropAction, dropTarget } from '../extension/ui/behaviors/drop-rules.ts';
-import { checkAction, contextFromState, requestFor } from '../extension/ui/actions.ts';
-import { settingsFields, saveField } from '../extension/ui/settings-form.ts';
+import { buildViewModel } from '../app/shared/ui/view-model.ts';
+import { menuItems } from '../app/shared/ui/behaviors/menu-items.ts';
+import { dropAction, dropTarget } from '../app/shared/ui/behaviors/drop-rules.ts';
+import { checkAction, contextFromState, requestFor } from '../app/shared/ui/actions.ts';
+import { settingsFields, saveField } from '../app/shared/ui/settings-form.ts';
 import * as L from '../app/shared/library/library.ts';
 
 function applyChanges(values: L.Values, changes: L.Change[]): L.Values {

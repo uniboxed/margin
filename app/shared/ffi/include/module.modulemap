@@ -1,7 +1,0 @@
-// The hosting core (app/shared/ffi, Rust) as a Swift module: `import MarginCore`. The `link` line makes every
-// target that imports it link libmargin_ffi.a (scripts/build-core.sh builds it), with no linker flags of its own.
-module MarginCore {
-    header "margin_ffi.h"
-    link "margin_ffi"
-    export *
-}

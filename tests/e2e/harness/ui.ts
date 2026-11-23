@@ -1,6 +1,6 @@
 // Reading and driving the overlay (the theme Margin draws, Arcadia by
 // default), for the e2e tests. Rows carry their ids as
-// data-* (extension/themes/arcadia/theme.html).
+// data-* (app/shared/ui/themes/arcadia/theme.html).
 import type { Page } from 'playwright';
 
 /** The sidebar as drawn: tab rows, pins, folders, chips, the space's name. @param ui the overlay's page */

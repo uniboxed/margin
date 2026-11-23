@@ -1,5 +1,5 @@
-// Margin.app's real end of the link (app/platforms/macos/shell/ExtensionLink.swift, LinkSocket.swift,
-// LinkMessage.swift, Chunks.swift), on its own, for the WebKit host's `app*` steps: the
+// Margin.app's real end of the link (app/platforms/macos/shell/ExtensionLink.swift, RelayLink.swift and
+// LinkMessage.swift over margin-core's link through margin-ffi), on its own, for the WebKit host's `app*` steps: the
 // host passes what the extension's native messaging does to it (wantLink) on stdin, and
 // puts what this dispatches into the extension (SFSafariApplication.dispatchMessage in the
 // app) into the copy's native port. No windows, nothing hosted: it plays the app's
@@ -11,7 +11,7 @@
 // { wantLink: nonce } | { bye: true } | { refuse: Bool } (dispatches refused or passed on: the host's `appRefuse`) |
 // { req: { type, payload } } (a request from the app for the copy's first window, its reply said: the host's `appReq`
 // step) | { drawn: Bool } (whether the app draws that window: the host's `appDrawn` step).
-// Built by run.sh with the app's flags; never shows anything.
+// Built by run.sh with the app's flags and margin-core (scripts/build-core.sh host); never shows anything.
 import AppKit
 import Foundation
 
@@ -38,7 +38,6 @@ let dispatcher = StdoutDispatch()
 
 final class Harness: ExtensionLinkDelegate {
   let link: SocketLink
-  var assembler = ChunkAssembler()
   var asked = Set<String>()
   var firstWindow: [String: Int] = [:] // each copy's (epoch's) first window, as its first snapshot listed it
   var current: LinkConnection?
@@ -58,19 +57,25 @@ final class Harness: ExtensionLinkDelegate {
 
   func linkReceived(_ c: LinkConnection, _ message: LinkMessage) {
     switch message {
-    case .snapshot(let epoch, let seq, let state, let windows):
-      let spaces = (state["spaces"] as? [Any])?.count ?? -1
-      say(["ev": "snapshot", "seq": seq, "keys": Array(state.keys).sorted(), "spaces": spaces, "windows": windows])
-      guard firstWindow[epoch] == nil, let w = windows.first, let id = int(w["windowId"]) else { return }
-      firstWindow[epoch] = id
-    case .delta(_, let seq, let changes, _):
-      say(["ev": "delta", "seq": seq, "keys": Array(changes.keys).sorted()])
-    case .windows(_, let seq, let list):
-      // Each window's tab in front (ids only).
-      let each: [[String: Any]] = list.map { w in ["windowId": w["windowId"] ?? NSNull(), "activeTabId": w["activeTabId"] ?? NSNull()] }
-      say(["ev": "windows", "seq": seq, "count": list.count, "list": each])
-    case .theme(let epoch, let chunk):
-      switch assembler.add(chunk) {
+    case .state(let state):
+      // (Applied by the core as it was read: the values are its mirror's, the windows as it now has them.)
+      let windows = state.windows ?? c.mirror.windows
+      switch state.kind {
+      case .snapshot:
+        let spaces = (c.mirror.value("spaces") as? [Any])?.count ?? -1
+        say(["ev": "snapshot", "seq": state.seq, "keys": state.keys.sorted(), "spaces": spaces, "windows": windows])
+        guard firstWindow[state.epoch] == nil, let w = windows.first, let id = int(w["windowId"]) else { return }
+        firstWindow[state.epoch] = id
+      case .delta:
+        say(["ev": "delta", "seq": state.seq, "keys": state.keys.sorted()])
+      case .windows:
+        // Each window's tab in front (ids only).
+        let each: [[String: Any]] = windows.map { w in ["windowId": w["windowId"] ?? NSNull(), "activeTabId": w["activeTabId"] ?? NSNull()] }
+        say(["ev": "windows", "seq": state.seq, "count": windows.count, "list": each])
+      }
+    case .theme(let epoch, let theme):
+      // (Its pieces put together by the core, per link.)
+      switch theme {
       case .complete(let id, let data):
         say(["ev": "theme", "id": id, "bytes": data.count])
         guard !asked.contains(epoch) else { return }
@@ -85,7 +90,6 @@ final class Harness: ExtensionLinkDelegate {
           }
         }
       case .refused(let why): say(["ev": "theme refused", "why": why])
-      case .waiting: break
       }
     case .keys(_, let bindings):
       say(["ev": "keys", "bindings": bindings])

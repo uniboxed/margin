@@ -13,7 +13,7 @@ if (!out) { console.error('node pages.mts <out dir> [theme id]'); process.exit(6
 mkdirSync(out, { recursive: true });
 const inline = (text: string) => text.replace(/<\/script/gi, '<\\/script');
 const script = inline(harnessScript());
-const pkg = inline(JSON.stringify(themeForPage(fileURLToPath(new URL(`../../extension/themes/${id}/`, import.meta.url)))));
+const pkg = inline(JSON.stringify(themeForPage(fileURLToPath(new URL(`../../app/shared/ui/themes/${id}/`, import.meta.url)))));
 
 // A quiet article where the page would be.
 const MOCK = (dark: boolean) => {

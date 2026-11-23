@@ -4,10 +4,10 @@ import { readFileSync, existsSync } from 'node:fs';
 import * as M from '../extension/state/model.ts';
 import { fromStorage, storedName } from '../extension/shared/stored.ts';
 import { dataSetFromStorage } from '../extension/shared/data-set.ts';
-import { THEMES, DEFAULT_THEME, themeFor } from '../extension/themes/index.ts';
-import arcadia, { WIDTH, snapWidth, clampWidth, sidebarWidth } from '../extension/themes/arcadia/theme.ts';
+import { THEMES, DEFAULT_THEME, themeFor } from '../app/shared/ui/themes/index.ts';
+import arcadia, { WIDTH, snapWidth, clampWidth, sidebarWidth } from '../app/shared/ui/themes/arcadia/theme.ts';
 
-const root = new URL('../extension/', import.meta.url);
+const root = new URL('../app/shared/ui/', import.meta.url);
 
 test('Margin ships Arcadia, the default theme; an unknown theme falls back to it', () => {
   assert.equal(DEFAULT_THEME, 'arcadia');

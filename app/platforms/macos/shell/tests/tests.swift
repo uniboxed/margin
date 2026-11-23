@@ -1,14 +1,16 @@
 // Checks of Margin.app's shell logic (app/platforms/macos/shell/), with no browser, no window
-// on screen and no link: the link's messages (LinkMessage.swift, version 2),
-// its WebSocket by hand (LinkSocket.swift), chunks (Chunks.swift), the app's
-// copy of a copy's state (StateMirror.swift), pass-through decisions
+// on screen and no link: the link's messages as margin-core reads and writes them, mapped for the app
+// (LinkMessage.swift; the rules themselves, the WebSocket, the chunks and the session are the core's tests:
+// app/shared/core/src/protocol.rs, websocket.rs, chunks.rs, link.rs, socket.rs, link_hub.rs; a copy's state is the
+// core's too: mirror.rs, link_hub.rs), what the core says a state message did (LinkMessage.State), pass-through decisions
 // (PassThrough.swift), layout reports (PageLayout), shortcuts and their gating
 // (Shortcuts.swift, against a stand-in for Carbon), the coordinate flips, and
-// the lasting data (data-tests.swift: the merge's vectors, the files, the data
-// messages); then each part's own suite (the host, Margin's window, the library, ...).
+// the lasting data (data-tests.swift: the data messages, through margin-core's
+// data sync); then each part's own suite (the host, Margin's window, the library, ...).
 // tools/app-tests/run.sh
 // builds and runs them (and the end-to-end check, e2e.swift).
 import AppKit
+import Carbon
 import Foundation
 import WebKit
 
@@ -24,16 +26,6 @@ func object(_ data: Data?) -> JSONObject? { data.flatMap { try? JSONSerializatio
 func same(_ a: Any?, _ b: Any?) -> Bool {
   guard let a, let b else { return a == nil && b == nil }
   return NSDictionary(dictionary: ["v": a]).isEqual(to: ["v": b])
-}
-// A frame as an extension's WebSocket sends it: masked.
-func clientFrame(_ op: UInt8, _ payload: [UInt8], fin: Bool = true, mask: [UInt8] = [0x37, 0xfa, 0x21, 0x3d]) -> Data {
-  var out = Data([(fin ? 0x80 : 0) | op])
-  if payload.count < 126 { out.append(0x80 | UInt8(payload.count)) }
-  else if payload.count < 65536 { out.append(0x80 | 126); out.append(contentsOf: [UInt8(payload.count >> 8), UInt8(payload.count & 0xff)]) }
-  else { out.append(0x80 | 127); for shift in stride(from: 56, through: 0, by: -8) { out.append(UInt8((payload.count >> shift) & 0xff)) } }
-  out.append(contentsOf: mask)
-  out.append(contentsOf: payload.enumerated().map { $0.element ^ mask[$0.offset & 3] })
-  return out
 }
 let hello = LinkMessage.Hello(epoch: "e1", profile: "P1", browser: "safari", ext: "2.0", owner: true, instanceId: "i", origin: "o", since: 5, pid: nil)
 
@@ -57,10 +49,8 @@ final class FakeRegistrar: HotKeyRegistrar {
     let started = Date()
     linkMessages()
     appMessages()
-    handshake()
-    frames()
-    chunks()
-    mirror()
+    stateMessages()
+    linkUp()
     layouts()
     frameRate()
     systemAppearance()
@@ -68,10 +58,8 @@ final class FakeRegistrar: HotKeyRegistrar {
     shortcuts()
     geometry()
     pointerWant()
-    dataMerge()
-    dataStore()
     dataSync()
-    dataCarry() // data-tests.swift
+    dataCarry() // data-tests.swift (the merge's vectors and the files: margin-core's tests)
     libraryTests() // library-tests.swift: the app's own spaces, its rules in JavaScriptCore
     profilesTests()
     safariProfilesTests() // safari-profiles-tests.swift
@@ -119,29 +107,27 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("no kind", LinkMessage.decode(#"{"epoch":"e"}"#) == nil)
     check("a snapshot needs its epoch", LinkMessage.decode(#"{"k":"snapshot","seq":1,"state":{}}"#) == nil)
     check("a seq that isn't a whole number: not one", LinkMessage.decode(#"{"k":"windows","epoch":"e","seq":1.5,"list":[]}"#) == nil)
-    if case .snapshot(let epoch, let seq, let state, let windows)? = LinkMessage.decode(#"{"k":"snapshot","epoch":"e","seq":1,"state":{"spaces":[{"id":"a"}]},"windows":[{"windowId":3,"focused":true}]}"#) {
-      check("snapshot", epoch == "e" && seq == 1 && same(state["spaces"], [["id": "a"]]) && windows.first?["windowId"] as? Int == 3)
-    } else { check("snapshot decodes", false) }
-    if case .delta(_, let seq, let changes, let favicons)? = LinkMessage.decode(#"{"k":"delta","epoch":"e","seq":2,"changes":{"pins":{"newValue":[]},"folders":{}},"favicons":{"set":{"https://a.example":{"icon":"data:x"}},"del":["https://b.example"]}}"#) {
-      var pinsSet = false
-      if case .set(let v)? = changes["pins"] { pinsSet = same(v, [Any]()) }
-      var foldersGone = false
-      if case .removed? = changes["folders"] { foldersGone = true }
-      check("delta: a key's new value, a key removed (no newValue)", seq == 2 && pinsSet && foldersGone)
-      check("delta: site icons as a diff", favicons?.del == ["https://b.example"] && same(favicons?.set["https://a.example"], ["icon": "data:x"]))
-    } else { check("delta decodes", false) }
-    if case .windows(_, let seq, let list)? = LinkMessage.decode(#"{"k":"windows","epoch":"e","seq":3,"list":[{"windowId":1},{"windowId":2}]}"#) {
-      check("windows", seq == 3 && list.count == 2)
-    } else { check("windows decodes", false) }
+    // (A snapshot, a delta and a window list are applied by the core as it reads them: stateMessages; the reads here.)
+    let snapshot = LinkMessage.read(#"{"k":"snapshot","epoch":"e","seq":1,"state":{"spaces":[{"id":"a"}]},"windows":[{"windowId":3,"focused":true}]}"#)
+    check("snapshot", snapshot?["epoch"] as? String == "e" && int(snapshot?["seq"]) == 1 && same((snapshot?["state"] as? JSONObject)?["spaces"], [["id": "a"]])
+          && ((snapshot?["windows"] as? [JSONObject])?.first?["windowId"] as? Int) == 3)
+    let delta = LinkMessage.read(#"{"k":"delta","epoch":"e","seq":2,"changes":{"pins":{"newValue":[]},"folders":{}},"favicons":{"set":{"https://a.example":{"icon":"data:x"}},"del":["https://b.example"]}}"#)
+    let changes = delta?["changes"] as? JSONObject
+    check("delta: a key's new value, a key removed (no newValue)", int(delta?["seq"]) == 2 && same((changes?["pins"] as? JSONObject)?["newValue"], [Any]())
+          && (changes?["folders"] as? JSONObject)?["newValue"] == nil)
+    let favicons = delta?["favicons"] as? JSONObject
+    check("delta: site icons as a diff", favicons?["del"] as? [String] == ["https://b.example"] && same((favicons?["set"] as? JSONObject)?["https://a.example"], ["icon": "data:x"]))
+    let windows = LinkMessage.read(#"{"k":"windows","epoch":"e","seq":3,"list":[{"windowId":1},{"windowId":2}]}"#)
+    check("windows", int(windows?["seq"]) == 3 && (windows?["list"] as? [Any])?.count == 2)
     if case .push(_, let windowId, let msg)? = LinkMessage.decode(#"{"k":"push","epoch":"e","windowId":4,"msg":{"type":"switching","tabId":5}}"#) {
       check("push for a window", windowId == 4 && msg["type"] as? String == "switching")
     } else { check("push decodes", false) }
-    let sha = String(repeating: "a", count: 64)
-    if case .theme(let epoch, let c)? = LinkMessage.decode(#"{"k":"theme","epoch":"e","id":"arcadia","transfer":"\#(sha)","part":1,"parts":3,"size":10,"data":"YWJj"}"#) {
-      check("a theme chunk", epoch == "e" && c.id == "arcadia" && c.part == 1 && c.parts == 3 && c.size == 10 && c.data == "YWJj")
-    } else { check("theme decodes", false) }
-    check("a chunk past its parts: not one", LinkMessage.decode(#"{"k":"theme","epoch":"e","id":"a","transfer":"\#(sha)","part":3,"parts":3,"size":1,"data":""}"#) == nil)
-    check("a chunk with no transfer hash: not one", LinkMessage.decode(#"{"k":"theme","epoch":"e","id":"a","transfer":"x","part":0,"parts":1,"size":1,"data":""}"#) == nil)
+    // (A theme's pieces are put together by the core, per link, and come whole: link_hub.rs, chunks.rs.)
+    check("a chunk past its parts: not one", LinkMessage.decode(#"{"k":"theme","epoch":"e","id":"a","transfer":"\#(String(repeating: "a", count: 64))","part":3,"parts":3,"size":1,"data":""}"#) == nil)
+    if case .hello(let h)? = LinkMessage.decode(#"{"k":"hello","v":2,"epoch":"e1","profile":"p","browser":"safari","owner":1}"#) { check("hello: owner 1 is true, as Swift read it", h.owner) } else { check("hello with owner 1 decodes", false) }
+    if case .push(_, let windowId, let msg)? = LinkMessage.decode(#"{"k":"push","epoch":"e","msg":{"type":"parkedActivity","why":"hover"}}"#) {
+      check("a malformed parkedActivity: a plain push, as it came", windowId == nil && msg["why"] as? String == "hover")
+    } else { check("a malformed parkedActivity decodes", false) }
     if case .reply(let id, let body)? = LinkMessage.decode(#"{"k":"reply","id":7,"ok":false,"error":"x","stale":true}"#) {
       check("reply: its id, the answer without k and id", id == 7 && body["ok"] as? Bool == false && body["stale"] as? Bool == true && body["k"] == nil && body["id"] == nil)
     } else { check("reply decodes", false) }
@@ -155,139 +141,47 @@ final class FakeRegistrar: HotKeyRegistrar {
   }
 
   static func appMessages() {
-    let welcome = object(AppMessage.welcome(key: "K").encode())
-    check("welcome", welcome?["k"] as? String == "welcome" && welcome?["v"] as? Int == 2 && welcome?["key"] as? String == "K")
-    let req = object(AppMessage.req(id: 3, epoch: "e", windowId: nil, type: "activateTab", payload: ["tabId": 9]).encode())
-    check("req", req?["k"] as? String == "req" && req?["id"] as? Int == 3 && req?["epoch"] as? String == "e" && req?["windowId"] is NSNull
-      && req?["type"] as? String == "activateTab" && (req?["payload"] as? JSONObject)?["tabId"] as? Int == 9 && (req?["at"] as? Double ?? 0) > 1.7e12)
+    // (The link's own, welcome, tick, req and bye, and the theme's pieces: the core's tests.)
     let drawn = object(AppMessage.drawn(epoch: "e", windowId: 7, on: false).encode())
-    check("drawn: the window and whether it's drawn", drawn?["k"] as? String == "drawn" && drawn?["epoch"] as? String == "e" && drawn?["windowId"] as? Int == 7 && drawn?["on"] as? Bool == false)
+    check("drawn: the window and whether it's drawn", drawn?["k"] as? String == "drawn" && drawn?["epoch"] as? String == "e" && drawn?["windowId"] as? Int == 7 && drawn?["on"] as? Bool == false
+          && (drawn?["at"] as? Double ?? 0) > 1.7e12)
     check("resync", object(AppMessage.resync(epoch: "e").encode())?["epoch"] as? String == "e")
-    check("bye", object(AppMessage.bye(why: "quit").encode())?["why"] as? String == "quit")
-    check("tick", object(AppMessage.tick.encode())?["k"] as? String == "tick")
-    check("a payload that isn't JSON: nothing", AppMessage.req(id: 1, epoch: "e", windowId: 1, type: "x", payload: ["d": Date()]).encode() == nil)
+    check("a payload that isn't JSON: nothing", AppMessage.data(kind: "data.changes", body: ["d": Date()]).encode() == nil)
     let big = String(repeating: "x", count: LinkProtocol.maxAppMessage)
-    check("nothing over 1 MB goes from the app", AppMessage.req(id: 1, epoch: "e", windowId: 1, type: "x", payload: ["big": big]).encode() == nil)
+    check("nothing over 1 MB goes from the app", AppMessage.data(kind: "data.changes", body: ["big": big]).encode() == nil)
     let almost = String(repeating: "x", count: LinkProtocol.maxAppMessage - 200)
-    check("just under 1 MB goes", AppMessage.req(id: 1, epoch: "e", windowId: 1, type: "x", payload: ["big": almost]).encode() != nil)
-    let chunk = Chunk(id: "t", transfer: String(repeating: "0", count: 64), part: 0, parts: 1, size: 3, data: "YWJj")
-    let theme = object(AppMessage.theme(epoch: "e", chunk: chunk).encode())
-    check("a theme chunk from the app", theme?["k"] as? String == "theme" && theme?["id"] as? String == "t" && theme?["parts"] as? Int == 1 && theme?["data"] as? String == "YWJj")
+    check("just under 1 MB goes", AppMessage.data(kind: "data.changes", body: ["big": almost]).encode() != nil)
+    let state = HandoffRequest.setWindowState(windowId: 90, state: .fullscreen, focused: true, notAfter: 1_800_000_002_000.4)
+    check("setWindowState: the copy's window, full screen, focused, its notAfter, answered once asked (land: false)", state.type == "setWindowState"
+          && same(state.payload, ["windowId": 90, "state": "fullscreen", "focused": true, "notAfter": 1_800_000_002_000, "land": false]), "\(state.payload)")
+    check("setWindowState out: never focused", same(HandoffRequest.setWindowState(windowId: 90, state: .normal, notAfter: 5).payload, ["windowId": 90, "state": "normal", "notAfter": 5, "land": false]))
+    check("a windows call's answers", WindowCallAnswer(["windowId": 90, "state": "fullscreen", "asked": true]) == .asked(windowId: 90, state: "fullscreen")
+          && WindowCallAnswer(["busy": true]) == .busy && !WindowCallAnswer(["busy": true]).called && WindowCallAnswer(["refused": "late", "pastMs": 3]) == .refused(why: "late", pastMs: 3)
+          && WindowCallAnswer([:]) == .done(state: nil) && WindowCallAnswer(["windowId": 4, "state": "normal", "landedAt": 9]) == .landed(windowId: 4, state: "normal", at: 9))
+    check("newWindow's answer: the window and its bounds", SpaceWindowAnswer(["windowId": 5, "bounds": ["left": 1, "top": 2, "width": 3, "height": 4]]) == SpaceWindowAnswer(["windowId": 5, "bounds": ["left": 1, "top": 2, "width": 3, "height": 4]])
+          && SpaceWindowAnswer(["windowId": 5, "bounds": ["left": 1, "top": 2, "width": 3, "height": 4]])?.bounds == CGRect(x: 1, y: 2, width: 3, height: 4)
+          && SpaceWindowAnswer(["windowId": 5])?.bounds == nil && SpaceWindowAnswer(["state": "normal"]) == nil)
   }
 
-  static func handshake() {
-    let request = "GET /?t=ab%2Bc&x=1 HTTP/1.1\r\nHost: 127.0.0.1:5\r\nUpgrade: websocket\r\nConnection: keep-alive, Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\nOrigin: safari-web-extension://ABC\r\n\r\n"
-    if case .incomplete = Handshake.parse(Data(request.utf8.prefix(40))) { check("handshake in pieces: waits", true) } else { check("handshake incomplete", false) }
-    if case .request(let r, let rest) = Handshake.parse(Data(request.utf8) + Data([0x81, 0x80])) {
-      check("handshake: path, query (decoded), headers by lower-case name", r.path == "/" && r.query["t"] == "ab+c" && r.query["x"] == "1" && r.headers["origin"] == "safari-web-extension://ABC")
-      check("handshake: what came after it kept", rest == Data([0x81, 0x80]))
-      check("a WebSocket upgrade", Handshake.isUpgrade(r))
-    } else { check("handshake parses", false) }
-    if case .request(let r, _) = Handshake.parse(Data("GET / HTTP/1.1\r\nHost: x\r\n\r\n".utf8)) { check("plain GET: no upgrade", !Handshake.isUpgrade(r)) } else { check("plain GET parses", false) }
-    if case .bad = Handshake.parse(Data("POST / HTTP/1.1\r\n\r\n".utf8)) { check("not GET: bad", true) } else { check("POST is bad", false) }
-    if case .bad = Handshake.parse(Data(repeating: 0x41, count: Handshake.maxBytes + 1)) { check("too long a request: bad", true) } else { check("long request is bad", false) }
-    check("accept key (RFC 6455's example)", Handshake.accept(key: "dGhlIHNhbXBsZSBub25jZQ==") == "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=")
-    check("same secrets", sameSecret("abc123", "abc123"))
-    check("different secrets", !sameSecret("abc123", "abc124") && !sameSecret("abc", "abc1") && !sameSecret("", "a") && sameSecret("", ""))
-    check("secrets: 64 hex characters, never twice the same", SocketLink.secret().count == 64 && SocketLink.secret() != SocketLink.secret())
+  // What the core says a state message did (link_hub.rs StateApplied, as ffi/link.rs writes it), read for the app; the
+  // mirror's rules themselves (epochs, numbers, gaps, icons, values) are the core's tests: mirror.rs, link_hub.rs.
+  static func stateMessages() {
+    let applied = LinkMessage.State(core: ["do": "state", "kind": "delta", "epoch": "e1", "seq": 2, "outcome": "applied", "keys": ["openTabs", "spaces"], "hasState": true, "resyncing": false])
+    check("state: a delta applied, its keys", applied?.kind == .delta && applied?.outcome == .applied && applied?.seq == 2 && applied?.keys == ["openTabs", "spaces"]
+          && applied?.windows == nil && applied?.hasState == true && applied?.resyncing == false)
+    let gap = LinkMessage.State(core: ["kind": "windows", "epoch": "e1", "seq": 5, "outcome": "gap", "expected": 4, "got": 5, "keys": [], "hasState": true, "resyncing": true])
+    check("state: a gap, what was next and what came", gap?.outcome == .gap(expected: 4, got: 5) && gap?.resyncing == true)
+    check("state: not a kind known: none", LinkMessage.State(core: ["kind": "later", "outcome": "applied"]) == nil)
+    let m = StateMirror { key in key == "spaces" ? Data(#"[{"id":"a"}]"#.utf8) : key == "n" ? Data("3".utf8) : nil }
+    check("mirror: nothing before the core says so", !m.hasState && !m.isResyncing && m.windows.isEmpty)
+    m.applied(LinkMessage.State(core: ["kind": "snapshot", "epoch": "e1", "seq": 1, "outcome": "applied", "keys": ["spaces"], "windows": [["windowId": 1]], "hasState": true, "resyncing": false])!)
+    check("mirror: a snapshot: its state and windows", m.hasState && !m.isResyncing && m.windows.count == 1)
+    m.applied(gap!)
+    check("mirror: a gap: resyncing, the windows as they were", m.isResyncing && m.windows.count == 1)
+    check("mirror: values read from the core's text (a fragment too)", same(m.value("spaces"), [["id": "a"]]) && int(m.value("n")) == 3 && m.value("none") == nil)
   }
 
-  static func frames() {
-    var reader = FrameReader()
-    let bytes = clientFrame(1, Array(#"{"k":"hello"}"#.utf8))
-    var got: [FrameReader.Message] = []
-    for byte in bytes {
-      reader.append(Data([byte]))
-      while let m = try! reader.nextMessage() { got.append(m) }
-    }
-    check("a text frame, a byte at a time", got == [.text(#"{"k":"hello"}"#)], "\(got)")
-    reader.append(clientFrame(1, [UInt8](repeating: 0x61, count: 300)) + clientFrame(1, [UInt8](repeating: 0x62, count: 70_000)))
-    check("a 16-bit length", try! reader.nextMessage() == .text(String(repeating: "a", count: 300)))
-    check("a 64-bit length", try! reader.nextMessage() == .text(String(repeating: "b", count: 70_000)))
-    check("then nothing", try! reader.nextMessage() == nil)
-    reader.append(clientFrame(1, Array("hel".utf8), fin: false) + clientFrame(9, [1, 2]) + clientFrame(0, Array("lo".utf8)) + clientFrame(8, [3, 232]))
-    check("a ping between a message's frames", try! reader.nextMessage() == .ping(Data([1, 2])))
-    check("the message from its frames", try! reader.nextMessage() == .text("hello"))
-    check("close: its code and no reason", try! reader.nextMessage() == .close(code: 1000, reason: ""))
-    // The close frame's payload: the code and the reason in the log, 1005 for none (DECISIONS.md "Margin 2: Safari reliability").
-    var closes = FrameReader()
-    closes.append(clientFrame(8, [3, 233] + Array("x".utf8)) + clientFrame(8, []) + clientFrame(8, [3, 232] + Array("no word from the app for 12 s".utf8)))
-    let goingAway = try? closes.nextMessage()
-    check("a close frame of 1001 'x': both", goingAway == .close(code: 1001, reason: "x"), "\(String(describing: goingAway))")
-    check("an empty close frame: 1005, no status code", try! closes.nextMessage() == .close(code: 1005, reason: ""))
-    check("a copy's own reason", try! closes.nextMessage() == .close(code: 1000, reason: "no word from the app for 12 s"))
-    check("how they read in the log", FrameReader.describeClose(1001, "x") == "1001 x" && FrameReader.describeClose(1001, "") == "1001 going away"
-          && FrameReader.describeClose(1005, "") == "1005, no status code" && FrameReader.describeClose(1000, "no word from the app for 12 s") == "1000 no word from the app for 12 s")
-    var oneByte = FrameReader()
-    oneByte.append(clientFrame(8, [3]))
-    check("a close frame of one byte: refused", (try? oneByte.nextMessage()) == nil)
-    check("a reason that isn't UTF-8: said so, not shown", (try? FrameReader.close(Data([3, 232, 0xc3, 0x28]))) == .close(code: 1000, reason: "(a reason that isn't UTF-8)"))
-    let long = Data([3, 232] + Array(String(repeating: "a", count: 122).utf8) + Array("é".utf8) + Array("bbb".utf8))
-    check("a reason over 123 bytes: clipped, never half a character", (try? FrameReader.close(long)) == .close(code: 1000, reason: String(repeating: "a", count: 122)))
-    check("control characters: spaces in the log", (try? FrameReader.close(Data([3, 232] + Array("a\nb".utf8)))) == .close(code: 1000, reason: "a b"))
-    var unmasked = FrameReader()
-    unmasked.append(Data([0x81, 0x02, 0x68, 0x69]))
-    check("an unmasked frame (not a client's): refused", (try? unmasked.nextMessage()) == nil)
-    var badText = FrameReader()
-    badText.append(clientFrame(1, [0xc3, 0x28]))
-    check("text that isn't UTF-8: refused", (try? badText.nextMessage()) == nil)
-    check("the app's frames: short", Frame.encode(.text, Data("hi".utf8)) == Data([0x81, 2, 0x68, 0x69]))
-    let big = Frame.encode(.text, Data(count: 70_000))
-    check("the app's frames: 64-bit length", big.prefix(10) == Data([0x81, 127, 0, 0, 0, 0, 0, 1, 0x11, 0x70]) && big.count == 70_010)
-    check("close frame: its code", Frame.close(1001, "x") == Data([0x88, 3, 3, 233, 0x78]))
-  }
-
-  static func chunks() {
-    let whole = Data((0..<1_300_000).map { UInt8($0 % 251) })
-    guard let parts = Chunks.split(whole, id: "arcadia") else { return check("split", false) }
-    check("split in pieces of 512 KB", parts.count == 3 && parts.allSatisfy { $0.parts == 3 && $0.size == whole.count && $0.transfer == Chunks.sha256(whole) })
-    check("each piece's message under 1 MB", parts.allSatisfy { (AppMessage.theme(epoch: "e", chunk: $0).encode()?.utf8.count ?? .max) < LinkProtocol.maxAppMessage })
-    var a = ChunkAssembler()
-    check("waiting", a.add(parts[0]) == .waiting(have: 1, of: 3) && a.add(parts[1]) == .waiting(have: 2, of: 3))
-    check("whole again", a.add(parts[2]) == .complete(id: "arcadia", data: whole))
-    check("then nothing in progress", !a.inProgress)
-    var b = ChunkAssembler()
-    _ = b.add(parts[2]); _ = b.add(parts[0])
-    check("pieces out of order", b.add(parts[1]) == .complete(id: "arcadia", data: whole))
-    var c = ChunkAssembler()
-    _ = c.add(parts[0])
-    let other = Chunks.split(Data("{\"id\":\"x\"}".utf8), id: "x")!
-    check("a piece of another send starts over", c.add(other[0]) == .complete(id: "x", data: Data("{\"id\":\"x\"}".utf8)))
-    var d = ChunkAssembler()
-    let bad = Chunk(id: "arcadia", transfer: parts[1].transfer, part: 1, parts: 3, size: whole.count, data: Data(repeating: 1, count: 10).base64EncodedString())
-    _ = d.add(parts[0]); _ = d.add(bad)
-    if case .refused = d.add(parts[2]) { check("pieces that don't add up: refused", true) } else { check("pieces that don't add up: refused", false) }
-    var e = ChunkAssembler()
-    if case .refused = e.add(Chunk(id: "a", transfer: parts[0].transfer, part: 0, parts: 1, size: 3, data: "not base64!")) { check("not base64: refused", true) } else { check("not base64", false) }
-    var f = ChunkAssembler(limit: 100)
-    if case .refused = f.add(parts[0]) { check("over the limit: refused", true) } else { check("over the limit", false) }
-    check("too big to split: nothing", Chunks.split(Data(count: LinkProtocol.maxThemeBytes + 1), id: "a") == nil)
-    check("empty: one piece", Chunks.split(Data(), id: "a")?.count == 1)
-    var g = ChunkAssembler()
-    check("an empty whole", g.add(Chunks.split(Data(), id: "a")![0]) == .complete(id: "a", data: Data()))
-  }
-
-  static func mirror() {
-    let m = StateMirror()
-    let snap = LinkMessage.snapshot(epoch: "e1", seq: 1, state: ["spaces": [["id": "a"]], "settings": ["sidebarPinnedOpen": true], "favicons": ["https://a.example": ["icon": "A"], "https://b.example": ["icon": "B"]]], windows: [["windowId": 1]])
-    check("nothing before hello", m.apply(snap) == .ignored && !m.hasState && m.stateJSON() == nil)
-    m.begin(hello)
-    check("a delta before the snapshot: a gap", m.apply(.delta(epoch: "e1", seq: 1, changes: [:], favicons: nil)) == .gap(expected: 1, got: 1))
-    check("snapshot", m.apply(snap) == .applied && m.hasState && m.seq == 1 && m.windows.count == 1 && m.origin == "o" && m.since == 5)
-    check("the state as it came", same(object(m.stateJSON()), ["spaces": [["id": "a"]], "settings": ["sidebarPinnedOpen": true], "favicons": ["https://a.example": ["icon": "A"], "https://b.example": ["icon": "B"]]]))
-    let delta = LinkMessage.delta(epoch: "e1", seq: 2, changes: ["pins": .set([["id": "p"]]), "settings": .removed], favicons: .init(set: ["https://c.example": ["icon": "C"], "https://a.example": ["icon": "A2"]], del: ["https://b.example"]))
-    check("delta", m.apply(delta) == .applied && m.seq == 2)
-    check("delta applied: set, removed, icons diffed", same(object(m.stateJSON()), ["spaces": [["id": "a"]], "pins": [["id": "p"]], "favicons": ["https://a.example": ["icon": "A2"], "https://c.example": ["icon": "C"]]]))
-    check("windows count with the rest", m.apply(.windows(epoch: "e1", seq: 3, list: [["windowId": 1], ["windowId": 2]])) == .applied && m.windows.count == 2 && m.seq == 3)
-    check("another epoch's: left", m.apply(.windows(epoch: "e0", seq: 4, list: [])) == .ignored && m.windows.count == 2 && m.seq == 3)
-    check("a number missed: a gap", m.apply(.delta(epoch: "e1", seq: 5, changes: ["pins": .set([])], favicons: nil)) == .gap(expected: 4, got: 5))
-    check("then left until the state comes again", m.apply(.delta(epoch: "e1", seq: 6, changes: ["pins": .set([])], favicons: nil)) == .ignored && m.isResyncing)
-    check("the state again (a resync's snapshot, numbered on)", m.apply(.snapshot(epoch: "e1", seq: 7, state: ["pins": []], windows: [])) == .applied && m.keys == ["pins"] && m.seq == 7 && !m.isResyncing)
-    check("and on from it", m.apply(.delta(epoch: "e1", seq: 8, changes: ["spaces": .set([])], favicons: nil)) == .applied && m.keys == ["pins", "spaces"])
-    check("a stored null kept", m.apply(.delta(epoch: "e1", seq: 9, changes: ["archive": .set(NSNull())], favicons: nil)) == .applied && object(m.stateJSON())?["archive"] is NSNull)
-    m.begin(LinkMessage.Hello(epoch: "e2", profile: "P1", browser: "safari", ext: nil, owner: true, instanceId: nil, origin: "o2", since: 6, pid: nil))
-    check("a new connection: nothing kept", !m.hasState && m.keys.isEmpty && m.seq == 0 && m.windows.isEmpty && m.origin == "o2")
-    check("the old epoch's snapshot: left", m.apply(.snapshot(epoch: "e1", seq: 1, state: ["a": 1], windows: [])) == .ignored)
+  static func linkUp() {
     // A copy's hello naming a browser process no connector named: trusted, logged once at link up.
     let chrome = { (pid: Int?) in LinkMessage.Hello(epoch: "c1", profile: "p-b", browser: "chrome", ext: nil, owner: true, instanceId: nil, origin: nil, since: nil, pid: pid) }
     check("link up: a process no connector named is logged, in margin-core's words",
@@ -396,6 +290,27 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("Margin in front, counts not said yet: every key held", heldOwn.count == allKeys.count)
     check("Margin in front, no rows: no ⌘digit held", ShortcutSet.held(allKeys, marginInFront: true, browser: false, spaces: 1, items: 0).values.allSatisfy { $0.itemNumber == nil && ($0.spaceNumber ?? 1) <= 1 })
     check("keys Settings can record: punctuation and F keys", Combo.parse("Alt+Comma") != nil && Combo.parse("Ctrl+F5") != nil && Combo.parse("Meta+Backquote") != nil)
+    // The core's Mac key codes against Carbon's own constants, every key Margin's keys can be (the table the Swift
+    // side kept before the rules moved to margin-core).
+    let carbonCodes: [String: Int] = [
+        "ArrowDown": kVK_DownArrow, "ArrowUp": kVK_UpArrow, "ArrowLeft": kVK_LeftArrow, "ArrowRight": kVK_RightArrow,
+        "KeyA": kVK_ANSI_A, "KeyB": kVK_ANSI_B, "KeyC": kVK_ANSI_C, "KeyD": kVK_ANSI_D, "KeyE": kVK_ANSI_E, "KeyF": kVK_ANSI_F,
+        "KeyG": kVK_ANSI_G, "KeyH": kVK_ANSI_H, "KeyI": kVK_ANSI_I, "KeyJ": kVK_ANSI_J, "KeyK": kVK_ANSI_K, "KeyL": kVK_ANSI_L,
+        "KeyM": kVK_ANSI_M, "KeyN": kVK_ANSI_N, "KeyO": kVK_ANSI_O, "KeyP": kVK_ANSI_P, "KeyQ": kVK_ANSI_Q, "KeyR": kVK_ANSI_R,
+        "KeyS": kVK_ANSI_S, "KeyT": kVK_ANSI_T, "KeyU": kVK_ANSI_U, "KeyV": kVK_ANSI_V, "KeyW": kVK_ANSI_W, "KeyX": kVK_ANSI_X,
+        "KeyY": kVK_ANSI_Y, "KeyZ": kVK_ANSI_Z, "Space": kVK_Space, "F19": kVK_F19,
+        "Digit0": kVK_ANSI_0, "Digit1": kVK_ANSI_1, "Digit2": kVK_ANSI_2, "Digit3": kVK_ANSI_3, "Digit4": kVK_ANSI_4,
+        "Digit5": kVK_ANSI_5, "Digit6": kVK_ANSI_6, "Digit7": kVK_ANSI_7, "Digit8": kVK_ANSI_8, "Digit9": kVK_ANSI_9,
+        "Enter": kVK_Return, "Backquote": kVK_ANSI_Grave, "Minus": kVK_ANSI_Minus, "Equal": kVK_ANSI_Equal,
+        "BracketLeft": kVK_ANSI_LeftBracket, "BracketRight": kVK_ANSI_RightBracket, "Backslash": kVK_ANSI_Backslash,
+        "Semicolon": kVK_ANSI_Semicolon, "Quote": kVK_ANSI_Quote, "Comma": kVK_ANSI_Comma, "Period": kVK_ANSI_Period, "Slash": kVK_ANSI_Slash,
+        "F1": kVK_F1, "F2": kVK_F2, "F3": kVK_F3, "F4": kVK_F4, "F5": kVK_F5, "F6": kVK_F6,
+        "F7": kVK_F7, "F8": kVK_F8, "F9": kVK_F9, "F10": kVK_F10, "F11": kVK_F11, "F12": kVK_F12,
+    ]
+    let wrongCodes = carbonCodes.filter { Combo.parse("Meta+\($0.key)")?.keyCode != UInt32($0.value) }.map(\.key).sorted()
+    check("margin-core's Mac key codes are Carbon's, all 66 keys", carbonCodes.count == 66 && wrongCodes.isEmpty, "\(wrongCodes)")
+    check("margin-core's modifier bits are Carbon's", Combo.parse("Ctrl+Alt+Shift+Meta+KeyA")?.modifiers == UInt32(cmdKey | controlKey | optionKey | shiftKey)
+          && Combo.parse("Ctrl+KeyA")?.modifiers == UInt32(controlKey) && Combo.parse("Alt+KeyA")?.modifiers == UInt32(optionKey))
     // Hosting: Margin itself, or an app it hosts with a Margin window on the current Space.
     check("hosted gate: Margin in front with a window", ShortcutSet.hostedActive(frontPid: 1, ownPid: 1, hostedPids: [], marginWindowOpen: true, marginOnCurrentSpace: false))
     check("hosted gate: a hosted app in front, Margin's window on the current Space", ShortcutSet.hostedActive(frontPid: 20, ownPid: 1, hostedPids: [20, 21], marginWindowOpen: true, marginOnCurrentSpace: true))
@@ -555,7 +470,8 @@ final class FakeRegistrar: HotKeyRegistrar {
       waits.append((seconds, { if live { run() } }))
       return { live = false }
     }
-    rep.modifiersDown = { _ in mods }
+    rep.now = { 0 } // (a test's clock: each repeat runs at its due time, the waits say the gaps)
+    rep.modifiers = { mods ? 0x1B00 : 0 }
     let fake2 = FakeRegistrar()
     let held = AppShortcuts(registrar: fake2, keyRepeat: rep)
     var ran2: [AppCommand] = []
@@ -567,7 +483,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     fake2.onHit?(down)
     check("held: once at the press", ran2 == [.nextTab] && waits.first?.0 == 0.4)
     runNext(); runNext(); runNext()
-    check("held: again after the delay, then at the rate", ran2.count == 4 && waits.first?.0 == 0.05)
+    check("held: again after the delay, then at the rate", ran2.count == 4 && abs((waits.first?.0 ?? 0) - 0.05) < 1e-9, "\(ran2.count) \(waits.map(\.0))")
     check("held: the press is a press, the rest repeats", repeats2 == [false, true, true, true])
     fake2.onRelease?(down)
     runNext()

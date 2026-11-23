@@ -221,7 +221,7 @@ func marginWindowTests() {
     // Choosing a space in a window is kept by the source, and drawn again; what it can't do changes nothing.
     let folder = FileManager.default.temporaryDirectory.appendingPathComponent("margin-hosted-tests-\(UUID().uuidString)")
     defer { try? FileManager.default.removeItem(at: folder) }
-    let sync = DataSync(store: DataStore(root: folder, background: false))
+    let sync = DataSync(root: folder, background: false)
     var shellHeard = 0
     sync.onChange = { _, _ in shellHeard += 1 }
     let source = DataSetWindowSource(data: sync, pick: { nil })
@@ -266,7 +266,7 @@ func marginWindowTests() {
         var stored: [String: JSONObject] = ["arcadia": ["sidebarWidth": 300]]
         var writes = 0
         let keeper = ThemeSettingsKeeper(read: { stored }, write: { stored = $0; writes += 1 })
-        func source() -> DataSetWindowSource { DataSetWindowSource(data: DataSync(store: DataStore(root: tempFolder("window-theme-settings"))), pick: { nil }, keeper: keeper) }
+        func source() -> DataSetWindowSource { DataSetWindowSource(data: DataSync(root: tempFolder("window-theme-settings")), pick: { nil }, keeper: keeper) }
         func width(_ s: DataSetWindowSource, _ theme: String) -> Any? { (((s.snapshot()["settings"] as? JSONObject)?["themes"] as? JSONObject)?[theme] as? JSONObject)?["sidebarWidth"] }
         let first = source()
         check("theme settings: what was kept is the theme's setting from the start", int(width(first, "arcadia")) == 300 && writes == 0)
@@ -275,7 +275,7 @@ func marginWindowTests() {
         check("theme settings: a width dragged is written as it's saved, each theme its own", writes == 2 && int(stored["arcadia"]?["sidebarWidth"]) == 342 && stored["pixel"]?["sidebarWidth"] as? String == "280px", "\(stored)")
         let next = source()
         check("theme settings: the next launch draws the width that was dragged", int(width(next, "arcadia")) == 342 && width(next, "pixel") as? String == "280px")
-        let plain = DataSetWindowSource(data: DataSync(store: DataStore(root: tempFolder("window-theme-settings-none"))), pick: { nil })
+        let plain = DataSetWindowSource(data: DataSync(root: tempFolder("window-theme-settings-none")), pick: { nil })
         plain.perform("updateThemeSettings", ["themeId": "arcadia", "patch": ["sidebarWidth": 500], "windowId": 1])
         check("theme settings: no keeper (a test's, the harness's): in memory only, nothing written", writes == 2 && int(width(plain, "arcadia")) == 500)
         let cleaned = ThemeSettingsKeeper.clean(["arcadia": ["sidebarWidth": 300, "name": "x", "on": true, "list": [1, 2], "nested": ["a": 1], "long": String(repeating: "x", count: 201)], "bad": "not settings", "empty": [String: Any]()])
@@ -287,7 +287,7 @@ func marginWindowTests() {
         var stored: JSONObject = [:]
         var writes = 0
         let keeper = SettingsKeeper(read: { stored }, write: { stored = $0; writes += 1 })
-        func source() -> DataSetWindowSource { DataSetWindowSource(data: DataSync(store: DataStore(root: tempFolder("window-settings"))), pick: { nil }, settingsKeeper: keeper) }
+        func source() -> DataSetWindowSource { DataSetWindowSource(data: DataSync(root: tempFolder("window-settings")), pick: { nil }, settingsKeeper: keeper) }
         let first = source()
         check("settings: none chosen in Margin's Settings yet: no theme of its own (the profile's set says)", first.chosenTheme == nil && writes == 0)
         first.perform("updateSettings", ["patch": ["theme": "pixel", "archiveAfterHours": 6, "themes": ["x": 1]], "windowId": 1])

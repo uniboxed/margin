@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import { startMargin, type Margin } from './harness/margin.ts';
 import { SPACES } from './harness/seed.ts';
 import { slot, settled } from './harness/ui.ts';
-import { PACKAGE_THEMES, PACKAGE_THEME_NAMES } from '../../extension/themes/packages.ts';
+import { PACKAGE_THEMES, PACKAGE_THEME_NAMES } from '../../app/shared/ui/themes/packages.ts';
 import type { Page } from 'playwright';
 import type { ShotOptions } from './harness/shots.ts';
 

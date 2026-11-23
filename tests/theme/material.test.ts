@@ -1,4 +1,4 @@
-// Material (extension/themes/material/): Material 3 on Arcadia's template, in WebKit and Chromium. The package loads
+// Material (app/shared/ui/themes/material/): Material 3 on Arcadia's template, in WebKit and Chromium. The package loads
 // with nothing removed and its bundled Google Sans Flex; colour comes from the space's colour (dynamic colour, light and
 // dark); the drawer's parts are Material's (a 48 px search bar, pill rows with the secondary container as the active
 // indicator, "New Tab" as an extended FAB, round icon buttons); menus, the command bar and dialogs at Material's

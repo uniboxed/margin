@@ -3,7 +3,7 @@
 // split's panes named by Margin tab id are found without a search of every tab each.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildViewModel } from '../extension/ui/view-model.ts';
+import { buildViewModel } from '../app/shared/ui/view-model.ts';
 import { bigState, WINDOW } from './theme/view-model.ts';
 
 function counted<T>(run: () => T): { value: T, parses: number } {

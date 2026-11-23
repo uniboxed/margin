@@ -9,7 +9,7 @@ extension Shell {
 
     func profilesOf(_ browser: String) -> BrowserProfiles {
         if let p = browserProfiles[browser] { return p }
-        let p = BrowserProfiles(browser: browser, root: data.store.root)
+        let p = BrowserProfiles(browser: browser, root: data.root)
         browserProfiles[browser] = p
         return p
     }
@@ -38,7 +38,7 @@ extension Shell {
             self.carryOver()
         }
         // A signing change's new ids: the profile's set carried over (BrowserProfiles carrySource, DataSync carry).
-        data.beforeNeed = { [weak self] p in self?.needChoice(p) ?? .ask }
+        data.beforeNeed = { [weak self] p, withSets in self?.needChoice(p, withSets: withSets) ?? .ask }
         data.onCarried = { [weak self] old, new, _ in
             guard let self else { return }
             self.profilesOf(new.browser).carry(from: old.profile, to: new.profile)
@@ -60,19 +60,21 @@ extension Shell {
         watcher.start()
     }
 
-    private func hasSafariSet(_ id: String) -> Bool { data.set(of: DataProfile(browser: "safari", profile: id)) != nil }
+    // The Safari profiles with a set on disk (as the data says it in its need question).
+    private func safariWithSets() -> Set<String> { Set(data.profiles(browser: "safari").map(\.profile)) }
 
     // A Safari profile with no set yet: the set of the same Safari profile
     // under its old id, carried over; or a hold while Safari's profiles are
     // read again (none maps it yet, and there's a set that could be its);
     // else data.need as always. Without a read (no Full Disk Access): as always.
-    func needChoice(_ p: DataProfile) -> DataSync.NeedChoice {
+    // (`withSets`: the Safari profiles with a set on disk, as the data says it in its question: it isn't asked back.)
+    func needChoice(_ p: DataProfile, withSets: Set<String>) -> DataSync.NeedChoice {
         guard p.browser == "safari" else { return .ask }
         let profiles = profilesOf("safari"), linked = linkedProfiles("safari")
-        if let (old, id) = profiles.carrySource(for: p.profile, hasSet: hasSafariSet, linked: linked) {
+        if let (old, id) = profiles.carrySource(for: p.profile, withSets: withSets, linked: linked) {
             return .carry(from: DataProfile(browser: "safari", profile: old), why: "Safari profile \(id)")
         }
-        if profiles.mightCarry(p.profile, hasSet: hasSafariSet, linked: linked) {
+        if profiles.mightCarry(p.profile, withSets: withSets, linked: linked) {
             safariNames?.readNow()
             return .hold
         }
@@ -84,11 +86,15 @@ extension Shell {
     // maps with nothing to carry is let go.
     func carryOver() {
         let profiles = profilesOf("safari"), linked = linkedProfiles("safari")
+        var withSets = safariWithSets()
         for new in linked.sorted() {
-            guard let (old, id) = profiles.carrySource(for: new, hasSet: hasSafariSet, linked: linked) else { continue }
-            data.carry(from: DataProfile(browser: "safari", profile: old), to: DataProfile(browser: "safari", profile: new), why: "Safari profile \(id)")
+            guard let (old, id) = profiles.carrySource(for: new, withSets: withSets, linked: linked) else { continue }
+            if data.carry(from: DataProfile(browser: "safari", profile: old), to: DataProfile(browser: "safari", profile: new), why: "Safari profile \(id)") {
+                withSets = safariWithSets() // (the sets as they are now, for the next copy)
+            }
         }
-        for p in data.holding where p.browser == "safari" && profiles.browserRead?.contains(where: { $0.margin == p.profile }) == true {
+        let read = profiles.browserRead
+        for p in data.holding where p.browser == "safari" && read?.contains(where: { $0.margin == p.profile }) == true {
             data.release(p, why: "Safari's profiles read: it's mapped, with no set to carry over")
         }
     }

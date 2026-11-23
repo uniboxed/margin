@@ -60,7 +60,7 @@ func peekSplitTests() {
         return (s.id, s.panes, s.vertical, [])
     }
     func run(_ body: @escaping () async -> Void) { hostRun { await body(); await session.idle() } }
-    let source = LibraryWindowSource(library: library, session: session, profileSource: DataSetWindowSource(data: DataSync(store: DataStore(root: tempFolder("peek-split-profile"))), pick: { nil }))
+    let source = LibraryWindowSource(library: library, session: session, profileSource: DataSetWindowSource(data: DataSync(root: tempFolder("peek-split-profile")), pick: { nil }))
     let made = library.perform("createSpace", ["windowId": 1, "name": "Home", "emoji": "🏠"])
     let home = (made.result as? JSONObject)?["spaceId"] as? String ?? ""
     run { session.openApp("com.apple.TextEdit", windowId: 1) }

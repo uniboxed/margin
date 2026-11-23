@@ -817,7 +817,7 @@ func hostedTests() {
     let front = tabs.first { $0["active"] as? Bool == true }
     check("hosted: the open items are the window's tabs, the one shown in front, the others kept",
           tabs.count == 3 && front?["mid"] as? String == aItem && int(front?["windowId"]) == 1 && kept[aItem] == nil && kept[editItem] == nil, "\(tabs) \(kept.keys)")
-    let source = LibraryWindowSource(library: library, session: session, profileSource: DataSetWindowSource(data: DataSync(store: DataStore(root: tempFolder("hosted-profile"))), pick: { nil }))
+    let source = LibraryWindowSource(library: library, session: session, profileSource: DataSetWindowSource(data: DataSync(root: tempFolder("hosted-profile")), pick: { nil }))
     let bNumber = session.number(ofItem: bItem)
     let mark3 = links.asked.count
     run { _ = source.perform("activateTab", ["windowId": 1, "tabId": bNumber, "hint": ["url": "https://b.example/"]]) }
@@ -832,7 +832,7 @@ func hostedTests() {
     let faved = source.perform("addFavorite", ["windowId": 1, "tabId": session.number(ofItem: aItem), "scope": "profile:evil", "favoritesScope": "profile"])
     let favId = faved?["result"] as? String ?? ""
     check("hosted: addFavorite from the page: the scope the person's settings say (none here: global), never one the page sent",
-          !favId.isEmpty && (library.dataSet.liveValues("favorites")[favId] as? JSONObject)?["scope"] as? String == "global", "\(String(describing: faved))")
+          !favId.isEmpty && (library.liveValues("favorites")[favId] as? JSONObject)?["scope"] as? String == "global", "\(String(describing: faved))")
     func liveTab(_ item: String) -> JSONObject? {
         ((session.live(library.snapshot())["openTabs"] as? JSONObject)?["tabs"] as? JSONObject ?? [:]).values.compactMap { $0 as? JSONObject }.first { $0["mid"] as? String == item }
     }

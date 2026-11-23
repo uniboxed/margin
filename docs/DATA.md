@@ -33,7 +33,7 @@ Every item is `{ updatedAt, value }`, or a tombstone `{ updatedAt, deleted: true
 | `settings` | the setting's name | the setting's value (any JSON); every setting but `themes` |
 | `themeSettings` | the theme's id | that theme's settings object |
 | `siteIcons` | the site's origin | `data` (a `data:` image), `href`, `at` |
-| `userThemes` | the theme's id | unused: imported themes belong to the Mac, kept by Margin.app outside the data sets (`app/platforms/macos/shell/ThemeStore.swift`); copies get the index by `req userThemes` (`docs/PROTOCOL.md` "User themes") |
+| `userThemes` | the theme's id | unused: imported themes belong to the Mac, kept by Margin.app outside the data sets (margin-core's `data/themes.rs`, the Mac's through `app/platforms/macos/shell/ThemeStore.swift`); copies get the index by `req userThemes` (`docs/PROTOCOL.md` "User themes") |
 
 Only web pages are Margin tabs worth keeping: a new-tab page or an extension page isn't in `tabs`. In the extension, an open Margin tab is a browser tab's record with its Margin id (`mid`) and place (`order`); one that isn't open is in `keptTabs` (`state/model.ts`).
 A tab value also carries `selected` (boolean): whether it was its browser window's chosen tab at the last live/saved record. It breaks equal `lastUsed` times when restoring an unloaded space; missing in older data means false. The extension maps it to `wasActive` on a kept tab. It contains no browser ID, and a cache refill retains it.

@@ -110,11 +110,11 @@ VERSIONS="MARKETING_VERSION=$VERSION CURRENT_PROJECT_VERSION=$VERSION"
 # converter's project leaves both to the building Mac (its SDK's macOS as the minimum, its own
 # architecture), so a build on macOS 26.5 wouldn't open on 14, 15 or an Intel Mac.
 VERSIONS="$VERSIONS MACOSX_DEPLOYMENT_TARGET=14.0 ARCHS=\$(ARCHS_STANDARD) ONLY_ACTIVE_ARCH=NO"
-# The hosting core (app/shared/ffi: margin-core's host module, Rust) for both kinds of Mac, linked through
+# The hosting core (app/platforms/macos/ffi: margin-core's host module, Rust) for both kinds of Mac, linked through
 # `import MarginCore` (its module map's `link` line): only where Swift finds the module and the linker the library.
 CORE_LIB=$(sh scripts/build-core.sh) || { echo "safari.sh: the hosting core didn't build" >&2; exit 1; }
 # (Dead code stripped: the converter's project leaves it off, which would ship every part of the core the app never calls.)
-VERSIONS="$VERSIONS SWIFT_INCLUDE_PATHS=$PWD/app/shared/ffi/include LIBRARY_SEARCH_PATHS=$CORE_LIB DEAD_CODE_STRIPPING=YES"
+VERSIONS="$VERSIONS SWIFT_INCLUDE_PATHS=$PWD/app/platforms/macos/ffi/include LIBRARY_SEARCH_PATHS=$CORE_LIB DEAD_CODE_STRIPPING=YES"
 
 # shellcheck disable=SC2086
 if [ -n "$IDENTITY_NAME" ] && [ "$UNSIGNED" = false ]; then

@@ -6,10 +6,10 @@ import assert from 'node:assert/strict';
 import {
   sanitizeTemplate, sanitizeCss, sanitizeDeclarations, checkCssValue, checkIconUrl,
   tokenizeCss, parseInterpolation, isBundledPath, LIMITS, VISUAL_EFFECTS,
-} from '../extension/ui/sanitize.ts';
-import { ACTIONS, checkAction, contextFromState, createDispatcher, isAction } from '../extension/ui/actions.ts';
-import { checkManifest, wantsSystemMaterials } from '../extension/ui/theme-schema.ts';
-import { sanitizeTheme } from '../extension/ui/theme-loader.ts';
+} from '../app/shared/ui/sanitize.ts';
+import { ACTIONS, checkAction, contextFromState, createDispatcher, isAction } from '../app/shared/ui/actions.ts';
+import { checkManifest, wantsSystemMaterials } from '../app/shared/ui/theme-schema.ts';
+import { sanitizeTheme } from '../app/shared/ui/theme-loader.ts';
 import { HTML_PAYLOADS, CSS_PAYLOADS, ACTION_PAYLOADS, wrap } from './theme/payloads.ts';
 import { auditTree } from './theme/audit.ts';
 import { readTheme } from './theme/package.ts';

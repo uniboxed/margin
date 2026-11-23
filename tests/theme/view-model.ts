@@ -6,8 +6,8 @@
 // (a changed tab is a new record, the rest the same), and builds the theme
 // view model from it with ui/view-model.ts, passing the last model so that
 // what didn't change is shared. Runs in Node and in pages.
-import { buildViewModel } from '../../extension/ui/view-model.ts';
-import type { UiState, ViewModel, ViewModelInput } from '../../extension/ui/view-model.ts';
+import { buildViewModel } from '../../app/shared/ui/view-model.ts';
+import type { UiState, ViewModel, ViewModelInput } from '../../app/shared/ui/view-model.ts';
 import type { Owner } from '../../extension/shared/owner.ts';
 import type { ArchiveEntry, Favicon, Folder, Pin, Settings, Space, TabRecord } from '../../types/margin';
 

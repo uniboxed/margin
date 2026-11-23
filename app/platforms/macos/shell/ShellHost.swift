@@ -11,7 +11,7 @@ import AppKit
 extension Shell {
     // Application Support/Margin (beside the lasting data's folder), or a harness's own folder.
     var hostMarkerURL: URL {
-        let root = options.harness || options.dataRoot != nil ? data.store.root : DataStore.appRoot.deletingLastPathComponent()
+        let root = options.harness || options.dataRoot != nil ? data.root : DataSync.appRoot.deletingLastPathComponent()
         return root.appendingPathComponent(HostMarker.fileName)
     }
 

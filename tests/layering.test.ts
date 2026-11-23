@@ -47,7 +47,7 @@ test('the content script reaches nothing of the background\'s', () => {
 });
 
 test('the UI (its runtime, behaviors, view model) and the app\'s overlay reach nothing of the background\'s', () => {
-  const ui = readdirSync(join(ROOT, 'extension/ui')).filter((n) => n.endsWith('.ts')).map((n) => `extension/ui/${n}`);
+  const ui = readdirSync(join(ROOT, 'app/shared/ui')).filter((n) => n.endsWith('.ts')).map((n) => `app/shared/ui/${n}`);
   const bad = [...new Set(reached([...ui, 'app/shared/host/overlay.ts']).filter(([from, to]) => backgroundSide(to) && !backgroundSide(from)).map(([a, b]) => `${a} -> ${b}`))];
   assert.deepEqual(bad, []);
 });

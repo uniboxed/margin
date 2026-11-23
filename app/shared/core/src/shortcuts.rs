@@ -51,10 +51,35 @@ pub enum AppCommand {
     ToggleSidebar,
     /// A Margin window of its own (docs/BROWSER-WINDOWS.md §5).
     NewWindow,
+    CopyUrl,
+    FocusAddress,
+    TogglePin,
+    ReopenArchived,
+    /// Quick Tab (its key's name kept from when it was "Little Arc").
+    LittleArc,
+    AddSplit,
+    Space1,
+    Space2,
+    Space3,
+    Space4,
+    Space5,
+    Space6,
+    Space7,
+    Space8,
+    Space9,
+    Item1,
+    Item2,
+    Item3,
+    Item4,
+    Item5,
+    Item6,
+    Item7,
+    Item8,
+    Item9,
 }
 
 impl AppCommand {
-    pub const ALL: [AppCommand; 7] = [
+    pub const ALL: [AppCommand; 31] = [
         AppCommand::NextTab,
         AppCommand::PrevTab,
         AppCommand::NextSpace,
@@ -62,6 +87,30 @@ impl AppCommand {
         AppCommand::Palette,
         AppCommand::ToggleSidebar,
         AppCommand::NewWindow,
+        AppCommand::CopyUrl,
+        AppCommand::FocusAddress,
+        AppCommand::TogglePin,
+        AppCommand::ReopenArchived,
+        AppCommand::LittleArc,
+        AppCommand::AddSplit,
+        AppCommand::Space1,
+        AppCommand::Space2,
+        AppCommand::Space3,
+        AppCommand::Space4,
+        AppCommand::Space5,
+        AppCommand::Space6,
+        AppCommand::Space7,
+        AppCommand::Space8,
+        AppCommand::Space9,
+        AppCommand::Item1,
+        AppCommand::Item2,
+        AppCommand::Item3,
+        AppCommand::Item4,
+        AppCommand::Item5,
+        AppCommand::Item6,
+        AppCommand::Item7,
+        AppCommand::Item8,
+        AppCommand::Item9,
     ];
 
     /// Its name in the `keys` message and the overlay's `command` push.
@@ -74,6 +123,30 @@ impl AppCommand {
             AppCommand::Palette => "palette",
             AppCommand::ToggleSidebar => "toggle-sidebar",
             AppCommand::NewWindow => "new-window",
+            AppCommand::CopyUrl => "copy-url",
+            AppCommand::FocusAddress => "focus-address",
+            AppCommand::TogglePin => "toggle-pin",
+            AppCommand::ReopenArchived => "reopen-archived",
+            AppCommand::LittleArc => "little-arc",
+            AppCommand::AddSplit => "add-split",
+            AppCommand::Space1 => "space-1",
+            AppCommand::Space2 => "space-2",
+            AppCommand::Space3 => "space-3",
+            AppCommand::Space4 => "space-4",
+            AppCommand::Space5 => "space-5",
+            AppCommand::Space6 => "space-6",
+            AppCommand::Space7 => "space-7",
+            AppCommand::Space8 => "space-8",
+            AppCommand::Space9 => "space-9",
+            AppCommand::Item1 => "item-1",
+            AppCommand::Item2 => "item-2",
+            AppCommand::Item3 => "item-3",
+            AppCommand::Item4 => "item-4",
+            AppCommand::Item5 => "item-5",
+            AppCommand::Item6 => "item-6",
+            AppCommand::Item7 => "item-7",
+            AppCommand::Item8 => "item-8",
+            AppCommand::Item9 => "item-9",
         }
     }
 
@@ -84,6 +157,31 @@ impl AppCommand {
     /// Held down, these run again at the key repeat (a hot key itself fires once).
     pub fn repeats(self) -> bool {
         matches!(self, AppCommand::NextTab | AppCommand::PrevTab | AppCommand::NextSpace | AppCommand::PrevSpace)
+    }
+
+    /// Margin's or a hosted browser's, never taken from a hosted app that isn't a browser (Terminal, Notes keep
+    /// their own ⌘L, ⌘D, ⌘1–9: [`held`]).
+    pub fn browser_only(self) -> bool {
+        matches!(
+            self,
+            AppCommand::CopyUrl | AppCommand::FocusAddress | AppCommand::TogglePin | AppCommand::ReopenArchived
+        ) || self.item_number().is_some()
+    }
+
+    /// A space key's number (space-1…9).
+    pub fn space_number(self) -> Option<u32> {
+        Self::number(self, AppCommand::Space1, AppCommand::Space9)
+    }
+
+    /// A sidebar row key's number (item-1…9).
+    pub fn item_number(self) -> Option<u32> {
+        Self::number(self, AppCommand::Item1, AppCommand::Item9)
+    }
+
+    fn number(command: AppCommand, first: AppCommand, last: AppCommand) -> Option<u32> {
+        let at = |c: AppCommand| Self::ALL.iter().position(|x| *x == c);
+        let (i, a, b) = (at(command)?, at(first)?, at(last)?);
+        (a..=b).contains(&i).then(|| u32::try_from(i - a + 1).unwrap_or(0))
     }
 }
 
@@ -116,6 +214,27 @@ impl Modifiers {
             _ => None,
         }
     }
+    /// Carbon's modifier bits (`cmdKey` 0x100, `shiftKey` 0x200, `optionKey` 0x800, `controlKey` 0x1000), as the Mac's
+    /// `RegisterEventHotKey` takes them.
+    pub fn carbon(self) -> u32 {
+        let mut out = 0;
+        for (m, bit) in [(Self::META, 0x100), (Self::SHIFT, 0x200), (Self::ALT, 0x800), (Self::CTRL, 0x1000)] {
+            if self.contains(m) {
+                out |= bit;
+            }
+        }
+        out
+    }
+    /// From Carbon's modifier bits (others ignored).
+    pub fn from_carbon(bits: u32) -> Modifiers {
+        let mut out = Self::NONE;
+        for (m, bit) in [(Self::META, 0x100), (Self::SHIFT, 0x200), (Self::ALT, 0x800), (Self::CTRL, 0x1000)] {
+            if bits & bit != 0 {
+                out = out.union(m);
+            }
+        }
+        out
+    }
     /// `RegisterHotKey`'s `fsModifiers` (MOD_ALT 1, MOD_CONTROL 2, MOD_SHIFT 4, MOD_WIN 8), without MOD_NOREPEAT.
     pub fn windows(self) -> u32 {
         let mut out = 0;
@@ -128,76 +247,77 @@ impl Modifiers {
     }
 }
 
-/// The keys Margin's hot keys can be (the Swift `Combo.keyCodes`), each with its PS/2 set-1 scan code (0xE0
-/// prefixed in the high byte for the extended ones). A `code` is a key's place, so the Windows shell gets the key
-/// for the person's layout with `MapVirtualKeyW(scan, MAPVK_VSC_TO_VK_EX)`, as Carbon's `kVK_ANSI_*` are places too.
-const KEYS: &[(&str, u16)] = &[
-    ("ArrowDown", 0xE050),
-    ("ArrowUp", 0xE048),
-    ("ArrowLeft", 0xE04B),
-    ("ArrowRight", 0xE04D),
-    ("KeyA", 0x1E),
-    ("KeyB", 0x30),
-    ("KeyC", 0x2E),
-    ("KeyD", 0x20),
-    ("KeyE", 0x12),
-    ("KeyF", 0x21),
-    ("KeyG", 0x22),
-    ("KeyH", 0x23),
-    ("KeyI", 0x17),
-    ("KeyJ", 0x24),
-    ("KeyK", 0x25),
-    ("KeyL", 0x26),
-    ("KeyM", 0x32),
-    ("KeyN", 0x31),
-    ("KeyO", 0x18),
-    ("KeyP", 0x19),
-    ("KeyQ", 0x10),
-    ("KeyR", 0x13),
-    ("KeyS", 0x1F),
-    ("KeyT", 0x14),
-    ("KeyU", 0x16),
-    ("KeyV", 0x2F),
-    ("KeyW", 0x11),
-    ("KeyX", 0x2D),
-    ("KeyY", 0x15),
-    ("KeyZ", 0x2C),
-    ("Space", 0x39),
-    ("F19", 0x6A),
-    ("Digit0", 0x0B),
-    ("Digit1", 0x02),
-    ("Digit2", 0x03),
-    ("Digit3", 0x04),
-    ("Digit4", 0x05),
-    ("Digit5", 0x06),
-    ("Digit6", 0x07),
-    ("Digit7", 0x08),
-    ("Digit8", 0x09),
-    ("Digit9", 0x0A),
-    ("Enter", 0x1C),
-    ("Backquote", 0x29),
-    ("Minus", 0x0C),
-    ("Equal", 0x0D),
-    ("BracketLeft", 0x1A),
-    ("BracketRight", 0x1B),
-    ("Backslash", 0x2B),
-    ("Semicolon", 0x27),
-    ("Quote", 0x28),
-    ("Comma", 0x33),
-    ("Period", 0x34),
-    ("Slash", 0x35),
-    ("F1", 0x3B),
-    ("F2", 0x3C),
-    ("F3", 0x3D),
-    ("F4", 0x3E),
-    ("F5", 0x3F),
-    ("F6", 0x40),
-    ("F7", 0x41),
-    ("F8", 0x42),
-    ("F9", 0x43),
-    ("F10", 0x44),
-    ("F11", 0x57),
-    ("F12", 0x58),
+/// The keys Margin's hot keys can be, each with its PS/2 set-1 scan code (0xE0 prefixed in the high byte for the
+/// extended ones) and its Mac virtual key code (Carbon's `kVK_*`). A `code` is a key's place, so the Windows shell gets
+/// the key for the person's layout with `MapVirtualKeyW(scan, MAPVK_VSC_TO_VK_EX)`, as Carbon's `kVK_ANSI_*` are places
+/// too. (The Mac's column is checked against Carbon's own constants by the app's tests.)
+const KEYS: &[(&str, u16, u16)] = &[
+    ("ArrowDown", 0xE050, 0x7D),
+    ("ArrowUp", 0xE048, 0x7E),
+    ("ArrowLeft", 0xE04B, 0x7B),
+    ("ArrowRight", 0xE04D, 0x7C),
+    ("KeyA", 0x1E, 0x00),
+    ("KeyB", 0x30, 0x0B),
+    ("KeyC", 0x2E, 0x08),
+    ("KeyD", 0x20, 0x02),
+    ("KeyE", 0x12, 0x0E),
+    ("KeyF", 0x21, 0x03),
+    ("KeyG", 0x22, 0x05),
+    ("KeyH", 0x23, 0x04),
+    ("KeyI", 0x17, 0x22),
+    ("KeyJ", 0x24, 0x26),
+    ("KeyK", 0x25, 0x28),
+    ("KeyL", 0x26, 0x25),
+    ("KeyM", 0x32, 0x2E),
+    ("KeyN", 0x31, 0x2D),
+    ("KeyO", 0x18, 0x1F),
+    ("KeyP", 0x19, 0x23),
+    ("KeyQ", 0x10, 0x0C),
+    ("KeyR", 0x13, 0x0F),
+    ("KeyS", 0x1F, 0x01),
+    ("KeyT", 0x14, 0x11),
+    ("KeyU", 0x16, 0x20),
+    ("KeyV", 0x2F, 0x09),
+    ("KeyW", 0x11, 0x0D),
+    ("KeyX", 0x2D, 0x07),
+    ("KeyY", 0x15, 0x10),
+    ("KeyZ", 0x2C, 0x06),
+    ("Space", 0x39, 0x31),
+    ("F19", 0x6A, 0x50),
+    ("Digit0", 0x0B, 0x1D),
+    ("Digit1", 0x02, 0x12),
+    ("Digit2", 0x03, 0x13),
+    ("Digit3", 0x04, 0x14),
+    ("Digit4", 0x05, 0x15),
+    ("Digit5", 0x06, 0x17),
+    ("Digit6", 0x07, 0x16),
+    ("Digit7", 0x08, 0x1A),
+    ("Digit8", 0x09, 0x1C),
+    ("Digit9", 0x0A, 0x19),
+    ("Enter", 0x1C, 0x24),
+    ("Backquote", 0x29, 0x32),
+    ("Minus", 0x0C, 0x1B),
+    ("Equal", 0x0D, 0x18),
+    ("BracketLeft", 0x1A, 0x21),
+    ("BracketRight", 0x1B, 0x1E),
+    ("Backslash", 0x2B, 0x2A),
+    ("Semicolon", 0x27, 0x29),
+    ("Quote", 0x28, 0x27),
+    ("Comma", 0x33, 0x2B),
+    ("Period", 0x34, 0x2F),
+    ("Slash", 0x35, 0x2C),
+    ("F1", 0x3B, 0x7A),
+    ("F2", 0x3C, 0x78),
+    ("F3", 0x3D, 0x63),
+    ("F4", 0x3E, 0x76),
+    ("F5", 0x3F, 0x60),
+    ("F6", 0x40, 0x61),
+    ("F7", 0x41, 0x62),
+    ("F8", 0x42, 0x64),
+    ("F9", 0x43, 0x65),
+    ("F10", 0x44, 0x6D),
+    ("F11", 0x57, 0x67),
+    ("F12", 0x58, 0x6F),
 ];
 
 /// One combination: its modifiers and a key's `code`.
@@ -214,7 +334,7 @@ impl Combo {
     pub fn parse(text: &str) -> Option<Combo> {
         let parts: Vec<&str> = text.split('+').filter(|p| !p.is_empty()).collect();
         let (&last, mods) = parts.split_last()?;
-        let code = KEYS.iter().find(|(c, _)| *c == last)?.0;
+        let code = KEYS.iter().find(|(c, _, _)| *c == last)?.0;
         if mods.is_empty() {
             return None;
         }
@@ -241,7 +361,18 @@ impl Combo {
     }
     /// Its key's set-1 scan code (0xE0 in the high byte for an extended key): see `KEYS`.
     pub fn scan_code(&self) -> u16 {
-        KEYS.iter().find(|(c, _)| *c == self.code).map(|k| k.1).unwrap_or(0)
+        KEYS.iter().find(|(c, _, _)| *c == self.code).map(|k| k.1).unwrap_or(0)
+    }
+    /// Its key's Mac virtual key code (Carbon's `kVK_*`): see `KEYS`.
+    pub fn mac_key_code(&self) -> u16 {
+        KEYS.iter().find(|(c, _, _)| *c == self.code).map(|k| k.2).unwrap_or(0)
+    }
+    /// The combination of a Mac key code and Carbon modifier bits (`None`: not one of `KEYS`, or not a combination
+    /// [`Combo::parse`] would make).
+    pub fn from_mac(key_code: u16, carbon: u32) -> Option<Combo> {
+        let code = KEYS.iter().find(|k| k.2 == key_code)?.0;
+        let modifiers = Modifiers::from_carbon(carbon);
+        Combo::parse(&Combo { code, modifiers }.text())
     }
     /// As Settings write it, modifiers in their order (`Ctrl+Alt+Shift+Meta+Code`).
     pub fn text(&self) -> String {
@@ -272,33 +403,62 @@ impl fmt::Display for Combo {
     }
 }
 
-/// The app's default combination for a command on an OS. macOS: exactly the Swift's. **Windows: provisional, to
-/// be decided** (⌘ → Ctrl, ⌥ → Alt: tabs Ctrl+Alt+↓/↑, spaces Ctrl+Alt+→/←, palette Ctrl+T, sidebar Alt+S, new
-/// window Ctrl+N). Open questions there: Ctrl+Alt is AltGr on many European layouts, and some graphics drivers
-/// take Ctrl+Alt+arrows to rotate the screen; Ctrl+T and Ctrl+N are the browser's own new tab and window, which
-/// Margin then takes only while it draws over the front window, as ⌘T on the Mac.
-pub fn default_for(command: AppCommand, os: Os) -> &'static str {
-    match (os, command) {
-        (Os::MacOs, AppCommand::NextTab) => "Alt+Meta+ArrowDown",
-        (Os::MacOs, AppCommand::PrevTab) => "Alt+Meta+ArrowUp",
-        (Os::MacOs, AppCommand::NextSpace) => "Alt+Meta+ArrowRight",
-        (Os::MacOs, AppCommand::PrevSpace) => "Alt+Meta+ArrowLeft",
-        (Os::MacOs, AppCommand::Palette) => "Meta+KeyT",
-        (Os::MacOs, AppCommand::ToggleSidebar) => "Alt+KeyS",
-        (Os::MacOs, AppCommand::NewWindow) => "Meta+KeyN",
-        (Os::Windows, AppCommand::NextTab) => "Ctrl+Alt+ArrowDown",
-        (Os::Windows, AppCommand::PrevTab) => "Ctrl+Alt+ArrowUp",
-        (Os::Windows, AppCommand::NextSpace) => "Ctrl+Alt+ArrowRight",
-        (Os::Windows, AppCommand::PrevSpace) => "Ctrl+Alt+ArrowLeft",
-        (Os::Windows, AppCommand::Palette) => "Ctrl+KeyT",
-        (Os::Windows, AppCommand::ToggleSidebar) => "Alt+KeyS",
-        (Os::Windows, AppCommand::NewWindow) => "Ctrl+KeyN",
-    }
+/// The app's default combination for a command on an OS (`None`: the command isn't on that OS yet). macOS: exactly
+/// the Mac app's own. **Windows: provisional, to be decided** (⌘ → Ctrl, ⌥ → Alt: tabs Ctrl+Alt+↓/↑, spaces
+/// Ctrl+Alt+→/←, palette Ctrl+T, sidebar Alt+S, new window Ctrl+N). Open questions there: Ctrl+Alt is AltGr on many
+/// European layouts, and some graphics drivers take Ctrl+Alt+arrows to rotate the screen; Ctrl+T and Ctrl+N are the
+/// browser's own new tab and window, which Margin then takes only while it draws over the front window, as ⌘T on
+/// the Mac. The Mac app's later commands (copy-url, focus-address, the pin, the archive, Quick Tab, Add Split, the
+/// numbered space and row keys) have none on Windows until its hosted design decides them: the Windows shell's old
+/// design binds none of them, whatever a copy sends ([`bindings_from`]).
+pub fn default_for(command: AppCommand, os: Os) -> Option<&'static str> {
+    use AppCommand as C;
+    Some(match (os, command) {
+        (Os::MacOs, C::NextTab) => "Alt+Meta+ArrowDown",
+        (Os::MacOs, C::PrevTab) => "Alt+Meta+ArrowUp",
+        (Os::MacOs, C::NextSpace) => "Alt+Meta+ArrowRight",
+        (Os::MacOs, C::PrevSpace) => "Alt+Meta+ArrowLeft",
+        (Os::MacOs, C::Palette) => "Meta+KeyT",
+        (Os::MacOs, C::ToggleSidebar) => "Alt+KeyS",
+        (Os::MacOs, C::NewWindow) => "Meta+KeyN",
+        (Os::MacOs, C::CopyUrl) => "Shift+Meta+KeyC",
+        (Os::MacOs, C::FocusAddress) => "Meta+KeyL",
+        (Os::MacOs, C::TogglePin) => "Meta+KeyD",
+        (Os::MacOs, C::ReopenArchived) => "Shift+Meta+KeyT",
+        (Os::MacOs, C::LittleArc) => "Alt+Meta+KeyN",
+        (Os::MacOs, C::AddSplit) => "Ctrl+Shift+Equal",
+        (Os::MacOs, C::Space1) => "Ctrl+Digit1",
+        (Os::MacOs, C::Space2) => "Ctrl+Digit2",
+        (Os::MacOs, C::Space3) => "Ctrl+Digit3",
+        (Os::MacOs, C::Space4) => "Ctrl+Digit4",
+        (Os::MacOs, C::Space5) => "Ctrl+Digit5",
+        (Os::MacOs, C::Space6) => "Ctrl+Digit6",
+        (Os::MacOs, C::Space7) => "Ctrl+Digit7",
+        (Os::MacOs, C::Space8) => "Ctrl+Digit8",
+        (Os::MacOs, C::Space9) => "Ctrl+Digit9",
+        (Os::MacOs, C::Item1) => "Meta+Digit1",
+        (Os::MacOs, C::Item2) => "Meta+Digit2",
+        (Os::MacOs, C::Item3) => "Meta+Digit3",
+        (Os::MacOs, C::Item4) => "Meta+Digit4",
+        (Os::MacOs, C::Item5) => "Meta+Digit5",
+        (Os::MacOs, C::Item6) => "Meta+Digit6",
+        (Os::MacOs, C::Item7) => "Meta+Digit7",
+        (Os::MacOs, C::Item8) => "Meta+Digit8",
+        (Os::MacOs, C::Item9) => "Meta+Digit9",
+        (Os::Windows, C::NextTab) => "Ctrl+Alt+ArrowDown",
+        (Os::Windows, C::PrevTab) => "Ctrl+Alt+ArrowUp",
+        (Os::Windows, C::NextSpace) => "Ctrl+Alt+ArrowRight",
+        (Os::Windows, C::PrevSpace) => "Ctrl+Alt+ArrowLeft",
+        (Os::Windows, C::Palette) => "Ctrl+KeyT",
+        (Os::Windows, C::ToggleSidebar) => "Alt+KeyS",
+        (Os::Windows, C::NewWindow) => "Ctrl+KeyN",
+        (Os::Windows, _) => return None,
+    })
 }
 
-/// Every command's default on an OS.
+/// Every command's default on an OS (the commands it has).
 pub fn defaults(os: Os) -> Vec<(AppCommand, &'static str)> {
-    AppCommand::ALL.into_iter().map(|c| (c, default_for(c, os))).collect()
+    AppCommand::ALL.into_iter().filter_map(|c| default_for(c, os).map(|d| (c, d))).collect()
 }
 
 /// The combinations a copy sends for a command written for the Mac whatever the OS (see the module's "`Meta` on
@@ -311,8 +471,8 @@ pub fn mac_written(command: AppCommand) -> &'static [&'static str] {
         AppCommand::NextSpace => &["Alt+Meta+ArrowRight", "Ctrl+Meta+ArrowRight"],
         AppCommand::PrevSpace => &["Alt+Meta+ArrowLeft", "Ctrl+Meta+ArrowLeft"],
         AppCommand::Palette => &["Meta+KeyT"],
-        AppCommand::ToggleSidebar => &[],
         AppCommand::NewWindow => &["Meta+KeyN"],
+        _ => &[],
     }
 }
 
@@ -336,7 +496,8 @@ pub fn default_bindings(os: Os) -> Bindings {
 pub fn bindings_from(keys: &HashMap<String, Vec<String>>, os: Os, safari: bool) -> Bindings {
     let mut out = Bindings::new();
     for command in AppCommand::ALL {
-        let default = default_for(command, os);
+        // (A command not on this OS yet: none, whatever the copy sends.)
+        let Some(default) = default_for(command, os) else { continue };
         let mut texts: Vec<&str> = match keys.get(command.name()) {
             Some(list) => list.iter().map(String::as_str).collect(),
             None => vec![default],
@@ -348,9 +509,8 @@ pub fn bindings_from(keys: &HashMap<String, Vec<String>>, os: Os, safari: bool) 
                 }
             }
         }
-        let palette = default_for(AppCommand::Palette, os);
-        if command == AppCommand::Palette && !texts.contains(&palette) {
-            texts.push(palette);
+        if command == AppCommand::Palette && !texts.contains(&default) {
+            texts.push(default);
         }
         if command == AppCommand::ToggleSidebar && safari && !texts.contains(&SAFARI_SIDEBAR_KEY) {
             texts.push(SAFARI_SIDEBAR_KEY);
@@ -378,6 +538,154 @@ pub fn bindings_for_front(
     }
     b
 }
+
+/// The keys Margin holds now, of `bindings` (Margin hosting apps in its own window): a hosted app in front
+/// (`margin_in_front` false) keeps its sidebar key, and its own ⌘L, ⌘D, ⌘1–9… unless it's a browser
+/// ([`AppCommand::browser_only`]); a numbered key with nothing behind it (more than the window's `spaces`, or its
+/// sidebar's rows, `items`: its page says them) isn't held at all, so the press reaches the app in front (a hot key
+/// can't pass one on). Counts not said yet: every number held.
+pub fn held(
+    bindings: &Bindings,
+    margin_in_front: bool,
+    browser: bool,
+    spaces: Option<u32>,
+    items: Option<u32>,
+) -> Bindings {
+    bindings
+        .iter()
+        .filter(|(_, command)| {
+            if !margin_in_front && (**command == AppCommand::ToggleSidebar || (command.browser_only() && !browser)) {
+                return false;
+            }
+            if let (Some(n), Some(spaces)) = (command.space_number(), spaces) {
+                if n > spaces {
+                    return false;
+                }
+            }
+            if let (Some(n), Some(items)) = (command.item_number(), items) {
+                if n > items {
+                    return false;
+                }
+            }
+            true
+        })
+        .map(|(c, a)| (*c, *a))
+        .collect()
+}
+
+/// What's in front, for the hosted gates ([`hosted_active`], [`guards_quit`], [`guards_app_keys`]).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Front {
+    /// The front app's pid (`None`: unread).
+    pub pid: Option<u32>,
+    /// Margin's own pid.
+    pub own: u32,
+    /// The front app is one Margin hosts.
+    pub hosted: bool,
+    /// A Margin window is open.
+    pub window_open: bool,
+    /// A Margin window is on the current Space (desktop).
+    pub on_current_space: bool,
+}
+
+/// Margin hosting apps in its own window: its keys are the app's while Margin itself is the active app (one of its
+/// windows open), or while an app it hosts is with a Margin window on the current Space; let go otherwise, so other
+/// apps keep their keys. A hot key reaches Margin only: the hosted app never gets the same press too.
+pub fn hosted_active(f: Front) -> bool {
+    let Some(pid) = f.pid else { return false };
+    if !f.window_open {
+        return false;
+    }
+    pid == f.own || (f.hosted && f.on_current_space)
+}
+
+/// Whether ⌘Q and ⌥⌘Q are Margin's first (the quit guard): it isn't quitting already, Margin or an app it hosts is in
+/// front ([`hosted_active`]), and either Margin asks before it quits (`asks`: its stored setting, off after "Always
+/// quit") or it's a hosted app in front. With asking off the key in a hosted app is still Margin's: it quits Margin
+/// without asking, never the hosted app alone, which would leave its item dead in Margin; with Margin itself in front
+/// it's then Margin's own Quit. Never held for an app Margin doesn't host: ⌘Q there is that app's.
+pub fn guards_quit(f: Front, asks: bool, quitting: bool) -> bool {
+    !quitting && (asks || f.pid != Some(f.own)) && hosted_active(f)
+}
+
+/// Whether a hosted app's own keys ([`AppKey`]) are Margin's: an app Margin hosts is in front (not Margin itself,
+/// whose menu has them), with a Margin window on the current Space, and Margin isn't quitting.
+pub fn guards_app_keys(f: Front, quitting: bool) -> bool {
+    !quitting && f.pid != Some(f.own) && hosted_active(f)
+}
+
+/// A Chrome or Edge app, any channel (bundle ids `com.google.Chrome…`, `com.microsoft.edgemac…`).
+pub fn is_chromium_bundle(bundle: &str) -> bool {
+    bundle.starts_with("com.google.Chrome") || bundle.starts_with("com.microsoft.edgemac")
+}
+
+/// A hosted app that is a browser (the browser-only keys are Margin's there): one of the browsers Margin links with
+/// (`linked`: their bundle ids), or Chrome or Edge in any channel. (A Safari window a copy made is one too: the shell
+/// says so before asking.)
+pub fn is_browser_app(bundle: &str, linked: &HashSet<String>) -> bool {
+    linked.contains(bundle) || is_chromium_bundle(bundle)
+}
+
+/// A hosted app's own key Margin takes while that app is in front ([`guards_app_keys`]), and what it is: in the
+/// window Margin hosts each would take the window out of Margin (or close every tab of a Safari window), so Margin
+/// does what its own menu would (⌘W its Close Tab) or nothing; in another window of the app's (a meeting, a draft),
+/// ⌘W closes it and ⌘M minimizes it, as there. The shell does each.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AppKey {
+    CloseTab,
+    /// Safari: Close Window, every tab in it.
+    CloseWindow,
+    /// Safari: Close Other Tabs; most apps: Close All.
+    CloseOthers,
+    Minimize,
+    Hide,
+    /// Margin itself among the others.
+    HideOthers,
+    /// Out of Margin's Space, into one of its own.
+    FullScreen,
+}
+
+impl AppKey {
+    pub const ALL: [AppKey; 7] = [
+        AppKey::CloseTab,
+        AppKey::CloseWindow,
+        AppKey::CloseOthers,
+        AppKey::Minimize,
+        AppKey::Hide,
+        AppKey::HideOthers,
+        AppKey::FullScreen,
+    ];
+    /// Its combination as Settings write one.
+    pub fn text(self) -> &'static str {
+        match self {
+            AppKey::CloseTab => "Meta+KeyW",
+            AppKey::CloseWindow => "Shift+Meta+KeyW",
+            AppKey::CloseOthers => "Alt+Meta+KeyW",
+            AppKey::Minimize => "Meta+KeyM",
+            AppKey::Hide => "Meta+KeyH",
+            AppKey::HideOthers => "Alt+Meta+KeyH",
+            AppKey::FullScreen => "Ctrl+Meta+KeyF",
+        }
+    }
+    /// For the log: "⌘W".
+    pub fn name(self) -> &'static str {
+        match self {
+            AppKey::CloseTab => "⌘W",
+            AppKey::CloseWindow => "⇧⌘W",
+            AppKey::CloseOthers => "⌥⌘W",
+            AppKey::Minimize => "⌘M",
+            AppKey::Hide => "⌘H",
+            AppKey::HideOthers => "⌥⌘H",
+            AppKey::FullScreen => "⌃⌘F",
+        }
+    }
+    pub fn combo(self) -> Combo {
+        Combo::parse(self.text()).unwrap_or(Combo { code: "KeyW", modifiers: Modifiers::META })
+    }
+}
+
+/// The quit guard's two combinations, and whether each keeps the windows (⌥⌘Q, a browser's Quit and Keep Windows).
+pub const QUIT_KEYS: [(&str, bool); 2] = [("Meta+KeyQ", false), ("Alt+Meta+KeyQ", true)];
 
 /// Whether Margin's keys are the app's now (Swift `ShortcutSet.active`): a linked browser is the active app and
 /// its front window has Margin's overlay showing.
@@ -461,6 +769,8 @@ pub fn route(command: AppCommand, is_repeat: bool, overlay_ready: bool) -> KeyRo
             KeyRoute::Overlay { name: command.name(), repeat: Some(is_repeat) }
         }
         AppCommand::NextTab | AppCommand::PrevTab => KeyRoute::Navigate { action: command.name() },
+        // (The Mac app's later commands: never bound on Windows yet, the overlay's if ever.)
+        _ => KeyRoute::Overlay { name: command.name(), repeat: None },
     }
 }
 
@@ -512,6 +822,15 @@ pub struct Run {
     pub is_repeat: bool,
 }
 
+/// A hot key pressed ([`AppShortcuts::press`]): one of Margin's keys, the quit guard's (⌥⌘Q: `keep_windows`), or a
+/// hosted app's own key Margin took.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Hit {
+    Command(Run),
+    Quit { keep_windows: bool },
+    AppKey(AppKey),
+}
+
 #[derive(Clone, Copy, Debug)]
 struct Repeating {
     id: u32,
@@ -531,6 +850,9 @@ struct Repeating {
 pub struct AppShortcuts {
     bindings: Vec<(Combo, AppCommand)>,
     active: bool,
+    /// The quit guard and the hosted app's keys, held apart from Margin's keys by their own rules.
+    guards_quit: bool,
+    guards_app_keys: bool,
     /// Ids registered, so a rebind lets go of all of them.
     held: usize,
     /// The ones another app holds (tried again each time they're taken).
@@ -543,11 +865,16 @@ impl AppShortcuts {
     /// The shortest wait before the first repeat, and between repeats, whatever the OS says.
     pub const MIN_DELAY: Secs = 0.05;
     pub const MIN_INTERVAL: Secs = 0.02;
+    /// The ids of the quit guard's two keys, and of the hosted app's keys ([`AppKey::ALL`]'s order).
+    pub const QUIT_ID_BASE: u32 = 900;
+    pub const APP_KEY_ID_BASE: u32 = 920;
 
     pub fn new(bindings: Bindings, key_repeat: KeyRepeat) -> Self {
         Self {
             bindings: Self::ordered(bindings),
             active: false,
+            guards_quit: false,
+            guards_app_keys: false,
             held: 0,
             unavailable: Vec::new(),
             key_repeat,
@@ -560,6 +887,61 @@ impl AppShortcuts {
     }
     pub fn is_active(&self) -> bool {
         self.active
+    }
+    pub fn guards_quit(&self) -> bool {
+        self.guards_quit
+    }
+    pub fn guards_app_keys(&self) -> bool {
+        self.guards_app_keys
+    }
+
+    /// The quit guard held or let go (⌘Q, ⌥⌘Q: [`guards_quit`] says when). Returns the combinations another app
+    /// holds ("⌘Q is another app's: Margin can't ask before it quits by it").
+    pub fn set_quit_guard(&mut self, registrar: &mut dyn HotKeyRegistrar, active: bool) -> Vec<Combo> {
+        if active == self.guards_quit {
+            return Vec::new();
+        }
+        self.guards_quit = active;
+        let combos: Vec<Combo> = QUIT_KEYS.iter().filter_map(|(t, _)| Combo::parse(t)).collect();
+        Self::guard(registrar, active, Self::QUIT_ID_BASE, &combos)
+    }
+
+    /// The hosted app's own keys held or let go ([`guards_app_keys`] says when). Returns the combinations another
+    /// app holds ("⌘W is another app's: a hosted app keeps it").
+    pub fn set_app_key_guard(&mut self, registrar: &mut dyn HotKeyRegistrar, active: bool) -> Vec<Combo> {
+        if active == self.guards_app_keys {
+            return Vec::new();
+        }
+        self.guards_app_keys = active;
+        let combos: Vec<Combo> = AppKey::ALL.iter().map(|k| k.combo()).collect();
+        Self::guard(registrar, active, Self::APP_KEY_ID_BASE, &combos)
+    }
+
+    fn guard(registrar: &mut dyn HotKeyRegistrar, active: bool, base: u32, combos: &[Combo]) -> Vec<Combo> {
+        let mut taken = Vec::new();
+        for (i, combo) in combos.iter().enumerate() {
+            let id = base + u32::try_from(i).unwrap_or(0);
+            if !active {
+                registrar.unregister(id);
+            } else if !registrar.register(combo, id) {
+                taken.push(*combo);
+            }
+        }
+        taken
+    }
+
+    /// A hot key pressed, whatever its id: a hosted app's key while that guard holds, the quit guard's while it
+    /// holds, else one of Margin's keys ([`AppShortcuts::hit`]).
+    pub fn press(&mut self, id: u32, now: Secs) -> Option<Hit> {
+        if id >= Self::APP_KEY_ID_BASE {
+            let key = AppKey::ALL.get(usize::try_from(id - Self::APP_KEY_ID_BASE).ok()?)?;
+            return self.guards_app_keys.then_some(Hit::AppKey(*key));
+        }
+        if id >= Self::QUIT_ID_BASE {
+            let (_, keep_windows) = QUIT_KEYS.get(usize::try_from(id - Self::QUIT_ID_BASE).ok()?)?;
+            return self.guards_quit.then_some(Hit::Quit { keep_windows: *keep_windows });
+        }
+        self.hit(id, now).map(Hit::Command)
     }
     pub fn unavailable(&self) -> &[Combo] {
         &self.unavailable
@@ -575,16 +957,17 @@ impl AppShortcuts {
         v
     }
 
-    /// New combinations (the copy's `keys`): held at once if the keys are held now.
-    pub fn rebind(&mut self, registrar: &mut dyn HotKeyRegistrar, next: Bindings) {
+    /// New combinations (the copy's `keys`): held at once if the keys are held now. Returns the ones another app
+    /// holds, as [`AppShortcuts::set_active`] (none when nothing changed).
+    pub fn rebind(&mut self, registrar: &mut dyn HotKeyRegistrar, next: Bindings) -> Vec<(Combo, AppCommand)> {
         let ordered = Self::ordered(next);
         if ordered == self.bindings {
-            return;
+            return Vec::new();
         }
         let was = self.active;
         self.set_active(registrar, false);
         self.bindings = ordered;
-        self.set_active(registrar, was);
+        self.set_active(registrar, was)
     }
 
     /// Held or let go. Returns the combinations another app holds that were just found so (for the log:
@@ -730,8 +1113,20 @@ mod tests {
         assert_eq!(c("Ctrl+Alt+ArrowDown").scan_code(), 0xE050);
         assert_eq!(c("Ctrl+Alt+Shift+Meta+KeyA").modifiers().windows(), 0xF);
         assert_eq!(c("Ctrl+KeyT").modifiers().windows(), 2);
-        assert!(KEYS.iter().all(|(code, _)| Combo::parse(&format!("Alt+{code}")).is_some()));
+        assert!(KEYS.iter().all(|(code, _, _)| Combo::parse(&format!("Alt+{code}")).is_some()));
         assert_eq!(KEYS.len(), 66);
+        // The Mac's: Carbon's key codes and modifier bits, both ways.
+        assert_eq!(c("Ctrl+Meta+ArrowDown").mac_key_code(), 125);
+        assert_eq!(c("Meta+KeyT").mac_key_code(), 17);
+        assert_eq!(c("Ctrl+Meta+ArrowDown").modifiers().carbon(), 0x1000 | 0x100);
+        assert_eq!(c("Ctrl+Alt+Shift+Meta+F19").modifiers().carbon(), 0x1B00);
+        assert_eq!(Combo::from_mac(125, 0x1100), Some(c("Ctrl+Meta+ArrowDown")));
+        assert_eq!(Combo::from_mac(17, 0x200), None, "only Shift: not one");
+        assert_eq!(Combo::from_mac(0xFF, 0x100), None, "a key not known");
+        let codes: HashSet<u16> = KEYS.iter().map(|k| k.2).collect();
+        assert_eq!(codes.len(), KEYS.len(), "every key its own Mac code");
+        assert!(KEYS.iter().all(|(code, _, _)| Combo::from_mac(c(&format!("Meta+{code}")).mac_key_code(), 0x100)
+            == Some(c(&format!("Meta+{code}")))));
     }
 
     #[test]
@@ -740,6 +1135,30 @@ mod tests {
             assert_eq!(AppCommand::parse(command.name()), Some(command));
         }
         assert!(AppCommand::NextSpace.repeats() && !AppCommand::Palette.repeats() && !AppCommand::NewWindow.repeats());
+        assert_eq!(AppCommand::ALL.len(), 31);
+        assert_eq!(AppCommand::Space3.space_number(), Some(3));
+        assert_eq!(AppCommand::Item9.item_number(), Some(9));
+        assert_eq!(AppCommand::Space1.item_number(), None);
+        assert_eq!(AppCommand::Palette.space_number(), None);
+        let browser_only: Vec<&str> = AppCommand::ALL.iter().filter(|c| c.browser_only()).map(|c| c.name()).collect();
+        assert_eq!(
+            browser_only,
+            [
+                "copy-url",
+                "focus-address",
+                "toggle-pin",
+                "reopen-archived",
+                "item-1",
+                "item-2",
+                "item-3",
+                "item-4",
+                "item-5",
+                "item-6",
+                "item-7",
+                "item-8",
+                "item-9"
+            ]
+        );
         assert_eq!(route(AppCommand::Palette, false, true), KeyRoute::Overlay { name: "palette", repeat: None });
         assert_eq!(
             route(AppCommand::ToggleSidebar, false, false),
@@ -759,11 +1178,26 @@ mod tests {
     #[test]
     fn the_defaults() {
         let mac = default_bindings(Os::MacOs);
-        assert_eq!(mac.len(), 7, "seven keys by default");
+        assert_eq!(mac.len(), 31, "every command a key by default on the Mac");
         assert_eq!(mac.get(&c("Meta+KeyN")), Some(&AppCommand::NewWindow));
-        assert_eq!(mac.values().collect::<HashSet<_>>().len(), 7);
+        assert_eq!(mac.values().collect::<HashSet<_>>().len(), 31);
+        // The Mac app's own, exactly.
+        for (command, text) in [
+            (AppCommand::CopyUrl, "Shift+Meta+KeyC"),
+            (AppCommand::FocusAddress, "Meta+KeyL"),
+            (AppCommand::TogglePin, "Meta+KeyD"),
+            (AppCommand::ReopenArchived, "Shift+Meta+KeyT"),
+            (AppCommand::LittleArc, "Alt+Meta+KeyN"),
+            (AppCommand::AddSplit, "Ctrl+Shift+Equal"),
+            (AppCommand::Space1, "Ctrl+Digit1"),
+            (AppCommand::Space9, "Ctrl+Digit9"),
+            (AppCommand::Item1, "Meta+Digit1"),
+            (AppCommand::Item9, "Meta+Digit9"),
+        ] {
+            assert_eq!(mac.get(&c(text)), Some(&command), "{text}");
+        }
         let win = default_bindings(Os::Windows);
-        assert_eq!(win.len(), 7);
+        assert_eq!(win.len(), 7, "Windows: the first seven only, until its hosted design decides the rest");
         assert_eq!(win.get(&c("Ctrl+KeyT")), Some(&AppCommand::Palette));
         assert_eq!(win.get(&c("Ctrl+Alt+ArrowDown")), Some(&AppCommand::NextTab));
         assert_eq!(win.get(&c("Ctrl+Alt+ArrowLeft")), Some(&AppCommand::PrevSpace));
@@ -798,6 +1232,158 @@ mod tests {
         assert_eq!(default_bindings(Os::MacOs).get(&l), None, "not Safari: left alone");
         let taken = bindings_from(&keys(&[("palette", &[SAFARI_SIDEBAR_KEY])]), Os::MacOs, true);
         assert_eq!(taken.get(&l), Some(&AppCommand::Palette), "given to another command, stays that command's");
+    }
+
+    #[test]
+    fn the_later_commands_not_on_windows_yet() {
+        // What the extension's app keys send (app-keys.ts), written for the Mac.
+        let copy =
+            keys(&[("item-1", &["Meta+Digit1"]), ("copy-url", &["Shift+Meta+KeyC"]), ("space-2", &["Ctrl+Digit2"])]);
+        let win = bindings_from(&copy, Os::Windows, false);
+        assert!(
+            !win.values().any(|v| v.item_number().is_some() || v.space_number().is_some() || *v == AppCommand::CopyUrl),
+            "never bound on Windows, whatever the copy sends"
+        );
+        let mac = bindings_from(&copy, Os::MacOs, false);
+        assert_eq!(mac.get(&c("Meta+Digit1")), Some(&AppCommand::Item1));
+        assert_eq!(mac.get(&c("Ctrl+Digit2")), Some(&AppCommand::Space2));
+        assert_eq!(route(AppCommand::CopyUrl, false, true), KeyRoute::Overlay { name: "copy-url", repeat: None });
+    }
+
+    #[test]
+    fn held_while_hosting() {
+        let all = default_bindings(Os::MacOs);
+        let own = keys(&[("toggle-pin", &[]), ("item-1", &["Alt+Meta+Digit1"]), ("space-2", &[])]);
+        let moved = bindings_from(&own, Os::MacOs, false);
+        assert!(
+            !moved.values().any(|v| *v == AppCommand::TogglePin || *v == AppCommand::Space2),
+            "one turned off ([]) has none"
+        );
+        assert_eq!(moved.get(&c("Alt+Meta+Digit1")), Some(&AppCommand::Item1), "a numbered one moved");
+        assert_eq!(moved.get(&c("Meta+Digit1")), None);
+        assert_eq!(moved.get(&c("Meta+Digit2")), Some(&AppCommand::Item2));
+        let native = held(&all, false, false, Some(3), Some(5));
+        for k in ["Meta+KeyL", "Meta+KeyD", "Meta+Digit1", "Alt+KeyS"] {
+            assert_eq!(native.get(&c(k)), None, "a native app in front keeps its {k}");
+        }
+        assert_eq!(native.get(&c("Ctrl+Digit3")), Some(&AppCommand::Space3));
+        assert_eq!(native.get(&c("Ctrl+Digit4")), None, "past the window's spaces");
+        assert_eq!(native.get(&c("Ctrl+Shift+Equal")), Some(&AppCommand::AddSplit));
+        assert_eq!(native.get(&c("Alt+Meta+KeyN")), Some(&AppCommand::LittleArc));
+        let chrome = held(&all, false, true, Some(3), Some(5));
+        assert_eq!(chrome.get(&c("Meta+KeyD")), Some(&AppCommand::TogglePin));
+        assert_eq!(chrome.get(&c("Meta+KeyL")), Some(&AppCommand::FocusAddress));
+        assert_eq!(chrome.get(&c("Meta+Digit5")), Some(&AppCommand::Item5));
+        assert_eq!(chrome.get(&c("Meta+Digit6")), None, "past the sidebar's rows");
+        assert_eq!(chrome.get(&c("Alt+KeyS")), None, "the sidebar key stays the app's");
+        assert_eq!(held(&all, true, false, None, None).len(), all.len(), "Margin in front, counts not said: all");
+        assert!(
+            held(&all, true, false, Some(1), Some(0))
+                .values()
+                .all(|v| v.item_number().is_none() && v.space_number().unwrap_or(1) <= 1)
+        );
+    }
+
+    #[test]
+    fn the_hosted_gates() {
+        let f = |pid: Option<u32>, hosted: bool, open: bool, here: bool| Front {
+            pid,
+            own: 1,
+            hosted,
+            window_open: open,
+            on_current_space: here,
+        };
+        assert!(hosted_active(f(Some(1), false, true, false)), "Margin in front with a window");
+        assert!(hosted_active(f(Some(20), true, true, true)), "a hosted app, Margin's window on the current Space");
+        assert!(!hosted_active(f(Some(20), true, true, false)), "on another Space: let go");
+        assert!(!hosted_active(f(Some(30), false, true, true)), "an app Margin doesn't host");
+        assert!(!hosted_active(f(Some(1), false, false, true)) && !hosted_active(f(None, true, true, true)));
+        let q = |asks: bool, quitting: bool, pid: Option<u32>, hosted: bool, open: bool, here: bool| {
+            guards_quit(f(pid, hosted, open, here), asks, quitting)
+        };
+        assert!(
+            q(true, false, Some(20), true, true, true)
+                && q(true, false, Some(1), false, true, true)
+                && q(true, false, Some(1), false, true, false)
+        );
+        assert!(!q(true, false, Some(30), false, true, true) && !q(true, false, None, true, true, true));
+        assert!(!q(true, false, Some(20), true, true, false), "a hosted app's own window on another Space");
+        assert!(!q(true, false, Some(20), true, false, true) && !q(true, false, Some(1), false, false, true));
+        assert!(
+            q(false, false, Some(20), true, true, true) && !q(false, false, Some(1), false, true, true),
+            "asking off: a hosted app still, Margin itself not"
+        );
+        assert!(!q(true, true, Some(20), true, true, true), "quitting already");
+        let a = |quitting: bool, pid: Option<u32>, hosted: bool, open: bool, here: bool| {
+            guards_app_keys(f(pid, hosted, open, here), quitting)
+        };
+        assert!(a(false, Some(20), true, true, true));
+        assert!(
+            !a(false, Some(1), false, true, true)
+                && !a(false, Some(30), false, true, true)
+                && !a(false, None, true, true, true)
+        );
+        assert!(
+            !a(false, Some(20), true, false, true)
+                && !a(false, Some(20), true, true, false)
+                && !a(true, Some(20), true, true, true)
+        );
+        let linked: HashSet<String> = ["com.apple.Safari".to_string()].into();
+        assert!(is_browser_app("com.apple.Safari", &linked) && is_browser_app("com.google.Chrome", &linked));
+        assert!(
+            is_browser_app("com.google.Chrome.beta", &linked) && is_browser_app("com.microsoft.edgemac.Dev", &linked)
+        );
+        assert!(!is_browser_app("com.apple.Notes", &linked) && !is_browser_app("com.apple.Terminal", &linked));
+        assert_eq!(
+            AppKey::ALL.map(|k| k.text()),
+            [
+                "Meta+KeyW",
+                "Shift+Meta+KeyW",
+                "Alt+Meta+KeyW",
+                "Meta+KeyM",
+                "Meta+KeyH",
+                "Alt+Meta+KeyH",
+                "Ctrl+Meta+KeyF"
+            ]
+        );
+        assert!(
+            AppKey::ALL.iter().all(|k| k.combo().modifiers().contains(Modifiers::META) && k.combo().text() == k.text())
+        );
+    }
+
+    #[test]
+    fn the_guards_held_apart() {
+        let mut fake = FakeRegistrar::default();
+        let mut keys_ = AppShortcuts::new(default_bindings(Os::MacOs), KeyRepeat::default());
+        assert!(keys_.set_quit_guard(&mut fake, true).is_empty());
+        assert_eq!(fake.held.len(), 2, "⌘Q and ⌥⌘Q, apart from Margin's keys (none held)");
+        let q = *fake.held.iter().find(|(_, c_)| **c_ == c("Meta+KeyQ")).map(|(id, _)| id).expect("⌘Q held");
+        let oq = *fake.held.iter().find(|(_, c_)| **c_ == c("Alt+Meta+KeyQ")).map(|(id, _)| id).expect("⌥⌘Q held");
+        assert_eq!(keys_.press(q, 0.0), Some(Hit::Quit { keep_windows: false }));
+        assert_eq!(keys_.press(oq, 0.0), Some(Hit::Quit { keep_windows: true }));
+        keys_.set_active(&mut fake, true);
+        keys_.set_active(&mut fake, false);
+        assert!(fake.held.len() == 2 && keys_.guards_quit(), "Margin's keys coming and going leave it held");
+        assert!(keys_.set_app_key_guard(&mut fake, true).is_empty());
+        assert_eq!(fake.held.len(), 2 + 7);
+        let w = *fake.held.iter().find(|(_, c_)| **c_ == c("Meta+KeyW")).map(|(id, _)| id).expect("⌘W held");
+        let m = *fake.held.iter().find(|(_, c_)| **c_ == c("Meta+KeyM")).map(|(id, _)| id).expect("⌘M held");
+        assert_eq!(keys_.press(w, 0.0), Some(Hit::AppKey(AppKey::CloseTab)));
+        assert_eq!(keys_.press(m, 0.0), Some(Hit::AppKey(AppKey::Minimize)));
+        keys_.set_quit_guard(&mut fake, false);
+        assert_eq!(keys_.press(q, 0.0), None, "let go: the front app's again");
+        assert_eq!(fake.held.len(), 7);
+        keys_.set_app_key_guard(&mut fake, false);
+        assert!(fake.held.is_empty() && keys_.press(w, 0.0).is_none());
+        fake.taken = vec![c("Meta+KeyQ")];
+        assert_eq!(keys_.set_quit_guard(&mut fake, true), vec![c("Meta+KeyQ")], "another app's: said");
+        // Margin's own keys through press, as through hit.
+        keys_.set_active(&mut fake, true);
+        let t = keys_.bindings().iter().position(|(c_, _)| *c_ == c("Meta+KeyT")).expect("⌘T bound");
+        assert_eq!(
+            keys_.press(u32::try_from(t).expect("an id"), 0.0),
+            Some(Hit::Command(Run { command: AppCommand::Palette, is_repeat: false }))
+        );
     }
 
     #[test]
@@ -863,9 +1449,10 @@ mod tests {
         let mut keys_ = AppShortcuts::new(default_bindings(Os::MacOs), KeyRepeat::default());
         assert!(fake.held.is_empty() && !keys_.is_active(), "not held at first");
         keys_.set_active(&mut fake, true);
-        assert!(fake.held.len() == 7 && keys_.is_active(), "held while active");
+        let all = AppCommand::ALL.len();
+        assert!(fake.held.len() == all && keys_.is_active(), "held while active");
         keys_.set_active(&mut fake, true);
-        assert_eq!(fake.registrations, 7, "not registered twice");
+        assert_eq!(fake.registrations, all, "not registered twice");
         let next_tab = fake.id("Alt+Meta+ArrowDown");
         assert_eq!(keys_.hit(next_tab, 0.0).map(|r| r.command), Some(AppCommand::NextTab), "a key: its command");
         keys_.set_active(&mut fake, false);
@@ -875,7 +1462,7 @@ mod tests {
         fake.taken = vec![c("Meta+KeyT")];
         let taken = keys_.set_active(&mut fake, true);
         assert!(
-            fake.held.len() == 6 && keys_.unavailable() == [c("Meta+KeyT")],
+            fake.held.len() == all - 1 && keys_.unavailable() == [c("Meta+KeyT")],
             "one another app holds: the rest still Margin's"
         );
         assert_eq!(taken, vec![(c("Meta+KeyT"), AppCommand::Palette)]);

@@ -14,7 +14,7 @@ import { setWindowState, windowCall } from './handoff.ts';
 import { ownSearchTabs, ownSearchUrls, OWN_SEARCH_MS } from './search-engine.ts';
 import { iconInflight, iconUrlAllowed, learnIcon } from './site-icons.ts';
 import { navigate, NAV_ACTIONS, showSpace } from './navigation.ts';
-import { THEMES } from '../themes/index.ts';
+import { THEMES } from '../../app/shared/ui/themes/index.ts';
 // This engine's own modules (Safari's set-up messages and new-tab note, Chromium's full screen), or null.
 import { engine } from '#engine';
 import { getScroll, setScroll } from './scroll.ts';
@@ -30,8 +30,8 @@ import { shrinkPicture } from './picture.ts';
 import { noticeAnswered } from './notices.ts';
 import { isNoticeAction } from '../shared/notices.ts';
 import * as pageLoads from './page-loads.ts';
-import { moveIndex } from '../ui/behaviors/drop-rules.ts';
-import { MAX_SETTINGS, PACKAGE_THEMES, SETTING_NAME, USER_THEMES_KEY, USER_THEME_ID, plainSetting } from '../themes/packages.ts';
+import { moveIndex } from '../../app/shared/ui/behaviors/drop-rules.ts';
+import { MAX_SETTINGS, PACKAGE_THEMES, SETTING_NAME, USER_THEMES_KEY, USER_THEME_ID, plainSetting } from '../../app/shared/ui/themes/packages.ts';
 
 // The tab a nav request is for: the one named, the page's own, or the one
 // in front of the window.

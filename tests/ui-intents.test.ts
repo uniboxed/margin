@@ -1,13 +1,13 @@
-// What a click draws before the state comes back (extension/ui/intents.ts): a row closed, a pin with no tab opened;
+// What a click draws before the state comes back (app/shared/ui/intents.ts): a row closed, a pin with no tab opened;
 // each predicted, then confirmed by the state, corrected (its request failed, or the state says otherwise), or timed
 // out; a second click while one is pending. With what the view model makes of them (shared/view.ts sidebar `pinning`,
 // ui/view-model.ts `front`), which rows slide (ui/row-motion.ts rowsChanged) and app icons (Face.isApp).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createIntents, nextFront, OPEN_MS, CLOSE_MS, ANSWER_GRACE_MS } from '../extension/ui/intents.ts';
-import { buildViewModel } from '../extension/ui/view-model.ts';
-import type { UiState, ViewModelInput } from '../extension/ui/view-model.ts';
-import { rowsChanged } from '../extension/ui/row-motion.ts';
+import { createIntents, nextFront, OPEN_MS, CLOSE_MS, ANSWER_GRACE_MS } from '../app/shared/ui/intents.ts';
+import { buildViewModel } from '../app/shared/ui/view-model.ts';
+import type { UiState, ViewModelInput } from '../app/shared/ui/view-model.ts';
+import { rowsChanged } from '../app/shared/ui/row-motion.ts';
 
 const W = 1;
 // Three open tabs (1 in front), a Margin tab not open, a pin with no tab, all in one space of window 1.

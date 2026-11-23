@@ -45,7 +45,7 @@ page, and you can pick one, change one or write your own.
 A theme is HTML and CSS only, no JavaScript. Margin renders it from its own data, runs its buttons as checked
 actions, and gives it behaviors like drag and drop, resizing and menus through attributes. Imported themes are
 sanitized and drawn in a page that can't run scripts or reach the network, and a security suite attacks that page on
-every change. [Writing a theme](extension/themes/README.md) explains the files, the bindings and how to import one.
+every change. [Writing a theme](app/shared/ui/themes/README.md) explains the files, the bindings and how to import one.
 
 ## Browsers and systems
 
