@@ -93,6 +93,20 @@ final class Runner {
     } else { step("a2 still above with the pane the active app", false, "one of the two isn't on screen") }
   }
 
+  // The pane's key changes after a press (a copy's `resignedKey <n>` and `becameKey <n>` lines, each with its time):
+  // every resign followed by its window key again within `within` seconds, and key at the end.
+  func keyBack(_ lines: [String], within: Double) -> (ok: Bool, text: String) {
+    let time = { (l: String) in match(l, #"CHAMELEON ([0-9.]+) "#).flatMap { Double($0[0]) } }
+    var gaps: [Double] = [], open: Double?, ok = true
+    for l in lines {
+      if l.contains("resignedKey"), open == nil { open = time(l) }
+      else if l.contains("becameKey"), let t0 = open, let t1 = time(l) { gaps.append(t1 - t0); if t1 - t0 > within { ok = false }; open = nil }
+    }
+    if open != nil { ok = false }
+    let said = gaps.map { "\(Int(($0 * 1000).rounded())) ms" }
+    return (ok, lines.isEmpty ? "kept the keys" : open != nil ? "resigned key and never got it back (\(lines.count) changes)" : "resigned key \(gaps.count) time(s), key again after \(said.joined(separator: ", "))")
+  }
+
   // ---- b1 a3 b2 k1 ----
   func clicks(_ n: Int) {
     guard canPost else { return skip("b1/a3/b2/k1 the clicks", "this suite can't post events (give the terminal Accessibility to run them)") }
@@ -119,7 +133,8 @@ final class Runner {
     pane.activate()
     spin(1.5) { NSWorkspace.shared.frontmostApplication?.processIdentifier == pane.processIdentifier }
     if let sp = spot(), let top = under(sp).first, top.pid == m.processIdentifier, NSWorkspace.shared.frontmostApplication?.processIdentifier == pane.processIdentifier {
-      let pressesBefore = Int(word(front(), "presses") ?? "") ?? -1, resignedBefore = copySaid(n, "resignedKey"), keysBefore = copySaid(n, "EVENT keyDown code 7 ")
+      let pressesBefore = Int(word(front(), "presses") ?? "") ?? -1, keysBefore = copySaid(n, "EVENT keyDown code 7 ")
+      let keyLinesBefore = copyLines(n, "Key ").count
       let activeBefore = said("Margin made the active app").count
       click(sp)
       let frontAfter = NSWorkspace.shared.frontmostApplication
@@ -128,10 +143,15 @@ final class Runner {
       spin(0.3)
       plainKey(7) // x: to the pane (no field focused: a beep at most)
       let got = gotKey(n, 7, after: keysBefore)
-      step("k1 a click on an empty spot of Margin's sidebar with the pane active: the pane STILL the frontmost app, Margin's panel got the press, the pane's window never resigned key, and a plain key after it reaches the pane",
-           frontAfter?.processIdentifier == pane.processIdentifier && pressesAfter == pressesBefore + 1 && top.n == panelN && copySaid(n, "resignedKey") == resignedBefore && got
+      // (A press in Margin's panel moves the keyboard to Margin and Margin hands it back once the press ends, as a click
+      // in Arc's sidebar takes the focus from the page: Tirth, 2026-11-22. So the pane's window may resign key; it
+      // must be key again within half a second each time, and key at the end.)
+      let keyLines = Array(copyLines(n, "Key ").dropFirst(keyLinesBefore))
+      let back = keyBack(keyLines, within: 0.5)
+      step("k1 a click on an empty spot of Margin's sidebar with the pane active: the pane STILL the frontmost app, Margin's panel got the press, the pane's window key again within 0.5 s if it resigned, and a plain key after it reaches the pane",
+           frontAfter?.processIdentifier == pane.processIdentifier && pressesAfter == pressesBefore + 1 && top.n == panelN && back.ok && got
              && said("Margin made the active app").count == activeBefore && word(fk, "active") == "false",
-           "at \(Int(sp.x)),\(Int(sp.y)) (the top window there \(top.n), Margin's panel \(panelN.map(String.init) ?? "?")); front app after \(frontAfter?.bundleIdentifier ?? "?"); Margin's panel's presses \(pressesBefore) → \(pressesAfter); the pane's window resigned key \(copySaid(n, "resignedKey") - resignedBefore) time(s); the plain key reached the pane \(got); Margin active \(word(fk, "active") ?? "?")")
+           "at \(Int(sp.x)),\(Int(sp.y)) (the top window there \(top.n), Margin's panel \(panelN.map(String.init) ?? "?")); front app after \(frontAfter?.bundleIdentifier ?? "?"); Margin's panel's presses \(pressesBefore) → \(pressesAfter); the pane's window \(back.text); the plain key reached the pane \(got); Margin active \(word(fk, "active") ?? "?")")
     } else { skip("k1 the click on Margin's sidebar", "no empty spot from Margin's dev hook, the top window there isn't Margin's, or the pane isn't the front app (\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "?"))") }
   }
 
