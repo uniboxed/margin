@@ -415,7 +415,7 @@ final class HostEngine {
 
     // The engine's options. What the core's decisions read of them (host/model/visible.rs `ModelOptions`) is sent to it
     // whenever they change (a test's change after init too): one call each.
-    var options: Options { didSet { core.configure(tolerance: options.tolerance) } }
+    var options: Options { didSet { core.configure(tolerance: options.tolerance, toolbarRoom: options.toolbarRoom) } }
     private let sys: HostSystem
     private let markerURL: URL?
     private let ownPid: Int32
@@ -628,7 +628,7 @@ final class HostEngine {
         ownPid = pid
         let core = HostCore()
         self.core = core
-        core.configure(tolerance: options.tolerance)
+        core.configure(tolerance: options.tolerance, toolbarRoom: options.toolbarRoom)
         observer = HostObserver(system: system, source: observation, core: core)
         observer.onHeard = { [weak self] in self?.heardSomething() }
         sys.onAppQuit = { [weak self] pid in self?.appQuit(pid) }
@@ -852,62 +852,35 @@ final class HostEngine {
     // the panes, a stacked pane's toolbar against the pane above. Panes side by side never do; the focused one only needs
     // the keys (its app made active, its window made its app's main one: that takes even when the raise doesn't).
     // Nothing more is done for an order among non-overlapping hosts, whatever Safari does to its own windows' order.
+    // The order wanted, the pairs whose order shows and what's raised in what order are the core's (host/model/order.rs:
+    // a cut pane lying under another behind the ones it lies under, the focused one too, given the keys without a
+    // raise; a pane raised over a cut one lying under it by `raiseOver`): read here, each window's bounds and the window
+    // server's order, then raised as it says. The plan is made before the first raise, as this did.
     private func frontVisible(fresh: Set<HostID> = []) async {
-        let focused = shown.flatMap { id in hosts[id].flatMap { $0.phase == .shown ? $0 : nil } }
-        // (A cut pane lying under another pane, docs/PEEK-SPLIT.md §4b: behind the panes it lies under, the focused one too,
-        // so the part of its window past its pane stays under them; it gets the keys without a raise. Several: each behind
-        // the ones it lies under (`tuckedOrder`). A cut pane lying under none (its rest past the display's edge or under
-        // Margin's window) is as any pane.)
-        let tucked = { (h: Host) in self.tucked(h) }
-        let others = visibleHosts.filter { $0 !== focused }
-        let cutFocused = focused.map(tucked) ?? false
-        let wanted = tuckedOrder(others.filter(tucked) + (cutFocused ? [focused!] : [])) + others.filter { !tucked($0) } + (cutFocused ? [] : focused.map { [$0] } ?? []) // (back to front)
+        let wanted = versioned { core.frontWanted() }.compactMap { byHandle[$0] } // (back to front)
         guard let top = wanted.last else { return }
+        let t0 = sys.now()
+        let bounds = wanted.map { sys.bounds(window: $0.window) }, order = serverOrder(of: wanted), fresh = fresh.compactMap { hosts[$0]?.handle }
+        let plan = versioned { core.frontPlan(bounds: bounds, order: order, fresh: fresh) }
+        let focused = host(plan.focused)
         // (A pane raised over a cut one lying under it: an app kept active (PanesActive.swift) takes the window server's
         // activation for done and its window stays where it is (the real screen, 2026-11-22: raised again and again, never
         // over); let go first (its deactivated record), its activation is real and AppKit raises its window: `raiseOver`.
         // It's kept again once the cut pane has the keys back. Over none, as before.)
-        func raise(_ h: Host) async -> Bool {
-            if let i = wanted.firstIndex(where: { $0 === h }), let below = wanted[..<i].last(where: { tucked($0) && self.lyingUnder($0).contains { $0 === h } }) {
-                return await raiseOver(h, below)
-            }
-            return await front(h)
+        for r in plan.raises {
+            guard let h = host(r.host) else { continue }
+            if let below = host(r.over) { _ = await raiseOver(h, below) } else { _ = await front(h) }
         }
         // (The keys: the focused one's, by a raise when it's in front of the others, without one when it's cut.)
-        func keys() async { if cutFocused, let f = focused { _ = sys.focusWithoutRaise(pid: f.pid, window: f.window) } else { _ = await front(top) } }
-        let t0 = sys.now()
-        let pairs = overlapping(wanted)
-        let topIndex = wanted.count - 1
-        // (Each pair whose front one, by the layout, is behind the other in the window server's order; unread: `unread`.)
-        func violated(_ order: [Int]?, unread: [(Int, Int)]) -> [(Int, Int)] {
-            guard let order else { return unread }
-            let at = Dictionary(order.enumerated().map { ($0.element, $0.offset) }, uniquingKeysWith: { a, _ in a })
-            return pairs.filter { (at[wanted[$0.1].window] ?? 0) < (at[wanted[$0.0].window] ?? 0) }
-        }
-        let bad = violated(serverOrder(of: wanted), unread: pairs)
-        // (In the order that shows already, or nothing overlapping: only the focused one's keys.)
-        if bad.isEmpty { await keys(); return }
-        let involved = Set(pairs.flatMap { [$0.0, $0.1] })
-        // (Two cut panes out of order, one lying under the other (four panes or more): every one from the first out of place
-        // raised, back to front, the cut ones too, so each ends behind the ones it lies under.)
-        let tuckedPair = bad.contains { tucked(wanted[$0.0]) && tucked(wanted[$0.1]) }
-        // (The focused one in front of every host it overlaps: none of those raised over it (its raise may not take);
-        // two others out of order between them only when neither overlaps it, then it last, for its keys.)
-        if !tuckedPair, !bad.contains(where: { $0.1 == topIndex }) {
-            let under = Set(pairs.filter { $0.1 == topIndex }.map(\.0))
-            let fix = Set(bad.filter { !under.contains($0.0) && !under.contains($0.1) }.flatMap { [$0.0, $0.1] })
-            for k in fix.sorted() where !tucked(wanted[k]) { _ = await raise(wanted[k]) }
-            await keys()
+        if plan.keys {
+            if plan.cutFocused, let f = focused { _ = sys.focusWithoutRaise(pid: f.pid, window: f.window) } else { _ = await front(top) }
             return
         }
-        // Else the ones from the first out of place that overlap another raised, back to front, the focused one last.
-        let from = bad.map(\.0).min() ?? 0
-        for k in from..<wanted.count where (k == topIndex || involved.contains(k)) && (tuckedPair || !tucked(wanted[k])) { _ = await raise(wanted[k]) }
-        if cutFocused { await keys(); return }
-        guard wanted.count > 1, top === focused else { return }
+        guard plan.confirm != .none else { return }
         // (Read again: the focused one behind a host it overlaps. Unread: taken as in front, as before.)
-        func topBehind() -> Bool { violated(serverOrder(of: wanted), unread: []).contains { $0.1 == topIndex } }
-        if fresh.contains(top.id) {
+        let windows = wanted.map(\.window)
+        func topBehind() -> Bool { core.topBehind(windows: windows, below: plan.belowTop, screen: sys.onScreenWindows()?.map(\.number)) }
+        if plan.confirm == .fresh {
             if !topBehind() { return }
             await outAndBack(top, wanted, since: t0, why: "its window just came in with its tile (its raise doesn't take then)", behind: topBehind)
             return
@@ -926,26 +899,6 @@ final class HostEngine {
             if now { return }
         }
         await outAndBack(top, wanted, since: t0, why: "nothing else brought it in front", behind: topBehind)
-    }
-
-    // The pairs of `list` (back to front, by index) whose order shows: their windows overlap, each as it is and where the
-    // layout puts it, a full-screen window with its toolbar's room above it (Safari's toolbar window rests just above
-    // its window: a stacked pane's against the pane above, across its band).
-    private func overlapping(_ list: [Host]) -> [(Int, Int)] {
-        let zones = list.map { h -> CGRect in
-            var r = frame(h)
-            if let b = sys.bounds(window: h.window) { r = r.union(b) }
-            if h.mode == .fullScreen { r = CGRect(x: r.minX, y: r.minY - options.toolbarRoom, width: r.width, height: r.height + options.toolbarRoom) }
-            return r
-        }
-        var out: [(Int, Int)] = []
-        for i in zones.indices {
-            for j in zones.indices where j > i {
-                let x = zones[i].intersection(zones[j])
-                if !x.isNull, x.width > options.tolerance, x.height > options.tolerance { out.append((i, j)) }
-            }
-        }
-        return out
     }
 
     // The last way to bring `top` in front of the other visible hosts: its window out to a private Space and straight back
@@ -970,15 +923,9 @@ final class HostEngine {
         let now = await wait(options.orderWait, every: options.memberEvery) { !behind() }
         Diagnostics.note("host: \(top.id): out to a private Space and back into Margin's (\(why); \(out ? "out" : "not out"), \(back ? "back" : "not back")) in \(ms(since: t1)) ms, \(ms(since: t0)) ms from its first raise: \(now ? "in front now" : "still not in front")")
     }
-    // These hosts' windows in the window server's order now, back to front (its on-screen list is front to back); nil:
-    // unread, or one of them not in it.
-    private func serverOrder(of list: [Host]) -> [Int]? {
-        guard let screen = sys.onScreenWindows() else { return nil }
-        let mine = Set(list.map(\.window))
-        let order = screen.map(\.number).filter { mine.contains($0) }
-        guard order.count == mine.count, Set(order) == mine else { return nil }
-        return order.reversed()
-    }
+    // These hosts' windows in the window server's order now, back to front (its on-screen list is front to back; the
+    // core's rule); nil: unread, or one of them not in it.
+    private func serverOrder(of list: [Host]) -> [Int]? { core.serverOrder(windows: list.map(\.window), screen: sys.onScreenWindows()?.map(\.number)) }
 
     // An app (the person's default browser, at Margin's launch) started with no Dock icon if it isn't running, as a
     // first open starts it (it counts as Margin's: quit at Margin's quit, its restored windows swept); running already
@@ -4568,9 +4515,6 @@ final class HostEngine {
     private func lyingUnder(_ h: Host) -> [Host] { versioned { core.lyingUnder(h.handle) }.compactMap { byHandle[$0] } }
     // (At `at`: its window's frame as a drag lays it out.)
     private func tucked(_ h: Host, at: CGRect? = nil) -> Bool { versioned { core.tucked(h.handle, at: at) } }
-    // Cut panes lying under others, back to front: each behind every one it lies under, else as given (the focused one,
-    // given last, as far in front as that lets it). A loop (two over each other's, which `cutOf` never offers): as given.
-    private func tuckedOrder(_ list: [Host]) -> [Host] { versioned { core.tuckedOrder(list.map(\.handle)) }.compactMap { byHandle[$0] } }
     // Whether a visible pane's window is wider or taller than its pane (cut), and so lies partly under another.
     func isCut(_ host: Host) -> Bool { versioned { core.isCut(host.handle) } }
     private func fitted(_ host: Host, _ p: HostPlacement? = nil) -> HostPlacement {

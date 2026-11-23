@@ -7731,3 +7731,42 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   tolerance at equality, the ease's exponent off by 1e-7, the slide kept on another pane, a version never read): each
   caught. And with the core's "lies under" on `Rect`'s own edges instead of CGRect's: 4,406 differences, so the
   vectors reach the zero-size and touching cases. The app's 2038 checks pass unchanged.
+
+## Core refactor step 2, part 2: the visible windows' order in the core (2026-11-23)
+
+- `frontVisible`'s decisions are the core's (host/model/order.rs): the order wanted (the cut panes lying under others
+  behind every one they lie under, the focused one too when it's cut, then the others, then the focused one), the
+  pairs whose order shows (`overlapping`: each window's frame with its bounds, a full-screen one with the toolbar's
+  room above it, overlapping past the tolerance; the room is an option sent with the tolerance now), the pairs out of
+  order in the window server's, and the plan: the keys only; or the raises that fix two others out of order without
+  going over the focused one, then the keys; or every one from the first out of place that overlaps another, back to
+  front, the cut ones too only when two cut ones are out of order, then the keys for a cut focused one or the confirm
+  (waited for, or out and back at once for a fresh one). Each raise is over the cut pane it lies over (`raiseOver`) or
+  plain.
+- The one up-front plan the design allows, because the Swift also decided everything before its first raise: the
+  engine reads each wanted window's bounds and the window server's order once, asks once (JSON `frontPlan`, a fronting
+  at a time, at most four hosts), then raises in its order. One difference, in a race only: the Swift re-evaluated
+  "is it tucked" and "the cut pane it lies over" between its raises (lazily, in its loops' filters). They read only
+  the model, and no operation changes it inside a fronting (they wait for the serial queue); what can, between two
+  raises, is a drag of the sidebar's edge begun or followed then (`dragging`, `follow`: not serial; a new minimum read
+  at its start, its page area per frame). In that race the Swift mixed the state before and during the drag; the plan
+  uses the state before the first raise throughout, as the design accepted (Tirth's "decides first and then acts"). The confirm's check (every `memberEvery` for up to `orderWait`) is typed
+  (`margin_order_top_behind`, nothing allocated) and keeps nothing in the core between calls: the plan's own windows
+  and the hosts overlapping the focused one are handed to it, so two frontings can't read each other's.
+- "Lies under" is one rule (panes.rs `lying_under`; `lies_under` for a pair): the tucked ones, their chain, the
+  raise over, and the poll's look all read it. The window server's order of the wanted windows is the core's rule
+  (`server_order`, also for the log line); the Swift `overlapping`, `violated`, `serverOrder`'s filter and
+  `tuckedOrder`'s wrapper are gone. The ladder after a failed confirm (raise again, Safari's copy, out to a private
+  Space and back), each raise and its waits stay Swift: mechanism.
+- Checked before the Swift went: the deleted `frontVisible` decisions (copied verbatim, each raise, the keys and the
+  confirm recorded instead of done, with the old Swift pane rules under them) against the engine's new path on two
+  cores built alike from 200,000 generated worlds (part 3's worlds with more hosts shown, toolbar rooms 0 to 100,
+  bounds on, beside and away from each frame, on-screen lists with others, missing and twice-listed windows, unread,
+  fresh hosts; four confirm reads each): 1,359,235 checks, no difference, the versions read alike (raises over a cut
+  pane in 39,530 worlds, the focused one seen behind in 55,198). The harness caught each deliberate break: the cut
+  pane raised over found first instead of last, no toolbar room above, the overlap at equality, the fix set ignoring
+  the focused one's overlap, the tucked chain reversed, an unread order taken as in order, the old "lies under"
+  without its inset, the loop fallback reversed. Two candidate breaks turned out to be no change at all ("tucked"
+  before "lies under", equal places in the order) and were replaced. Rust tests pin the order's rules (side-by-side
+  panes keys only, a card raised then confirmed, fresh, the toolbar's room, a cut pane behind with its keys, nothing
+  over the focused one, two cut panes out of order). The app's 2038 checks pass unchanged.

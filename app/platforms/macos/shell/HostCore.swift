@@ -465,15 +465,6 @@ nonisolated final class HostCore: @unchecked Sendable {
         }
     }
     func tucked(_ h: UInt32, at: CGRect? = nil) -> (Bool, wanted: Bool) { locked { (withRect(at) { margin_model_tucked(core, h, $0) }, wanted) } }
-    // Cut panes lying under others, back to front: each behind every one it lies under.
-    func tuckedOrder(_ list: [UInt32]) -> ([UInt32], wanted: Bool) {
-        locked {
-            let out = list.withUnsafeBufferPointer { l in
-                [UInt32](unsafeUninitializedCapacity: l.count) { o, count in count = margin_model_tucked_order(core, l.baseAddress, l.count, o.baseAddress, l.count) }
-            }
-            return (out, wanted)
-        }
-    }
     // Whether a visible cut pane's window is over a pane it lies under in the on-screen list (front to back).
     func overUnder(_ h: UInt32, _ frontToBack: [Int]) -> (Bool, wanted: Bool) {
         locked {
@@ -489,8 +480,69 @@ nonisolated final class HostCore: @unchecked Sendable {
         return (CGRect(page), a & 2 != 0 ? CGRect(tile) : nil, a & 1 != 0)
     }
 
+    // ---- the visible windows' order (host/model/order.rs: docs/CORE-REFACTOR.md step 2 part 2): the order wanted (to
+    // read each window's bounds), then the plan (JSON, once a fronting: what to raise in what order, each over the cut
+    // pane it lies over or not, the keys, the confirm), the window server's order and the focused one's check typed
+    // (read every few milliseconds while it's waited for). ----
+
+    func frontWanted() -> ([UInt32], wanted: Bool) {
+        locked {
+            withUnsafeTemporaryAllocation(of: UInt32.self, capacity: 16) { buf in
+                let n = margin_model_front_wanted(core, buf.baseAddress, 16)
+                if n <= 16 { return (Array(buf.prefix(n)), wanted) }
+                return ([UInt32](unsafeUninitializedCapacity: n) { out, count in count = margin_model_front_wanted(core, out.baseAddress, n) }, wanted)
+            }
+        }
+    }
+    enum FrontConfirm: String { case none, wait, fresh }
+    struct FrontPlan {
+        var wanted: [UInt32] = [] // back to front
+        var focused: UInt32?
+        var cutFocused = false
+        var raises: [(host: UInt32, over: UInt32?)] = []
+        var keys = false // the focused one's keys after the raises, and done
+        var confirm = FrontConfirm.none
+        var belowTop: [UInt32] = [] // the hosts that overlap the focused one, by place in `wanted`
+    }
+    // `bounds`: each wanted host's window bounds (nil: unread); `order`: their windows' order in the window server's,
+    // back to front (nil: unread); `fresh`: hosts whose window came in with its tile a moment ago.
+    func frontPlan(bounds: [CGRect?], order: [Int]?, fresh: [UInt32]) -> (FrontPlan, wanted: Bool) {
+        let a = call(["type": "frontPlan", "bounds": bounds.map { coreOptional($0?.coreJSON) }, "order": coreOptional(order), "fresh": fresh.map { Int($0) }])
+        var p = FrontPlan()
+        p.wanted = (a["wanted"] as? [NSNumber] ?? []).map(\.uint32Value)
+        p.focused = (a["focused"] as? NSNumber)?.uint32Value
+        p.cutFocused = a["cutFocused"] as? Bool ?? false
+        p.raises = (a["raises"] as? [[String: Any]] ?? []).compactMap { r in
+            (r["host"] as? NSNumber).map { (host: $0.uint32Value, over: (r["over"] as? NSNumber)?.uint32Value) }
+        }
+        p.keys = a["keys"] as? Bool ?? false
+        p.confirm = (a["confirm"] as? String).flatMap(FrontConfirm.init(rawValue:)) ?? .none
+        p.belowTop = (a["belowTop"] as? [NSNumber] ?? []).map(\.uint32Value)
+        return (p, locked { wanted })
+    }
+    // `windows` (back to front as wanted) in the window server's order back to front, from its on-screen list (front to
+    // back; nil: unread). Nil: unread, or one of them not in it.
+    func serverOrder(windows: [Int], screen: [Int]?) -> [Int]? {
+        guard let screen else { return nil }
+        // (An empty list read: none of them in it. Its pointer may be null, which the core takes for unread.)
+        guard !screen.isEmpty else { return windows.isEmpty ? [] : nil }
+        let w = windows.map { Int64($0) }, s = screen.map { Int64($0) }
+        var out = [Int64](repeating: 0, count: w.count)
+        let n = w.withUnsafeBufferPointer { wb in
+            s.withUnsafeBufferPointer { sb in out.withUnsafeMutableBufferPointer { margin_order_server(wb.baseAddress, wb.count, sb.baseAddress, sb.count, $0.baseAddress, $0.count) } }
+        }
+        return n < 0 ? nil : out.prefix(Int(n)).map { Int($0) }
+    }
+    // Whether the focused one (the last of `windows`) is behind a host it overlaps (`below`) in the on-screen list now.
+    func topBehind(windows: [Int], below: [UInt32], screen: [Int]?) -> Bool {
+        let w = windows.map { Int64($0) }
+        guard let screen else { return w.withUnsafeBufferPointer { wb in below.withUnsafeBufferPointer { margin_order_top_behind(wb.baseAddress, wb.count, $0.baseAddress, $0.count, nil, 0) } } }
+        let s = screen.map { Int64($0) }
+        return w.withUnsafeBufferPointer { wb in below.withUnsafeBufferPointer { bb in s.withUnsafeBufferPointer { margin_order_top_behind(wb.baseAddress, wb.count, bb.baseAddress, bb.count, $0.baseAddress, $0.count) } } }
+    }
+
     // What the model's decisions read of the engine's options (one call per change of them).
-    func configure(tolerance: CGFloat) { _ = call(["type": "configure", "tolerance": Double(tolerance)]) }
+    func configure(tolerance: CGFloat, toolbarRoom: CGFloat) { _ = call(["type": "configure", "tolerance": Double(tolerance), "toolbarRoom": Double(toolbarRoom)]) }
 }
 
 // As the core numbers a cut pane's sides (host/model/panes.rs `Side`).

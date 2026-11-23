@@ -15,7 +15,7 @@ use super::front::{Look, Others};
 use super::guard::Verdict;
 use super::kinds::{self, AppFacts, Window};
 use super::layout::Placement;
-use super::model::{LayoutExtra, ModelOptions, Refusal, Role};
+use super::model::{Confirm, LayoutExtra, ModelOptions, Refusal, Role};
 use super::reconciler::{self, Correction, Desired, Situation};
 use super::routes::{Route, Routes};
 use crate::geometry::Rect;
@@ -43,6 +43,9 @@ fn yes() -> bool {
 }
 fn one() -> f64 {
     1.0
+}
+fn toolbar_room() -> f64 {
+    super::layout::TOOLBAR_ROOM
 }
 
 impl From<&ServerWin> for ServerWindow {
@@ -145,8 +148,20 @@ pub enum Request {
     /// The apps a minimum is kept for (any version).
     MinimumApps,
     /// What the model's decisions read of the engine's options (sent whenever they change).
+    #[serde(rename_all = "camelCase")]
     Configure {
         tolerance: f64,
+        #[serde(default = "toolbar_room")]
+        toolbar_room: f64,
+    },
+    /// The visible windows' order: what to raise in what order (model/order.rs `front_plan`), from each wanted host's
+    /// bounds (`front_wanted`'s order; null: unread), their windows' order in the window server's, back to front
+    /// (null: unread), and the hosts whose window came in with its tile a moment ago.
+    FrontPlan {
+        bounds: Vec<Option<Rect>>,
+        order: Option<Vec<i64>>,
+        #[serde(default)]
+        fresh: Vec<u32>,
     },
     /// A layout's extras refused before anything is made (model/visible.rs `layout_refuse`).
     LayoutRefuse {
@@ -341,8 +356,8 @@ impl HostCore {
             },
             Request::SaveMinimums => json!({ "minimums": self.model.minimums.to_json() }),
             Request::MinimumApps => json!({ "apps": self.model.minimums.by_app.keys().collect::<Vec<_>>() }),
-            Request::Configure { tolerance } => {
-                self.model.opts = ModelOptions { tolerance };
+            Request::Configure { tolerance, toolbar_room } => {
+                self.model.opts = ModelOptions { tolerance, toolbar_room };
                 json!({})
             }
             Request::LayoutRefuse { main, extras } => {
@@ -357,6 +372,17 @@ impl HostCore {
                     })
                     .collect();
                 json!({ "refused": refused })
+            }
+            Request::FrontPlan { bounds, order, fresh } => {
+                let p = self.model.front_plan(&bounds, order.as_deref(), &fresh);
+                let raises: Vec<Value> = p.raises.iter().map(|(h, over)| json!({ "host": h, "over": over })).collect();
+                let confirm = match p.confirm {
+                    Confirm::None => "none",
+                    Confirm::Wait => "wait",
+                    Confirm::Fresh => "fresh",
+                };
+                json!({ "wanted": p.wanted, "focused": p.focused, "cutFocused": p.cut_focused, "raises": raises,
+                        "keys": p.keys, "confirm": confirm, "belowTop": p.below_top })
             }
             Request::LayoutBegin { main, main_rect, extras } => {
                 let extras: Vec<LayoutExtra> = extras.iter().map(LayoutHost::extra).collect();

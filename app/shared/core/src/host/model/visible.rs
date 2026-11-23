@@ -34,11 +34,13 @@ impl Visible {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ModelOptions {
     pub tolerance: f64,
+    /// A full-screen window's room above it for its own toolbar window, counted in two visible hosts' overlap.
+    pub toolbar_room: f64,
 }
 
 impl Default for ModelOptions {
     fn default() -> Self {
-        ModelOptions { tolerance: 1.0 }
+        ModelOptions { tolerance: 1.0, toolbar_room: layout::TOOLBAR_ROOM }
     }
 }
 

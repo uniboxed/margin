@@ -5,8 +5,8 @@
 //!
 //! The state (part 1a), and the decisions that read it as they move in: each app's kept minimum and each host's own
 //! (part 5, `minimums`); the engine's layout of Margin's page area, the one shown, and the layout's decisions (part 1b,
-//! `visible`); where each window goes, cut panes and a slide's frames (part 3, `panes`). Reading and writing a field
-//! never allocates; a list of times (returns, tries) is kept within its capacity (room for 8 from the start: the Mac
+//! `visible`); where each window goes, cut panes and a slide's frames (part 3, `panes`); the visible windows' order
+//! (part 2, `order`). Reading and writing a field never allocates; a list of times (returns, tries) is kept within its capacity (room for 8 from the start: the Mac
 //! keeps at most `returnsMax` + 1, 4).
 
 use std::collections::BTreeMap;
@@ -15,8 +15,10 @@ use super::layout::{Placement, Size};
 use super::minimums::AppMinimums;
 use crate::geometry::Rect;
 
+mod order;
 mod panes;
 mod visible;
+pub use order::{Confirm, FrontPlan, server_order, top_behind};
 pub use panes::{Side, SlideStep, slide_rect};
 pub use visible::{
     BringIn, BringInFacts, BringInPoint, Hold, HoldKind, LayoutBegun, LayoutExtra, ModelOptions, Refusal, ShownSet,

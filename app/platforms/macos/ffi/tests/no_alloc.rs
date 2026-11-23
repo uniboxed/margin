@@ -216,13 +216,23 @@ fn the_hot_paths_allocate_nothing() {
                 std::hint::black_box(margin_model_over_under(core, x, screen.as_ptr(), screen.len()));
                 std::hint::black_box(margin_model_versions_wanted(core, handles.as_mut_ptr(), handles.len()));
             }
-            let both = [h, other];
-            std::hint::black_box(margin_model_tucked_order(core, both.as_ptr(), 2, handles.as_mut_ptr(), 16));
             let mut tile = MarginRect::default();
             for t in [0.0, 0.05, 0.2] {
                 std::hint::black_box(margin_model_slide_step(core, page, narrow, t, 0.15, &home, &mut r, &mut tile));
             }
             margin_model_set_live_page(core, std::ptr::null());
+            // The window order's check while the focused one is waited for (part 2): every few milliseconds.
+            let (wanted, below, on_screen) = ([41i64, 42], [0u32], [7i64, 42, 9, 41]);
+            let mut order = [0i64; 16];
+            std::hint::black_box(margin_order_server(
+                wanted.as_ptr(),
+                2,
+                on_screen.as_ptr(),
+                4,
+                order.as_mut_ptr(),
+                16,
+            ));
+            std::hint::black_box(margin_order_top_behind(wanted.as_ptr(), 2, below.as_ptr(), 1, on_screen.as_ptr(), 4));
         }
     });
     assert_eq!(n, 0, "the hot paths allocated {n} times");

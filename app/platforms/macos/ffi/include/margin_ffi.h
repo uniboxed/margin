@@ -168,8 +168,13 @@ int8_t margin_model_cut(MarginHostCore *core, uint32_t handle); // -1 not cut, e
 bool margin_model_slide_for(MarginHostCore *core, uint32_t handle, uint8_t side, MarginSlide *out);
 size_t margin_model_lying_under(MarginHostCore *core, uint32_t handle, const MarginRect *at, uint32_t *out, size_t cap); // at NULL: its frame
 bool margin_model_tucked(MarginHostCore *core, uint32_t handle, const MarginRect *at);
-size_t margin_model_tucked_order(MarginHostCore *core, const uint32_t *list, size_t n, uint32_t *out, size_t cap);
 bool margin_model_over_under(MarginHostCore *core, uint32_t handle, const int64_t *front_to_back, size_t n);
+// The visible windows' order (host/model/order.rs, ffi order.rs): the plan JSON (margin_host_call: frontPlan, once a
+// fronting); the order wanted, the window server's order of those windows and the focused one's check while it's
+// waited for, typed. Window numbers back to front as wanted; on-screen lists front to back (NULL: unread).
+size_t margin_model_front_wanted(MarginHostCore *core, uint32_t *out, size_t cap);
+int64_t margin_order_server(const int64_t *windows, size_t n, const int64_t *screen, size_t m, int64_t *out, size_t cap); // -1: unread
+bool margin_order_top_behind(const int64_t *windows, size_t n, const uint32_t *below, size_t k, const int64_t *screen, size_t m);
 uint8_t margin_model_slide_step(MarginHostCore *core, MarginRect from, MarginRect to, double elapsed, double time, const MarginRect *home, MarginRect *page, MarginRect *tile); // bits: 1 last, 2 tile written
 
 // Margin's keys (shortcuts.rs, ffi keys.rs): combinations as the Mac's Carbon key code and modifier bits. The JSON

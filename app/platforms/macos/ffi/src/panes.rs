@@ -238,24 +238,6 @@ pub unsafe extern "C" fn margin_model_tucked(core: *mut HostCore, h: Handle, at:
     unsafe { model(core, true) }.is_some_and(|m| m.tucked(h, unsafe { rect(at) }))
 }
 
-/// Cut panes lying under others (`list`), back to front, each behind every one it lies under, into `out`; how many.
-///
-/// # Safety
-/// `core` null or a live core (one thread at a time); `list` null or `n` readable; `out` null or `cap` writable.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn margin_model_tucked_order(
-    core: *mut HostCore,
-    list: *const u32,
-    n: usize,
-    out: *mut u32,
-    cap: usize,
-) -> usize {
-    // SAFETY: the contract above.
-    let Some(m) = (unsafe { model(core, true) }) else { return 0 };
-    // SAFETY: the contract above.
-    m.tucked_order(unsafe { slice(list, n) }, unsafe { slice_mut(out, cap) })
-}
-
 /// Whether a visible cut pane's window is over a pane it lies under in the on-screen list (window numbers, front to
 /// back).
 ///
@@ -349,7 +331,6 @@ mod tests {
                 1
             );
             assert_eq!(out[0], hs[0]);
-            assert_eq!(margin_model_tucked_order(core, hs.as_ptr(), 2, out.as_mut_ptr(), 4), 2);
             assert!(!margin_model_over_under(core, hs[1], [11i64, 10].as_ptr(), 2));
             let mut q = MarginPlacement::default();
             margin_model_fitted(core, hs[1], std::ptr::null(), true, &mut q);

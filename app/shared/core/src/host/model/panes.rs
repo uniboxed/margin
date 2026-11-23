@@ -327,8 +327,9 @@ impl HostModel {
         self.lying_under(h, at, &mut []) > 0
     }
 
-    /// Whether `h`'s window lies under `o`'s pane.
-    fn lies_under(&self, h: Handle, o: Handle) -> bool {
+    /// Whether `h`'s window lies under `o`'s pane: the one rule of it (`tucked_order`'s chain, a raise over a cut pane
+    /// in the window order's plan, `over_under`), all through `lying_under`.
+    pub fn lies_under(&self, h: Handle, o: Handle) -> bool {
         let mut buf = [0; ROOM];
         let n = self.lying_under(h, None, &mut buf);
         if n <= ROOM {
