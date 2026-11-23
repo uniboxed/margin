@@ -48,13 +48,14 @@ use std::rc::{Rc, Weak};
 
 use serde_json::{Map, Value, json};
 
+use crate::geometry::Rect;
 use crate::hosted_browser::Role;
 use crate::json::{self, Object};
 use exec::Exec;
 pub use hosting::HostTarget;
 pub use items::Split;
 pub use requests::{By, Request};
-pub use state::{Field, OpenItem, Row, State};
+pub use state::{Card, Field, Layout, OpenItem, Row, State};
 pub use target::Target;
 
 /// The log lines kept (HostedSession `done`).
@@ -106,11 +107,22 @@ pub trait Ports {
     /// A line for the app's log (Diagnostics), said at once.
     fn log(&self, warn: bool, text: &str);
     /// The Swift flows of the parts not moved yet (step 3's later commits), called synchronously by name, gone as each
-    /// part moves: `cardLeaving`/`cardReturning` `{ window, item }`, `pinnedOrFavorite` `{ item }` → bool,
-    /// `cardUrl` `{ profile }` → its card's address if it's a web one, `settleHosting`, `refreshLoading`,
-    /// `leaveMarginPage` `{ window }`, `hasLayout`/`clearLayout` `{ window }`, `layoutsWith` `{ item }` → windows,
-    /// `clearElsewhere` `{ window }`, `forgetElsewhere` `{ item }`, `paneFor` `{ profile, role }` → `{ address, item }`.
+    /// part moves: `settleHosting`, `refreshLoading`, `leaveMarginPage` `{ window }`, `clearElsewhere` `{ window }`,
+    /// `forgetElsewhere` `{ item }`, `paneFor` `{ profile, role }` → `{ address, item }`.
     fn swift(&self, call: &str, args: Value) -> Value;
+    /// Where a Margin window's page draws the preview card's page (the theme's `<m-preview-page>`,
+    /// `HostedWindow.cardRect`), None: none drawn. The window as the flow had it.
+    fn card_rect(&self, window: i64) -> Option<Rect>;
+    /// A Margin window's page area while it hosts (`HostedWindow.hostedPlacement`'s page), None: not measured.
+    fn hosted_page(&self, window: i64) -> Option<Rect>;
+    /// Whether the OS's IDNA (UTS #46) makes a valid ASCII name of a host with letters outside ASCII (the Mac:
+    /// Foundation's `URL(string:)`), and a web address's host as the OS's URL says it (its ASCII name: asked only for
+    /// such a host).
+    fn idna(&self, host: &str) -> bool;
+    fn url_host(&self, url: &str) -> Option<String>;
+    /// A library edit made now (`Library.perform`), its requests reaching the session re-entrantly before it returns,
+    /// as a synchronous Swift flow made it (the card's Quick Tab and Expand). Flows that await use `Command::Perform`.
+    fn perform(&self, action: &str, payload: &Object) -> Performed;
 }
 
 /// The library's values as its set has them now (Library.swift's reads over margin-core's `LibraryStore`).
@@ -141,7 +153,8 @@ pub enum Command {
     /// `closeWoken` `{ profile, except, why }`.
     Waker { op: String, args: Object },
     /// A Swift flow of a part not moved yet (interim): `prepare` `{ window, target }` → `{ placement, space }` or
-    /// `{}`, `showSplit` `{ split, focus, window }` → `{ shown }`.
+    /// `{}`, `showSplit` `{ split, focus, window }` → `{ shown }`, `applyLayout` `{ window, main, mainRect, extras,
+    /// focused, split: { id, items } }` → `{}`.
     Swift { call: String, args: Object },
     /// The answer to a Swift caller (an engine's ask, a Swift flow's call of one of these): its continuation resumed,
     /// and the run goes on once that caller had its turn (the next main-actor turn).
@@ -313,6 +326,9 @@ pub enum Input {
     Overtaken { item: String, window: Option<i64> },
     /// The next/previous-tab key pressed in a Margin window (each press and repeat).
     Cycled { window: i64 },
+    /// The preview card's and Quick Tab's word (the copy's pushes, the page's `peek.*`, ⌘W, a host gone, the poll):
+    /// card.rs `peek_input`, its reply for the ones that answer.
+    Peek { kind: String, args: Object },
 }
 
 impl Input {
@@ -344,6 +360,7 @@ impl Input {
                 window: swift_int(o.get("window")),
             }),
             "cycled" => Ok(Input::Cycled { window: swift_int(o.get("window")).ok_or("no window")? }),
+            "peek" => Ok(Input::Peek { kind: s("kind").ok_or("no kind")?.to_string(), args: o.clone() }),
             other => Err(format!("{other:?} isn't an input")),
         }
     }
@@ -427,10 +444,24 @@ impl Session {
         }
     }
 
+    /// A page's click for a preview (the copy's `peekOpen` push, card.rs `peek_open`), its parts typed: the id and
+    /// the address (empty: none), its time (0: none). As the `peek` input's `open`.
+    pub fn peek_open(&self, profile: &str, window: Option<i64>, id: &str, url: &str, not_after: f64) -> Out {
+        self.0.call(false, |c| {
+            c.peek_open_click(profile, window, id, url, not_after);
+            (None, None)
+        })
+    }
+
     /// Whether a show waiting on profile `p`'s link is still wanted (HostedSession `linkWanted`; the Safari waker
     /// reads it at each look: typed, nothing allocated).
     pub fn link_wanted(&self, profile: &str) -> bool {
         self.0.link_wanted(profile)
+    }
+
+    /// Whether an item is a pin's or a favourite's tab (card.rs `pinned_or_favorite`: typed, read by Swift's layout).
+    pub fn pinned_or_favorite(&self, item: &str) -> bool {
+        self.0.pinned_or_favorite(item)
     }
 
     /// A new app's open, awaiting its window, still wanted for `item` in Margin window `window` (the engine's
@@ -576,6 +607,13 @@ impl Core {
                 let now = self.ports.now();
                 self.edit(Field::CycledAt, |s| s.cycled_at.insert(window, now));
             }
+            Input::Peek { kind, args } => match self.peek_input(&kind, &args) {
+                Ok(reply) => return (reply, None),
+                Err(why) => {
+                    self.refused("peek", &why);
+                    return (None, Some(format!("bad input: {why}")));
+                }
+            },
         }
         (None, None)
     }
@@ -595,6 +633,10 @@ impl Core {
     fn bump(&self, f: Field) {
         let r = &self.revs[f as usize];
         r.set(r.get() + 1);
+        // (A card's address and freshness are read on their own, typed: `cards`' changes are theirs.)
+        if f == Field::Cards {
+            self.bump(Field::CardPages);
+        }
     }
 
     /// A bad input or edit, said once a kind.

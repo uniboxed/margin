@@ -251,7 +251,7 @@ impl Core {
         // (The preview card's window opened at the card's page; a split's pane's at its pane's: never Safari's empty
         // new-tab page, whose address field keeps Safari's toolbar down over the page.)
         if role == Role::Card
-            && let Some(url) = self.swift("cardUrl", json!({ "profile": p })).as_str()
+            && let Some(url) = self.card_url(p)
         {
             payload.insert("url".into(), json!(url));
         }

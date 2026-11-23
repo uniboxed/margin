@@ -23,8 +23,10 @@
 use std::ffi::c_void;
 
 use margin_core::data::library::LibraryStore;
+use margin_core::geometry::Rect;
 use margin_core::json;
-use margin_core::session::{Field, LibraryView, Out, Ports, Row, Session};
+use margin_core::session::state::rect_read;
+use margin_core::session::{Field, LibraryView, Out, Performed, Ports, Row, Session};
 use serde_json::{Map, Value, json};
 
 use crate::data::{MarginLibrary, answer, text};
@@ -125,14 +127,13 @@ enum PortKind {
     WokenByMenu = 15,
     Unopenable = 16,
     Log = 17,
-    CardLeaving = 20,
-    CardReturning = 21,
-    PinnedOrFavorite = 22,
+    // (Commit 7's: the wall clock and a window's rects, on a peek open's path; numbers as their bits.)
+    Wall = 18,
+    CardRect = 19,
+    HostedPage = 30,
     SettleHosting = 23,
     RefreshLoading = 24,
     LeaveMarginPage = 25,
-    HasLayout = 26,
-    ClearLayout = 27,
     ClearElsewhere = 28,
     ForgetElsewhere = 29,
 }
@@ -295,6 +296,9 @@ impl Ports for SwiftPorts {
         json::array(v.get("ids")).map(|l| l.iter().filter_map(|i| json::int(Some(i))).collect()).unwrap_or_default()
     }
     fn wall(&self) -> f64 {
+        if let Some(c) = self.call {
+            return f64::from_bits(self.number(c, PortKind::Wall, None, false, [None; 3]) as u64);
+        }
         json::num(self.ask(json!({ "port": "wall" })).get("now")).unwrap_or(0.0)
     }
     fn set_showing(&self, window: i64, label: Option<&str>, app: Option<&str>, slow: bool) {
@@ -352,31 +356,55 @@ impl Ports for SwiftPorts {
             let w = args.get("window").and_then(|w| json::int(Some(w)));
             let item = args.get("item").and_then(Value::as_str);
             let kind = match call {
-                "cardLeaving" => Some(PortKind::CardLeaving),
-                "cardReturning" => Some(PortKind::CardReturning),
-                "pinnedOrFavorite" => Some(PortKind::PinnedOrFavorite),
                 "settleHosting" => Some(PortKind::SettleHosting),
                 "refreshLoading" => Some(PortKind::RefreshLoading),
                 "leaveMarginPage" => Some(PortKind::LeaveMarginPage),
-                "hasLayout" => Some(PortKind::HasLayout),
-                "clearLayout" => Some(PortKind::ClearLayout),
                 "clearElsewhere" => Some(PortKind::ClearElsewhere),
                 "forgetElsewhere" => Some(PortKind::ForgetElsewhere),
                 _ => None,
             };
             if let Some(kind) = kind {
-                let n = self.number(c, kind, w, false, [item, None, None]);
-                return match kind {
-                    PortKind::PinnedOrFavorite | PortKind::HasLayout => Value::Bool(n == 1),
-                    _ => Value::Null,
-                };
+                self.number(c, kind, w, false, [item, None, None]);
+                return Value::Null;
             }
         }
         self.ask(json!({ "port": "swift", "call": call, "args": args })).get("value").cloned().unwrap_or(Value::Null)
     }
+    // (The preview card's, commit 7: rare, JSON.)
+    fn card_rect(&self, window: i64) -> Option<Rect> {
+        if let Some(c) = self.call {
+            return self.rect(c, PortKind::CardRect, window);
+        }
+        self.ask(json!({ "port": "cardRect", "window": window })).get("rect").and_then(rect_read)
+    }
+    fn hosted_page(&self, window: i64) -> Option<Rect> {
+        if let Some(c) = self.call {
+            return self.rect(c, PortKind::HostedPage, window);
+        }
+        self.ask(json!({ "port": "hostedPage", "window": window })).get("page").and_then(rect_read)
+    }
+    fn idna(&self, host: &str) -> bool {
+        self.ask(json!({ "port": "idna", "host": host })).get("ok").and_then(Value::as_bool) == Some(true)
+    }
+    fn url_host(&self, url: &str) -> Option<String> {
+        Self::string(&self.ask(json!({ "port": "urlHost", "url": url })), "host")
+    }
+    fn perform(&self, action: &str, payload: &Map<String, Value>) -> Performed {
+        Performed::read(&self.ask(json!({ "port": "perform", "action": action, "payload": payload })))
+    }
 }
 
 impl SwiftPorts {
+    /// A typed port's rect: 1 and its x, y, width, height as their bits (`f64::to_bits`), else none.
+    fn rect(&self, call: MarginSessionCall, kind: PortKind, window: i64) -> Option<Rect> {
+        let mut out = MarginPortOut::default();
+        if self.typed(call, kind, Some(window), false, [None; 3], &mut out) != 1 || out.ints.len() != 4 {
+            return None;
+        }
+        let n = |i: usize| f64::from_bits(out.ints[i] as u64);
+        Some(Rect::new(n(0), n(1), n(2), n(3)))
+    }
+
     /// A typed port's one text (none: it gave none).
     fn text(
         &self,
@@ -515,6 +543,30 @@ pub unsafe extern "C" fn margin_session_answer(
     give(&s.answer(id, reply), status, out_len)
 }
 
+/// A page's click for a preview (the copy's `peekOpen` push), typed: its profile, its window (`has_window`), its id
+/// and address (null: none, as empty), its time (0: none) → the call's answer, as `margin_session_input`'s.
+///
+/// # Safety
+/// `s` from [`margin_session_new`], not freed; each text's `len` bytes readable; `status` writable or null;
+/// `out_len` writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_session_peek_open(
+    s: *const MarginSession,
+    profile: MarginBytes,
+    window: i64,
+    has_window: bool,
+    id: MarginBytes,
+    url: MarginBytes,
+    not_after: f64,
+    status: *mut MarginSessionStatus,
+    out_len: *mut usize,
+) -> *mut u8 {
+    let Some(s) = session(s) else { return answer(&json!({ "error": "no session" }), out_len) };
+    let not_after = if not_after.is_finite() { not_after } else { 0.0 };
+    let (p, i, u) = (profile.text().unwrap_or(""), id.text().unwrap_or(""), url.text().unwrap_or(""));
+    give(&s.peek_open(p, has_window.then_some(window), i, u, not_after), status, out_len)
+}
+
 /// The commands handed out are started, the deadlines up to `due` over → the call's answer.
 ///
 /// # Safety
@@ -639,6 +691,19 @@ pub unsafe extern "C" fn margin_session_rev(s: *const MarginSession, field: u32)
 pub unsafe extern "C" fn margin_session_link_wanted(s: *const MarginSession, profile: *const u8, len: usize) -> bool {
     match (session(s), text(profile, len)) {
         (Some(s), Some(p)) => s.link_wanted(p),
+        _ => false,
+    }
+}
+
+/// Whether `item` (`len` bytes of UTF-8) is a pin's or a favourite's tab (false for a null session or an item that
+/// isn't text): Swift's applyLayout's `pinned`, each web pane. No JSON.
+///
+/// # Safety
+/// As [`margin_session_link_wanted`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_session_pinned(s: *const MarginSession, item: *const u8, len: usize) -> bool {
+    match (session(s), text(item, len)) {
+        (Some(s), Some(i)) => s.pinned_or_favorite(i),
         _ => false,
     }
 }
@@ -883,6 +948,28 @@ mod tests {
             unsafe { margin_session_rows(s, f as u32, &rows as *const _ as *mut c_void, Some(sink)) };
         }
         assert_eq!(*rows.borrow(), [(1, Some("t1".to_owned()), 0.0), (1, None, 5.0)]);
+        // A page's click, typed: refused (no window), its answer to the copy queued, said through the typed log.
+        t.heard.borrow_mut().clear();
+        let text = |s: &'static str| MarginBytes::of(Some(s));
+        // SAFETY: the live session, the texts' bytes, a status.
+        let out = unsafe {
+            margin_session_peek_open(
+                s,
+                text("p"),
+                0,
+                false,
+                text("c1"),
+                text("https://a.example/"),
+                1e15,
+                &mut status,
+                &mut n,
+            )
+        };
+        assert!(out.is_null() && status.ready, "nothing more to say; the answer to the copy ready");
+        assert_eq!(
+            t.heard.borrow().last().map(String::as_str),
+            Some("17 false 0 Some(\"hosted: Preview asked by a page: refused (no window)\") false")
+        );
         // SAFETY: from margin_session_new, freed once.
         unsafe { margin_session_free(s) };
     }

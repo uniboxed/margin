@@ -10,13 +10,133 @@
 //! `[[window, seconds]]`, `safariTabs` `[[item, tab]]`, `safariAudio` `[[item, audible, muted]]`; the sets
 //! `marginOpen`, `safariMuted`, `requesting` `[[item]]`… and `made` `[[windowId]]`; the one values `hostingWindow`,
 //! `preparingWindow` `[[window]]` and `preparingProfile` `[[profile]]` (none: `[]`; a `del` of anything clears one).
+//! Commit 7's (the preview card and Quick Tab): `cards` `[[profile, window, opener, space | null, url, title, open,
+//! ready, fresh, rect | null, hiddenBy | null, click | null]]` (`rect`: `[x, y, width, height]`), `littleArcs`
+//! `[[window, space]]`; `layouts` `[[window, main, mainRect | null, [[item, role, rect]…], focused, split | null]]`
+//! (part 3's: Swift's applyLayout still writes it, the card's flows read it).
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{Value, json};
 
+use crate::geometry::{Rect, cg};
 use crate::hosted_browser::Role;
 use crate::json;
+
+/// A profile's preview card (HostedPeek `PeekCard`): attached to a Margin window, over its opener.
+#[derive(Clone, Debug)]
+pub struct Card {
+    pub profile: String,
+    /// The Margin window it's attached to, and the item under it (main of that window's layout).
+    pub window: i64,
+    pub opener: String,
+    /// The space Expand puts it in.
+    pub space: Option<String>,
+    pub url: String,
+    pub title: String,
+    /// Shown in its window now (false: hidden with its opener, kept).
+    pub open: bool,
+    /// Its window in place at its rect.
+    pub ready: bool,
+    /// Its page still to be loaded at `url` (a new preview): the copy navigates its tab there.
+    pub fresh: bool,
+    /// Where it was laid out last.
+    pub rect: Option<Rect>,
+    /// The item whose show hid it (a pick of the opener itself keeps it hidden).
+    pub hidden_by: Option<String>,
+    /// The page's click it came from (`peekOpen`'s id).
+    pub click: Option<String>,
+}
+
+impl Card {
+    pub fn new(
+        profile: &str,
+        window: i64,
+        opener: &str,
+        space: Option<String>,
+        url: &str,
+        click: Option<String>,
+    ) -> Card {
+        Card {
+            profile: profile.to_string(),
+            window,
+            opener: opener.to_string(),
+            space,
+            url: url.to_string(),
+            title: String::new(),
+            open: true,
+            ready: false,
+            fresh: true,
+            rect: None,
+            hidden_by: None,
+            click,
+        }
+    }
+}
+
+/// As the Swift struct's `==`: CGRect's (both standardized) for the rect.
+impl PartialEq for Card {
+    fn eq(&self, o: &Card) -> bool {
+        let rect = match (&self.rect, &o.rect) {
+            (Some(a), Some(b)) => cg::same(a, b),
+            (None, None) => true,
+            _ => false,
+        };
+        rect && self.profile == o.profile
+            && self.window == o.window
+            && self.opener == o.opener
+            && self.space == o.space
+            && self.url == o.url
+            && self.title == o.title
+            && self.open == o.open
+            && self.ready == o.ready
+            && self.fresh == o.fresh
+            && self.hidden_by == o.hidden_by
+            && self.click == o.click
+    }
+}
+
+/// A Margin window's layout while more than its item shown is visible (HostedSession `HostedLayout`): main (at the
+/// page area, or `main_rect`: a split's pane), the others with their roles (`main`, `pane`, `card`) and rects back to
+/// front, the focused one, the split it shows.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Layout {
+    pub main: String,
+    pub main_rect: Option<Rect>,
+    pub extras: Vec<Extra>,
+    pub focused: String,
+    pub split: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Extra {
+    pub item: String,
+    pub role: String,
+    pub rect: Rect,
+}
+
+impl Layout {
+    /// Main, then the others (`items`).
+    pub fn items(&self) -> impl Iterator<Item = &str> {
+        std::iter::once(self.main.as_str()).chain(self.extras.iter().map(|e| e.item.as_str()))
+    }
+}
+
+/// A rect as a row has it (`[x, y, width, height]`).
+pub fn rect_json(r: &Rect) -> Value {
+    Value::Array(
+        [r.x, r.y, r.width, r.height].iter().map(|n| crate::protocol::number(*n).unwrap_or(Value::Null)).collect(),
+    )
+}
+
+pub fn rect_read(v: &Value) -> Option<Rect> {
+    let a = v.as_array()?;
+    if a.len() != 4 {
+        return None;
+    }
+    let n = |i: usize| json::num(a.get(i));
+    Some(Rect::new(n(0)?, n(1)?, n(2)?, n(3)?))
+}
 
 /// Where an item's page is: its host, and for a web item its profile (HostedSession `OpenItem`).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -47,10 +167,16 @@ pub enum Field {
     PreparingProfile = 15,
     Requesting = 16,
     Made = 17,
+    Cards = 18,
+    LittleArcs = 19,
+    Layouts = 20,
+    /// Each card's address and whether it's a new page (`cards`' own, typed: what Swift's layout reads of a card; read
+    /// only, its revision moving with `cards`').
+    CardPages = 21,
 }
 
 impl Field {
-    pub const COUNT: usize = 18;
+    pub const COUNT: usize = 22;
     const ALL: [Field; Field::COUNT] = [
         Field::Shown,
         Field::Open,
@@ -70,6 +196,10 @@ impl Field {
         Field::PreparingProfile,
         Field::Requesting,
         Field::Made,
+        Field::Cards,
+        Field::LittleArcs,
+        Field::Layouts,
+        Field::CardPages,
     ];
     pub fn from_index(i: u32) -> Option<Field> {
         Self::ALL.get(i as usize).copied()
@@ -95,6 +225,10 @@ impl Field {
             Field::PreparingProfile => "preparingProfile",
             Field::Requesting => "requesting",
             Field::Made => "made",
+            Field::Cards => "cards",
+            Field::LittleArcs => "littleArcs",
+            Field::Layouts => "layouts",
+            Field::CardPages => "cardPages",
         }
     }
     pub fn of(name: &str) -> Option<Field> {
@@ -129,6 +263,13 @@ pub struct State {
     /// The profiles a window is being asked of right now, and every Safari window Margin made (never swept).
     pub requesting: BTreeSet<String>,
     pub made: BTreeSet<i64>,
+    /// Each profile's preview card, when each card window was last used (closed after `CARD_IDLE` unused), and the
+    /// Margin windows with Quick Tab's field up (the space it opens in).
+    pub cards: BTreeMap<String, Card>,
+    pub card_used_at: BTreeMap<String, f64>,
+    pub little_arcs: BTreeMap<i64, String>,
+    /// Each Margin window's layout of several (part 3's, written by Swift's applyLayout until it moves).
+    pub layouts: BTreeMap<i64, Layout>,
 }
 
 /// One part of a row (an int as `json::int` reads it, a string, a number, a bool).
@@ -182,6 +323,88 @@ impl<T: Part> Rest for T {
         vec![self.json()]
     }
 }
+impl Rest for Card {
+    fn read(c: &[Value]) -> Option<Self> {
+        let s = |i: usize| c.get(i).and_then(Value::as_str).map(str::to_string);
+        // (An optional text: null or a string, nothing else.)
+        let opt = |i: usize| -> Option<Option<String>> {
+            match c.get(i)? {
+                Value::Null => Some(None),
+                Value::String(t) => Some(Some(t.clone())),
+                _ => None,
+            }
+        };
+        let b = |i: usize| c.get(i).and_then(Value::as_bool);
+        let rect = match c.get(8)? {
+            Value::Null => None,
+            v => Some(rect_read(v)?),
+        };
+        Some(Card {
+            profile: String::new(),
+            window: json::int(c.first())?,
+            opener: s(1)?,
+            space: opt(2)?,
+            url: s(3)?,
+            title: s(4)?,
+            open: b(5)?,
+            ready: b(6)?,
+            fresh: b(7)?,
+            rect,
+            hidden_by: opt(9)?,
+            click: opt(10)?,
+        })
+    }
+    fn cells(&self) -> Vec<Value> {
+        vec![
+            json!(self.window),
+            json!(self.opener),
+            json!(self.space),
+            json!(self.url),
+            json!(self.title),
+            json!(self.open),
+            json!(self.ready),
+            json!(self.fresh),
+            self.rect.as_ref().map_or(Value::Null, rect_json),
+            json!(self.hidden_by),
+            json!(self.click),
+        ]
+    }
+}
+
+impl Rest for Layout {
+    fn read(c: &[Value]) -> Option<Self> {
+        let rect = |v: &Value| if v.is_null() { Some(None) } else { rect_read(v).map(Some) };
+        let extras = c.get(2)?.as_array()?.iter().map(|e| {
+            let e = e.as_array()?;
+            Some(Extra {
+                item: e.first()?.as_str()?.to_string(),
+                role: e.get(1)?.as_str()?.to_string(),
+                rect: rect_read(e.get(2)?)?,
+            })
+        });
+        Some(Layout {
+            main: c.first()?.as_str()?.to_string(),
+            main_rect: rect(c.get(1)?)?,
+            extras: extras.collect::<Option<Vec<_>>>()?,
+            focused: c.get(3)?.as_str()?.to_string(),
+            split: match c.get(4)? {
+                Value::Null => None,
+                v => Some(v.as_str()?.to_string()),
+            },
+        })
+    }
+    fn cells(&self) -> Vec<Value> {
+        let extras = self.extras.iter().map(|e| json!([e.item, e.role, rect_json(&e.rect)])).collect();
+        vec![
+            json!(self.main),
+            self.main_rect.as_ref().map_or(Value::Null, rect_json),
+            Value::Array(extras),
+            json!(self.focused),
+            json!(self.split),
+        ]
+    }
+}
+
 impl Rest for (bool, bool) {
     fn read(cells: &[Value]) -> Option<Self> {
         Some((<bool as Part>::read(cells.first()?)?, <bool as Part>::read(cells.get(1)?)?))
@@ -314,6 +537,10 @@ impl State {
             Field::PreparingProfile => one_json(&self.preparing_profile),
             Field::Requesting => set_json(&self.requesting),
             Field::Made => set_json(&self.made),
+            Field::Cards => map_json(&self.cards),
+            Field::LittleArcs => map_json(&self.little_arcs),
+            Field::Layouts => map_json(&self.layouts),
+            Field::CardPages => Value::Array(self.cards.iter().map(|(p, c)| json!([p, c.url, c.fresh])).collect()),
         }
     }
 
@@ -335,6 +562,17 @@ impl State {
             Field::PreparingProfile => Some(one_edit(&mut self.preparing_profile, edit)),
             Field::Requesting => Some(set_edit(&mut self.requesting, edit)),
             Field::Made => Some(set_edit(&mut self.made, edit)),
+            Field::Cards => {
+                let bad = map_edit(&mut self.cards, edit);
+                // (A row's key is its profile.)
+                for (p, c) in self.cards.iter_mut() {
+                    c.profile.clone_from(p);
+                }
+                Some(bad)
+            }
+            Field::LittleArcs => Some(map_edit(&mut self.little_arcs, edit)),
+            Field::Layouts => Some(map_edit(&mut self.layouts, edit)),
+            Field::CardPages => Some(1),
             Field::Shown | Field::Open | Field::SafariWindows | Field::Done => None,
         };
         if let Some(bad) = bad {
@@ -399,7 +637,9 @@ impl State {
 /// window, `s0` the item or page); `open` (`s0` item, `s1` host, `s2` profile); `safariWindows` (`s0` profile, `s1`
 /// role, `i0` window); `labels`, `showing` (`s0` host, `s1` label or item); `cycledAt` (`i0`, `f`); `safariTabs`
 /// (`s0`, `i0`); `safariAudio` (`s0`, `b0` audible, `b1` muted); the sets `marginOpen`, `safariMuted`, `requesting`
-/// (`s0`) and `made` (`i0`); the one values `hostingWindow`, `preparingWindow` (`i0`), `preparingProfile` (`s0`).
+/// (`s0`) and `made` (`i0`); the one values `hostingWindow`, `preparingWindow` (`i0`), `preparingProfile` (`s0`);
+/// commit 7's `cards` (`s0` profile, `s1` its parts as their JSON row's text), `littleArcs` (`i0`, `s0` space) and
+/// `layouts` (`i0` window, `s0` its parts as JSON text); `cardPages` (`s0` profile, `s1` address, `b0` fresh: read only).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Row<'a> {
     pub i0: i64,
@@ -444,6 +684,23 @@ impl State {
             Field::PreparingProfile => self.preparing_profile.iter().for_each(|p| emit(&Row { s0: Some(p), ..d })),
             Field::Requesting => self.requesting.iter().for_each(|p| emit(&Row { s0: Some(p), ..d })),
             Field::Made => self.made.iter().for_each(|w| emit(&Row { i0: *w, ..d })),
+            // (A card's and a layout's parts as JSON text, as their rows in `field_json` after the key: rare.)
+            Field::Cards => {
+                for (p, c) in &self.cards {
+                    let text = Value::Array(c.cells()).to_string();
+                    emit(&Row { s0: Some(p), s1: Some(&text), ..d });
+                }
+            }
+            Field::LittleArcs => self.little_arcs.iter().for_each(|(w, s)| emit(&Row { i0: *w, s0: Some(s), ..d })),
+            Field::Layouts => {
+                for (w, l) in &self.layouts {
+                    let text = Value::Array(l.cells()).to_string();
+                    emit(&Row { i0: *w, s0: Some(&text), ..d });
+                }
+            }
+            Field::CardPages => {
+                self.cards.iter().for_each(|(p, c)| emit(&Row { s0: Some(p), s1: Some(&c.url), b0: c.fresh, ..d }))
+            }
         }
     }
 
@@ -484,7 +741,18 @@ impl State {
                 self.preparing_profile = if del { None } else { Some(need(s0.clone())?) };
                 Ok(())
             }
-            Field::Done => Err(()),
+            Field::Cards => edit_map(&mut self.cards, need(s0.clone())?, del, || {
+                let cells: Value = serde_json::from_str(r.s1.ok_or(())?).map_err(|_| ())?;
+                let mut c = <Card as Rest>::read(cells.as_array().ok_or(())?).ok_or(())?;
+                c.profile = s0.clone().ok_or(())?;
+                Ok(c)
+            }),
+            Field::LittleArcs => edit_map(&mut self.little_arcs, r.i0, del, || need(s0.clone())),
+            Field::Layouts => edit_map(&mut self.layouts, r.i0, del, || {
+                let cells: Value = serde_json::from_str(r.s0.ok_or(())?).map_err(|_| ())?;
+                <Layout as Rest>::read(cells.as_array().ok_or(())?).ok_or(())
+            }),
+            Field::Done | Field::CardPages => Err(()),
         })();
         done.is_ok()
     }
@@ -573,6 +841,40 @@ mod tests {
         assert_eq!((s.shown.len(), s.hosting_window), (0, None));
         assert!(s.edit_row(Field::SafariWindows, true, &Row { s0: Some("p"), s1: Some("pane2"), ..Row::default() }));
         assert!(s.safari_windows.is_empty());
+    }
+
+    #[test]
+    fn the_cards_quick_tab_and_layouts_rows() {
+        let mut s = State::default();
+        let card = r#"[1,"b1","home","https://a/","",true,false,true,[360,150,1044,700],null,"c1"]"#;
+        assert!(s.edit_row(Field::Cards, false, &Row { s0: Some("p"), s1: Some(card), ..Row::default() }));
+        assert!(!s.edit_row(Field::Cards, false, &Row { s0: Some("q"), s1: Some("[1]"), ..Row::default() }));
+        let c = &s.cards["p"];
+        assert_eq!(
+            (c.profile.as_str(), c.window, c.rect, c.click.as_deref()),
+            ("p", 1, Some(Rect::new(360.0, 150.0, 1044.0, 700.0)), Some("c1"))
+        );
+        let layout = r#"["b1",null,[["card:p","card",[360,150,1044,700]]],"card:p",null]"#;
+        assert!(s.edit_row(Field::Layouts, false, &Row { i0: 1, s0: Some(layout), ..Row::default() }));
+        assert!(s.edit_row(Field::LittleArcs, false, &Row { i0: 2, s0: Some("home"), ..Row::default() }));
+        let mut back = Vec::new();
+        for f in [Field::Cards, Field::Layouts, Field::LittleArcs] {
+            s.rows(f, &mut |r| back.push(format!("{} {:?} {:?}", r.i0, r.s0, r.s1)));
+        }
+        assert_eq!(
+            back,
+            [
+                format!("0 Some(\"p\") Some({card:?})"),
+                format!("1 Some({layout:?}) None"),
+                "2 Some(\"home\") None".to_string()
+            ]
+        );
+        assert_eq!(s.field_json(Field::Cards)[0][0], json!("p"));
+        let mut pages = Vec::new();
+        s.rows(Field::CardPages, &mut |r| pages.push((r.s0.map(str::to_string), r.s1.map(str::to_string), r.b0)));
+        assert_eq!(pages, [(Some("p".to_string()), Some("https://a/".to_string()), true)], "the card's address, typed");
+        assert!(!s.edit_row(Field::CardPages, false, &Row { s0: Some("p"), ..Row::default() }), "read only");
+        assert!(s.edit_row(Field::Cards, true, &Row { s0: Some("p"), ..Row::default() }) && s.cards.is_empty());
     }
 
     #[test]

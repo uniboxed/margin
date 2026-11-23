@@ -1064,6 +1064,19 @@ and the session's flows above, one `async fn` or `fn` each, same names.
 
 **FFI.** The copy's pushes arrive as `{"type":"push","link","windowId","msg"}` (part 10); the page's `peek.*` as
 `{"type":"ui",…}` (part 10). Rare.
+*As built (commit 7):* until part 10 routes the pushes and the UI's requests in the core, the facade keeps
+HostedPeek's calls and each is one `{"type":"peek","kind",…}` input (`open`, typed too as `margin_session_peek_open`,
+which the Mac uses: a click's id, address and time, no JSON; `cancel`, `page`, `key`, `quickTab`,
+`quickTabGo`, `close` and `closeForKey` answering whether one was closed, `expand`, `history`, `hostGone`, `idle`,
+`rect`). The flows are card.rs's, the `Card` (and `cards`, `littleArcs` and the core-only `card_used_at`) state.rs's.
+The design left out three things the flows need: the layout they read is part 3's, so its field (`layouts`) moved to
+the core now, Swift's applyLayout still writing it through the facade and laying out through a `Swift` command
+(`applyLayout`) until commit 6; Quick Tab's new tab and Expand's item are library edits made inside a synchronous call,
+so a `perform` port (the delegate's requests re-entrant, as `Library.perform` ran them); and `tellPage`'s title is
+Foundation's `URL.host` (card.rs `web_host`, ported with Foundation's answers as vectors; a host outside ASCII is the
+OS's IDNA, a `urlHost` port). The ports: `cardRect`, `hostedPage` and the wall clock typed (a peek open's path), `idna`,
+`urlHost`, `perform` JSON; `pinnedOrFavorite` a typed read (`margin_session_pinned`) and a card's address and
+freshness a typed field (`cardPages`, read only, moving with `cards`) for Swift's layout.
 
 **Must not change:** the card's page never Safari's new-tab page (HS:2111), `peekAnswer` sent before the card is laid
 out (HP:137-138), the page told before the window goes (HP:322-326), one card per window (HP:199).
@@ -1415,7 +1428,7 @@ until step 4 (open question 6).
 | 4 | The session's skeleton: executor, ports, commands, the facade, the re-entrance test adapter; `navigate` (HS:2378-2385) the first flow moved, as the proof; `SafariWaker` split out in Swift (no behaviour moved). **Done 2026-11-23** (step3/skeleton, three commits: SafariWaker.swift, a move only; navigate's checks against the Swift; core/session/ with exec.rs, state.rs, host_id.rs, navigate.rs, ffi session.rs and the facade, `shown`, `open`, `safariWindows` and `done` the core's, Swift's `enqueue` in the core's queue. Inputs run nothing in their call, the one finding; nothing per frame) | ~10 | ~700 | |
 | 5 | Parts 1 and 2: the library's requests, `show`, `close`, `host`, the choices, the engine's window asks. **Done 2026-11-23** (step3/requests, two commits: the move, then Tirth's change 3; session/requests.rs, hosting.rs, items.rs, `ItemTarget(json:)` into target.rs, `DefaultBrowser` into choice.rs; 14 more fields the core's; the Swift of later parts through one `swift` port and a `Swift` command, interim; the notes through a `log` port; the comparison on generated sequences with overtaking, failures and re-entrance; a switch measured) | ~455 (+~335 of facade) | ~2,300 (a third tests) | a switch |
 | 6 | Parts 3 and 7: layouts, splits, the page area moving, the drag's typed path | ~320 | ~1,000 | `live-resize` |
-| 7 | Part 4: the card and Quick Tab | ~330 | ~900 | |
+| 7 | Part 4: the card and Quick Tab. **Done 2026-11-23** (step3/card, one commit: card.rs's flows and `web_host`, `Card`, `cards`, `littleArcs` and part 3's `layouts` the core's fields, HostedPeek.swift the facade; the interim card entries of the `swift` port gone; a peek open measured) | ~350 (+~200: the facade, the ports, the fields' rows) | ~1,580 (a quarter tests) | a peek open |
 | 8 | Parts 5 and 6: elsewhere, the start, `resumeLast`, `settleHosting`, the launcher, the preparation | ~300 | ~900 | `idle-cost` |
 | 9 | Parts 8, 9, 10: the loading bar, the pushes and the mini player, `drawn`, the hello and the ops' routing, the UI's requests, `live_plan` | ~380 | ~900 | |
 | 10 | Part 13 and the leftovers: `settingsAndIcons`, the facade trimmed to what T/ reads | ~40 | ~50 | a draw |

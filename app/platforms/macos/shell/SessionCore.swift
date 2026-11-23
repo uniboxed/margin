@@ -31,15 +31,15 @@ final class SessionCore {
     // The fields with a revision (session/state.rs `Field`), by their names in a `state` input.
     enum Field: UInt32 {
         case shown = 0, open, safariWindows, done, requested, hostingWindow, labels, showing, marginPages, marginOpen, cycledAt
-        case safariTabs, safariMuted, safariAudio, preparingWindow, preparingProfile, requesting, made
+        case safariTabs, safariMuted, safariAudio, preparingWindow, preparingProfile, requesting, made, cards, littleArcs, layouts, cardPages
     }
 
     // The typed ports by their numbers (margin-ffi session.rs `PortKind`).
     enum PortKind: UInt32 {
         case window = 0, windowIds, engineShown, isHosted, safariProfiles, linkEpoch, appName, appRuns, showsAlone, stopHidingWoken
-        case windowIdsOf, setShowing, setMarginPage, push, changed, wokenByMenu, unopenable, log
-        case cardLeaving = 20, cardReturning, pinnedOrFavorite, settleHosting, refreshLoading, leaveMarginPage, hasLayout, clearLayout
-        case clearElsewhere, forgetElsewhere
+        case windowIdsOf, setShowing, setMarginPage, push, changed, wokenByMenu, unopenable, log, wall, cardRect
+        case settleHosting = 23, refreshLoading, leaveMarginPage
+        case clearElsewhere = 28, forgetElsewhere, hostedPage
     }
     // A typed port's "none".
     static let none = Int64.min
@@ -81,6 +81,13 @@ final class SessionCore {
         t.withUTF8 { margin_port_out_text(out, $0.baseAddress ?? UnsafePointer(bitPattern: 1), $0.count) }
     }
     nonisolated static func give(_ n: Int, _ out: OpaquePointer?) { margin_port_out_int(out, Int64(n)) }
+    // A number as its bits (the wall clock), and a rect's four (1: one given; none: none).
+    nonisolated static func bits(_ d: Double) -> Int64 { Int64(bitPattern: d.bitPattern) }
+    nonisolated static func give(_ r: CGRect?, _ out: OpaquePointer?) -> Int64 {
+        guard let r else { return Int64.min } // (`none`)
+        for d in [r.origin.x, r.origin.y, r.size.width, r.size.height] { margin_port_out_int(out, bits(Double(d))) }
+        return 1
+    }
 
     // An answer: its readiness and deadline typed, its JSON read only when it has more.
     private func call(_ make: (UnsafeMutablePointer<MarginSessionStatus>, UnsafeMutablePointer<Int>) -> UnsafeMutablePointer<UInt8>?) -> JSONObject {
@@ -112,6 +119,19 @@ final class SessionCore {
     }
 
     func tick(_ due: Double) -> JSONObject { call { margin_session_tick(core, due, $0, $1) } }
+
+    // A page's click for a preview (the copy's `peekOpen`), typed: its id and address (nil: none), its time (0: none).
+    func peekOpen(profile: String, window: Int?, id: String?, url: String?, notAfter: Double) -> JSONObject {
+        var answer: JSONObject = [:]
+        Self.with(profile) { p in
+            Self.with(id) { i in
+                Self.with(url) { u in
+                    answer = call { margin_session_peek_open(core, p, Int64(window ?? 0), window != nil, i, u, notAfter, $0, $1) }
+                }
+            }
+        }
+        return answer
+    }
 
     // A field's rows, typed.
     private final class Rows { var rows: [CoreRow] = [] }
@@ -151,5 +171,6 @@ final class SessionCore {
     // A show waiting on a profile's link still wanted (the Safari waker's look), a new app's open still wanted (the
     // engine's): typed, nothing allocated.
     func linkWanted(_ profile: String) -> Bool { KeysCore.bytes(profile) { margin_session_link_wanted(core, $0, $1) } }
+    func pinned(_ item: String) -> Bool { KeysCore.bytes(item) { margin_session_pinned(core, $0, $1) } }
     func openWanted(window: Int, item: String) -> Bool { KeysCore.bytes(item) { margin_session_open_wanted(core, Int64(window), $0, $1) } }
 }

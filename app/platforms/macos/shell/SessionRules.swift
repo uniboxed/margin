@@ -25,8 +25,10 @@ enum SessionRules {
         let said = utf8.withUnsafeBufferPointer { margin_web_address($0.baseAddress, $0.count, &at, &len) }
         guard said == 2 else { return said == 1 }
         guard at >= 0, len >= 0, at + len <= utf8.count, let host = String(bytes: utf8[at..<(at + len)], encoding: .utf8) else { return false }
-        return URL(string: "http://\(host)/") != nil
+        return idna(host)
     }
+    // ...the OS's IDNA's answer for such a host (the session's `idna` port too).
+    nonisolated static func idna(_ host: String) -> Bool { URL(string: "http://\(host)/") != nil }
 
     // JSON for the core of what a page or a copy said (a WKScriptMessage's objects, JSONSerialization's): a number
     // that isn't finite is null (as the page's own JSON would say it), and anything JSON hasn't is null.

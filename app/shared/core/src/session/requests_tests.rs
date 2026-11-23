@@ -7,7 +7,7 @@ use super::*;
 
 /// The commands a run handed out, each answered by `answer` (a library edit before the run goes on, as Swift answers
 /// it in the same turn; the others after); deadlines ticked on the world's clock when nothing else is left.
-fn pump(s: &Session, world: &World, first: Out, answer: &mut dyn FnMut(&Command) -> Value) -> Vec<Command> {
+pub(super) fn pump(s: &Session, world: &World, first: Out, answer: &mut dyn FnMut(&Command) -> Value) -> Vec<Command> {
     let mut seen = Vec::new();
     let mut out = first;
     for _ in 0..10_000 {
@@ -49,7 +49,7 @@ fn pump(s: &Session, world: &World, first: Out, answer: &mut dyn FnMut(&Command)
 }
 
 /// The usual answers: the Swift flows' prepare made, the engine's open shown, a copy's hostShow a tab.
-fn usual(c: &Command) -> Value {
+pub(super) fn usual(c: &Command) -> Value {
     match c {
         Command::Swift { call, .. } if call == "prepare" => {
             json!({ "placement": { "page": [260, 8, 1244, 933], "area": [0, 0, 1512, 949], "display": [0, 0, 1512, 982] }, "space": 7 })
@@ -65,7 +65,7 @@ fn usual(c: &Command) -> Value {
     }
 }
 
-fn kinds(cs: &[Command]) -> Vec<String> {
+pub(super) fn kinds(cs: &[Command]) -> Vec<String> {
     cs.iter()
         .map(|c| match c {
             Command::Ask { kind, .. } => format!("ask {kind}"),
@@ -79,11 +79,11 @@ fn kinds(cs: &[Command]) -> Vec<String> {
         .collect()
 }
 
-fn acts(world: &World) -> Vec<Value> {
+pub(super) fn acts(world: &World) -> Vec<Value> {
     std::mem::take(&mut *world.acts.borrow_mut())
 }
 
-fn named(acts: &[Value], name: &str) -> Vec<Value> {
+pub(super) fn named(acts: &[Value], name: &str) -> Vec<Value> {
     acts.iter().filter(|a| a[0] == json!(name) || a[1] == json!(name)).cloned().collect()
 }
 
@@ -100,8 +100,7 @@ fn a_show_request_drawn_in_front_at_once_then_an_app_hosted() {
     assert!(out.ready && out.start.is_empty(), "handled in the queue, after the caller's code");
     assert_eq!(s.core().requested_in(1).as_deref(), Some("a1"), "in front at once");
     let a = acts(&world);
-    assert_eq!(a[0], json!(["swift", "cardLeaving", { "window": 1, "item": "a1" }]));
-    assert_eq!(a[1], json!(["changed"]));
+    assert_eq!(a, [json!(["changed"])], "(no card there to hide: card.rs, the core's own)");
     let seen = pump(&s, &world, out, &mut usual);
     assert_eq!(kinds(&seen), ["swift prepare", "engine open"]);
     let Command::Engine { args, .. } = &seen[1] else { panic!() };
@@ -116,20 +115,15 @@ fn a_show_request_drawn_in_front_at_once_then_an_app_hosted() {
     assert_eq!(s.core().requested_in(1), None);
     assert_eq!(s.core().label("app:com.apple.Notes").as_deref(), Some("Notes"));
     let a = acts(&world);
-    // (The loader with the app's name and icon, cleared once it's shown; the loading bar refreshed; the window's
-    // card shown again; the hosting settled after the request.)
+    // (The loader with the app's name and icon, cleared once it's shown; the loading bar refreshed; the windows told;
+    // the hosting settled after the request.)
     assert_eq!(
         named(&a, "setShowing"),
         [json!(["setShowing", 1, "Notes", "com.apple.Notes", false]), json!(["setShowing", 1, null, null, false])]
     );
     let order: Vec<String> = a.iter().map(|v| v[1].as_str().or(v[0].as_str()).unwrap_or("").to_string()).collect();
     let at = |n: &str| order.iter().position(|o| o == n).unwrap_or(usize::MAX);
-    assert!(
-        at("cardLeaving") < at("refreshLoading")
-            && at("refreshLoading") < at("clearLayout")
-            && at("cardReturning") < at("settleHosting"),
-        "{order:?}"
-    );
+    assert!(at("refreshLoading") < at("changed") && at("changed") < at("settleHosting"), "{order:?}");
     assert!(s.idle());
 }
 
@@ -171,7 +165,6 @@ fn a_web_item_its_profiles_window_made_then_its_tab_shown() {
             s.core().edit(Field::SafariWindows, |st| st.safari_windows.insert(("s-default".into(), Role::Main), 90));
             json!({ "shown": "safari:s-default", "placed": false })
         }
-        Command::Swift { call, .. } if call == "pinnedOrFavorite" => json!(true),
         c => usual(c),
     });
     assert!(made);
@@ -322,7 +315,15 @@ fn closing_its_page_closed_the_next_one_shown_and_the_split_around_it_again() {
     });
     s.core().edit(Field::Shown, |st| st.shown.insert(1, "w1".into()));
     s.core().edit(Field::Shown, |st| st.shown.insert(2, "a2".into()));
-    world.swift.borrow_mut().insert("layoutsWith".into(), json!([2]));
+    // (Window 2's split has it as a pane: shown again without it.)
+    let pane = Layout {
+        main: "a2".into(),
+        main_rect: None,
+        extras: vec![state::Extra { item: "w1".into(), role: "pane".into(), rect: Rect::ZERO }],
+        focused: "a2".into(),
+        split: None,
+    };
+    s.core().edit(Field::Layouts, |st| st.layouts.insert(2, pane));
     world.windows.borrow_mut().push(2);
     let out = s.input(
         &json!({ "type": "library", "request": { "type": "closeTab", "item": "w1", "next": "a2", "windowId": 1 } }),

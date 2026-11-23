@@ -219,6 +219,10 @@ struct World {
     swift: RefCell<BTreeMap<String, Value>>,
     acts: RefCell<Vec<Value>>,
     lines: RefCell<Vec<Line>>,
+    card_rects: RefCell<BTreeMap<i64, Rect>>,
+    pages: RefCell<BTreeMap<i64, Rect>>,
+    performs: RefCell<std::collections::VecDeque<Value>>,
+    perform_requests: RefCell<Vec<Object>>,
 }
 
 impl World {
@@ -336,6 +340,39 @@ impl Ports for Reentrant {
         self.reenter("swift");
         self.0.act(json!(["swift", call, args]));
         self.0.swift.borrow().get(call).cloned().unwrap_or(Value::Null)
+    }
+    fn card_rect(&self, window: i64) -> Option<Rect> {
+        self.reenter("cardRect");
+        self.0.card_rects.borrow().get(&window).copied()
+    }
+    fn hosted_page(&self, window: i64) -> Option<Rect> {
+        self.reenter("hostedPage");
+        self.0.pages.borrow().get(&window).copied()
+    }
+    fn idna(&self, host: &str) -> bool {
+        self.reenter("idna");
+        !host.contains('-')
+    }
+    fn url_host(&self, url: &str) -> Option<String> {
+        self.reenter("urlHost");
+        self.0.act(json!(["urlHost", url]));
+        Some("xn--host".into())
+    }
+    fn perform(&self, action: &str, payload: &Object) -> Performed {
+        self.reenter("perform");
+        self.0.act(json!(["perform", action, payload]));
+        let answer = self.0.performs.borrow_mut().pop_front();
+        // (The Library's delegate inside the edit: its requests reach the session before it returns.)
+        if let Some(core) = self.0.core.borrow().upgrade() {
+            for r in self.0.perform_requests.borrow_mut().drain(..) {
+                core.call(false, |c| c.input(Input::Library(r)));
+            }
+        }
+        answer.map(|a| Performed::read(&a)).unwrap_or(Performed {
+            ok: false,
+            result: Value::Null,
+            error: Some("refused".into()),
+        })
     }
 }
 
@@ -597,3 +634,6 @@ fn a_library_edit_answered_in_the_same_turn() {
 
 #[path = "requests_tests.rs"]
 mod requests_tests;
+
+#[path = "card_tests.rs"]
+mod card_tests;

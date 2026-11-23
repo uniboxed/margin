@@ -155,6 +155,57 @@ struct HostedLayout: Equatable {
     // The split it shows (docs/PEEK-SPLIT.md §4: its panes' rects are its page's `<m-pane>`s), nil: none (the preview card).
     var split: String? = nil
     var items: [String] { [main] + extras.map(\.item) }
+
+    // As the core's `layouts` rows have it (session/state.rs `Layout`): its window, and its parts as JSON text, [main,
+    // mainRect, [[item, role, rect]], focused, split].
+    // (Written by hand: each layout change writes it, and JSONSerialization costs a few times this. Nil: a rect that
+    // isn't finite, which the core wouldn't take either.)
+    var cells: String? {
+        func text(_ s: String) -> String {
+            var out = "\""
+            for u in s.unicodeScalars {
+                switch u {
+                case "\"": out += "\\\""
+                case "\\": out += "\\\\"
+                case _ where u.value < 0x20: out += String(format: "\\u%04x", u.value)
+                default: out.unicodeScalars.append(u)
+                }
+            }
+            return out + "\""
+        }
+        func rect(_ r: CGRect) -> String? {
+            let n = [r.origin.x, r.origin.y, r.size.width, r.size.height].map { Double($0) }
+            guard n.allSatisfy(\.isFinite) else { return nil }
+            return "[" + n.map { "\($0)" }.joined(separator: ",") + "]"
+        }
+        var parts: [String] = []
+        for e in extras {
+            guard let r = rect(e.rect) else { return nil }
+            parts.append("[\(text(e.item)),\(text(e.role.rawValue)),\(r)]")
+        }
+        var head = "null"
+        if let m = mainRect {
+            guard let r = rect(m) else { return nil }
+            head = r
+        }
+        return "[\(text(main)),\(head),[\(parts.joined(separator: ","))],\(text(focused)),\(split.map(text) ?? "null")]"
+    }
+    static func decode(_ row: CoreRow) -> (Int, HostedLayout)? {
+        guard let text = row.s0, let r = (try? JSONSerialization.jsonObject(with: Data(text.utf8))) as? [Any] else { return nil }
+        return decode([row.i0] + r)
+    }
+    private static func decode(_ r: [Any]) -> (Int, HostedLayout)? {
+        func rect(_ v: Any?) -> CGRect? {
+            guard let n = v as? [Any], n.count == 4, let x = num(n[0]), let y = num(n[1]), let w = num(n[2]), let h = num(n[3]) else { return nil }
+            return CGRect(x: x, y: y, width: w, height: h)
+        }
+        guard r.count == 6, let window = int(r[0]), let main = r[1] as? String, let list = r[3] as? [[Any]], let focused = r[4] as? String else { return nil }
+        let extras = list.compactMap { e -> Extra? in
+            guard e.count == 3, let item = e[0] as? String, let role = (e[1] as? String).flatMap(HostRole.init(rawValue:)), let r = rect(e[2]) else { return nil }
+            return Extra(item: item, role: role, rect: r)
+        }
+        return (window, HostedLayout(main: main, mainRect: rect(r[2]), extras: extras, focused: focused, split: r[5] as? String))
+    }
 }
 
 extension HostedEngine {
@@ -403,8 +454,12 @@ final class HostedSession: LibraryDelegate {
         set { setMap(.safariWindows, old: safariWindows, newValue) { CoreRow(i0: $1 ?? 0, s0: $0.profile, s1: $0.role.description) } }
     }
     // Each Margin window's layout while more than its item shown is visible (the preview card, a split's panes): main, the
-    // others with their roles and rects, the focused one (`shown[w]`). None: one item shown, as before.
-    private(set) var layout: [Int: HostedLayout] = [:]
+    // others with their roles and rects, the focused one (`shown[w]`). None: one item shown, as before. (The core's
+    // field, `layouts`: the card's flows and the show read it there; applyLayout, part 3's, still writes it here.)
+    private(set) var layout: [Int: HostedLayout] {
+        get { field(.layouts) { rows in Dictionary(rows.compactMap { HostedLayout.decode($0) }, uniquingKeysWith: { a, _ in a }) } }
+        set { setMap(.layouts, old: layout, newValue) { w, l in CoreRow(i0: w, s0: l?.cells) } }
+    }
     private(set) var hostingWindow: Int? {
         get { field(.hostingWindow) { $0.first?.i0 } }
         set { setOne(.hostingWindow, old: hostingWindow, newValue) { CoreRow(i0: $0) } }
@@ -484,12 +539,19 @@ final class HostedSession: LibraryDelegate {
         return doneKept.lines
     }
     private var doneKept: (rev: UInt64, lines: [String]) = (0, [])
-    // The preview cards and Quick Tab (HostedPeek.swift, docs/PEEK-SPLIT.md §2, §3): each profile's card, when each card
-    // window was last used (closed after `cardIdle` unused), the Margin windows with Quick Tab's field up, the card
-    // whose window's first open is under way (its own loader, never the page card's).
-    var cards: [String: PeekCard] = [:]
-    var cardUsedAt: [String: Double] = [:]
-    var littleArcs: [Int: String] = [:]
+    // The preview cards and Quick Tab (HostedPeek.swift, docs/PEEK-SPLIT.md §2, §3): each profile's card and the Margin
+    // windows with Quick Tab's field up, the core's (core/session/card.rs: a card's row its profile and its parts as
+    // JSON text, read again only when one changed); the card whose window's first open is under way (its own loader,
+    // never the page card's: the loading bar's, part 8).
+    var cards: [String: PeekCard] {
+        get { field(.cards) { rows in Dictionary(rows.compactMap { PeekCard(row: $0) }.map { ($0.profile, $0) }, uniquingKeysWith: { a, _ in a }) } }
+        set { setMap(.cards, old: cards, newValue) { p, c in CoreRow(s0: p, s1: c?.cells) } }
+    }
+    var littleArcs: [Int: String] { field(.littleArcs) { Self.intText($0) } }
+    // (What the layout reads of a card, typed: its address, a new page or not.)
+    var cardPages: [String: (url: String, fresh: Bool)] {
+        field(.cardPages) { rows in Dictionary(rows.compactMap { r in r.s0.flatMap { p in r.s1.map { (p, (url: $0, fresh: r.b0)) } } }, uniquingKeysWith: { a, _ in a }) }
+    }
     var cardLoading: HostID?
 
     init(library: Library, engine: HostedEngine, links: HostedLinks, options: Options = Options()) {
@@ -689,6 +751,18 @@ final class HostedSession: LibraryDelegate {
                     let shown = await self.showSplit(split, focus: focus, in: w)
                     self.drive(self.core.answer(id, ["shown": shown]))
                 }
+            case "applyLayout":
+                // (The preview card's layout changes, HostedPeek.swift's moved flows: part 3's until commit 6.)
+                let extras = (args["extras"] as? [JSONObject] ?? []).compactMap { e -> HostedLayout.Extra? in
+                    guard let item = e["item"] as? String, let role = (e["role"] as? String).flatMap(HostRole.init(rawValue:)), let r = Self.rect(e["rect"]) else { return nil }
+                    return HostedLayout.Extra(item: item, role: role, rect: r)
+                }
+                let split = (args["split"] as? JSONObject).flatMap { s in (s["id"] as? String).map { (id: $0, items: s["items"] as? [String] ?? []) } }
+                let window = int(args["window"]), main = args["main"] as? String ?? "", mainRect = Self.rect(args["mainRect"]), focused = args["focused"] as? String
+                startNow {
+                    await self.applyLayout(window, main: main, mainRect: mainRect, extras: extras, focused: focused, split: split)
+                    self.drive(self.core.answer(id, [:]))
+                }
             default:
                 drive(core.answer(id, ["error": "not a swift flow"]))
             }
@@ -761,6 +835,16 @@ final class HostedSession: LibraryDelegate {
         case "wokenByMenu": return ["woken": wokenByMenu[ask["profile"] as? String ?? ""] != nil]
         case "unopenable": return ["unopenable": unopenable.contains(ask["profile"] as? String ?? "")]
         case "swift": return ["value": swiftCall(ask["call"] as? String ?? "", ask["args"] as? JSONObject ?? [:]) ?? NSNull()]
+        // (The preview card's, core/session/card.rs.)
+        case "cardRect": return held(int(ask["window"]))?.cardRect.map { ["rect": Self.json($0)] } ?? [:]
+        case "hostedPage": return held(int(ask["window"]))?.hostedPlacement.map { ["page": Self.json($0.page)] } ?? [:]
+        case "idna": return ["ok": (ask["host"] as? String).map(SessionRules.idna) ?? false]
+        case "urlHost": return (ask["url"] as? String).flatMap { URL(string: $0)?.host }.map { ["host": $0] } ?? [:]
+        case "perform":
+            // (A library edit a synchronous flow makes now: its requests reach this delegate first, re-entrantly.)
+            let out = library.perform(ask["action"] as? String ?? "", ask["payload"] as? JSONObject ?? [:])
+            let result = out.result.flatMap { JSONSerialization.isValidJSONObject([$0]) ? $0 : nil } ?? NSNull()
+            return ["ok": out.ok, "result": result, "error": out.error ?? NSNull()]
         default: return [:]
         }
     }
@@ -793,14 +877,12 @@ final class HostedSession: LibraryDelegate {
         case .wokenByMenu?: return wokenByMenu[text() ?? ""] != nil ? 1 : 0
         case .unopenable?: return unopenable.contains(text() ?? "") ? 1 : 0
         case .log?: if let t = text() { if a.flag { Diagnostics.warn(t) } else { Diagnostics.note(t) } }
-        case .cardLeaving?: if let win = held(w) { cardLeaving(win, for: text()) }
-        case .cardReturning?: if let win = held(w), let item = text() { cardReturning(win, to: item) }
-        case .pinnedOrFavorite?: return pinnedOrFavorite(text() ?? "") ? 1 : 0
+        case .wall?: return SessionCore.bits(Date().timeIntervalSince1970)
+        case .cardRect?: return SessionCore.give(held(w)?.cardRect, out)
+        case .hostedPage?: return SessionCore.give(held(w)?.hostedPlacement?.page, out)
         case .settleHosting?: settleHosting()
         case .refreshLoading?: refreshLoading()
         case .leaveMarginPage?: if let win = held(w) { leaveMarginPage(win) }
-        case .hasLayout?: return w.map { layout[$0] != nil } == true ? 1 : 0
-        case .clearLayout?: if let w { layout[w] = nil }
         case .clearElsewhere?: if let win = held(w), elsewhere[win.id] != nil { elsewhere[win.id] = nil; win.setElsewhere(nil, app: nil) }
         case .forgetElsewhere?: forgetElsewhere(item: text())
         case nil: Diagnostics.warn("hosted: the core asked for port \(kind), which isn't one")
@@ -820,20 +902,9 @@ final class HostedSession: LibraryDelegate {
     private func swiftCall(_ call: String, _ a: JSONObject) -> Any? {
         let w = held(int(a["window"]))
         switch call {
-        case "cardLeaving": if let w { cardLeaving(w, for: a["item"] as? String) }
-        case "cardReturning": if let w, let item = a["item"] as? String { cardReturning(w, to: item) }
-        case "pinnedOrFavorite": return pinnedOrFavorite(a["item"] as? String ?? "")
-        case "cardUrl":
-            guard let c = cards[a["profile"] as? String ?? ""], Self.webAddress(c.url) else { return nil }
-            return c.url
         case "settleHosting": settleHosting()
         case "refreshLoading": refreshLoading()
         case "leaveMarginPage": if let w { leaveMarginPage(w) }
-        case "hasLayout": return int(a["window"]).map { layout[$0] != nil } ?? false
-        case "clearLayout": if let id = int(a["window"]) { layout[id] = nil }
-        case "layoutsWith":
-            let item = a["item"] as? String ?? ""
-            return layout.filter { $0.value.items.contains(item) }.map(\.key)
         case "clearElsewhere": if let w, elsewhere[w.id] != nil { elsewhere[w.id] = nil; w.setElsewhere(nil, app: nil) }
         case "forgetElsewhere": forgetElsewhere(item: a["item"] as? String)
         case "paneFor":
@@ -872,6 +943,12 @@ final class HostedSession: LibraryDelegate {
         default: return nil
         }
     }
+    private static func rect(_ v: Any?) -> CGRect? {
+        guard let r = v as? [Any], r.count == 4, let x = num(r[0]), let y = num(r[1]), let w = num(r[2]), let h = num(r[3]) else { return nil }
+        return CGRect(x: x, y: y, width: w, height: h)
+    }
+    // A rect as it is (never standardized: the core compares as CGRect does), as the core's rows and commands carry it.
+    nonisolated static func json(_ c: CGRect) -> [Double] { [Double(c.origin.x), Double(c.origin.y), Double(c.size.width), Double(c.size.height)] }
     private static func json(_ r: HostResult) -> JSONObject {
         switch r {
         case .shown(let id, let placed): return ["shown": id.raw, "placed": placed]
@@ -898,6 +975,20 @@ final class HostedSession: LibraryDelegate {
 
     // A line of what was done: the core's log (the last 200 kept, `done`).
     func note(_ line: String) { drive(core.input(["type": "note", "line": line])) }
+
+    // A page's click for a preview (the copy's `peekOpen { id, url, source, tabId, notAfter }`, HostedPeek.swift):
+    // answered at once (`peekAnswer`). Typed: the push's id, address and time as the core reads them, nothing in JSON.
+    func peekOpen(profile: String, windowId: Int?, msg: JSONObject) {
+        drive(core.peekOpen(profile: profile, window: windowId, id: msg["id"] as? String, url: msg["url"] as? String, notAfter: num(msg["notAfter"]) ?? 0))
+    }
+
+    // The preview card's and Quick Tab's word to the core (core/session/card.rs `peek_input`): its reply, if it has one.
+    @discardableResult func peek(_ kind: String, _ args: JSONObject = [:]) -> Any? {
+        var input = args
+        input["type"] = "peek"
+        input["kind"] = kind
+        return drive(core.input(input))["reply"]
+    }
 
     // ---- the library's requests ----
 

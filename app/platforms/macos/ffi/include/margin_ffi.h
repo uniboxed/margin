@@ -483,6 +483,13 @@ bool margin_session_idle(const MarginSession *session);
 uint64_t margin_session_rev(const MarginSession *session, uint32_t field);
 bool margin_session_link_wanted(const MarginSession *session, const uint8_t *profile, size_t len);
 bool margin_session_open_wanted(const MarginSession *session, int64_t window, const uint8_t *item, size_t len);
+// Whether an item is a pin's or a favourite's tab (the card's auto-preview, told with each hostShow): typed, no JSON
+// (Swift's applyLayout asks it for each web pane).
+bool margin_session_pinned(const MarginSession *session, const uint8_t *item, size_t len);
+// A page's click for a preview (the copy's `peekOpen`), typed: its id and address (null: none), its time (0: none).
+uint8_t *margin_session_peek_open(const MarginSession *session, MarginBytes profile, int64_t window, bool has_window,
+                                  MarginBytes id, MarginBytes url, double not_after, MarginSessionStatus *status,
+                                  size_t *out_len);
 
 // The session's pure rules (margin-core's session: ffi session_rules.rs), no object: the rare ones by one JSON call
 // (`{ rule, … }`: constants, resolve, loaderApp, lastItem, searchUrl, dragLine, pushEmpty), a split's room, the card's

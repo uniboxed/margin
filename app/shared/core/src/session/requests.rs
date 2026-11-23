@@ -165,14 +165,6 @@ impl Core {
 
     // ---- the Swift flows of later parts (interim) ----
 
-    fn card_leaving(&self, w: i64, item: Option<&str>) {
-        self.swift("cardLeaving", json!({ "window": w, "item": item }));
-    }
-
-    fn card_returning(&self, w: i64, item: &str) {
-        self.swift("cardReturning", json!({ "window": w, "item": item }));
-    }
-
     pub(crate) fn settle_hosting(&self) {
         self.swift("settleHosting", Value::Null);
     }
@@ -182,7 +174,7 @@ impl Core {
     }
 
     fn has_layout(&self, w: i64) -> bool {
-        self.swift("hasLayout", json!({ "window": w })).as_bool() == Some(true)
+        self.read(|s| s.layouts.contains_key(&w))
     }
 
     // ---- the library's requests ----
@@ -277,9 +269,9 @@ impl Core {
                 let windows: Vec<i64> =
                     self.read(|s| s.shown.iter().filter(|(_, i)| *i == item).map(|(w, _)| *w).collect());
                 // (A split's pane not focused: the window showing the split shows it again without it, its focus kept.)
-                let mut around: Vec<i64> = json::array(Some(&self.swift("layoutsWith", json!({ "item": item }))))
-                    .map(|l| l.iter().filter_map(|w| json::int(Some(w))).collect())
-                    .unwrap_or_default();
+                let mut around: Vec<i64> = self.read(|s| {
+                    s.layouts.iter().filter(|(_, l)| l.items().any(|i| i == item)).map(|(w, _)| *w).collect()
+                });
                 around.retain(|w| self.shown_in(*w).as_deref() != Some(item));
                 around.sort_unstable();
                 let next = r.string("next");
@@ -476,7 +468,10 @@ impl Core {
             self.ports.set_margin_page(w, None);
         }
         self.set_shown(w, Some(item));
-        self.swift("clearLayout", json!({ "window": w })); // (one item shown: the engine laid it out alone)
+        // (One item shown: the engine laid it out alone.)
+        if self.read(|s| s.layouts.contains_key(&w)) {
+            self.edit(Field::Layouts, |s| s.layouts.remove(&w));
+        }
         if self.requested_in(w).as_deref() == Some(item) {
             self.set_requested(w, None);
         }
@@ -540,7 +535,7 @@ impl Core {
             return Go::Stop;
         };
         let url = if address.is_empty() { "about:blank" } else { address };
-        let pinned = self.swift("pinnedOrFavorite", json!({ "item": item })).as_bool() == Some(true);
+        let pinned = self.pinned_or_favorite(item);
         let payload = object(json!({ "windowId": window_id, "itemId": item, "url": url, "pinned": pinned }));
         let shown = self.ask(p, "hostShow", payload).await;
         let Some(result) = shown.result else {

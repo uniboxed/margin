@@ -8390,3 +8390,69 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   `focused`, part 6's resume and `enteredFullScreen`, `profileNamesChanged`) as their parts move. The engine's asks
   keep it (the engine is the Mac's and awaits the session's answer): removing it there would need the engine to take
   the answer through a callback in the same turn instead of awaiting, a change of the engine's own flow for one hop.
+
+## Core refactor step 3, commit 7: the preview card and Quick Tab in the core (2026-11-23)
+
+- Moved (session/card.rs; HostedPeek.swift's flows deleted, the file now the facade): the card's state machine and
+  every flow of it, each a transliteration at the Swift's points between the same awaits: the copy's word
+  (`peekOpen` answered at once, before anything else is asked of the copy, `peekCancel`, `cardPage`, `cardKey`), the
+  page's (`littleArcOpened`, `littleArcGo`), `showCard`, `placeCard` (the page's `<m-preview-page>` waited for, else
+  the default rect), `dropCard`, `cardLeaving`, `cardReturning`, `cardRectChanged`, `closeCard` (the page told first,
+  the cover wait, the rest laid out again, `hostCardClose`), `closeCardForKey`, `expandCard`, `cardHistory`,
+  `cardHostGone`, `closeIdleCards`, the pushes to the page and `pinnedOrFavorite`. The interim card entries of the
+  `swift` port (`cardLeaving`, `cardReturning`, `pinnedOrFavorite`, `cardUrl`, typed or not) are gone: requests.rs and
+  hosting.rs call the core's own.
+- State: `Card` and the fields `cards` and `littleArcs` are the core's (their rows typed as the others', a card's
+  parts as their JSON text in one of its texts: read again only when a card changed), `card_used_at` the core's only;
+  what Swift's layout reads of a card (its address, a new page or not) is a typed read-only field, `cardPages`, whose
+  revision moves with `cards`'.
+  `HostedPeek.swift` keeps what parts 3, 7 and 8 (still Swift) read of a card: `cardPart`, `cardShowPayload`,
+  `cardHostRects`, `cardPlaced`, `cardLoadingStep`.
+- Three things the design didn't have:
+  - The layout the card reads and lays out is part 3's. Its field (`layouts`) is the core's now, Swift's applyLayout
+    writing it through the facade, and the core lays out through a `Swift` command (`applyLayout`) until commit 6. The
+    show's `hasLayout`, `clearLayout` and `layoutsWith` read the field there too: three fewer ports a show.
+  - Quick Tab's new tab and Expand's item are library edits made inside a synchronous call (the Swift performed them
+    in place, its delegate's requests arriving before it went on), so a `perform` port, not the awaited `Perform`
+    command: the delegate's requests reach the session re-entrantly, as before.
+  - The card's title with no page title is Foundation's `URL.host` (percent-decoded, an IP literal without its
+    brackets, nil for an empty authority or a host that doesn't decode as UTF-8): `web_host`, ported with
+    Foundation's answers on macOS 27.2 as its vectors; a host with letters outside ASCII is the OS's IDNA (`urlHost`).
+- Ports added: typed `wall` (the clock's bits), `cardRect`, `hostedPage` (a rect's four numbers as bits), and
+  `margin_session_pinned` (Swift's layout asks it for each web pane); JSON `idna`, `urlHost`, `perform`. Inputs: one
+  `peek` input by kind for the copy's and the page's word (part 10 routes them later); `close` and `closeForKey`
+  answer whether one was closed; a page's click typed as well (`margin_session_peek_open`: its id, address and
+  time), the one the Mac sends, so a peek open carries no JSON in. A layout's row text is written by hand on the
+  Swift side (a few times cheaper than JSONSerialization, each layout change).
+- Edges as the design said: Swift's dictionary order where two cards share a window (one hidden, another profile's
+  open: `card(in:)` took either at random) is the lowest profile here; a click's id (80) and a title (300) count
+  Unicode scalars, step 1's rule. Nothing else changes.
+- Checked before the Swift went: the old flows (refactor/core-session at f78d6598, its HostedPeek.swift) and the new
+  over the core through the facade, both built whole with the unit tests' stand-ins and one scratch driver (commit
+  5's, with the card's steps), on generated sequences in its deterministic world: page clicks from every window of
+  every profile with ids, addresses and times good and bad, cancels, the card's page and keys, Quick Tab opened and
+  chosen with and without anything hosted, closes with and without the page told, ⌘W, Expand into a space named or
+  not, history, hosts gone (a card window, a main window), idle sweeps after time passing, the page's rect moving by
+  less and more than a point (a negative size too), presses around the card, all among the library's requests,
+  splits laid out by the page, the engine's and the copies' answers in a generated order with failures, and a second
+  Margin window coming and going: 150 vectors over six seeds, 14,991 steps, 6,217 card actions, 5,269 engine opens and
+  copy requests, all 150 the same to the line. (A first run differed only where the driver jumped its clock past
+  several sleepers at once, the Swift's own and the core's: the order of sleepers overdue together, which the driver
+  can't make; its jumps now wait for no sleeper to be due.) The driver caught 22 of 27 deliberate breaks of the core
+  (on 36 vectors each); the 5 it missed are rare in its world (Expand into a named space other than the card's,
+  the idle sweep at exactly fifteen minutes, the page's rect moved by half a point, a main window gone with its card
+  window hosted, a layout's window shown again) and each is caught by the core's tests (card_tests.rs, four of them
+  added for it).
+- Cost, a peek open's Margin side (the scratch bench: a web item shown, then a page's click to the card laid out at
+  its rect and the page told, the copy and the engine answering at once; the main thread's CPU time per open, 400
+  opens a round, ten rounds old and new alternately; the Mac shared with other work at a load of 30-38, so the rounds
+  vary by ±15%): the old Swift 493 µs (mean of the medians; the rounds' best 253), the core's 534 µs (best 273), about
+  8% more, 20-40 µs. Not yet "no dearer than before". What a peek open still pays that the Swift didn't is the
+  interim's: the layout laid out through the `applyLayout` command and its answer (part 3's Swift, both as JSON; gone
+  with commit 6) and the copy's `peekAnswer` as a core `Ask` (its command and answer as JSON) where the Swift called
+  the copy itself. Measured on the way: the first build (every new port JSON) cost 75-150 µs more; typing the wall
+  clock, the card's rect, `pinnedOrFavorite` (Swift's layout asked it as a JSON input per web pane), the click itself
+  and `cardPages`, and writing a layout's row by hand, took that to this. Nothing is per frame: a drag reads the
+  card's rect through the facade's cached field (a revision a frame, typed).
+- T/peek-session-tests.swift, T/peek-split-tests.swift and T/screen-card-tests.swift unchanged and passing; the app's
+  checks 2150 pass, its end-to-end ones 321 (off screen).
