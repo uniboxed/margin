@@ -14,6 +14,10 @@
 //!
 //! Each keeps the Swift's order of filter, check and append (pinned per kind below). Nothing here allocates but a cut
 //! pane's first repair (its id kept).
+//!
+//! Each budget's action also counts toward the loop guard's per-second hold (guard.rs `PER_SECOND`; Tirth's
+//! 2026-11-22 answer: a loop between Margin and an app through any of them is held as the core's other actions are):
+//! a budget with room asks the hold before it's spent (`HostCore::spend`); held, nothing is made and nothing spent.
 
 use std::collections::BTreeMap;
 
@@ -52,6 +56,9 @@ impl Kind {
 pub enum Spend {
     /// Go: the action is taken (`count`: the budget's entries now, this one in).
     Go { count: usize },
+    /// Held: its budget had room, but too many reactions this second across every host (the loop guard's hold, until
+    /// `until`): not taken, nothing of its budget spent.
+    Held { until: f64 },
     /// Spent: not taken. `say`: said now (false: said already, or nothing to say); `count`: the entries counted;
     /// `streak`: a cut pane's, by the ones in a row that didn't take (else by its count within the time).
     Spent { say: bool, count: usize, streak: bool },
@@ -84,8 +91,10 @@ impl Default for Limits {
 
 impl HostModel {
     /// `h`'s budget of `kind` asked at `now`, before its action; spent when it says so. An unknown host: spent,
-    /// nothing said.
-    pub fn spend(&mut self, h: Handle, kind: Kind, now: f64) -> Spend {
+    /// nothing said. `hold`: asked once the budget has room, before anything of it is spent (the loop guard's
+    /// per-second hold: `HostCore::spend`); Some(until): held, nothing spent. A stray's returns never ask it: their
+    /// action is the guard's "put back", a reaction it counts already.
+    pub fn spend(&mut self, h: Handle, kind: Kind, now: f64, hold: impl FnOnce() -> Option<f64>) -> Spend {
         let Limits { returns_max: max, returns_within: within } = self.limits;
         let none = Spend::Spent { say: false, count: 0, streak: false };
         if kind == Kind::CutRepair {
@@ -102,6 +111,9 @@ impl HostModel {
             if within_now >= CUT_LIMIT || r.failed >= CUT_LIMIT {
                 r.said = true;
                 return Spend::Spent { say: true, count: within_now, streak: r.failed >= CUT_LIMIT };
+            }
+            if let Some(until) = hold() {
+                return Spend::Held { until };
             }
             r.tries.retain(|t| now - *t < CUT_WITHIN);
             r.tries.push(now);
@@ -128,6 +140,9 @@ impl HostModel {
                     s.reentry_said = true;
                     return Spend::Spent { say, count, streak: false };
                 }
+                if let Some(until) = hold() {
+                    return Spend::Held { until };
+                }
                 s.reentries.push(now);
                 s.reentry_said = false;
                 Spend::Go { count: count + 1 }
@@ -141,6 +156,9 @@ impl HostModel {
                     s.off_in_place_said = Some(s.visible_at);
                     return Spend::Spent { say, count, streak: false };
                 }
+                if let Some(until) = hold() {
+                    return Spend::Held { until };
+                }
                 s.off_acted_for = Some(s.visible_at);
                 s.off_tries.push(now);
                 Spend::Go { count: count + 1 }
@@ -152,6 +170,9 @@ impl HostModel {
                     let say = !s.off_said;
                     s.off_said = true;
                     return Spend::Spent { say, count, streak: false };
+                }
+                if let Some(until) = hold() {
+                    return Spend::Held { until };
                 }
                 s.off_tries.push(now);
                 Spend::Go { count: count + 1 }

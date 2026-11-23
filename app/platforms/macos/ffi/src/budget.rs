@@ -8,21 +8,31 @@ use margin_core::host::model::{BudgetKind, Handle, Spend};
 /// A budget asked before its action (`kind`: 0 a stray's returns, 1 a re-entry into full screen, 2 off screen in
 /// place, 3 off screen elsewhere, 4 a cut pane's repair) at `now`: 0 go, 1 spent and to be said, 2 spent (said
 /// already, or nothing to say), 3 spent and to be said by its streak (a cut pane's repairs that didn't take). `count`
-/// (NULL: not wanted): the budget's entries.
+/// (NULL: not wanted): the budget's entries. 4: held (`guarded`, the loop guard on: too many reactions this second
+/// across every host), nothing spent, `until` (NULL: not wanted) when it lapses.
 ///
 /// # Safety
-/// `core` null or a live core (one thread at a time); `count` null or writable.
+/// `core` null or a live core (one thread at a time); `count` and `until` null or writable.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn margin_budget_spend(
     core: *mut HostCore,
     h: Handle,
     kind: u8,
     now: f64,
+    guarded: bool,
     count: *mut u32,
+    until: *mut f64,
 ) -> u8 {
     // SAFETY: the contract above.
     let (Some(core), Some(kind)) = (unsafe { core.as_mut() }, BudgetKind::from_u8(kind)) else { return 2 };
-    let (verdict, n) = match core.model.spend(h, kind, now) {
+    let (verdict, n) = match core.spend(h, kind, now, guarded) {
+        Spend::Held { until: u } => {
+            if !until.is_null() {
+                // SAFETY: writable.
+                unsafe { *until = u };
+            }
+            (4, 0)
+        }
         Spend::Go { count } => (0, count),
         Spend::Spent { say: false, count, .. } => (2, count),
         Spend::Spent { say: true, count, streak } => (if streak { 3 } else { 1 }, count),

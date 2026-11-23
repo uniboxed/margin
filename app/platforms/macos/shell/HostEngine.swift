@@ -1576,11 +1576,15 @@ final class HostEngine {
 
     // A "left full screen" event: back into full screen at its rect (the page area, its pane's, its card's), behind the
     // loader, the layout held; its old tile out of Margin's Space (empty: destroyed with the next look). Margin's own
-    // operation: never a reaction the loop guard counts, its budgets anew, its route kept (it comes back on tiles when
-    // they're on). `returnsMax` times within `returnsWithin`; past that, false (left to the reconciler, said once).
+    // operation: never a reaction the loop guard stops a host for, its budgets anew, its route kept (it comes back on
+    // tiles when they're on). `returnsMax` times within `returnsWithin`; past that, false (left to the reconciler, said
+    // once). Each one counts toward the guard's per-second hold (held: true, nothing else this turn).
     private func reenterFullScreen(_ host: Host, _ why: String) async -> Bool {
-        switch core.spend(host.handle, .reentry, now: sys.now()) {
+        switch core.spend(host.handle, .reentry, now: sys.now(), guarded: options.loopGuard) {
         case .go: break
+        case .held(let until):
+            Diagnostics.note("host: \(host.id): back into full screen held: too many reactions this second across every host (\(Int(max(0, until - sys.now()) * 1000)) ms more)")
+            return true
         case .say(let count, _):
             Diagnostics.warn("host: \(host.id): its window left full screen again (\(why)), \(count) times in \(Int(options.returnsWithin)) s: left to the reconciler")
             return false
@@ -5292,7 +5296,8 @@ final class HostEngine {
                 Diagnostics.note("host: \(id): shown, found where it mustn't be (\(seen))")
                 return await parkShownNow(why: "its window left Margin's Space, or Margin's window did")
             }
-            if case .say(let count, _) = core.spend(host.handle, .strayReturns, now: sys.now()) {
+            // (Its action is the guard's "put back" below: a reaction it counts already, never asked twice.)
+            if case .say(let count, _) = core.spend(host.handle, .strayReturns, now: sys.now(), guarded: false) {
                 Diagnostics.note("host: \(id): shown, out of Margin's Space again (\(seen)), \(count) times in \(Int(options.returnsWithin)) s: parked")
                 return await parkShownNow(why: "its window keeps leaving Margin's Space", only: host)
             }
@@ -5377,8 +5382,9 @@ final class HostEngine {
             + (host.askedFullScreenAt.map { ", \(ms(since: $0)) ms after it was last asked into full screen" } ?? "")
         // (Its own budget: a split's other panes' tries never use it up, docs/PEEK-SPLIT.md §4. In place: once a show.)
         if look.margin, current == marginSpace, spaces == [marginSpace] {
-            switch core.spend(host.handle, .offInPlace, now: sys.now()) {
+            switch core.spend(host.handle, .offInPlace, now: sys.now(), guarded: options.loopGuard) {
             case .go: break
+            case .held(let until): return Diagnostics.note("host: \(id): brought back on screen held: too many reactions this second across every host (\(Int(max(0, until - sys.now()) * 1000)) ms more)")
             case .say: return Diagnostics.note("host: \(id): shown, still not on screen in Margin's Space (\(seen)): left as it is until it's shown again")
             case .said: return
             }
@@ -5398,8 +5404,9 @@ final class HostEngine {
             if case .failed = await placeFullScreen(host, isNew: false, retrying: false), !isVisible(host.id) { emit(.unshown(host.id)) }
             return
         }
-        switch core.spend(host.handle, .offElsewhere, now: sys.now()) {
+        switch core.spend(host.handle, .offElsewhere, now: sys.now(), guarded: options.loopGuard) {
         case .go: break
+        case .held(let until): return Diagnostics.note("host: \(id): brought back on screen held: too many reactions this second across every host (\(Int(max(0, until - sys.now()) * 1000)) ms more)")
         case .say(let count, _): return Diagnostics.warn("host: \(id): shown, not on screen (\(seen)), \(count) times in \(Int(options.returnsWithin)) s: left as it is")
         case .said: return
         }
@@ -6064,8 +6071,11 @@ final class HostEngine {
             // (A loop's guard: put back 3 times in 5 s and over again each time (the app raising it again), or 3 put-backs
             // in a row that didn't take (its neighbour's raise refused): left as it is, said once, and not tried again
             // until its window is seen behind them (the poll) or it leaves the split. Never a few tries every 5 s for good.)
-            switch self.core.spend(h.handle, .cutRepair, now: self.sys.now()) {
+            switch self.core.spend(h.handle, .cutRepair, now: self.sys.now(), guarded: self.options.loopGuard) {
             case .go: break
+            case .held(let until):
+                Diagnostics.note("host: \(h.id): put back under the panes it lies under held: too many reactions this second across every host (\(Int(max(0, until - self.sys.now()) * 1000)) ms more)")
+                return false
             case .say(_, let streak):
                 Diagnostics.warn("host: \(h.id): " + (streak ? "put back under the panes beside it 3 times and it never went under: left as it is" : "put back under the panes beside it 3 times in 5 s and over them again: left as it is"))
                 return false

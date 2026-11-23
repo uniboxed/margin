@@ -7800,3 +7800,33 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   not appended, the cut tries' filter at equality). Rust tests pin each budget and the ladder. The app's 2038 checks
   pass unchanged.
 
+## Core refactor step 2, part 4 (second commit): every budget's action counts toward the loop guard's hold (2026-11-23)
+
+- Step 2's one change of behaviour (Tirth, 2026-11-22). Before, a budget's action was Margin's own and the loop guard
+  never saw it: a loop between Margin and an app through a re-entry into full screen, a look off screen or a cut
+  pane's repair was limited only by that budget per host (3 in 30 s, 3 in 5 s), so N hosts could run N times that,
+  and nothing tied it to the guard's other actions. Now each of these actions is one of the guard's: a budget with
+  room asks the guard's per-second hold before it's spent (`LoopGuard::budgeted`, `HostCore::spend`). Twelve actions
+  a second across every host (reactions and budgeted actions together) hold every one of them for a second, as the
+  guard already did for reactions; held, the action isn't made and nothing of its budget is spent, so it's tried again
+  at the next look after the hold. A budgeted action never counts toward a host's stop (3 of the same reaction within
+  5 s): its budget is its own, and stopping a host for its own re-entry would move it down a route for no fight of its.
+- Which actions: the re-entry into full screen (`reenterFullScreen`; held: true, nothing else that turn, so no tile is
+  sized for a window out of full screen), the off-screen look in place and elsewhere (`backOnScreen`; held: nothing
+  this time), a cut pane's repair (`repairCutOrder`; held: false). Each held one is said in the log as the guard's
+  holds are ("… held: too many reactions this second across every host (N ms more)"). A stray's returns don't ask the
+  hold: their action is the guard's "put back" reaction (`guarded`), which already counts and holds; asking twice
+  would count it twice.
+- Counted whatever `planned` is (the cut repair runs as Margin's own plan, the re-entry makes itself one: honouring
+  `planned` would leave both outside, the opposite of the decision); off only with the loop guard itself
+  (`options.loopGuard`), as every guarded action.
+- When it can hold in real use: only past twelve such actions and reactions within one second, together. A split of
+  four is at most four visible hosts: each budget allows 3 within its time per host, so the budgets alone reach twelve
+  only if every pane of a four-pane split leaves full screen, or goes off screen, three times within the same second,
+  or with the reconciler's own corrections at the same time (a display change re-laying out four tiles while they
+  exit full screen). That's a loop, which is what the hold is for; Rust tests pin both sides (thirteen in a second
+  held, nothing of the held one's budget spent; a four-pane split at eight a second for two minutes never held).
+- The app's 2038 checks pass unchanged, and none of them sees a hold: run once with every hold's line marked on stderr
+  (the guard's own and the budgets'), none was reached. The screen suite's `behaviours-*`, `cut-panes` and
+  `real-apps-loop` parts are to show no hold they didn't before (not run here: the screen suite runs before the merge).
+

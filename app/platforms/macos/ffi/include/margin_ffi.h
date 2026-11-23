@@ -99,8 +99,9 @@ void margin_model_held(MarginHostCore *core, uint32_t handle, double width);
 double margin_model_learn_from_leaving(MarginHostCore *core, uint32_t handle); // the width taken; NaN none
 // The budgets of Margin's own corrections (host/model/budget.rs): kind 0 a stray's returns, 1 a re-entry into full
 // screen, 2 off screen in place, 3 off screen elsewhere, 4 a cut pane's repair. 0 go, 1 spent (say it), 2 spent
-// (said already), 3 spent (say it: its streak); `count` NULL or the budget's entries. The full-screen ladder per host.
-uint8_t margin_budget_spend(MarginHostCore *core, uint32_t handle, uint8_t kind, double now, uint32_t *count);
+// (said already), 3 spent (say it: its streak), 4 held by the loop guard's per-second hold (`guarded`), nothing spent,
+// `until` when it lapses; `count` NULL or the budget's entries. The full-screen ladder per host.
+uint8_t margin_budget_spend(MarginHostCore *core, uint32_t handle, uint8_t kind, double now, bool guarded, uint32_t *count, double *until);
 uint32_t margin_budget_repair_took(MarginHostCore *core, uint32_t handle, bool took); // the ones in a row that didn't take
 void margin_budget_cut_order_right(MarginHostCore *core, uint32_t handle);
 bool margin_model_full_screen_failed(MarginHostCore *core, uint32_t handle); // true: tried again at its next show

@@ -260,8 +260,15 @@ fn the_budgets_allocate_nothing_after_a_cut_panes_first_repair() {
     let h = unsafe { margin_model_add(core, id.as_ptr(), id.len(), app.as_ptr(), app.len(), 41, 500) };
     // (A cut pane's first repair keeps its id: rare, before the count.)
     // SAFETY: a live core.
-    unsafe { margin_budget_spend(core, h, 4, 0.0, std::ptr::null_mut()) };
-    let mut count = 0u32;
+    unsafe { margin_budget_spend(core, h, 4, 0.0, true, std::ptr::null_mut(), std::ptr::null_mut()) };
+    let (mut count, mut until) = (0u32, 0.0f64);
+    // (The guard's per-second list reaches its room once: before the count.)
+    // SAFETY: a live core.
+    unsafe {
+        for i in 0..14 {
+            margin_budget_spend(core, h, 1, 100.0 + i as f64 * 0.01, true, &mut count, &mut until);
+        }
+    }
     let n = allocations(|| {
         // SAFETY: a live core, a writable count.
         unsafe {
@@ -269,7 +276,15 @@ fn the_budgets_allocate_nothing_after_a_cut_panes_first_repair() {
             margin_budget_cut_order_right(core, h);
             margin_budget_cut_order_right(core, 99);
             for (i, kind) in [0u8, 1, 2, 3, 4].into_iter().enumerate() {
-                std::hint::black_box(margin_budget_spend(core, h, kind, 1.0 + i as f64, &mut count));
+                std::hint::black_box(margin_budget_spend(
+                    core,
+                    h,
+                    kind,
+                    200.0 + i as f64,
+                    true,
+                    &mut count,
+                    &mut until,
+                ));
             }
             margin_budget_repair_took(core, h, false);
             margin_model_full_screen_failed(core, h);

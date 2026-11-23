@@ -551,14 +551,17 @@ nonisolated final class HostCore: @unchecked Sendable {
 
     enum Budget: UInt8 { case strayReturns = 0, reentry, offInPlace, offElsewhere, cutRepair }
     // Asked before its action: go (its entries now, this one in), spent and to be said (by its count, or a cut pane's by
-    // its streak of repairs that didn't take), or spent and said already.
-    enum Spend: Equatable { case go(count: Int), say(count: Int, streak: Bool), said(count: Int) }
-    func spend(_ h: UInt32, _ kind: Budget, now: Double) -> Spend {
+    // its streak of repairs that didn't take), spent and said already, or held (`guarded`: the loop guard on; too many
+    // reactions this second across every host, until `until`: nothing spent, nothing made).
+    enum Spend: Equatable { case go(count: Int), say(count: Int, streak: Bool), said(count: Int), held(until: Double) }
+    func spend(_ h: UInt32, _ kind: Budget, now: Double, guarded: Bool) -> Spend {
         var n: UInt32 = 0
+        var until = 0.0
         lock.lock()
         defer { lock.unlock() }
-        switch margin_budget_spend(core, h, kind.rawValue, now, &n) {
+        switch margin_budget_spend(core, h, kind.rawValue, now, guarded, &n, &until) {
         case 0: return .go(count: Int(n))
+        case 4: return .held(until: until)
         case 1: return .say(count: Int(n), streak: false)
         case 3: return .say(count: Int(n), streak: true)
         default: return .said(count: Int(n))

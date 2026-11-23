@@ -292,6 +292,19 @@ impl HostCore {
         Self::default()
     }
 
+    /// One of Margin's own budgets asked before its action (host/model/budget.rs), the action counted toward the loop
+    /// guard's per-second hold (`guarded`: the guard on; off, never held). Typed (the FFI's `margin_budget_spend`).
+    pub fn spend(
+        &mut self,
+        h: super::model::Handle,
+        kind: super::model::BudgetKind,
+        now: f64,
+        guarded: bool,
+    ) -> super::model::Spend {
+        let guard = &mut self.driver.guard;
+        self.model.spend(h, kind, now, || if guarded { guard.budgeted(now) } else { None })
+    }
+
     /// One request (JSON) → its answer (JSON). Never panics on bad input: `{"error": …}`.
     pub fn call(&mut self, request: &str) -> String {
         match serde_json::from_str::<Request>(request) {
