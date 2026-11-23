@@ -7548,3 +7548,453 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   never active.
 - Not done: taking presses on the panel through an event tap so the keyboard never moves (mouse events only, no
   Input Monitoring). Its cost was put to Tirth, who chose the hand-back.
+
+## Core refactor step 2, part 9: the hosting rules the Swift had twice, the core's only (2026-11-22)
+
+- Each Swift copy now calls the core's one rule by a typed call (no JSON, nothing allocated): `HostLayout.near`
+  (`margin_layout_near`, its 42 callers unchanged; the unused `WindowKinds.near` deleted), the toolbar strip at a
+  window's top (`kinds::toolbar_of`, new, the 150 the core's `STRIP_MAX_HEIGHT`; `toolbarOver`'s height filter reads
+  the core's constant; `Options.stripMaxHeight` deleted), the backed-out attempt's strips (`kinds::is_strip` with the
+  host's own placement), the sidebar and a window over it (`front::sidebar`, `front::covers_sidebar`), the 0.1 s wake
+  (`schedule::wake_due`), the same-launch 2 s rule (new `exits::same_launch`, five copies), `toolbarRoom`'s 52
+  (`layout::TOOLBAR_ROOM`; the UI's `SAFARI_TOOLBAR` stays a copy, a core test holds the two equal) and `nextPoll`
+  (typed: it was a JSON call every poll).
+- Kept as each copy had it: the ±2 pt toolbar slack, the edges included (`<=`), `abs(a - b) < 2` for a launch. The
+  crash recovery's own launch rule differs from the other four (marked with a launch time and the running app's
+  unread: not the same) and keeps that difference in its caller, said there.
+- Checked before the Swift went: Rust vectors at every edge (zero-size, touching, exactly at and a hair past each
+  tolerance), and the deleted Swift against the core over 4 million vectors (a scratch run): no difference. One edge
+  differs and is accepted (the design's note): `is_strip` with no area or no page width known answers by the side
+  known, where the engine's copy took any width; the engine never asks without a placement (every open, layout,
+  show and page change sets it first). The app's 2038 checks pass unchanged.
+- `liveFollowers` and `liveFollowersList` share their candidates and their "follows a drag" rule; the list's own
+  difference stays explicit (the shown ones only, the one shown first). `tucked` in `sayHostedWindows` waits for
+  part 3.
+
+## Core refactor step 2, part 1a: each host's state in the core (2026-11-22)
+
+- The engine's core (`HostCore`, Rust) gains `model` (host/model.rs): every host by a `u32` handle, made with its
+  `Host` and freed in its `deinit`. The fields the design lists for a host (window, role, rect, slid, phase, mode,
+  resizable, placedPage, member, tiled, noTiles, minSize, narrowestHeld, unread, strays, returns, offScreenReads,
+  offPageReads, the off-screen look's tries and says, visibleAt, reentries, reentrySaid, fullScreenFailures,
+  retryFullScreen, gone, goneAt, freshFront) are now computed properties of `Host` reading and writing the core by
+  typed calls (`margin_model_get/set`, `_real`, `_rect`, `_times`), under `HostCore`'s lock. No decision moved; the
+  engine's code and the tests are unchanged (the app's 2038 checks pass).
+- `Host` is a class, so every reference reads the same host, as before; nothing copies one. Its starting values are
+  the core's `HostState::new` (the same ones). `tile` stays the Mac's (the tile's id) and sets the core's `tiled` as
+  it changes; `pid` stays a `let` beside the core's copy (it never changes). A slide is kept as its pane and two
+  alignments; a minimum size as a rect at 0,0 (zero sizes kept as sizes).
+- Nothing allocated in the core on a field's read or write: a margin-ffi test (tests/no_alloc.rs, a counting global
+  allocator) checks the model's calls and every typed rule the engine asks per frame, wait or poll. Lists of times
+  have room for 8 from the start (the engine keeps at most 4). On the Swift side, a list's read makes a Swift array,
+  as the copy of a stored one did not: only on strays, re-entries and the off-screen look, never per frame.
+- Left for 1b, deliberately: the engine's own state (`visible`, `shown`, `shownAt`, `focusWanted`, `placement`, the
+  hold, `applyingLayout`…) and `options`' `configure`. Nothing in the core reads them before the decisions move, and a
+  computed `visible` would build its dictionary at every one of its many reads (more CPU for no gain). The app's
+  version beside its key waits for part 5 (the minimums are the only reader).
+- Not measured here (no screen suite on this branch): `idle-cost` and `live-resize` before and after, as the plan asks
+  before the merge.
+
+## Core refactor step 2, part 5: every app's window minimum in the core (2026-11-22)
+
+- What's kept per app and version (minimums.json beside routes.json) is the core's (host/minimums.rs `AppMinimums`,
+  on the engine's model): the load's filter (0 ≤ side < 20000; a file not of the shape taken as none, as the Mac's
+  decoder refused the whole file), the version gating (none for another version than the one running; a version not
+  known: the one kept holds), remembered only when new for that app and version (an unread version kept as "?").
+  Each host's own (host/model.rs): its tile's minimum rounded up, a tile that says none keeping the one read (said
+  once: `min_unread_said`, a model field now), the narrowest held, taken for its width when it leaves a tile with
+  none said; a pane's and a target's minimum (its own, else its app's kept one; a window-mode host's none).
+- The file's format is unchanged: Swift reads its bytes and hands them to the core (`loadMinimums`, as
+  `loadRoutes`), and writes the core's answer atomically (`saveMinimums`, sorted keys, as `saveRoutes`). A Rust test
+  loads today's exact JSON (whole numbers without a point, as JSONEncoder wrote them) and writes it back the same.
+- The versions stay read by Swift (`sys.appVersion`, once per process, its cache): the core never reads one. A host's
+  version sits beside its key in the model, set the first time a decision needs it (the core answers "its version
+  not read yet" only when a minimum is kept for its app), so the OS is read exactly when it was before. A target
+  with no host: Swift reads the running app's version only when the core has a minimum for that app.
+- Not as the design sketched: a host's app minimum is looked up by its key at each read (a map of a few entries, no
+  allocation) rather than cached at `add` and `remember` (no copy to keep in step). `appKey` stays Swift (it maps
+  the shell's `HostTarget`; the key is given to the model at `add`, as 1a does). `shownMinimumWidth` moves with 1b
+  (it reads the visible set).
+- Checked before the Swift went: the deleted Swift against the core over 480,000 generated vectors (a scratch run:
+  40,000 files of every shape, 200,000 known/remember steps, 240,000 learn/held/leave steps): no difference. The
+  typed calls allocate nothing (no_alloc.rs: a pane's minimum, a tile's read, the narrowest held, a kept one asked).
+  The app's 2038 checks pass unchanged.
+
+## Core refactor step 2, part 1b (first of two commits): the layout of Margin's page area and its decisions in the core (2026-11-22)
+
+- The engine's own state is the core's now (host/model/visible.rs, on the model): the layout (`visible`: each host's
+  rect, role and place back to front, ids a layout names before their hosts exist), the one shown and when it was
+  shown, the focus asked, the placement, a whole layout being applied, the hold, the layout's held hosts; and which
+  host the engine holds as each id (`setHost`, the five places `hosts` was written, tells the core).
+- The decisions read there, each asked at the point it's made today (no plan made up front): the visible hosts'
+  order (z, the one shown last among equals, then the id's bytes: ids are ASCII, so as Swift's `<`), visible, main,
+  alone, a host's own page area and placement, the poll's rank, the one shown before another comes in, a card below
+  its minimum (with part 5's tri-state: the version read only when a kept minimum needs it), the one shown's minimum
+  width; `shown`'s follow (`set_shown`: the setter asks it, then tells Margin's window, as the didSet did), an
+  operation's end (`settle_begin`, then the shown set, then `settle_focus`, then the shown set again: two calls
+  because the setter's own effects run between them as before; "did the layout change" by a generation count, no
+  copy), applyLayout's refusals, its start (`layoutBegin`: the layout, arriving, held, deferring, each one's role and
+  rect), the held ones laid out again, its end (the one left alone at the page area), its focus. The per-target
+  bookkeeping between them (a failed one out of the layout, a newcomer's time and its off-screen word) stays where it
+  was, the layout's entry removed by a typed call.
+- `holdLayout` and `pageRectChanged`'s copy are one hold (`hold`/`release`), its two kinds' differences kept as they
+  were and named: a placing's hold (only beside others, never inside a layout; puts each one's role and rect back;
+  the focus kept) and a page area's (whenever several are visible; keeps only those still laid out; the host placed
+  shown when nothing is). The fronting after it stays the callers' (a page's always, a placing's with several).
+- `options` is sent to the core in its `didSet` (one JSON call per change; only the tolerance is read there so far:
+  the other options join as their parts' decisions move). `shown` keeps its id here as last set (it's read hundreds
+  of times an operation; a string out of the core each read would allocate): only its setter writes it, through the
+  core. `visible` is a computed dictionary built from the core for the tests only; the engine reads the layout by
+  typed calls. `livePage`, `belowSaid`, `liveCandidates` and the cut panes' state stay Swift for parts 3 and 6 (their
+  readers move there); so does `focus`'s card rule (not in 1b's list).
+- Checked before the Swift went: the deleted Swift against the core over 238,268 checks in 4,000 generated runs of
+  40 operations each (28,262 whole layouts with refusals, deferring, newcomers made mid-layout, failures, relays,
+  parkings, the alone rule, the focus; both holds with changes while held; settles; shown set and cleared; every
+  query after every step): no difference. The harness was itself checked by mutating the old Swift (a tie's order,
+  the noTiles rule in deferring, the hold's focus, the slide's reset, the page hold's filter, the focus kept with one):
+  each caught. The typed calls allocate nothing (no_alloc.rs: every read, an operation's end with nothing to change,
+  the shown set to itself, an entry set as it is). The app's 2038 checks pass unchanged.
+- The core also gains `bring_in` and the window-mode frame (`layout::inside`, `window_frame`, `at_page_area`) with
+  their Rust tests; the Swift switches to them in the next commit (one adds, the next deletes, as the design asks).
+
+## Core refactor step 2, part 1b (second commit): how a host is brought in, and a window-mode window's frame (2026-11-22)
+
+- `bringIn`'s tree is the core's (`bring_in`), asked at each of its four points in turn, between the same waits as
+  before: its window gone (reopen), a new app's window taken first, its route (full screen again after a failed one,
+  window mode, a tile held below tiles placed again, a tile sized first), then switched in or placed (for another
+  page area: said). The facts only the Mac has (a new one, an app's, taken, retrying, made ready out of sight) are
+  passed as bits. The full screen again's model change (its mode, its retry spent) and the held tile's forgotten page
+  are made by the core as it decides; the marker's save, the log lines and every wait stay where they were.
+- A window-mode window's frame is the core's (host/layout.rs `inside`, `window_frame`, `at_page_area`: the one the
+  Windows thread asked for): centred at whole points (Swift's `rounded()`, half away from zero, as Rust's `round`),
+  never past the page's top left; the page area for a resizable one, its own size centred for a fixed one; nothing
+  to set when it's there, or placed before and at its own limits centred. The live pump's window-mode target uses
+  the same `inside`.
+- Left in Swift: `visibleHost(at:)` (a loop over the window server's bounds and each pane's frame, part 3's), the
+  reopen and take themselves, and the gone check after the reopen (it reads whether the engine still holds the host).
+- Checked before the Swift went: the deleted Swift against the core in the same scratch run as the first commit's
+  (bringIn's tree at every point with every fact and model state, in the 4,000 runs; the window-mode frame, its
+  "there" check and the centring over 2,000,000 generated rects at and around each tolerance, zero sizes and
+  half-point centres included): no difference. Rust tests pin each point and the frames' edges. The app's 2038
+  checks pass unchanged.
+
+## Core refactor step 2, part 3 (first of two commits): where each window goes and cut panes in the core (2026-11-23)
+
+- The core gains the Mac's pane rules (host/model/panes.rs, on the model): a host's window frame for a page area (window
+  mode and a card: the page area; a split's pane cut at its window's minimum, at its slide while its pane is the one it
+  was slid in, held within the display unless a tile; else `fit` at its own minimum), its placement fitted and as its
+  own full-screen Space reserves it, its tile's rect, whether it's cut, a cut pane's sides, the slide that shows a
+  side, the panes its window lies under (at its frame, or at a frame given: the drag's, as `sayHostedWindows`' copy
+  asked), whether it's tucked, the order that keeps each behind the ones it lies under (the loop's fallback as
+  given), whether its window is over a pane it lies under in an on-screen list, and a slide's frames (`slide_rect`:
+  ease-out cubic over the slide's time, the last when the time is up; `slide_step` adds its tile's rect). The page
+  area of a drag being followed (`livePage`) is the core's now (the frame reads it). Typed calls, nothing allocated
+  (no_alloc.rs: each of them on a cut pane whose minimum is its app's kept one).
+- CGRect's edge rules, as these decisions were written and measured with, are the core's `geometry::cg` (standardize,
+  meets, inset, union, intersection, equal): a zero-size rect meets one it starts in or at the start of, touching
+  edges don't meet, an inset past the size is none (CG's null), a union keeps a zero-size rect. Fitted against CGRect
+  itself over 4,000,000 generated pairs of whole and half sizes (zero and negative included): the same answers. The
+  rest of the core keeps `Rect`'s own (a zero size never meets), so nothing else changes.
+- A host's minimum read by these rules may be its app's kept one with its process's version not read yet. Its answer
+  then uses that one (what an unreadable version answers) and notes the host (`versions_wanted`, read in the same
+  lock); the engine reads each noted host's version through its own `minimum` (once per process, as before), sets it
+  and asks again, until nothing new is noted. So a version is read in the same call it was read before, for the hosts
+  whose minimum that call reads, and the answer is the one the Swift gave. An unreadable version is read once a call
+  (the Swift read it at each look within a call): the same answers, fewer reads.
+- Swift's `HostCore` gains the typed wrappers; the engine switches to them, and its copies go, in the next commit.
+
+## Core refactor step 2, part 3 (second commit): the engine asks the core where each window goes and of its cut panes (2026-11-23)
+
+- `frame`, `entryFitted`, `tileRect(for:)`, `isCut`, `cutOf`, `slideFor`, `lyingUnder`, `tucked`, `tuckedOrder`,
+  `overPaneItLiesUnder` with the poll's list, the `tucked` copy in `sayHostedWindows` (now `tucked(h, at: window)`) and
+  the drag's page area are the core's, asked at the same points; `paneFrame`, `paneMinimum`, `hidden`, `slidFrame`
+  and the Swift `livePage` are gone. `fitted` stays a two-line Swift composition (its placement as given, the core's
+  frame in it), so a placement handed in keeps its own rects exactly. `overPaneItLiesUnder` without a list still asks
+  the window server per pane (`windowBehind`), the core's panes in hand.
+- The slide: its decision reads the core (the side allowed, its alignment, tucked before and after: the same calls
+  at the same points), and each frame's rect and tile rect are the core's from the time it is (`slideStep`), sent by
+  the engine; the frame's pace is the same sleep of one `liveFrame`, the last frame when the slide's time is up, as
+  before. No new wait.
+- One Swift helper (`versioned`) makes every such call read a noted host's version through `minimum` and ask again
+  (the first commit's note). Nothing allocated on the hot path: a frame is one typed call (the Swift's was a dozen:
+  its fields, the placement, the minimum, `near`, `cut`, `within`).
+- Checked before the Swift went: the deleted Swift (copied verbatim, `self`'s members aside) against the engine's new
+  calls on two cores built alike from 100,000 generated worlds (1 to 5 hosts, every role, mode and phase, rects on a
+  grid of touching edges, zero and half sizes and 5% anywhere with negative sizes, slides on their pane, beside it and
+  elsewhere, tiles and tiles off, own minimums and their apps' kept ones per version with readable and unreadable
+  versions, a drag's page area, tolerances 0 to 3; every query for every host and side, given placements, frames
+  given, on-screen lists with missing windows, tucked orders of random subsets, 400,000 slide frames): 17,190,982
+  checks, no difference, the versions read at the same calls. Two placements given with a negative height answer
+  standardized (the same rect by CGRect's `==`; every reader of a frame standardizes, and no caller hands one in).
+  The harness was itself checked by breaking the old Swift on purpose (a slide's "shows more" at equality, no inset in
+  "lies under", the crossing rule without its cut check, tiles off ignored, the loop fallback reversed, an alignment's
+  tolerance at equality, the ease's exponent off by 1e-7, the slide kept on another pane, a version never read): each
+  caught. And with the core's "lies under" on `Rect`'s own edges instead of CGRect's: 4,406 differences, so the
+  vectors reach the zero-size and touching cases. The app's 2038 checks pass unchanged.
+
+## Core refactor step 2, part 2: the visible windows' order in the core (2026-11-23)
+
+- `frontVisible`'s decisions are the core's (host/model/order.rs): the order wanted (the cut panes lying under others
+  behind every one they lie under, the focused one too when it's cut, then the others, then the focused one), the
+  pairs whose order shows (`overlapping`: each window's frame with its bounds, a full-screen one with the toolbar's
+  room above it, overlapping past the tolerance; the room is an option sent with the tolerance now), the pairs out of
+  order in the window server's, and the plan: the keys only; or the raises that fix two others out of order without
+  going over the focused one, then the keys; or every one from the first out of place that overlaps another, back to
+  front, the cut ones too only when two cut ones are out of order, then the keys for a cut focused one or the confirm
+  (waited for, or out and back at once for a fresh one). Each raise is over the cut pane it lies over (`raiseOver`) or
+  plain.
+- The one up-front plan the design allows, because the Swift also decided everything before its first raise: the
+  engine reads each wanted window's bounds and the window server's order once, asks once (JSON `frontPlan`, a fronting
+  at a time, at most four hosts), then raises in its order. One difference, in a race only: the Swift re-evaluated
+  "is it tucked" and "the cut pane it lies over" between its raises (lazily, in its loops' filters). They read only
+  the model, and no operation changes it inside a fronting (they wait for the serial queue); what can, between two
+  raises, is a drag of the sidebar's edge begun or followed then (`dragging`, `follow`: not serial; a new minimum read
+  at its start, its page area per frame). In that race the Swift mixed the state before and during the drag; the plan
+  uses the state before the first raise throughout, as the design accepted (Tirth's "decides first and then acts"). The confirm's check (every `memberEvery` for up to `orderWait`) is typed
+  (`margin_order_top_behind`, nothing allocated) and keeps nothing in the core between calls: the plan's own windows
+  and the hosts overlapping the focused one are handed to it, so two frontings can't read each other's.
+- "Lies under" is one rule (panes.rs `lying_under`; `lies_under` for a pair): the tucked ones, their chain, the
+  raise over, and the poll's look all read it. The window server's order of the wanted windows is the core's rule
+  (`server_order`, also for the log line); the Swift `overlapping`, `violated`, `serverOrder`'s filter and
+  `tuckedOrder`'s wrapper are gone. The ladder after a failed confirm (raise again, Safari's copy, out to a private
+  Space and back), each raise and its waits stay Swift: mechanism.
+- Checked before the Swift went: the deleted `frontVisible` decisions (copied verbatim, each raise, the keys and the
+  confirm recorded instead of done, with the old Swift pane rules under them) against the engine's new path on two
+  cores built alike from 200,000 generated worlds (part 3's worlds with more hosts shown, toolbar rooms 0 to 100,
+  bounds on, beside and away from each frame, on-screen lists with others, missing and twice-listed windows, unread,
+  fresh hosts; four confirm reads each): 1,359,235 checks, no difference, the versions read alike (raises over a cut
+  pane in 39,530 worlds, the focused one seen behind in 55,198). The harness caught each deliberate break: the cut
+  pane raised over found first instead of last, no toolbar room above, the overlap at equality, the fix set ignoring
+  the focused one's overlap, the tucked chain reversed, an unread order taken as in order, the old "lies under"
+  without its inset, the loop fallback reversed. Two candidate breaks turned out to be no change at all ("tucked"
+  before "lies under", equal places in the order) and were replaced. Rust tests pin the order's rules (side-by-side
+  panes keys only, a card raised then confirmed, fresh, the toolbar's room, a cut pane behind with its keys, nothing
+  over the focused one, two cut panes out of order). The app's 2038 checks pass unchanged.
+
+## Core refactor step 2, part 4 (first of two commits): the budgets and the full-screen ladder in the core (2026-11-23)
+
+- The four budgets of Margin's own corrections that outlive a show are the core's (host/model/budget.rs, on the
+  model): a stray's returns (filtered, this one in, then checked: past `returnsMax` within `returnsWithin` the list
+  cleared and the host parked, said each time), the re-entry into full screen (filtered, checked, then in; said once,
+  a re-entry made resets the said), off screen in place (once a show, said once a show) and elsewhere (said once until
+  it's newly visible), one list of tries for both, and a cut pane's repair (3 within 5 s or 3 in a row that didn't
+  take; said once and held until its order is seen right). Each keeps the Swift's order of filter, check and append;
+  the engine asks `spend` at the point it checked, and says the line the answer names (the log lines word for word,
+  their counts the core's). `returnsMax` and `returnsWithin` are sent with the tolerance (`configure`).
+- A cut pane's repairs stay kept by its id, as the engine's dictionaries were (a host made again with the same id is
+  still held until its order is seen right); the rest by handle. The poll's "seen right" is typed and allocates
+  nothing (no_alloc.rs); a cut pane's first repair keeps its id (one allocation, rare).
+- The retry-once full-screen ladder stays per host and per run (Tirth, 2026-11-22: it doesn't join routes.rs): a
+  failure backed out (`full_screen_failed`: tried again at its next show the first time), another window adopted
+  (`adopted`, asked before the host's fields change: a shown member's failures forgotten, retried when it can go full
+  screen and never failed), the loop guard's move to window mode (`moved_to_window`). The fields only these wrote
+  (the times lists, the said flags, the failures) are no longer `Host` properties; `retryFullScreen` is read-only.
+- One clock read per budget: the Swift read `sys.now()` once to filter and again to append, with no wait between; the
+  core takes one `now` for both (the same within the same turn of the run loop).
+- Checked before the Swift went: the deleted Swift (copied verbatim) against the core over 11,292,436 checks in 40,000
+  generated runs of 60 steps (three hosts or one, half the runs on one kind, times stepping by 0 to 60 s with exact
+  5 s and 30 s edges, limits 0 to 5 within 0 to 60 s, shows, the said reset, hosts made again with the same id, the
+  ladder's fields written by other paths; every answer, count and field after every step): no difference. The harness
+  caught each deliberate break (the stray's `<=` as `<`, the re-entry's said not reset, the in-place filter at
+  equality, the streak's limit, `adopted` without the member, "seen right" not clearing the said, the elsewhere's try
+  not appended, the cut tries' filter at equality). Rust tests pin each budget and the ladder. The app's 2038 checks
+  pass unchanged.
+
+## Core refactor step 2, part 4 (second commit): every budget's action counts toward the loop guard's hold (2026-11-23)
+
+- Step 2's one change of behaviour (Tirth, 2026-11-22). Before, a budget's action was Margin's own and the loop guard
+  never saw it: a loop between Margin and an app through a re-entry into full screen, a look off screen or a cut
+  pane's repair was limited only by that budget per host (3 in 30 s, 3 in 5 s), so N hosts could run N times that,
+  and nothing tied it to the guard's other actions. Now each of these actions is one of the guard's: a budget with
+  room asks the guard's per-second hold before it's spent (`LoopGuard::budgeted`, `HostCore::spend`). Twelve actions
+  a second across every host (reactions and budgeted actions together) hold every one of them for a second, as the
+  guard already did for reactions; held, the action isn't made and nothing of its budget is spent, so it's tried again
+  at the next look after the hold. A budgeted action never counts toward a host's stop (3 of the same reaction within
+  5 s): its budget is its own, and stopping a host for its own re-entry would move it down a route for no fight of its.
+- Which actions: the re-entry into full screen (`reenterFullScreen`; held: true, nothing else that turn, so no tile is
+  sized for a window out of full screen), the off-screen look in place and elsewhere (`backOnScreen`; held: nothing
+  this time), a cut pane's repair (`repairCutOrder`; held: false). Each held one is said in the log as the guard's
+  holds are ("… held: too many reactions this second across every host (N ms more)"). A stray's returns don't ask the
+  hold: their action is the guard's "put back" reaction (`guarded`), which already counts and holds; asking twice
+  would count it twice.
+- Counted whatever `planned` is (the cut repair runs as Margin's own plan, the re-entry makes itself one: honouring
+  `planned` would leave both outside, the opposite of the decision); off only with the loop guard itself
+  (`options.loopGuard`), as every guarded action.
+- When it can hold in real use: only past twelve such actions and reactions within one second, together. A split of
+  four is at most four visible hosts: each budget allows 3 within its time per host, so the budgets alone reach twelve
+  only if every pane of a four-pane split leaves full screen, or goes off screen, three times within the same second,
+  or with the reconciler's own corrections at the same time (a display change re-laying out four tiles while they
+  exit full screen). That's a loop, which is what the hold is for; Rust tests pin both sides (thirteen in a second
+  held, nothing of the held one's budget spent; a four-pane split at eight a second for two minutes never held).
+- The app's 2038 checks pass unchanged, and none of them sees a hold: run once with every hold's line marked on stderr
+  (the guard's own and the budgets'), none was reached. The screen suite's `behaviours-*`, `cut-panes` and
+  `real-apps-loop` parts are to show no hold they didn't before (not run here: the screen suite runs before the merge).
+
+## Core refactor step 2, part 7 (first of two commits): the poll's counts, strays and off screen in the core (2026-11-23)
+
+- The core decides (host/model/watch.rs, on the model), each asked where the Swift decided, typed per host per poll:
+  the poll's count of a window's reads (its app's close as two reads that missed, unread twice in a row gone, a read
+  resetting the count and its "gone"); a gone window's tree (gone already: nothing; being made: gone as any; its app
+  running: an app Margin started parked reopened at its next show, the one shown left to the reconciler's grace, else
+  gone as any; marked gone with its time when it waits); a window's place counted (the one shown outside Margin's
+  Space or with Margin's window out, a parked one in any Space, twice in a row; the one shown in no Space at once);
+  `strayed`'s verdict in its turn (both in place now: nothing; Margin's window out at the poll or now: park; its
+  returns spent: park alone; else bring back); `backOnScreen`'s (the look still missing something, before and after
+  the host's own read; in place or elsewhere with each one's budget, and what's made current and moved). A window's
+  Spaces go in as a place (unread, in no Space, Margin's alone, elsewhere): OS-neutral, Margin's Space the page
+  area's place on the Mac.
+- Every read stays where and when it was, in the same order: the window server is read lazily (a read only when the
+  decisions before it pass), so the one read inside a decision (a gone window's process, read again only when the
+  tree reaches it) is answered "read it" by the core and asked again with it. `strayed` reads its window and Margin's
+  again in its turn and asks the core with those fresh reads, as the Swift re-decided there. The guard's "put back"
+  stays the engine's call (its stop moves a host down a route: the Mac's mechanism).
+- Left in Swift, deliberately: `noteOffScreen`, `noteOffPage` and `leftFullScreenSign` (with `leftFullScreen`'s
+  guard). Each is a chain of window-server and Accessibility reads, each read only when the ones before it pass, ending
+  in a count reset or +1 of a core field (`offScreenReads`, `offPageReads`, which the reconciler reads) or a Mac sign
+  (a tile's window, Safari's toolbar windows, Accessibility's flag). Moving them would read eagerly (more reads every
+  poll: CPU) or need a call per read (more crossing than the rule). Also left: the on-screen look's own counters
+  (`offReads`, `offReadsOf`: the engine's look), `closedByItsApp` (the observer's model and two reads), the promote,
+  the rungs of the in-place bring-forward, the drag's hold (part 6's).
+- Checked before the Swift went: the deleted Swift (copied verbatim, its reads given as facts and recorded when made)
+  against the engine's new order of calls over 6,800,029 checks in 30,000 generated runs of 80 steps (every phase,
+  reads unread, closed or read, a process running or not, every place, Margin's window in or out, looks with and
+  without the host's own read, the displays' current Space unread, Margin's or another, the engine's own writes
+  between polls; every verdict, every read made, every field after every step): no difference, the same reads in the
+  same order. The harness caught each deliberate break (a read not resetting "gone", gone at the third read, "in no
+  Space" taken for unread, Margin's window now ignored, make-current without Margin's window, move-in inverted).
+  Nothing allocated per poll (no_alloc.rs). The app's 2038 checks pass unchanged.
+
+## Core refactor step 2, part 7 (second commit): the close's decisions, the exits and the recovery's launch rule in the core (2026-11-23)
+
+- `closeNow`'s tree is the core's (host/close.rs, pure), asked at each of its points between the same waits, with
+  the host's facts as they are then (a step before may change them: its frame given back, a close button pressed):
+  asked to quit at once while its app asks something; under the freeze; what's given back first (its frame, out of
+  full screen, nothing); whether its app quits; whether its close button may be pressed first (its app's "keeps its
+  windows" read only when the core says so, as before); home after; whether where its window is before the quit
+  matters (Margin's Space read only then) and where it goes (home, out of sight); a copy's window to the Desktop;
+  a Safari window left to the person; and what the marker keeps of an unfinished close (`unfinished`: done, kept,
+  kept as a member). The facts go as bits, one typed call per point, nothing allocated (`margin_close_decide`).
+- The apps a row's close asked to quit are the core's (host/exits.rs `Exits`, on the engine's core): asked, heard
+  gone, overdue (every poll, typed into a buffer: nothing made when there are none), taken back (still that launch,
+  its bundle and launch time the same: Margin's again; else its exit unheard), the ones of an app still finishing,
+  whether one is ending (the panes-active keeper's every step, typed). An ask, its exit and a take-back are typed too,
+  so the launch and ask times are kept exactly: a first try sent them as JSON and the harness caught Foundation's
+  JSON writing a launch time 1 ulp off (1000002.123456789 came back 1000002.1234567888), which the marker would have
+  written. The list with its ids and bundles (the marker's save, the quit's line, the tests' `exitingPids`) is one
+  JSON call only when there's any, its times read typed.
+- The crash recovery's own launch rule (marked with its launch time, the running one's unread: not the same) is the
+  core's (`same_marked_launch`) beside the shared one; part 9 had left that difference in its caller.
+- Left in Swift: the marker's format and `recoverNow`'s sequence (Mac Space and tile ids, as the design says); who's
+  whose in the recovery (`ours`, `safariMade`): each reads a running app lazily inside `&&` and `||` (the same
+  Safari read up to twice, or not at all), so moving them would change the reads; the facts' reads themselves
+  (`asking`, `viaCopy`, the window server's), every step and wait of the close.
+- Checked before the Swift went: the deleted Swift (copied verbatim, the host's fields and each read given as facts,
+  fresh at each point as a step between may change them, its target fixed as a `let` is) against the engine's new
+  order over 1,285,901 checks: 200,000 closes of every exit kind and host (each point's decisions and every lazy read
+  in order), 200,000 unfinished closes, the recovery's rule on launch times at and around its 2 s edge and unknown,
+  and 10,000 runs of 40 exits steps (asks, asks again, exits heard, take-backs by the same launch, another or none,
+  overdue at its edge, the dying, every entry with its exact times after every step): no difference. The harness
+  caught each deliberate break (the freeze without its copy rule, the person's not going home, out of sight from a
+  private Space, every Safari left to the person, a member kept through its copy, the rule's unread case, a
+  take-back without its launch time, overdue half a second late). Rust tests pin each predicate and the exits.
+  Nothing allocated on the reads asked often (no_alloc.rs). The app's 2038 checks pass unchanged.
+
+## Core refactor step 2: a held step of the tiles' sizing asked again when the loop guard's hold ends, not at once (2026-11-23)
+
+- The spin: `sizeTilesSoon` queues one host's step; a step that didn't act (its host gone, its re-entry into full
+  screen done, or its sizing not admitted) asks `sizeTilesSoon` again at once. With the loop guard's per-second hold
+  in force, a step's re-entry (counted toward the hold since part 4's second commit) or its sizing (`admitted`, as
+  before) is held, the same host's step is queued again at once and held again: a busy loop through the serial queue
+  for up to the hold's second (the stand-in's run: 9 held re-entries at one instant, back in full screen 2 s after
+  the hold's end). Pre-existing for a held sizing; part 4 added the held re-entry to it.
+- Now the core answers when the hold in force ends (guard.rs `held_until`, typed `margin_guard_held_until`: a read,
+  nothing allocated), and `sizeTilesSoon` takes no step while it's in force: one retry waits for that moment on the
+  engine's clock (`sys.sleep` to the core's deadline, as the engine's other waits; one at a time), then sizes as
+  before. Every step it skips would have been held (each is guarded: the re-entry budgeted, the sizing admitted with
+  the guard), so only the timing changes: no repeated attempts during the hold, the retry at its end. The
+  reconciler's own path (`reconcile`, one step per poll) doesn't spin and is unchanged: a held correction there is
+  asked again at the next poll.
+- Pinned by an engine test with the stand-in (T/screen-engine-tests.swift): a page change sizes a parked tile, the
+  one shown leaves full screen meanwhile and the guard's second fills, its re-entry is held once and made at the
+  hold's end, never again in between (failing first: 9 attempts without the fix); and a Rust test of the hold's end
+  (answered until it lapses, a read only). The app's 2040 checks pass.
+
+
+## Core refactor step 2, part 6 (first of two commits): the live-resize pump's scheduling in the core (2026-11-23)
+
+- The core gains the pump's decisions (host/model/live.rs, on the model): a drag's start (none under way, not
+  quitting, the one shown shown, it or another visible host following: a tile or a window-mode window; the others
+  that follow, back to front, for their minimums' one read), its end (its page area and pending frame forgotten), each
+  page frame (the newest wins, the drag's page area), the drag held (the one shown left its tile), a drag never said
+  over (`liveForget`), the session's count of followers, and each tick of the pump: the flights landed (their window's
+  bounds near their rect, the engine's reads; a fixed-size window-mode window's taken as landed) or given up after
+  `liveWait`, the narrowest width a tile held; the newest frame owed to every follower (the one shown first, shown ones
+  only); the gate (an operation, Margin quitting, the drag held, the one shown not shown: held, the frame kept; the
+  pump ends when nothing's owed or in flight); the followers free for it (owed, none in flight, a `liveFrame` less a
+  microsecond since their last), tiles first (a stable order); then each send's rect (its rect in the frame, its own,
+  the page area; another than the one shown never below its minimum; a tile's rect and its window's frame, or a
+  window-mode window's frame, centred when fixed) and its record, and whether the pump ends.
+- Typed calls (ffi live.rs, `margin_live_*`), nothing allocated per frame or tick (no_alloc.rs: 240 ticks of a split
+  of two tiles and a card, frames coalesced, flights landing and given up, a new run, the hold, the end); the lists in
+  fixed arrays of 16 on both sides. The timing (`liveFrame`, `liveWait`, the tolerance) goes with each tick as the
+  options are then, never through JSON (part 7's 1-ulp lesson): a comparison at its edge is the Swift's.
+- The pump's state lives one run of the engine's pump, as its locals did (`live_pump_begin`), not one drag: a drag
+  ended and begun again while a run sleeps goes on with that run's flights, as before. It's kept by handle and follows
+  the engine's hosts by id, as the Swift's dictionaries by id did: a host made again as the same id (a follower's app
+  opened anew mid-drag) takes over its id's flight, last send and owed frame (`relisted`, told by `list`); a host gone
+  keeps its id's part (its flight forgotten at the next tick, never counted), and a send recorded after its host went
+  is its id's; a host freed before it's let go (its last reference gone as the engine drops it, `list` told after)
+  is let go the same way (`remove`). Only that rare path allocates (the id kept), never a frame.
+- Rust tests pin each rule (one in flight, the newest wins, the give-up wait at its edge, the throttle per host and
+  tiles first, a held frame kept, a follower gone and made again as its id, the one shown freed first, the counts, a
+  forgotten drag). Swift's `HostCore` gains the typed wrappers; the engine switches to them, and its copies go, in the
+  next commit. The app's 2040 checks pass unchanged.
+
+## Core refactor step 2, part 6 (second commit): the engine's pump asks the core, its copies deleted (2026-11-23)
+
+- `dragging`, `follow`, `sendLive` and `pumpLive` ask the core at the points they decided: the drag's start and end,
+  each frame, each tick (the flights' bounds read first, outside the lock, then one call), each send (asked again after
+  a version is read, as `frame` is) and its record, the tick's end. `liveFollowersList`, `liveCandidates`,
+  `followsLive`, `livePending`, `liveLast`, `liveHeld` and `setLivePage` are gone; `liveOn` reads the core;
+  `liveFollowers` (the session's count) is the core's, with the drag's own list beside it in one rule: part 9's
+  duplication folded in.
+- Stays Swift, as planned: every write (a tile's rect with the observer's note, a window's frame by
+  Accessibility and the bounds read to centre a fixed one), every read of the window server, every sleep exactly as
+  before (`liveFrame` while held, `tileEvery` otherwise: the same awaits at the same places, no new wait), the pump's
+  task, the window-mode hole's and Margin's window's tellings, and the drag's numbers (`LiveStats`: the core answers
+  each flight's end and the tick's counts, the engine records them). The log line ("host: live resize: in N ms: …",
+  parsed by S/LiveResize.swift, read for "each: " by T/split-real-use-tests.swift) is built by the same Swift as before,
+  word for word, so no Rust pin is needed. HostEngine: 96 lines out, 51 in (the calls and the mechanism around them);
+  HostCore's `setLivePage` gone (its 7 lines).
+- Checked before the Swift went: the deleted Swift (copied verbatim, `self`'s members aside) against the engine's new
+  code (copied verbatim, checked against HostEngine.swift by a script: only the mechanism's stand-ins differ), each on
+  its own core built alike, in a world of virtual time scheduled deterministically (every task on the main actor's
+  queue, sleepers woken by time then order), on 28,008 generated drags in two runs of 14,004 (the second with ticks a
+  frame's time less a microsecond apart, waits a whole number of ticks and frames at those gaps, so the throttle's, the
+  give-up's and the forgotten drag's edges are hit exactly): 1 to 4 hosts (tiles, window-mode windows resizable and
+  fixed, ones that don't follow; shown, parked, preparing; mains, panes, cards; a layout naming a host not made), frames
+  0 to 60 ms apart and coalesced, landing lags 0 to 70 ms, windows landing off by up to 4 pt, never landing, writes
+  refused, window-mode writes awaited (other frames landing meanwhile), tolerances 0 to 3, `liveFrame`, `liveWait` and
+  `tileEvery` varied, operations holding frames, Margin quitting, the drag held, followers parked, untiled and retiled,
+  gone and made again as the same id, the one shown changed or none, rects and minimums changed mid-drag, kept minimums
+  with versions read and unreadable, drags forgotten, ended and begun again while a run sleeps. Every write with its
+  time to the bit, every telling, the pump's life, the drag's numbers (each time to the bit) and the model after:
+  1,996,999 lines compared, no difference. The one difference, accepted as part 3 did: an unreadable version is read
+  once a send now, where the Swift read it at each of its three looks (the same answers, fewer reads). The first run
+  found one: a host freed before the engine said it let it go (its last reference dropped in `setHost`, `list` told
+  after) kept its flight until the give-up wait instead of being forgotten at the next tick, so the pump ran up to two
+  frames longer: fixed in the first commit (`remove` lets it go by its id), pinned by a Rust test. The harness caught
+  each of 23 deliberate breaks of the core (the throttle at equality and without its microsecond, tiles not first, the
+  give-up at equality, the oldest frame winning, the owed not reset, a gated pump stopping with flights out, a frame
+  counted held with nothing owed, the one shown last, the drag's hold ignored, landing without the tolerance, a fixed
+  window's landing read, the frame's rect ignored, the one shown checked against its minimum, the pump ending with a
+  frame pending, a gone host's flight kept, a host made again starting afresh, the narrowest held not kept, the one
+  shown's phase not asked, a drag begun with nothing to follow or while quitting, a fixed window not centred, the
+  forgotten drag at equality); the throttle's edge only once the second run's timings were added. Rust tests pin each
+  rule; the per-frame cost is in ffi tests/live_cost.rs (release: a page frame 2-3 ns, a tick at rest with three in
+  flight 41-48 ns, a tick sending a frame to three 321-323 ns, ~107 ns a host; the engine adds its lock, ~20 ns a call)
+  and the engine's side per tick fell (the scratch bench, -O, three followers: at rest 560 to 171 ns, sending a frame to
+  three 5.6 to 2.1 µs: no dictionaries, sets or arrays a tick but the sends' list). The app's 2040 checks pass
+  unchanged.
+- Not measured on the real screen (no screen suite on this branch): `live-resize` (followed median and p95) and
+  `idle-cost`, before the merge as the plan asks.

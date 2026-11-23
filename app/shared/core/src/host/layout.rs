@@ -194,7 +194,12 @@ pub fn home(p: &Placement) -> Option<Rect> {
     (p.display.width >= 1.0 && p.display.height >= 1.0).then(|| Rect::new(0.0, 0.0, p.display.width, p.display.height))
 }
 
-/// Each of x, y, width and height within `within` points.
+/// A full-screen window's room above it for its own toolbar window (Safari's, resting just above its window: 52 pt,
+/// measured on the real screen), counted in two visible hosts' overlap. A stacked split's band above a Safari pane is
+/// as tall (app/shared/ui/behaviors/split.ts `SAFARI_TOOLBAR`, a copy until the build writes the core's constants).
+pub const TOOLBAR_ROOM: f64 = 52.0;
+
+/// Each of x, y, width and height within `within` points (the edge itself included).
 pub fn near(a: &Rect, b: &Rect, within: f64) -> bool {
     (a.x - b.x).abs() <= within
         && (a.y - b.y).abs() <= within
@@ -202,9 +207,80 @@ pub fn near(a: &Rect, b: &Rect, within: f64) -> bool {
         && (a.height - b.height).abs() <= within
 }
 
+/// A rect narrower or lower than a window's minimum, past the tolerance (a card never laid out so).
+pub fn below(r: &Rect, min: Size, tolerance: f64) -> bool {
+    r.width < min.width - tolerance || r.height < min.height - tolerance
+}
+
+/// A window of `size` centred in `page`, its top left at whole points (Swift's `rounded()`: half away from zero, as
+/// Rust's `round`), never left of or above the page's own (a window bigger than the page: at its top left).
+pub fn inside(page: &Rect, size: Size) -> Rect {
+    Rect::new(
+        (page.x + ((page.width - size.width) / 2.0).max(0.0)).round(),
+        (page.y + ((page.height - size.height) / 2.0).max(0.0)).round(),
+        size.width,
+        size.height,
+    )
+}
+
+/// A window-mode window's frame in its page area, from where it is now (`now`): resizable, the page area; a fixed
+/// size, its own centred. None: it's there already, or (placed by Margin before, `placed_before`) at its own limits
+/// centred within it (a switch to it sets nothing).
+pub fn window_frame(page: &Rect, now: &Rect, resizable: bool, placed_before: bool, tolerance: f64) -> Option<Rect> {
+    let size = Size::new(now.width, now.height);
+    let want = if resizable { *page } else { inside(page, size) };
+    if near(now, &want, tolerance) {
+        return None;
+    }
+    if placed_before
+        && now.width <= page.width + tolerance
+        && now.height <= page.height + tolerance
+        && near(now, &inside(page, size), tolerance)
+    {
+        return None;
+    }
+    Some(want)
+}
+
+/// Whether a window-mode window (its bounds `b`) is where `window_frame` puts it: within its page area, at it or
+/// its own size centred in it.
+pub fn at_page_area(b: &Rect, area: &Rect, tolerance: f64) -> bool {
+    b.width <= area.width + tolerance
+        && b.height <= area.height + tolerance
+        && (near(b, area, tolerance) || near(b, &inside(area, Size::new(b.width, b.height)), tolerance))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_window_in_its_page_area() {
+        let page = Rect::new(240.0, 41.0, 1264.0, 933.0);
+        // Centred at whole points (half away from zero), never past the page's top left.
+        assert_eq!(inside(&page, Size::new(600.0, 400.0)), Rect::new(572.0, 308.0, 600.0, 400.0));
+        assert_eq!(inside(&page, Size::new(601.0, 401.0)), Rect::new(572.0, 307.0, 601.0, 401.0), "571.5 → 572, 307.0");
+        assert_eq!(inside(&page, Size::new(2000.0, 1000.0)), Rect::new(240.0, 41.0, 2000.0, 1000.0));
+        assert_eq!(inside(&Rect::ZERO, Size::new(0.0, 0.0)), Rect::ZERO);
+        // Resizable: the page area; a fixed size: its own, centred; there already: nothing to set.
+        let off = Rect::new(10.0, 10.0, 800.0, 600.0);
+        assert_eq!(window_frame(&page, &off, true, false, 1.0), Some(page));
+        assert_eq!(window_frame(&page, &off, false, false, 1.0), Some(inside(&page, Size::new(800.0, 600.0))));
+        assert_eq!(window_frame(&page, &Rect::new(241.0, 40.0, 1263.0, 934.0), true, false, 1.0), None, "within 1");
+        assert!(window_frame(&page, &Rect::new(241.5, 41.0, 1264.0, 933.0), true, false, 1.0).is_some());
+        // At its own limits centred, placed before: left so; never placed: the page area asked.
+        let limits = inside(&page, Size::new(1000.0, 700.0));
+        assert_eq!(window_frame(&page, &limits, true, true, 1.0), None);
+        assert_eq!(window_frame(&page, &limits, true, false, 1.0), Some(page));
+        let big = inside(&page, Size::new(1266.0, 700.0));
+        assert_eq!(window_frame(&page, &big, true, true, 1.0), Some(page), "wider than the page: not at its limits");
+        assert!(at_page_area(&page, &page, 1.0) && at_page_area(&limits, &page, 1.0));
+        assert!(!at_page_area(&big, &page, 1.0) && !at_page_area(&off, &page, 1.0));
+        assert!(at_page_area(&Rect::new(240.0, 41.0, 1265.0, 934.0), &page, 1.0), "the edge itself");
+        assert!(below(&Rect::new(0.0, 0.0, 698.9, 400.0), Size::new(700.0, 400.0), 1.0));
+        assert!(!below(&Rect::new(0.0, 0.0, 699.0, 399.0), Size::new(700.0, 400.0), 1.0), "within 1");
+        assert!(!below(&Rect::ZERO, Size::new(0.0, 0.0), 1.0));
+    }
 
     fn kit() -> Placement {
         Placement {
@@ -325,6 +401,44 @@ mod tests {
         assert_eq!(fit(&page, Some(Size::new(1600.2, 640.0)), &p.area), Rect::new(0.0, 41.0, 1512.0, 933.0));
         // Taller: down to the area's bottom at most.
         assert_eq!(fit(&page, Some(Size::new(900.0, 2000.0)), &p.area).height, 941.0);
+    }
+
+    #[test]
+    fn near_holds_each_side_within_the_tolerance_the_edge_included() {
+        let a = Rect::new(248.0, 41.0, 1256.0, 933.0);
+        assert!(near(&a, &a, 0.0), "the same rect, no tolerance");
+        // Exactly at the tolerance on each side: near; a hair past it, either way: not.
+        for (dx, dy, dw, dh) in [(1.0, 0.0, 0.0, 0.0), (0.0, 1.0, 0.0, 0.0), (0.0, 0.0, 1.0, 0.0), (0.0, 0.0, 0.0, 1.0)]
+        {
+            let at = Rect::new(a.x + dx, a.y + dy, a.width + dw, a.height + dh);
+            assert!(near(&a, &at, 1.0) && near(&at, &a, 1.0), "{at:?} at the edge");
+            let past = Rect::new(a.x + dx * 1.01, a.y + dy * 1.01, a.width + dw * 1.01, a.height + dh * 1.01);
+            assert!(!near(&a, &past, 1.0), "{past:?} past the edge");
+            let below = Rect::new(a.x - dx * 1.01, a.y - dy * 1.01, a.width - dw * 1.01, a.height - dh * 1.01);
+            assert!(!near(&a, &below, 1.0), "{below:?} past the edge the other way");
+        }
+        // The tolerances the Mac uses: 1 (the default), 2 (Margin's window's corners), 4 (a twin).
+        let b = Rect::new(250.0, 43.0, 1254.0, 931.0);
+        assert!(!near(&a, &b, 1.0) && near(&a, &b, 2.0) && near(&a, &b, 4.0));
+        // Zero-size rects: each side compared as it is, nothing dropped.
+        assert!(near(&Rect::ZERO, &Rect::ZERO, 0.0));
+        assert!(near(&Rect::ZERO, &Rect::new(1.0, 1.0, 1.0, 1.0), 1.0));
+        assert!(!near(&Rect::ZERO, &Rect::new(0.0, 0.0, 0.0, 1.5), 1.0));
+        assert!(near(&Rect::new(10.0, 10.0, 0.0, 0.0), &Rect::new(10.5, 9.5, 0.0, 0.0), 1.0), "two points");
+        // Touching rects (one's max edge the other's min): apart by their origins.
+        let left = Rect::new(0.0, 0.0, 100.0, 100.0);
+        assert!(!near(&left, &Rect::new(100.0, 0.0, 100.0, 100.0), 4.0));
+        assert!(!near(&left, &Rect::new(0.0, 100.0, 100.0, 100.0), 4.0));
+        // A negative tolerance: nothing is near, not even itself; NaN: never near.
+        assert!(!near(&a, &a, -1.0));
+        assert!(!near(&a, &Rect::new(f64::NAN, 41.0, 1256.0, 933.0), 1.0));
+    }
+
+    // The UI's copy (a stacked split's band above a Safari pane) kept equal until the build writes it out.
+    #[test]
+    fn the_uis_toolbar_room_is_the_cores() {
+        let split = include_str!("../../../ui/behaviors/split.ts");
+        assert!(split.contains(&format!("export const SAFARI_TOOLBAR = {};", TOOLBAR_ROOM as i64)));
     }
 
     #[test]

@@ -269,6 +269,21 @@ pub fn is_strip_of_any(b: &Rect, p: &Placement, rects: &[Rect]) -> bool {
     is_strip(b, p) || rects.iter().any(|r| is_strip(b, &Placement { page: *r, ..*p }))
 }
 
+/// How far a full-screen window's own toolbar strip may sit from its window's top edge and sides (pt).
+pub const TOOLBAR_SLACK: f64 = 2.0;
+
+/// A strip at a full-screen window's top edge (`window`, its bounds): its left edge and width the window's, from just
+/// above its top to inside it (at most `STRIP_MAX_HEIGHT` below it), each within `TOOLBAR_SLACK`. A window of no width
+/// has none. Its height isn't asked (the caller's: a strip is at most `STRIP_MAX_HEIGHT` tall).
+pub fn toolbar_of(b: &Rect, window: &Rect) -> bool {
+    let f = window;
+    f.width > 0.0
+        && (b.min_x() - f.min_x()).abs() <= TOOLBAR_SLACK
+        && (b.width - f.width).abs() <= TOOLBAR_SLACK
+        && b.max_y() >= f.min_y() - TOOLBAR_SLACK
+        && b.min_y() <= f.min_y() + TOOLBAR_SLACK + STRIP_MAX_HEIGHT
+}
+
 fn size(b: &Rect) -> String {
     format!("{}×{}", b.width as i64, b.height as i64)
 }

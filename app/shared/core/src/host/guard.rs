@@ -8,7 +8,9 @@
 //! resizes, not a loop. The same reaction for the same host `LIMIT` times within `WITHIN` seconds: the last one isn't
 //! applied, the host is stopped (its caller moves it to a safer route and says so), and it stays stopped until its
 //! route changes or the person acts on it. Above all of it, `PER_SECOND` reactions a second across every host stops
-//! every reaction for a second: whatever runs away, Margin doesn't run with it.
+//! every reaction for a second: whatever runs away, Margin doesn't run with it. Margin's own budgeted corrections
+//! (model/budget.rs: a re-entry into full screen, a look off screen, a cut pane's repair) count toward that hold too
+//! (`budgeted`), never toward a host's stop: their budgets are their own.
 
 use std::collections::{BTreeMap, VecDeque};
 
@@ -92,6 +94,35 @@ impl LoopGuard {
         Verdict::Go
     }
 
+    /// One of Margin's own budgeted corrections about to be made (host/model/budget.rs: a re-entry into full screen, a
+    /// look off screen, a cut pane's repair): counted toward the `PER_SECOND` hold as a reaction is (Tirth,
+    /// 2026-11-22: a loop through any of them is held like the others), never toward a host's stop (its budget is its
+    /// own). Some(until): held, not made (and not counted).
+    pub fn budgeted(&mut self, now: f64) -> Option<f64> {
+        if let Some(until) = self.held_until {
+            if now < until {
+                return Some(until);
+            }
+            self.held_until = None;
+        }
+        while self.all.front().is_some_and(|t| now - t >= 1.0) {
+            self.all.pop_front();
+        }
+        if self.all.len() >= PER_SECOND {
+            let until = now + 1.0;
+            self.held_until = Some(until);
+            return Some(until);
+        }
+        self.all.push_back(now);
+        None
+    }
+
+    /// When the per-second hold now in force ends (None: nothing held at `now`): a caller that found its step held
+    /// waits for this moment instead of asking again at once. Reads only.
+    pub fn held_until(&self, now: f64) -> Option<f64> {
+        self.held_until.filter(|until| now < *until)
+    }
+
     /// The person acted (on `host`, or on everything: a drag, a theme, a display change): nothing they caused is a
     /// loop, so the counts start again. A stopped host stays stopped until its route changes (`cleared`).
     pub fn person(&mut self, host: Option<&str>) {
@@ -168,6 +199,52 @@ mod tests {
         g.person(Some("h"));
         assert_eq!(g.react(3.0, "h", "size its tile"), Verdict::Go);
         assert_eq!(g.stopped("h"), None);
+    }
+
+    #[test]
+    fn margins_budgeted_corrections_count_toward_the_hold_never_a_stop() {
+        let mut g = LoopGuard::new();
+        // Twelve in a second, all one host's: never a stop (its budget is its own), the thirteenth held.
+        for i in 0..PER_SECOND {
+            assert_eq!(g.budgeted(0.05 * i as f64), None, "{i}");
+        }
+        assert_eq!(g.stopped("h"), None);
+        assert_eq!(g.budgeted(0.7), Some(1.7));
+        // Held: every reaction too, until it lapses.
+        assert_eq!(g.react(1.0, "other", "k"), Verdict::Hold { until: 1.7 });
+        assert_eq!(g.budgeted(1.69), Some(1.7));
+        assert_eq!(g.budgeted(1.7), None, "lapsed");
+        // Reactions fill the same second: a budgeted one after eleven of them goes, the next is held.
+        let mut g = LoopGuard::new();
+        for i in 0..PER_SECOND - 1 {
+            assert_eq!(g.react(0.01 * i as f64, &format!("h{i}"), "k"), Verdict::Go);
+        }
+        assert_eq!(g.budgeted(0.5), None);
+        assert_eq!(g.budgeted(0.6), Some(1.6));
+        // Ten a second, for ten seconds: under the hold, never held.
+        let mut g = LoopGuard::new();
+        for i in 0..100 {
+            assert_eq!(g.budgeted(i as f64 * 0.1), None, "{i}");
+        }
+        assert_eq!(g.held_until(10.0), None);
+    }
+
+    #[test]
+    fn the_holds_end_is_answered_until_it_lapses() {
+        let mut g = LoopGuard::new();
+        assert_eq!(g.held_until(0.0), None, "nothing held");
+        for i in 0..PER_SECOND {
+            g.react(0.01 * i as f64, &format!("h{i}"), "k");
+        }
+        assert_eq!(g.held_until(0.5), None, "twelve in, none refused yet: no hold in force");
+        assert_eq!(g.budgeted(0.5), Some(1.5));
+        assert_eq!(g.held_until(0.5), Some(1.5), "the moment to ask again");
+        assert_eq!(g.held_until(1.4999), Some(1.5));
+        assert_eq!(g.held_until(1.5), None, "lapsed at its end");
+        // Only a read: asking it changes nothing; the next action at the end goes.
+        assert_eq!(g.held_until(0.9), Some(1.5));
+        assert_eq!(g.budgeted(1.5), None);
+        assert_eq!(g.held_until(1.5), None);
     }
 
     #[test]

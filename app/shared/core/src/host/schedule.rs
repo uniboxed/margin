@@ -50,9 +50,32 @@ pub fn next_poll(f: &PollFacts) -> Option<f64> {
     None
 }
 
+/// Whether something heard (a hosted app's notification) asks for a look now: at most one every `FAST` (the fast
+/// cadence reads that often anyway) since the last one asked (`last`; minus infinity: none yet), never during a drag
+/// (`live_on`: the window dragged says it moved every frame, and a look for each took the main thread from the drag's
+/// own writes, its p95 26-36 ms, 2026-11-18).
+pub fn wake_due(now: f64, last: f64, live_on: bool) -> bool {
+    !live_on && now - last >= FAST
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_wake_at_most_every_fast_never_during_a_drag() {
+        assert!(wake_due(5.0, f64::NEG_INFINITY, false), "the first");
+        assert!(!wake_due(5.0, f64::NEG_INFINITY, true), "a drag");
+        assert!(
+            !wake_due(5.1, 5.0, false),
+            "5.1 - 5.0 is a hair under 0.1 in doubles: as the Mac's own subtraction was"
+        );
+        assert!(wake_due(5.25, 5.0, false));
+        assert!(!wake_due(5.05, 5.0, false), "too soon");
+        assert!(wake_due(0.1, 0.0, false), "FAST after, exactly");
+        assert!(!wake_due(0.099_999, 0.0, false));
+        assert!(!wake_due(4.0, 5.0, false), "a clock that went back");
+    }
 
     fn facts(hosting: bool, links: bool, pending: bool, active_for: Option<f64>) -> PollFacts {
         PollFacts { hosting, links, pending, active_for }

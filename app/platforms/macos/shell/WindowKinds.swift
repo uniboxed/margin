@@ -114,7 +114,9 @@ nonisolated enum WindowKinds {
         isStrip(b, in: p) || rects.contains { isStrip(b, in: HostPlacement(page: $0, area: p.area, display: p.display)) }
     }
 
-    static func near(_ a: CGRect, _ b: CGRect) -> Bool { HostLayout.near(a, b, within: 4) }
+    // A strip at a full-screen window's top edge (`f`, its bounds): its left edge and width the window's, from just
+    // above its top to inside it, each within 2 pt (the core's `toolbar_of`; its height not asked).
+    static func toolbarOf(_ b: CGRect, window f: CGRect) -> Bool { margin_kinds_toolbar_of(b.marginRect, f.marginRect) }
 
     // Each window's kind and why, by its number (the core's rules).
     static func classify(_ windows: [Window], app: App, in placement: HostPlacement) -> [Int: Verdict] {

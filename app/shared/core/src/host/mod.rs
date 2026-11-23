@@ -3,6 +3,8 @@
 //! decides is here, sans IO, tested on any OS.
 //!
 //! - `layout`: where a hosted window goes (the page area, a Space's edge reservation, a tile's rect, a minimum size).
+//! - `model`: each host's state the decisions read, by handle (the Mac's `Host` reads its fields from it).
+//! - `minimums`: every app's own window minimum, per version, known before its window is made (minimums.json).
 //! - `kinds`: every window's kind, by what it does (main, auxiliary, dialog, strip, leftover, helper, transient).
 //! - `choice`: which of an app's windows is hosted.
 //! - `reconciler`: what each host should be against what's seen, and the corrections between.
@@ -11,17 +13,23 @@
 //! - `routes`: tiles, members, window mode, and the way down for an app that keeps fighting its route.
 //! - `schedule`: when the engine looks again (events first, the poll as fast as the moment needs).
 //! - `front`: which window of the hosted app the person opened is let in front of Margin's window.
+//! - `close`: a host's close: what's given back, whether its app is quit, what the marker keeps of an unfinished one.
+//! - `exits`: an app's exit and its pid used again (the same launch), the apps a row's close asked to quit.
 //! - `driver`: the reconcile loop against an OS's adapter (`HostAdapter`): what every OS shares of the steady state.
 //! - `api`: the whole of it behind one JSON call, for shells that aren't Rust.
 
 pub mod api;
 pub mod causes;
 pub mod choice;
+pub mod close;
 pub mod driver;
+pub mod exits;
 pub mod front;
 pub mod guard;
 pub mod kinds;
 pub mod layout;
+pub mod minimums;
+pub mod model;
 pub mod reconciler;
 pub mod routes;
 pub mod schedule;

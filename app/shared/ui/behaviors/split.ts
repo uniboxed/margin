@@ -47,7 +47,9 @@ export const SNAP_HAPTIC_SPEED = 120;
 /** The gap between panes when the theme doesn't set `--m-split-gap`. */
 export const SPLIT_GAP = 8;
 /** Safari's full-screen toolbar window's height (pt; measured on the real screen 2026-11-21: 1264×52 resting just above
- *  its window, its toolbar hidden). Margin.app's engine doesn't say it to the page (it never touches that window). */
+ *  its window, its toolbar hidden). Margin.app's engine doesn't say it to the page (it never touches that window).
+ *  A copy of margin-core's `TOOLBAR_ROOM` (app/shared/core/src/host/layout.rs): keep the two equal until the build
+ *  writes the core's constants out for the UI. */
 export const SAFARI_TOOLBAR = 52;
 const STEP = 0.02;
 type PaneSide = 'left' | 'right' | 'up' | 'down';

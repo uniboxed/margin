@@ -3910,15 +3910,15 @@ func hostLayoutTests() {
     // at its window's top (y -11 for a window at y 41), out over the page when shown below the menu bar or at its place.
     let win = CGRect(x: 260, y: 41, width: 1244, height: 933)
     let resting = CGRect(x: 260, y: -11, width: 1244, height: 52)
-    check("toolbar trace: Safari's toolbar resting above its window is its own", HostEngine.toolbarOf(resting, window: win)
+    check("toolbar trace: Safari's toolbar resting above its window is its own", WindowKinds.toolbarOf(resting, window: win)
           && HostEngine.toolbarState(resting, alpha: 1, layer: 0, onScreen: true, window: win).hasPrefix("resting above its window"))
     check("toolbar trace: shown in the menu bar's place (y 0) or below it (y 33): out over the page",
-          HostEngine.toolbarOf(CGRect(x: 260, y: 0, width: 1244, height: 52), window: win) && HostEngine.toolbarState(CGRect(x: 260, y: 0, width: 1244, height: 52), alpha: 1, layer: 0, onScreen: true, window: win).hasPrefix("OUT over its window by 11 pt")
+          WindowKinds.toolbarOf(CGRect(x: 260, y: 0, width: 1244, height: 52), window: win) && HostEngine.toolbarState(CGRect(x: 260, y: 0, width: 1244, height: 52), alpha: 1, layer: 0, onScreen: true, window: win).hasPrefix("OUT over its window by 11 pt")
           && HostEngine.toolbarState(CGRect(x: 260, y: 33, width: 1244, height: 52), alpha: 1, layer: 0, onScreen: true, window: win).hasPrefix("OUT over its window by 44 pt"))
     check("toolbar trace: alpha, layer and on screen in what's said (a fade or a reorder is a change too)",
           HostEngine.toolbarState(resting, alpha: 0.5, layer: 3, onScreen: false, window: win) != HostEngine.toolbarState(resting, alpha: 1, layer: 0, onScreen: true, window: win))
     check("toolbar trace: another window's strip (not at its left edge, nor its width, or far down) isn't its toolbar",
-          !HostEngine.toolbarOf(CGRect(x: 0, y: 0, width: 1512, height: 88), window: win) && !HostEngine.toolbarOf(CGRect(x: 260, y: 400, width: 1244, height: 52), window: win))
+          !WindowKinds.toolbarOf(CGRect(x: 0, y: 0, width: 1512, height: 88), window: win) && !WindowKinds.toolbarOf(CGRect(x: 260, y: 400, width: 1244, height: 52), window: win))
 }
 
 func hostCallsTests() {

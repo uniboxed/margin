@@ -15,6 +15,7 @@ use super::front::{Look, Others};
 use super::guard::Verdict;
 use super::kinds::{self, AppFacts, Window};
 use super::layout::Placement;
+use super::model::{Confirm, LayoutExtra, ModelOptions, Refusal, Role};
 use super::reconciler::{self, Correction, Desired, Situation};
 use super::routes::{Route, Routes};
 use crate::geometry::Rect;
@@ -42,6 +43,15 @@ fn yes() -> bool {
 }
 fn one() -> f64 {
     1.0
+}
+fn toolbar_room() -> f64 {
+    super::layout::TOOLBAR_ROOM
+}
+fn returns_max() -> usize {
+    super::model::Limits::default().returns_max
+}
+fn returns_within() -> f64 {
+    super::model::Limits::default().returns_within
 }
 
 impl From<&ServerWin> for ServerWindow {
@@ -136,6 +146,47 @@ pub enum Request {
     },
     /// The routes to save.
     SaveRoutes,
+    /// Every app's kept minimum as read from minimums.json (at launch); `SaveMinimums`: to write.
+    LoadMinimums {
+        minimums: Value,
+    },
+    SaveMinimums,
+    /// The apps a minimum is kept for (any version).
+    MinimumApps,
+    /// What the model's decisions read of the engine's options (sent whenever they change).
+    #[serde(rename_all = "camelCase")]
+    Configure {
+        tolerance: f64,
+        #[serde(default = "toolbar_room")]
+        toolbar_room: f64,
+        #[serde(default = "returns_max")]
+        returns_max: usize,
+        #[serde(default = "returns_within")]
+        returns_within: f64,
+    },
+    /// The visible windows' order: what to raise in what order (model/order.rs `front_plan`), from each wanted host's
+    /// bounds (`front_wanted`'s order; null: unread), their windows' order in the window server's, back to front
+    /// (null: unread), and the hosts whose window came in with its tile a moment ago.
+    FrontPlan {
+        bounds: Vec<Option<Rect>>,
+        order: Option<Vec<i64>>,
+        #[serde(default)]
+        fresh: Vec<u32>,
+    },
+    /// A layout's extras refused before anything is made (model/visible.rs `layout_refuse`).
+    LayoutRefuse {
+        main: String,
+        extras: Vec<LayoutHost>,
+    },
+    /// A layout's start, its extras accepted (`layout_begin`).
+    #[serde(rename_all = "camelCase")]
+    LayoutBegin {
+        main: String,
+        main_rect: Option<Rect>,
+        extras: Vec<LayoutHost>,
+    },
+    /// The layout as it is (the tests' and the log's).
+    Layout,
     /// The earliest time the core has something to do on its own (none: wake it with the next event).
     NextWake,
     /// The windows of `pid` Margin could host, front first (choice.rs `candidates`).
@@ -194,19 +245,90 @@ pub enum Request {
     /// Nothing hosted (`FrontReset`); Margin's Space not at rest (`FrontUnsteady`).
     FrontReset,
     FrontUnsteady,
+    /// The apps a row's close asked to quit (exits.rs; asked, heard and taken back by typed calls, their times exact):
+    /// the pids of `bundle`'s instances still finishing, in pid order.
+    ExitsDying {
+        bundle: String,
+    },
+    /// Every one asked, in pid order.
+    Exits,
 }
 
-/// The hosting core's state across calls: the loop (its guard, the routes, the corrections' tries) and the causes.
+fn exiting_json(e: &super::exits::Exiting) -> Value {
+    json!({ "pid": e.pid, "bundle": e.bundle, "launchedAt": e.launched_at, "id": e.id, "askedAt": e.asked_at })
+}
+
+/// One of a layout's hosts other than main, as the caller sends it: its id, its role ("pane", "card"), its rect,
+/// its window's known minimum (a card's).
+#[derive(Clone, Debug, Deserialize)]
+pub struct LayoutHost {
+    pub id: String,
+    pub role: String,
+    pub rect: Rect,
+    #[serde(default)]
+    pub min: Option<super::layout::Size>,
+}
+
+impl LayoutHost {
+    fn extra(&self) -> LayoutExtra {
+        let role = match self.role.as_str() {
+            "pane" => Role::Pane,
+            "card" => Role::Card,
+            _ => Role::Main,
+        };
+        LayoutExtra { id: self.id.clone(), role, rect: self.rect, min: self.min }
+    }
+}
+
+fn role_name(r: Role) -> &'static str {
+    match r {
+        Role::Main => "main",
+        Role::Pane => "pane",
+        Role::Card => "card",
+    }
+}
+
+/// The hosting core's state across calls: the loop (its guard, the routes, the corrections' tries), the causes, and
+/// the hosts' model (read and written by typed calls: margin-ffi's `margin_model_*`).
 #[derive(Debug, Default)]
 pub struct HostCore {
     pub driver: Driver,
     pub causes: Causes,
     pub others: Others,
+    pub model: super::model::HostModel,
+    /// The apps a row's close asked to quit (exits.rs).
+    pub exits: super::exits::Exits,
 }
 
 impl HostCore {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// One of Margin's own budgets asked before its action (host/model/budget.rs), the action counted toward the loop
+    /// guard's per-second hold (`guarded`: the guard on; off, never held). Typed (the FFI's `margin_budget_spend`).
+    pub fn spend(
+        &mut self,
+        h: super::model::Handle,
+        kind: super::model::BudgetKind,
+        now: f64,
+        guarded: bool,
+    ) -> super::model::Spend {
+        let guard = &mut self.driver.guard;
+        self.model.spend(h, kind, now, || if guarded { guard.budgeted(now) } else { None })
+    }
+
+    /// A visible host off screen in its turn (host/model/watch.rs `off_screen`), its budget's action counted toward the
+    /// loop guard's per-second hold (`guarded`).
+    pub fn off_screen(
+        &mut self,
+        h: super::model::Handle,
+        now: f64,
+        f: &super::model::OffFacts,
+        guarded: bool,
+    ) -> super::model::OffScreen {
+        let guard = &mut self.driver.guard;
+        self.model.off_screen(h, now, f, || if guarded { guard.budgeted(now) } else { None })
     }
 
     /// One request (JSON) → its answer (JSON). Never panics on bad input: `{"error": …}`.
@@ -274,6 +396,57 @@ impl HostCore {
                 json!({})
             }
             Request::SaveRoutes => json!({ "routes": self.driver.routes }),
+            Request::LoadMinimums { minimums } => match super::minimums::AppMinimums::load(&minimums) {
+                Some(m) => {
+                    self.model.minimums = m;
+                    json!({ "loaded": self.model.minimums.by_app.len() })
+                }
+                None => json!({ "loaded": null }),
+            },
+            Request::SaveMinimums => json!({ "minimums": self.model.minimums.to_json() }),
+            Request::MinimumApps => json!({ "apps": self.model.minimums.by_app.keys().collect::<Vec<_>>() }),
+            Request::Configure { tolerance, toolbar_room, returns_max, returns_within } => {
+                self.model.opts = ModelOptions { tolerance, toolbar_room };
+                self.model.limits = super::model::Limits { returns_max, returns_within };
+                json!({})
+            }
+            Request::LayoutRefuse { main, extras } => {
+                let extras: Vec<LayoutExtra> = extras.iter().map(LayoutHost::extra).collect();
+                let refused: Vec<Value> = self
+                    .model
+                    .layout_refuse(&main, &extras)
+                    .into_iter()
+                    .map(|(i, r)| match r {
+                        Refusal::Twice => json!({ "index": i, "why": "twice" }),
+                        Refusal::Below(m) => json!({ "index": i, "why": "below", "min": m }),
+                    })
+                    .collect();
+                json!({ "refused": refused })
+            }
+            Request::FrontPlan { bounds, order, fresh } => {
+                let p = self.model.front_plan(&bounds, order.as_deref(), &fresh);
+                let raises: Vec<Value> = p.raises.iter().map(|(h, over)| json!({ "host": h, "over": over })).collect();
+                let confirm = match p.confirm {
+                    Confirm::None => "none",
+                    Confirm::Wait => "wait",
+                    Confirm::Fresh => "fresh",
+                };
+                json!({ "wanted": p.wanted, "focused": p.focused, "cutFocused": p.cut_focused, "raises": raises,
+                        "keys": p.keys, "confirm": confirm, "belowTop": p.below_top })
+            }
+            Request::LayoutBegin { main, main_rect, extras } => {
+                let extras: Vec<LayoutExtra> = extras.iter().map(LayoutHost::extra).collect();
+                let b = self.model.layout_begin(&main, main_rect, &extras);
+                json!({ "before": b.before, "arriving": b.arriving, "held": b.held, "deferring": b.deferring })
+            }
+            Request::Layout => {
+                let entries: Vec<Value> = self
+                    .model
+                    .layout()
+                    .map(|(id, v)| json!({ "id": id, "rect": v.rect, "role": role_name(v.role), "z": v.z }))
+                    .collect();
+                json!({ "entries": entries, "shown": self.model.shown(), "focus": self.model.focus_wanted() })
+            }
             Request::NextWake => json!({ "at": self.driver.guard.next_wake() }),
             Request::Candidates { server, pid, excluded } => {
                 let list: Vec<ServerWindow> = server.iter().map(ServerWindow::from).collect();
@@ -309,6 +482,8 @@ impl HostCore {
                 self.others.unsteady();
                 json!({})
             }
+            Request::ExitsDying { bundle } => json!({ "pids": self.exits.dying(&bundle).collect::<Vec<_>>() }),
+            Request::Exits => json!({ "exits": self.exits.iter().map(exiting_json).collect::<Vec<_>>() }),
             Request::Constants => {
                 use reconciler::{Correction as C, Forward};
                 let budgets: BTreeMap<String, u32> = [
@@ -424,6 +599,32 @@ mod tests {
         let r = call(&mut fresh, json!({ "type": "route", "bundle": "b", "version": "1", "available": all }));
         assert_eq!(r["route"], "members");
         assert_eq!(r["held"]["why"], "loop");
+    }
+
+    #[test]
+    fn minimums_through_calls() {
+        // minimums.json as an existing user has it (the Mac's JSONEncoder: whole numbers without a point).
+        let today: Value = serde_json::from_str(
+            r#"{"com.apple.Notes":{"version":"4.12 (2700)","width":700,"height":400},"com.apple.Safari":{"version":"26.2 (21623.1.14.11.9)","width":500,"height":289}}"#,
+        )
+        .unwrap();
+        let mut core = HostCore::new();
+        assert_eq!(call(&mut core, json!({ "type": "loadMinimums", "minimums": today }))["loaded"], 2);
+        assert_eq!(
+            call(&mut core, json!({ "type": "minimumApps" }))["apps"],
+            json!(["com.apple.Notes", "com.apple.Safari"])
+        );
+        let saved = call(&mut core, json!({ "type": "saveMinimums" }));
+        assert_eq!(
+            saved["minimums"]["com.apple.Notes"],
+            json!({ "version": "4.12 (2700)", "width": 700.0, "height": 400.0 })
+        );
+        let mut fresh = HostCore::new();
+        call(&mut fresh, json!({ "type": "loadMinimums", "minimums": saved["minimums"] }));
+        assert_eq!(fresh.model.minimums, core.model.minimums, "written and read back: the same");
+        // Not the file's shape: nothing taken, nothing lost.
+        assert_eq!(call(&mut fresh, json!({ "type": "loadMinimums", "minimums": [1] }))["loaded"], Value::Null);
+        assert_eq!(fresh.model.minimums, core.model.minimums);
     }
 
     #[test]

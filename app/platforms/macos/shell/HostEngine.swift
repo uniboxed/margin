@@ -111,6 +111,7 @@
 // area's frame (given back only with it): a switch to or from it is a move each way.
 
 import AppKit
+import MarginCore
 
 final class HostEngine {
     struct Options {
@@ -150,7 +151,8 @@ final class HostEngine {
         // A full-screen window's room above it for its own toolbar window (Safari's, resting just above its window:
         // 52 pt, measured on the real screen), counted in two visible hosts' overlap (`overlapping`). A stacked split's
         // band above a Safari pane is as tall (`SAFARI_TOOLBAR`): its toolbar meets the pane above, never overlaps it.
-        var toolbarRoom: CGFloat = 52
+        // The core's (`TOOLBAR_ROOM`, host/layout.rs).
+        var toolbarRoom: CGFloat = HostLayout.toolbarRoom
         // A new pane's toolbar out over its page at its reveal: waited for this long at most, read this often.
         var toolbarRestWait = 0.5
         var pageFocusWait = 0.8 // a new window's page given its keys: tried this long at most (its page listed late)
@@ -217,9 +219,8 @@ final class HostEngine {
         // `axSettleEvery` for up to `axSettleWait` (done at once if the app shows it took an earlier ask).
         var axSettleWait = 3.0
         var axSettleEvery = 0.1
-        // A full-screen window's toolbar strip (its own window: the display's or the page area's width, at most this
-        // tall): never let in front, never left behind by a full-screen attempt backed out.
-        var stripMaxHeight: CGFloat = 150
+        // (A full-screen window's toolbar strip, its own window, is never let in front and never left behind by a
+        // full-screen attempt backed out: the core's rule, `WindowKinds.isStrip`, at most `WindowKinds.stripMaxHeight` tall.)
         // A window-mode window that couldn't be fitted covering at least this share of Margin's sidebar is never shown
         // over it. (What's let in front of Margin's window is the core's, host/front.rs: none reaching over the sidebar
         // more than 8 pt each way.)
@@ -248,30 +249,50 @@ final class HostEngine {
         var activesCoalesced = true
     }
 
-    enum Phase: Equatable { case preparing, shown, parked }
+    enum Phase: Equatable {
+        case preparing, shown, parked
+        // As the core's model numbers it (host/model.rs `Phase`).
+        init(model v: Int64) { self = v == 1 ? .shown : v == 2 ? .parked : .preparing }
+        var model: Int64 {
+            switch self {
+            case .preparing: return 0
+            case .shown: return 1
+            case .parked: return 2
+            }
+        }
+    }
 
+    // A host. What the hosting decisions read of it is the core's (host/model.rs, by `handle`: docs/CORE-REFACTOR.md
+    // step 2 part 1a): each such field below reads and writes the engine's core, nothing kept here. The OS's own (its
+    // Spaces, tile, toolbars, Accessibility's bookkeeping) is kept here. A class: every reference reads the same host.
     final class Host {
+        private let model: HostCore
+        let handle: UInt32
         let id: HostID
         let target: HostTarget
-        let pid: pid_t
-        var window: Int // (an app's: chosen again just before it's first moved, HostWindowChoice)
+        let pid: pid_t // (also the core's, given at its making: it never changes)
+        // (An app's: chosen again just before it's first moved, HostWindowChoice.)
+        var window: Int { get { Int(model.int(handle, .window)) } set { model.setInt(handle, .window, Int64(newValue)) } }
         let launchedByMargin: Bool // its app was started by Margin (with no Dock icon)
         let madeByMargin: Bool // a Safari window Margin's extension made in a Safari Margin didn't start
         let safariWindow: Int? // a Safari window a copy made for Margin: the copy's id for it (full screen and close go through it)
-        var phase = Phase.preparing
+        var phase: Phase { get { Phase(model: model.int(handle, .phase)) } set { model.setInt(handle, .phase, newValue.model) } }
         var fullScreenSpace: UInt64? // its own full-screen Space while it has one (a first open, a re-placing)
         var privateSpace: UInt64? // while parked
-        var member = false // its full-screen window is a member of Margin's Space (its own Space destroyed), shown or parked
-        var placedPage: CGRect? // the page area a member's frame was reserved for
+        // Its full-screen window is a member of Margin's Space (its own Space destroyed), shown or parked.
+        var member: Bool { get { model.flag(handle, .member) } set { model.setFlag(handle, .member, newValue) } }
+        // The page area a member's frame was reserved for.
+        var placedPage: CGRect? { get { model.rect(handle, .placedPage) } set { model.setRect(handle, .placedPage, newValue) } }
         var promoted = false
         var outsideOpens = 0
-        var unread = 0 // polls in a row its window's bounds didn't read
-        var strays = 0 // polls in a row it was found where it mustn't be (shown: outside Margin's Space; parked: in a user Space)
-        var returns: [Double] = [] // when it was last brought back into Margin's Space after straying (`returnsMax`)
+        // Polls in a row its window's bounds didn't read.
+        var unread: Int { get { Int(model.int(handle, .unread)) } set { model.setInt(handle, .unread, Int64(newValue)) } }
+        // Polls in a row it was found where it mustn't be (shown: outside Margin's Space; parked: in a user Space).
+        var strays: Int { get { Int(model.int(handle, .strays)) } set { model.setInt(handle, .strays, Int64(newValue)) } }
         var askedFullScreenAt: Double? // when it was last asked into full screen (for the log of a stray)
         var windowsBeforeAsk: Set<Int> = [] // its app's windows right before that ask (a toolbar strip it makes is new)
-        var mode = HostMode.fullScreen
-        var resizable = true
+        var mode: HostMode { get { HostMode(model: model.int(handle, .mode)) } set { model.setInt(handle, .mode, newValue.model) } }
+        var resizable: Bool { get { model.flag(handle, .resizable) } set { model.setFlag(handle, .resizable, newValue) } }
         var unseen = false // Accessibility didn't list its window (on another Space): read once it's in Margin's Space
         var taken = false // its frame and Space recorded (before anything moved it)
         var original: CGRect? // its frame before Margin moved it (top-left coordinates)
@@ -281,9 +302,8 @@ final class HostEngine {
         var exitUnconfirmed = false // its last exit from full screen wasn't confirmed (Accessibility neither took nor read it)
         var axRefused = false // Accessibility didn't take its frame as it was given back: its close button isn't pressed either
         // In window mode only because its full screen failed (it can go full screen): tried again the next time it's
-        // shown from parked, once (`fullScreenFailures` counts the failures).
-        var retryFullScreen = false
-        var fullScreenFailures = 0
+        // shown from parked, once (the core's ladder counts the failures: host/model/budget.rs).
+        var retryFullScreen: Bool { model.flag(handle, .retryFullScreen) }
         var bundleId: String?
         var appLaunchedAt: Double?
         // The reconciler's (HostReconciler.swift): its app's windows when its first show ended (an app Margin started:
@@ -292,52 +312,58 @@ final class HostEngine {
         // adopted, before it's given up). The corrections tried and when are the core's (host/driver.rs: a budget per
         // 30 s, a window's framing per show).
         var launchWindows: Set<Int> = []
-        var offScreenReads = 0
-        var offPageReads = 0 // polls in a row a shown member wasn't at the page area
-        var gone = false
+        var offScreenReads: Int { get { Int(model.int(handle, .offScreenReads)) } set { model.setInt(handle, .offScreenReads, Int64(newValue)) } }
+        // Polls in a row a shown member wasn't at the page area.
+        var offPageReads: Int { get { Int(model.int(handle, .offPageReads)) } set { model.setInt(handle, .offPageReads, Int64(newValue)) } }
+        var gone: Bool { get { model.flag(handle, .gone) } set { model.setFlag(handle, .gone, newValue) } }
         // Its row closed while its app was asking something (a sheet or an alert of its own on screen): when it was asked
         // to quit, with its window left where it was; and whether its not quitting has been said (`onAsking`).
         var quitAskedAt: Double?
         var askingSaid = false
-        var goneAt: Double?
+        var goneAt: Double? { get { model.real(handle, .goneAt) } set { model.setReal(handle, .goneAt, newValue) } }
         // Its full-screen window's own toolbar windows (`ownToolbar`): left as they are while they're where it is.
         var toolbars: Set<Int> = []
         // Live resize: its window's own tile, moved into Margin's Space (its window sized by the tile's rect, shown or
         // parked; `placedPage` the page area that rect was set for and seen taken). Nil: a plain member, or window mode.
-        var tile: UInt64?
+        // (The tile's id is the Mac's; whether it has one, the core's `tiled`, set with it.)
+        var tile: UInt64? { didSet { if (tile != nil) != (oldValue != nil) { model.setFlag(handle, .tiled, tile != nil) } } }
         // Its route held below tiles (the hosting core's routes: its app kept fighting its tile, now or in an earlier
         // run of this version of it): a plain member from its next placing, never a tile again this run.
-        var noTiles = false
+        var noTiles: Bool { get { model.flag(handle, .noTiles) } set { model.setFlag(handle, .noTiles, newValue) } }
         // Its window's own minimum (its tile's `SizeConstraints`' `Min`, read as its tile comes into Margin's Space or its
         // own full-screen Space is listed, again at each drag's start and each sizing): its tile never sized below it
         // (`frame`: the page area, or that minimum with its right edge the page area's). Nil: none known.
-        var minSize: CGSize?
+        var minSize: CGSize? { get { model.rect(handle, .minSize)?.size } set { model.setRect(handle, .minSize, newValue.map { CGRect(origin: .zero, size: $0) }) } }
         // The narrowest its window was seen holding in its tile (a rect it followed): with no minimum said by its tile, the
         // one it's taken to have once it leaves a narrower one (the first rect it didn't take).
-        var narrowestHeld: CGFloat?
-        var minUnreadSaid = false
+        var narrowestHeld: CGFloat? { get { model.real(handle, .narrowestHeld).map { CGFloat($0) } } set { model.setReal(handle, .narrowestHeld, newValue.map { Double($0) }) } }
         // Its role and rect in Margin's page area as it was last laid out (docs/PEEK-SPLIT.md §1): main at the page area
         // (nil) unless a layout gave it a card's or a pane's rect (`setLayout`).
-        var role = HostRole.main
-        var rect: CGRect?
+        var role: HostRole { get { HostRole(model: model.int(handle, .role)) } set { model.setInt(handle, .role, newValue.model) } }
+        var rect: CGRect? { get { model.rect(handle, .rect) } set { model.setRect(handle, .rect, newValue) } }
         // A split pane whose window can't be as small as its pane (docs/PEEK-SPLIT.md §4b): its window at its own minimum
         // (`frame`: HostLayout.cut), the rest away from the other panes; after an arrow's slide, where the slide put it
         // (its pane then, its alignment along each axis: true its end at the pane's end), as long as its pane stays that
         // rect (a divider's drag, a new layout: away from the other panes again). Nil when it leaves a split.
-        var slid: PaneSlide?
+        var slid: PaneSlide? {
+            get {
+                guard let pane = model.rect(handle, .slidPane) else { return nil }
+                func end(_ v: Int64) -> Bool? { v < 0 ? nil : v == 1 }
+                return PaneSlide(pane: pane, endX: end(model.int(handle, .slidEndX)), endY: end(model.int(handle, .slidEndY)))
+            }
+            set {
+                model.setRect(handle, .slidPane, newValue?.pane)
+                guard let s = newValue else { return }
+                model.setInt(handle, .slidEndX, s.endX.map { $0 ? 1 : 0 } ?? -1)
+                model.setInt(handle, .slidEndY, s.endY.map { $0 ? 1 : 0 } ?? -1)
+            }
+        }
         // Its own look at being off screen while it's visible (`backOnScreen`, docs/PEEK-SPLIT.md §4: every visible host
         // its own budget, never one shared by a split's panes): when it was last shown (made visible, or the one shown),
-        // the times it was brought back, whether giving up was said, the show the look acted for with nothing to move.
-        var visibleAt = 0.0
-        var offTries: [Double] = []
-        var offSaid = false
-        var offActedFor: Double?
-        var offInPlaceSaid: Double?
-        // When its window was last put back into full screen after leaving it by itself (`reenterFullScreen`: Safari's
-        // own Esc, 2026-11-21), and whether giving up on that was said: `returnsMax` within `returnsWithin`, then left to
-        // the reconciler's own corrections.
-        var reentries: [Double] = []
-        var reentrySaid = false
+        // whether giving up was said (reset when it's newly visible). Its tries, a stray's returns and the re-entries into
+        // full screen are the core's budgets (host/model/budget.rs).
+        var visibleAt: Double { get { model.real(handle, .visibleAt) ?? 0 } set { model.setReal(handle, .visibleAt, newValue) } }
+        var offSaid: Bool { get { model.flag(handle, .offSaid) } set { model.setFlag(handle, .offSaid, newValue) } }
         // A card's or a pane's new Safari window (asked in full screen, born in a full-screen Space of its own: `openNew`):
         // the full-screen Spaces listed before its ask (its own is the new one), the freeze taken at that ask and handed to
         // its placing (macOS's switch to its Space comes as the window does), and whether that switch was seen and undone
@@ -348,16 +374,20 @@ final class HostEngine {
         // Its window came into Margin's Space with its tile a moment ago (its first open): a raise doesn't take for it
         // (made a moment ago, moved between Spaces), so it's brought in front by the move out and back at once
         // (`frontVisible`). Cleared once it has been fronted.
-        var freshFront = false
-        init(id: HostID, target: HostTarget, pid: pid_t, window: Int, launchedByMargin: Bool, madeByMargin: Bool, safariWindow: Int? = nil) {
+        var freshFront: Bool { get { model.flag(handle, .freshFront) } set { model.setFlag(handle, .freshFront, newValue) } }
+        // Made in the engine's core (`model`) as a new host: preparing, main at the page area, full screen, resizable,
+        // nothing counted (host/model.rs `HostState::new`, as these fields started here); gone from it with this object.
+        init(model: HostCore, app: String, id: HostID, target: HostTarget, pid: pid_t, window: Int, launchedByMargin: Bool, madeByMargin: Bool, safariWindow: Int? = nil) {
+            self.model = model
+            handle = model.modelAdd(id: id.raw, app: app, window: window, pid: pid)
             self.id = id
             self.target = target
             self.pid = pid
-            self.window = window
             self.launchedByMargin = launchedByMargin
             self.madeByMargin = madeByMargin
             self.safariWindow = safariWindow
         }
+        deinit { model.modelRemove(handle) }
         // An app the person opened (running before Margin hosted it, its Dock icon): never quit, given back as it was.
         var personApp: Bool {
             if case .app = target { return !launchedByMargin }
@@ -373,7 +403,9 @@ final class HostEngine {
         }
     }
 
-    var options: Options
+    // The engine's options. What the core's decisions read of them (host/model/visible.rs `ModelOptions`) is sent to it
+    // whenever they change (a test's change after init too): one call each.
+    var options: Options { didSet { core.configure(tolerance: options.tolerance, toolbarRoom: options.toolbarRoom, returnsMax: options.returnsMax, returnsWithin: options.returnsWithin) } }
     private let sys: HostSystem
     private let markerURL: URL?
     private let ownPid: Int32
@@ -385,18 +417,42 @@ final class HostEngine {
     private var activeDue: DispatchWorkItem?
     private var activeTerminate: NSObjectProtocol?
     var onKeptActive: ((Set<pid_t>) -> Void)? // the apps kept active changed (the pane click tap's word)
+    // The hosts, by id; also by handle (the core's decisions answer hosts by handle). The core knows which host the
+    // engine holds as each id (`setHost`, the only writer).
     private(set) var hosts: [HostID: Host] = [:]
+    private var byHandle: [UInt32: Host] = [:]
+    private func setHost(_ id: HostID, _ host: Host?) {
+        if let old = hosts[id] { byHandle[old.handle] = nil }
+        hosts[id] = host
+        if let host { byHandle[host.handle] = host }
+        core.list(id, host?.handle)
+    }
+    private func host(_ h: UInt32?) -> Host? { h.flatMap { byHandle[$0] } }
     // The focused host (docs/PEEK-SPLIT.md §1): the visible host with the keys. With one visible host, the one shown.
-    private(set) var shown: HostID? { didSet { if let id = shown, shown != oldValue { shownAt = sys.now(); hosts[id]?.visibleAt = shownAt }; followShown(oldValue); announceHosted() } }
+    // The core's (host/model/visible.rs `shown`): set through it (a new one's time it was shown; the layout follows it
+    // outside a whole layout's change: `set_shown`), then Margin's window told. Its id read here without a call, kept as
+    // last set: nothing else sets it.
+    private var shownID: HostID?
+    private(set) var shown: HostID? {
+        get { shownID }
+        set {
+            shownID = newValue
+            core.setShown(newValue, now: sys.now())
+            announceHosted()
+        }
+    }
     // Every host visible in Margin's page area now (`shown` among them), each at its rect (nil: the page area), its role
     // and its place back to front. With one visible host: `[shown: main at the page area]`, kept so by `shown` itself.
-    private(set) var visible: [HostID: HostVisible] = [:]
-    // A whole layout being applied (`setLayout`): `visible` is the layout's, not `shown`'s, until it's done.
-    private var applyingLayout = false
+    // The core's (its layout): read by the decisions there; here as a whole only for the tests.
+    var visible: [HostID: HostVisible] { core.layoutEntries() }
+    // A whole layout being applied (`setLayout`), or held (`holdLayout`): the layout is the layout's, not `shown`'s,
+    // until it's done. The core's.
+    private var applyingLayout: Bool { core.applying }
     private(set) var launched: [pid_t: HostApp] = [:] // apps Margin started, while they run
     private(set) var leftSpaces: Set<UInt64> = [] // hosted windows' own full-screen Spaces a destroy hasn't taken yet
     private(set) var leftSafariWindows: [HostMarker.SafariWindow] = [] // Safari windows Margin asked for, their close not confirmed
-    private(set) var placement = HostPlacement.zero // the page area and the display's area (top-left coordinates)
+    // The page area and the display's area (top-left coordinates): the core's (every host's own page area is read there).
+    private(set) var placement: HostPlacement { get { core.placement } set { core.placement = newValue } }
     var pageRect: CGRect { placement.page }
     private(set) var marginWindow = 0
     private(set) var marginSpace: UInt64 = 0
@@ -405,8 +461,8 @@ final class HostEngine {
     private var quitAsked: Set<pid_t> = [] // apps asked to quit during Margin's quit
     // Apps Margin started, asked to quit by their row's close (Margin keeps running) and not gone yet: no longer
     // Margin's (`launched` doesn't have them), their exit heard in the background (`appQuit`); in the marker as asked.
-    private struct Exiting { let app: HostApp; let id: HostID; let askedAt: Double }
-    private var exiting: [pid_t: Exiting] = [:]
+    // (The apps a row's close asked to quit, their exits watched: the core's, host/exits.rs, `core.exits*`.)
+    private typealias Exiting = HostCore.Exiting
     private var leftWindows: [HostMarker.Window] = [] // windows Margin's quit couldn't finish giving back: the marker's, for the next launch
     private var ownSpaces: Set<UInt64> = [] // every full-screen Space a hosted window went into, until it's gone (Mission Control's check)
     var onEvent: ((HostEvent) -> Void)?
@@ -456,7 +512,7 @@ final class HostEngine {
     private var retired: [UInt64: Double] = [:] // private Spaces a window was moved out of, and when: destroyed later (`privateRetire`)
     // The last full-screen ask: when, and the full-screen Spaces listed before it (the poll's late watch, `lateWatch`).
     private var lateAsk: (at: Double, before: Set<UInt64>)?
-    private var shownAt = 0.0 // when the one shown was last shown or placed
+    private var shownAt: Double { core.shownAt } // when the one shown was last shown or placed (the core's: `set_shown`)
     // The poll's look at the window server's on-screen list: reads in a row something of Margin's Space wasn't on
     // screen, when it was last acted on, and whether giving up was said.
     private var offReads = 0
@@ -497,8 +553,9 @@ final class HostEngine {
     // Told when an app whose row was closed while it was asking something didn't quit (its sheet or alert holds it):
     // it's kept in Margin (parked by the next show, or still shown), never put on the Desktop; the sidebar says why.
     var onAsking: ((HostID) -> Void)?
-    // Its own hosting core: its loop guard, its causes, its routes (never shared with another engine).
-    private let core: HostCore
+    // Its own hosting core: its loop guard, its causes, its routes (never shared with another engine). Read by the
+    // tests to drive the loop guard (its hold), never written from outside.
+    let core: HostCore
 
     // Live resize: hosted windows' tiles in Margin's Space (docs/HOSTING-CORE.md "Live resize: tiles in Margin's Space").
     // Checked once per Margin Space (`tilesReady`); off for the run once a tile step didn't take (`tilesOff`, said once):
@@ -513,16 +570,13 @@ final class HostEngine {
     private var goneTiles: Set<UInt64> = [] // hosted tiles whose host went (its app quit or crashed, its window closed): destroyed if they stay
     private(set) var anchorTiles: [UInt64] = [] // Margin's own empty tiles, its Space's layout's first two (none: not made)
     // The sidebar's edge dragged (`dragging`): the one shown follows (`follow`), one change in flight (`livePump`).
-    private(set) var liveOn = false
-    private var livePending: HostPlacement?
+    // Who follows, the newest frame, each one's flight and when it's free, and the drag held (the one shown left its
+    // tile in it) are the core's (host/model/live.rs): the pump asks it each tick and sends what it says.
+    var liveOn: Bool { core.liveOn }
     private var livePump: Task<Void, Never>?
     private var liveStats = LiveStats()
     private(set) var lastLive: LiveStats? // (the last drag's numbers, as said: the tests read them)
-    private var liveLast = 0.0 // the drag's last page area: a drag never said over is over after `liveForget`
-    // The one shown left its tile during this drag (found out of Margin's Space and brought back): not followed again
-    // until the drag is over, so it can't happen twice in one drag; the drag's end places it once.
-    private var liveHeld = false
-    var liveForget = 10.0
+    var liveForget = 10.0 // (a drag never said over, no page area of it for this long: over)
     // A drag's numbers, said as it ends: the page's frames (and the time between them), the frames sent to every follower
     // (`frames`), the ticks that sent any and how many sent more than one host at once, and per host its sends, how long
     // each took to land (its window at its rect) and the ones given up after `liveWait`.
@@ -562,6 +616,7 @@ final class HostEngine {
         ownPid = pid
         let core = HostCore()
         self.core = core
+        core.configure(tolerance: options.tolerance, toolbarRoom: options.toolbarRoom, returnsMax: options.returnsMax, returnsWithin: options.returnsWithin)
         observer = HostObserver(system: system, source: observation, core: core)
         observer.onHeard = { [weak self] in self?.heardSomething() }
         sys.onAppQuit = { [weak self] pid in self?.appQuit(pid) }
@@ -580,7 +635,7 @@ final class HostEngine {
     func launchedPid(bundleId: String) -> pid_t? { launched.first { $0.value.bundleId == bundleId }?.key }
     var hasLeftSafariWindows: Bool { !leftSafariWindows.isEmpty }
     // Apps asked to quit by their row's close and still finishing (not Margin's any more).
-    var exitingPids: [pid_t] { exiting.keys.sorted() }
+    var exitingPids: [pid_t] { core.exitsAll().map(\.app.pid) }
 
     // ---- the API ----
 
@@ -629,24 +684,22 @@ final class HostEngine {
         await serial(planned: true) {
             guard self.isVisible(id), let host = self.hosts[id] else { return false }
             if let card = self.visibleHosts.last(where: { $0.role == .card }), card !== host { return false }
-            self.focusWanted = id
+            self.core.setFocus(id)
             if self.shown != id { self.shown = id }
             if !fronted { await self.frontVisible() }
             return true
         }
     }
 
-    // One host at most is visible, main at the page area, and `id` would be too: today's one-host way.
-    private func alone(_ id: HostID) -> Bool {
-        visible.count <= 1 && visible.values.allSatisfy { $0.role == .main && $0.rect == nil } && hosts[id].map { $0.role == .main && $0.rect == nil } != false
-    }
+    // One host at most is visible, main at the page area, and `id` would be too: today's one-host way (the core's).
+    private func alone(_ id: HostID) -> Bool { core.alone(id) }
 
     // (The session's word: a show of `id` is today's one-host way, else a layout of it alone. HostedEngine.)
     func showsAlone(_ id: HostID) -> Bool { alone(id) }
-    func liveFollowers() -> (follow: Int, visible: Int) {
-        let list = visible.count > 1 ? visibleHosts : shown.flatMap { hosts[$0] }.map { [$0] } ?? []
-        return (list.filter { $0.tile != nil || $0.mode == .window }.count, list.count)
-    }
+    // How many of the hosts a drag would move follow it live (a tile, a window-mode window), of how many (the session's
+    // word, before a drag: every visible one with several, else the one shown, each counted as it is, its phase not
+    // asked). The core's, with the drag's own list (the shown ones only, the one shown first).
+    func liveFollowers() -> (follow: Int, visible: Int) { core.liveFollowers() }
 
     // `setLayout`'s steps, in the engine's queue.
     // A host coming in beside the ones shown (a split's new pane: opened, or unparked): the ones shown keep their rects
@@ -656,61 +709,51 @@ final class HostEngine {
     // visible, that one is at the page area (never left at a pane's rect: 13:27, main at 775 wide, the rest blank).
     private func applyLayout(main: HostTarget, mainRect: CGRect?, extras: [HostExtra], focused: HostID?) async -> [HostID: HostResult] {
         var results: [HostID: HostResult] = [:]
+        // (One in the layout twice, and a card below its app's known minimum: refused before anything is made for it, a
+        // window it would only refuse. A pane never is: its window is cut, docs/PEEK-SPLIT.md §4b. The core's.)
+        let refused = Dictionary(core.layoutRefuse(main: main.id, extras: extras.map { ($0, $0.role == .card ? knownMinimum(of: $0.target) : nil) }), uniquingKeysWith: { a, _ in a })
         var accepted: [HostExtra] = []
-        for x in extras {
+        for (i, x) in extras.enumerated() {
             let id = x.target.id
-            if id == main.id || accepted.contains(where: { $0.target.id == id }) { results[id] = .failed(.place, "in the layout twice"); continue }
-            // (A card below its app's known minimum: refused before anything is made for it, a window it would only
-            // refuse. A pane never is: its window is cut, docs/PEEK-SPLIT.md §4b.)
-            if x.role == .card, let m = knownMinimum(of: x.target), x.rect.width < m.width - options.tolerance || x.rect.height < m.height - options.tolerance {
+            switch refused[i] {
+            case .twice?: results[id] = .failed(.place, "in the layout twice"); continue
+            case .below(let m)?:
                 results[id] = fail(id, .place, "its \(x.role.rawValue) rect \(r(x.rect)) is below its window's minimum \(Int(m.width))×\(Int(m.height))\(hosts[id] == nil ? " (its app's, known before its window is made: none made)" : "")")
                 continue
+            case nil: accepted.append(x)
             }
-            accepted.append(x)
         }
-        let before = visibleHosts
-        let was = Set(before.map(\.id))
-        var next: [HostID: HostVisible] = [main.id: HostVisible(rect: mainRect, role: .main, z: 0)]
-        for (i, x) in accepted.enumerated() { next[x.target.id] = HostVisible(rect: x.rect, role: x.role, z: i + 1) }
-        let order = [main] + accepted.map(\.target)
-        let shownNow = { (id: HostID) in self.hosts[id].map { $0.phase == .shown && was.contains(id) } ?? false }
-        let arriving = order.map(\.id).filter { !shownNow($0) }
         // (Main shown already and staying: the others come in beside it, the ones shown laid out again after them; only
         // when those can be laid out again in place, a tile's rect or a window's frame: a plain member's placing is out of
         // full screen and in, its app activated after, under its own loader: placed first, as before, so the newcomer
-        // still comes in last, in front.)
-        let relaid = next.keys.filter { id in shownNow(id) && hosts[id].map { $0.rect != next[id]?.rect || $0.role != next[id]?.role } == true }
-        let inPlace = relaid.allSatisfy { id in hosts[id].map { ($0.tile != nil && !$0.noTiles) || $0.mode == .window } ?? false }
-        let deferring = !arriving.isEmpty && shownNow(main.id) && inPlace
-        var held: [HostID: HostVisible] = [:]
-        for (id, v) in next {
-            guard let h = hosts[id] else { continue } // (a new one's as it's made: `opened`)
-            if deferring, shownNow(id), h.rect != v.rect || h.role != v.role { held[id] = v; continue }
-            h.role = v.role
-            h.rect = v.rect
-        }
+        // still comes in last, in front. The ones shown take their new role and rect now unless they're held so; the
+        // layout is the layout's from now: the core's `layout_begin`.)
+        let order = [main] + accepted.map(\.target)
+        let roles = Dictionary([(main.id, HostRole.main)] + accepted.map { ($0.target.id, $0.role) }, uniquingKeysWith: { a, _ in a })
+        let begun = core.layoutBegin(main: main.id, mainRect: mainRect, extras: accepted)
+        let before = begun.before.compactMap { byHandle[$0] }
+        let was = Set(before.map(\.id))
+        let arriving = begun.arriving
+        let held = Set(begun.held)
         let t0 = sys.now()
-        applyingLayout = true
-        visible = next
-        for (id, v) in held { visible[id] = HostVisible(rect: hosts[id]?.rect, role: hosts[id]?.role ?? v.role, z: v.z) }
-        loadingHeld = deferring
+        loadingHeld = begun.deferring
         // Main first (the one it replaces parked as today's switch does: in before it leaves), then each extra back to
         // front beside it, never in its place.
         var mainFailed = false
         var fresh: Set<HostID> = []
         for target in order {
             let id = target.id
-            if mainFailed { results[id] = .failed(.window, "main wasn't shown"); visible[id] = nil; continue }
+            if mainFailed { results[id] = .failed(.window, "main wasn't shown"); core.setLayout(id, nil); continue }
             let r: HostResult
             if let h = hosts[id], h.phase == .shown, was.contains(id) {
-                if held[id] != nil { results[id] = .shown(id, placed: true); continue } // (laid out again below, with the rest)
+                if held.contains(id) { results[id] = .shown(id, placed: true); continue } // (laid out again below, with the rest)
                 r = .shown(id, placed: await place(h))
             } else {
                 r = await openNow(target)
             }
             results[id] = r
             if case .failed = r {
-                visible[id] = nil
+                core.setLayout(id, nil)
                 if id == main.id { mainFailed = true }
             } else if !was.contains(id), let h = hosts[id] {
                 h.visibleAt = sys.now()
@@ -722,15 +765,14 @@ final class HostEngine {
         // (One that didn't come: they stay as they were; the session lays out what's left, or one alone at the page area.)
         let cameIn = arriving.allSatisfy { if case .shown? = results[$0] { return true }; return false }
         if !held.isEmpty, cameIn {
-            for (id, v) in held { hosts[id]?.role = v.role; hosts[id]?.rect = v.rect; visible[id] = v }
-            let list = held.keys.compactMap { hosts[$0] }.sorted { (next[$0.id]?.z ?? 0) < (next[$1.id]?.z ?? 0) }
+            let list = core.layoutRelayHeld().compactMap { byHandle[$0] }
             let t1 = sys.now()
             await placeTogether(list)
             for h in list { results[h.id] = .shown(h.id, placed: isVisible(h.id)) }
             Diagnostics.note("host: layout: \(list.map(\.id.description).joined(separator: ", ")) laid out again with \(arriving.map(\.description).joined(separator: ", ")) in \(ms(since: t1)) ms, once \(arriving.count == 1 ? "it was" : "they were") in place")
         }
         // What's no longer in the layout: parked (a member as it is, a window-mode window at its frame).
-        for h in before where next[h.id] == nil && h.phase == .shown && hosts[h.id] === h {
+        for h in before where roles[h.id] == nil && h.phase == .shown && hosts[h.id] === h {
             if await !retire(h) {
                 let frozen = holdFreeze()
                 await backOut(h)
@@ -739,28 +781,23 @@ final class HostEngine {
             }
             if shown == h.id { shown = nil }
         }
-        applyingLayout = false
-        visible = visible.filter { isVisible($0.key) }
-        // (One left of a layout of several asked: it alone, at the page area.)
-        if visible.count == 1, let id = visible.keys.first, let h = hosts[id], h.rect != nil || h.role != .main {
-            visible = [id: HostVisible(rect: nil, role: .main, z: 0)]
-            h.rect = nil
-            h.role = .main
-            h.slid = nil; cutOrderRight(h.id)
+        // (The layout no longer applied, what's visible of it; one left of a layout of several asked: it alone, at the
+        // page area. The core's.)
+        if let h = host(core.layoutEndAlone()) {
+            cutOrderRight(h)
             let placed = await place(h)
-            Diagnostics.note("host: layout: \(id) left alone of the layout asked: at the page area \(r(placement.page))\(placed ? "" : " (not placed there yet)")")
+            Diagnostics.note("host: layout: \(h.id) left alone of the layout asked: at the page area \(r(placement.page))\(placed ? "" : " (not placed there yet)")")
         }
-        let want = focused.flatMap { visible[$0] != nil ? $0 : nil } ?? (visible[main.id] != nil ? main.id : visibleHosts.last?.id)
-        focusWanted = visible.count > 1 ? want : nil
-        if let want, shown != want { shown = want } else if shown.map({ visible[$0] == nil }) == true { shown = nil }
-        if visible.count > 1 || was.count > 1 { await frontVisible(fresh: fresh) }
+        // (The focus: the one asked when it's visible, else main, else the frontmost. The core's.)
+        if case .set(let h) = core.layoutFocus(focused: focused, main: main.id) { shown = host(h)?.id }
+        if core.layoutCount > 1 || was.count > 1 { await frontVisible(fresh: fresh) }
         for h in hosts.values where h.freshFront { h.freshFront = false }
         hostedSaid = nil
         announceHosted()
         // (The arriving one's loader off last: its hole and the others' new ones are said just before.)
         if loadingHeld { loadingHeld = false; say(loading: nil) }
-        Diagnostics.note("host: layout: \(order.map { "\($0.id) \(next[$0.id]?.role.rawValue ?? "?") \(results[$0.id].map { if case .shown = $0 { return "shown" }; return "failed" } ?? "?")" }.joined(separator: ", "))"
-                         + "\(before.filter { next[$0.id] == nil }.isEmpty ? "" : "; parked: " + before.filter { next[$0.id] == nil }.map(\.id.description).joined(separator: ", "))"
+        Diagnostics.note("host: layout: \(order.map { "\($0.id) \(roles[$0.id]?.rawValue ?? "?") \(results[$0.id].map { if case .shown = $0 { return "shown" }; return "failed" } ?? "?")" }.joined(separator: ", "))"
+                         + "\(before.filter { roles[$0.id] == nil }.isEmpty ? "" : "; parked: " + before.filter { roles[$0.id] == nil }.map(\.id.description).joined(separator: ", "))"
                          + ", focused \(shown.map(\.description) ?? "none") in \(ms(since: t0)) ms")
         return results
     }
@@ -797,62 +834,35 @@ final class HostEngine {
     // the panes, a stacked pane's toolbar against the pane above. Panes side by side never do; the focused one only needs
     // the keys (its app made active, its window made its app's main one: that takes even when the raise doesn't).
     // Nothing more is done for an order among non-overlapping hosts, whatever Safari does to its own windows' order.
+    // The order wanted, the pairs whose order shows and what's raised in what order are the core's (host/model/order.rs:
+    // a cut pane lying under another behind the ones it lies under, the focused one too, given the keys without a
+    // raise; a pane raised over a cut one lying under it by `raiseOver`): read here, each window's bounds and the window
+    // server's order, then raised as it says. The plan is made before the first raise, as this did.
     private func frontVisible(fresh: Set<HostID> = []) async {
-        let focused = shown.flatMap { id in hosts[id].flatMap { $0.phase == .shown ? $0 : nil } }
-        // (A cut pane lying under another pane, docs/PEEK-SPLIT.md §4b: behind the panes it lies under, the focused one too,
-        // so the part of its window past its pane stays under them; it gets the keys without a raise. Several: each behind
-        // the ones it lies under (`tuckedOrder`). A cut pane lying under none (its rest past the display's edge or under
-        // Margin's window) is as any pane.)
-        let tucked = { (h: Host) in self.tucked(h) }
-        let others = visibleHosts.filter { $0 !== focused }
-        let cutFocused = focused.map(tucked) ?? false
-        let wanted = tuckedOrder(others.filter(tucked) + (cutFocused ? [focused!] : [])) + others.filter { !tucked($0) } + (cutFocused ? [] : focused.map { [$0] } ?? []) // (back to front)
+        let wanted = versioned { core.frontWanted() }.compactMap { byHandle[$0] } // (back to front)
         guard let top = wanted.last else { return }
+        let t0 = sys.now()
+        let bounds = wanted.map { sys.bounds(window: $0.window) }, order = serverOrder(of: wanted), fresh = fresh.compactMap { hosts[$0]?.handle }
+        let plan = versioned { core.frontPlan(bounds: bounds, order: order, fresh: fresh) }
+        let focused = host(plan.focused)
         // (A pane raised over a cut one lying under it: an app kept active (PanesActive.swift) takes the window server's
         // activation for done and its window stays where it is (the real screen, 2026-11-22: raised again and again, never
         // over); let go first (its deactivated record), its activation is real and AppKit raises its window: `raiseOver`.
         // It's kept again once the cut pane has the keys back. Over none, as before.)
-        func raise(_ h: Host) async -> Bool {
-            if let i = wanted.firstIndex(where: { $0 === h }), let below = wanted[..<i].last(where: { tucked($0) && self.lyingUnder($0).contains { $0 === h } }) {
-                return await raiseOver(h, below)
-            }
-            return await front(h)
+        for r in plan.raises {
+            guard let h = host(r.host) else { continue }
+            if let below = host(r.over) { _ = await raiseOver(h, below) } else { _ = await front(h) }
         }
         // (The keys: the focused one's, by a raise when it's in front of the others, without one when it's cut.)
-        func keys() async { if cutFocused, let f = focused { _ = sys.focusWithoutRaise(pid: f.pid, window: f.window) } else { _ = await front(top) } }
-        let t0 = sys.now()
-        let pairs = overlapping(wanted)
-        let topIndex = wanted.count - 1
-        // (Each pair whose front one, by the layout, is behind the other in the window server's order; unread: `unread`.)
-        func violated(_ order: [Int]?, unread: [(Int, Int)]) -> [(Int, Int)] {
-            guard let order else { return unread }
-            let at = Dictionary(order.enumerated().map { ($0.element, $0.offset) }, uniquingKeysWith: { a, _ in a })
-            return pairs.filter { (at[wanted[$0.1].window] ?? 0) < (at[wanted[$0.0].window] ?? 0) }
-        }
-        let bad = violated(serverOrder(of: wanted), unread: pairs)
-        // (In the order that shows already, or nothing overlapping: only the focused one's keys.)
-        if bad.isEmpty { await keys(); return }
-        let involved = Set(pairs.flatMap { [$0.0, $0.1] })
-        // (Two cut panes out of order, one lying under the other (four panes or more): every one from the first out of place
-        // raised, back to front, the cut ones too, so each ends behind the ones it lies under.)
-        let tuckedPair = bad.contains { tucked(wanted[$0.0]) && tucked(wanted[$0.1]) }
-        // (The focused one in front of every host it overlaps: none of those raised over it (its raise may not take);
-        // two others out of order between them only when neither overlaps it, then it last, for its keys.)
-        if !tuckedPair, !bad.contains(where: { $0.1 == topIndex }) {
-            let under = Set(pairs.filter { $0.1 == topIndex }.map(\.0))
-            let fix = Set(bad.filter { !under.contains($0.0) && !under.contains($0.1) }.flatMap { [$0.0, $0.1] })
-            for k in fix.sorted() where !tucked(wanted[k]) { _ = await raise(wanted[k]) }
-            await keys()
+        if plan.keys {
+            if plan.cutFocused, let f = focused { _ = sys.focusWithoutRaise(pid: f.pid, window: f.window) } else { _ = await front(top) }
             return
         }
-        // Else the ones from the first out of place that overlap another raised, back to front, the focused one last.
-        let from = bad.map(\.0).min() ?? 0
-        for k in from..<wanted.count where (k == topIndex || involved.contains(k)) && (tuckedPair || !tucked(wanted[k])) { _ = await raise(wanted[k]) }
-        if cutFocused { await keys(); return }
-        guard wanted.count > 1, top === focused else { return }
+        guard plan.confirm != .none else { return }
         // (Read again: the focused one behind a host it overlaps. Unread: taken as in front, as before.)
-        func topBehind() -> Bool { violated(serverOrder(of: wanted), unread: []).contains { $0.1 == topIndex } }
-        if fresh.contains(top.id) {
+        let windows = wanted.map(\.window)
+        func topBehind() -> Bool { core.topBehind(windows: windows, below: plan.belowTop, screen: sys.onScreenWindows()?.map(\.number)) }
+        if plan.confirm == .fresh {
             if !topBehind() { return }
             await outAndBack(top, wanted, since: t0, why: "its window just came in with its tile (its raise doesn't take then)", behind: topBehind)
             return
@@ -871,26 +881,6 @@ final class HostEngine {
             if now { return }
         }
         await outAndBack(top, wanted, since: t0, why: "nothing else brought it in front", behind: topBehind)
-    }
-
-    // The pairs of `list` (back to front, by index) whose order shows: their windows overlap, each as it is and where the
-    // layout puts it, a full-screen window with its toolbar's room above it (Safari's toolbar window rests just above
-    // its window: a stacked pane's against the pane above, across its band).
-    private func overlapping(_ list: [Host]) -> [(Int, Int)] {
-        let zones = list.map { h -> CGRect in
-            var r = frame(h)
-            if let b = sys.bounds(window: h.window) { r = r.union(b) }
-            if h.mode == .fullScreen { r = CGRect(x: r.minX, y: r.minY - options.toolbarRoom, width: r.width, height: r.height + options.toolbarRoom) }
-            return r
-        }
-        var out: [(Int, Int)] = []
-        for i in zones.indices {
-            for j in zones.indices where j > i {
-                let x = zones[i].intersection(zones[j])
-                if !x.isNull, x.width > options.tolerance, x.height > options.tolerance { out.append((i, j)) }
-            }
-        }
-        return out
     }
 
     // The last way to bring `top` in front of the other visible hosts: its window out to a private Space and straight back
@@ -915,15 +905,9 @@ final class HostEngine {
         let now = await wait(options.orderWait, every: options.memberEvery) { !behind() }
         Diagnostics.note("host: \(top.id): out to a private Space and back into Margin's (\(why); \(out ? "out" : "not out"), \(back ? "back" : "not back")) in \(ms(since: t1)) ms, \(ms(since: t0)) ms from its first raise: \(now ? "in front now" : "still not in front")")
     }
-    // These hosts' windows in the window server's order now, back to front (its on-screen list is front to back); nil:
-    // unread, or one of them not in it.
-    private func serverOrder(of list: [Host]) -> [Int]? {
-        guard let screen = sys.onScreenWindows() else { return nil }
-        let mine = Set(list.map(\.window))
-        let order = screen.map(\.number).filter { mine.contains($0) }
-        guard order.count == mine.count, Set(order) == mine else { return nil }
-        return order.reversed()
-    }
+    // These hosts' windows in the window server's order now, back to front (its on-screen list is front to back; the
+    // core's rule); nil: unread, or one of them not in it.
+    private func serverOrder(of list: [Host]) -> [Int]? { core.serverOrder(windows: list.map(\.window), screen: sys.onScreenWindows()?.map(\.number)) }
 
     // An app (the person's default browser, at Margin's launch) started with no Dock icon if it isn't running, as a
     // first open starts it (it counts as Margin's: quit at Margin's quit, its restored windows swept); running already
@@ -1000,22 +984,19 @@ final class HostEngine {
     func pageRectChanged(_ placement: HostPlacement, rects: [HostID: CGRect]) async -> Bool {
         await serial(planned: true) {
             self.placement = placement
-            for (id, r) in rects where self.visible[id] != nil { self.hosts[id]?.rect = r; self.visible[id]?.rect = r }
+            for (id, r) in rects { self.core.layoutMove(id, r) } // (each laid out one's rect, its host's and its place's)
             // (Live resize: the parked ones' tiles then, one at a time, by the reconciler: `sizeTile`.)
             defer { self.sizeTilesSoon() }
             guard let id = self.shown, let host = self.hosts[id] else { return true }
             // (Several visible: the layout held as it is while each is placed again; a plain member's placing goes out of
             // full screen and in, the one shown with it, which alone would make it the layout by itself and the others
-            // never placed: docs/PEEK-SPLIT.md §4, a split's divider let go.)
-            let several = self.visible.count > 1
-            let kept = self.visible
-            if several { self.applyingLayout = true }
+            // never placed: docs/PEEK-SPLIT.md §4, a split's divider let go. The core's hold, as `holdLayout`'s, the
+            // page's own way: every one still laid out kept, the one placed shown when nothing is.)
+            let several = self.core.hold(id, page: true)
             let placed = await self.place(host)
             for h in self.visibleHosts where h !== host { _ = await self.place(h) }
             if several {
-                self.applyingLayout = false
-                self.visible = kept.filter { self.isVisible($0.key) }
-                if self.shown == nil, self.isVisible(id) { self.shown = id }
+                if case .set(let h) = self.core.release() { self.shown = self.host(h)?.id }
                 self.settleVisible()
                 await self.frontVisible()
                 self.hostedSaid = nil
@@ -1072,7 +1053,7 @@ final class HostEngine {
             self.checkOrphans("at quit")
             self.checkListed("at quit")
             self.saveMarker()
-            let finishing = (self.launched.values.filter { self.quitAsked.contains($0.pid) } + self.exiting.values.map(\.app)).map(\.bundleId).sorted()
+            let finishing = (self.launched.values.filter { self.quitAsked.contains($0.pid) } + self.core.exitsAll().map(\.app)).map(\.bundleId).sorted()
             let left = self.leftWindows.count
             Diagnostics.note("host: quit: everything given back in \(self.ms(since: started)) ms (\(order.count) host\(order.count == 1 ? "" : "s") at once"
                              + (finishing.isEmpty ? "" : "; still quitting on their own, not waited for: \(finishing.joined(separator: ", "))")
@@ -1192,7 +1173,7 @@ final class HostEngine {
         }
         pollHeldSince = nil
         // (A drag of the sidebar's edge never said over, no page area of it for `liveForget`: over.)
-        if liveOn, sys.now() - liveLast > liveForget { Diagnostics.note("host: live resize: no page area of the drag for \(Int(liveForget)) s and never said over: over"); dragging(false) }
+        if core.liveForgotten(now: sys.now(), forget: liveForget) { Diagnostics.note("host: live resize: no page area of the drag for \(Int(liveForget)) s and never said over: over"); dragging(false) }
         parkWoken()
         pollScreen = nil
         pollCurrentBefore = nil
@@ -1214,49 +1195,41 @@ final class HostEngine {
             // (The process gone: its app quit. kill(pid, 0) alone: a running-app lookup is a LaunchServices request a poll.)
             if !sys.processRuns(pid: host.pid) { appQuit(host.pid); continue }
             if host.launchedByMargin, !host.promoted, sys.policy(pid: host.pid) == .regular { promote(host, why: "its policy reads regular") }
-            // (Closed and still listed by the window server, in no Space or off screen: gone at once, as two reads that missed.)
-            if closedByItsApp(host) { host.unread = max(2, host.unread + 1) } else if sys.bounds(window: host.window) == nil { host.unread += 1 } else { host.unread = 0; host.gone = false }
-            if host.unread >= 2 { // twice in a row: one read can miss mid-transition
+            // (Closed and still listed by the window server, in no Space or off screen: gone at once, as two reads that
+            // missed. Its unread reads counted by the core: twice in a row gone, one read can miss mid-transition.)
+            let read: HostCore.PollRead = closedByItsApp(host) ? .closed : sys.bounds(window: host.window) == nil ? .unread : .read
+            switch core.pollRead(host.handle, read) {
+            case .gone:
                 // (Shown, its app still running: the reconciler adopts another main window of its app's that comes within
                 // the grace, else closes its item (Tirth, 2026-11-17: a window the person closes closes its item, never
-                // reopened). Parked, an app Margin started: reopened at its next show, behind the loader. Else, the
-                // window's gone as before.)
-                if !host.gone, host.phase != .preparing, sys.processRuns(pid: host.pid) {
-                    let parkedOwn: Bool = { if case .app = host.target { return host.launchedByMargin && host.phase == .parked }; return false }()
-                    if parkedOwn {
-                        // (Parked: reopened at its next show, behind the loader; a window its app opened now would come
-                        // up in the current Space, over what's shown.)
-                        host.gone = true
-                        host.goneAt = sys.now()
-                        Diagnostics.note("host: \(host.id): its window \(host.window) gone while parked, its app running → reopen at its next show")
-                    } else if host.phase == .shown {
-                        host.gone = true
-                        host.goneAt = sys.now()
-                        let other = situation(host).replacement
-                        Diagnostics.note("host: \(host.id): shown, window \(host.window) gone, its app running → \(other.map { "another of its app's its main window now (\($0)): adopt" } ?? "its item closed unless another main window of its app's comes within \(Int(HostReconciler.goneGrace * 1000)) ms")")
-                    } else {
-                        windowGone(host)
-                    }
-                } else if !host.gone {
-                    windowGone(host)
+                // reopened). Parked, an app Margin started: reopened at its next show, behind the loader; a window its
+                // app opened now would come up in the current Space, over what's shown. Else, the window's gone as
+                // before. Its process read again only when the core's tree reaches it.)
+                let parkedOwn: Bool = { if case .app = host.target { return host.launchedByMargin && host.phase == .parked }; return false }()
+                var gone = core.pollGone(host.handle, now: sys.now(), runs: nil, parkedOwn: parkedOwn)
+                if gone == .askRuns { gone = core.pollGone(host.handle, now: sys.now(), runs: sys.processRuns(pid: host.pid), parkedOwn: parkedOwn) }
+                switch gone {
+                case .reopen:
+                    Diagnostics.note("host: \(host.id): its window \(host.window) gone while parked, its app running → reopen at its next show")
+                case .shown:
+                    let other = situation(host).replacement
+                    Diagnostics.note("host: \(host.id): shown, window \(host.window) gone, its app running → \(other.map { "another of its app's its main window now (\($0)): adopt" } ?? "its item closed unless another main window of its app's comes within \(Int(HostReconciler.goneGrace * 1000)) ms")")
+                case .windowGone: windowGone(host)
+                case .nothing, .askRuns: break
                 }
                 continue
-            }
             // (Its bounds unread this poll: gone or mid-transition, never taken for a stray: a window the person just closed
             // would be "in no Space", brought back, fail and be parked before the reconciler's grace could close its item.)
-            if host.unread > 0 { continue }
+            case .skip: continue
+            case .read: break
+            }
             // Where it mustn't be, twice in a row (one read can miss mid-transition): the one shown outside Margin's
-            // Space (Margin's window left full screen), a parked one in a user Space.
+            // Space (Margin's window left full screen), a parked one in a user Space (the reconciler's `parkAgain`). The
+            // one shown in no Space at all is never a read that missed mid-transition: nothing puts a window there but a
+            // Space destroyed under it. Brought back at the first read. (The core's count.)
             let spaces = sys.spaces(window: host.window)
             sayRead(host, spaces: spaces, marginHere: marginHere)
-            let strayed = host.phase == .shown ? (!marginHere || (spaces.map { $0 != [marginSpace] } ?? false)) : host.phase == .parked && !(spaces ?? []).isEmpty
-            host.strays = strayed ? host.strays + 1 : 0
-            // (The one shown in no Space at all is never a read that missed mid-transition: nothing puts a window there
-            // but a Space destroyed under it. Brought back at the first read.)
-            let nowhere = host.phase == .shown && marginHere && spaces == []
-            // (A parked one found in a user Space: the reconciler's `parkAgain`, at the second read in a row.)
-            if host.phase == .shown, host.strays >= 2 || nowhere {
-                host.strays = 0
+            if core.pollPlace(host.handle, place(spaces), marginHere: marginHere) {
                 let id = host.id
                 Task { await serial { await self.strayed(id, marginHere: marginHere) } }
             }
@@ -1268,7 +1241,7 @@ final class HostEngine {
         let tuckedNow = visibleHosts.filter { tucked($0) }
         if !tuckedNow.isEmpty, let list = screenList()?.map(\.number) {
             for cut in tuckedNow {
-                if overPaneItLiesUnder(cut, list: list) { Task { _ = await self.repairCutOrder(cut.pid) }; break } else { cutOrderRight(cut.id) }
+                if overPaneItLiesUnder(cut, list: list) { Task { _ = await self.repairCutOrder(cut.pid) }; break } else { cutOrderRight(cut) }
             }
         }
         keepCurrentLate()
@@ -1301,7 +1274,7 @@ final class HostEngine {
               let mine = app.windows[host.window], let spaces = mine.spaces, !spaces.isEmpty else { return }
         let f = mine.bounds
         var seen: [Int: String] = [:]
-        for w in app.windows.values where w.kind == .strip && w.spaces == spaces && Self.toolbarOf(w.bounds, window: f) {
+        for w in app.windows.values where w.kind == .strip && w.spaces == spaces && WindowKinds.toolbarOf(w.bounds, window: f) {
             seen[w.number] = Self.toolbarState(w.bounds, alpha: w.alpha, layer: w.layer, onScreen: w.onScreen, window: f)
         }
         for (n, state) in seen.sorted(by: { $0.key < $1.key }) where toolbarSaid[n] != state {
@@ -1339,7 +1312,7 @@ final class HostEngine {
             taken.append("\(h.id) \(ok ? "taken" : "not taken") after \(ms(since: t1)) ms")
         }
         // (Each focus made its window key: the layout's order and keys as they should be again, the focused one last.)
-        if visible.count > 1 { await frontVisible() } else if let s = shown.flatMap({ hosts[$0] }) { _ = await front(s) }
+        if core.layoutCount > 1 { await frontVisible() } else if let s = shown.flatMap({ hosts[$0] }) { _ = await front(s) }
         let line = "host: new windows' pages given their keys (\(taken.joined(separator: ", "))), the keys back to \(shown.map(\.description) ?? "none") in \(ms(since: t0)) ms"
         Diagnostics.note(line)
         return line
@@ -1363,18 +1336,13 @@ final class HostEngine {
         guard let f = sys.bounds(window: host.window), let list = sys.serverWindows(pid: host.pid) else { return nil }
         let others = Set(hosts.values.map(\.window))
         let spaces = sys.spaces(window: host.window)
-        for w in list where w.number != host.window && !others.contains(w.number) && w.onScreen && w.bounds.height <= options.stripMaxHeight && Self.toolbarOf(w.bounds, window: f) {
+        for w in list where w.number != host.window && !others.contains(w.number) && w.onScreen && w.bounds.height <= WindowKinds.stripMaxHeight && WindowKinds.toolbarOf(w.bounds, window: f) {
             let over = Int((w.bounds.maxY - f.minY).rounded())
             guard over > 2 else { continue }
             if let spaces, let its = sys.spaces(window: w.number), its != spaces { continue }
             return over
         }
         return nil
-    }
-
-    // A strip at a full-screen window's top edge: its left edge and width the window's, from just above its top to inside it.
-    static func toolbarOf(_ b: CGRect, window f: CGRect) -> Bool {
-        f.width > 0 && abs(b.minX - f.minX) <= 2 && abs(b.width - f.width) <= 2 && b.maxY >= f.minY - 2 && b.minY <= f.minY + 2 + 150
     }
 
     // How a toolbar sits: resting (its bottom at its window's top or above: hidden), or out over its window by so many
@@ -1509,6 +1477,10 @@ final class HostEngine {
     // them; it sizes its own tile first). Nothing while a drag is under way.
     private func sizeTilesSoon() {
         guard !quitting, !liveOn, tilesOK, !reconcileQueued else { return }
+        // (The loop guard holding every reaction this second: no step now, since each would be held (its re-entry
+        // budgeted, its sizing admitted) and ask for the next at once, again and again while the hold lasts. Asked once
+        // more when the hold ends, the core's time.)
+        if let until = core.guardHeldUntil(now: sys.now()) { return sizeTilesWhenHeldEnds(until) }
         for id in hosts.keys.sorted(by: { (rank($0), $0.raw) < (rank($1), $1.raw) }) {
             guard let host = hosts[id], host.tile != nil, host.phase != .preparing else { continue }
             guard decide(host) == .sizeTile else { continue }
@@ -1522,6 +1494,20 @@ final class HostEngine {
                 await self.apply(.sizeTile, host, now, tried: tried)
             } }
             return
+        }
+    }
+
+    // One retry of the tiles' sizing when the loop guard's hold ends (`until`, the core's), waited for on the engine's
+    // clock as its other deadlines are; one at a time (a hold asked of again meanwhile keeps the one waiting).
+    private var sizeRetryWaiting = false
+    private func sizeTilesWhenHeldEnds(_ until: Double) {
+        guard !sizeRetryWaiting else { return }
+        sizeRetryWaiting = true
+        Task { [weak self] in
+            guard let self else { return }
+            await self.sys.sleep(max(0, until - self.sys.now()))
+            self.sizeRetryWaiting = false
+            self.sizeTilesSoon()
         }
     }
 
@@ -1592,16 +1578,20 @@ final class HostEngine {
 
     // A "left full screen" event: back into full screen at its rect (the page area, its pane's, its card's), behind the
     // loader, the layout held; its old tile out of Margin's Space (empty: destroyed with the next look). Margin's own
-    // operation: never a reaction the loop guard counts, its budgets anew, its route kept (it comes back on tiles when
-    // they're on). `returnsMax` times within `returnsWithin`; past that, false (left to the reconciler, said once).
+    // operation: never a reaction the loop guard stops a host for, its budgets anew, its route kept (it comes back on
+    // tiles when they're on). `returnsMax` times within `returnsWithin`; past that, false (left to the reconciler, said
+    // once). Each one counts toward the guard's per-second hold (held: true, nothing else this turn).
     private func reenterFullScreen(_ host: Host, _ why: String) async -> Bool {
-        host.reentries = host.reentries.filter { sys.now() - $0 < options.returnsWithin }
-        guard host.reentries.count < options.returnsMax else {
-            if !host.reentrySaid { host.reentrySaid = true; Diagnostics.warn("host: \(host.id): its window left full screen again (\(why)), \(host.reentries.count) times in \(Int(options.returnsWithin)) s: left to the reconciler") }
+        switch core.spend(host.handle, .reentry, now: sys.now(), guarded: options.loopGuard) {
+        case .go: break
+        case .held(let until):
+            Diagnostics.note("host: \(host.id): back into full screen held: too many reactions this second across every host (\(Int(max(0, until - sys.now()) * 1000)) ms more)")
+            return true
+        case .say(let count, _):
+            Diagnostics.warn("host: \(host.id): its window left full screen again (\(why)), \(count) times in \(Int(options.returnsWithin)) s: left to the reconciler")
             return false
+        case .said: return false
         }
-        host.reentries.append(sys.now())
-        host.reentrySaid = false
         planned = true // (what this changes is Margin's plan, not a reaction)
         let t0 = sys.now()
         Diagnostics.note("host: \(host.id): its window left full screen by itself (\(why)), at \(sys.bounds(window: host.window).map(r) ?? "?") in Margin's Space: back into full screen at \(r(pageOf(host))), behind the loader (no tile's fight: no try counted, its route kept)")
@@ -1806,7 +1796,9 @@ final class HostEngine {
             releaseFreeze(frozen)
         }
         let info = await sys.window(pid: host.pid, number: n)
-        if host.phase == .shown, host.member { host.fullScreenFailures = 0 } // (not a failure: its app's own doing)
+        // (A shown member's failures forgotten: not a failure, its app's own doing. Full screen tried again at its next
+        // show when its window can and it never failed: the core's ladder, per host and per run.)
+        core.adopted(host.handle, canFullScreen: info?.canFullScreen ?? true)
         host.window = n
         host.unread = 0
         host.gone = false
@@ -1822,7 +1814,6 @@ final class HostEngine {
         host.originalSpace = (sys.spaces(window: n) ?? []).first { sys.spaceType($0) == ManagedSpace.desktopType } ?? sys.desktop(onDisplayOf: marginSpace)
         host.resizable = info?.resizable ?? true
         host.mode = .window
-        host.retryFullScreen = (info?.canFullScreen ?? true) && host.fullScreenFailures == 0
         saveMarker()
         switch host.phase {
         case .shown:
@@ -2265,9 +2256,10 @@ final class HostEngine {
                 q.page = liveRects[h.id] ?? h.rect ?? p.page
                 return frame(h, q)
             } ?? frame(h)
-            let tucked = isCut(h) && list.contains { o in o !== h && o.role != .card && (o.rect ?? placement.page).insetBy(dx: options.tolerance, dy: options.tolerance).intersects(window) }
-            return HostShownWindow(window: h.window, rect: rect, role: visible[h.id]?.role ?? h.role, z: visible[h.id]?.z ?? 0, focused: h.id == shown,
-                                   frame: window, tucked: tucked, cut: live == nil ? cutOf(h) : nil)
+            let under = tucked(h, at: window)
+            let placed = core.layout(h.id)
+            return HostShownWindow(window: h.window, rect: rect, role: placed?.role ?? h.role, z: placed?.z ?? 0, focused: h.id == shown,
+                                   frame: window, tucked: under, cut: live == nil ? cutOf(h) : nil)
         } : []
         guard now != hostedWindowsSaid else { return }
         hostedWindowsSaid = now
@@ -2484,7 +2476,7 @@ final class HostEngine {
                                                   : "no new Safari window in the window server's list within \(Int(options.windowWait)) s")
             }
             times.append("window \(ms(since: windowStarted)) (by the window server\(bornFrozen ? ", under the freeze from its ask" : ""))")
-            let host = Host(id: id, target: target, pid: app.pid, window: window, launchedByMargin: launchedByMargin, madeByMargin: !launchedByMargin, safariWindow: asked.id)
+            let host = Host(model: core, app: appKey(target), id: id, target: target, pid: app.pid, window: window, launchedByMargin: launchedByMargin, madeByMargin: !launchedByMargin, safariWindow: asked.id)
             host.bornBefore = bornBefore
             host.bornFrozen = bornFrozen
             host.bornSwitched = undone > 0
@@ -2612,7 +2604,7 @@ final class HostEngine {
         let seen = [serverSeenAt.map { "the window server listed one at \(Int((($0 - windowStarted) * 1000).rounded()))" }, axSeenAt.map { "Accessibility at \(Int((($0 - windowStarted) * 1000).rounded()))" }].compactMap { $0 }
         times.append("window \(ms(since: windowStarted))\(info == nil ? " (by the window server: on another Space)" : "")\(personal ? ", an app the person opened" : "")\(seen.isEmpty ? "" : " (\(seen.joined(separator: ", ")))")")
         if let rule { Diagnostics.note("host: \(id): its window \(window) chosen as \(rule.rawValue)") }
-        let host = Host(id: id, target: target, pid: app.pid, window: window, launchedByMargin: launchedByMargin, madeByMargin: false)
+        let host = Host(model: core, app: appKey(target), id: id, target: target, pid: app.pid, window: window, launchedByMargin: launchedByMargin, madeByMargin: false)
         host.bundleId = bundle
         host.appLaunchedAt = app.launchedAt
         if case .app = target {
@@ -2623,9 +2615,8 @@ final class HostEngine {
 
     private func opened(_ host: Host, started: Double, times: [String]) async -> HostResult {
         let id = host.id, pid = host.pid
-        hosts[id] = host
-        // (Made for a layout: its role and rect in it from the start, its first placing at its rect.)
-        if applyingLayout, let v = visible[id] { host.role = v.role; host.rect = v.rect }
+        setHost(id, host)
+        // (Made for a layout: its role and rect in it from the start, its first placing at its rect: the core's, as it's held.)
         applyHeldRoute(host)
         saveMarker()
         if !sys.watchOpens(pid: pid, { [weak self] code in self?.heard(code, pid: pid) }) {
@@ -2929,15 +2920,12 @@ final class HostEngine {
     // The page area for a window-mode host (Margin's own layout's, its window its whole width).
     private func windowArea(_ host: Host) -> CGRect { pageOf(host) }
 
-    private func centredIn(_ page: CGRect, _ size: CGSize) -> CGRect {
-        CGRect(x: (page.minX + max(0, (page.width - size.width) / 2)).rounded(), y: (page.minY + max(0, (page.height - size.height) / 2)).rounded(), width: size.width, height: size.height)
-    }
     // Whether a window-mode host's window is where `placeWindow` puts it: the page area, or its own size centred in it
-    // (a fixed size, or a resizable one at its own limits).
+    // (a fixed size, or a resizable one at its own limits). The core's: `at_page_area`.
     private func atPageArea(_ host: Host) -> Bool {
         let area = windowArea(host)
-        guard let b = sys.bounds(window: host.window), b.width <= area.width + options.tolerance, b.height <= area.height + options.tolerance else { return false }
-        return HostLayout.near(b, area, within: options.tolerance) || HostLayout.near(b, centredIn(area, b.size), within: options.tolerance)
+        guard let b = sys.bounds(window: host.window) else { return false }
+        return HostLayout.atPageArea(b, area, within: options.tolerance)
     }
 
 
@@ -2956,12 +2944,10 @@ final class HostEngine {
             emit(.failed(host.id, .place, "its window's bounds didn't read"))
             return false
         }
-        func centred(_ size: CGSize) -> CGRect { centredIn(page, size) }
-        var want = host.resizable ? page : centred(now.size)
-        if HostLayout.near(now, want, within: options.tolerance) { return true }
-        // (Placed by Margin before and still there: at its own limits, centred. A switch to it sets nothing.)
-        if host.frameChanged, now.width <= page.width + options.tolerance, now.height <= page.height + options.tolerance,
-           HostLayout.near(now, centred(now.size), within: options.tolerance) { return true }
+        func centred(_ size: CGSize) -> CGRect { HostLayout.inside(page, size) }
+        // (There already, or placed by Margin before and still there: at its own limits, centred. A switch to it sets
+        // nothing. The core's: `window_frame`.)
+        guard var want = HostLayout.windowFrame(page, now: now, resizable: host.resizable, placedBefore: host.frameChanged, within: options.tolerance) else { return true }
         if host.original == nil { host.original = now }
         host.frameChanged = true
         saveMarker()
@@ -3110,6 +3096,8 @@ final class HostEngine {
 
     // ---- showing ----
 
+    // How a host is shown: each of its points decided by the core (host/model/visible.rs `bring_in`), in turn, between
+    // the same waits as before (a reopen, a take, a tile's sizing).
     private func bringIn(_ host: Host, isNew: Bool, retrying: Bool = false) async -> HostResult {
         jumps = 0
         // (Shown again after a close its prompt held off: Margin's as before, its quit no longer waited on.)
@@ -3120,7 +3108,7 @@ final class HostEngine {
         host.offScreenReads = 0
         // (Its window went while it was parked, its app still running: a Dock-icon click first, the window it makes
         // adopted, behind the loader; nothing came: gone as a closed window.)
-        if host.gone {
+        if core.bringIn(host.handle, .start) == .reopen {
             say(loading: host.id)
             await reopen(host)
             say(loading: nil)
@@ -3132,10 +3120,11 @@ final class HostEngine {
         }
         // A new app's window as it was (its frame, its Space) before anything moves it; then how it's shown.
         defer { say(cover: nil) } // (the window taken in to be read: shown by now, or given back)
-        if isNew, case .app = host.target, !host.taken, let (failed, why) = await take(host) {
+        let isApp: Bool = { if case .app = host.target { return true }; return false }()
+        if core.bringIn(host.handle, .take, isNew: isNew, isApp: isApp, taken: host.taken) == .take, let (failed, why) = await take(host) {
             guard host.taken else {
                 // (Nothing of it was touched: forgotten, never backed out of a full screen that's the person's.)
-                hosts[host.id] = nil
+                setHost(host.id, nil)
                 core.resetTries(host: host.id.raw)
                 if !hosts.values.contains(where: { $0.pid == host.pid }) { sys.stopWatchingOpens(pid: host.pid) }
                 saveMarker()
@@ -3143,29 +3132,29 @@ final class HostEngine {
             }
             return await giveUp(host, isNew: isNew, failed, why, previous: nil)
         }
-        if host.mode == .window, host.retryFullScreen, !isNew, !retrying, !preparing {
-            // (Window mode only after its full screen failed: full screen tried again as it's shown, behind the loader.)
-            host.retryFullScreen = false
-            host.mode = .fullScreen
+        switch core.bringIn(host.handle, .route, isNew: isNew, retrying: retrying, preparing: preparing) {
+        case .fullScreenAgain:
+            // (Window mode only after its full screen failed: full screen tried again as it's shown, behind the loader;
+            // its mode full screen from now, its retry spent.)
             saveMarker()
             Diagnostics.note("host: \(host.id): in window mode since its full screen failed (it can go full screen): full screen tried again as it's shown")
             return await placeFullScreen(host, isNew: false, retrying: false)
-        }
-        if host.mode == .window { return await bringInWindow(host, isNew: isNew, retrying: retrying) }
+        case .window: return await bringInWindow(host, isNew: isNew, retrying: retrying)
         // (Live resize: a tile placed for another page area sized first, out of sight (a switch never shows the old size:
-        // the target ahead of any other tile's sizing); one whose rect doesn't take is placed again the old way.)
-        if host.member, host.tile != nil, host.noTiles {
-            // (Held below tiles since it was parked: out of its tile, placed again as a plain member, behind the loader.)
-            host.placedPage = nil
-        } else if host.member, host.tile != nil {
+        // the target ahead of any other tile's sizing); one whose rect doesn't take is placed again the old way. Held
+        // below tiles since it was parked: out of its tile, placed again as a plain member, behind the loader (its
+        // placed page forgotten).)
+        case .sizeFirst:
             // (Its rect read, not only the page area it was sized for: a parked tile laid out again meanwhile is left so.)
             let stale = !tileAtPage(host)
             if await sizeTile(host), stale { Diagnostics.note("host: \(host.id): its tile sized to the page area before it's shown") }
+        default: break
         }
-        if host.member, let placed = host.placedPage, HostLayout.near(placed, pageOf(host), within: options.tolerance) {
-            return await switchIn(host)
+        switch core.bringIn(host.handle, .placed) {
+        case .switchIn: return await switchIn(host)
+        case .placedElsewhere: Diagnostics.note("host: \(host.id): placed for another page area (\(host.placedPage.map(r) ?? "none")): placed again as it's shown")
+        default: break
         }
-        if host.member { Diagnostics.note("host: \(host.id): placed for another page area (\(host.placedPage.map(r) ?? "none")): placed again as it's shown") }
         return await placeFullScreen(host, isNew: isNew, retrying: retrying)
     }
 
@@ -3269,19 +3258,13 @@ final class HostEngine {
     // The layout as it is, held while `host` (visible, beside others) is placed on its own, outside a whole layout's
     // change (`applyingLayout`); nil: nothing to hold (one visible host, or a layout being applied already). The release
     // puts back each one still shown at its rect, the focus where it was asked, fronts them back to front and tells
-    // Margin's window.
+    // Margin's window. (The core's hold, one for this and a page area's change: `pageRectChanged`.)
     private func holdLayout(for host: Host) -> (() async -> Void)? {
-        guard !applyingLayout, visible.count > 1, visible[host.id] != nil else { return nil }
-        let kept = visible, focus = focusWanted ?? shown
-        applyingLayout = true
+        guard core.hold(host.id, page: false) else { return nil }
         return { [self] in
-            applyingLayout = false
-            visible = kept.filter { hosts[$0.key]?.phase == .shown }
-            for (id, v) in visible { hosts[id]?.role = v.role; hosts[id]?.rect = v.rect }
-            if let f = focus, isVisible(f) { if focusWanted == nil, visible.count > 1 { focusWanted = f }; if shown != f { shown = f } }
-            else if shown.map({ visible[$0] == nil }) ?? true { shown = visibleHosts.last?.id }
+            if case .set(let h) = core.release() { shown = self.host(h)?.id }
             settleVisible()
-            if visible.count > 1 { await frontVisible() }
+            if core.layoutCount > 1 { await frontVisible() }
             hostedSaid = nil
             hostedWindowsSaid = []
             announceHosted()
@@ -3515,9 +3498,8 @@ final class HostEngine {
             return await placeFullScreen(host, isNew: isNew, retrying: true)
         }
         // (It can go full screen: tried again at its next show, once; window mode for the rest of the session after that.)
-        host.fullScreenFailures += 1
-        host.retryFullScreen = host.fullScreenFailures == 1
-        Diagnostics.note("host: \(host.id): \(step.rawValue) failed (\(reason)): backed out, shown in window mode (it can go full screen: \(host.retryFullScreen ? "tried again the next time it's shown" : "failed again, window mode from now on"))")
+        let retry = core.fullScreenFailed(host.handle)
+        Diagnostics.note("host: \(host.id): \(step.rawValue) failed (\(reason)): backed out, shown in window mode (it can go full screen: \(retry ? "tried again the next time it's shown" : "failed again, window mode from now on"))")
         let frozen = holdFreeze()
         await backOut(host)
         await outForGood(host)
@@ -3558,7 +3540,7 @@ final class HostEngine {
         }
         func strips() -> [ServerWindow] {
             (serverList(pid: host.pid) ?? []).filter { w in
-                w.number != host.window && !host.windowsBeforeAsk.contains(w.number) && !isHosted(window: w.number) && w.layer == 0 && isStrip(w.bounds, of: host)
+                w.number != host.window && !host.windowsBeforeAsk.contains(w.number) && !isHosted(window: w.number) && w.layer == 0 && WindowKinds.isStrip(w.bounds, in: placementFor(host))
                     && !(sys.spaces(window: w.number) ?? []).isEmpty
             }
         }
@@ -3569,20 +3551,6 @@ final class HostEngine {
         Diagnostics.note("host: \(host.id): its full screen's toolbar strip (\(strips().map { "\($0.number) at \(r($0.bounds))" }.joined(separator: ", "))) stayed after it was backed out: asked out of full screen once more, \(gone ? "gone" : "still there (never let in front of Margin's window)")")
     }
 
-    // A full-screen window's toolbar strip: as wide as the page area at least (the display's whole width for one that
-    // went full screen on its own), at most `stripMaxHeight` tall.
-    // (Measured against the host's own rect: a card's or a pane's toolbar is as wide as its own window.)
-    private func isStrip(_ b: CGRect, of host: Host) -> Bool {
-        b.height > 0 && b.height <= options.stripMaxHeight && b.width >= min(placement.area.width * 0.9, pageOf(host).width - 2) && b.width > 0
-    }
-
-    // Margin's sidebar: the display's area left of the page area (none narrower than 40 pt: the sidebar hidden).
-    private var sidebarRect: CGRect? {
-        let width = placement.page.minX - placement.area.minX
-        guard width >= 40, placement.area.height > 0 else { return nil }
-        return CGRect(x: placement.area.minX, y: placement.area.minY, width: width, height: placement.area.height)
-    }
-
     // A window the observed model says is never let in front of Margin's window: a leftover, a strip, a transient one
     // (a spare, a twin, a replaced window).
     private func keptBehind(_ w: ServerWindow) -> Bool {
@@ -3590,12 +3558,11 @@ final class HostEngine {
         return k.keptBehind
     }
 
-    // Whether a window at `b` covers at least `sidebarCover` of Margin's sidebar.
+    // Whether a window at `b` covers at least `sidebarCover` of Margin's sidebar (the display's area left of the page
+    // area, none narrower than 40 pt: hidden): the core's `covers_sidebar` (host/front.rs).
     private func coversSidebar(_ b: CGRect) -> Bool {
-        guard let side = sidebarRect else { return false }
-        let i = b.intersection(side)
-        guard !i.isNull, i.width > 0, i.height > 0 else { return false }
-        return i.width * i.height >= side.width * side.height * options.sidebarCover
+        var pl = placement.margin
+        return margin_front_covers_sidebar(b.marginRect, &pl, Double(options.sidebarCover))
     }
 
     // Safari's sidebar read from its View menu and hidden if open, in its hosted window when that's Safari's main one.
@@ -4496,116 +4463,53 @@ final class HostEngine {
     // The tile rect that puts a full-screen window at the page area (nil: none, or the tiles aren't checked).
     private func tileRect(_ p: HostPlacement? = nil) -> CGRect? { tileHome.flatMap { HostLayout.tile(p ?? placement, home: $0) } }
 
-    // ---- a window's own minimum (docs/HOSTING-CORE.md "A window's minimum size") ----
+    // ---- a window's own minimum (docs/HOSTING-CORE.md "A window's minimum size") and cut panes (docs/PEEK-SPLIT.md §4b) ----
+    // The core's (host/model/panes.rs), each asked where it was decided here before, typed (`frame` per follower per
+    // frame of a drag): a host's window frame, its tile's rect, a cut pane's sides and slides, the panes it lies under.
 
-    // Where a full-screen host's window goes for a page area (`p`, else Margin's): the page area, or (its own minimum
-    // wider or taller) that minimum, its right edge and top the page area's (HostLayout.fit). A window-mode one: the
-    // page area (Accessibility keeps its own limits, centred).
-    // Its page area is its own rect when it's visible in another role (a card, a pane: docs/PEEK-SPLIT.md §1), and
-    // such a rect is never overflowed under the sidebar: one below its minimum isn't laid out (`belowMinimum`).
-    private func frame(_ host: Host, _ p: HostPlacement? = nil) -> CGRect {
-        let pl = p ?? placementFor(host)
-        if host.mode == .window { return pl.page }
-        // (A card: its own rect. A split's pane: cut, its window never below its own minimum, Arc's 220 its pane's least.)
-        if host.rect != nil {
-            if host.role == .card { return pl.page }
-            // (Where its arrow slid it while its pane is still the one it was slid in; else away from the other panes.)
-            let slid = host.slid.flatMap { HostLayout.near($0.pane, pl.page, within: options.tolerance) ? $0 : nil }
-            return paneFrame(host, pl.page, area: pl.area, endX: slid?.endX, endY: slid?.endY)
+    // A rule that read a host's minimum as its app's kept one with its process's version unread (`wanted`): each such
+    // version read now (`minimum`: once per process; unreadable, the kept one holds) and the rule asked again, so it's
+    // read in the same call as before and the answer is the one with it.
+    private func versioned<R>(_ ask: () -> (R, wanted: Bool)) -> R {
+        var (r, wanted) = ask()
+        var tried: [UInt32] = []
+        while wanted {
+            let new = core.versionsWanted().filter { !tried.contains($0) }
+            if new.isEmpty { break }
+            for h in new {
+                tried.append(h)
+                if let host = byHandle[h] { _ = minimum(host) }
+            }
+            (r, wanted) = ask()
         }
-        return HostLayout.fit(pl.page, min: host.minSize, in: pl.area)
+        return r
     }
-    // A pane's window frame at an alignment (HostLayout.cut, away from the other panes when nil), held within the display
-    // while it isn't a tile in Margin's Space: macOS keeps a tile past the display's edge, never a full-screen Space's
-    // reservation (its window entering, a member's, tiles off: HostLayout.plan).
-    private func paneFrame(_ host: Host, _ pane: CGRect, area: CGRect, endX: Bool?, endY: Bool?) -> CGRect {
-        let f = HostLayout.cut(pane, min: paneMinimum(host), in: area, page: livePage ?? placement.page, endX: endX, endY: endY)
-        return f != pane && (host.tile == nil || host.noTiles) ? HostLayout.within(f, area) : f
-    }
-    // Its placement as its own full-screen Space reserves it (its window entering, a member placed): its frame held within
-    // the display (`paneFrame`), whatever its tile's would be.
-    private func entryFitted(_ host: Host) -> HostPlacement {
-        var pl = fitted(host)
-        if isCut(host) { pl.page = HostLayout.within(pl.page, pl.area) }
-        return pl
-    }
-    // The page area of a drag of the sidebar's edge as it's followed (a split's panes are laid out away from each other
-    // within it: `frame`), nil: none under way.
-    private var livePage: CGRect?
-    // A pane's window's minimum as it's laid out now: its own as read (never its app's narrowest: a tile narrower than its
-    // window's minimum now makes it leave the tile), else its app's known one before any of its windows was read.
-    private func paneMinimum(_ host: Host) -> CGSize? { host.minSize ?? appMinimum(appKey(host.target), pid: host.pid) }
+
+    // Where a host's window goes for a page area (`p`, else its own): window mode, a card: the page area; a split's pane:
+    // cut at its window's own minimum (Arc's 220 its pane's least), at its slide while its pane is still the one it was
+    // slid in, else away from the other panes, held within the display unless it's a tile (macOS keeps a tile past the
+    // display's edge, never a full-screen Space's reservation); else the page area, or (its own minimum wider or taller)
+    // that minimum, its right edge and top the page area's (HostLayout.fit). A card's or a pane's rect is never
+    // overflowed under the sidebar: one below its minimum isn't laid out (`belowMinimum`).
+    private func frame(_ host: Host, _ p: HostPlacement? = nil) -> CGRect { versioned { core.frame(host.handle, p) } }
+    // Its placement as its own full-screen Space reserves it (its window entering, a member placed): a cut pane's frame
+    // held within the display, whatever its tile's would be.
+    private func entryFitted(_ host: Host) -> HostPlacement { versioned { core.entryFitted(host.handle) } }
     // A cut pane's sides (docs/PEEK-SPLIT.md §4b): each one with part of its window hidden, which its arrow slides into its
     // pane (its other alignment along that axis: never held within the display). None that would put its window over
     // a cut pane whose own window lies over this pane (two panes each over the other's: no order shows both). Nil: not
     // cut.
-    func cutOf(_ host: Host) -> PaneCut? {
-        guard isCut(host), let r = host.rect else { return nil }
-        let f = frame(host), tol = options.tolerance
-        var out = PaneCut()
-        for side in PaneSide.allCases where hidden(side, pane: r, window: f) > tol {
-            let to = slidFrame(host, side)
-            // (Its window held within the display, not a tile: only a slide that shows more of it.)
-            guard hidden(side, pane: r, window: to) < hidden(side, pane: r, window: f) - tol else { continue }
-            let mine = r.insetBy(dx: tol, dy: tol)
-            let crossing = visibleHosts.contains { o in
-                o !== host && o.role != .card && (o.rect ?? placement.page).insetBy(dx: tol, dy: tol).intersects(to) && isCut(o) && frame(o).intersects(mine)
-            }
-            if !crossing { out.sides.insert(side) }
-        }
-        return out
-    }
-    // How far a pane's window passes it on `side` (points; 0 or less: not at all).
-    private func hidden(_ side: PaneSide, pane r: CGRect, window w: CGRect) -> CGFloat {
-        switch side { case .left: r.minX - w.minX; case .right: w.maxX - r.maxX; case .up: r.minY - w.minY; case .down: w.maxY - r.maxY }
-    }
+    func cutOf(_ host: Host) -> PaneCut? { versioned { core.cut(host.handle) } }
     // A cut pane's alignment that shows `side` (its window's start at the pane's for its left or top, its end at the
     // pane's for its right or bottom), the other axis as it is now.
-    private func slideFor(_ host: Host, _ side: PaneSide) -> PaneSlide? {
-        guard let r = host.rect else { return nil }
-        let f = frame(host), tol = options.tolerance
-        // (Along an axis now: true when its window passes its pane's start, false its end, nil neither.)
-        func now(_ start: CGFloat, _ end: CGFloat, _ ws: CGFloat, _ we: CGFloat) -> Bool? { ws < start - tol ? true : we > end + tol ? false : nil }
-        let x = now(r.minX, r.maxX, f.minX, f.maxX), y = now(r.minY, r.maxY, f.minY, f.maxY)
-        switch side {
-        case .left: return PaneSlide(pane: r, endX: false, endY: y)
-        case .right: return PaneSlide(pane: r, endX: true, endY: y)
-        case .up: return PaneSlide(pane: r, endX: x, endY: false)
-        case .down: return PaneSlide(pane: r, endX: x, endY: true)
-        }
-    }
-    // Its window's frame once slid to show `side`.
-    private func slidFrame(_ host: Host, _ side: PaneSide) -> CGRect {
-        guard let r = host.rect, let s = slideFor(host, side) else { return frame(host) }
-        return paneFrame(host, r, area: placementFor(host).area, endX: s.endX, endY: s.endY)
-    }
+    private func slideFor(_ host: Host, _ side: PaneSide) -> PaneSlide? { versioned { core.slideFor(host.handle, side) } }
     // The visible panes a cut pane's window lies under (it passes its own pane into theirs): it's kept behind them. None
     // for one that isn't cut, or whose rest is past the display's edge or under Margin's window.
-    private func lyingUnder(_ h: Host) -> [Host] {
-        guard isCut(h) else { return [] }
-        let f = frame(h), tol = options.tolerance
-        return visibleHosts.filter { o in o !== h && o.role != .card && (o.rect ?? placement.page).insetBy(dx: tol, dy: tol).intersects(f) }
-    }
-    private func tucked(_ h: Host) -> Bool { !lyingUnder(h).isEmpty }
-    // Cut panes lying under others, back to front: each behind every one it lies under, else as given (the focused one,
-    // given last, as far in front as that lets it). A loop (two over each other's, which `cutOf` never offers): as given.
-    private func tuckedOrder(_ list: [Host]) -> [Host] {
-        guard list.count > 1 else { return list }
-        var left = list, out: [Host] = []
-        while !left.isEmpty {
-            // (The first one no other left lies under: nothing left must be behind it.)
-            guard let i = left.firstIndex(where: { h in !left.contains { o in o !== h && lyingUnder(o).contains { $0 === h } } }) else { return out + left }
-            out.append(left.remove(at: i))
-        }
-        return out
-    }
-
+    private func lyingUnder(_ h: Host) -> [Host] { versioned { core.lyingUnder(h.handle) }.compactMap { byHandle[$0] } }
+    // (At `at`: its window's frame as a drag lays it out.)
+    private func tucked(_ h: Host, at: CGRect? = nil) -> Bool { versioned { core.tucked(h.handle, at: at) } }
     // Whether a visible pane's window is wider or taller than its pane (cut), and so lies partly under another.
-    func isCut(_ host: Host) -> Bool {
-        guard host.mode != .window, host.role != .card, let r = host.rect else { return false }
-        let f = frame(host)
-        return f.width > r.width + options.tolerance || f.height > r.height + options.tolerance
-    }
+    func isCut(_ host: Host) -> Bool { versioned { core.isCut(host.handle) } }
     private func fitted(_ host: Host, _ p: HostPlacement? = nil) -> HostPlacement {
         var pl = p ?? placementFor(host)
         pl.page = frame(host, pl)
@@ -4613,32 +4517,29 @@ final class HostEngine {
     }
 
     // ---- several visible hosts per Margin window (docs/PEEK-SPLIT.md §1) ----
+    // The layout, the one shown and what's decided of them are the core's (host/model/visible.rs); each read here is a
+    // typed call, nothing copied.
 
     // A host's own page area: its rect in its role (a card's, a pane's; a split's main pane's), else Margin's page area.
     // Kept on the host while it's parked, so a parked card is never sized for the page area.
-    private func pageOf(_ host: Host) -> CGRect { host.rect ?? placement.page }
+    private func pageOf(_ host: Host) -> CGRect { core.pageOf(host.handle) }
     // Margin's placement with the host's own page area in it.
-    private func placementFor(_ host: Host) -> HostPlacement {
-        guard let rect = host.rect else { return placement }
-        var p = placement
-        p.page = rect
-        return p
-    }
+    private func placementFor(_ host: Host) -> HostPlacement { core.placementFor(host.handle) }
     // Visible now: in the layout and shown (with one host: the one shown).
-    private func isVisible(_ id: HostID) -> Bool { visible[id] != nil && hosts[id]?.phase == .shown }
+    private func isVisible(_ id: HostID) -> Bool { core.isVisible(id) }
     // The hosts visible now, back to front (`z`), the focused one last among equals.
-    private var visibleHosts: [Host] {
-        visible.sorted { ($0.value.z, $0.key == shown ? 1 : 0, $0.key.raw) < ($1.value.z, $1.key == shown ? 1 : 0, $1.key.raw) }
-            .compactMap { hosts[$0.key] }.filter { $0.phase == .shown }
-    }
+    private var visibleHosts: [Host] { core.visible().compactMap { byHandle[$0] } }
     // The visible host at the page area's own role (main), else the focused one.
-    private var mainHost: Host? { visibleHosts.first { $0.role == .main } ?? shown.flatMap { hosts[$0] } }
+    private var mainHost: Host? { host(core.mainHost) }
     // A card's or a pane's rect narrower or lower than its window's own minimum: never laid out so (never under the
-    // sidebar, never below its minimum: the UI clamps first, §4).
+    // sidebar, never below its minimum: the UI clamps first, §4). (A split's pane never is: its window is cut, `frame`.
+    // A card only.)
     private func belowMinimum(_ host: Host, _ rect: CGRect? = nil) -> Bool {
-        // (A split's pane never is: its window is cut, `frame`. A card only.)
-        guard host.mode != .window, host.role == .card, let m = host.minSize ?? appMinimum(appKey(host.target), pid: host.pid), let r = rect ?? host.rect else { return false }
-        return r.width < m.width - options.tolerance || r.height < m.height - options.tolerance
+        let a = core.belowMinimum(host.handle, rect)
+        // (Its app's kept minimum, its process's version read now, once: unreadable, the one kept holds.)
+        guard a.needsVersion, let v = version(of: host.pid) else { return a.below }
+        core.setVersion(host.handle, v)
+        return core.belowMinimum(host.handle, rect).below
     }
 
     // ---- every app's own window minimum, known before its window is made (docs/PEEK-SPLIT.md §4) ----
@@ -4647,8 +4548,8 @@ final class HostEngine {
     // doesn't exist yet. Now each app's minimum, as its tile said it (`learnMinimum`: Safari's from any of its windows),
     // is kept per app and per version of it, in minimums.json beside routes.json (as the routes are, so it's known from
     // the next launch on), told to the page for every pane (`appMinimums`), and checked before anything is opened.
-    private struct AppMinimum: Codable, Equatable { var version: String; var width: Double; var height: Double }
-    private var appMinimums: [String: AppMinimum] = [:]
+    // What's kept, the version it holds for and each host's own are the core's (host/minimums.rs, host/model.rs); the
+    // versions are read here, once per process (the core never reads one), and the file read and written here.
     private var minimumsURL: URL? { markerURL?.deletingLastPathComponent().appendingPathComponent("minimums.json") }
     private var versions: [pid_t: String] = [:] // (read once per process: a minimum looked up per frame of a drag reads none)
     // Told whenever an app's known minimum changes (the session tells Margin's window's page: `knownAppMinimums`).
@@ -4666,59 +4567,56 @@ final class HostEngine {
         if let v { versions[pid] = v }
         return v
     }
-    // An app's known minimum (nil: none known, or kept for another version of it than the one running as `pid`).
-    private func appMinimum(_ key: String, pid: pid_t? = nil) -> CGSize? {
-        guard let m = appMinimums[key] else { return nil }
-        if let pid = pid ?? sys.running(bundleId: key).first?.pid, let v = version(of: pid), v != m.version { return nil }
-        return CGSize(width: m.width, height: m.height)
+    // A host's minimum: its own as read, else its app's kept one for its own process's version (nil: none known).
+    // `known`: a target's (a window-mode host's is its own business: none).
+    private func minimum(_ host: Host, known: Bool = false) -> CGSize? {
+        switch core.minimum(host.handle, known: known) {
+        case .none: return nil
+        case .known(let m): return m
+        case .needsVersion(let m):
+            // (Its app's kept one, its process's version read now, once: unreadable, the one kept holds.)
+            guard let v = version(of: host.pid) else { return m }
+            core.setVersion(host.handle, v)
+            if case .known(let m) = core.minimum(host.handle, known: known) { return m }
+            return nil
+        }
+    }
+    // An app's known minimum with no host of it (nil: none known, or kept for another version of it than the one running).
+    private func appMinimum(_ key: String) -> CGSize? {
+        guard core.hasMinimum(key) else { return nil }
+        return core.knownMinimum(key, version: sys.running(bundleId: key).first.flatMap { version(of: $0.pid) })
     }
     // A target's window's minimum: its own host's as learnt, else its app's known one. Nil: none known (a window-mode
     // host's is its own business).
     func knownMinimum(of target: HostTarget) -> CGSize? {
-        if let h = hosts[target.id] { return h.mode == .window ? nil : h.minSize ?? appMinimum(appKey(target), pid: h.pid) }
+        if let h = hosts[target.id] { return minimum(h, known: true) }
         return appMinimum(appKey(target))
     }
     // Every app's known minimum, by bundle id (the running version's only).
     var knownAppMinimums: [String: CGSize] {
         var out: [String: CGSize] = [:]
-        for key in appMinimums.keys { if let m = appMinimum(key) { out[key] = m } }
+        for key in core.minimumApps() { if let m = appMinimum(key) { out[key] = m } }
         for h in hosts.values where h.mode != .window { if let m = h.minSize { out[appKey(h.target)] = m } }
         return out
     }
     // A host's minimum as just learnt, kept as its app's (and saved) when it's new for that app's version.
     private func rememberMinimum(_ host: Host, _ m: CGSize) {
-        let key = appKey(host.target)
-        let v = version(of: host.pid) ?? "?"
-        let next = AppMinimum(version: v, width: Double(m.width), height: Double(m.height))
-        guard appMinimums[key] != next else { return }
-        appMinimums[key] = next
+        let v = version(of: host.pid)
+        guard core.rememberMin(host.handle, version: v) else { return }
         saveMinimums()
-        Diagnostics.note("host: \(key) \(v): its windows' minimum \(Int(m.width))×\(Int(m.height)) kept for it (before any of its windows is made, from now on)")
+        Diagnostics.note("host: \(appKey(host.target)) \(v ?? "?"): its windows' minimum \(Int(m.width))×\(Int(m.height)) kept for it (before any of its windows is made, from now on)")
         onAppMinimums?()
     }
     private func loadMinimums() {
-        guard let url = minimumsURL, let data = try? Data(contentsOf: url),
-              let read = try? JSONDecoder().decode([String: AppMinimum].self, from: data) else { return }
-        appMinimums = read.filter { $0.value.width >= 0 && $0.value.height >= 0 && $0.value.width < 20000 && $0.value.height < 20000 }
+        if let minimumsURL { core.loadMinimums(from: minimumsURL) }
     }
     private func saveMinimums() {
-        guard let url = minimumsURL, let data = try? JSONEncoder().encode(appMinimums) else { return }
-        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? data.write(to: url, options: .atomic)
+        if let minimumsURL { core.saveMinimums(to: minimumsURL) }
     }
-    // `shown` changed outside a whole layout's change: the layout is it alone (main at the page area), or what's left.
-    private func followShown(_ was: HostID?) {
-        guard !applyingLayout else { return }
-        if let id = shown {
-            // (Alone at the page area from now: its rect and role as the layout says, never a pane's rect kept on it,
-            // which every placing reads: `pageOf`.)
-            if visible[id] == nil { visible = [id: HostVisible(rect: nil, role: .main, z: 0)]; hosts[id]?.rect = nil; hosts[id]?.role = .main; hosts[id]?.slid = nil }
-        } else if let was {
-            visible[was] = nil
-        }
-    }
+    // (`shown` changed outside a whole layout's change: the layout is it alone (main at the page area, never a pane's
+    // rect kept on it, which every placing reads: `pageOf`), or what's left. The core's, as it's set: `set_shown`.)
     // The order hosts are looked at in: the focused one, the others visible, the rest.
-    private func rank(_ id: HostID) -> Int { id == shown ? 0 : isVisible(id) ? 1 : 2 }
+    private func rank(_ id: HostID) -> Int { core.rank(id) }
     // A card's or a pane's rect below its window's minimum, said once for that rect (and told as a failed placing).
     private var belowSaid: [HostID: CGRect] = [:]
     private func sayBelowMinimum(_ host: Host) {
@@ -4730,32 +4628,20 @@ final class HostEngine {
     }
     // The one shown before `id` comes in, to be parked as it does: none while both are in the layout (a card or a pane
     // comes in beside main, never in its place).
-    private func before(_ id: HostID) -> Host? {
-        guard let s = shown, s != id, let h = hosts[s] else { return nil }
-        return visible[id] != nil && visible[s] != nil ? nil : h
-    }
-    // Hosts no longer visible (parked, gone) out of the layout; never the one shown.
-    private func pruneVisible() {
-        guard !applyingLayout else { return }
-        visible = visible.filter { $0.key == shown || hosts[$0.key].map { $0.phase != .parked } == true }
-    }
-    // The focus asked for (`setLayout`, `focus`): kept while it's visible (a step that shows another host in the layout
-    // moves `shown` to it on its way). Nil: with one visible host, always.
-    private var focusWanted: HostID?
-    // At the end of each operation: the layout as it is (hosts parked or gone out of it), the focus where it was asked
-    // (or on the frontmost one left when the focused one went), said to Margin's window if any of it changed. Nothing
-    // with one visible host (nothing changes then).
+    private func before(_ id: HostID) -> Host? { host(core.before(id)) }
+    // At the end of each operation: the layout as it is (hosts parked or gone out of it, never the one shown), the focus
+    // where it was asked (`setLayout`, `focus`: forgotten with one visible host; or on the frontmost one left when the
+    // focused one went), said to Margin's window if any of it changed. Nothing with one visible host (nothing changes
+    // then). Each step the core's, the one shown set here (Margin's window told as it is).
     private func settleVisible() {
-        guard !applyingLayout else { return }
-        let was = (visible, shown)
-        pruneVisible()
-        if visible.count <= 1 { focusWanted = nil }
-        if shown == nil, let next = visibleHosts.last { shown = next.id }
-        if let f = focusWanted, f != shown, isVisible(f) { shown = f }
-        if visible != was.0 || shown != was.1 || !hostedWindowsSaid.isEmpty || visible.count > 1 { announceHosted() }
+        let was = (core.generation, shown)
+        guard let next = core.settleBegin() else { return }
+        if let next { shown = host(next)?.id }
+        if let f = core.settleFocus() { shown = host(f)?.id }
+        if core.generation != was.0 || shown != was.1 || !hostedWindowsSaid.isEmpty || core.layoutCount > 1 { announceHosted() }
     }
     // Its tile's rect for a page area: never narrower than its window's minimum.
-    private func tileRect(for host: Host, _ p: HostPlacement? = nil) -> CGRect? { tileHome.flatMap { HostLayout.tile(fitted(host, p), home: $0) } }
+    private func tileRect(for host: Host, _ p: HostPlacement? = nil) -> CGRect? { tileHome.flatMap { home in versioned { core.tileRect(host.handle, p, home: home) } } }
 
     // Its window's tile in a full-screen Space of its own (by its window; the only one there).
     private func ownTile(_ host: Host, in space: UInt64) -> UInt64? {
@@ -4768,14 +4654,16 @@ final class HostEngine {
     // of the tile's values: never per frame of a drag. True: it changed.
     @discardableResult private func learnMinimum(_ host: Host, tile: UInt64? = nil) -> Bool {
         guard host.mode != .window, let t = tile ?? host.tile else { return false }
-        // (A tile that says none now, its minimum read before: kept (an app's minimum doesn't go), said once.)
-        guard let read = sys.tileMinSize(t) else {
-            if host.minSize != nil, !host.minUnreadSaid { host.minUnreadSaid = true; Diagnostics.note("host: \(host.id): its tile \(t) says no minimum now (\(host.phase == .parked ? "parked" : "shown")): its minimum as read before kept") }
+        // (Rounded up to whole points, its own when it's new; a tile that says none now, its minimum read before: kept (an
+        // app's minimum doesn't go), said once. The core's: host/model.rs `learn_min`.)
+        switch core.learnMin(host.handle, sys.tileMinSize(t)) {
+        case .same: return false
+        case .unreadSay:
+            Diagnostics.note("host: \(host.id): its tile \(t) says no minimum now (\(host.phase == .parked ? "parked" : "shown")): its minimum as read before kept")
             return false
+        case .changed: break
         }
-        let m = CGSize(width: read.width.rounded(.up), height: read.height.rounded(.up))
-        guard m != host.minSize else { return false }
-        host.minSize = m
+        let m = host.minSize ?? .zero
         Diagnostics.note("host: \(host.id): its window's own minimum \(Int(m.width))×\(Int(m.height)) (its tile's): never sized smaller, the sidebar's edge stops there while it's shown")
         rememberMinimum(host, m)
         // (A split's pane's too: its page's divider stops there, docs/PEEK-SPLIT.md §4.)
@@ -4783,13 +4671,12 @@ final class HostEngine {
         return true
     }
 
-    private func held(_ host: Host, _ width: CGFloat) { host.narrowestHeld = min(host.narrowestHeld ?? width, width) }
+    private func held(_ host: Host, _ width: CGFloat) { core.held(host.handle, width) }
 
     // No minimum said by its tile, and it left one (`tileBack`): the narrowest it held is taken for its minimum (it took
     // that, and not the rect that made it leave): said once, told like a read one.
     private func learnMinimumFromLeaving(_ host: Host) {
-        guard host.mode != .window, host.minSize == nil, let w = host.narrowestHeld else { return }
-        host.minSize = CGSize(width: w.rounded(.up), height: 0)
+        guard let w = core.learnFromLeaving(host.handle) else { return }
         Diagnostics.note("host: \(host.id): its tile says no minimum and it left one narrower than \(Int(w)): \(Int(w)) taken for its minimum width (never sized narrower)")
         if shown == host.id || mainHost === host { sayMinimum() }
     }
@@ -4801,7 +4688,7 @@ final class HostEngine {
     var onMinimum: ((CGFloat?) -> Void)?
     private func sayMinimum() { onMinimum?(shownMinimumWidth) }
     // (Several visible: main's, the one at the page area; a card's or a pane's minimum never stops the sidebar's edge.)
-    var shownMinimumWidth: CGFloat? { mainHost.flatMap { $0.phase == .shown && $0.mode != .window && $0.rect == nil ? $0.minSize?.width : nil } }
+    var shownMinimumWidth: CGFloat? { core.shownMinWidth }
 
     // Its window's own tile (in its own full-screen Space `own`) into Margin's Space at the end of its layout (its window
     // with it, still full screen), the tile limit raised first, then every rect set again, its own to the page area.
@@ -5120,8 +5007,7 @@ final class HostEngine {
             // (Shown: out of its tile and in again as a plain member now, behind the loader. Parked: at its next show.)
             if shown == host.id, host.phase == .shown { _ = await placeFullScreen(host, isNew: false, retrying: false) }
         case .window:
-            host.retryFullScreen = false
-            host.fullScreenFailures = max(host.fullScreenFailures, 2)
+            core.movedToWindow(host.handle)
             if shown == host.id, host.phase == .shown {
                 _ = await fallBack(host, isNew: false, retrying: true, .place, "the loop guard moved it to window mode", previous: nil)
             } else {
@@ -5140,28 +5026,21 @@ final class HostEngine {
     // after: the hosted app gets one live-resize start and end, not one per frame: the kit's lead 4).
     @discardableResult func dragging(_ on: Bool) -> Bool {
         if on {
-            // (Several visible, docs/PEEK-SPLIT.md §1: every visible tile or window-mode window follows, each its own rect.)
-            let others = visibleHosts.filter { $0.id != shown && ($0.tile != nil || $0.mode == .window) }
-            guard !liveOn, !quitting, let id = shown, let host = hosts[id], host.phase == .shown, host.tile != nil || host.mode == .window || !others.isEmpty else { return false }
-            liveOn = true
-            liveHeld = false
-            liveLast = sys.now()
+            // (Several visible, docs/PEEK-SPLIT.md §1: every visible tile or window-mode window follows, each its own rect.
+            // The core's: none under way, not quitting, the one shown shown, and it or another visible one follows.)
+            guard let others = core.liveStart(now: sys.now(), quitting: quitting), let host = shown.flatMap({ hosts[$0] }) else { return false }
             liveStats = LiveStats(since: sys.now())
             liveRects = [:]
             // (Its minimum read once more as the drag begins (one read, none per frame): the page's edge stops there.)
             if host.tile != nil { learnMinimum(host); _ = sys.setLiveResizing(marginSpace, true) }
-            for o in others where o.tile != nil {
+            for o in others.compactMap({ byHandle[$0] }) where o.tile != nil {
                 learnMinimum(o)
                 if host.tile == nil { _ = sys.setLiveResizing(marginSpace, true) }
             }
             return true
         }
-        guard liveOn else { return false }
-        liveOn = false
-        liveHeld = false
-        livePending = nil
+        guard core.liveEnd() else { return false }
         liveRects = [:]
-        livePage = nil
         if tilesOK { _ = sys.setLiveResizing(marginSpace, false) }
         Diagnostics.note("host: live resize: in \(ms(since: liveStats.since)) ms: \(liveStats.line) (wait \(Int(options.liveWait * 1000)) ms)")
         lastLive = liveStats
@@ -5177,13 +5056,12 @@ final class HostEngine {
     // `rects`: the other visible hosts' rects in this frame of the drag (a card's, a pane's: the page's measure); one
     // not given keeps its own. The newest frame wins for every host at once.
     func follow(_ p: HostPlacement, rects: [HostID: CGRect]) {
-        guard liveOn else { return }
-        liveLast = sys.now()
+        // (The newest frame, the drag's page area: the core's.)
+        let now = sys.now()
+        guard core.liveFollow(now: now, p) else { return }
         liveStats.asked += 1
-        if let last = liveStats.lastAsk { liveStats.gaps.append(liveLast - last) }
-        liveStats.lastAsk = liveLast
-        livePending = p
-        livePage = p.page
+        if let last = liveStats.lastAsk { liveStats.gaps.append(now - last) }
+        liveStats.lastAsk = now
         if !rects.isEmpty, rects != liveRects {
             liveRects = rects
             // (Several visible: Margin's window told every one's rect in this frame at once, its holes and the pointer's
@@ -5199,22 +5077,22 @@ final class HostEngine {
     // area; another visible one at its own, never below its minimum (not sent this frame). What its window should be
     // at after, nil: nothing sent.
     private func sendLive(_ host: Host, _ p: HostPlacement) async -> CGRect? {
-        guard host.phase == .shown, host.tile != nil || host.mode == .window else { return nil }
-        var q = p
-        q.page = liveRects[host.id] ?? host.rect ?? p.page
-        // (Never narrower than its window's own minimum: a comparison, nothing read. The page's divider and the sidebar's
-        // edge stop there already; this holds for a minimum learnt mid-drag too.)
-        if host.id != shown, host.rect != nil || liveRects[host.id] != nil, belowMinimum(host, q.page) { return nil }
-        let page = host.tile != nil ? frame(host, q) : q.page
-        if let tile = host.tile, let rect = tileRect(for: host, q) {
+        // (Which rect, and whether at all: the core's. Never narrower than its window's own minimum: a comparison,
+        // nothing read. The page's divider and the sidebar's edge stop there already; this holds for a minimum learnt
+        // mid-drag too.)
+        switch versioned({ core.liveSend(host.handle, p, given: liveRects[host.id], home: tileHome) }) {
+        case .none: return nil
+        case .tile(let rect, let page):
+            guard let tile = host.tile else { return nil }
             observer.sized(pid: host.pid, rects: [rect, page]) // (no cause noted a frame: a drag is the person's)
             guard sys.setTileRect(tile, rect) else { return nil }
-        } else if host.mode == .window {
-            let want = host.resizable ? page : centredIn(page, sys.bounds(window: host.window)?.size ?? page.size)
+            return page
+        case .frame(let page, let centred):
+            let want = centred ? HostLayout.inside(page, sys.bounds(window: host.window)?.size ?? page.size) : page
             guard await sys.setFrame(pid: host.pid, window: host.window, want, size: host.resizable) else { return nil }
             host.frameChanged = true
-        } else { return nil }
-        return page
+            return page
+        }
     }
 
     // The drag's frames to every visible host that follows (a tile, a window-mode window): each its own rect, at most one
@@ -5225,72 +5103,48 @@ final class HostEngine {
     // same tick, tiles first (nothing awaited between them), a window-mode window's frame after.
     private func pumpLive() async {
         defer { livePump = nil }
-        // (Each host's rect in flight (where its window should land) and when it was sent; when it was last sent.)
-        var flights: [HostID: (want: CGRect, at: Double, exact: Bool)] = [:]
-        var lastSent: [HostID: Double] = [:]
-        var frame: HostPlacement?
-        var owed: Set<HostID> = [] // followers not yet sent the newest frame
+        // (Each host's flight, when it was last sent, the frame and who's owed it: the core's, for this run.)
+        core.livePumpBegin()
         while liveOn {
             let now = sys.now()
-            // (Landed, or given up on after `liveWait`: free for the next frame.)
-            for (id, f) in flights {
-                guard let h = hosts[id] else { flights[id] = nil; continue }
-                let there = !f.exact || sys.bounds(window: h.window).map { HostLayout.near($0, f.want, within: options.tolerance) } == true
-                if there {
-                    liveStats.landed(id, now - f.at)
-                    if h.tile != nil { held(h, f.want.width) }
-                    flights[id] = nil
-                } else if now - f.at >= options.liveWait {
-                    liveStats.missed(id)
-                    flights[id] = nil
-                }
+            // (Landed (its window's bounds read, near its rect), or given up on after `liveWait`: free for the next frame;
+            // the newest frame owed to every follower; held while an operation runs, Margin quits, or the one shown left
+            // its tile in this drag or isn't shown; then the followers free for it, tiles first.)
+            let t = core.liveTick(now: now, timing: MarginLiveTiming(frame: options.liveFrame, wait: options.liveWait, tolerance: options.tolerance),
+                                  busy: busy, quitting: quitting, bounds: { sys.bounds(window: $0) }) { h, took in
+                guard let id = byHandle[h]?.id else { return }
+                if let took { liveStats.landed(id, took) } else { liveStats.missed(id) }
             }
-            if let p = livePending {
-                livePending = nil
-                frame = p
-                owed = Set(liveFollowersList().map(\.id))
-            }
-            // (An operation running, or the one shown left its tile in this drag: held a frame, the newest kept.)
-            guard !busy, !quitting, !liveHeld, let id = shown, let host = hosts[id], host.phase == .shown else {
-                if frame != nil, !owed.isEmpty { liveStats.held += 1 }
-                if frame == nil || owed.isEmpty, flights.isEmpty { break }
+            guard t.go else {
+                if t.held { liveStats.held += 1 }
+                if t.stop { break }
                 await sys.sleep(options.liveFrame)
                 continue
             }
-            if let p = frame, !owed.isEmpty {
-                let free = liveFollowersList().filter { owed.contains($0.id) && flights[$0.id] == nil && now - (lastSent[$0.id] ?? -.infinity) >= options.liveFrame - 1e-6 }
-                    .sorted { ($0.tile != nil ? 0 : 1) < ($1.tile != nil ? 0 : 1) }
+            if !t.sends.isEmpty, let host = byHandle[t.shown] {
+                let free = t.sends.compactMap { byHandle[$0] }
                 var sentNow: [Host] = []
                 for h in free {
-                    owed.remove(h.id)
                     let at = sys.now()
-                    guard let want = await sendLive(h, p) else { continue }
-                    flights[h.id] = (want, at, h.mode != .window || h.resizable)
-                    lastSent[h.id] = at
+                    guard let want = await sendLive(h, t.frame) else { continue }
+                    core.liveSent(h.handle, at: at, want: want)
                     liveStats.sent(h.id)
                     sentNow.append(h)
                 }
                 if !sentNow.isEmpty {
                     liveStats.ticks += 1
                     if sentNow.count > 1 { liveStats.together += 1 }
-                    if owed.isEmpty { liveStats.frames += 1 }
+                    if t.owedEmpty { liveStats.frames += 1 }
                     // (A window-mode window's hole is its bounds: Margin's window reads them again now it's moved.)
                     if host.mode == .window, sentNow.contains(where: { $0 === host }) { hostedWindow?(host.window) }
-                    if sentNow.contains(where: { $0 !== host && $0.mode == .window }) { hostedWindowsSaid = []; sayHostedWindows(live: liveOn ? p : nil) }
+                    if sentNow.contains(where: { $0 !== host && $0.mode == .window }) { hostedWindowsSaid = []; sayHostedWindows(live: liveOn ? t.frame : nil) }
                 }
-                if owed.isEmpty { frame = nil }
             }
-            if frame == nil, flights.isEmpty, livePending == nil { break }
+            if core.liveDone() { break }
             await sys.sleep(options.tileEvery)
         }
     }
 
-    // The visible hosts that follow a drag live (a tile, a window-mode window), the one shown first.
-    private func liveFollowersList() -> [Host] {
-        let list = visible.count > 1 ? visibleHosts : shown.flatMap { hosts[$0] }.map { [$0] } ?? []
-        let shownFirst = list.filter { $0.id == shown } + list.filter { $0.id != shown }
-        return shownFirst.filter { $0.phase == .shown && ($0.tile != nil || $0.mode == .window) }
-    }
     // Live resize: the one shown left its tile for a full-screen Space of its own (its app's answer to a tile it
     // couldn't take: Weather on the real Mac, 2026-11-18 09:08, its tile sent narrower than its minimum): its tile there
     // moved back into Margin's Space and sized (never below its minimum, read from that tile first), that Space
@@ -5338,7 +5192,7 @@ final class HostEngine {
                 await park(h)
                 emit(.parked(h.id))
             }
-            visible[h.id] = nil
+            core.setLayout(h.id, nil)
             saveMarker()
             Diagnostics.note("host: \(h.id) parked (\(why)) in \(ms(since: t0)) ms")
             emit(.unshown(h.id))
@@ -5377,6 +5231,13 @@ final class HostEngine {
     // taken for a stray, brought back, placed again, refused, and reopened: a window the person closed came back). A
     // window on screen isn't taken for closed whatever was said (one Accessibility lists again is taken off by the
     // observer).
+    // A window's place by its Spaces as read, for the core's decisions (host/model/watch.rs `Place`): unread, in no
+    // Space, in Margin's Space alone, elsewhere.
+    private func place(_ spaces: [UInt64]?) -> HostCore.Place {
+        guard let spaces else { return .unread }
+        return spaces.isEmpty ? .nowhere : spaces == [marginSpace] ? .inPage : .elsewhere
+    }
+
     private func closedByItsApp(_ host: Host) -> Bool {
         guard observer.model.apps[host.pid]?.closed.contains(host.window) == true else { return false }
         if (sys.spaces(window: host.window) ?? []).isEmpty { return true }
@@ -5397,26 +5258,27 @@ final class HostEngine {
         if isVisible(id) {
             let spaces = sys.spaces(window: host.window)
             // (Mid-drag: not followed again until it's over, whatever comes of it; never twice in one drag.)
-            if liveOn, spaces != [marginSpace] { liveHeld = true }
+            if liveOn, spaces != [marginSpace] { core.liveHold() }
             let seen = "its window in \(spaces.map { $0.isEmpty ? "no user Space" : $0.map { "\($0) (type \(sys.spaceType($0).map(String.init) ?? "?"))" }.joined(separator: ", ") } ?? "Spaces that don't read"), Margin's Space \(marginSpace), Margin's window \(marginHere ? "in it" : "out of it")"
                 + ", its bounds \(sys.bounds(window: host.window).map(r) ?? "unread")" + (host.askedFullScreenAt.map { ", \(ms(since: $0)) ms after it was last asked into full screen" } ?? "")
             // (Read again now, after whatever ran since the poll's read: both where they should be, nothing to do. An
             // operation in between put it right, or the poll's one read of it in no Space was the bridge's move landing.)
+            // (The core's, with its returns' budget: past it parked alone. Bringing it back is the guard's "put back", a
+            // reaction it counts.)
             let marginNow = marginWindow == 0 || sys.spaces(window: marginWindow).map { $0.contains(marginSpace) } ?? true
-            if marginNow, spaces == [marginSpace] { return }
-            guard marginHere, marginNow else {
+            switch core.stray(host.handle, now: sys.now(), place: place(spaces), marginHere: marginHere, marginNow: marginNow) {
+            case .nothing: return
+            case .park:
                 Diagnostics.note("host: \(id): shown, found where it mustn't be (\(seen))")
                 return await parkShownNow(why: "its window left Margin's Space, or Margin's window did")
-            }
-            host.returns = host.returns.filter { sys.now() - $0 < options.returnsWithin } + [sys.now()]
-            guard host.returns.count <= options.returnsMax else {
-                Diagnostics.note("host: \(id): shown, out of Margin's Space again (\(seen)), \(host.returns.count) times in \(Int(options.returnsWithin)) s: parked")
-                host.returns = []
+            case .parkOnly(let count):
+                Diagnostics.note("host: \(id): shown, out of Margin's Space again (\(seen)), \(count) times in \(Int(options.returnsWithin)) s: parked")
                 return await parkShownNow(why: "its window keeps leaving Margin's Space", only: host)
+            case .putBack:
+                guard guarded(host, "put back") else { return }
+                Diagnostics.note("host: \(id): shown, found out of Margin's Space (\(seen)): brought back")
+                await bringBack(host, from: spaces ?? [])
             }
-            guard guarded(host, "put back") else { return }
-            Diagnostics.note("host: \(id): shown, found out of Margin's Space (\(seen)): brought back")
-            await bringBack(host, from: spaces ?? [])
         }
     }
 
@@ -5483,9 +5345,10 @@ final class HostEngine {
     //   (what brought it back on the real Mac, 2026-11-17). `returnsMax` times in `returnsWithin` at most, then left as it
     //   is, said once.
     private func backOnScreen(_ id: HostID) async {
-        guard let host = hosts[id], isVisible(id), let look = screenLook(sys.onScreenWindows(), of: host), !(look.margin && look.host) else { return }
+        guard let host = hosts[id], isVisible(id), let look = screenLook(sys.onScreenWindows(), of: host),
+              HostCore.stillOff(margin: look.margin, host: look.host, own: nil) else { return }
         let own = sys.windowOnScreen(host.window)
-        if look.margin, let own, own.onScreen, own.alpha > 0 { return }
+        guard HostCore.stillOff(margin: look.margin, host: look.host, own: own.map { $0.onScreen && $0.alpha > 0 }) else { return }
         let spaces = sys.spaces(window: host.window)
         let current = sys.currentSpace(onDisplayOf: marginSpace)
         let seen = "Margin's window \(look.margin ? "on" : "off") screen, its window \(host.window) \(look.host ? "on" : "off") screen and in \(spaces.map { "\($0)" } ?? "Spaces that don't read")"
@@ -5493,15 +5356,20 @@ final class HostEngine {
             + ", Margin's Space \(marginSpace), its window in \(sys.spaces(window: marginWindow).map { "\($0)" } ?? "Spaces that don't read")"
             + ", the displays' current Spaces \(sys.currentSpaces().map { $0.joined(separator: ", ") } ?? "unread")"
             + (host.askedFullScreenAt.map { ", \(ms(since: $0)) ms after it was last asked into full screen" } ?? "")
-        // (Its own budget: a split's other panes' tries never use it up, docs/PEEK-SPLIT.md §4.)
-        host.offTries = host.offTries.filter { sys.now() - $0 < options.returnsWithin }
-        if look.margin, current == marginSpace, spaces == [marginSpace] {
-            guard host.offActedFor != host.visibleAt, host.offTries.count < options.returnsMax else {
-                if host.offInPlaceSaid != host.visibleAt { host.offInPlaceSaid = host.visibleAt; Diagnostics.note("host: \(id): shown, still not on screen in Margin's Space (\(seen)): left as it is until it's shown again") }
-                return
-            }
-            host.offActedFor = host.visibleAt
-            host.offTries.append(sys.now())
+        // (The core's: in place or elsewhere, its own budget (a split's other panes' tries never use it up,
+        // docs/PEEK-SPLIT.md §4; in place once a show), what's made current and moved; each action counted toward the
+        // loop guard's per-second hold.)
+        let makeCurrent: Bool, moveIn: Bool
+        switch core.offScreen(host.handle, now: sys.now(), marginOn: look.margin, hostOn: look.host, currentIsMargin: current == marginSpace, place: place(spaces), guarded: options.loopGuard) {
+        case .held(let until): return Diagnostics.note("host: \(id): brought back on screen held: too many reactions this second across every host (\(Int(max(0, until - sys.now()) * 1000)) ms more)")
+        case .inPlaceSpent(let say):
+            if say { Diagnostics.note("host: \(id): shown, still not on screen in Margin's Space (\(seen)): left as it is until it's shown again") }
+            return
+        case .giveUp(let say, let count):
+            if say { Diagnostics.warn("host: \(id): shown, not on screen (\(seen)), \(count) times in \(Int(options.returnsWithin)) s: left as it is") }
+            return
+        case .act(let made, let moved): makeCurrent = made; moveIn = moved
+        case .inPlace:
             // (Its app's own first, the reconciler's rungs not tried yet this show: an app that ordered its window out
             // orders it in again at its activation or its reopen (ordersOut after: placing it again only took it out of
             // full screen and back, again and again). Then placed again: macOS's own change that left it undrawn.)
@@ -5518,14 +5386,7 @@ final class HostEngine {
             if case .failed = await placeFullScreen(host, isNew: false, retrying: false), !isVisible(host.id) { emit(.unshown(host.id)) }
             return
         }
-        guard host.offTries.count < options.returnsMax else {
-            if !host.offSaid { host.offSaid = true; Diagnostics.warn("host: \(id): shown, not on screen (\(seen)), \(host.offTries.count) times in \(Int(options.returnsWithin)) s: left as it is") }
-            return
-        }
-        host.offTries.append(sys.now())
         let t0 = sys.now()
-        let makeCurrent = current != marginSpace || !look.margin
-        let moveIn = !look.host && (spaces != [marginSpace] || !look.margin)
         Diagnostics.note("host: \(id): shown, not on screen (\(seen)): \([makeCurrent ? "Margin's Space made current again" : nil, moveIn ? "its window moved into it again" : nil].compactMap { $0 }.joined(separator: ", "))")
         if makeCurrent { _ = sys.setCurrentSpace(marginSpace) }
         if moveIn { _ = sys.move(window: host.window, to: marginSpace) }
@@ -5629,13 +5490,11 @@ final class HostEngine {
                 let t0 = self.sys.now()
                 var steps = 0
                 while true {
-                    let k = min(1, (self.sys.now() - t0) / self.options.slideTime)
-                    let e = 1 - pow(1 - k, 3) // (ease out)
-                    var p = self.placement
-                    p.page = CGRect(x: from.minX + (target.minX - from.minX) * e, y: from.minY + (target.minY - from.minY) * e, width: target.width, height: target.height)
-                    if let rect = HostLayout.tile(p, home: home) { self.sendTileRect(h, tile, rect) }
+                    // (This frame's rect from the time it is, the core's: eased out, one a frame; its tile's sent here.)
+                    let step = self.core.slideStep(from: from, to: target, elapsed: self.sys.now() - t0, time: self.options.slideTime, home: home)
+                    if let rect = step.tile { self.sendTileRect(h, tile, rect) }
                     steps += 1
-                    if k >= 1 { break }
+                    if step.last { break }
                     await self.sys.sleep(self.options.liveFrame)
                 }
                 Diagnostics.note("host: \(id): slid to show its \(side.rawValue) side, \(self.r(from)) → \(self.r(target)) in \(self.ms(since: t0)) ms (\(steps) rects)\(self.tucked(h) ? ", under the pane beside it" : "")")
@@ -5643,7 +5502,7 @@ final class HostEngine {
                 _ = await self.place(h)
                 Diagnostics.note("host: \(id): moved to show its \(side.rawValue) side, \(self.r(from)) → \(self.r(target)) (no tile: at once)")
             }
-            if !self.tucked(h) { self.cutOrderRight(h.id) }
+            if !self.tucked(h) { self.cutOrderRight(h) }
             self.sayHostedWindows()
             return true
         }
@@ -5666,62 +5525,63 @@ final class HostEngine {
         // else until it's answered (Books, 2026-11-18 23:21: out of full screen not taken for 7 s, its close button
         // refused, its quit refused, then left on the Desktop). Asked to quit at once with its window left where it is: one
         // that quits is gone as any (the poll hears it); one its prompt holds stays Margin's, shown until something else is
-        // (a switch parks it then, as any), said in the sidebar once `quitWait` has passed.
-        if exit == .watched, host.launchedByMargin, host.safariWindow == nil, asking(host), !hosts.values.contains(where: { $0.id != id && $0.pid == host.pid }) {
-            if case .app = host.target {
-                host.quitAskedAt = sys.now()
-                host.askingSaid = false
-                let asked = sys.terminate(pid: host.pid)
-                Diagnostics.note("host: \(id): its row closed while its app is asking something: asked to quit with its window where it is\(asked ? "" : " (its quit ask not taken: macOS takes none from an app already quitting)"); kept in Margin if its prompt holds it")
-                return
-            }
+        // (a switch parks it then, as any), said in the sidebar once `quitWait` has passed. Each decision below is the
+        // core's (host/close.rs), asked at its point with the host's facts as they are then.
+        let kind: HostClose.Exit = exit == .watched ? .watched : exit == .atQuit ? .atQuit : .waited
+        let isAsking = exit == .watched && host.launchedByMargin && host.safariWindow == nil && asking(host)
+        if HostClose.quitAtOnce(kind, closeFacts(host, sharesApp: isAsking && hosts.values.contains { $0.id != id && $0.pid == host.pid }, asking: isAsking)) {
+            host.quitAskedAt = sys.now()
+            host.askingSaid = false
+            let asked = sys.terminate(pid: host.pid)
+            Diagnostics.note("host: \(id): its row closed while its app is asking something: asked to quit with its window where it is\(asked ? "" : " (its quit ask not taken: macOS takes none from an app already quitting)"); kept in Margin if its prompt holds it")
+            return
         }
-        let atQuit = exit == .atQuit, waits = exit == .waited
+        let atQuit = exit == .atQuit
         let started = sys.now()
         var times: [String] = []
         var t0 = started
         func step(_ name: String) { times.append("\(name) \(ms(since: t0))"); t0 = sys.now() }
-        let seen = (host.phase == .shown && host.mode == .window) || (host.mode == .window && host.frameChanged) || (host.member && !viaCopy(host))
-        let frozen = seen ? holdFreeze() : false
+        let frozen = HostClose.freeze(closeFacts(host)) ? holdFreeze() : false
         defer { releaseFreeze(frozen) }
-        if host.mode == .window {
+        switch HostClose.giveBack(closeFacts(host)) {
+        case .frame:
             await restoreFrame(host)
             step("frame")
             if shown == id { shown = nil }
-        } else if !viaCopy(host), host.member || host.phase == .shown || host.fullScreenSpace != nil {
+        case .outOfFullScreen:
+            // (Through its copy only a Safari window Margin asked for, mid-way in its own Space; a member: toNormal below.)
             await backOut(host)
             step("out of full screen")
-        } else if viaCopy(host), host.fullScreenSpace != nil {
-            await backOut(host) // (a Safari window Margin asked for, mid-way in its own Space; a member: toNormal below)
-            step("out of full screen")
+        case .nothing: break
         }
         if shown == id { shown = nil }
         let sharesApp = hosts.values.contains { $0.id != id && $0.pid == host.pid }
-        let quits = host.launchedByMargin && !sharesApp
-        let anApp: Bool = { if case .app = host.target { return true }; return false }()
-        // Its window closed first (its frame back already), when that's harmless (`closesFirst`). Closed, there's nothing
-        // to take home; not closed, it goes home as any.
-        let tries = quits && anApp && host.safariWindow == nil && closesFirst(host)
+        let quits = HostClose.quits(closeFacts(host, sharesApp: sharesApp))
+        // Its window closed first (its frame back already), when that's harmless (`closesFirst`, asked of its app only
+        // when the core says it may be). Closed, there's nothing to take home; not closed, it goes home as any.
+        let tries = HostClose.closeFirstAsks(quits: quits, closeFacts(host)) && closesFirst(host)
         let closed = tries ? await closeBeforeQuit(host) : false
         if tries { step(closed ? "closed" : "close tried") }
-        if !closed, host.mode == .window || host.personApp {
+        if HostClose.homeAfter(closed: closed, closeFacts(host)) {
             await returnHome(host)
             step("home")
         }
-        if quits, !closed, anApp, host.safariWindow == nil {
+        if HostClose.beforeQuitAsks(quits: quits, closed: closed, closeFacts(host)) {
             let inMargin = sys.spaces(window: host.window)?.contains(marginSpace) == true
-            if !waits, inMargin || host.privateSpace != nil {
+            switch HostClose.beforeQuit(kind, inMargin: inMargin, closeFacts(host)) {
+            case .home:
                 // Not waiting for the app (a row closed, Margin quits): on its Desktop before it's asked, out of Margin's
                 // Spaces; one that doesn't quit (unsaved work) is the person's there. (A private Space is destroyed below, or
                 // goes with Margin, and its window with it.)
                 host.away = true
                 await returnHome(host)
                 step("home")
-            } else if waits, inMargin, host.privateSpace == nil {
+            case .outOfSight:
                 // An app Margin quits whose window is still in Margin's Space (taken in to be read, its open failed): out of
                 // sight in a private Space until its quit is done, never standing on its own over Margin meanwhile (seen
                 // 2026-11-15: Dictionary's window over Margin while it quit). One that doesn't quit goes to the Desktop then.
                 if await parkMember(host, emitting: false) { Diagnostics.note("host: \(id): its window out of sight before its quit") }
+            case .nothing: break
             }
         }
         if let ext = host.safariWindow {
@@ -5733,15 +5593,13 @@ final class HostEngine {
             step("normal")
             let closed = await closeAskedSafariWindow(ext, profile: host.profile, pid: host.pid, number: host.window, why: why)
             step(closed ? "closed by its copy" : "not closed by its copy")
-            if !closed, !quits || !waits, host.privateSpace != nil, let desktop = sys.desktop(onDisplayOf: marginSpace) {
+            if HostClose.copyWindowToDesktop(closed: closed, quits: quits, kind, closeFacts(host)), let desktop = sys.desktop(onDisplayOf: marginSpace) {
                 _ = sys.move(window: host.window, to: desktop) // not closed yet: on the Desktop meanwhile, closed later
                 Diagnostics.note("host: \(id): Safari's window wasn't closed by its extension: on the Desktop until its copy closes it")
             }
-        } else if host.madeByMargin || (isSafari(host) && sharesApp) {
-            if host.privateSpace != nil, let desktop = sys.desktop(onDisplayOf: marginSpace) {
-                _ = sys.move(window: host.window, to: desktop) // not Margin's to close: left to the person, on the Desktop
-                Diagnostics.note("host: \(id): Safari's window isn't one a copy made for Margin: left on the Desktop")
-            }
+        } else if HostClose.leftToThePerson(closeFacts(host, sharesApp: sharesApp)), let desktop = sys.desktop(onDisplayOf: marginSpace) {
+            _ = sys.move(window: host.window, to: desktop) // not Margin's to close: left to the person, on the Desktop
+            Diagnostics.note("host: \(id): Safari's window isn't one a copy made for Margin: left on the Desktop")
         }
         // (Its app's leftovers and strips the reconciler parked: on its Desktop before its app is asked to quit, so one that
         // doesn't quit leaves them where the person finds them.)
@@ -5756,7 +5614,7 @@ final class HostEngine {
         }
         if atQuit, let left = unfinished(host) { leftWindows.append(left) }
         if let priv = host.privateSpace { retirePrivate(priv) }
-        hosts[id] = nil
+        setHost(id, nil)
         core.resetTries(host: id.raw)
         if !hosts.values.contains(where: { $0.pid == host.pid }) { sys.stopWatchingOpens(pid: host.pid) }
         saveMarker()
@@ -5792,6 +5650,30 @@ final class HostEngine {
         return await sys.minimize(pid: pid, window: window)
     }
 
+    // A host's facts for the close's decisions (host/close.rs), as they are now (`sharesApp`, `asking`: the caller's,
+    // read when it reads them).
+    private func closeFacts(_ host: Host, sharesApp: Bool = false, asking: Bool = false) -> HostClose.Facts {
+        var f: HostClose.Facts = []
+        if host.launchedByMargin { f.insert(.launchedByMargin) }
+        if host.safariWindow != nil { f.insert(.copyWindow) }
+        if asking { f.insert(.asking) }
+        if sharesApp { f.insert(.sharesApp) }
+        if case .app = host.target { f.insert(.anApp) }
+        if host.phase == .shown { f.insert(.shown) }
+        if host.mode == .window { f.insert(.windowMode) }
+        if host.frameChanged { f.insert(.frameChanged) }
+        if host.member { f.insert(.member) }
+        if viaCopy(host) { f.insert(.viaCopy) }
+        if host.fullScreenSpace != nil { f.insert(.ownSpace) }
+        if host.personApp { f.insert(.person) }
+        if host.privateSpace != nil { f.insert(.privateSpace) }
+        if host.madeByMargin { f.insert(.madeByMargin) }
+        if isSafari(host) { f.insert(.safari) }
+        if host.axRefused { f.insert(.axRefused) }
+        if host.exitUnconfirmed { f.insert(.exitUnconfirmed) }
+        return f
+    }
+
     // Whether the app of `host` is asking something: a sheet or an alert of its own (the model's dialog kind) in Margin's
     // Space or on screen. Such an app does nothing else until it's answered.
     private func asking(_ host: Host) -> Bool {
@@ -5804,13 +5686,11 @@ final class HostEngine {
     // app (the person's, or one of Margin's that didn't quit) still runs.
     private func unfinished(_ host: Host) -> HostMarker.Window? {
         guard sys.bounds(window: host.window) != nil else { return nil } // (closed, or gone with its app)
-        let spaces = sys.spaces(window: host.window)
-        let stranded = host.privateSpace != nil || spaces?.contains(marginSpace) == true
-        let stillFull = host.exitUnconfirmed && !viaCopy(host)
-        guard (host.frameChanged && (host.mode == .window || host.personApp)) || ((stranded || stillFull) && host.safariWindow == nil) else { return nil }
+        // (What's kept is the core's, host/close.rs `unfinished`.)
+        guard let keep = HostClose.unfinished(inMargin: sys.spaces(window: host.window)?.contains(marginSpace) == true, closeFacts(host)) else { return nil }
         var w = markerWindow(host)
         w.privateSpace = nil // (destroyed as Margin quits)
-        if stillFull { w.member = true } // (the next launch takes it out of full screen on the current Space)
+        if keep.asMember { w.member = true } // (the next launch takes it out of full screen on the current Space)
         return w
     }
 
@@ -5838,8 +5718,9 @@ final class HostEngine {
     // what makes an iPad (UIKit) app's quit fast: its quit hides its windows first and, started with no Dock icon, waits
     // out its own 5 s watchdog while one is ordered in on any Space (FaceTime, 2026-11-15; Phone closed first: out in
     // 0.75 s, 2026-11-15 21:25). Not for a window Accessibility didn't take a frame for (it wouldn't press its button).
+    // (Its Accessibility refusal is the core's part of it: `HostClose.closeFirstAsks`.)
     private func closesFirst(_ host: Host) -> Bool {
-        !host.axRefused && !sys.keepsWindowsAtQuit(pid: host.pid)
+        !sys.keepsWindowsAtQuit(pid: host.pid)
     }
 
     // A window of an app Margin started (never the person's) closed before Margin quits that app, its frame back first
@@ -5896,14 +5777,18 @@ final class HostEngine {
     // waits for that exit (`awaitExits`): the dying instance is never hosted.
     private func askQuitWatched(_ pid: pid_t, bundle: String, id: HostID) {
         guard let now = sys.app(pid: pid) else { launched[pid] = nil; leftSafariWindows.removeAll { $0.pid == pid }; saveMarker(); return }
-        exiting[pid] = Exiting(app: launched.removeValue(forKey: pid) ?? now, id: id, askedAt: sys.now())
+        core.exitsAsked(Exiting(app: launched.removeValue(forKey: pid) ?? now, id: id, askedAt: sys.now()))
         if !sys.terminate(pid: pid) { Diagnostics.note("host: \(bundle) (pid \(pid)): its quit ask not taken (macOS takes none from an app already quitting, as one whose last window just closed): its exit waited for as for any") }
         saveMarker()
     }
 
     // Heard: an app asked to quit by its row's close is gone. Out of the marker.
     private func exited(_ pid: pid_t) {
-        guard let entry = exiting.removeValue(forKey: pid) else { return }
+        guard let entry = core.exitsExited(pid) else { return }
+        heardExit(entry)
+    }
+    private func heardExit(_ entry: Exiting) {
+        let pid = entry.app.pid
         leftSafariWindows.removeAll { $0.pid == pid } // its windows went with it
         Diagnostics.note("host: \(entry.app.bundleId) (pid \(pid)) quit \(ms(since: entry.askedAt)) ms after its row's close asked it")
         saveMarker()
@@ -5913,9 +5798,14 @@ final class HostEngine {
     // again (an open reuses it, Margin's quit asks it again), said with what can be read of why. Gone unheard: forgotten.
     // Nil: nothing taken back.
     private func takeBack(_ pid: pid_t) -> Exiting? {
-        guard let entry = exiting[pid] else { return nil }
-        guard let now = sys.app(pid: pid), now.bundleId == entry.app.bundleId, now.launchedAt == entry.app.launchedAt else { exited(pid); return nil }
-        exiting[pid] = nil
+        // (Still that same launch, its bundle and launch time the same: the core's.)
+        guard core.exitsHas(pid) else { return nil }
+        let entry: Exiting
+        switch core.exitsTakeBack(pid, now: sys.app(pid: pid)) {
+        case .none: return nil
+        case .exited(let e): heardExit(e); return nil
+        case .back(let e): entry = e
+        }
         launched[pid] = entry.app
         saveMarker()
         emit(.failed(entry.id, .quit, "didn't quit"))
@@ -5924,7 +5814,7 @@ final class HostEngine {
     private func sayNotQuit(_ entry: Exiting) async {
         Diagnostics.warn("host: \(entry.app.bundleId) (pid \(entry.app.pid)) didn't quit within \(Int(options.quitWait)) s (\(await whyNotQuit(entry.app.pid, hosted: nil))): left running, its window on the Desktop")
     }
-    private func overdue() -> [pid_t] { exiting.filter { sys.now() - $0.value.askedAt >= options.quitWait }.map(\.key).sorted() }
+    private func overdue() -> [pid_t] { core.exitsOverdue(now: sys.now(), quitWait: options.quitWait) }
 
     // An open (or start) of an app whose last instance a row's close asked to quit and is still finishing: waits for
     // that exit (heard, or until `quitWait` after the ask: then it's Margin's again, reused), so the dying instance is
@@ -5937,14 +5827,14 @@ final class HostEngine {
     }
 
     private func awaitExits(of bundle: String) async -> Int? {
-        let dying = exiting.filter { $0.value.app.bundleId == bundle }.map(\.key).sorted()
+        let dying = core.exitsDying(bundle)
         guard !dying.isEmpty else { return nil }
         let t0 = sys.now()
         for pid in dying {
-            guard let entry = exiting[pid] else { continue }
-            _ = await wait(max(0, entry.askedAt + options.quitWait - sys.now())) {
-                if self.exiting[pid] != nil, !self.sys.processRuns(pid: pid) { self.exited(pid) } // (its notice not heard yet)
-                return self.exiting[pid] == nil
+            guard let askedAt = core.exitsAskedAt(pid) else { continue }
+            _ = await wait(max(0, askedAt + options.quitWait - sys.now())) {
+                if self.core.exitsHas(pid), !self.sys.processRuns(pid: pid) { self.exited(pid) } // (its notice not heard yet)
+                return !self.core.exitsHas(pid)
             }
             if let back = takeBack(pid) { await sayNotQuit(back) }
         }
@@ -6017,7 +5907,7 @@ final class HostEngine {
     // same pid and launch) and its window is there.
     private func closeLeftSafariWindows() async {
         for entry in leftSafariWindows {
-            guard let now = sys.app(pid: entry.pid), now.bundleId == options.safariBundle, entry.appLaunchedAt == nil || now.launchedAt == nil || abs((entry.appLaunchedAt ?? 0) - (now.launchedAt ?? 0)) < 2,
+            guard let now = sys.app(pid: entry.pid), now.bundleId == options.safariBundle, HostExits.sameLaunch(entry.appLaunchedAt, now.launchedAt),
                   entry.number.map({ sys.bounds(window: $0) != nil }) ?? true else {
                 leftSafariWindows.removeAll { $0 == entry } // gone (with its Safari, or closed by the person)
                 continue
@@ -6062,7 +5952,7 @@ final class HostEngine {
             if let tile = host.tile { goneTiles.insert(tile) } // (its tile, a placeholder now: destroyed at the next look)
             if let priv = host.privateSpace { retirePrivate(priv) }
             if let own = host.fullScreenSpace, sys.spaceExists(own) == true { leftSpaces.insert(own) }
-            hosts[host.id] = nil
+            setHost(host.id, nil)
             core.resetTries(host: host.id.raw)
             if shown == host.id { shown = nil }
             sys.stopWatchingOpens(pid: pid)
@@ -6078,7 +5968,7 @@ final class HostEngine {
         if let tile = host.tile { goneTiles.insert(tile); host.tile = nil; lookAtTiles(force: true) } // (its placeholder: destroyed now)
         if let priv = host.privateSpace { retirePrivate(priv) }
         if let own = host.fullScreenSpace, sys.spaceExists(own) == true { leftSpaces.insert(own) }
-        hosts[host.id] = nil
+        setHost(host.id, nil)
         core.resetTries(host: host.id.raw)
         if shown == host.id { shown = nil }
         saveMarker()
@@ -6157,9 +6047,6 @@ final class HostEngine {
         queueActives()
     }
 
-    private var cutRepairs: [HostID: [Double]] = [:]
-    private var cutRepairSaid: Set<HostID> = []
-    private var cutRepairsFailed: [HostID: Int] = [:]
     // `h`'s window raised over `below`'s (overlapping: a neighbour over a cut pane lying under it, a cut pane over another
     // lying under it). Its activation must be a real one for AppKit to raise its window: not kept active by records (let
     // go first; PanesActive keeps it again later), and not the front app already (the front handed to `below` first,
@@ -6177,14 +6064,8 @@ final class HostEngine {
     // Whether a visible cut pane's window is over a pane it lies under (the window server's order; `list`: an on-screen
     // list already read, the poll's; nil: read now). False: it isn't, it lies under none, or unread.
     private func overPaneItLiesUnder(_ h: Host, list: [Int]? = nil) -> Bool {
-        let under = lyingUnder(h)
-        guard !under.isEmpty else { return false }
-        let behind: (Int, Int) -> Bool? = { a, b in
-            guard let list else { return self.windowBehind(a, b) }
-            guard let ia = list.firstIndex(of: a), let ib = list.firstIndex(of: b) else { return nil }
-            return ia > ib
-        }
-        return under.contains { behind($0.window, h.window) == true }
+        if let list { return versioned { core.overUnder(h.handle, list) } }
+        return lyingUnder(h).contains { windowBehind($0.window, h.window) == true }
     }
     // A visible cut pane of `pid`'s app whose window is over a pane it lies under now, nil: none.
     private func cutWindowOver(_ pid: pid_t) -> Host? { visibleHosts.first { $0.pid == pid && overPaneItLiesUnder($0) } }
@@ -6195,27 +6076,26 @@ final class HostEngine {
             // (A loop's guard: put back 3 times in 5 s and over again each time (the app raising it again), or 3 put-backs
             // in a row that didn't take (its neighbour's raise refused): left as it is, said once, and not tried again
             // until its window is seen behind them (the poll) or it leaves the split. Never a few tries every 5 s for good.)
-            guard !self.cutRepairSaid.contains(h.id) else { return false }
-            let now = self.sys.now()
-            var tries = (self.cutRepairs[h.id] ?? []).filter { now - $0 < 5 }
-            let failed = self.cutRepairsFailed[h.id] ?? 0
-            guard tries.count < 3, failed < 3 else {
-                self.cutRepairSaid.insert(h.id)
-                Diagnostics.warn("host: \(h.id): " + (failed >= 3 ? "put back under the panes beside it 3 times and it never went under: left as it is" : "put back under the panes beside it 3 times in 5 s and over them again: left as it is"))
+            switch self.core.spend(h.handle, .cutRepair, now: self.sys.now(), guarded: self.options.loopGuard) {
+            case .go: break
+            case .held(let until):
+                Diagnostics.note("host: \(h.id): put back under the panes it lies under held: too many reactions this second across every host (\(Int(max(0, until - self.sys.now()) * 1000)) ms more)")
                 return false
+            case .say(_, let streak):
+                Diagnostics.warn("host: \(h.id): " + (streak ? "put back under the panes beside it 3 times and it never went under: left as it is" : "put back under the panes beside it 3 times in 5 s and over them again: left as it is"))
+                return false
+            case .said: return false
             }
-            tries.append(now)
-            self.cutRepairs[h.id] = tries
             Diagnostics.note("host: \(h.id): its app came in front some other way, its window over a pane it lies under: put back under it")
             await self.frontVisible()
             let took = self.cutWindowOver(pid) == nil
-            self.cutRepairsFailed[h.id] = took ? 0 : failed + 1
-            if !took { Diagnostics.note("host: \(h.id): put back, still over the pane it lies under (\(failed + 1) in a row)") }
+            let failed = self.core.repairTook(h.handle, took)
+            if !took { Diagnostics.note("host: \(h.id): put back, still over the pane it lies under (\(failed) in a row)") }
             return true
         }
     }
     // (Seen behind the panes it lies under, or out of the split: its loop's guard reset.)
-    private func cutOrderRight(_ id: HostID) { cutRepairSaid.remove(id); cutRepairsFailed[id] = nil }
+    private func cutOrderRight(_ h: Host) { core.cutOrderRight(h.handle) }
 
     var keptActive: Set<pid_t> { Set(actives.kept.keys) }
     var paneFronting: PaneFronting? { sys.paneFronting }
@@ -6247,8 +6127,8 @@ final class HostEngine {
             let front = sys.frontProcess() ?? sys.frontApp()
             actions = actives.step(panes: scene?.panes ?? [], focused: scene?.focused, front: front, margin: ownPid,
                                    hosted: { pid in self.hosts.values.contains { $0.pid == pid } },
-                                   allowed: { p in self.exiting[p.pid] == nil && self.hosts.values.contains { $0.window == p.window && $0.pid == p.pid && $0.phase == .shown } },
-                                   ending: { pid in self.exiting[pid] != nil || self.quitAsked.contains(pid) }, now: sys.now())
+                                   allowed: { p in !self.core.exitsHas(p.pid) && self.hosts.values.contains { $0.window == p.window && $0.pid == p.pid && $0.phase == .shown } },
+                                   ending: { pid in self.core.exitsHas(pid) || self.quitAsked.contains(pid) }, now: sys.now())
         }
         for a in actions {
             switch a {
@@ -6300,7 +6180,7 @@ final class HostEngine {
         var n = 0
         for k in list {
             guard let now = sys.app(pid: k.pid), k.bundleId == nil || now.bundleId == k.bundleId else { continue }
-            if let then = k.launchedAt, let at = now.launchedAt, abs(then - at) >= 2 { continue } // (its pid used again)
+            if !HostExits.sameLaunch(k.launchedAt, now.launchedAt) { continue } // (its pid used again)
             guard (sys.frontProcess() ?? sys.frontApp()) != k.pid, await sys.appActive(pid: k.pid) != false else { continue }
             sys.releaseActiveNow([PaneWindow(pid: k.pid, window: k.window)])
             n += 1
@@ -6317,7 +6197,7 @@ final class HostEngine {
         var m = HostMarker(pid: ownPid, marginSpace: hosts.isEmpty && leftWindows.isEmpty && goneTiles.isEmpty && anchorTiles.isEmpty ? nil : marginSpace)
         m.apps = launched.values.sorted { $0.pid < $1.pid }.map {
             HostMarker.App(pid: $0.pid, bundleId: $0.bundleId, launchedAt: $0.launchedAt, quitAsked: quitting && quitAsked.contains($0.pid) ? true : nil)
-        } + exiting.values.sorted { $0.app.pid < $1.app.pid }.map { HostMarker.App(pid: $0.app.pid, bundleId: $0.app.bundleId, launchedAt: $0.app.launchedAt, quitAsked: true) }
+        } + core.exitsAll().map { HostMarker.App(pid: $0.app.pid, bundleId: $0.app.bundleId, launchedAt: $0.app.launchedAt, quitAsked: true) }
         m.windows = hosts.values.sorted { $0.window < $1.window }.map(markerWindow) + leftWindows
         m.leftSpaces = leftSpaces.sorted()
         m.leftSafariWindows = leftSafariWindows.isEmpty ? nil : leftSafariWindows
@@ -6361,8 +6241,8 @@ final class HostEngine {
         let started = sys.now()
         func same(_ a: HostMarker.App) -> Bool {
             guard let now = sys.app(pid: a.pid), now.bundleId == a.bundleId else { return false }
-            guard let then = a.launchedAt, let at = now.launchedAt else { return a.launchedAt == nil }
-            return abs(then - at) < 2
+            // (Marked with its launch time, the running one's unread: not taken for the same, unlike the others here.)
+            return HostExits.sameMarkedLaunch(a.launchedAt, now.launchedAt)
         }
         let alive = m.apps.filter(same)
         let alivePids = Set(alive.map(\.pid))
@@ -6370,14 +6250,12 @@ final class HostEngine {
         // That Safari still running, the same launch (a pid used again by another Safari isn't it).
         func sameSafari(_ pid: Int32, _ launchedAt: Double?) -> Bool {
             guard let now = sys.app(pid: pid), now.bundleId == options.safariBundle else { return false }
-            guard let then = launchedAt, let at = now.launchedAt else { return true }
-            return abs(then - at) < 2
+            return HostExits.sameLaunch(launchedAt, now.launchedAt)
         }
         // An app the person opened, still that launch (a pid used again by another app or launch isn't it).
         func samePerson(_ w: HostMarker.Window) -> Bool {
             guard w.personApp == true, let bundle = w.bundleId, let now = sys.app(pid: w.pid), now.bundleId == bundle else { return false }
-            guard let then = w.appLaunchedAt, let at = now.launchedAt else { return true }
-            return abs(then - at) < 2
+            return HostExits.sameLaunch(w.appLaunchedAt, now.launchedAt)
         }
         // The Space showing on that window's display (Accessibility acts only there).
         func current(_ w: HostMarker.Window) -> UInt64? {
@@ -6513,7 +6391,7 @@ final class HostEngine {
     private var lastWake = -Double.infinity
     private func heardSomething() {
         activity()
-        guard !liveOn, sys.now() - lastWake >= 0.1 else { return }
+        guard margin_schedule_wake_due(sys.now(), lastWake, liveOn) else { return }
         lastWake = sys.now()
         onWake?()
     }
@@ -6521,7 +6399,7 @@ final class HostEngine {
     // watch after a show. The poll comes every 0.25 s until it is.
     var pollPending: Bool {
         if busy || liveOn || reconcileQueued || preparing || quitting { return true }
-        if !exiting.isEmpty || !woken.isEmpty || !leftSafariWindows.isEmpty || !leftSpaces.isEmpty || !goneTiles.isEmpty || !retired.isEmpty { return true }
+        if core.exitsCount() > 0 || !woken.isEmpty || !leftSafariWindows.isEmpty || !leftSpaces.isEmpty || !goneTiles.isEmpty || !retired.isEmpty { return true }
         if shown != nil, sys.now() - shownAt < options.lateWatch { return true }
         return hosts.values.contains { $0.unread > 0 || $0.strays > 0 || $0.offScreenReads > 0 || $0.offPageReads > 0 || $0.gone || $0.phase == .preparing }
     }

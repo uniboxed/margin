@@ -550,3 +550,54 @@ fn a_cards_or_panes_own_toolbar_is_a_strip_of_its_own_rect() {
     assert!(!is_strip_of_any(&r(360.0, 54.0, 700.0, 52.0), &placement(), &[card]));
     assert!(is_strip_of_any(&r(260.0, 0.0, 1244.0, 52.0), &placement(), &[]), "main's, as before");
 }
+
+// The strip's edges, exactly (the Mac's engine asked its own copy of this rule until 2026-11-22: the same answers for
+// every placement it has, the page area and the area both known).
+#[test]
+fn a_strips_edges() {
+    let p = placement();
+    // Wide enough: the page area's width less 2 (1242 here; the area's 90%, 1360.8, is wider); at most 150 tall.
+    assert!(is_strip(&r(260.0, 0.0, 1242.0, 52.0), &p), "at the width's edge");
+    assert!(!is_strip(&r(260.0, 0.0, 1241.99, 52.0), &p), "a hair narrower");
+    assert!(is_strip(&r(260.0, 0.0, 1244.0, 150.0), &p), "at the height's edge");
+    assert!(!is_strip(&r(260.0, 0.0, 1244.0, 150.01), &p), "a hair taller");
+    // The area's 90% when that's the narrower: a page area wider than the area's 90% plus 2.
+    let wide = Placement { page: r(0.0, 33.0, 1512.0, 949.0), ..p };
+    assert!(is_strip(&r(0.0, 0.0, 1360.8, 52.0), &wide) && !is_strip(&r(0.0, 0.0, 1360.79, 52.0), &wide));
+    // Zero-size: never a strip, whatever the placement.
+    assert!(!is_strip(&Rect::ZERO, &p));
+    assert!(!is_strip(&r(260.0, 0.0, 1244.0, 0.0), &p), "no height");
+    assert!(!is_strip(&r(260.0, 0.0, 0.0, 52.0), &p), "no width");
+    // Nothing to measure against: no strip (the Mac's own copy took any width then; it never asked without a
+    // placement: every open, layout, show and page change sets it first).
+    assert!(!is_strip(&r(0.0, 0.0, 1512.0, 52.0), &Placement::ZERO));
+    // One side known: measured against that one alone.
+    let no_page = Placement { page: Rect::ZERO, ..p };
+    assert!(is_strip(&r(0.0, 0.0, 1360.8, 52.0), &no_page) && !is_strip(&r(0.0, 0.0, 1300.0, 52.0), &no_page));
+    let no_area = Placement { area: Rect::ZERO, ..p };
+    assert!(is_strip(&r(260.0, 0.0, 1242.0, 52.0), &no_area) && !is_strip(&r(260.0, 0.0, 1000.0, 52.0), &no_area));
+}
+
+// A full-screen window's own toolbar strip (the Mac's toolbar trace and its reveal's wait for a pane's toolbar): the
+// rows of shell/tests/host-tests.swift's toolbar trace, and its edges, each within 2 pt.
+#[test]
+fn a_windows_own_toolbar() {
+    let win = r(260.0, 41.0, 1244.0, 933.0);
+    assert!(toolbar_of(&r(260.0, -11.0, 1244.0, 52.0), &win), "resting above its window (touching its top)");
+    assert!(toolbar_of(&r(260.0, 0.0, 1244.0, 52.0), &win), "in the menu bar's place: out over the page");
+    assert!(toolbar_of(&r(260.0, 33.0, 1244.0, 52.0), &win));
+    assert!(!toolbar_of(&r(0.0, 0.0, 1512.0, 88.0), &win), "another window's strip: not at its left edge");
+    assert!(!toolbar_of(&r(260.0, 400.0, 1244.0, 52.0), &win), "far down");
+    // Its left edge and width within 2 pt, the edge included.
+    assert!(toolbar_of(&r(262.0, 0.0, 1242.0, 52.0), &win) && toolbar_of(&r(258.0, 0.0, 1246.0, 52.0), &win));
+    assert!(!toolbar_of(&r(262.01, 0.0, 1244.0, 52.0), &win) && !toolbar_of(&r(260.0, 0.0, 1246.01, 52.0), &win));
+    // Its bottom at most 2 pt above the window's top.
+    assert!(toolbar_of(&r(260.0, -13.0, 1244.0, 52.0), &win), "its bottom 2 pt above");
+    assert!(!toolbar_of(&r(260.0, -13.01, 1244.0, 52.0), &win), "a hair more");
+    // Its top at most 152 pt below the window's top.
+    assert!(toolbar_of(&r(260.0, 193.0, 1244.0, 52.0), &win) && !toolbar_of(&r(260.0, 193.01, 1244.0, 52.0), &win));
+    // Zero-size: a window of no width has none; a strip of no height at its top still counts (its height isn't asked).
+    assert!(!toolbar_of(&r(0.0, 0.0, 0.0, 52.0), &r(0.0, 41.0, 0.0, 933.0)));
+    assert!(!toolbar_of(&Rect::ZERO, &Rect::ZERO));
+    assert!(toolbar_of(&r(260.0, 41.0, 1244.0, 0.0), &win), "a strip of no height at its top");
+}
