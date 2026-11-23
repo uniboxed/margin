@@ -5,6 +5,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[repr(C)]
 pub struct Point {
     pub x: f64,
     pub y: f64,
@@ -16,7 +17,9 @@ impl Point {
     }
 }
 
+// (repr(C): margin-ffi's MarginRect has its layout, so a C array of them is read as rects in place, nothing copied.)
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[repr(C)]
 pub struct Rect {
     pub x: f64,
     pub y: f64,

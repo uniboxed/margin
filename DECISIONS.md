@@ -7998,3 +7998,47 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   unchanged.
 - Not measured on the real screen (no screen suite on this branch): `live-resize` (followed median and p95) and
   `idle-cost`, before the merge as the plan asks.
+
+## Core refactor step 3, commit 2: the pointer's pass-through for several holes in the core (2026-11-23)
+
+- passthrough.rs is brought up to PassThrough.swift and the Mac's Margin window's pointer moves into it. One rule with
+  two edge semantics: `Plain`, the old overlay's own `Rect` (Windows' old overlay through core/shell/overlay.rs: its
+  code path, answers and tests unchanged), and `Cg`, CGRect's to the bit (each rect standardized as
+  CGRectStandardize does it, its change added to the origin so a -0 is 0; CG's null; Swift's `min` and `max`). `Slot`
+  gains `holes: Option<Vec<Rect>>` (None for the old overlay); `CatchRegion` gains its holes, each cut to the slot's
+  hole. The Mac's pointer is `PagePointer`: the slot placed from the page's layout, hits and hole (one host: the rect
+  within the hole, its corners the card's only within 2 pt of it, MWC:1121-1126 as was) or holes (several: the card's
+  alone, chosen by MWC as before), the catch region, the theme's window buttons while windowed (MWC `passes`), the
+  positions the page wants and their throttle, the leaving, the cut pane under the pointer (the frontmost) and its
+  forgetting, and whether the panel lets the pointer through. A placing answers what changed (the slot: the pointer
+  looked at again; the catch region: drawn again), compared as Swift's `==` compared.
+- margin-ffi's page object (`MarginPage`, ffi page.rs) owns it now; commit 3's `page::Page` becomes that object with a
+  `pointer: PagePointer` field, so no C signature changes then (`margin_page_place_slot` becomes the Page's own call
+  at its hole decisions). Per pointer event one typed call, `margin_page_pointer(page, at, content, buttons_down, now,
+  out)`: the content's rect is passed (the window's frame changes without the core being told) and `now` (the core
+  reads no clock). The pane click tap's read and the facade the tests use are pure calls on a slot the caller holds
+  (`margin_pass_*`, any thread, no lock). Nothing allocated per event nor per placing once warm (ffi tests no_alloc.rs).
+- Swift: PassThrough.swift keeps `Slot`, `CatchRegion` and `PointerWant` as the values Margin's window, the tap and the
+  tests hold (their rules read through the core), `PageCore` (the page object's wrapper), `PointerWatch` and
+  `CatchView`. Deleted: `pageGets`', `decide`'s, `slot(in:)`'s and `CatchRegion`'s maths, `wants`, MWC's `passes`, the
+  one-host rule, the several hosts' slot, `hoverCut`, the push throttle and `pointerInside`/`lastPointerPush`/
+  `hoveredCut`/`pointerWant`. Stays Swift: PointerWant's reading of the page's message (a boolean `zone` is 1 there and
+  24 in the core's old-overlay `from_json`: two readers of one message until commit 9 routes the page's messages),
+  which holes are the pointer's (part 11, commit 3), the guards on visibility and the harness, the pushes' JSON, the
+  panel's `ignoresMouseEvents`, the hover. Swift lines: 95 out, 218 in (the facade and the wrapper).
+- Checked before the Swift went: the deleted Swift (copied verbatim, renamed) against the new code over the core, on
+  generated slots (negative, zero and touching sizes, -0 and NaN values, radii past half a side), holes (none, empty,
+  touching, zero-size, out of the slot), hits, corners' arcs and edges a ulp either way, layouts, frames and pointer
+  sequences (placings, buttons, full screen, wants, cut panes, held buttons, the throttle's edge): 101,658,375 checks,
+  every value to the bit, no difference. The old overlay's path against the old passthrough.rs (copied) on 20,700,000
+  checks: no difference (any NaN taken as equal: its sign is LLVM's to choose). The harness caught 27 of 28 deliberate
+  breaks (edges, the holes' test, the corner, Swift's min with NaN, the 2 pt rule, the cut and empty slots, the -0
+  origin, the region's holes and hits, the buttons, the throttle, the leaving, the push's size, the frontmost cut pane,
+  a held button, the cuts forgotten, the change compared without the radius, the region never redrawn, the wants' edge,
+  three of the FFI's mappings); two only once the generator had a card over a pane and a placing changing only the
+  radius. The one missed (Swift's `max` written as Rust's `f64::max`) is the same function on every reachable input:
+  a size less the insets is never -0 there.
+- Cost (release, ffi tests pointer_cost.rs): a pointer event over a split of two panes with three hits and a cut pane
+  15 ns, the slot looked at again 9 ns, a placing 37 ns, the tap's read 10 ns. The Swift side's whole pointer event
+  (the scratch bench, -O) fell from 172 to 63 ns, the tap's read from 18 to 16 ns. The app's 2040 checks and 321
+  end-to-end checks pass unchanged; `pane-clicks` not measured (no screen suite on this branch).

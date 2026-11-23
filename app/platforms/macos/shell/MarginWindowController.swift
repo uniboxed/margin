@@ -112,19 +112,18 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     private(set) var isReady = false
     private(set) var isShown = false
     private var asked = false // its page asked for its hello: pushes reach it
-    private(set) var isFullScreen = false
+    private(set) var isFullScreen = false { didSet { pointer.setButtons(controls, fullScreen: isFullScreen) } }
     private(set) var layout: PageLayout?
     private(set) var hits: [CGRect] = []
     private(set) var captureAll = false
-    private(set) var controls: CGRect?
-    private(set) var ignoring = false
-    private(set) var pointerWant = PointerWant.all
+    private(set) var controls: CGRect? { didSet { pointer.setButtons(controls, fullScreen: isFullScreen) } }
+    // Its pointer in the core (PassThrough.swift `PageCore`): the slot, the catch region, the way each pointer event goes.
+    private let pointer: PageCore
+    var ignoring: Bool { pointer.ignoring }
     // What its sidebar has behind the numbered keys (overlay.ts reportCounts): its spaces, and its rows ⌘1–9 reach
     // (favorites, pins, today's). Nil until its page says: then every numbered key is held (Shell.updateHostedKeys).
     private(set) var rowCounts: (spaces: Int, items: Int)?
     private(set) var pageWantsKeyboard = false
-    private var pointerInside = false
-    private var lastPointerPush: TimeInterval = 0
     private var themeSent: String?
     // What was pushed into the page, the last 50 (the tests read it), and how many in all.
     private(set) var pushed: [String] = []
@@ -258,6 +257,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         self.id = id
         self.pages = pages
         self.options = options
+        pointer = PageCore(pointerEvery: options.pointerEvery)
         let frame = options.harness ? (options.frame ?? Self.harnessFrame) : (options.frame ?? Self.centred())
         window = MarginWindow(frame: frame, harness: options.harness)
         mechanism = options.front
@@ -569,7 +569,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
 
     // Every visible host's window while more than one is (HostEngine `hostedWindows`), back to front, each at its rect;
     // empty: one host, `hosted` alone, as before.
-    private(set) var visibleHosts: [HostShownWindow] = []
+    private(set) var visibleHosts: [HostShownWindow] = [] { didSet { sayCuts() } }
     private var visibleFrames: [Int: CGRect] = [:] // their bounds by the window server, read as they're told or moved
     // The holes: each visible host's frame inside its rect, once it's in place (one host: `hole` alone).
     private(set) var holes: [CGRect] = []
@@ -598,17 +598,16 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         Diagnostics.note("Margin's window \(id): cut panes \(json == "{}" ? "none" : json)")
         cutWindows = Set((try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: [String: Any]])?.values.compactMap { $0["window"] as? Int } ?? [])
         push(#"{"type":"paneCut","panes":"# + json + "}")
-        if cutWindows.isEmpty, hoveredCut != nil { hoveredCut = nil; push(#"{"type":"paneHover","window":null}"#) }
+        sayCuts()
     }
-    // The cut panes' windows, and the one the pointer is over now (said to the page as it enters and leaves one: nothing
-    // per move, nothing at all while none is cut).
+    // The cut panes' windows; the one the pointer is over is the core's (`PageCore`: said to the page as it enters and
+    // leaves one, nothing per move, nothing at all while none is cut), told the visible hosts as they change.
     private var cutWindows: Set<Int> = []
-    private var hoveredCut: Int?
-    private func hoverCut(_ at: CGPoint) {
-        guard !cutWindows.isEmpty else { return }
-        let over = visibleHosts.last { cutWindows.contains($0.window) && $0.rect.contains(at) }?.window
-        guard over != hoveredCut else { return }
-        hoveredCut = over
+    private func sayCuts() {
+        let forgot = pointer.setCuts(cutting: !cutWindows.isEmpty, visibleHosts.map { ($0.window, $0.rect, cutWindows.contains($0.window)) })
+        if forgot { sayHover(nil) }
+    }
+    private func sayHover(_ over: Int?) {
         push(#"{"type":"paneHover","window":\#(over.map(String.init) ?? "null")}"#)
     }
 
@@ -722,7 +721,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     }
     // updateHole with several visible hosts: each one's hole, the ground drawn around all of them, the pointer through
     // them (only a card's content while a card is open, the rest of the page area caught).
-    private func updateHoles() {
+    private func updateHoles() -> Bool {
         let content = contentFrame
         var list: [(rect: CGRect, host: HostShownWindow)] = []
         if pageState == .shown, let page = window.pageRect {
@@ -756,16 +755,18 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             ground.clear()
         }
         hole = next
-        slot = nil
-        if !list.isEmpty, let layout {
-            var s = PassThrough.slot(in: content, layout: layout, hits: hits, captureAll: captureAll)
-            // (A card open: its content only; the dimmed page around it Margin's.)
-            s.holes = list.last { $0.host.role == .card }.map { [$0.rect] } ?? list.map(\.rect)
-            if !s.rect.isNull, !s.rect.isEmpty { slot = s }
-        }
+        // (A card open: its content only; the dimmed page around it Margin's.)
+        let changed = placed(pointer.place(content: content, layout: layout, hits: hits, captureAll: captureAll,
+                                           holes: list.last { $0.host.role == .card }.map { [$0.rect] } ?? list.map(\.rect)))
         // (The same holes for the pane click tap, each with its window: a card's alone while one is open.)
         paneHoles = slot == nil ? [] : (list.last { $0.host.role == .card }.map { [$0] } ?? list).map { (rect: $0.rect, window: $0.host.window, card: $0.host.role == .card) }
-        catcher.region = CatchRegion.of(frame: content, slot: slot)
+        return changed
+    }
+    // The pointer's slot and the catch fill as the core placed them (read back only when changed); whether the slot did.
+    private func placed(_ changed: (slot: Bool, region: Bool)) -> Bool {
+        if changed.slot { slot = pointer.slot }
+        if changed.region { catcher.region = pointer.region }
+        return changed.slot
     }
 
     // ---- the first click in another pane (PaneClickTap.swift) ----
@@ -1080,12 +1081,10 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // window see-through. The pointer's slot and the catch fill follow it.
     // The pointer's way looked at again whenever the slot changes (`pointerAgain`).
     private func updateHole() {
-        let was = slot
-        placeHole()
-        if slot != was { pointerAgain() }
+        if placeHole() { pointerAgain() }
         owner?.paneSceneChanged()
     }
-    private func placeHole() {
+    private func placeHole() -> Bool {
         if visibleHosts.count > 1 { return updateHoles() }
         paneHoles = []
         defer { holes = hole.map { [$0] } ?? [] }
@@ -1116,15 +1115,8 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         }
         hole = next
         // The pointer's slot: the hole, less what the theme draws over it that takes the pointer (`hits`: the palette, a
-        // menu, a notice) and the page card's rounded corners (kept: a pointer move only compares against it).
-        slot = nil
-        if let next, let layout {
-            var s = PassThrough.slot(in: content, layout: layout, hits: hits, captureAll: captureAll)
-            if !HostLayout.near(next, s.rect, within: 2) { s.radius = 0 }
-            s.rect = s.rect.intersection(next)
-            if !s.rect.isNull, !s.rect.isEmpty { slot = s }
-        }
-        catcher.region = CatchRegion.of(frame: content, slot: slot)
+        // menu, a notice) and the page card's rounded corners where the hole's are its (the core's `PagePointer`).
+        return placed(pointer.place(content: content, layout: layout, hits: hits, captureAll: captureAll, hole: next))
     }
 
     // Where the hosted window goes while hosting: the page area from its own layout, measured in full screen at its
@@ -1188,13 +1180,8 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
 
     // ---- the pointer (Margin's mouse monitors, the window server's coordinates: top left) ----
 
-    // Whether the pointer at `at` goes through Margin's panel (to what it hosts). Windowed, the window's buttons are the
-    // base's, under the panel where the theme draws its window controls.
-    private func passes(_ at: CGPoint) -> Bool {
-        let content = contentFrame
-        let overButtons = !isFullScreen && controls?.contains(CGPoint(x: at.x - content.minX, y: at.y - content.minY)) == true
-        return overButtons || PassThrough.pageGets(at, slot)
-    }
+    // Whether the pointer goes through Margin's panel (to what it hosts) is the core's (`PageCore`: windowed, the
+    // window's buttons are the base's, under the panel where the theme draws its window controls).
     // The pointer as the last move left it (with whether a button was held): the harness's pointer (its moves are
     // the tests' own); the real one is read from the window server (`NSEvent.mouseLocation`).
     private var lastPointer: (at: CGPoint, buttonsDown: Bool)?
@@ -1208,26 +1195,21 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         guard !followingPage, window.isVisible || options.harness else { return }
         let now = options.harness ? lastPointer : (at: PointerWatch.location, buttonsDown: PointerWatch.buttonsDown)
         guard let now, !now.buttonsDown else { return }
-        setIgnoring(passes(now.at))
+        setIgnoring(pointer.again(now.at, content: contentFrame))
     }
 
+    // Each pointer event: its way, its hover, the cut pane it's over and the position its page wants (one typed call).
     func pointerMoved(_ at: CGPoint, buttonsDown: Bool = PointerWatch.buttonsDown) {
         guard window.isVisible || options.harness else { return }
         lastPointer = (at, buttonsDown)
-        let content = contentFrame
-        let local = CGPoint(x: at.x - content.minX, y: at.y - content.minY)
-        setIgnoring(buttonsDown ? ignoring : passes(at))
-        hover(at, inside: content.contains(at), buttonsDown: buttonsDown)
-        if !buttonsDown { hoverCut(at) }
-        if content.contains(at) {
-            pointerInside = true
-            let now = Diagnostics.now()
-            guard pointerWant.wants(local, in: content.size), now - lastPointerPush >= options.pointerEvery else { return }
-            lastPointerPush = now
-            push(#"{"type":"pointer","x":\#(Double(local.x)),"y":\#(Double(local.y))}"#)
-        } else if pointerInside {
-            pointerInside = false
-            push(#"{"type":"pointerLeft","x":\#(Double(local.x)),"y":\#(Double(local.y))}"#)
+        let out = pointer.moved(at, content: contentFrame, buttonsDown: buttonsDown, now: Diagnostics.now())
+        setIgnoring(out.pass)
+        hover(at, inside: out.inside, buttonsDown: buttonsDown)
+        if let over = out.hover { sayHover(over) }
+        switch out.push {
+        case .at(let x, let y): push(#"{"type":"pointer","x":\#(x),"y":\#(y)}"#)
+        case .left(let x, let y): push(#"{"type":"pointerLeft","x":\#(x),"y":\#(y)}"#)
+        case nil: break
         }
     }
 
@@ -1313,12 +1295,12 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         // (Kept in front by its order: a press on the hosted window raised it over this one; above it again, once the
         // window server has done that.)
         if mechanism == .order, hosted != nil { DispatchQueue.main.async { [weak self] in self?.keepFront() } }
-        guard pageWantsKeyboard, !contentFrame.contains(at) || PassThrough.pageGets(at, slot) else { return }
+        guard pageWantsKeyboard, !contentFrame.contains(at) || pointer.gets(at) else { return }
         push(#"{"type":"pressOutside"}"#)
     }
 
-    func setIgnoring(_ on: Bool) {
-        ignoring = on
+    // (What the core decided, carried out: `ignoring` is the core's.)
+    private func setIgnoring(_ on: Bool) {
         if panel.ignoresMouseEvents != on { panel.ignoresMouseEvents = on }
     }
 
@@ -1960,7 +1942,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             rowCounts = (spaces, items)
             owner?.onCounts?(self)
         case "pointerWant":
-            pointerWant = PointerWant(body)
+            pointer.setWant(PointerWant(body))
         case "perform":
             let name = body["name"] as? String ?? ""
             if name == "window.fullscreen" { return toggleFullScreen() }

@@ -505,3 +505,94 @@ fn the_live_pump_allocates_nothing() {
     // SAFETY: the live core, freed once.
     unsafe { margin_host_free(core) };
 }
+
+/// A split of two panes and a card, its page's hits over it, the second pane cut (the pointer's world, docs/CORE-REFACTOR.md
+/// step 3 part 12).
+struct PointerWorld {
+    content: MarginRect,
+    layout: MarginInsets,
+    hits: [MarginRect; 3],
+    holes: [MarginRect; 3],
+    cuts: [MarginCut; 3],
+}
+
+fn pointer_world() -> PointerWorld {
+    let r = |x: f64, y: f64, width: f64, height: f64| MarginRect { x, y, width, height };
+    let (left, right, card) =
+        (r(276.0, 41.0, 610.0, 933.0), r(894.0, 41.0, 610.0, 933.0), r(374.0, 106.0, 1032.0, 803.0));
+    PointerWorld {
+        content: r(0.0, 33.0, 1512.0, 949.0),
+        layout: MarginInsets { left: 276.0, top: 8.0, right: 8.0, bottom: 8.0, radius: 12.0 },
+        hits: [r(886.0, 8.0, 8.0, 933.0), r(400.0, 100.0, 480.0, 300.0), r(1300.0, 20.0, 40.0, 40.0)],
+        holes: [left, right, card],
+        cuts: [
+            MarginCut { window: 41, rect: left, cut: false },
+            MarginCut { window: 42, rect: right, cut: true },
+            MarginCut { window: 43, rect: card, cut: false },
+        ],
+    }
+}
+
+/// # Safety
+/// `page` a live page.
+unsafe fn place_world(page: *mut MarginPage, w: &PointerWorld, several: bool, dx: f64) -> u8 {
+    let content = MarginRect { x: w.content.x + dx, ..w.content };
+    let one = MarginRect { x: 276.0 + dx, y: 41.0, width: 1228.0, height: 933.0 };
+    // SAFETY: the caller's contract, valid buffers.
+    unsafe {
+        margin_page_place_slot(page, content, &w.layout, w.hits.as_ptr(), 3, false, &one, w.holes.as_ptr(), 2, several)
+    }
+}
+
+#[test]
+fn the_pointer_allocates_nothing() {
+    let w = pointer_world();
+    let page = margin_page_new();
+    // (Rare, before the count: its options, its buttons and wants, its buffers grown by a placing of each kind.)
+    // SAFETY: a live page, valid buffers.
+    unsafe {
+        margin_page_set_pointer_every(page, 1.0 / 30.0);
+        margin_page_set_buttons(page, &MarginRect { x: 6.0, y: 7.0, width: 60.0, height: 14.0 }, false);
+        margin_page_set_want(page, 1, 1, 24.0);
+        for several in [true, false, true, false] {
+            place_world(page, &w, several, 0.0);
+        }
+        margin_page_set_cuts(page, true, w.cuts.as_ptr(), 3);
+    }
+    let mut out = MarginPointer::default();
+    let mut view = MarginSlotView::default();
+    let mut region = MarginCatchView::default();
+    let mut through = 0;
+    let n = allocations(|| {
+        // SAFETY: a live page, valid buffers; the views read before the next placing.
+        unsafe {
+            for i in 0..400 {
+                // (Every pointer event: over the panes, the gap, the hits, the sidebar, out of the window; held and not.)
+                let at = MarginPoint { x: 10.0 + f64::from(i) * 3.9, y: 20.0 + f64::from(i % 97) * 10.0 };
+                margin_page_pointer(page, at, w.content, i % 7 == 0, f64::from(i) * 0.01, &mut out);
+                through += usize::from(out.pass);
+                std::hint::black_box(margin_page_ignoring(page));
+                std::hint::black_box(margin_page_gets(page, at));
+                if i % 50 == 0 {
+                    // (The slot changed under a still pointer; a drag's frame: placed again, the cuts told again.)
+                    std::hint::black_box(margin_page_pointer_again(page, at, w.content));
+                    std::hint::black_box(place_world(page, &w, i % 100 == 0, f64::from(i % 3)));
+                    std::hint::black_box(margin_page_set_cuts(page, true, w.cuts.as_ptr(), 3));
+                }
+                // (The tap's: the same rules over a slot it holds, here the page's own.)
+                if margin_page_slot(page, &mut view) {
+                    std::hint::black_box(margin_pass_page_gets(at, &view));
+                    std::hint::black_box(margin_pass_decide(at, &view, false, true));
+                }
+                margin_page_catch(page, &mut region);
+                let local = MarginPoint { x: at.x - w.content.x, y: at.y - w.content.y };
+                std::hint::black_box(margin_pass_catch_contains(&region, local, w.content.width, w.content.height));
+                std::hint::black_box(margin_pass_wants(1, 1 | 8, 24.0, local, w.content.width, w.content.height));
+            }
+        }
+    });
+    assert_eq!(n, 0, "the pointer's calls allocated {n} times");
+    assert!(through > 50 && through < 350, "the pointer through the holes only: {through} of 400");
+    // SAFETY: the live page, freed once.
+    unsafe { margin_page_free(page) };
+}

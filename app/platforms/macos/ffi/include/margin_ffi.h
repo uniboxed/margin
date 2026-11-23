@@ -215,6 +215,86 @@ int64_t margin_order_server(const int64_t *windows, size_t n, const int64_t *scr
 bool margin_order_top_behind(const int64_t *windows, size_t n, const uint32_t *below, size_t k, const int64_t *screen, size_t m);
 uint8_t margin_model_slide_step(MarginHostCore *core, MarginRect from, MarginRect to, double elapsed, double time, const MarginRect *home, MarginRect *page, MarginRect *tile); // bits: 1 last, 2 tile written
 
+// Margin's own window's page (passthrough.rs PagePointer, ffi page.rs; docs/CORE-REFACTOR.md step 3 parts 11-12): one
+// object per Margin window, the main thread's. Its pointer: the slot and catch region placed as the holes change, the
+// theme's window buttons, the positions its page wants, the cut panes, each pointer event's way; typed, nothing
+// allocated. The views' rects are the page's own until its next placing. margin_pass_*: the same rules (CGRect's
+// edges) over a slot the caller holds, no object, any thread (the pane click tap's).
+typedef struct MarginPoint {
+    double x;
+    double y;
+} MarginPoint;
+
+typedef struct MarginInsets {
+    double left;
+    double top;
+    double right;
+    double bottom;
+    double radius;
+} MarginInsets;
+
+typedef struct MarginSlotView {
+    MarginRect rect;
+    double radius;
+    const MarginRect *hits;
+    size_t hits_len;
+    bool capture_all;
+    bool has_holes; // several visible hosts: the pointer through these only
+    const MarginRect *holes;
+    size_t holes_len;
+} MarginSlotView;
+
+typedef struct MarginCatchView {
+    bool all;
+    bool has_hole;
+    MarginRect hole;
+    double radius;
+    const MarginRect *hits;
+    size_t hits_len;
+    bool has_holes;
+    const MarginRect *holes;
+    size_t holes_len;
+} MarginCatchView;
+
+typedef struct MarginCut {
+    int64_t window;
+    MarginRect rect;
+    bool cut; // one of the cut panes
+} MarginCut;
+
+typedef struct MarginPointer {
+    bool pass;       // the panel lets the pointer through (ignores the mouse)
+    bool inside;     // over the content
+    bool hover_said; // the cut pane under it changed: has_hover and hover the new one's window
+    bool has_hover;
+    int64_t hover;
+    uint8_t push;    // 0 nothing, 1 the position (pointer), 2 it left (pointerLeft), at x, y in the content
+    double x;
+    double y;
+} MarginPointer;
+
+typedef struct MarginPage MarginPage;
+MarginPage *margin_page_new(void);
+void margin_page_free(MarginPage *page);
+void margin_page_set_pointer_every(MarginPage *page, double every);
+// layout NULL: none yet; one host's hole (NULL: none), or several's holes. Bits: 1 the slot changed, 2 the catch region.
+uint8_t margin_page_place_slot(MarginPage *page, MarginRect content, const MarginInsets *layout, const MarginRect *hits, size_t hits_len, bool capture_all, const MarginRect *hole, const MarginRect *holes, size_t holes_len, bool several);
+bool margin_page_slot(const MarginPage *page, MarginSlotView *out); // false: none
+void margin_page_catch(const MarginPage *page, MarginCatchView *out);
+void margin_page_set_buttons(MarginPage *page, const MarginRect *controls, bool full_screen); // controls in the content, NULL: none
+void margin_page_set_want(MarginPage *page, uint8_t mode, uint8_t edges, double zone); // mode 0 none, 1 edges, 2 all; edges' bits 1 left, 2 right, 4 top, 8 bottom
+bool margin_page_set_cuts(MarginPage *page, bool cutting, const MarginCut *list, size_t len); // true: the hovered cut pane forgotten
+void margin_page_pointer(MarginPage *page, MarginPoint at, MarginRect content, bool buttons_down, double now, MarginPointer *out);
+bool margin_page_pointer_again(MarginPage *page, MarginPoint at, MarginRect content);
+bool margin_page_gets(const MarginPage *page, MarginPoint at);
+bool margin_page_ignoring(const MarginPage *page);
+bool margin_pass_page_gets(MarginPoint at, const MarginSlotView *slot); // slot NULL: none
+bool margin_pass_decide(MarginPoint at, const MarginSlotView *slot, bool buttons_down, bool ignoring);
+MarginRect margin_pass_slot(MarginRect frame, MarginInsets layout, const MarginRect *hits, size_t hits_len, MarginRect *hits_out);
+void margin_pass_catch(MarginRect frame, const MarginSlotView *slot, MarginRect *hits_out, MarginRect *holes_out, MarginCatchView *out); // room for the slot's counts
+bool margin_pass_catch_contains(const MarginCatchView *region, MarginPoint p, double width, double height);
+bool margin_pass_wants(uint8_t mode, uint8_t edges, double zone, MarginPoint p, double width, double height);
+
 // The live-resize pump's scheduling (host/model/live.rs, ffi live.rs): a drag's start and end, each page frame (its
 // page area the drag's, for `frame`), each tick of the pump (the flights' landings read first: margin_live_reads),
 // each send (asked again after a version is read, as the calls above) and the tick's end; typed, nothing allocated.

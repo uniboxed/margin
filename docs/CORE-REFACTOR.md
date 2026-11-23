@@ -641,7 +641,8 @@ the cover only for Hold or Tuck, so its order (a tucked pane's cover before ⌘/
 typed arrays in, actions out into a buffer; a release's free-text why (Margin quits, off, Margin ends) stays Swift's.
 `margin_click_decide(MarginPoint, uint8_t flags, const MarginPane*, size_t, int64_t focused, MarginClick*)`: no object,
 no lock, nothing allocated (the tap's thread; macOS turns off a tap that takes ~1 s). `PassThrough.pageGets`
-(PassThrough.swift:34) stays Swift (step 3's): its answer is a flag in.
+(PassThrough.swift:34) stays Swift (step 3's): its answer is a flag in. (Step 3 commit 2: it's the core's now, the
+pure `margin_pass_page_gets` on the tap's own copy of the slot.)
 
 **Pinned by:** T/panes-active-tests.swift's keeper part (from 123: ported to Rust, pure), its records and calls
 (45-110: stay Swift); T/pane-click-tests.swift's decide part (105-128: ported), its timing tests (stay Swift). Screen:
@@ -1296,9 +1297,20 @@ old overlay only), used by core/shell/overlay.rs:112, 209 and so by W/host.rs:42
 behaviour unchanged), the holes' test in `page_gets`, `CatchRegion::of`/`contains` with holes, the one-host rule, the
 windowed buttons; `Page::pointer(point, buttons) -> Pointer { pass: bool, hover_cut: Option<…>, push: bool }` over the
 Page's slot. PT keeps `CatchView` and `PointerWatch` (mechanism).
+*As built (commit 2):* one rule with two edge semantics (`Plain`, the old overlay's `Rect`, unchanged; `Cg`, CGRect's
+to the bit, the Mac's); the Mac's pointer is `PagePointer` (passthrough.rs), owned by margin-ffi's `MarginPage`, which
+commit 3's `page::Page` becomes with a `pointer: PagePointer` field. The call takes the content's rect and `now` too
+(`moved(at, content, buttons, now)`: the window's frame changes without the core being told, and the core reads no
+clock), and answers whether the pointer is over the content and the push's position. PointerWant's reading of the
+page's message stays Swift (a boolean `zone` is 1 there, 24 in the core's `from_json`); which positions it wants is
+the core's. The slot's mirror (`slot`, read by the tap, the tests, `cardHole`) is read back only when it changed.
 
-**FFI.** Typed, per pointer event (≤ ~120 a second, the main thread): `margin_page_pointer(page, double x, double y,
-bool buttons, MarginPointer *out)`: no lock, nothing allocated.
+**FFI.** Typed, per pointer event (≤ ~120 a second, the main thread): `margin_page_pointer(page, MarginPoint at,
+MarginRect content, bool buttons_down, double now, MarginPointer *out)`: no lock, nothing allocated (as built; the
+design had `x, y, buttons` only). Beside it, typed and allocation-free once warm: `margin_page_place_slot` (each
+change of the holes, a drag's frames; commit 3's Page calls it itself), `_pointer_again`, `_gets`, `_ignoring`,
+`_slot`, `_catch`, `_set_buttons`, `_set_want`, `_set_cuts`; and `margin_pass_*`, pure, for a slot the caller holds
+(the pane click tap's thread, the facade the tests read).
 
 **Pinned by:** T/tests.swift:218-247 (pass-through, the catch region), T/margin-window-tests.swift:88-120, the core's
 passthrough tests (unchanged for the old overlay, new for holes), E/e2e-glue.swift `multiHoleChecks`; S `pane-clicks`,
@@ -1330,7 +1342,7 @@ until step 4 (open question 6).
 | --- | --- | --- | --- | --- |
 | 0 | Baseline (`idle-cost`, `idle-profile`, `live-resize`, `page-frames`, a switch's time) and tests added against the Swift: the four pin/favourite paths, `noRoom`'s edges, `lastItem`'s tie, `webAddress`, `searchUrl`, UP's caps, HostID's logged form, holes with zero-size and touching rects, pass-through with holes | 0 | 0 | the baseline |
 | 1 | The pure rules into the core, Swift switched, its copies deleted: `noRoom`/`paneLeast`/`isNoRoom`, `defaultCardRect`, `webAddress`, `searchUrl`, `resolve`, `loaderApp`, `dragLine`, `lastItem`, UP's sanitiser, `PageLayout`'s parse | ~180 | ~600 | |
-| 2 | passthrough.rs with several holes; the pointer typed; PT's rules deleted | ~80 | ~250 | `pane-clicks` |
+| 2 | passthrough.rs with several holes; the pointer typed; PT's rules deleted. **Done 2026-11-23** (step3/passthrough: one commit; MWC's pointer decisions, the one-host rule and the tap's read are the core's; PointerWant's message reading, the hole lists' choice (part 11) and the mechanism stay Swift; `pane-clicks` not measured: no screen suite on that branch) | ~95 (+~220 of facade and the page object's wrapper) | ~1,000 (half tests) | `pane-clicks` |
 | 3 | The Page (part 11, and the page area's placement of part 7): MWC's decisions deleted, its mechanism over the Page | ~450 | ~1,100 | `page-frames`, `idle-cost` |
 | 4 | The session's skeleton: executor, ports, commands, the facade, the re-entrance test adapter; `navigate` (HS:2378-2385) the first flow moved, as the proof; `SafariWaker` split out in Swift (no behaviour moved) | ~10 | ~700 | |
 | 5 | Parts 1 and 2: the library's requests, `show`, `close`, `host`, the choices, the engine's window asks | ~350 | ~1,300 | a switch |
