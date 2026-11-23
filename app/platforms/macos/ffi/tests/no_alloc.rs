@@ -380,3 +380,128 @@ fn the_close_and_the_exits_reads_allocate_nothing() {
         margin_host_free(core);
     }
 }
+
+/// A split of two tiles and a window-mode card, held by the engine and laid out, the first one shown: the drag's world
+/// (rare, before any count).
+fn live_world() -> (*mut margin_core::host::api::HostCore, MarginPlacement) {
+    let core = margin_host_new();
+    let page = MarginRect { x: 276.0, y: 41.0, width: 1228.0, height: 933.0 };
+    let area = MarginRect { x: 0.0, y: 33.0, width: 1512.0, height: 949.0 };
+    let p = MarginPlacement { page, area, display: MarginRect { x: 0.0, y: 0.0, width: 1512.0, height: 982.0 } };
+    let ids = ["app:com.apple.TextEdit", "app:com.apple.Notes", "app:com.apple.FaceTime"];
+    for (i, id) in ids.iter().enumerate() {
+        let rect = MarginRect { x: 276.0 + 620.0 * i as f64, y: 41.0, width: 600.0, height: 933.0 };
+        let role = [0u8, 1, 2][i];
+        let v = MarginVisible { rect, has_rect: true, role, z: i as i64 };
+        // SAFETY: a live core, valid buffers.
+        unsafe {
+            let h = margin_model_add(core, id.as_ptr(), id.len(), id.as_ptr(), id.len(), 40 + i as i64, 500 + i as i64);
+            margin_model_list(core, id.as_ptr(), id.len(), h);
+            margin_model_layout_set(core, id.as_ptr(), id.len(), &v);
+            margin_model_set(core, h, Field::Phase as u32, 1);
+            margin_model_set(core, h, Field::Role as u32, i64::from(role));
+            margin_model_set_rect(core, h, Field::Rect as u32, &rect);
+            margin_model_set(core, h, if i < 2 { Field::Tiled as u32 } else { Field::Mode as u32 }, 1);
+        }
+    }
+    // SAFETY: a live core, valid buffers.
+    unsafe {
+        margin_model_set_placement(core, &p);
+        margin_model_set_shown(core, ids[0].as_ptr(), ids[0].len(), 1.0);
+    }
+    (core, p)
+}
+
+/// One tick of the pump as the engine runs it: the flights' reads (`land`: each at its rect), the tick, each send and
+/// its record, the tick's end. How many were sent.
+///
+/// # Safety
+/// `core` a live core.
+unsafe fn live_tick_once(core: *mut margin_core::host::api::HostCore, now: f64, land: bool) -> usize {
+    let timing = MarginLiveTiming { frame: 1.0 / 120.0, wait: 0.05, tolerance: 1.0 };
+    let home = MarginRect { x: 0.0, y: 0.0, width: 1512.0, height: 982.0 };
+    let mut reads = [MarginLiveRead::default(); 16];
+    let mut bounds = [MarginLiveBounds::default(); 16];
+    let mut wants = [MarginRect::default(); 64];
+    let mut events = [MarginLiveEvent::default(); 16];
+    let mut sends = [0u32; 16];
+    let mut out = MarginLiveTick::default();
+    // SAFETY: the caller's contract; the buffers as long as said.
+    unsafe {
+        let n = margin_live_reads(core, reads.as_mut_ptr(), 16);
+        for i in 0..n {
+            let at = if land { wants[(reads[i].host as usize).min(63)] } else { MarginRect::default() };
+            bounds[i] = MarginLiveBounds { host: reads[i].host, read: true, bounds: at };
+        }
+        margin_live_tick(
+            core,
+            now,
+            &timing,
+            bounds.as_ptr(),
+            n,
+            false,
+            false,
+            events.as_mut_ptr(),
+            16,
+            sends.as_mut_ptr(),
+            16,
+            &mut out,
+        );
+        for &h in &sends[..out.sends] {
+            let mut send = MarginLiveSend::default();
+            margin_live_send(core, h, &out.frame, std::ptr::null(), &home, &mut send);
+            std::hint::black_box(margin_model_versions_wanted(core, std::ptr::null_mut(), 0));
+            if send.kind != 0 {
+                margin_live_sent(core, h, now, send.page);
+                wants[(h as usize).min(63)] = send.page;
+            }
+        }
+        std::hint::black_box(margin_live_done(core));
+        out.sends
+    }
+}
+
+#[test]
+fn the_live_pump_allocates_nothing() {
+    let (core, mut p) = live_world();
+    // (The drag begins and the pump's first run starts: its room taken once, before the count.)
+    // SAFETY: a live core, valid buffers.
+    let first = unsafe {
+        let mut others = [0u32; 16];
+        assert_eq!(margin_live_start(core, 1.0, false, others.as_mut_ptr(), 16), 2);
+        margin_live_pump_begin(core);
+        margin_live_follow(core, 1.0, &p);
+        live_tick_once(core, 1.0, false)
+    };
+    assert_eq!(first, 3, "both tiles and the card sent the first frame");
+    let mut sent = 0;
+    let n = allocations(|| {
+        // SAFETY: a live core, valid buffers.
+        unsafe {
+            for i in 0..240 {
+                let now = 1.0 + 0.002 * f64::from(i);
+                // (A page frame every other tick, 2 ms each: coalesced, the newest winning; landing or not, given up
+                // after the wait; the session's counts, the poll's look.)
+                if i % 2 == 0 {
+                    p.page.x += 1.0;
+                    p.page.width -= 1.0;
+                    margin_live_follow(core, now, &p);
+                }
+                sent += live_tick_once(core, now, i % 40 < 30);
+                std::hint::black_box(margin_live_on(core));
+                std::hint::black_box(margin_live_forgotten(core, now, 10.0));
+                std::hint::black_box(margin_live_followers(core, std::ptr::null_mut()));
+            }
+            // (A new run of the pump, the drag held, its end.)
+            margin_live_pump_begin(core);
+            margin_live_hold(core);
+            margin_live_follow(core, 3.0, &p);
+            std::hint::black_box(live_tick_once(core, 3.0, false));
+            std::hint::black_box(margin_live_end(core));
+        }
+    });
+    assert_eq!(n, 0, "the live pump's calls allocated {n} times");
+    assert!(sent > 20, "frames sent all along: {sent}");
+    // SAFETY: the live core, freed once.
+    unsafe { margin_host_free(core) };
+}

@@ -7919,3 +7919,33 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   hold's end, never again in between (failing first: 9 attempts without the fix); and a Rust test of the hold's end
   (answered until it lapses, a read only). The app's 2040 checks pass.
 
+
+## Core refactor step 2, part 6 (first of two commits): the live-resize pump's scheduling in the core (2026-11-23)
+
+- The core gains the pump's decisions (host/model/live.rs, on the model): a drag's start (none under way, not
+  quitting, the one shown shown, it or another visible host following: a tile or a window-mode window; the others
+  that follow, back to front, for their minimums' one read), its end (its page area and pending frame forgotten), each
+  page frame (the newest wins, the drag's page area), the drag held (the one shown left its tile), a drag never said
+  over (`liveForget`), the session's count of followers, and each tick of the pump: the flights landed (their window's
+  bounds near their rect, the engine's reads; a fixed-size window-mode window's taken as landed) or given up after
+  `liveWait`, the narrowest width a tile held; the newest frame owed to every follower (the one shown first, shown ones
+  only); the gate (an operation, Margin quitting, the drag held, the one shown not shown: held, the frame kept; the
+  pump ends when nothing's owed or in flight); the followers free for it (owed, none in flight, a `liveFrame` less a
+  microsecond since their last), tiles first (a stable order); then each send's rect (its rect in the frame, its own,
+  the page area; another than the one shown never below its minimum; a tile's rect and its window's frame, or a
+  window-mode window's frame, centred when fixed) and its record, and whether the pump ends.
+- Typed calls (ffi live.rs, `margin_live_*`), nothing allocated per frame or tick (no_alloc.rs: 240 ticks of a split
+  of two tiles and a card, frames coalesced, flights landing and given up, a new run, the hold, the end); the lists in
+  fixed arrays of 16 on both sides. The timing (`liveFrame`, `liveWait`, the tolerance) goes with each tick as the
+  options are then, never through JSON (part 7's 1-ulp lesson): a comparison at its edge is the Swift's.
+- The pump's state lives one run of the engine's pump, as its locals did (`live_pump_begin`), not one drag: a drag
+  ended and begun again while a run sleeps goes on with that run's flights, as before. It's kept by handle and follows
+  the engine's hosts by id, as the Swift's dictionaries by id did: a host made again as the same id (a follower's app
+  opened anew mid-drag) takes over its id's flight, last send and owed frame (`relisted`, told by `list`); a host gone
+  keeps its id's part (its flight forgotten at the next tick, never counted), and a send recorded after its host went
+  is its id's; a host freed before it's let go (its last reference gone as the engine drops it, `list` told after)
+  is let go the same way (`remove`). Only that rare path allocates (the id kept), never a frame.
+- Rust tests pin each rule (one in flight, the newest wins, the give-up wait at its edge, the throttle per host and
+  tiles first, a held frame kept, a follower gone and made again as its id, the one shown freed first, the counts, a
+  forgotten drag). Swift's `HostCore` gains the typed wrappers; the engine switches to them, and its copies go, in the
+  next commit. The app's 2040 checks pass unchanged.

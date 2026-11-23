@@ -44,7 +44,7 @@ pub(super) struct Wanted {
 }
 
 impl Wanted {
-    fn note(&self, h: Handle) {
+    pub(super) fn note(&self, h: Handle) {
         let (mut list, n) = (self.list.get(), self.n.get());
         if list[..n].contains(&h) || n == list.len() {
             return;

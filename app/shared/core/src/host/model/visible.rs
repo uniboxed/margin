@@ -162,15 +162,18 @@ impl HostModel {
     /// takes its role and rect in it from the start (its first placing at its rect).
     pub fn list(&mut self, id: &str, h: Option<Handle>) {
         let Some(h) = h else {
-            self.listed.remove(id);
+            let was = self.listed.remove(id);
+            self.relisted(id, was, None);
             return;
         };
-        match self.listed.get_mut(id) {
-            Some(v) => *v = h,
+        let was = match self.listed.get_mut(id) {
+            Some(v) => Some(std::mem::replace(v, h)),
             None => {
                 self.listed.insert(id.to_string(), h);
+                None
             }
-        }
+        };
+        self.relisted(id, was, Some(h));
         if self.applying
             && let Some(v) = self.layout.get(id).copied()
             && let Some(s) = self.get_mut(h)

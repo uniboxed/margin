@@ -7,7 +7,7 @@
 //! (part 5, `minimums`); the engine's layout of Margin's page area, the one shown, and the layout's decisions (part 1b,
 //! `visible`); where each window goes, cut panes and a slide's frames (part 3, `panes`); the visible windows' order
 //! (part 2, `order`); the budgets of Margin's own corrections that outlive a show and the full-screen ladder (part 4,
-//! `budget`). Reading and writing a field never allocates; a list of times (returns, tries) is kept within its capacity (room for 8 from the start: the Mac
+//! `budget`); the live-resize pump's scheduling (part 6, `live`). Reading and writing a field never allocates; a list of times (returns, tries) is kept within its capacity (room for 8 from the start: the Mac
 //! keeps at most `returnsMax` + 1, 4).
 
 use std::collections::BTreeMap;
@@ -17,11 +17,13 @@ use super::minimums::AppMinimums;
 use crate::geometry::Rect;
 
 mod budget;
+mod live;
 mod order;
 mod panes;
 mod visible;
 mod watch;
 pub use budget::{CUT_LIMIT, CUT_WITHIN, CutRepair, CutRepairs, Kind as BudgetKind, Limits, Spend};
+pub use live::{LIVE_ROOM, LiveEvent, LiveSend, LiveTick, LiveTiming};
 pub use order::{Confirm, FrontPlan, server_order, top_behind};
 pub use panes::{Side, SlideStep, slide_rect};
 pub use visible::{
@@ -286,6 +288,8 @@ pub struct HostModel {
     // The budgets (part 4, budget.rs): their limits from the engine's options, every cut pane's repairs by its id.
     pub limits: Limits,
     repairs: CutRepairs,
+    // The live-resize pump's scheduling (part 6, live.rs): the drag, its newest frame, the pump's run.
+    live: live::Live,
 }
 
 /// A host's minimum as a decision reads it (`HostModel::minimum`).
@@ -348,9 +352,11 @@ impl HostModel {
         if let Some(slot) = self.slots.get_mut(h as usize)
             && let Some(s) = slot.take()
         {
-            // (Still held by the engine as its id, which the OS side never leaves so: no longer.)
+            // (Still held by the engine as its id (its host freed as the engine lets it go, before it says so): no
+            // longer, the drag's part of it kept by its id as `list` keeps it.)
             if self.listed.get(&s.id) == Some(&h) {
                 self.listed.remove(&s.id);
+                self.relisted(&s.id, Some(h), None);
             }
             self.free.push(h);
         }

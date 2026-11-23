@@ -196,7 +196,7 @@ typedef struct MarginSlide {
     int8_t end_x; // 0 its start at the pane's, 1 its end, -1 away from the other panes
     int8_t end_y;
 } MarginSlide;
-void margin_model_set_live_page(MarginHostCore *core, const MarginRect *page); // a drag's page area; NULL: none
+void margin_model_set_live_page(MarginHostCore *core, const MarginRect *page); // a drag's page area; NULL: none (the drag's own: margin_live_follow)
 size_t margin_model_versions_wanted(MarginHostCore *core, uint32_t *out, size_t cap);
 void margin_model_frame(MarginHostCore *core, uint32_t handle, const MarginPlacement *p, MarginRect *out);
 void margin_model_fitted(MarginHostCore *core, uint32_t handle, const MarginPlacement *p, bool entry, MarginPlacement *out); // entry: as its own Space reserves it
@@ -214,6 +214,59 @@ size_t margin_model_front_wanted(MarginHostCore *core, uint32_t *out, size_t cap
 int64_t margin_order_server(const int64_t *windows, size_t n, const int64_t *screen, size_t m, int64_t *out, size_t cap); // -1: unread
 bool margin_order_top_behind(const int64_t *windows, size_t n, const uint32_t *below, size_t k, const int64_t *screen, size_t m);
 uint8_t margin_model_slide_step(MarginHostCore *core, MarginRect from, MarginRect to, double elapsed, double time, const MarginRect *home, MarginRect *page, MarginRect *tile); // bits: 1 last, 2 tile written
+
+// The live-resize pump's scheduling (host/model/live.rs, ffi live.rs): a drag's start and end, each page frame (its
+// page area the drag's, for `frame`), each tick of the pump (the flights' landings read first: margin_live_reads),
+// each send (asked again after a version is read, as the calls above) and the tick's end; typed, nothing allocated.
+// Lists hold 16 (the most hosts a drag moves). The engine keeps every write, read and sleep, and the drag's numbers.
+typedef struct MarginLiveTiming {
+    double frame;     // at most one change a host this often (liveFrame)
+    double wait;      // a change not landed after this long given up (liveWait)
+    double tolerance; // landed this near its rect
+} MarginLiveTiming;
+typedef struct MarginLiveRead {
+    uint32_t host;
+    int64_t window;
+} MarginLiveRead;
+typedef struct MarginLiveBounds {
+    uint32_t host;
+    bool read; // false: unread
+    MarginRect bounds;
+} MarginLiveBounds;
+typedef struct MarginLiveEvent {
+    uint32_t host;
+    bool landed;    // false: given up after the wait
+    double elapsed; // landed: since it was sent
+} MarginLiveEvent;
+typedef struct MarginLiveTick {
+    bool go;         // false: nothing sent (held: a frame owed; stop: the pump ends, else it sleeps a frame)
+    bool held;
+    bool stop;
+    bool owed_empty; // go: every follower sent the frame
+    uint32_t shown;  // go: the one shown
+    MarginPlacement frame; // go: the frame sent
+    size_t events;
+    size_t sends;
+} MarginLiveTick;
+typedef struct MarginLiveSend {
+    uint8_t kind; // 0 nothing, 1 its tile's rect (its window lands at page), 2 its window's frame page
+    bool centred; // kind 2: a fixed-size window centred in it at its own size
+    MarginRect rect;
+    MarginRect page;
+} MarginLiveSend;
+bool margin_live_on(MarginHostCore *core);
+int32_t margin_live_start(MarginHostCore *core, double now, bool quitting, uint32_t *others, size_t cap); // -1: not followed
+bool margin_live_end(MarginHostCore *core);
+bool margin_live_follow(MarginHostCore *core, double now, const MarginPlacement *p);
+void margin_live_hold(MarginHostCore *core);
+bool margin_live_forgotten(MarginHostCore *core, double now, double forget);
+size_t margin_live_followers(MarginHostCore *core, size_t *visible);
+void margin_live_pump_begin(MarginHostCore *core);
+size_t margin_live_reads(MarginHostCore *core, MarginLiveRead *out, size_t cap);
+void margin_live_tick(MarginHostCore *core, double now, const MarginLiveTiming *timing, const MarginLiveBounds *reads, size_t n, bool busy, bool quitting, MarginLiveEvent *events, size_t events_cap, uint32_t *sends, size_t sends_cap, MarginLiveTick *out);
+void margin_live_send(MarginHostCore *core, uint32_t handle, const MarginPlacement *p, const MarginRect *given, const MarginRect *home, MarginLiveSend *out);
+void margin_live_sent(MarginHostCore *core, uint32_t handle, double at, MarginRect want);
+bool margin_live_done(MarginHostCore *core);
 
 // Margin's keys (shortcuts.rs, ffi keys.rs): combinations as the Mac's Carbon key code and modifier bits. The JSON
 // answers are freed with margin_buffer_free; a press, a release and a repeat's tick are typed.

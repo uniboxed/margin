@@ -403,13 +403,6 @@ nonisolated final class HostCore: @unchecked Sendable {
             }
         }
     }
-    // The page area of a drag being followed (nil: none under way).
-    func setLivePage(_ page: CGRect?) {
-        locked {
-            guard var r = page?.marginRect else { return margin_model_set_live_page(core, nil) }
-            margin_model_set_live_page(core, &r)
-        }
-    }
     private func withPlacement<R>(_ p: HostPlacement?, _ body: (UnsafePointer<MarginPlacement>?) -> R) -> R {
         guard var m = p?.margin else { return body(nil) }
         return body(&m)
@@ -419,6 +412,94 @@ nonisolated final class HostCore: @unchecked Sendable {
         return body(&m)
     }
     private func placement(_ m: MarginPlacement) -> HostPlacement { HostPlacement(page: CGRect(m.page), area: CGRect(m.area), display: CGRect(m.display)) }
+
+    // The page area of a drag being followed (nil: none under way).
+    func setLivePage(_ page: CGRect?) {
+        locked {
+            guard var r = page?.marginRect else { return margin_model_set_live_page(core, nil) }
+            margin_model_set_live_page(core, &r)
+        }
+    }
+    // ---- the live-resize pump's scheduling (host/model/live.rs, docs/CORE-REFACTOR.md step 2 part 6): a drag's start
+    // and end, each page frame, each tick of the pump, each send. Typed (every frame and tick of a drag), the lists in
+    // buffers on the stack (16: the most hosts a drag moves); the bounds read outside the lock. ----
+
+    var liveOn: Bool { locked { margin_live_on(core) } }
+    // A drag begins at `now`: the visible hosts other than the one shown that follow it (back to front); nil: not
+    // followed.
+    func liveStart(now: Double, quitting: Bool) -> [UInt32]? {
+        locked {
+            withUnsafeTemporaryAllocation(of: UInt32.self, capacity: 16) { buf in
+                let n = Int(margin_live_start(core, now, quitting, buf.baseAddress, 16))
+                return n < 0 ? nil : Array(buf.prefix(min(n, 16)))
+            }
+        }
+    }
+    // The drag is over (false: none was followed): its page area and pending frame forgotten.
+    func liveEnd() -> Bool { locked { margin_live_end(core) } }
+    // A page frame of the drag at `now` (false: none followed): the newest, the drag's page area.
+    func liveFollow(now: Double, _ p: HostPlacement) -> Bool {
+        var m = p.margin
+        return locked { margin_live_follow(core, now, &m) }
+    }
+    func liveHold() { locked { margin_live_hold(core) } }
+    func liveForgotten(now: Double, forget: Double) -> Bool { locked { margin_live_forgotten(core, now, forget) } }
+    // How many of the hosts a drag would move follow it, of how many.
+    func liveFollowers() -> (follow: Int, visible: Int) {
+        var visible = 0
+        let follow = locked { margin_live_followers(core, &visible) }
+        return (follow, visible)
+    }
+    func livePumpBegin() { locked { margin_live_pump_begin(core) } }
+    // One tick of the pump at `now`: each flight whose landing is read, its window's bounds (`bounds`, outside the
+    // lock); each flight's end (`ended`: its host, how long it took, nil: given up); the answer.
+    struct LiveTick {
+        var go = false, held = false, stop = false, owedEmpty = false
+        var shown: UInt32 = 0
+        var frame = HostPlacement.zero
+        var sends: [UInt32] = []
+    }
+    func liveTick(now: Double, timing: MarginLiveTiming, busy: Bool, quitting: Bool, bounds: (Int) -> CGRect?, ended: (UInt32, Double?) -> Void) -> LiveTick {
+        withUnsafeTemporaryAllocation(of: MarginLiveRead.self, capacity: 16) { reads in
+            withUnsafeTemporaryAllocation(of: MarginLiveBounds.self, capacity: 16) { read in
+                withUnsafeTemporaryAllocation(of: MarginLiveEvent.self, capacity: 16) { events in
+                    withUnsafeTemporaryAllocation(of: UInt32.self, capacity: 16) { sends in
+                        let n = min(locked { margin_live_reads(core, reads.baseAddress, 16) }, 16)
+                        for i in 0..<n {
+                            let b = bounds(Int(reads[i].window))
+                            read[i] = MarginLiveBounds(host: reads[i].host, read: b != nil, bounds: b?.marginRect ?? MarginRect())
+                        }
+                        var t = timing, out = MarginLiveTick()
+                        locked { margin_live_tick(core, now, &t, read.baseAddress, n, busy, quitting, events.baseAddress, 16, sends.baseAddress, 16, &out) }
+                        for i in 0..<min(out.events, 16) { ended(events[i].host, events[i].landed ? events[i].elapsed : nil) }
+                        return LiveTick(go: out.go, held: out.held, stop: out.stop, owedEmpty: out.owed_empty, shown: out.shown, frame: placement(out.frame),
+                                        sends: out.go && out.sends > 0 ? Array(sends.prefix(min(out.sends, 16))) : [])
+                    }
+                }
+            }
+        }
+    }
+    // What a host is sent of the frame `p` (`given`: its rect in this frame as the page measured it; `home`: Margin's
+    // own tile, nil: none).
+    enum LiveSend: Equatable {
+        case none, tile(rect: CGRect, page: CGRect), frame(page: CGRect, centred: Bool)
+    }
+    func liveSend(_ h: UInt32, _ p: HostPlacement, given: CGRect?, home: CGRect?) -> (LiveSend, wanted: Bool) {
+        var out = MarginLiveSend()
+        var m = p.margin
+        return locked {
+            withRect(given) { g in withRect(home) { margin_live_send(core, h, &m, g, $0, &out) } }
+            switch out.kind {
+            case 1: return (.tile(rect: CGRect(out.rect), page: CGRect(out.page)), wanted)
+            case 2: return (.frame(page: CGRect(out.page), centred: out.centred), wanted)
+            default: return (.none, wanted)
+            }
+        }
+    }
+    // `h` was sent at `at` (when its send began), its window to land at `want`.
+    func liveSent(_ h: UInt32, at: Double, want: CGRect) { locked { margin_live_sent(core, h, at, want.marginRect) } }
+    // After a tick's sends: nothing pending, owed or in flight (the pump ends).
+    func liveDone() -> Bool { locked { margin_live_done(core) } }
 
     // Where a host's window goes for a page area (`p`, nil: its own).
     func frame(_ h: UInt32, _ p: HostPlacement?) -> (CGRect, wanted: Bool) {
