@@ -7548,3 +7548,25 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   never active.
 - Not done: taking presses on the panel through an event tap so the keyboard never moves (mouse events only, no
   Input Monitoring). Its cost was put to Tirth, who chose the hand-back.
+
+## Core refactor step 2, part 9: the hosting rules the Swift had twice, the core's only (2026-11-22)
+
+- Each Swift copy now calls the core's one rule by a typed call (no JSON, nothing allocated): `HostLayout.near`
+  (`margin_layout_near`, its 42 callers unchanged; the unused `WindowKinds.near` deleted), the toolbar strip at a
+  window's top (`kinds::toolbar_of`, new, the 150 the core's `STRIP_MAX_HEIGHT`; `toolbarOver`'s height filter reads
+  the core's constant; `Options.stripMaxHeight` deleted), the backed-out attempt's strips (`kinds::is_strip` with the
+  host's own placement), the sidebar and a window over it (`front::sidebar`, `front::covers_sidebar`), the 0.1 s wake
+  (`schedule::wake_due`), the same-launch 2 s rule (new `exits::same_launch`, five copies), `toolbarRoom`'s 52
+  (`layout::TOOLBAR_ROOM`; the UI's `SAFARI_TOOLBAR` stays a copy, a core test holds the two equal) and `nextPoll`
+  (typed: it was a JSON call every poll).
+- Kept as each copy had it: the ±2 pt toolbar slack, the edges included (`<=`), `abs(a - b) < 2` for a launch. The
+  crash recovery's own launch rule differs from the other four (marked with a launch time and the running app's
+  unread: not the same) and keeps that difference in its caller, said there.
+- Checked before the Swift went: Rust vectors at every edge (zero-size, touching, exactly at and a hair past each
+  tolerance), and the deleted Swift against the core over 4 million vectors (a scratch run): no difference. One edge
+  differs and is accepted (the design's note): `is_strip` with no area or no page width known answers by the side
+  known, where the engine's copy took any width; the engine never asks without a placement (every open, layout,
+  show and page change sets it first). The app's 2038 checks pass unchanged.
+- `liveFollowers` and `liveFollowersList` share their candidates and their "follows a drag" rule; the list's own
+  difference stays explicit (the shown ones only, the one shown first). `tucked` in `sayHostedWindows` waits for
+  part 3.

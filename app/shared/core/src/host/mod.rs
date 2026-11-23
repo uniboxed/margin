@@ -11,6 +11,7 @@
 //! - `routes`: tiles, members, window mode, and the way down for an app that keeps fighting its route.
 //! - `schedule`: when the engine looks again (events first, the poll as fast as the moment needs).
 //! - `front`: which window of the hosted app the person opened is let in front of Margin's window.
+//! - `exits`: an app's exit and its pid used again (the same launch).
 //! - `driver`: the reconcile loop against an OS's adapter (`HostAdapter`): what every OS shares of the steady state.
 //! - `api`: the whole of it behind one JSON call, for shells that aren't Rust.
 
@@ -18,6 +19,7 @@ pub mod api;
 pub mod causes;
 pub mod choice;
 pub mod driver;
+pub mod exits;
 pub mod front;
 pub mod guard;
 pub mod kinds;

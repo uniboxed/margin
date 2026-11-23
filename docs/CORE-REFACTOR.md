@@ -677,7 +677,7 @@ the Mac adapter's policy. Part 8 isn't done.
 | # | Part | Swift deleted | Needs | Measured after |
 | --- | --- | --- | --- | --- |
 | 0 | Baseline: `idle-cost`, `idle-profile` (footprint), `live-resize` (followed median/p95), `pane-clicks` (ms a press), a switch (T/host-tests.swift:1831, the real log); the counting-allocator test in margin-ffi | 0 | | |
-| 1 | 9: duplicates needing nothing new (near, strip ×4, sidebar, FAST, same launch, TOOLBAR_ROOM, typed nextPoll) | ~40 | | idle-cost |
+| 1 | 9: duplicates needing nothing new (near, strip ×4, sidebar, FAST, same launch, TOOLBAR_ROOM, typed nextPoll). **Done 2026-11-22** (step2/parts-9-1a; `tucked` left for part 3; idle-cost not measured yet: no screen suite on that branch) | ~40 | | idle-cost |
 | 2 | 1a: the model (handles, fields into the core, computed properties, options) | ~15 | | idle-cost, live-resize |
 | 3 | 5: app minimums | ~70 | 1a | |
 | 4 | 1b: the layout's decisions | ~175 | 1a, 5 | a switch |

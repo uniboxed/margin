@@ -194,7 +194,12 @@ pub fn home(p: &Placement) -> Option<Rect> {
     (p.display.width >= 1.0 && p.display.height >= 1.0).then(|| Rect::new(0.0, 0.0, p.display.width, p.display.height))
 }
 
-/// Each of x, y, width and height within `within` points.
+/// A full-screen window's room above it for its own toolbar window (Safari's, resting just above its window: 52 pt,
+/// measured on the real screen), counted in two visible hosts' overlap. A stacked split's band above a Safari pane is
+/// as tall (app/shared/ui/behaviors/split.ts `SAFARI_TOOLBAR`, a copy until the build writes the core's constants).
+pub const TOOLBAR_ROOM: f64 = 52.0;
+
+/// Each of x, y, width and height within `within` points (the edge itself included).
 pub fn near(a: &Rect, b: &Rect, within: f64) -> bool {
     (a.x - b.x).abs() <= within
         && (a.y - b.y).abs() <= within
@@ -325,6 +330,44 @@ mod tests {
         assert_eq!(fit(&page, Some(Size::new(1600.2, 640.0)), &p.area), Rect::new(0.0, 41.0, 1512.0, 933.0));
         // Taller: down to the area's bottom at most.
         assert_eq!(fit(&page, Some(Size::new(900.0, 2000.0)), &p.area).height, 941.0);
+    }
+
+    #[test]
+    fn near_holds_each_side_within_the_tolerance_the_edge_included() {
+        let a = Rect::new(248.0, 41.0, 1256.0, 933.0);
+        assert!(near(&a, &a, 0.0), "the same rect, no tolerance");
+        // Exactly at the tolerance on each side: near; a hair past it, either way: not.
+        for (dx, dy, dw, dh) in [(1.0, 0.0, 0.0, 0.0), (0.0, 1.0, 0.0, 0.0), (0.0, 0.0, 1.0, 0.0), (0.0, 0.0, 0.0, 1.0)]
+        {
+            let at = Rect::new(a.x + dx, a.y + dy, a.width + dw, a.height + dh);
+            assert!(near(&a, &at, 1.0) && near(&at, &a, 1.0), "{at:?} at the edge");
+            let past = Rect::new(a.x + dx * 1.01, a.y + dy * 1.01, a.width + dw * 1.01, a.height + dh * 1.01);
+            assert!(!near(&a, &past, 1.0), "{past:?} past the edge");
+            let below = Rect::new(a.x - dx * 1.01, a.y - dy * 1.01, a.width - dw * 1.01, a.height - dh * 1.01);
+            assert!(!near(&a, &below, 1.0), "{below:?} past the edge the other way");
+        }
+        // The tolerances the Mac uses: 1 (the default), 2 (Margin's window's corners), 4 (a twin).
+        let b = Rect::new(250.0, 43.0, 1254.0, 931.0);
+        assert!(!near(&a, &b, 1.0) && near(&a, &b, 2.0) && near(&a, &b, 4.0));
+        // Zero-size rects: each side compared as it is, nothing dropped.
+        assert!(near(&Rect::ZERO, &Rect::ZERO, 0.0));
+        assert!(near(&Rect::ZERO, &Rect::new(1.0, 1.0, 1.0, 1.0), 1.0));
+        assert!(!near(&Rect::ZERO, &Rect::new(0.0, 0.0, 0.0, 1.5), 1.0));
+        assert!(near(&Rect::new(10.0, 10.0, 0.0, 0.0), &Rect::new(10.5, 9.5, 0.0, 0.0), 1.0), "two points");
+        // Touching rects (one's max edge the other's min): apart by their origins.
+        let left = Rect::new(0.0, 0.0, 100.0, 100.0);
+        assert!(!near(&left, &Rect::new(100.0, 0.0, 100.0, 100.0), 4.0));
+        assert!(!near(&left, &Rect::new(0.0, 100.0, 100.0, 100.0), 4.0));
+        // A negative tolerance: nothing is near, not even itself; NaN: never near.
+        assert!(!near(&a, &a, -1.0));
+        assert!(!near(&a, &Rect::new(f64::NAN, 41.0, 1256.0, 933.0), 1.0));
+    }
+
+    // The UI's copy (a stacked split's band above a Safari pane) kept equal until the build writes it out.
+    #[test]
+    fn the_uis_toolbar_room_is_the_cores() {
+        let split = include_str!("../../../ui/behaviors/split.ts");
+        assert!(split.contains(&format!("export const SAFARI_TOOLBAR = {};", TOOLBAR_ROOM as i64)));
     }
 
     #[test]

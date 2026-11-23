@@ -241,10 +241,16 @@ nonisolated extension HostCore {
 // ---- when the engine looks again (host/schedule.rs) ----
 
 nonisolated extension HostCore {
-    // Seconds until the next look (nil: none until an event).
+    // Seconds until the next look (nil: none until an event). Typed (every poll asks): no JSON, nothing kept.
     func nextPoll(hosting: Bool, links: Bool, pending: Bool, activeFor: Double?) -> Double? {
-        var facts: [String: Any] = ["hosting": hosting, "links": links, "pending": pending]
-        if let activeFor { facts["activeFor"] = activeFor }
-        return (call(["type": "nextPoll", "facts": facts])["after"] as? NSNumber)?.doubleValue
+        let after = margin_schedule_next_poll(hosting, links, pending, activeFor ?? .nan)
+        return after < 0 ? nil : after
     }
+}
+
+// ---- an app's launch, its pid used again (host/exits.rs) ----
+
+nonisolated enum HostExits {
+    // Whether a running app (launched `now`) is the launch known (`then`): within 2 s; either one unknown: the same.
+    static func sameLaunch(_ then: Double?, _ now: Double?) -> Bool { margin_exits_same_launch(then ?? .nan, now ?? .nan) }
 }

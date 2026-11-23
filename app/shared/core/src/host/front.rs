@@ -30,7 +30,7 @@ pub const SIDEBAR_SLIVER: f64 = 8.0;
 /// The least time between the two looks that see a window before it's let in front.
 pub const CONFIRM: f64 = 0.2;
 /// The narrowest sidebar (less: hidden, nothing to keep clear).
-const SIDEBAR_LEAST: f64 = 40.0;
+pub const SIDEBAR_LEAST: f64 = 40.0;
 
 /// One window of the list, as the caller read it.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -143,10 +143,18 @@ impl Others {
 }
 
 /// Margin's sidebar: the display's area left of the page area (none narrower than `SIDEBAR_LEAST`: hidden).
-fn sidebar(p: &Placement) -> Option<Rect> {
+pub fn sidebar(p: &Placement) -> Option<Rect> {
     let width = p.page.min_x() - p.area.min_x();
     (width >= SIDEBAR_LEAST && p.area.height > 0.0)
         .then(|| Rect::new(p.area.min_x(), p.area.min_y(), width, p.area.height))
+}
+
+/// Whether a window at `b` covers at least `share` of Margin's sidebar (none: nothing to cover). The Mac's: a
+/// window-mode window that couldn't be fitted is never shown over it.
+pub fn covers_sidebar(b: &Rect, p: &Placement, share: f64) -> bool {
+    let Some(side) = sidebar(p) else { return false };
+    let i = b.intersection(&side);
+    !i.is_empty() && i.width * i.height >= side.width * side.height * share
 }
 
 /// Whether `b` reaches over the sidebar more than `SIDEBAR_SLIVER` each way.
@@ -288,5 +296,31 @@ mod tests {
         o.look(&l);
         l.now = 0.3;
         assert_eq!(o.look(&l), None, "a card's toolbar strip is its own: never let in front");
+    }
+
+    // The sidebar and a window covering a share of it (the Mac's window mode: one that couldn't be fitted, over at
+    // least a quarter of the sidebar, is never shown), its edges exactly.
+    #[test]
+    fn the_sidebar_and_a_window_over_it() {
+        let p = placement();
+        assert_eq!(sidebar(&p), Some(Rect::new(0.0, 0.0, 260.0, 982.0)));
+        // At least 40 pt wide (the edge included), the area of some height; else hidden.
+        let narrow = |w: f64| Placement { page: Rect::new(w, 0.0, 1512.0 - w, 982.0), ..p };
+        assert_eq!(sidebar(&narrow(40.0)), Some(Rect::new(0.0, 0.0, 40.0, 982.0)));
+        assert_eq!(sidebar(&narrow(39.99)), None);
+        assert_eq!(sidebar(&Placement { area: Rect::new(0.0, 0.0, 1512.0, 0.0), ..p }), None, "no height");
+        assert_eq!(sidebar(&Placement::ZERO), None);
+        // A quarter of 260×982, exactly: covered; a hair less: not.
+        let quarter = 260.0 * 982.0 * 0.25;
+        assert!(covers_sidebar(&Rect::new(0.0, 0.0, 65.0, 982.0), &p, 0.25), "{quarter}: at the share");
+        assert!(!covers_sidebar(&Rect::new(0.0, 0.0, 64.99, 982.0), &p, 0.25));
+        assert!(covers_sidebar(&Rect::new(-500.0, -100.0, 2000.0, 2000.0), &p, 0.25), "all of it");
+        // Touching (its right edge the sidebar's left, its left the sidebar's right): nothing covered; zero-size: none.
+        assert!(!covers_sidebar(&Rect::new(-100.0, 0.0, 100.0, 982.0), &p, 0.0));
+        assert!(!covers_sidebar(&Rect::new(260.0, 0.0, 800.0, 982.0), &p, 0.0));
+        assert!(!covers_sidebar(&Rect::new(10.0, 10.0, 0.0, 0.0), &p, 0.0));
+        assert!(!covers_sidebar(&Rect::new(10.0, 10.0, 100.0, 0.0), &p, 0.0));
+        // No sidebar: nothing covers it.
+        assert!(!covers_sidebar(&Rect::new(0.0, 0.0, 1512.0, 982.0), &narrow(20.0), 0.0));
     }
 }

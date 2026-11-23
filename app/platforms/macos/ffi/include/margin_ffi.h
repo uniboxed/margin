@@ -46,8 +46,26 @@ MarginRect margin_layout_cut(MarginRect pane, double min_width, double min_heigh
 MarginRect margin_layout_within(MarginRect frame, MarginRect area);
 bool margin_layout_home(const MarginPlacement *placement, MarginRect *out);
 
-// Whether a window of these bounds is a full-screen window's strip for this placement (host/kinds.rs).
+// Each of x, y, width and height within `within` points, the edge included; the toolbar's room above a full-screen
+// window (host/layout.rs).
+bool margin_layout_near(MarginRect a, MarginRect b, double within);
+double margin_layout_toolbar_room(void);
+
+// Whether a window of these bounds is a full-screen window's strip for this placement; a full-screen window's own
+// toolbar strip at its top edge, its height not asked (host/kinds.rs).
 bool margin_kinds_is_strip(MarginRect bounds, const MarginPlacement *placement);
+bool margin_kinds_toolbar_of(MarginRect bounds, MarginRect window);
+
+// Whether a window covers at least `share` of Margin's sidebar (host/front.rs).
+bool margin_front_covers_sidebar(MarginRect bounds, const MarginPlacement *placement, double share);
+
+// When the engine looks again (host/schedule.rs): a wake for something heard (`last` -infinity: none yet); seconds
+// until the next look (`active_for` NaN: no activity yet; less than zero: none until an event).
+bool margin_schedule_wake_due(double now, double last, bool live_on);
+double margin_schedule_next_poll(bool hosting, bool links, bool pending, double active_for);
+
+// Whether a running app is the launch known (host/exits.rs): launch times in seconds, NaN not known.
+bool margin_exits_same_launch(double then, double now);
 
 // Margin's keys (shortcuts.rs, ffi keys.rs): combinations as the Mac's Carbon key code and modifier bits. The JSON
 // answers are freed with margin_buffer_free; a press, a release and a repeat's tick are typed.

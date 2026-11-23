@@ -111,6 +111,7 @@
 // area's frame (given back only with it): a switch to or from it is a move each way.
 
 import AppKit
+import MarginCore
 
 final class HostEngine {
     struct Options {
@@ -150,7 +151,8 @@ final class HostEngine {
         // A full-screen window's room above it for its own toolbar window (Safari's, resting just above its window:
         // 52 pt, measured on the real screen), counted in two visible hosts' overlap (`overlapping`). A stacked split's
         // band above a Safari pane is as tall (`SAFARI_TOOLBAR`): its toolbar meets the pane above, never overlaps it.
-        var toolbarRoom: CGFloat = 52
+        // The core's (`TOOLBAR_ROOM`, host/layout.rs).
+        var toolbarRoom: CGFloat = HostLayout.toolbarRoom
         // A new pane's toolbar out over its page at its reveal: waited for this long at most, read this often.
         var toolbarRestWait = 0.5
         var pageFocusWait = 0.8 // a new window's page given its keys: tried this long at most (its page listed late)
@@ -217,9 +219,8 @@ final class HostEngine {
         // `axSettleEvery` for up to `axSettleWait` (done at once if the app shows it took an earlier ask).
         var axSettleWait = 3.0
         var axSettleEvery = 0.1
-        // A full-screen window's toolbar strip (its own window: the display's or the page area's width, at most this
-        // tall): never let in front, never left behind by a full-screen attempt backed out.
-        var stripMaxHeight: CGFloat = 150
+        // (A full-screen window's toolbar strip, its own window, is never let in front and never left behind by a
+        // full-screen attempt backed out: the core's rule, `WindowKinds.isStrip`, at most `WindowKinds.stripMaxHeight` tall.)
         // A window-mode window that couldn't be fitted covering at least this share of Margin's sidebar is never shown
         // over it. (What's let in front of Margin's window is the core's, host/front.rs: none reaching over the sidebar
         // more than 8 pt each way.)
@@ -643,10 +644,16 @@ final class HostEngine {
 
     // (The session's word: a show of `id` is today's one-host way, else a layout of it alone. HostedEngine.)
     func showsAlone(_ id: HostID) -> Bool { alone(id) }
+    // How many of the hosts a drag would move follow it live, of how many (the session's word, before a drag: every
+    // candidate counted as it is, its phase not asked; `liveFollowersList` is the drag's own, the shown ones only).
     func liveFollowers() -> (follow: Int, visible: Int) {
-        let list = visible.count > 1 ? visibleHosts : shown.flatMap { hosts[$0] }.map { [$0] } ?? []
-        return (list.filter { $0.tile != nil || $0.mode == .window }.count, list.count)
+        let list = liveCandidates
+        return (list.filter(followsLive).count, list.count)
     }
+    // The hosts a drag of the sidebar's edge moves: every visible one with several, else the one shown.
+    private var liveCandidates: [Host] { visible.count > 1 ? visibleHosts : shown.flatMap { hosts[$0] }.map { [$0] } ?? [] }
+    // A host that follows a drag live: a tile, or a window-mode window.
+    private func followsLive(_ h: Host) -> Bool { h.tile != nil || h.mode == .window }
 
     // `setLayout`'s steps, in the engine's queue.
     // A host coming in beside the ones shown (a split's new pane: opened, or unparked): the ones shown keep their rects
@@ -1301,7 +1308,7 @@ final class HostEngine {
               let mine = app.windows[host.window], let spaces = mine.spaces, !spaces.isEmpty else { return }
         let f = mine.bounds
         var seen: [Int: String] = [:]
-        for w in app.windows.values where w.kind == .strip && w.spaces == spaces && Self.toolbarOf(w.bounds, window: f) {
+        for w in app.windows.values where w.kind == .strip && w.spaces == spaces && WindowKinds.toolbarOf(w.bounds, window: f) {
             seen[w.number] = Self.toolbarState(w.bounds, alpha: w.alpha, layer: w.layer, onScreen: w.onScreen, window: f)
         }
         for (n, state) in seen.sorted(by: { $0.key < $1.key }) where toolbarSaid[n] != state {
@@ -1363,18 +1370,13 @@ final class HostEngine {
         guard let f = sys.bounds(window: host.window), let list = sys.serverWindows(pid: host.pid) else { return nil }
         let others = Set(hosts.values.map(\.window))
         let spaces = sys.spaces(window: host.window)
-        for w in list where w.number != host.window && !others.contains(w.number) && w.onScreen && w.bounds.height <= options.stripMaxHeight && Self.toolbarOf(w.bounds, window: f) {
+        for w in list where w.number != host.window && !others.contains(w.number) && w.onScreen && w.bounds.height <= WindowKinds.stripMaxHeight && WindowKinds.toolbarOf(w.bounds, window: f) {
             let over = Int((w.bounds.maxY - f.minY).rounded())
             guard over > 2 else { continue }
             if let spaces, let its = sys.spaces(window: w.number), its != spaces { continue }
             return over
         }
         return nil
-    }
-
-    // A strip at a full-screen window's top edge: its left edge and width the window's, from just above its top to inside it.
-    static func toolbarOf(_ b: CGRect, window f: CGRect) -> Bool {
-        f.width > 0 && abs(b.minX - f.minX) <= 2 && abs(b.width - f.width) <= 2 && b.maxY >= f.minY - 2 && b.minY <= f.minY + 2 + 150
     }
 
     // How a toolbar sits: resting (its bottom at its window's top or above: hidden), or out over its window by so many
@@ -3558,7 +3560,7 @@ final class HostEngine {
         }
         func strips() -> [ServerWindow] {
             (serverList(pid: host.pid) ?? []).filter { w in
-                w.number != host.window && !host.windowsBeforeAsk.contains(w.number) && !isHosted(window: w.number) && w.layer == 0 && isStrip(w.bounds, of: host)
+                w.number != host.window && !host.windowsBeforeAsk.contains(w.number) && !isHosted(window: w.number) && w.layer == 0 && WindowKinds.isStrip(w.bounds, in: placementFor(host))
                     && !(sys.spaces(window: w.number) ?? []).isEmpty
             }
         }
@@ -3569,20 +3571,6 @@ final class HostEngine {
         Diagnostics.note("host: \(host.id): its full screen's toolbar strip (\(strips().map { "\($0.number) at \(r($0.bounds))" }.joined(separator: ", "))) stayed after it was backed out: asked out of full screen once more, \(gone ? "gone" : "still there (never let in front of Margin's window)")")
     }
 
-    // A full-screen window's toolbar strip: as wide as the page area at least (the display's whole width for one that
-    // went full screen on its own), at most `stripMaxHeight` tall.
-    // (Measured against the host's own rect: a card's or a pane's toolbar is as wide as its own window.)
-    private func isStrip(_ b: CGRect, of host: Host) -> Bool {
-        b.height > 0 && b.height <= options.stripMaxHeight && b.width >= min(placement.area.width * 0.9, pageOf(host).width - 2) && b.width > 0
-    }
-
-    // Margin's sidebar: the display's area left of the page area (none narrower than 40 pt: the sidebar hidden).
-    private var sidebarRect: CGRect? {
-        let width = placement.page.minX - placement.area.minX
-        guard width >= 40, placement.area.height > 0 else { return nil }
-        return CGRect(x: placement.area.minX, y: placement.area.minY, width: width, height: placement.area.height)
-    }
-
     // A window the observed model says is never let in front of Margin's window: a leftover, a strip, a transient one
     // (a spare, a twin, a replaced window).
     private func keptBehind(_ w: ServerWindow) -> Bool {
@@ -3590,12 +3578,11 @@ final class HostEngine {
         return k.keptBehind
     }
 
-    // Whether a window at `b` covers at least `sidebarCover` of Margin's sidebar.
+    // Whether a window at `b` covers at least `sidebarCover` of Margin's sidebar (the display's area left of the page
+    // area, none narrower than 40 pt: hidden): the core's `covers_sidebar` (host/front.rs).
     private func coversSidebar(_ b: CGRect) -> Bool {
-        guard let side = sidebarRect else { return false }
-        let i = b.intersection(side)
-        guard !i.isNull, i.width > 0, i.height > 0 else { return false }
-        return i.width * i.height >= side.width * side.height * options.sidebarCover
+        var pl = placement.margin
+        return margin_front_covers_sidebar(b.marginRect, &pl, Double(options.sidebarCover))
     }
 
     // Safari's sidebar read from its View menu and hidden if open, in its hosted window when that's Safari's main one.
@@ -5285,11 +5272,12 @@ final class HostEngine {
         }
     }
 
-    // The visible hosts that follow a drag live (a tile, a window-mode window), the one shown first.
+    // The visible hosts that follow a drag live (`followsLive`), the one shown first, each one shown now (unlike
+    // `liveFollowers`' count: a host between its phases isn't written to).
     private func liveFollowersList() -> [Host] {
-        let list = visible.count > 1 ? visibleHosts : shown.flatMap { hosts[$0] }.map { [$0] } ?? []
+        let list = liveCandidates
         let shownFirst = list.filter { $0.id == shown } + list.filter { $0.id != shown }
-        return shownFirst.filter { $0.phase == .shown && ($0.tile != nil || $0.mode == .window) }
+        return shownFirst.filter { $0.phase == .shown && followsLive($0) }
     }
     // Live resize: the one shown left its tile for a full-screen Space of its own (its app's answer to a tile it
     // couldn't take: Weather on the real Mac, 2026-11-18 09:08, its tile sent narrower than its minimum): its tile there
@@ -6017,7 +6005,7 @@ final class HostEngine {
     // same pid and launch) and its window is there.
     private func closeLeftSafariWindows() async {
         for entry in leftSafariWindows {
-            guard let now = sys.app(pid: entry.pid), now.bundleId == options.safariBundle, entry.appLaunchedAt == nil || now.launchedAt == nil || abs((entry.appLaunchedAt ?? 0) - (now.launchedAt ?? 0)) < 2,
+            guard let now = sys.app(pid: entry.pid), now.bundleId == options.safariBundle, HostExits.sameLaunch(entry.appLaunchedAt, now.launchedAt),
                   entry.number.map({ sys.bounds(window: $0) != nil }) ?? true else {
                 leftSafariWindows.removeAll { $0 == entry } // gone (with its Safari, or closed by the person)
                 continue
@@ -6300,7 +6288,7 @@ final class HostEngine {
         var n = 0
         for k in list {
             guard let now = sys.app(pid: k.pid), k.bundleId == nil || now.bundleId == k.bundleId else { continue }
-            if let then = k.launchedAt, let at = now.launchedAt, abs(then - at) >= 2 { continue } // (its pid used again)
+            if !HostExits.sameLaunch(k.launchedAt, now.launchedAt) { continue } // (its pid used again)
             guard (sys.frontProcess() ?? sys.frontApp()) != k.pid, await sys.appActive(pid: k.pid) != false else { continue }
             sys.releaseActiveNow([PaneWindow(pid: k.pid, window: k.window)])
             n += 1
@@ -6361,8 +6349,9 @@ final class HostEngine {
         let started = sys.now()
         func same(_ a: HostMarker.App) -> Bool {
             guard let now = sys.app(pid: a.pid), now.bundleId == a.bundleId else { return false }
-            guard let then = a.launchedAt, let at = now.launchedAt else { return a.launchedAt == nil }
-            return abs(then - at) < 2
+            // (Marked with its launch time, the running one's unread: not taken for the same, unlike the others here.)
+            guard a.launchedAt == nil || now.launchedAt != nil else { return false }
+            return HostExits.sameLaunch(a.launchedAt, now.launchedAt)
         }
         let alive = m.apps.filter(same)
         let alivePids = Set(alive.map(\.pid))
@@ -6370,14 +6359,12 @@ final class HostEngine {
         // That Safari still running, the same launch (a pid used again by another Safari isn't it).
         func sameSafari(_ pid: Int32, _ launchedAt: Double?) -> Bool {
             guard let now = sys.app(pid: pid), now.bundleId == options.safariBundle else { return false }
-            guard let then = launchedAt, let at = now.launchedAt else { return true }
-            return abs(then - at) < 2
+            return HostExits.sameLaunch(launchedAt, now.launchedAt)
         }
         // An app the person opened, still that launch (a pid used again by another app or launch isn't it).
         func samePerson(_ w: HostMarker.Window) -> Bool {
             guard w.personApp == true, let bundle = w.bundleId, let now = sys.app(pid: w.pid), now.bundleId == bundle else { return false }
-            guard let then = w.appLaunchedAt, let at = now.launchedAt else { return true }
-            return abs(then - at) < 2
+            return HostExits.sameLaunch(w.appLaunchedAt, now.launchedAt)
         }
         // The Space showing on that window's display (Accessibility acts only there).
         func current(_ w: HostMarker.Window) -> UInt64? {
@@ -6513,7 +6500,7 @@ final class HostEngine {
     private var lastWake = -Double.infinity
     private func heardSomething() {
         activity()
-        guard !liveOn, sys.now() - lastWake >= 0.1 else { return }
+        guard margin_schedule_wake_due(sys.now(), lastWake, liveOn) else { return }
         lastWake = sys.now()
         onWake?()
     }

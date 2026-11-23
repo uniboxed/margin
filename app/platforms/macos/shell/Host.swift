@@ -344,9 +344,12 @@ nonisolated enum HostLayout {
         return CGRect(out)
     }
 
-    static func near(_ a: CGRect, _ b: CGRect, within: CGFloat = 1) -> Bool {
-        abs(a.minX - b.minX) <= within && abs(a.minY - b.minY) <= within && abs(a.width - b.width) <= within && abs(a.height - b.height) <= within
-    }
+    // Each of x, y, width and height within `within` points, the edge included (margin-core's `near`, typed: the waits
+    // ask it every few milliseconds).
+    static func near(_ a: CGRect, _ b: CGRect, within: CGFloat = 1) -> Bool { margin_layout_near(a.marginRect, b.marginRect, Double(within)) }
+
+    // A full-screen window's room above it for its own toolbar window (margin-core's `TOOLBAR_ROOM`: 52 pt).
+    static var toolbarRoom: CGFloat { CGFloat(margin_layout_toolbar_room()) }
 }
 
 // Which of an app's windows is hosted. Seen 2026-11-15 (a stand-alone probe of Dictionary started with no Dock icon):

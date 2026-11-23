@@ -236,9 +236,110 @@ pub unsafe extern "C" fn margin_kinds_is_strip(bounds: MarginRect, p: *const Mar
     margin_core::host::kinds::is_strip(&bounds.into(), &p)
 }
 
+/// Each of x, y, width and height within `within` points, the edge included (host/layout.rs `near`).
+#[unsafe(no_mangle)]
+pub extern "C" fn margin_layout_near(a: MarginRect, b: MarginRect, within: f64) -> bool {
+    layout::near(&a.into(), &b.into(), within)
+}
+
+/// A full-screen window's room above it for its own toolbar window, in points (host/layout.rs `TOOLBAR_ROOM`).
+#[unsafe(no_mangle)]
+pub extern "C" fn margin_layout_toolbar_room() -> f64 {
+    layout::TOOLBAR_ROOM
+}
+
+/// Whether a window of these bounds is a full-screen window's own toolbar strip at its top edge (`window`: its
+/// bounds), its height not asked (host/kinds.rs `toolbar_of`).
+#[unsafe(no_mangle)]
+pub extern "C" fn margin_kinds_toolbar_of(bounds: MarginRect, window: MarginRect) -> bool {
+    margin_core::host::kinds::toolbar_of(&bounds.into(), &window.into())
+}
+
+/// Whether a window at `bounds` covers at least `share` of Margin's sidebar for this placement (host/front.rs
+/// `covers_sidebar`).
+///
+/// # Safety
+/// `p` readable (null: false).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_front_covers_sidebar(
+    bounds: MarginRect,
+    p: *const MarginPlacement,
+    share: f64,
+) -> bool {
+    if p.is_null() {
+        return false;
+    }
+    // SAFETY: the contract above.
+    let p: Placement = unsafe { *p }.into();
+    margin_core::host::front::covers_sidebar(&bounds.into(), &p, share)
+}
+
+/// Whether something heard asks for a look now (host/schedule.rs `wake_due`); `last` minus infinity: none yet.
+#[unsafe(no_mangle)]
+pub extern "C" fn margin_schedule_wake_due(now: f64, last: f64, live_on: bool) -> bool {
+    margin_core::host::schedule::wake_due(now, last, live_on)
+}
+
+/// Seconds until the engine's next look (host/schedule.rs `next_poll`); `active_for` NaN: no activity yet. Less than
+/// zero: none until an event.
+#[unsafe(no_mangle)]
+pub extern "C" fn margin_schedule_next_poll(hosting: bool, links: bool, pending: bool, active_for: f64) -> f64 {
+    let facts = margin_core::host::schedule::PollFacts {
+        hosting,
+        links,
+        pending,
+        active_for: (!active_for.is_nan()).then_some(active_for),
+    };
+    margin_core::host::schedule::next_poll(&facts).unwrap_or(-1.0)
+}
+
+/// Whether a running app (launched at `now`) is the launch known (`then`): host/exits.rs `same_launch`; NaN on
+/// either side: not known (the same).
+#[unsafe(no_mangle)]
+pub extern "C" fn margin_exits_same_launch(then: f64, now: f64) -> bool {
+    let known = |t: f64| (!t.is_nan()).then_some(t);
+    margin_core::host::exits::same_launch(known(then), known(now))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_typed_rules() {
+        let page = MarginRect { x: 248.0, y: 41.0, width: 1256.0, height: 933.0 };
+        let off = |d: f64| MarginRect { x: 248.0 + d, ..page };
+        assert!(margin_layout_near(page, off(1.0), 1.0) && !margin_layout_near(page, off(1.01), 1.0));
+        assert!(margin_layout_near(page, off(4.0), 4.0) && !margin_layout_near(page, off(-4.5), 4.0));
+        assert_eq!(margin_layout_toolbar_room(), 52.0);
+        let win = MarginRect { x: 260.0, y: 41.0, width: 1244.0, height: 933.0 };
+        let resting = MarginRect { x: 260.0, y: -11.0, width: 1244.0, height: 52.0 };
+        assert!(margin_kinds_toolbar_of(resting, win));
+        assert!(!margin_kinds_toolbar_of(MarginRect { x: 0.0, y: 0.0, width: 1512.0, height: 88.0 }, win));
+        let p = MarginPlacement {
+            page: MarginRect { x: 260.0, y: 0.0, width: 1252.0, height: 982.0 },
+            area: MarginRect { x: 0.0, y: 0.0, width: 1512.0, height: 982.0 },
+            display: MarginRect::default(),
+        };
+        let over = |w: f64| MarginRect { x: 0.0, y: 0.0, width: w, height: 982.0 };
+        unsafe {
+            assert!(margin_front_covers_sidebar(over(65.0), &p, 0.25));
+            assert!(!margin_front_covers_sidebar(over(64.99), &p, 0.25));
+            assert!(!margin_front_covers_sidebar(over(1512.0), std::ptr::null(), 0.25));
+        }
+        assert!(margin_schedule_wake_due(1.0, f64::NEG_INFINITY, false));
+        assert!(!margin_schedule_wake_due(1.0, f64::NEG_INFINITY, true));
+        assert!(!margin_schedule_wake_due(1.05, 1.0, false));
+        // The cadence as the JSON call answered it (host/api.rs `nextPoll`), none as less than zero.
+        assert_eq!(margin_schedule_next_poll(true, false, false, 0.3), 0.1);
+        assert_eq!(margin_schedule_next_poll(true, false, false, f64::NAN), 1.5);
+        assert_eq!(margin_schedule_next_poll(true, false, true, 5.0), 0.25);
+        assert_eq!(margin_schedule_next_poll(false, true, false, f64::NAN), 2.0);
+        assert!(margin_schedule_next_poll(false, false, false, f64::NAN) < 0.0);
+        assert!(margin_schedule_next_poll(false, false, false, 0.3) < 0.0);
+        assert!(margin_exits_same_launch(1000.0, 1001.99) && !margin_exits_same_launch(1000.0, 1002.0));
+        assert!(margin_exits_same_launch(f64::NAN, 1000.0) && margin_exits_same_launch(1000.0, f64::NAN));
+    }
 
     fn call(core: *mut HostCore, request: &str) -> String {
         let mut len = 0usize;
