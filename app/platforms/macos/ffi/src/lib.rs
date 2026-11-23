@@ -19,6 +19,7 @@ mod panes;
 mod profiles;
 mod themes;
 mod visible;
+mod watch;
 pub use budget::*;
 pub use data::*;
 pub use keys::*;
@@ -29,6 +30,7 @@ pub use panes::*;
 pub use profiles::*;
 pub use themes::*;
 pub use visible::*;
+pub use watch::*;
 
 use margin_core::geometry::Rect;
 use margin_core::host::api::HostCore;

@@ -1203,49 +1203,41 @@ final class HostEngine {
             // (The process gone: its app quit. kill(pid, 0) alone: a running-app lookup is a LaunchServices request a poll.)
             if !sys.processRuns(pid: host.pid) { appQuit(host.pid); continue }
             if host.launchedByMargin, !host.promoted, sys.policy(pid: host.pid) == .regular { promote(host, why: "its policy reads regular") }
-            // (Closed and still listed by the window server, in no Space or off screen: gone at once, as two reads that missed.)
-            if closedByItsApp(host) { host.unread = max(2, host.unread + 1) } else if sys.bounds(window: host.window) == nil { host.unread += 1 } else { host.unread = 0; host.gone = false }
-            if host.unread >= 2 { // twice in a row: one read can miss mid-transition
+            // (Closed and still listed by the window server, in no Space or off screen: gone at once, as two reads that
+            // missed. Its unread reads counted by the core: twice in a row gone, one read can miss mid-transition.)
+            let read: HostCore.PollRead = closedByItsApp(host) ? .closed : sys.bounds(window: host.window) == nil ? .unread : .read
+            switch core.pollRead(host.handle, read) {
+            case .gone:
                 // (Shown, its app still running: the reconciler adopts another main window of its app's that comes within
                 // the grace, else closes its item (Tirth, 2026-11-17: a window the person closes closes its item, never
-                // reopened). Parked, an app Margin started: reopened at its next show, behind the loader. Else, the
-                // window's gone as before.)
-                if !host.gone, host.phase != .preparing, sys.processRuns(pid: host.pid) {
-                    let parkedOwn: Bool = { if case .app = host.target { return host.launchedByMargin && host.phase == .parked }; return false }()
-                    if parkedOwn {
-                        // (Parked: reopened at its next show, behind the loader; a window its app opened now would come
-                        // up in the current Space, over what's shown.)
-                        host.gone = true
-                        host.goneAt = sys.now()
-                        Diagnostics.note("host: \(host.id): its window \(host.window) gone while parked, its app running → reopen at its next show")
-                    } else if host.phase == .shown {
-                        host.gone = true
-                        host.goneAt = sys.now()
-                        let other = situation(host).replacement
-                        Diagnostics.note("host: \(host.id): shown, window \(host.window) gone, its app running → \(other.map { "another of its app's its main window now (\($0)): adopt" } ?? "its item closed unless another main window of its app's comes within \(Int(HostReconciler.goneGrace * 1000)) ms")")
-                    } else {
-                        windowGone(host)
-                    }
-                } else if !host.gone {
-                    windowGone(host)
+                // reopened). Parked, an app Margin started: reopened at its next show, behind the loader; a window its
+                // app opened now would come up in the current Space, over what's shown. Else, the window's gone as
+                // before. Its process read again only when the core's tree reaches it.)
+                let parkedOwn: Bool = { if case .app = host.target { return host.launchedByMargin && host.phase == .parked }; return false }()
+                var gone = core.pollGone(host.handle, now: sys.now(), runs: nil, parkedOwn: parkedOwn)
+                if gone == .askRuns { gone = core.pollGone(host.handle, now: sys.now(), runs: sys.processRuns(pid: host.pid), parkedOwn: parkedOwn) }
+                switch gone {
+                case .reopen:
+                    Diagnostics.note("host: \(host.id): its window \(host.window) gone while parked, its app running → reopen at its next show")
+                case .shown:
+                    let other = situation(host).replacement
+                    Diagnostics.note("host: \(host.id): shown, window \(host.window) gone, its app running → \(other.map { "another of its app's its main window now (\($0)): adopt" } ?? "its item closed unless another main window of its app's comes within \(Int(HostReconciler.goneGrace * 1000)) ms")")
+                case .windowGone: windowGone(host)
+                case .nothing, .askRuns: break
                 }
                 continue
-            }
             // (Its bounds unread this poll: gone or mid-transition, never taken for a stray: a window the person just closed
             // would be "in no Space", brought back, fail and be parked before the reconciler's grace could close its item.)
-            if host.unread > 0 { continue }
+            case .skip: continue
+            case .read: break
+            }
             // Where it mustn't be, twice in a row (one read can miss mid-transition): the one shown outside Margin's
-            // Space (Margin's window left full screen), a parked one in a user Space.
+            // Space (Margin's window left full screen), a parked one in a user Space (the reconciler's `parkAgain`). The
+            // one shown in no Space at all is never a read that missed mid-transition: nothing puts a window there but a
+            // Space destroyed under it. Brought back at the first read. (The core's count.)
             let spaces = sys.spaces(window: host.window)
             sayRead(host, spaces: spaces, marginHere: marginHere)
-            let strayed = host.phase == .shown ? (!marginHere || (spaces.map { $0 != [marginSpace] } ?? false)) : host.phase == .parked && !(spaces ?? []).isEmpty
-            host.strays = strayed ? host.strays + 1 : 0
-            // (The one shown in no Space at all is never a read that missed mid-transition: nothing puts a window there
-            // but a Space destroyed under it. Brought back at the first read.)
-            let nowhere = host.phase == .shown && marginHere && spaces == []
-            // (A parked one found in a user Space: the reconciler's `parkAgain`, at the second read in a row.)
-            if host.phase == .shown, host.strays >= 2 || nowhere {
-                host.strays = 0
+            if core.pollPlace(host.handle, place(spaces), marginHere: marginHere) {
                 let id = host.id
                 Task { await serial { await self.strayed(id, marginHere: marginHere) } }
             }
@@ -5265,6 +5257,13 @@ final class HostEngine {
     // taken for a stray, brought back, placed again, refused, and reopened: a window the person closed came back). A
     // window on screen isn't taken for closed whatever was said (one Accessibility lists again is taken off by the
     // observer).
+    // A window's place by its Spaces as read, for the core's decisions (host/model/watch.rs `Place`): unread, in no
+    // Space, in Margin's Space alone, elsewhere.
+    private func place(_ spaces: [UInt64]?) -> HostCore.Place {
+        guard let spaces else { return .unread }
+        return spaces.isEmpty ? .nowhere : spaces == [marginSpace] ? .inPage : .elsewhere
+    }
+
     private func closedByItsApp(_ host: Host) -> Bool {
         guard observer.model.apps[host.pid]?.closed.contains(host.window) == true else { return false }
         if (sys.spaces(window: host.window) ?? []).isEmpty { return true }
@@ -5290,20 +5289,22 @@ final class HostEngine {
                 + ", its bounds \(sys.bounds(window: host.window).map(r) ?? "unread")" + (host.askedFullScreenAt.map { ", \(ms(since: $0)) ms after it was last asked into full screen" } ?? "")
             // (Read again now, after whatever ran since the poll's read: both where they should be, nothing to do. An
             // operation in between put it right, or the poll's one read of it in no Space was the bridge's move landing.)
+            // (The core's, with its returns' budget: past it parked alone. Bringing it back is the guard's "put back", a
+            // reaction it counts.)
             let marginNow = marginWindow == 0 || sys.spaces(window: marginWindow).map { $0.contains(marginSpace) } ?? true
-            if marginNow, spaces == [marginSpace] { return }
-            guard marginHere, marginNow else {
+            switch core.stray(host.handle, now: sys.now(), place: place(spaces), marginHere: marginHere, marginNow: marginNow) {
+            case .nothing: return
+            case .park:
                 Diagnostics.note("host: \(id): shown, found where it mustn't be (\(seen))")
                 return await parkShownNow(why: "its window left Margin's Space, or Margin's window did")
-            }
-            // (Its action is the guard's "put back" below: a reaction it counts already, never asked twice.)
-            if case .say(let count, _) = core.spend(host.handle, .strayReturns, now: sys.now(), guarded: false) {
+            case .parkOnly(let count):
                 Diagnostics.note("host: \(id): shown, out of Margin's Space again (\(seen)), \(count) times in \(Int(options.returnsWithin)) s: parked")
                 return await parkShownNow(why: "its window keeps leaving Margin's Space", only: host)
+            case .putBack:
+                guard guarded(host, "put back") else { return }
+                Diagnostics.note("host: \(id): shown, found out of Margin's Space (\(seen)): brought back")
+                await bringBack(host, from: spaces ?? [])
             }
-            guard guarded(host, "put back") else { return }
-            Diagnostics.note("host: \(id): shown, found out of Margin's Space (\(seen)): brought back")
-            await bringBack(host, from: spaces ?? [])
         }
     }
 
@@ -5370,9 +5371,10 @@ final class HostEngine {
     //   (what brought it back on the real Mac, 2026-11-17). `returnsMax` times in `returnsWithin` at most, then left as it
     //   is, said once.
     private func backOnScreen(_ id: HostID) async {
-        guard let host = hosts[id], isVisible(id), let look = screenLook(sys.onScreenWindows(), of: host), !(look.margin && look.host) else { return }
+        guard let host = hosts[id], isVisible(id), let look = screenLook(sys.onScreenWindows(), of: host),
+              HostCore.stillOff(margin: look.margin, host: look.host, own: nil) else { return }
         let own = sys.windowOnScreen(host.window)
-        if look.margin, let own, own.onScreen, own.alpha > 0 { return }
+        guard HostCore.stillOff(margin: look.margin, host: look.host, own: own.map { $0.onScreen && $0.alpha > 0 }) else { return }
         let spaces = sys.spaces(window: host.window)
         let current = sys.currentSpace(onDisplayOf: marginSpace)
         let seen = "Margin's window \(look.margin ? "on" : "off") screen, its window \(host.window) \(look.host ? "on" : "off") screen and in \(spaces.map { "\($0)" } ?? "Spaces that don't read")"
@@ -5380,14 +5382,20 @@ final class HostEngine {
             + ", Margin's Space \(marginSpace), its window in \(sys.spaces(window: marginWindow).map { "\($0)" } ?? "Spaces that don't read")"
             + ", the displays' current Spaces \(sys.currentSpaces().map { $0.joined(separator: ", ") } ?? "unread")"
             + (host.askedFullScreenAt.map { ", \(ms(since: $0)) ms after it was last asked into full screen" } ?? "")
-        // (Its own budget: a split's other panes' tries never use it up, docs/PEEK-SPLIT.md §4. In place: once a show.)
-        if look.margin, current == marginSpace, spaces == [marginSpace] {
-            switch core.spend(host.handle, .offInPlace, now: sys.now(), guarded: options.loopGuard) {
-            case .go: break
-            case .held(let until): return Diagnostics.note("host: \(id): brought back on screen held: too many reactions this second across every host (\(Int(max(0, until - sys.now()) * 1000)) ms more)")
-            case .say: return Diagnostics.note("host: \(id): shown, still not on screen in Margin's Space (\(seen)): left as it is until it's shown again")
-            case .said: return
-            }
+        // (The core's: in place or elsewhere, its own budget (a split's other panes' tries never use it up,
+        // docs/PEEK-SPLIT.md §4; in place once a show), what's made current and moved; each action counted toward the
+        // loop guard's per-second hold.)
+        let makeCurrent: Bool, moveIn: Bool
+        switch core.offScreen(host.handle, now: sys.now(), marginOn: look.margin, hostOn: look.host, currentIsMargin: current == marginSpace, place: place(spaces), guarded: options.loopGuard) {
+        case .held(let until): return Diagnostics.note("host: \(id): brought back on screen held: too many reactions this second across every host (\(Int(max(0, until - sys.now()) * 1000)) ms more)")
+        case .inPlaceSpent(let say):
+            if say { Diagnostics.note("host: \(id): shown, still not on screen in Margin's Space (\(seen)): left as it is until it's shown again") }
+            return
+        case .giveUp(let say, let count):
+            if say { Diagnostics.warn("host: \(id): shown, not on screen (\(seen)), \(count) times in \(Int(options.returnsWithin)) s: left as it is") }
+            return
+        case .act(let made, let moved): makeCurrent = made; moveIn = moved
+        case .inPlace:
             // (Its app's own first, the reconciler's rungs not tried yet this show: an app that ordered its window out
             // orders it in again at its activation or its reopen (ordersOut after: placing it again only took it out of
             // full screen and back, again and again). Then placed again: macOS's own change that left it undrawn.)
@@ -5404,15 +5412,7 @@ final class HostEngine {
             if case .failed = await placeFullScreen(host, isNew: false, retrying: false), !isVisible(host.id) { emit(.unshown(host.id)) }
             return
         }
-        switch core.spend(host.handle, .offElsewhere, now: sys.now(), guarded: options.loopGuard) {
-        case .go: break
-        case .held(let until): return Diagnostics.note("host: \(id): brought back on screen held: too many reactions this second across every host (\(Int(max(0, until - sys.now()) * 1000)) ms more)")
-        case .say(let count, _): return Diagnostics.warn("host: \(id): shown, not on screen (\(seen)), \(count) times in \(Int(options.returnsWithin)) s: left as it is")
-        case .said: return
-        }
         let t0 = sys.now()
-        let makeCurrent = current != marginSpace || !look.margin
-        let moveIn = !look.host && (spaces != [marginSpace] || !look.margin)
         Diagnostics.note("host: \(id): shown, not on screen (\(seen)): \([makeCurrent ? "Margin's Space made current again" : nil, moveIn ? "its window moved into it again" : nil].compactMap { $0 }.joined(separator: ", "))")
         if makeCurrent { _ = sys.setCurrentSpace(marginSpace) }
         if moveIn { _ = sys.move(window: host.window, to: marginSpace) }

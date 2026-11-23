@@ -578,6 +578,75 @@ nonisolated final class HostCore: @unchecked Sendable {
         defer { lock.unlock() }
         margin_budget_cut_order_right(core, h)
     }
+    // ---- the poll and its looks (host/model/watch.rs: docs/CORE-REFACTOR.md step 2 part 7), per host per poll: typed,
+    // nothing allocated. A window's place by its Spaces as read (unread, in no Space, Margin's alone, elsewhere). ----
+
+    enum Place: UInt8 { case unread = 0, nowhere, inPage, elsewhere }
+    // The poll's read of its window (its app closed it, its bounds unread, read): gone (twice in a row), skipped, read.
+    enum PollRead: UInt8 { case closed = 0, unread, read }
+    enum Counted { case gone, skip, read }
+    func pollRead(_ h: UInt32, _ read: PollRead) -> Counted {
+        lock.lock()
+        defer { lock.unlock() }
+        switch margin_watch_poll_read(core, h, read.rawValue) {
+        case 0: return .gone
+        case 2: return .read
+        default: return .skip
+        }
+    }
+    // Its window gone: its process to be read again and asked again (`runs` nil: not yet), nothing, reopened at its next
+    // show, the one shown's (the reconciler's grace), gone as any. Marked gone in the core when it waits.
+    enum Gone { case askRuns, nothing, reopen, shown, windowGone }
+    func pollGone(_ h: UInt32, now: Double, runs: Bool?, parkedOwn: Bool) -> Gone {
+        lock.lock()
+        defer { lock.unlock() }
+        switch margin_watch_poll_gone(core, h, now, runs.map { $0 ? 1 : 0 } ?? -1, parkedOwn) {
+        case 0: return .askRuns
+        case 2: return .reopen
+        case 3: return .shown
+        case 4: return .windowGone
+        default: return .nothing
+        }
+    }
+    // Its window read, where it is: true, the one shown brought back in its turn (a stray twice in a row, or in no Space).
+    func pollPlace(_ h: UInt32, _ place: Place, marginHere: Bool) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return margin_watch_poll_place(core, h, place.rawValue, marginHere)
+    }
+    // A stray in its turn, read again (its returns' budget inside).
+    enum Stray: Equatable { case nothing, park, parkOnly(count: Int), putBack }
+    func stray(_ h: UInt32, now: Double, place: Place, marginHere: Bool, marginNow: Bool) -> Stray {
+        var n: UInt32 = 0
+        lock.lock()
+        defer { lock.unlock() }
+        switch margin_watch_stray(core, h, now, place.rawValue, marginHere, marginNow, &n) {
+        case 1: return .park
+        case 2: return .parkOnly(count: Int(n))
+        case 3: return .putBack
+        default: return .nothing
+        }
+    }
+    // Whether the on-screen look still finds something missing (`own`: the host's own read, nil before it).
+    static func stillOff(margin: Bool, host: Bool, own: Bool?) -> Bool { margin_watch_still_off(margin, host, own.map { $0 ? 1 : 0 } ?? -1) }
+    // A visible host off screen in its turn: in place (once a show), in place spent (say it or not), act (Margin's
+    // Space made current, its window moved in), given up (say it or not), held by the loop guard's hold (`guarded`).
+    enum OffScreen: Equatable { case inPlace, inPlaceSpent(say: Bool), act(makeCurrent: Bool, moveIn: Bool), giveUp(say: Bool, count: Int), held(until: Double) }
+    func offScreen(_ h: UInt32, now: Double, marginOn: Bool, hostOn: Bool, currentIsMargin: Bool, place: Place, guarded: Bool) -> OffScreen {
+        var n: UInt32 = 0
+        var until = 0.0
+        lock.lock()
+        defer { lock.unlock() }
+        let a = margin_watch_off_screen(core, h, now, marginOn, hostOn, currentIsMargin, place.rawValue, guarded, &n, &until)
+        switch a {
+        case 0: return .inPlace
+        case 1, 2: return .inPlaceSpent(say: a == 1)
+        case 4, 5: return .giveUp(say: a == 4, count: Int(n))
+        case 6: return .held(until: until)
+        default: return .act(makeCurrent: a & 1 != 0, moveIn: a & 2 != 0)
+        }
+    }
+
     // The ladder: a full-screen show backed out (true: tried again at its next show), another window adopted in its
     // place (asked before its fields change), the loop guard's move to window mode.
     func fullScreenFailed(_ h: UInt32) -> Bool {

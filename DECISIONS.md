@@ -7830,3 +7830,37 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   (the guard's own and the budgets'), none was reached. The screen suite's `behaviours-*`, `cut-panes` and
   `real-apps-loop` parts are to show no hold they didn't before (not run here: the screen suite runs before the merge).
 
+## Core refactor step 2, part 7 (first of two commits): the poll's counts, strays and off screen in the core (2026-11-23)
+
+- The core decides (host/model/watch.rs, on the model), each asked where the Swift decided, typed per host per poll:
+  the poll's count of a window's reads (its app's close as two reads that missed, unread twice in a row gone, a read
+  resetting the count and its "gone"); a gone window's tree (gone already: nothing; being made: gone as any; its app
+  running: an app Margin started parked reopened at its next show, the one shown left to the reconciler's grace, else
+  gone as any; marked gone with its time when it waits); a window's place counted (the one shown outside Margin's
+  Space or with Margin's window out, a parked one in any Space, twice in a row; the one shown in no Space at once);
+  `strayed`'s verdict in its turn (both in place now: nothing; Margin's window out at the poll or now: park; its
+  returns spent: park alone; else bring back); `backOnScreen`'s (the look still missing something, before and after
+  the host's own read; in place or elsewhere with each one's budget, and what's made current and moved). A window's
+  Spaces go in as a place (unread, in no Space, Margin's alone, elsewhere): OS-neutral, Margin's Space the page
+  area's place on the Mac.
+- Every read stays where and when it was, in the same order: the window server is read lazily (a read only when the
+  decisions before it pass), so the one read inside a decision (a gone window's process, read again only when the
+  tree reaches it) is answered "read it" by the core and asked again with it. `strayed` reads its window and Margin's
+  again in its turn and asks the core with those fresh reads, as the Swift re-decided there. The guard's "put back"
+  stays the engine's call (its stop moves a host down a route: the Mac's mechanism).
+- Left in Swift, deliberately: `noteOffScreen`, `noteOffPage` and `leftFullScreenSign` (with `leftFullScreen`'s
+  guard). Each is a chain of window-server and Accessibility reads, each read only when the ones before it pass, ending
+  in a count reset or +1 of a core field (`offScreenReads`, `offPageReads`, which the reconciler reads) or a Mac sign
+  (a tile's window, Safari's toolbar windows, Accessibility's flag). Moving them would read eagerly (more reads every
+  poll: CPU) or need a call per read (more crossing than the rule). Also left: the on-screen look's own counters
+  (`offReads`, `offReadsOf`: the engine's look), `closedByItsApp` (the observer's model and two reads), the promote,
+  the rungs of the in-place bring-forward, the drag's hold (part 6's).
+- Checked before the Swift went: the deleted Swift (copied verbatim, its reads given as facts and recorded when made)
+  against the engine's new order of calls over 6,800,029 checks in 30,000 generated runs of 80 steps (every phase,
+  reads unread, closed or read, a process running or not, every place, Margin's window in or out, looks with and
+  without the host's own read, the displays' current Space unread, Margin's or another, the engine's own writes
+  between polls; every verdict, every read made, every field after every step): no difference, the same reads in the
+  same order. The harness caught each deliberate break (a read not resetting "gone", gone at the third read, "in no
+  Space" taken for unread, Margin's window now ignored, make-current without Margin's window, move-in inverted).
+  Nothing allocated per poll (no_alloc.rs). The app's 2038 checks pass unchanged.
+

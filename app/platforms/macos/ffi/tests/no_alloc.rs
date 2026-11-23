@@ -299,3 +299,48 @@ fn the_budgets_allocate_nothing_after_a_cut_panes_first_repair() {
         margin_host_free(core);
     }
 }
+
+#[test]
+fn the_polls_counts_and_looks_allocate_nothing() {
+    let core = margin_host_new();
+    let (id, app) = ("app:com.apple.Notes", "com.apple.Notes");
+    // SAFETY: a live core, valid buffers.
+    let h = unsafe { margin_model_add(core, id.as_ptr(), id.len(), app.as_ptr(), app.len(), 41, 500) };
+    // SAFETY: a live core.
+    let (mut count, mut until) = (0u32, 0.0f64);
+    // (The loop guard's list of this second's actions made once: its first action, before the count.)
+    // SAFETY: a live core, writable outs.
+    unsafe {
+        margin_model_set(core, h, Field::Phase as u32, 1);
+        margin_budget_spend(core, h, 1, 0.0, true, &mut count, &mut until);
+    }
+    let n = allocations(|| {
+        // SAFETY: a live core, writable outs.
+        unsafe {
+            // (Every poll, per host: its read counted, where it is, a gone window's tree.)
+            for read in [2u8, 1, 2, 0, 1] {
+                std::hint::black_box(margin_watch_poll_read(core, h, read));
+            }
+            for place in 0..4u8 {
+                std::hint::black_box(margin_watch_poll_place(core, h, place, place != 1));
+            }
+            std::hint::black_box(margin_watch_poll_gone(core, h, 1.0, -1, false));
+            std::hint::black_box(margin_watch_poll_gone(core, h, 1.0, 1, false));
+            std::hint::black_box(margin_watch_still_off(true, false, -1));
+            // (A stray's and an off-screen look's turn: their budgets within their room.)
+            std::hint::black_box(margin_watch_stray(core, h, 2.0, 3, true, true, &mut count));
+            std::hint::black_box(margin_watch_off_screen(
+                core, h, 3.0, true, false, true, 2, true, &mut count, &mut until,
+            ));
+            std::hint::black_box(margin_watch_off_screen(
+                core, h, 4.0, true, false, false, 3, true, &mut count, &mut until,
+            ));
+        }
+    });
+    assert_eq!(n, 0, "the poll's counts and looks allocated {n} times");
+    // SAFETY: the live core, freed once.
+    unsafe {
+        margin_model_remove(core, h);
+        margin_host_free(core);
+    }
+}

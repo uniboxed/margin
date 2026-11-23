@@ -305,6 +305,19 @@ impl HostCore {
         self.model.spend(h, kind, now, || if guarded { guard.budgeted(now) } else { None })
     }
 
+    /// A visible host off screen in its turn (host/model/watch.rs `off_screen`), its budget's action counted toward the
+    /// loop guard's per-second hold (`guarded`).
+    pub fn off_screen(
+        &mut self,
+        h: super::model::Handle,
+        now: f64,
+        f: &super::model::OffFacts,
+        guarded: bool,
+    ) -> super::model::OffScreen {
+        let guard = &mut self.driver.guard;
+        self.model.off_screen(h, now, f, || if guarded { guard.budgeted(now) } else { None })
+    }
+
     /// One request (JSON) → its answer (JSON). Never panics on bad input: `{"error": …}`.
     pub fn call(&mut self, request: &str) -> String {
         match serde_json::from_str::<Request>(request) {

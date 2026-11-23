@@ -107,6 +107,17 @@ void margin_budget_cut_order_right(MarginHostCore *core, uint32_t handle);
 bool margin_model_full_screen_failed(MarginHostCore *core, uint32_t handle); // true: tried again at its next show
 void margin_model_adopted(MarginHostCore *core, uint32_t handle, bool can_full_screen);
 void margin_model_moved_to_window(MarginHostCore *core, uint32_t handle);
+// The poll and its looks (host/model/watch.rs), per host: a place is 0 unread, 1 in no Space, 2 in Margin's Space
+// alone, 3 elsewhere. poll_read: read 0 closed by its app, 1 unread, 2 read -> 0 gone, 1 skip, 2 read. poll_gone: runs
+// -1 not read -> 0 read it and ask again, 1 nothing, 2 reopen at its next show, 3 the one shown's, 4 gone as any.
+// stray: 0 nothing, 1 park, 2 park alone (count), 3 bring back. off_screen: 0 in place, 1/2 in place spent (say/said),
+// 4/5 given up (say/said, count), 6 held (until), 8 + 1 make Margin's Space current + 2 move its window in.
+uint8_t margin_watch_poll_read(MarginHostCore *core, uint32_t handle, uint8_t read);
+uint8_t margin_watch_poll_gone(MarginHostCore *core, uint32_t handle, double now, int8_t runs, bool parked_own);
+bool margin_watch_poll_place(MarginHostCore *core, uint32_t handle, uint8_t place, bool margin_here);
+uint8_t margin_watch_stray(MarginHostCore *core, uint32_t handle, double now, uint8_t place, bool margin_here, bool margin_now, uint32_t *count);
+bool margin_watch_still_off(bool margin_on, bool host_on, int8_t own_on); // own_on -1: not read yet
+uint8_t margin_watch_off_screen(MarginHostCore *core, uint32_t handle, double now, bool margin_on, bool host_on, bool current_is_margin, uint8_t place, bool guarded, uint32_t *count, double *until);
 bool margin_minimums_has(MarginHostCore *core, const uint8_t *app, size_t len);
 bool margin_minimums_known(MarginHostCore *core, const uint8_t *app, size_t app_len, const uint8_t *version, size_t version_len, MarginSize *out); // version NULL: not known
 

@@ -20,6 +20,7 @@ mod budget;
 mod order;
 mod panes;
 mod visible;
+mod watch;
 pub use budget::{CUT_LIMIT, CUT_WITHIN, CutRepair, CutRepairs, Kind as BudgetKind, Limits, Spend};
 pub use order::{Confirm, FrontPlan, server_order, top_behind};
 pub use panes::{Side, SlideStep, slide_rect};
@@ -27,6 +28,7 @@ pub use visible::{
     BringIn, BringInFacts, BringInPoint, Hold, HoldKind, LayoutBegun, LayoutExtra, ModelOptions, Refusal, ShownSet,
     Visible,
 };
+pub use watch::{Counted, Gone, OffFacts, OffScreen, Place, Read, Stray, still_off};
 
 pub type Handle = u32;
 
