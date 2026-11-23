@@ -8194,3 +8194,14 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   split's room 240 ns, a layout report read 3.6 µs in the core and 14 µs a report on the Swift side (was 10: its JSON
   made, the answer typed; commit 6 keeps it in the Page); a push 31 µs (was 5.5: a few a second while media plays).
   The typed web address and card rect allocate nothing (no_alloc.rs).
+
+## A search's address encodes every letter outside ASCII (Tirth, 2026-11-23: step 3's open question 8)
+
+- Tirth's answer to the design's question 8: `searchUrl` percent-encodes every non-ASCII letter ("café" →
+  `caf%C3%A9`), as the extension's search (shared/search.ts, encodeURIComponent) does. The design took the Swift to
+  keep Unicode's letters, marks and digits unencoded (`CharacterSet.alphanumerics` in its allowed set); commit 0's
+  checks found it never did: Foundation's `addingPercentEncoding` ignores whatever of the allowed set isn't ASCII. So
+  his decision is the behaviour Margin already had, and nothing changes: the core's `search_url` (session/ui.rs) keeps
+  ASCII's letters and digits and `-_.!~*'()`, every other byte its `%XX`.
+- Pinned in both: the Swift's checks (T/session-rules-tests.swift: café, a combining mark, CJK, Arabic digits, ½ and
+  Ⅻ, ß, all encoded) and the core's (ui.rs `a_search_address`). The design's question 8 and part 10's risk say so.

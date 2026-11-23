@@ -1365,7 +1365,7 @@ until step 4 (open question 6).
 | # | Commit | Swift deleted | Rust in (with tests) | Measured after |
 | --- | --- | --- | --- | --- |
 | 0 | Baseline (`idle-cost`, `idle-profile`, `live-resize`, `page-frames`, a switch's time) and tests added against the Swift: the four pin/favourite paths, `noRoom`'s edges, `lastItem`'s tie, `webAddress`, `searchUrl`, UP's caps, HostID's logged form, holes with zero-size and touching rects, pass-through with holes. **Tests done 2026-11-23** (c0b09ce4); the baseline is the screen suite's | 0 | 0 | the baseline |
-| 1 | The pure rules into the core, Swift switched, its copies deleted: `noRoom`/`paneLeast`/`isNoRoom`, `defaultCardRect`, `webAddress`, `searchUrl`, `resolve`, `loaderApp`, `dragLine`, `lastItem`, UP's sanitiser, `PageLayout`'s parse. **Done 2026-11-23** (COMMIT1) | ~180 | ~600 | |
+| 1 | The pure rules into the core, Swift switched, its copies deleted: `noRoom`/`paneLeast`/`isNoRoom`, `defaultCardRect`, `webAddress`, `searchUrl`, `resolve`, `loaderApp`, `dragLine`, `lastItem`, UP's sanitiser, `PageLayout`'s parse. **Done 2026-11-23** (3ed9208a; searchUrl: Tirth's question 8 was the behaviour already, its own entry) | ~180 | ~600 | |
 | 2 | passthrough.rs with several holes; the pointer typed; PT's rules deleted. **Done 2026-11-23** (step3/passthrough: one commit; MWC's pointer decisions, the one-host rule and the tap's read are the core's; PointerWant's message reading, the hole lists' choice (part 11) and the mechanism stay Swift; `pane-clicks` not measured: no screen suite on that branch) | ~95 (+~220 of facade and the page object's wrapper) | ~1,000 (half tests) | `pane-clicks` |
 | 3 | The Page (part 11, and the page area's placement of part 7): MWC's decisions deleted, its mechanism over the Page | ~450 | ~1,100 | `page-frames`, `idle-cost` |
 | 4 | The session's skeleton: executor, ports, commands, the facade, the re-entrance test adapter; `navigate` (HS:2378-2385) the first flow moved, as the proof; `SafariWaker` split out in Swift (no behaviour moved). **Done 2026-11-23** (step3/skeleton, three commits: SafariWaker.swift, a move only; navigate's checks against the Swift; core/session/ with exec.rs, state.rs, host_id.rs, navigate.rs, ffi session.rs and the facade, `shown`, `open`, `safariWindows` and `done` the core's, Swift's `enqueue` in the core's queue. Inputs run nothing in their call, the one finding; nothing per frame) | ~10 | ~700 | |
@@ -1400,7 +1400,7 @@ p95 no worse than commit 0's.
 the same turn until step 4; 3 **changed**: a reset (pin or favourite) still navigates back to its address when overtaken,
 but isn't shown (no flash before the item clicked after it); 4 the Swift's picture rule, no 8 MiB cap; 5 **changed**:
 the start screen re-checks only on events (an app, a window, a copy's link), no 50 ms looks; 6 the fallback kept until
-step 4; 7 yes; 8 **changed**: searchUrl percent-encodes every non-ASCII letter (café → caf%C3%A9); 9 Rust, same words.
+step 4; 7 yes; 8 **changed**: searchUrl percent-encodes every non-ASCII letter (café → caf%C3%A9; already so: Foundation never kept them, see question 8); 9 Rust, same words.
 The three changes come after the pure moves, each its own commit with tests pinning the new behaviour.
 
 1. **Flows as Rust `async fn`s with the core's own executor**, or hand-written state machines (core/shell/mod.rs's
