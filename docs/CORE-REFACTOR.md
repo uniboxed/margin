@@ -716,6 +716,627 @@ this step before it starts):
 - Swift keeps: the protocols to the engine and to Margin's window (as the adapter's contract), Safari's own window
   mechanics (waking a profile through Safari's menu, the restored-window sweep), NSPasteboard, UserDefaults.
 
+### Step 3 design (2026-11-23, at 8ffc2589)
+
+Paths: **HS** app/platforms/macos/shell/HostedSession.swift; **HP** HostedPeek.swift, **L** Library.swift, **SH**
+ShellHosted.swift, **SG** ShellHostedGlue.swift, **SW** Shell.swift, **MWC** MarginWindowController.swift, **MW**
+MarginWindow.swift, **PT** PassThrough.swift, **UP** UIPush.swift, **PL** PageLayout.swift, **H** Host.swift, **HE**
+HostEngine.swift (same folder); **core/** app/shared/core/src/; **ffi/** app/platforms/macos/ffi/src/; **W/**
+app/platforms/windows/src/; **T/** app/platforms/macos/shell/tests/; **E/** tools/app-tests/; **S/**
+tools/screen-tests/suite/; **§10** docs/HOSTED-WINDOWS-CHROMIUM.md §10. Line numbers as of 8ffc2589.
+
+#### What every part shares
+
+Step 2 could leave HostEngine's async operations in Swift and move decisions point by point. The session can't do
+that: the Windows shell must run the session itself (§10 item 1, W/ has no Swift), so the **orchestration** moves,
+not only the predicates. What stays the Mac's is what step 3's list above names: the protocols to the engine and to
+Margin's window as the adapter's contract, Safari's own window mechanics, NSPasteboard, UserDefaults.
+
+- **Two core objects.** `session::Session` (core/session/, one per app: every field of HS:385-433 and HP's state, the
+  flows, the library's requests) and `page::Page` (core/page/, one per Margin window: MWC's page card, holes, ground,
+  pointer slot, front watch, hello). The session never owns a Page: it talks to each Margin window through the
+  `HostedWindow` contract (HS:211-274), which MWC implements over its Page and the tests' `FakeHostedWindow`
+  (T/hosted-tests.swift:12) implements as today. So the 2,039 lines of T/hosted-tests.swift keep their stand-ins
+  (`FakeHostedLinks` :124, `StubLaunchEngine` :202) and their reads.
+- **Flows as Rust `async fn`s, run by the core's own executor.** The Swift flows have about 130 awaits (HS and HP;
+  `show` alone: HS:627, 630, 634, 655, 658, 662 and `prepare`'s HS:1043-1070). A decision reads the state as it is
+  between two awaits, and other inputs change that state meanwhile (`requested` by a click, `shown` by a host event).
+  Written as `async fn`s the Rust is a line-by-line transliteration: each decision stays at the same point between the
+  same suspensions. The executor is the core's (no runtime, no thread, no timer: `std::task::Waker::noop`, stable since
+  Rust 1.85, the workspace's version, Cargo.toml:11):
+  - **One serial queue** for what Swift enqueues (`enqueue`/`idle`, HS:444-455), **detached tasks** for Swift's
+    `Task {}`s outside it (HS:1083, 1091, 1284, 1331, 1343, 1360, 1465, 1485, 1532, 1635, 1780, 1853, 1865; HP:116,
+    385). Ready tasks run FIFO; a spawned task is first polled after the one that spawned it suspends, as a
+    MainActor `Task` starts after the code that made it.
+  - **Suspension points** are exactly the Swift's awaits: an engine operation, a copy's request, a sleep. A task that
+    starts an engine operation or a request ends the call: the answer says it (`start: { op, id }`), Swift starts it
+    at once (its synchronous prefix runs then, as `await engine.open` ran it) and calls `margin_session_answer(id, …)`
+    when it's done. Sleeps are the core's deadlines: the answer carries the earliest (`deadline`), Swift keeps one
+    timer and calls `margin_session_tick(now)`.
+  - `wait(seconds, done)` keeps HS:2478-2486's shape: steps of `every` (0.05 s), `left -= every`, the predicate read
+    at each step (not a clock compare), so the same number of looks. `FirstOf` (HS:2611-2620, a request raced against a
+    sleep) is a `first_of(a, b)` combinator.
+  - **Re-entrance:** MWC's setters call back into the session synchronously (`setHosting` → `updatePage` →
+    `setPageRect` → `onPageRect` → `pageRectChanged`, MWC:493-516, 476-486, MW:76-81, MWC:2193-2196, SG:238); the
+    Library calls its delegate inside `perform` (L:217). Swift runs those at once, inside the call. Deferring them
+    changes behaviour (in `prepare`, HS:1064-1065, the re-entrant `pageRectChanged` runs before `hostingWindow` is
+    set and returns early; deferred, it would see it set and enqueue a placing Swift never did). So the session is
+    re-entrant like the Swift class: its FFI entry points take `&Session`, the state is in `Cell`/`RefCell`, no
+    borrow is held across a port call or an await (clippy `await_holding_refcell_ref` denied, and a rule: compute,
+    drop the borrow, call out), and a re-entrant call while the executor is polling only changes state and queues
+    tasks (the outer poll runs them, as a MainActor `Task` would start later). A Rust test adapter re-enters on every
+    port call to catch a borrow held.
+- **Ports (synchronous, answered during the call)** are the contract's synchronous members, called through C
+  callbacks made with the object (`margin_session_new`), as `MarginDataNeed` (ffi/data.rs:16-26) and
+  `MarginLinkWrite` (ffi/link.rs:36-43) are:
+  - the engine's reads and quick acts (HS:59-132: `shown`, `hasHosts`, `isHosted`, `mode`, `shownWindow`,
+    `fullScreenSpace`, `target(ofWindow:)`, `launchedPid`, `preparesOutOfSight`, `appRuns`, `wokenWindows`,
+    `wokenParked`, `hide/stopHiding/releaseWoken`, `dragging`, `follow`, `shownFillsPage`, `showsAlone`,
+    `liveFollowers`, `knownAppMinimums`, `minimum`, `visibleHost(at:)`);
+  - Margin's windows (`window(id)` existing or not, the front one, `windowIds`, every `HostedWindow` member);
+  - the links' reads (HS:319-334: `safariProfiles`, `windowIds`, `restoredWindowIds`, `linkEpoch`);
+  - the OS's: `appName` (SG:190, 268), `marginActive`/`activateMargin` (SG:193-194).
+- **Commands (asynchronous)**: the engine's operations (`open`, `show`, `close`, `pageRectChanged` with or without
+  rects, `parkShown`, `activateShown`, `start`, `prepare`, `setLayout`, `focus(fronted:)`, `toolbarsRest`,
+  `focusPages`, `slide`), a copy's request (`Ask { link, kind, payload }` built by core/hosted_browser.rs's `Ask`,
+  hosted_browser.rs:129-338; answered `{ result }` or `{ error }` in the Swift's words: "not linked", the scrubbed
+  refusal, the thrown error, SG:39-48, which `askAgain`, HS:2152-2155, matches), and the Safari waker's (part 2).
+- **The library before and after step 4.** Reads go straight to the library's set in the core: the session is made
+  with the `MarginLibrary` object (ffi/data.rs:255-270; Swift's `Library` outlives the session, both the Shell's),
+  and a `LibraryView` trait reads items, targets, spaces, splits and windows by id from its `DataSet`
+  (core/data/library.rs:30-80; `item(collection, id)` is a map lookup, never a whole collection built), the same
+  values L:146-177 reads from its cache. Edits (`library.perform`: HS:504, 520, 534, 550, 1015, 1706, 2347, 2352,
+  2357, 2363, HP:186, 357) are a **Perform** command answered in the same turn: Swift runs `Library.perform` (the
+  rules in JavaScriptCore, LibraryRules.swift:47-69), whose delegate feeds its requests to the session
+  (re-entrant as today: `requested` set and the handling queued before the flow goes on, as L:217 does inside
+  `perform`), then answers `{ ok, result, error }`. Nothing else runs in between. **After step 4** the rules are
+  margin-core's: `Perform` becomes a direct call inside the core with the same answer and the requests handled at
+  the same point; `LibraryView` is unchanged; the Swift delegate path and the command go. Step 3 needs nothing of
+  step 4, and step 4 touches no flow.
+- **Options** (HS:337-358) stay the Swift struct the tests change after init (`session.options.resumesLast = false`,
+  SG:187); `didSet` sends them (one JSON call per change). UserDefaults reads stay Swift (SG:184-189, 214-219).
+- **Time:** the monotonic clock (`systemUptime`, HS:380) passed in; the wall clock's milliseconds for `notAfter`
+  (HS:2178, 2192, HP:122) from the offset the link object already keeps (`set_wall_offset`).
+- **Log lines** are the session's decisions, so built in Rust word for word (`note`, HS:457-461: the 200 kept in
+  `done`, which the tests read, read through `margin_session_done`). HostID's logged form (`safari:p<djb2 % 10000>`,
+  H:51-57) is ported with a vector, since HS's lines print `\(id)` (HS:716, 719, 724, 727).
+- **Order of maps.** Swift's dictionaries iterate in no fixed order; Rust's `BTreeMap`s in key order. Every place
+  this could show is where Swift picks the first of several and the invariant says there's one (`card(in:)`, HP:102:
+  one card per window, HP:199) or sorts first (HS:573, 1851, 2015): never observable; noted in each part.
+- **FFI.** One object: `margin_session_new(library, options, len, ctx, callbacks…)`, `_free`, `_input(json)` (the
+  rare inputs), `_answer(id, json)`, `_tick(now)`, `_done`, `_idle`, and the typed hot calls of parts 7 and 12. Every
+  answer: `{ start?, deadline?, log }` (the commands to Margin's windows, the pushes and the ports went out during
+  the call, in order). Panic-free as the others (a bad input is `{"error"}`, logged once). The Swift `HostedSession`
+  stays a facade with the same API and fields read from the core (as step 2's `Host`), so `session.shown[1]`,
+  `session.open[...]`, `session.requested[w] = …` and `await session.idle()` in T/ stay.
+- **Windows** implements the same ports in Rust over its adapter (W/hosting.rs) and Margin's window (W/appwindow.rs),
+  with no FFI: §10 item 1's `Session::handle(now, Input) -> Vec<Command>` is `_input`/`_answer`/`_tick` with the
+  commands above; its `EnsureBrowserWindow` is the engine's `requestSafariWindow` (part 2) browser-keyed.
+
+#### Part 1: the library's requests to hosting
+
+**Today.** `library(_:wants:)` HS:465-474 (a show request's item in front at once, `cardLeaving`, then queued);
+`showRequests` HS:417; `handle` HS:483-598 with `settleHosting` after each (HS:484). The four near-copies: `openPin`
+HS:494-506, `resetPin` HS:507-523, `openFavorite` HS:524-536, `resetFavorite` HS:537-553. They differ only in: the
+pin's `pinnedBy` vs the favourite's `favoriteId` (HS:503, 519 vs 533, 549); a reset navigates an open item's tab first
+(`hostNavigate`, HS:510-512, 540-542) and isn't checked for being overtaken (an open is, HS:496, 526); an open says
+"no item made" when `addItem` refuses (HS:505, 535), a reset returns silently (HS:521, 551). Then `showSplit`
+HS:554-560, `closeTab`/`unloadTab` HS:561-576 (the next item in front at once, a split around it shown again),
+`muteTab` HS:577-584, `mediaControl` HS:585-592, `clearToday` HS:593-594. `show` HS:604-686 (the split first,
+HS:613; app HS:616-631, web HS:632-663, Margin's page HS:664-674; the rest HS:676-685), `close` HS:1728-1756,
+`navigate` HS:2378-2385, `openApp` HS:2342-2370. The request type: L:55-63 (library.ts `Request`).
+
+**Decision vs mechanism.** All of it is decision; the mechanism is the engine's operations and the copies' requests.
+
+**Core.** core/session/requests.rs:
+
+```rust
+pub enum Request { Show(ShowAsk /*activateTab|newTab|restoreArchive|setSpace*/), Open { by: By, reset: bool, ask: ShowAsk },
+                   ShowSplit { split: String, item: Option<String>, window: Option<u32> }, Close { item: String, next: Option<String>, target: Option<Target> },
+                   Mute(String), Media { item: String, command: String }, ClearToday(Vec<String>), Other(String) }
+pub enum By { Pin(String), Favorite(String) }       // one branch for the four (HS:494-553), the three differences as `reset`
+impl Request { pub fn read(body: &Value) -> Option<Request>; pub fn shows(&self) -> Option<(&str, Option<u32>)>; } // HS:417, 469
+impl Session {
+    pub fn library_request(&self, r: Request);                   // HS:465-474 (sync), then queued
+    async fn handle(&self, r: Request);                          // HS:483-598
+    async fn open_by(&self, ask: &ShowAsk, by: &By, reset: bool);
+    pub(crate) async fn show(&self, item: &str, url: Option<&str>, target: Option<Target>, window: Option<u32>);
+    pub(crate) async fn close(&self, item: &str, target: Option<Target>);
+}
+```
+
+`Target` is L:23-51's `ItemTarget` (web/app/margin) with its JSON rules (`marginPages`, L:28).
+
+**FFI.** `{"type":"library","requests":[…]}`, one per `perform` that asked something (a click: rare). `show`'s copy
+requests are `Ask` commands (one or two a switch).
+
+**Must not change:** a request's item drawn in front before its turn (`requested`, HS:469-472) and a show overtaken
+before it started skipped with its line (HS:477-481); a failed show drawing the item shown before (HS:609-610);
+`show`'s six `defer`s and their order (HS:610, 619, 622, 638, 644: the loader's words cleared last, and never for an
+item asked for since, HS:622). Rust has no `defer`: each flow is an inner `async fn` whose every return goes through
+the outer one's after-steps, in Swift's reverse order of declaration, pinned by the loader sequences the tests read
+(`window.showings`, `window.loadings`).
+
+**Pinned by:** T/hosted-tests.swift `hostedTests` (695-1155: 763-801, 824, 918-925, 970, 1001-1018),
+`hostedSupersedeTests` (1947-2039), T/library-tests.swift:85-86; E/e2e-hosted.swift:136 (a pin's press). The four
+pin and favourite paths have **no Swift test today**: commit 0 adds them (open and reset, each with an item or not,
+`addItem` refused, overtaken) against the Swift before the move. Screen: `core` (switches, palette).
+
+**Windows:** §10 item 1's "library's requests (show item in Margin window, close, open pin…)" as they are.
+
+**Risks.** `closeTab`'s next item (HS:566-576) is shown in `windows.first` of a dictionary's filter: one window
+shows an item at a time in practice; Rust takes the lowest id (noted). ~260 Swift lines deleted (HS:465-686,
+1728-1756, 2342-2385 less the facade).
+
+#### Part 2: choice of host and profile, overtaken picks, the cycle hold
+
+**Today.** `resolve` HS:2471-2476 (its own, else the default profile's copy, else the first linked);
+`profileFallback` HS:2031-2044 (the default profile when a space's can't be opened, its note); `DefaultBrowser`
+HS:198-209; the host of an item HS:616-663 (`app:<bundle>`, `safari:<profile>`); a layout's roles HS:848-859 (a
+profile's first web item main, a card its card, the next ones `#pane1`…`#pane3`, a fourth refused); `overtaken`
+HS:477-481, `supersededBy` HS:692-695, the open's `wanted` HS:705-707, `host` HS:699-731 (its result's five cases); the
+cycle hold HS:623-629 (`cycleWindow` 1.0 s, `cycleHold` 0.35 s, HS:355-356; `cycled` HS:689 from SG:336);
+`linkWanted` HS:1994-1998 and the preparation's own `wanted` HS:1793. The engine's asks of the session (SG:130-136,
+HE:481-499): `requestSafariWindow` HS:2096-2149 (its payload by role HS:2108-2114, the stale-copy retry HS:2122-2138,
+`askAgain` HS:2152-2155), `closeSafariWindow` HS:2158-2171, `safariFullScreen` HS:2176-2187 (already built by
+hosted_browser's `SetWindowState`), `safariFocus` HS:2191-2195, `safariLinked` HS:1913-1991.
+
+**Decision vs mechanism.** The choices above are decisions. How a profile that has no window is woken (Safari's menu
+pressed, `openProfileWindow`; the ladder of when to press, HS:1937-1982; the woken windows parked and closed,
+`closeWoken` HS:2060-2081, `releaseWokenSpace` HS:2084-2093; `unopenable` HS:2004; `profileNamesChanged`'s reset
+HS:2006) is Safari's own mechanics, which step 3 leaves the Mac's. It moves into a Swift `SafariWaker` (the waker's
+state: `wokenByMenu`, `wokenAtLink`, `wokenLinkedAt`, `wokenHeld`, `unopenable`, `swept`), which reads the session's
+predicate at each look through a typed call.
+
+**Core.** core/session/choice.rs:
+
+```rust
+pub fn resolve(profile: Option<&str>, linked: &[&str]) -> String;                          // HS:2471
+pub fn default_browser(setting: Option<&str>) -> (&'static str, &'static str);              // HS:202
+pub enum Linked { Yes, No, Unopenable }                                                     // the waker's answer
+impl Session {
+    async fn profile_fallback(&self, p: &str, space: Option<&str>) -> String;              // HS:2031-2044
+    pub fn link_wanted(&self, p: &str, for_prepare: bool) -> bool;                          // HS:1994 or HS:1793
+    async fn cycle_held(&self, w: u32, item: &str, app: &str) -> bool;                      // HS:626-629
+    fn role_for(&self, used: &mut RoleUse, profile: &str, role: HostRole) -> Option<hosted_browser::Role>;
+    pub(crate) async fn request_window(&self, browser: &str, profile: Option<&str>, role: Role) -> Option<WindowMade>;
+    pub(crate) async fn close_window(&self, profile: Option<&str>, id: i64) -> bool;
+}
+```
+
+**FFI.** The engine's asks become session inputs with an id, answered by a command when their task ends
+(`{"type":"engineAsk","id","ask":"newWindow","profile","role"}` → `engineAnswer`): rare (a window made). The waker's
+`EnsureLinked { browser, profile, prepare }` is a command answered `Linked`; while it runs the waker calls the typed
+`margin_session_link_wanted(s, profile, len, bool) -> bool` every `every` (0.05 s): no allocation.
+
+**Must not change:** "evidence decides, time only paces" (HS:1904-1912), the at-most-two stale retries waited on the
+link's epoch (HS:2122-2138), a fourth pane refused (HS:852), the default profile's fallback note (HS:2036-2042), a
+cycle's pick of an app not running held 0.35 s and never started when passed over (HS:623-629).
+
+**Pinned by:** T/hosted-tests.swift `safariWakeTests` (576-694, stay Swift against the waker),
+`preparedBrowserTests` (261-575), 1115 (the fallback), `hostedSupersedeTests` 2002-2020 (the cycle). Ported:
+`resolve`'s order, the roles, `askAgain`'s words, the cycle hold with a simulated clock.
+
+**Windows:** host ids are hosted_browser's `<browser>:<profile>[#card|#paneN]` (hosted_browser.rs:93; the same as
+H:47-73); `EnsureLinked` is its Chrome or Edge started with `--profile-directory` and its hello awaited (§4.4).
+Chrome and Edge stay "isn't hosted yet" (HS:633, 847, 2343) until §11 step 7: one `browser == "safari"` check each.
+
+**Risks.** The waker runs a loop the session's queue waits on (`await safariLinked`, HS:634, 1794, 2034): it's a
+command like any other. ~90 Swift lines deleted, ~250 moved into `SafariWaker` (they stay).
+
+#### Part 3: layouts and splits
+
+**Today.** `setLayout` HS:741-745; `showSplit` HS:757-784 (panes: web pages and each app once; main the pane that
+keeps its window; `paneAddress`/`paneItem` HS:773-778, 786-790, read by `requestSafariWindow` HS:2111-2114);
+`paneRects` HS:795-803 (waited `pageWait` 3 s, remeasured each look); `paneHostRects` HS:806-811;
+`pageAppMinimums` HS:814-820; `refreshPaneMinimums` HS:822-828; `applyLayout` HS:830-967 (the parts HS:837-864,
+`showTab` HS:867-874, tabs first for windows there HS:876, `prepare` HS:878, the split's rects HS:880-888, room
+HS:894-900, `panesLaying` HS:908-912, `revealHeld` HS:916-918, the engine HS:919, the tabs after HS:921-926, the
+pages' focus and toolbars HS:927-934, main not shown HS:935-943, the failed panes out HS:946-955, the layout kept
+HS:956-966); `paneLeast` HS:971 (220×220, Arc's), `noRoomReason`/`isNoRoom` HS:975-976, `noRoom` HS:982-996,
+`leaveSplit` HS:1004-1020, `forgetInLayouts` HS:1023-1032, `prepare` HS:1036-1075 (one window hosts: the other's
+item parked and pictured first, HS:1037-1051; full screen, its layout, hosting, the page area, HS:1053-1074).
+
+**Decision vs mechanism.** All decision; the engine's `setLayout` is step 2's.
+
+**Core.** core/session/layout.rs: `pub struct Layout` (HS:148-157), `pub const PANE_LEAST: Size`, `NO_ROOM_REASON`,
+`pub fn is_no_room(why: &str) -> bool`, `pub fn no_room(panes: &[(&str, HostRole, Option<Rect>, Option<Size>)],
+page: Rect, had: &BTreeSet<String>) -> Option<Vec<String>>` (pure), and the session's `async fn apply_layout(w,
+main, main_rect, extras, focused, split)`, `async fn show_split`, `fn leave_split` (its `removeFromSplit` performs and
+the toast push, HS:1015-1019), `fn forget_in_layouts(host)`, `async fn prepare(w, target) -> Option<(Placement,
+u64)>`. The engine's failure reasons cross as the engine's strings (`isNoRoom` matches HE's "below its window's
+minimum", "no room for it").
+
+**FFI.** No new calls: a layout is the engine's `setLayout` command (rare: a split's change, a card).
+
+**Must not change:** room checked before any window moves (HS:889-900), the newcomers leaving first and main never
+(HS:990-995), the focus kept by the pane that had it when the asked one failed (HS:953), a card's rect never a pane's
+(HS:887), the reveal held until the new pane's tab is in and its toolbar rests (HS:913-934).
+
+**Pinned by:** T/split-real-use-tests.swift (`splitRoomTests` 26-45 ported to Rust; the session 46-254, minimums
+258-307, drags 308-365, glue 366-384 stay), T/split-tests.swift `splitSessionTests` 94-365,
+T/multi-host-session-tests.swift, T/peek-split-tests.swift, T/screen-card-tests.swift; E/e2e-split.swift
+`glueSplitScenario`; S `cut-panes`.
+
+**Windows:** §10 item 1's "the page's layouts per Margin window (page area, pane rects, card rect)", its `Show
+{ visible, focused }` (the engine's `setLayout`), `PaneCut`.
+
+**Risks.** `applyLayout` suspends at seven kinds of point and reads `layout`, `engine.isHosted` and `shown` between
+them: transliterated, never planned up front. `noRoom`'s edges are float compares with 1 pt slack (HS:984-985):
+vectors at the edges. ~250 Swift lines deleted.
+
+#### Part 4: the preview card and Quick Tab
+
+**Today.** HP: `PeekCard` 30-43, constants 46-52 (`cardIdle` 15 min, `cardRectWait` 0.3 s, `cardCoverWait` 0.05 s),
+`defaultCardRect` 56-62, `pinnedOrFavorite` 67-70, `cardPart` 74-81, `cardShowPayload` 84-91, `cardLoadingStep`
+95-99, `card`/`openCard` 102-103; the copy's word: `peekOpen` 111-139 (answered at once, by its `notAfter`, only from a
+window Margin hosts for that profile whose Margin window shows one of its items), `peekCancel` 142-145, `cardPage`
+148-156, `cardKey` 159-163; the page's: `littleArcOpened` 168-173, `littleArcGo` 176-193; `showCard` 197-209,
+`placeCard` 213-240, `dropCard` 243-246, `cardLeaving` 250-265, `cardReturning` 268-277, `cardRectChanged` 280-285,
+`splitOf` 289-292, `cardHostRects` 296-299, `cardPlaced` 301-305, `closeCard` 312-337, `closeCardForKey` 341-345,
+`expandCard` 349-380, `cardHistory` 383-386, `cardHostGone` 392-406, `closeIdleCards` 409-419, `tellPage`/`pushPeek`
+423-432, `webAddress` 434-437. Routed from SW:269-279 (pushes), HS:2563-2587 (`peek.*`, ⌘W), SG:362-365 (a hosted
+card's ⌘W).
+
+**The state machine** (one card per profile, attached to a Margin window): opened (`open`, `!ready`, `fresh`) →
+laid out (`ready`, `!fresh`, `rect`) → hidden with its opener by a pick (`!open`, `hiddenBy`) → shown again when
+the opener is (`cardReturning`, unless the pick was the opener itself) → closed (forgotten, its window parked, its tab
+closed by `hostCardClose` after `cardCoverWait`) or expanded (a new item, its tab moved, `hostPromotePeek`) or dropped
+(no room, no page area). Quick Tab's field is `littleArcs[window]`.
+
+**Core.** core/session/card.rs: `pub struct Card` (HP:30-43's fields), `pub fn default_card_rect(page: Rect) ->
+Rect` (Swift's `.rounded()` is half away from zero, as Rust's `f64::round`), `pub fn web_address(s: &str) -> bool`,
+and the session's flows above, one `async fn` or `fn` each, same names.
+
+**FFI.** The copy's pushes arrive as `{"type":"push","link","windowId","msg"}` (part 10); the page's `peek.*` as
+`{"type":"ui",…}` (part 10). Rare.
+
+**Must not change:** the card's page never Safari's new-tab page (HS:2111), `peekAnswer` sent before the card is laid
+out (HP:137-138), the page told before the window goes (HP:322-326), one card per window (HP:199).
+
+**Pinned by:** T/peek-session-tests.swift (12-241; `defaultCardRect` 193-199 ported), T/peek-split-tests.swift,
+T/screen-card-tests.swift. Ported: the rect, `webAddress`.
+
+**Windows:** §10 item 1's `cardPage` and `peekOpen` inputs; §4.2 "the card: its rect is a hole".
+
+**Risks.** `webAddress` is Foundation's `URL(string:)` (HP:435: at most 2,048 Characters, a scheme of http or https):
+Rust has no Foundation; a small RFC 3986 check of the scheme and the characters `URL(string:)` refuses, with vectors
+run against the Swift first (spaces, Unicode, `http:` alone, 2,048 grapheme clusters vs scalars). hosted_browser's
+`valid_shown_url` (hosted_browser.rs:31) is another rule (it allows `about:blank`): not merged. ~330 Swift lines
+deleted.
+
+#### Part 5: an item shown in another Margin window
+
+**Today.** `elsewhere` HS:1409, `showElsewhere` HS:1410-1422 (its card's name: the app's, else the title, else the
+address, 120 at most), `pagePicture` HS:1425-1442 (the copy's `hostPicture` raced against `pictureWait` 0.4 s,
+HS:352), `prepare`'s move HS:1037-1051, `focused` HS:1444-1458, `windowClosing` HS:1462-1469, `windowClosed`
+HS:1474-1490, `forgetElsewhere` HS:1493-1498; wired SG:226-231.
+
+**Core.** core/session/elsewhere.rs, the same five functions; the race is `first_of(ask, sleep(0.4))`.
+
+**FFI.** `{"type":"windowFocused"|"windowClosing"|"windowClosed","window"}` (rare); `windowClosing`'s `done` is a
+command answered when the park is over.
+
+**Must not change:** the card cleared only once the window hosts again (HS:1068: the card straight to the loader),
+the move never held for the picture (HS:1437-1440).
+
+**Pinned by:** T/hosted-tests.swift 1440-1553 (elsewhere, closed, picture). **Windows:** several Margin windows (⌘N)
+on Windows reuse it as is; until then one window never has an elsewhere card.
+
+**Risks.** The picture's rule: Swift accepts any `data:image/jpeg;base64,` or `…png…` prefix (HS:1435);
+hosted_browser's `picture` (hosted_browser.rs:392) also caps it at 8 MiB. Default: the Swift's rule (open question 4).
+~70 Swift lines deleted.
+
+#### Part 6: the start screen, resumeLast, settleHosting, the launcher, the default browser made ready
+
+**Today.** The state: `Startup { waiting, preparing, done }` HS:1507-1508, `startupWaiting`, `startupShown`,
+`startupStuck`, `startupFailure`, `startupSkipped`, `startupRetries`, `preparedSetting` HS:1510-1520, the words
+HS:1509, 1521-1522. `startupRetry` HS:1525-1533, `startupSkip` HS:1537-1541, `holdStartup` HS:1546-1567 (`startupWait`
+15 s, then the words and the two choices, then `wait(.infinity)` until skip, a pick, a retry or ready),
+`preparationOver` HS:1568-1572, `resumesLast` HS:1573-1574, `lastItem` HS:1578-1592, `loaderApp` HS:1595-1601,
+`resumeLast` HS:1603-1652, `resumeShow` HS:1654-1676, `settleHosting` HS:1681-1695, `openLauncher` HS:1703-1715,
+`leaveMarginPage` HS:1718-1724, `prepareBrowser` HS:1768-1834 (its four steps). The shell's side:
+`prepareBrowserOnce` SG:209-220, `holdsMenu` SG:264, the keys' gate SG:322, the poll's sweep HS:1846-1870 (its
+`closeIdleCards` and `closeIdlePaneWindows`, HS:1847-1848, 1879-1900, are the session's; the restored windows' sweep
+HS:1856-1869 is the waker's, part 2).
+
+**The state machine.** `waiting` → `preparing` (`prepareBrowser` began) → `done` (prepared, skipped for a reason, or
+not possible); beside it the start screen: shown with a window's last item gated on it (`resumeLast` HS:1625-1629) →
+held up (`startupStuck`, after `startupWait` or at once for `startupNoLink`) → retried (its limit anew; the
+preparation run again only if it was given up, HS:1529-1532) or skipped → gone, then the last item shown if nothing
+else was picked meanwhile (HS:1643-1650).
+
+**Core.** core/session/start.rs: `pub enum Startup`, `struct StartScreen` (the seven fields), `pub fn last_item(view,
+window) -> Option<(String, Target, String)>` (note its tie: `.max` with the ids compared the other way, HS:1581, so
+among equal `lastUsed` the smallest id wins: a vector pins it), `pub fn loader_app(&Target) -> Option<&str>`, and the
+flows `resume_last`, `resume_show`, `hold_startup`, `prepare_browser`, `settle_hosting`, `open_launcher`.
+
+**FFI.** `{"type":"windowOpened","window"}` (`onOpen`, SG:259), `startup.retry`/`startup.skip` as `ui` inputs,
+`{"type":"prepare","setting"}` (SG:219), `{"type":"poll","now"}` from `track` (SW:339, at the shell's schedule:
+1.5-2 s at rest), and a typed `margin_session_start_screen(s) -> bool` read by `holdsMenu` and the keys' gate
+(each key press).
+
+**Must not change:** nothing usable before the browser is ready unless skipped (SG:322), the words said at once when
+the extension didn't link (HS:1805), the last item shown behind the loader from the window's first frame
+(HS:1621-1633), no launcher for a frame while a pick is next (HS:1684), Margin re-activated after a preparation that
+took the focus (HS:1825).
+
+**Pinned by:** T/hosted-tests.swift `hostedResumeTests` (1156-1576: resume 1203-1309, start 1386-1425),
+`preparedBrowserTests` (448-454: the start screen); E/e2e-glue.swift `glueResumeScenario` (1502-); S `core`'s
+`relaunch` (S/Scenarios.swift:186).
+
+**Windows:** §4.6's start ("Getting you started", `startup.retry`, `startup.skip`, "as on the Mac"): the same flows.
+
+**Risks.** `holdStartup` runs outside the queue (HS:1635) while `resumeShow` queues (HS:1655): the executor keeps
+that split. Its `wait(.infinity)` (HS:1559) looks every 50 ms for as long as the start screen is held up (20 wakes a
+second while it's up): kept as is (open question 5). ~230 Swift lines deleted.
+
+#### Part 7: the page area moving
+
+**Today.** `pageRectChanged` HS:2237-2254 (live: each page area to the engine at once with the panes' and the card's
+rects; else one placing per burst, `placing`, the newest placement read when its turn comes), `placeAgain`
+HS:2262-2288 (the rects kept in the layout; a placing that left the window out of full screen retried once after
+`refitRetryAfter` 1.5 s, HS:349, behind the loader), `sidebarResizing` HS:2292-2320, `dragLine` HS:2324-2337. The
+window's side: `updatePage` MWC:476-486, `setPageRect` MW:76-81, `hostedPlacement` MWC:1138-1150, the page's `layout`
+op MWC:1910-1925 and `onPanes` SG:257.
+
+**Core.** In the session: `page_rect_changed(w)`, `place_again(w)`, `sidebar_resizing(w, on, divider)`,
+`drag_line(...)`. The page area itself is the Page's (part 11): `PageLayout` parsed in the core (PL:32-69 into
+core/protocol.rs:51-63, which lacks `outside`, `hosted`, `fills`, `split`, `panes`), `page_rect` (MW:189-199),
+`hosted_placement` (MWC:1138-1150), `idle_placement` (MWC:1154-1158).
+
+**FFI.** The hot path of the step: during a drag the page reports its layout every frame (≤120 a second). Typed:
+`margin_page_layout(page, bytes, len) -> uint8_t` (the op's JSON, as the page sends it, parsed once in Rust: its
+changes as flags) and, when the page rect changed, the session's `margin_session_page_rect(s, window)` reads the
+placement and the panes' rects from the window's Page in the core (no JSON), deciding `follow` and calling the
+engine's typed `MarginFollow(ctx, const MarginPlacement*, const MarginHostRect*, size_t)`. Nothing allocated per frame
+(the counting-allocator test, app/platforms/macos/ffi/tests/no_alloc.rs, extended).
+
+**Must not change:** one placing per burst, the newest; nothing placed mid-drag but the live follow; a failed placing
+never drops the item (HS:2256-2261).
+
+**Pinned by:** T/hosted-tests.swift `liveSidebarResizeTests` (1696-1746), `sidebarResizeTests` (1747-1895),
+`hostedFrontTests` (1577-1695, 1678 the failed placing), 1001; T/split-real-use-tests.swift drags (308-365); S
+`live-resize` (its p95, S/LiveResize.swift:137-143), `core`'s `sidebarDrags`.
+
+**Windows:** §4.2's `layout` op; W/hole.rs's `page_layout` and `PageLayout` (W/hole.rs:162-177) go for the core's
+(one parser of the op).
+
+**Risks.** Two FFI hops a frame where there were none: measured against step 2's `live-resize` numbers (followed
+median and p95 no worse). ~70 Swift lines deleted.
+
+#### Part 8: the loading bar
+
+**Today.** `loading` HS:1119-1126 (the engine's slow step: the card's own, a split pane's own, else the page card's
+loader), `paneLoadingStep` HS:1144-1160, `releaseReveal` HS:1135-1139, `copyLoading` HS:1164-1170 (the copy's
+`loading` push for the window Margin hosts, routed at SW:264-269), `refreshLoading` HS:1224-1242 (the items loading
+by the UI's numbers, sorted, said on change; other windows told none), `cardLoadingStep` HP:95-99; the window's
+`setLoadingTabs` MWC:544-548.
+
+**Core.** core/session/loading.rs, the same functions. The UI's numbers (`number(ofItem:)` HS:2390-2397) are given in
+order of first use: the same calls in the same order give the same numbers.
+
+**FFI.** Engine callback `{"type":"loading","host"}` (rare: a slow step's start and end); the copy's push as part 10.
+
+**Pinned by:** T/hosted-tests.swift 763-801; the split's pane loader in T/split-real-use-tests.swift. **Windows:** the
+theme's bar from the Chrome copies' `loading` pushes, the same. ~60 Swift lines deleted.
+
+#### Part 9: which window gets the mini player, the copies' pushes for the page
+
+**Today.** `copyPush` HS:1179-1198 (the pick: among the Margin windows showing the space of the first source's item,
+the hosting one, else the front one, else the lowest; none: the hosting one, else the front one, HS:1187-1190; a
+standing push taken back from the window that had it, HS:1192-1196), `standingTo` HS:1200, `uiNumber` HS:1206-1219
+(the copy's tag, else the tab, else the open item at that address), `copyTabs` HS:2455-2466 (from SW:238-243).
+The sanitiser: UP:25-52 (`forwarded`, `standing`, `page`, `empty`; images by
+`^data:image/(png|jpeg|webp|gif);base64,…$` up to 128 KB, UP:36-37).
+
+**Core.** core/session/push.rs: UP's table and `page`/`empty` (a rule: field caps), the pick, `ui_number`.
+
+**Pinned by:** T/hosted-tests.swift 848-852, 880-926. **Windows:** the same pushes from Chrome's and Edge's copies.
+
+**Risks.** UP's caps count Swift `Character`s (grapheme clusters); margin-core has no grapheme crate
+(app/shared/core/Cargo.toml:10-16), so a cap counts Unicode scalars: the edge difference step 1 took for the link and
+the themes (1.5, 1.6: a cut text can keep fewer characters than before), pinned by a vector. ~120 Swift lines
+deleted.
+
+#### Part 10: link routing, the page's hello and messages, what the UI draws
+
+**Today.** `tellDrawn` SW:317-330 (a copy's window drawn iff it's one the session hosts for that profile, every
+role; sent on change, `drawnSent` SW:65), called after each state SW:244 and each read SW:341; the pushes' routing
+SW:263-284 (`loading`, the card's four, the forwarded ones). The page: `pageHello` MWC:1824-1860 (its fields:
+`windowId`, `host: "app-window"`, `mode`, `windows`, `themes`, `apps`, `pageHosted`, `marginPage`, `pageMinWidth`,
+`paneMin`, `appMin`, `paneLoading`, `paneCut`, `pageState` and its opening/starting/stuck words, `pagePicture`,
+`hostedFrame(s)`, `theme`), `pageSend` MWC:1862-1874, `pageSaid` MWC:1902-1988 (the ops: `ready`, `layout`,
+`peekRect`, `hits`, `chrome`, `focus`, `counts`, `pointerWant`, `perform`, `log`). The UI's requests:
+`LibraryWindowSource.perform` HS:2518-2592 (the tab numbers mapped back, `updateSettings` to the profile source,
+`copyUrl` to the pasteboard, `app.open`, `search`, history, `startup.*`, `openLauncher`, `addFavorite`'s scope from the
+settings, `peek.*`, ⌘W with no tab), `searchUrl` HS:2600-2607. What it draws: `live` HS:2404-2433, `liveTab`
+HS:2439-2450, the numbers HS:2390-2400.
+
+**Decision vs mechanism.** `drawn`, the routing, the hello's fields, the ops' routing, the UI requests' routing,
+`searchUrl` and which items are open tabs with what numbers are decisions. The pasteboard, the profile source's
+settings (UserDefaults keepers, SH:17-63), the WKWebView's `callAsyncJavaScript` (MWC:1781-1790) and the theme store's
+file reads are the Mac's.
+
+**Core.** core/session/route.rs: `pub fn drawn(&self, browser, profile, window_ids: &[i64]) -> Vec<(i64, bool)>` (the
+diff against `drawnSent` kept in the core), `push(link, window, msg)`; core/page/hello.rs: `Page::hello(&HelloFacts)
+-> String` (the facts the Mac reads: windows, themes, apps, theme JSON as bytes, never re-parsed); `Page::said(op,
+body) -> Said` (an enum: each op's route); core/session/ui.rs: `ui_request(kind, payload) -> Ui { Answer(Value) |
+Perform(kind, Value) | Settings(Value) | Pasteboard(String) | Done }`, `search_url(query, template)`; `live_plan(&self)
+-> LivePlan { window, front, rows: Vec<Row { item, number, index, active, visible, audible, muted }> }`.
+
+**Before and after step 4, the snapshot:** until step 4 the snapshot is the rules' (JavaScriptCore), so `live` stays a
+Swift shaping of it (~25 lines) over the core's `live_plan` (which items, their numbers, active, visible, sound: the
+decisions); after step 4 the snapshot is Rust and `live` joins it there (no JSON through the FFI per draw).
+
+**FFI.** `{"type":"push",…}` per copy push (a media change: a few a second while playing, ~1 KB); `ui` per UI
+request (clicks); `live_plan` per draw (JSON, a few items); the hello once per page load.
+
+**Pinned by:** T/tests.swift:145-147 (the drawn message), T/hosted-tests.swift 824, 834-840 (`addFavorite`'s scope, the
+rows), 1909-1946 (`hostedShellTests`), T/margin-window-tests.swift (8-362); E/e2e-glue.swift `glueScenario`
+(258-1391), E/e2e-hosted.swift `hostedScenario`.
+
+**Windows:** §10 item 7 in full: requests with ids and their answers (`Ask` + `_answer`), `drawn` per hosted window,
+the `app-window` hello built by the core (its `host`, `pageHosted`, `pageState`, `pageMinWidth`, `apps`, `paneCut`,
+`themes`, `marginPage`).
+
+**Risks.** `searchUrl` encodes everything but `CharacterSet.alphanumerics` and `-_.!~*'()` (HS:2604-2606):
+`alphanumerics` is Unicode's letters, marks and digits, so "café" keeps its "é" unencoded; Rust ports that set (the
+general categories L*, M*, N*) with vectors against the Swift (open question 8). ~200 Swift lines deleted.
+
+#### Part 11: page states, holes and the ground
+
+**Today.** `PageState { empty, loading, shown, elsewhere }` MWC:157; Margin's own page MWC:160-167; the setters
+MWC:493-668, 805-841 (each deduped on equality); `settlePage` MWC:993-1007 (the target: not hosting → elsewhere or
+empty; hosting → shown when a window is hosted and no label, else loading; the grace `loaderGrace` 0.12 s, MWC:94,
+only into loading from neither loading nor elsewhere, with no `loadingLabel` and not slow; the old hole kept
+meanwhile), `graceOver` MWC:1010-1015, `applyPage` MWC:1017-1036 (the label and the app, the change, the hole, the
+keys let go into shown, the push, the front), `pageStateJSON` MWC:1038-1042, `setStartupStuck` MWC:1046-1051. Holes:
+`placeHole` MWC:1088-1128 (one host: the hosted window's bounds ∩ the page area when shown, the page area while
+following, the old hole while the grace runs; corners within 2 pt of the page's take its radii), `updateHoles`
+MWC:725-769 (several: each visible host's rect ∩ its frame ∩ the page, a card's whole rect a cut, the focused one's
+hole), `holeRadii` MWC:694-701, `subtract` MWC:703-709, `groundHoles` MWC:712-722, `paneScene` MWC:781-795; the
+ground's colour `PageFill.color`/`common` MW:495-527 (CSS colours). The front watch: `frontRead` MWC:908-975 (`settle`
+0.5 s, `missApart` 1.0 s, `probeEvery` 5.0 s, MWC:907) and `keepFront`'s choice MWC:852-873.
+
+**Decision vs mechanism.** The states, the grace, the labels, every rect and radius, the ground's colour, the front
+watch's choice are decisions (core/page/). The panel and its level or order, `WindowGroundView`'s layer (MW:377-491),
+`CatchView` (PT:166-189), the keys (`letGoKeys`, `keysBack`, MWC:1361-1395), the window server's reads of the hosted
+window's bounds (MWC:978, 1161) and the WKWebView push stay MWC's.
+
+**Core.** core/page/mod.rs:
+
+```rust
+pub enum PageState { Empty, Loading, Shown, Elsewhere }
+pub struct Page { state, hosting, hosted: Option<i64>, loading: Option<Label>, showing: Option<Label>, slow: bool,
+                  elsewhere: Option<Label>, starting: bool, stuck: Option<String>, grace_until: Option<f64>,
+                  layout: Option<PageLayout>, visible: Vec<Shown>, following: bool, hole: Option<Rect>, holes: Vec<Hole>,
+                  slot: Option<Slot>, front: FrontWatch, … }
+impl Page {
+    pub fn set_hosting(&mut self, on: bool, now: f64, out: &mut Vec<PageOut>);      // and one fn per HostedWindow setter
+    pub fn grace_over(&mut self, now: f64, out: &mut Vec<PageOut>);                  // at `grace_until`
+    pub fn holes(&self, hosted_frame: Option<Rect>, frames: &[(i64, Rect)]) -> Holes; // pure: list, cuts, radii, slot holes, pane holes
+    pub fn front_read(&mut self, now: f64, read: &FrontRead) -> FrontAct;
+}
+pub enum PageOut { Push(String), Ground { fill: Option<Rgba>, holes: Vec<Hole> }, Slot, LetGoKeys, KeepFront { up: bool, level: bool }, Note(String) }
+```
+
+A setter that needs the hosted window's bounds now (`setLoading(nil)`, `setShowing(nil)`, `setHosted`,
+`hostedMoved`: MWC:520-566) asks MWC's port `read_bounds(window)` first, as `readHosted` does today, then decides.
+
+**FFI.** One Page object per Margin window, owned by its MWC (`margin_page_new/free`); its setters typed calls
+(each a session decision: a few per switch), the outs written through a callback during the call (as the link's
+writes). The front watch's read is typed (every poll at rest: 1.5-2 s).
+
+**Pinned by:** T/margin-window-tests.swift (316-346 the ground; the setters), T/hosted-tests.swift (every
+`window.loadings`/`showings`/`hostings` check: those are the fake window's records of the session's calls, unchanged),
+E/e2e-glue.swift `multiHoleChecks` (1392-1500) and `glueScenario`; S `page-frames`, `core`. Ported: the target state
+and the grace, `holeRadii`/`subtract`/`groundHoles` with CGRect's edge rules (step 2's vectors rule), `PageFill`'s
+colours, the front watch with a simulated clock.
+
+**Windows:** §10 item 1's `PageState { window, state, label, app? }` and `Holes { window, rects, radius }`: W/hole.rs's
+`region` (W/hole.rs:41) turns the core's holes into the window region; §4.2.
+
+**Risks.** The grace timer's restart and invalidation order (MWC:996-1005) becomes a deadline the session's wake
+covers: one timer on the Mac side for both. ~450 Swift lines deleted (MWC's decisions; ~1,900 of mechanism stay).
+
+#### Part 12: pointer pass-through for several holes
+
+**Today.** PT: `Slot` 20-30 (rect, radius, hits, `captureAll`, `holes`), `pageGets` 34-46 (no slot, capture-all, out
+of the rect, on a hit, in no hole, outside a rounded corner: false), `decide` 49-51 (a held button keeps the way),
+`slot(in:layout:hits:captureAll:)` 54-58, `CatchRegion` 69-92 (with holes), `PointerWant` 98-124; the window's side:
+`passes` MWC:1193-1197 (windowed: over the theme's buttons too), `pointerMoved` MWC:1214-1232 (per pointer event),
+`pointerAgain` MWC:1207-1212, `hoverCut` MWC:607-613, the one-host slot rule MWC:1121-1126 (radius 0 unless the hole is
+near the slot's rect within 2 pt, the rect ∩ the hole). core/passthrough.rs is the old overlay's: `Slot` without
+holes (passthrough.rs:27-34), `page_gets` 57, `decide` 95, `slot` 101, `CatchRegion` 126, `EdgeGuard` 291-302 (Windows'
+old overlay only), used by core/shell/overlay.rs:112, 209 and so by W/host.rs:422.
+
+**Core.** passthrough.rs brought up to the Swift: `Slot.holes: Option<Vec<Rect>>` (`None` for the old overlay: its
+behaviour unchanged), the holes' test in `page_gets`, `CatchRegion::of`/`contains` with holes, the one-host rule, the
+windowed buttons; `Page::pointer(point, buttons) -> Pointer { pass: bool, hover_cut: Option<…>, push: bool }` over the
+Page's slot. PT keeps `CatchView` and `PointerWatch` (mechanism).
+
+**FFI.** Typed, per pointer event (≤ ~120 a second, the main thread): `margin_page_pointer(page, double x, double y,
+bool buttons, MarginPointer *out)`: no lock, nothing allocated.
+
+**Pinned by:** T/tests.swift:218-247 (pass-through, the catch region), T/margin-window-tests.swift:88-120, the core's
+passthrough tests (unchanged for the old overlay, new for holes), E/e2e-glue.swift `multiHoleChecks`; S `pane-clicks`,
+`core`'s clicks.
+
+**Windows:** the hosted design cuts holes from the window region instead (§4.2, W/hole.rs): it uses the core's holes,
+not the pointer test; the old overlay's pass-through stays until §11 step 9 removes it with planner.rs and binder.rs.
+~80 Swift lines deleted.
+
+#### Part 13: `DataSetWindowSource.state` replaced by the library's snapshot
+
+**Today.** `state` SH:140-196 rebuilds, from a profile's data set, the State shape the library's own snapshot
+(library.ts `snapshot`, L:134-140) gives. It runs on every draw of every window: `LibraryWindowSource.snapshot`
+(HS:2510-2516) calls `profileSource.snapshot()` (SH:99-109), which builds every collection, to take two keys
+(`settings`, `favicons`, HS:2513-2514). It's also the whole source when the library's rules didn't load (SG:176-179).
+
+**Step 3.** `DataSetWindowSource` gains `settingsAndIcons()` (the profile's `settings` with the in-memory overlays,
+SH:102-108, and its `siteIcons`), which the library's snapshot takes: no State rebuilt per draw, the same values.
+`state` then serves only the no-rules fallback. **Step 4** makes the snapshot margin-core's (it can't fail to load), so
+`state` and the fallback go then, with one shared snapshot for the extension and the app. Default: the fallback kept
+until step 4 (open question 6).
+
+**Pinned by:** T/margin-window-tests.swift:221-261, 285-300 (the source, settings across launches). ~0 lines now
+(~60 in step 4); a draw's cost measured before and after.
+
+#### Order (one commit each; `npm run test:quick` each; the gate and the screen suite before the merge)
+
+| # | Commit | Swift deleted | Rust in (with tests) | Measured after |
+| --- | --- | --- | --- | --- |
+| 0 | Baseline (`idle-cost`, `idle-profile`, `live-resize`, `page-frames`, a switch's time) and tests added against the Swift: the four pin/favourite paths, `noRoom`'s edges, `lastItem`'s tie, `webAddress`, `searchUrl`, UP's caps, HostID's logged form, holes with zero-size and touching rects, pass-through with holes | 0 | 0 | the baseline |
+| 1 | The pure rules into the core, Swift switched, its copies deleted: `noRoom`/`paneLeast`/`isNoRoom`, `defaultCardRect`, `webAddress`, `searchUrl`, `resolve`, `loaderApp`, `dragLine`, `lastItem`, UP's sanitiser, `PageLayout`'s parse | ~180 | ~600 | |
+| 2 | passthrough.rs with several holes; the pointer typed; PT's rules deleted | ~80 | ~250 | `pane-clicks` |
+| 3 | The Page (part 11, and the page area's placement of part 7): MWC's decisions deleted, its mechanism over the Page | ~450 | ~1,100 | `page-frames`, `idle-cost` |
+| 4 | The session's skeleton: executor, ports, commands, the facade, the re-entrance test adapter; `navigate` (HS:2378-2385) the first flow moved, as the proof; `SafariWaker` split out in Swift (no behaviour moved) | ~10 | ~700 | |
+| 5 | Parts 1 and 2: the library's requests, `show`, `close`, `host`, the choices, the engine's window asks | ~350 | ~1,300 | a switch |
+| 6 | Parts 3 and 7: layouts, splits, the page area moving, the drag's typed path | ~320 | ~1,000 | `live-resize` |
+| 7 | Part 4: the card and Quick Tab | ~330 | ~900 | |
+| 8 | Parts 5 and 6: elsewhere, the start, `resumeLast`, `settleHosting`, the launcher, the preparation | ~300 | ~900 | `idle-cost` |
+| 9 | Parts 8, 9, 10: the loading bar, the pushes and the mini player, `drawn`, the hello and the ops' routing, the UI's requests, `live_plan` | ~380 | ~900 | |
+| 10 | Part 13 and the leftovers: `settingsAndIcons`, the facade trimmed to what T/ reads | ~40 | ~50 | a draw |
+
+About 2,400 Swift lines deleted (of HS's 2,620, HP's 438, ~450 of MWC's, PT's ~80, UP's ~90), ~700 Swift lines added
+(the facade, the ports' adapter, the Page's mechanism glue) and ~250 moved into `SafariWaker`; ~7,700 Rust lines in,
+about half of them tests. Budgets as before: idle < 0.5% CPU, < 150 MB, a switch < 16 ms of Margin's work, a drag's
+p95 no worse than commit 0's.
+
+#### What should not move
+
+- `SafariWaker` (the menu's presses and their ladder, the woken windows' parking and closing, the restored windows'
+  sweep, `unopenable`): Safari's own mechanics, as step 3's list says. Windows' counterpart is its Chrome start.
+- `ExtWindow`, `ShellHostedLinks`' transport (SG:16-49), `NoHostEngine`/`LateHostEngine` (SG:52-124: the engine
+  resolved late is a Mac start-up fact), `wire` (SG:129-164): the adapter.
+- The keys: `updateHostedKeys`, `runHosted`, `runAppKey` (SG:278-384; their rules are 1.1's), `PanesActive` and
+  `PaneClickTap` (Tirth, 2026-11-22: the Mac's policy).
+- MWC's mechanism (the panel, its level and order, the ground's layer, the catch view, the keys, full screen, the
+  window server's reads, the bar watch MWC:1440-1512, `FullScreenRetry` MWC:2364-2405: a pure struct, but of macOS's
+  full-screen transitions only), `ThemeSettingsKeeper`/`SettingsKeeper` (UserDefaults, SH:17-63), NSPasteboard.
+- The library's rules (step 4) and the snapshot's shaping until then.
+
+#### Open questions for Tirth (each with the default this design takes: no change of behaviour)
+
+1. **Flows as Rust `async fn`s with the core's own executor**, or hand-written state machines (core/shell/mod.rs's
+   `Pending` way, shell/mod.rs:450-460). *Default: async; a transliteration keeps every decision where it is, ~130
+   awaits by hand would not.*
+2. **A library edit as a step answered in the same turn** (re-entrant delegate kept) until step 4. *Default: yes.*
+3. **`resetPin`/`resetFavorite` aren't skipped when overtaken** (HS:509-513 vs 495-496). *Default: kept so; say if a
+   reset should be skippable like an open.*
+4. **The page picture's rule:** the Swift's prefix check or hosted_browser's (with its 8 MiB cap). *Default: the
+   Swift's.*
+5. **The start screen's 50 ms looks while held up** (HS:1559): kept, or re-checked only on an input (no wakes).
+   *Default: kept; it only runs while the start screen is up.*
+6. **The no-rules fallback** (`DataSetWindowSource` as the whole source, SG:176-179): kept until step 4, or dropped
+   now (an empty Personal space and a warning). *Default: kept.*
+7. **Chrome and Edge** stay "isn't hosted yet" in the core's session though it's browser-keyed. *Default: yes, until
+   §11 step 7.*
+8. **`searchUrl`'s Unicode letters** left unencoded (`CharacterSet.alphanumerics`). *Default: ported exactly.*
+9. **The session's log lines built in Rust** (their words unchanged), as step 2 kept them Swift's. *Default: Rust,
+   since every line is a decision's.*
+
 ## Step 4: the sidebar's rules into the core (Tirth, 2026-11-22)
 
 Right after step 3, before the Windows hosted session plugs in, so Windows never runs a stopgap (no QuickJS, no hidden
