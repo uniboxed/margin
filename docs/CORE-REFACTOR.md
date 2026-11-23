@@ -2102,7 +2102,7 @@ commit 7 only).
 | # | Commit | Swift / TS deleted | Rust in (with tests) | Measured after |
 | --- | --- | --- | --- | --- |
 | 0 | The vectors and the edges, against the TS (Node and JSC) before any Rust: the recorder and its ~70 tests' vectors, the generated sequences, `js.json` from JSC on this Mac, the throw survey (every throw site and JSC's words), the Mac's outcome for a 2000-unit cut through an emoji (LT:43 → JSON → `JSONSerialization` → the store), the shadow harness in T/ (JSC only for now). Baselines (off screen, T/ timings): a perform, a draw's snapshot over 50/500/2,000 items, the app's binary size and footprint | 0 | 0 (~400 TS and JSON, ~150 Swift test lines) | the baselines |
-| 1 | **Done** (step4/js): part 1: `js.rs`, the `url` and collation dependencies (open questions 1, 2), and part 5's `import_values` up to its normalising (import.rs) | 0 | ~450 + ~300 tests | binary size: +1.26 MB a architecture (collation), +0.22 MB (URL) |
+| 1 | **Done** (step4/js, da34b9b4): part 1: `js.rs`, the `url` and collation dependencies (open questions 1, 2), and part 5's `import_values` up to its normalising (import.rs) | 0 | ~450 + ~300 tests | binary size: +1.26 MB a architecture (collation), +0.22 MB (URL) |
 | 2 | Part 2: the typed state, `state_of`, `values_of`, `diff`, `target_of`, the snapshot's text; the snapshot vectors pass | 0 | ~850 | |
 | 3 | Part 3: M's rules, PR, AT, FI (parallel: spaces + order; kept + archive + favorites; splits + link rules) | 0 | ~1,400 | |
 | 4 | Part 4: the 57 actions and `perform`; every perform vector and the generated sequences pass | 0 | ~900 | a perform (Rust alone) |
