@@ -8059,3 +8059,70 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   tests are unchanged; `linkWanted`, `secs`, `requesting` and `made_` lose their `private` for it. When the session's
   flows are the core's (commit 5), the waker reads the session's `linkWanted` through a typed call instead.
 - HostedSession 172 lines out, 16 in; SafariWaker.swift 199 lines. The app's 2040 checks pass.
+
+
+## Core refactor step 3, commit 4: the session's skeleton in the core, navigate the first flow moved (2026-11-23)
+
+- margin-core gains `session` (app/shared/core/src/session/): one object per app, re-entrant like the Swift class
+  (every entry `&self`, its state in `Cell`/`RefCell`, no borrow across a port call or an await: clippy's
+  `await_holding_refcell_ref` denied for the module, a test adapter calling back in on every port call, and a call made
+  inside another only changing state and queuing). Its executor (exec.rs) has no runtime, thread or timer
+  (`Waker::noop`: a task is made ready by what it waits on): one serial queue for what HostedSession enqueued and
+  detached tasks beside it, ready tasks first in first out, a spawned task after its spawner suspends. A task that
+  starts a command ends the run: the answer hands the commands out (`start`, a list), Swift starts each at once and
+  says so with `tick(0)`, and nothing runs in between (`held`), so the command's synchronous part runs where Swift's
+  `await` ran it. A library edit (`Perform`, for parts 1 and 3) is answered in the same turn and resumes its task before
+  anything that became ready meanwhile (the delegate's requests). Sleeps are deadlines: the earliest goes out with each
+  answer, Swift's one timer sleeps with the session's `sleep` (a test's own) and ticks `max(now, deadline)`; a sleep
+  counts from the later of the clock and the last tick, so a test's frozen clock still wakes sleepers in deadline
+  order. `wait` keeps the Swift's shape (looks counted, never a clock compare: 0.3 s at 0.05 is 8 looks, 3 s 62, as the
+  Swift's arithmetic gives, pinned with the Swift's counts), `first_of` gives the one that came first even when both
+  came before the poll.
+- One finding the design didn't have: an input never runs what it makes ready in the same call. A main-actor `Task`
+  (HostedSession's `enqueue`) starts after the Swift code that made it, and that code goes on after the call (a
+  library perform's other requests, its delegate's loop, the caller's own steps): run at once, the first try failed 4
+  of the app's checks (two resize checks, the preview card's answer order, a split's pane window). The answer says
+  `ready`, and the facade ticks in the next main-actor turn (`runSoon`, once); answers and ticks run what's ready as
+  before. docs/CORE-REFACTOR.md's "What every part shares" says so now.
+- Ports (session/mod.rs `Ports`): the clock, Margin's windows (`window(id)`, `windowIds`), the engine's reads
+  (`shown`, `isHosted`), the links' (`safariProfiles`, `linkEpoch`), the OS's (`appName`); each part adds its own. On
+  the Mac they are two C callbacks made with the object, as `MarginDataNeed`: `now` typed, `port` JSON in and out
+  (malloc'd, freed by the core). Commands: `Ask` (a copy's request, answered `{ result, error }` in the Swift's words),
+  `Perform`, `Run` (a Swift job's turn: HostedSession's `enqueue` now puts its bodies in the core's queue, so the core's
+  flows and the Swift's take their turns in one queue). The library is read in place (`LibraryView` over the library
+  object's set: `item(collection, id)`, a map lookup, `LibraryStore::item`).
+- The state the flows share while they move (session/state.rs): `shown`, `open`, `safariWindows` are the core's now,
+  and the 200 log lines kept (`done`, built in Rust: Swift's `note` is an input, its line logged from the answer in
+  order with the core's). HostedSession keeps the same API: each is a computed property over the core, read again only
+  when its revision changed (`margin_session_rev`, typed, 0.3 ns) and written as the difference (`put`, `del`), so
+  T/'s `session.shown[1]`, `session.open[...]`, `session.done.suffix(4)` and the Swift flows that write them are
+  unchanged. Options stay the Swift struct, sent whole on each change (the core reads `every` for now).
+- FFI: `margin_session_new(library, options, ctx, now, port)`, `_free`, `_input`, `_answer(id, …)`, `_tick(due)`,
+  `_done`, `_idle`, `_rev`, in the header and the module map's library; every answer `{ start?, ready?, deadline, log?,
+  reply?, error? }`, a bad input `{ error }` and a warning once a kind; nothing panics on a bad pointer or input.
+- `navigate` (HS:2378-2385) is the first flow moved (session/navigate.rs), its Swift copy deleted: the window, its item
+  shown and where its page is read at once; at its turn the profile's window by the role in its host id (-1: none)
+  and the item's address (about:blank: none), `hostShow`, then the copy's own request for the tab it answered (Swift's
+  `int`: a number, whole, under 9e15). The payloads are built as the Swift built them (no `pinned`, a -1 window sent),
+  not by hosted_browser's `Ask`, which would refuse a -1 window: unchanged. HostID's logged form and role are ported
+  (host_id.rs) with the Swift's own answers as a vector.
+- Checked before the Swift copy went: T/hosted-tests.swift gained navigate's checks against the Swift first (its tab by
+  `hostShow` in its window with no pin, then the copy's request for that tab; the front window with none named;
+  nothing for a window not there, an app's item, a refused `hostShow`), unchanged after. The deleted Swift (verbatim, its
+  members a harness's) against the core through the FFI, the state written as the facade writes it: 20,000 generated
+  vectors (1 to 3 navigates each, the windows, the items shown, their hosts with every role and odd suffixes, the
+  profiles' windows, the state changed between two asks, addresses that are no string or no object, tab ids whole,
+  fractional, 9e15, strings, bools, null, refusals), 13,869 requests (3,844 of them the copy's own goBack, goForward or
+  reload), no difference; each of 11 deliberate breaks of the core caught on 3,000 vectors (about:blank lost, no window
+  as 0, the role ignored, a profile-less item asked, the window read when asked instead of at its turn, a tab id
+  truncated, 9e15 let in, a bool as a tab, a non-string address, a non-object item, the queue's order reversed). HostID: 180,022 generated ids against the Swift's `description` and `safariRole`,
+  no difference; 7 breaks caught. The one difference, accepted as step 1's caps took it: a `#` or the `:` of `safari:`
+  joined to a combining mark after it is one Character in Swift and so not found (685 of 20,000 such ids differ),
+  ids that never have one (profile ids and roles are ASCII).
+- Before macOS 26 a task can't be started at once (`Task.immediate`): there each command is a task of its own and the
+  run goes on in the next one (one main-actor turn later than the Swift's `await`); on 26 and later, at once.
+- Cost: nothing per frame (the skeleton adds no call to a drag). Release, the core's side: a note 1.7 µs, a field read
+  2.4 µs, a tick with nothing due 0.4 µs, a revision 0.3 ns, a whole navigate (an input, four ticks, two answers, one
+  port) 10 µs (ffi tests/session_cost.rs). With the facade's JSON (Swift, -O): a note 5.6 µs (it was an array's
+  append), the open items read again 33 µs for 20 (only after a change: a read with none is a revision, 1 ns). A
+  switch's dozen notes are well under a millisecond. The app's 2045 checks pass.

@@ -789,12 +789,19 @@ Margin's window as the adapter's contract, Safari's own window mechanics, NSPast
   - **One serial queue** for what Swift enqueues (`enqueue`/`idle`, HS:444-455), **detached tasks** for Swift's
     `Task {}`s outside it (HS:1083, 1091, 1284, 1331, 1343, 1360, 1465, 1485, 1532, 1635, 1780, 1853, 1865; HP:116,
     385). Ready tasks run FIFO; a spawned task is first polled after the one that spawned it suspends, as a
-    MainActor `Task` starts after the code that made it.
+    MainActor `Task` starts after the code that made it. So an **input never runs what it makes ready in the same
+    call** (the Swift code that made the input goes on after it: a perform's other requests, the delegate's loop):
+    its answer says `ready` and the facade ticks in the next main-actor turn (found in commit 4: run at once, 4 of
+    the app's checks failed). Answers and ticks run what's ready, as an await resuming did.
   - **Suspension points** are exactly the Swift's awaits: an engine operation, a copy's request, a sleep. A task that
-    starts an engine operation or a request ends the call: the answer says it (`start: { op, id }`), Swift starts it
-    at once (its synchronous prefix runs then, as `await engine.open` ran it) and calls `margin_session_answer(id, …)`
-    when it's done. Sleeps are the core's deadlines: the answer carries the earliest (`deadline`), Swift keeps one
-    timer and calls `margin_session_tick(now)`.
+    starts an engine operation or a request ends the run: the answer hands the commands out (`start: [{ op, id, … }]`,
+    a list: one poll can start two), Swift starts each at once (its synchronous prefix runs then, as `await
+    engine.open` ran it: `Task.immediate`, macOS 26 and later; before, a task each and the run one turn later) and
+    says so with `margin_session_tick(0)`; nothing runs in between (the core is held). It calls
+    `margin_session_answer(id, …)` when one's done. Sleeps are the core's deadlines: the answer carries the earliest
+    (`deadline`), Swift keeps one timer (slept with the session's `sleep`, a test's own) and calls
+    `margin_session_tick(max(now, deadline))`; a sleep counts from the later of the clock and the last tick, so a
+    test's frozen clock still wakes sleepers in deadline order.
   - `wait(seconds, done)` keeps HS:2478-2486's shape: steps of `every` (0.05 s), `left -= every`, the predicate read
     at each step (not a clock compare), so the same number of looks. `FirstOf` (HS:2611-2620, a request raced against a
     sleep) is a `first_of(a, b)` combinator.
@@ -845,12 +852,17 @@ Margin's window as the adapter's contract, Safari's own window mechanics, NSPast
 - **Order of maps.** Swift's dictionaries iterate in no fixed order; Rust's `BTreeMap`s in key order. Every place
   this could show is where Swift picks the first of several and the invariant says there's one (`card(in:)`, HP:102:
   one card per window, HP:199) or sorts first (HS:573, 1851, 2015): never observable; noted in each part.
-- **FFI.** One object: `margin_session_new(library, options, len, ctx, callbacks…)`, `_free`, `_input(json)` (the
-  rare inputs), `_answer(id, json)`, `_tick(now)`, `_done`, `_idle`, and the typed hot calls of parts 7 and 12. Every
-  answer: `{ start?, deadline?, log }` (the commands to Margin's windows, the pushes and the ports went out during
-  the call, in order). Panic-free as the others (a bad input is `{"error"}`, logged once). The Swift `HostedSession`
-  stays a facade with the same API and fields read from the core (as step 2's `Host`), so `session.shown[1]`,
-  `session.open[...]`, `session.requested[w] = …` and `await session.idle()` in T/ stay.
+- **FFI.** One object: `margin_session_new(library, options, len, ctx, now, port)` (the ports: `now` typed, `port`
+  JSON in and out, malloc'd, as `MarginDataNeed`), `_free`, `_input(json)` (the rare inputs), `_answer(id, json)`,
+  `_tick(due)`, `_done`, `_idle`, `_rev(field)` (typed: a field's revision), and the typed hot calls of parts 7 and 12.
+  Every answer: `{ start?, ready?, deadline, log?, reply?, error? }` (the commands to Margin's windows, the pushes and
+  the ports went out during the call, in order). Panic-free as the others (a bad input is `{"error"}`, logged once a
+  kind). The Swift `HostedSession` stays a facade with the same API and fields read from the core (as step 2's
+  `Host`), so `session.shown[1]`, `session.open[...]`, `session.requested[w] = …` and `await session.idle()` in T/
+  stay. While Swift flows still write a field the core's flows read (commit 4: `shown`, `open`, `safariWindows`, and
+  `done`), the field is the core's and the facade's computed property reads it again only when its revision changed
+  and writes the difference (`state` input: `put`, `del`); each part moves its fields in the same way. Swift's
+  `enqueue` puts its bodies in the core's queue (a `Run` command at their turn): one queue for both while flows move.
 - **Windows** implements the same ports in Rust over its adapter (W/hosting.rs) and Margin's window (W/appwindow.rs),
   with no FFI: §10 item 1's `Session::handle(now, Input) -> Vec<Command>` is `_input`/`_answer`/`_tick` with the
   commands above; its `EnsureBrowserWindow` is the engine's `requestSafariWindow` (part 2) browser-keyed.
@@ -1344,7 +1356,7 @@ until step 4 (open question 6).
 | 1 | The pure rules into the core, Swift switched, its copies deleted: `noRoom`/`paneLeast`/`isNoRoom`, `defaultCardRect`, `webAddress`, `searchUrl`, `resolve`, `loaderApp`, `dragLine`, `lastItem`, UP's sanitiser, `PageLayout`'s parse | ~180 | ~600 | |
 | 2 | passthrough.rs with several holes; the pointer typed; PT's rules deleted. **Done 2026-11-23** (step3/passthrough: one commit; MWC's pointer decisions, the one-host rule and the tap's read are the core's; PointerWant's message reading, the hole lists' choice (part 11) and the mechanism stay Swift; `pane-clicks` not measured: no screen suite on that branch) | ~95 (+~220 of facade and the page object's wrapper) | ~1,000 (half tests) | `pane-clicks` |
 | 3 | The Page (part 11, and the page area's placement of part 7): MWC's decisions deleted, its mechanism over the Page | ~450 | ~1,100 | `page-frames`, `idle-cost` |
-| 4 | The session's skeleton: executor, ports, commands, the facade, the re-entrance test adapter; `navigate` (HS:2378-2385) the first flow moved, as the proof; `SafariWaker` split out in Swift (no behaviour moved) | ~10 | ~700 | |
+| 4 | The session's skeleton: executor, ports, commands, the facade, the re-entrance test adapter; `navigate` (HS:2378-2385) the first flow moved, as the proof; `SafariWaker` split out in Swift (no behaviour moved). **Done 2026-11-23** (step3/skeleton, three commits: SafariWaker.swift, a move only; navigate's checks against the Swift; core/session/ with exec.rs, state.rs, host_id.rs, navigate.rs, ffi session.rs and the facade, `shown`, `open`, `safariWindows` and `done` the core's, Swift's `enqueue` in the core's queue. Inputs run nothing in their call, the one finding; nothing per frame) | ~10 | ~700 | |
 | 5 | Parts 1 and 2: the library's requests, `show`, `close`, `host`, the choices, the engine's window asks | ~350 | ~1,300 | a switch |
 | 6 | Parts 3 and 7: layouts, splits, the page area moving, the drag's typed path | ~320 | ~1,000 | `live-resize` |
 | 7 | Part 4: the card and Quick Tab | ~330 | ~900 | |

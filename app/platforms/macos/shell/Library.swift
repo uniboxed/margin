@@ -106,6 +106,9 @@ final class Library {
     // data/app under the lasting data's root (DataSync.appRoot, or a test's folder).
     static func folder(in dataRoot: URL) -> URL { dataRoot.appendingPathComponent("app", isDirectory: true) }
 
+    // margin-core's library object, for the session's reads of it (SessionCore: it lives as long as this library).
+    var corePointer: OpaquePointer? { core.pointer }
+
     // The library in `root` (its flat store's folder), written in the background (false: at once, the unit tests).
     init(root: URL, background: Bool = true, rules: LibraryRules) {
         core = LibraryCore(root: root, background: background)
@@ -297,6 +300,8 @@ final class LibraryCore {
     }
 
     deinit { margin_library_free(core) }
+
+    var pointer: OpaquePointer? { core }
 
     private func call(_ request: JSONObject) -> JSONObject {
         let answer = KeysCore.bytes(KeysCore.json(request)) { p, n in KeysCore.answer { margin_library_call(core, p, n, $0) } } as? JSONObject ?? [:]

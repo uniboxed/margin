@@ -41,3 +41,7 @@ pub mod host;
 
 // The windows a browser's copy makes and drives for the app (hosted.ts's requests), any browser, any OS.
 pub mod hosted_browser;
+
+// The session (HostedSession.swift's flows as async steps, docs/CORE-REFACTOR.md step 3): the library's items shown in
+// Margin's windows, its executor, ports and commands.
+pub mod session;

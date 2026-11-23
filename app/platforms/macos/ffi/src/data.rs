@@ -44,7 +44,7 @@ pub struct MarginData {
 }
 
 pub struct MarginLibrary {
-    library: LibraryStore,
+    pub(crate) library: LibraryStore,
 }
 
 pub(crate) fn answer(value: &Value, out_len: *mut usize) -> *mut u8 {

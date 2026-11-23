@@ -446,4 +446,23 @@ void margin_builtin_themes_free(MarginBuiltinThemes *builtins);
 uint8_t *margin_builtin_themes_message(MarginBuiltinThemes *builtins, const uint8_t *chosen, size_t len, size_t *out_len);
 uint8_t *margin_themes_protocol(const uint8_t *request, size_t len, size_t *out_len);
 
+// The session (session/, ffi session.rs: HostedSession's flows as async steps): one object per app over the library
+// object, with the Swift side's ports, called during a call and free to call back in: `now` (the monotonic clock) and
+// `port` (JSON in, JSON out allocated with malloc or NULL, freed by the session with free). `input`, `answer` (a
+// command's, by its id) and `tick` (the commands handed out are started, the deadlines up to `due` over) each answer
+// `{ start?, deadline, log?, reply?, error? }`: start each command at once, in order, then call `tick`. Answers freed
+// with margin_buffer_free. `rev`: a field's revision (0 shown, 1 open, 2 safariWindows, 3 done).
+typedef struct MarginSession MarginSession;
+typedef double (*MarginSessionNow)(void *ctx);
+typedef uint8_t *(*MarginSessionPort)(void *ctx, const uint8_t *ask, size_t len, size_t *out_len);
+
+MarginSession *margin_session_new(MarginLibrary *library, const uint8_t *options, size_t len, void *ctx, MarginSessionNow now, MarginSessionPort port);
+void margin_session_free(MarginSession *session);
+uint8_t *margin_session_input(const MarginSession *session, const uint8_t *input, size_t len, size_t *out_len);
+uint8_t *margin_session_answer(const MarginSession *session, uint64_t id, const uint8_t *reply, size_t len, size_t *out_len);
+uint8_t *margin_session_tick(const MarginSession *session, double due, size_t *out_len);
+uint8_t *margin_session_done(const MarginSession *session, size_t *out_len);
+bool margin_session_idle(const MarginSession *session);
+uint64_t margin_session_rev(const MarginSession *session, uint32_t field);
+
 #endif

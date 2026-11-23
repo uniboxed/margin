@@ -365,7 +365,8 @@ final class HostedSession: LibraryDelegate {
 
     static let defaultSafariProfile = BrowserProfiles.defaultProfile // the default profile's copy
 
-    var options: Options
+    // (The Swift struct the tests change after init; each change sent whole to the core, which reads what its flows use.)
+    var options: Options { didSet { drive(core.input(["type": "options", "options": options.json])) } }
     let library: Library
     let engine: HostedEngine
     let links: HostedLinks
@@ -383,10 +384,34 @@ final class HostedSession: LibraryDelegate {
     var activateMargin: () -> Void = {}
 
     // Each Margin window's item shown; each item with a page; each Safari profile's hosted window (the copy's id).
-    private(set) var shown: [Int: String] = [:]
-    private(set) var open: [String: OpenItem] = [:]
+    // (The core's, core/session/state.rs: read again only when its revision changed, written as the difference.)
+    private(set) var shown: [Int: String] {
+        get { fresh(.shown); return kept.shown }
+        set {
+            let old = shown
+            kept.shown = newValue
+            edit(.shown, put: newValue.filter { old[$0.key] != $0.value }.map { [$0.key, $0.value] }, del: old.keys.filter { newValue[$0] == nil })
+        }
+    }
+    private(set) var open: [String: OpenItem] {
+        get { fresh(.open); return kept.open }
+        set {
+            let old = open
+            kept.open = newValue
+            edit(.open, put: newValue.filter { old[$0.key] != $0.value }.map { [$0.key, $0.value.host.raw, $0.value.profile ?? NSNull()] },
+                 del: old.keys.filter { newValue[$0] == nil })
+        }
+    }
     // (Each profile's hosted windows by role, docs/PEEK-SPLIT.md §1: its main one, its card, a split's panes.)
-    private(set) var safariWindows: [SafariKey: Int] = [:]
+    private(set) var safariWindows: [SafariKey: Int] {
+        get { fresh(.safariWindows); return kept.safariWindows }
+        set {
+            let old = safariWindows
+            kept.safariWindows = newValue
+            edit(.safariWindows, put: newValue.filter { old[$0.key] != $0.value }.map { [$0.key.profile, $0.key.role.description, $0.value] },
+                 del: old.keys.filter { newValue[$0] == nil }.map { [$0.profile, $0.role.description] })
+        }
+    }
     // Each Margin window's layout while more than its item shown is visible (the preview card, a split's panes): main, the
     // others with their roles and rects, the focused one (`shown[w]`). None: one item shown, as before.
     private(set) var layout: [Int: HostedLayout] = [:]
@@ -421,9 +446,12 @@ final class HostedSession: LibraryDelegate {
     private var numbers: [String: Int] = [:]
     private var items: [Int: String] = [:]
     private var nextNumber = 1
-    // What was done, newest last (the tests read it; numbers, item ids and bundle ids only).
-    private(set) var done: [String] = []
-    private var tail: Task<Void, Never>?
+    // What was done, newest last (the tests read it; numbers, item ids and bundle ids only): the core's, the last 200.
+    var done: [String] {
+        let rev = core.rev(.done)
+        if rev != kept.doneRev { kept.done = core.done; kept.doneRev = rev }
+        return kept.done
+    }
     // The preview cards and Quick Tab (HostedPeek.swift, docs/PEEK-SPLIT.md §2, §3): each profile's card, when each card
     // window was last used (closed after `cardIdle` unused), the Margin windows with Quick Tab's field up, the card
     // whose window's first open is under way (its own loader, never the page card's).
@@ -437,28 +465,185 @@ final class HostedSession: LibraryDelegate {
         self.engine = engine
         self.links = links
         self.options = options
+        core = SessionCore(library: library, options: options.json)
+        core.owner = self
+    }
+
+    // ---- the core (core/session/, SessionCore.swift: docs/CORE-REFACTOR.md step 3) ----
+
+    // The session's object in margin-core: the one queue the core's flows and the Swift's jobs take their turns in, the
+    // state they share, the log. Its ports (`port`, `now`) call back here during a call.
+    let core: SessionCore
+    // The core's fields as last read, by their revisions (`fresh`).
+    private var kept = Kept()
+    private struct Kept {
+        var shown: [Int: String] = [:], open: [String: OpenItem] = [:], safariWindows: [SafariKey: Int] = [:]
+        var revs: [UInt64] = [0, 0, 0]
+        var done: [String] = [], doneRev: UInt64 = 0
+    }
+
+    private static let fieldNames: [SessionCore.Field: String] = [.shown: "shown", .open: "open", .safariWindows: "safariWindows"]
+
+    // A field read again from the core if it changed there since.
+    private func fresh(_ f: SessionCore.Field) {
+        let rev = core.rev(f)
+        guard rev != kept.revs[Int(f.rawValue)], let name = Self.fieldNames[f] else { return }
+        let rows = (drive(core.input(["type": "state", "get": [name]]))["reply"] as? JSONObject)?[name] as? [[Any]] ?? []
+        switch f {
+        case .shown:
+            kept.shown = [:]
+            for r in rows where r.count == 2 { if let w = int(r[0]), let item = r[1] as? String { kept.shown[w] = item } }
+        case .open:
+            kept.open = [:]
+            for r in rows where r.count == 3 { if let item = r[0] as? String, let host = r[1] as? String { kept.open[item] = OpenItem(host: HostID(raw: host), profile: r[2] as? String) } }
+        case .safariWindows:
+            kept.safariWindows = [:]
+            for r in rows where r.count == 3 {
+                if let p = r[0] as? String, let role = (r[1] as? String).flatMap(SafariRole.init(name:)), let id = int(r[2]) { kept.safariWindows[SafariKey(p, role)] = id }
+            }
+        case .done: return
+        }
+        kept.revs[Int(f.rawValue)] = rev
+    }
+
+    // A field's change written to the core (what's put, what's gone), its revision taken as the one now kept.
+    private func edit(_ f: SessionCore.Field, put: [[Any]], del: [Any]) {
+        guard !put.isEmpty || !del.isEmpty, let name = Self.fieldNames[f] else { return }
+        let reply = drive(core.input(["type": "state", "set": [name: ["put": put, "del": del]]]))["reply"] as? JSONObject
+        if let revs = reply?["revs"] as? [Any], revs.count > Int(f.rawValue), let r = (revs[Int(f.rawValue)] as? NSNumber)?.uint64Value { kept.revs[Int(f.rawValue)] = r }
+    }
+
+    // A call's answer carried out: its log lines said, the timer at its deadline, each command it handed out started at
+    // once in order, then the core told they are (its run goes on), until one hands out none; tasks an input made ready
+    // run in a task of their own (after the code that asked, as `enqueue`'s did). The first answer back.
+    @discardableResult private func drive(_ answer: JSONObject) -> JSONObject {
+        var next = answer
+        while true {
+            for line in next["log"] as? [JSONObject] ?? [] {
+                guard let text = line["text"] as? String else { continue }
+                if line["warn"] as? Bool == true { Diagnostics.warn(text) } else { Diagnostics.note(text) }
+            }
+            arm(num(next["deadline"]))
+            let starts = next["start"] as? [JSONObject] ?? []
+            if starts.isEmpty {
+                if next["ready"] as? Bool == true { runSoon() }
+                break
+            }
+            for c in starts { start(c) }
+            if #available(macOS 26.0, *) {
+                next = core.tick(0)
+            } else {
+                // (Before macOS 26 a task can't start at once: each start is a task, the run goes on in the next one.)
+                runSoon()
+                break
+            }
+        }
+        if core.idle, !idleWaiters.isEmpty {
+            let waiting = idleWaiters
+            idleWaiters = []
+            for k in waiting { k.resume() }
+        }
+        return answer
+    }
+
+    // The core's ready tasks run in the next turn of the main actor (once).
+    private var runQueued = false
+    private func runSoon() {
+        guard !runQueued else { return }
+        runQueued = true
+        Task {
+            self.runQueued = false
+            self.drive(self.core.tick(0))
+        }
+    }
+
+    // A command started (session/mod.rs `Command`): a copy's request, a library edit (answered now, in the same turn: its
+    // requests reach this delegate first, as when a flow here performed it), a Swift job's turn.
+    private func start(_ c: JSONObject) {
+        guard let id = (c["id"] as? NSNumber)?.uint64Value else { return }
+        switch c["op"] as? String {
+        case "ask":
+            let profile = c["profile"] as? String ?? "", kind = c["kind"] as? String ?? "", payload = c["payload"] as? JSONObject ?? [:]
+            startNow {
+                let (result, error) = await self.links.request(profile: profile, kind, payload)
+                self.drive(self.core.answer(id, ["result": result ?? NSNull(), "error": error ?? NSNull()]))
+            }
+        case "perform":
+            let out = library.perform(c["action"] as? String ?? "", c["payload"] as? JSONObject ?? [:])
+            let result = out.result.flatMap { JSONSerialization.isValidJSONObject([$0]) ? $0 : nil } ?? NSNull()
+            drive(core.answer(id, ["ok": out.ok, "result": result, "error": out.error ?? NSNull()]))
+        case "run":
+            let body = (c["job"] as? NSNumber).flatMap { jobs.removeValue(forKey: $0.uint64Value) }
+            startNow {
+                await body?()
+                self.drive(self.core.answer(id, [:]))
+            }
+        default:
+            drive(core.answer(id, ["error": "not a command"]))
+        }
+    }
+
+    // An operation started at once: its synchronous part now, as `await` ran it (macOS 26 and later; before, a task).
+    private func startNow(_ op: @escaping () async -> Void) {
+        if #available(macOS 26.0, *) { Task.immediate { await op() } } else { Task { await op() } }
+    }
+
+    // The one timer, at the core's earliest deadline: slept with `sleep` (a test's own), then that deadline ticked.
+    private var timerAt: Double?
+    private var timerGen = 0
+    private var timer: Task<Void, Never>?
+    private func arm(_ at: Double?) {
+        guard at != timerAt else { return }
+        timer?.cancel()
+        timer = nil
+        timerAt = at
+        guard let at else { return }
+        timerGen += 1
+        let gen = timerGen
+        timer = Task { [weak self] in
+            guard let self else { return }
+            await self.sleep(max(0, at - self.now()))
+            guard self.timerGen == gen else { return }
+            self.timer = nil
+            self.timerAt = nil
+            self.drive(self.core.tick(max(self.now(), at)))
+        }
+    }
+
+    // The core's ports (session/mod.rs `Ports`), answered during its call: Margin's windows, the engine's reads, the
+    // links', the OS's.
+    func port(_ ask: JSONObject) -> JSONObject {
+        switch ask["port"] as? String {
+        case "window": return window(int(ask["id"])).map { ["id": $0.id] } ?? [:]
+        case "windowIds": return ["ids": windowIds()]
+        case "engineShown": return engine.shown.map { ["host": $0.raw] } ?? [:]
+        case "isHosted": return ["hosted": (ask["host"] as? String).map { engine.isHosted(HostID(raw: $0)) } ?? false]
+        case "safariProfiles": return ["profiles": links.safariProfiles()]
+        case "linkEpoch": return (ask["profile"] as? String).flatMap { links.linkEpoch(of: $0) }.map { ["epoch": $0] } ?? [:]
+        case "appName": return (ask["bundle"] as? String).flatMap { appName($0) }.map { ["name": $0] } ?? [:]
+        default: return [:]
+        }
     }
 
     // ---- one at a time ----
 
+    // A Swift job in the session's queue (the core's: one queue for its flows and these), started when its turn comes.
     func enqueue(_ body: @escaping () async -> Void) {
-        let previous = tail
-        tail = Task { _ = await previous?.value; await body() }
+        nextJob += 1
+        jobs[nextJob] = body
+        drive(core.input(["type": "enqueue", "job": nextJob]))
     }
+    private var jobs: [UInt64: () async -> Void] = [:]
+    private var nextJob: UInt64 = 0
 
     // Everything asked so far, done (the tests wait for it).
     func idle() async {
-        while let t = tail {
-            await t.value
-            if tail == t { return }
-        }
+        while !core.idle { await withCheckedContinuation { idleWaiters.append($0) } }
     }
+    private var idleWaiters: [CheckedContinuation<Void, Never>] = []
 
-    func note(_ line: String) {
-        done.append(line)
-        if done.count > 200 { done.removeFirst(done.count - 200) }
-        Diagnostics.note("hosted: \(line)")
-    }
+    // A line of what was done: the core's log (the last 200 kept, `done`).
+    func note(_ line: String) { drive(core.input(["type": "note", "line": line])) }
 
     // ---- the library's requests ----
 
@@ -2218,14 +2403,10 @@ final class HostedSession: LibraryDelegate {
 
     static func isChromium(_ bundleId: String) -> Bool { ShortcutSet.isChromium(bundleId) } // (margin-core's rule)
 
-    // A web item's history in its Safari window (the copy's goBack, goForward, reload for its tab).
+    // A web item's history in its Safari window (the copy's goBack, goForward, reload for its tab): the core's
+    // (core/session/navigate.rs).
     func navigate(_ type: String, windowId: Int?) {
-        guard let w = window(windowId), let item = shown[w.id], let o = open[item], let p = o.profile else { return }
-        enqueue {
-            let (result, _) = await self.links.request(profile: p, "hostShow", ["windowId": self.safariWindows[SafariKey(p, o.host.safariRole)] ?? -1, "itemId": item, "url": (self.library.items().first { $0.id == item }?.value["url"] as? String) ?? "about:blank"])
-            guard let tab = int(result?["tabId"]) else { return }
-            _ = await self.links.request(profile: p, type, ["tabId": tab])
-        }
+        drive(core.input(["type": "navigate", "kind": type, "window": windowId ?? NSNull()]))
     }
 
     // ---- what the UI draws ----
@@ -2448,6 +2629,27 @@ final class LibraryWindowSource: MarginWindowSource {
         var allowed = CharacterSet.alphanumerics
         allowed.insert(charactersIn: "-_.!~*'()")
         return template.replacingOccurrences(of: "%s", with: query.addingPercentEncoding(withAllowedCharacters: allowed) ?? query)
+    }
+}
+
+extension HostedSession.Options {
+    // As the core takes them (core/session/mod.rs `Options`: it reads the ones its flows use).
+    var json: JSONObject {
+        ["firstCopiesPace": firstCopiesPace, "pressPace": pressPace, "wakePresses": wakePresses, "linkSayEvery": linkSayEvery,
+         "fullScreenWait": fullScreenWait, "pageWait": pageWait, "every": every, "safariBundles": safariBundles.sorted(),
+         "closesRestoredSafariWindows": closesRestoredSafariWindows, "preparesBrowser": preparesBrowser,
+         "prepareWindowWait": prepareWindowWait, "refitRetryAfter": refitRetryAfter, "resumesLast": resumesLast,
+         "startupWait": startupWait, "pictureWait": pictureWait, "wokenLate": wokenLate, "wokenGrace": wokenGrace,
+         "cycleWindow": cycleWindow, "cycleHold": cycleHold, "paneIdle": paneIdle]
+    }
+}
+
+extension SafariRole {
+    // From its `description` (`main`, `card`, `pane1`…), as the core names it.
+    nonisolated init?(name: String) {
+        if name == "main" { self = .main; return }
+        guard let role = SafariRole(suffix: Substring(name)) else { return nil }
+        self = role
     }
 }
 
