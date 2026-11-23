@@ -771,6 +771,9 @@ func hostedTests() {
     run { session.openApp("com.apple.TextEdit", windowId: 1) }
     check("hosted: picked again: the item it has, nothing launched twice", library.items(space: home).filter { $0.value["url"] as? String == "app://com.apple.TextEdit" }.count == 1
           && w.calls.filter { $0 == "launch com.apple.TextEdit" }.count == 1)
+    let beforeBack = links.asked.count
+    run { session.navigate("goBack", windowId: 1) }
+    check("hosted: goBack with an app's item shown (no profile, no tab): nothing asked", links.asked.count == beforeBack)
 
     // ---- a typed address (newTab): a web item, Safari started with no Dock icon, its copy's window, the tab ----
     links.profiles = ["s-default"] // (its copy links as Safari starts)
@@ -808,6 +811,29 @@ func hostedTests() {
     check("hosted: a second web item of that profile: its tab only, the engine not asked", links.types(since: mark2) == ["hostShow"] && w.calls.count == calls && session.shown[1] == bItem, "\(links.types(since: mark2)) \(w.calls.dropFirst(calls))")
     run { _ = library.perform("activateTab", ["windowId": 1, "tabId": aItem]) }
     check("hosted: back to the first: a tab switch again", links.types(since: mark2) == ["hostShow", "hostShow"] && w.calls.count == calls && session.shown[1] == aItem)
+
+    // ---- the page's history (goBack, goForward, reload): its tab found by the copy's hostShow in its window (no pin
+    // said), then the copy's own request for that tab; the engine never asked ----
+    do {
+        let mark = links.asked.count
+        run { session.navigate("goBack", windowId: 1) }
+        let asked = Array(links.asked.dropFirst(mark))
+        let show = asked.first?.payload ?? [:]
+        check("hosted: goBack: the item's tab by hostShow in its profile's window at its address, then goBack for the tab it answered",
+              asked.map(\.type) == ["hostShow", "goBack"] && asked.allSatisfy { $0.profile == "s-default" } && int(show["windowId"]) == 90
+              && show["itemId"] as? String == aItem && show["url"] as? String == "https://a.example/" && show["pinned"] == nil && show.count == 3
+              && int(asked.last?.payload["tabId"]) == links.nextTab - 1 && asked.last?.payload.count == 1 && w.calls.count == calls, "\(asked.map { ($0.type, $0.payload) })")
+        let mark2 = links.asked.count
+        run { session.navigate("reload", windowId: nil) }
+        check("hosted: reload with no window named: the front one's item", links.types(since: mark2) == ["hostShow", "reload"], "\(links.types(since: mark2))")
+        let mark3 = links.asked.count
+        run { session.navigate("goForward", windowId: 2) }
+        check("hosted: goForward in a Margin window that isn't there: nothing asked", links.asked.count == mark3)
+        links.refuse = ["hostShow"]
+        run { session.navigate("goForward", windowId: 1) }
+        links.refuse = []
+        check("hosted: its tab not found (hostShow refused): nothing else asked", links.types(since: mark3) == ["hostShow"], "\(links.types(since: mark3))")
+    }
 
     // ---- what the UI draws ----
     let snap = session.live(library.snapshot())
