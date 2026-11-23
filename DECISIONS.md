@@ -8126,3 +8126,19 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   port) 10 µs (ffi tests/session_cost.rs). With the facade's JSON (Swift, -O): a note 5.6 µs (it was an array's
   append), the open items read again 33 µs for 20 (only after a change: a read with none is a revision, 1 ns). A
   switch's dozen notes are well under a millisecond. The app's 2045 checks pass.
+
+## Core refactor step 3, commit 0: the session's pure rules pinned against the Swift before they move (2026-11-23)
+
+- New Swift checks (T/session-rules-tests.swift, 105 of them) of what commit 1 moves, against today's Swift: the
+  four pin and favourite paths of the library's requests (open and reset, each with an item or not, `addItem`
+  refused, overtaken: an open is skipped with its line, a reset never is), `noRoom` at its 1 pt slack and the least's,
+  `lastItem`'s tie (the smallest id among equal `lastUsed`) and its names, `loaderApp`, `resolve`, `webAddress`
+  (Foundation's `URL(string:)`: what it encodes, the hosts it refuses, 2,048 characters), `searchUrl`, the UI pushes'
+  caps, a host's logged form (`safari:p<djb2 % 10000>`), the ground's holes with zero-size and touching rects, the
+  pointer through several holes and the catch region's, the page's layout report (fills, splits, panes).
+- Two of the design's lines were wrong, found by these checks: `searchUrl` never kept a Unicode letter unencoded
+  (Foundation's `addingPercentEncoding` ignores the non-ASCII part of the allowed set, so "café" was already
+  `caf%C3%A9`); `noRoom` with only main cramped answers none (main never goes), not an empty list. The design and
+  open question 8 are corrected with commit 1's.
+- The baseline numbers the commit also asks for (`idle-cost`, `idle-profile`, `live-resize`, `page-frames`, a
+  switch) are measured on the screen, not here.
