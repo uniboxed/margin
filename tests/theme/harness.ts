@@ -622,16 +622,28 @@ const withRuntime = Object.assign(T, {
   rtPerformed() { return rt.host.performed.map((p) => p.name); },
   // A trackpad's phase told while reading the swipe's moving part just before and just after, in one task (the browser's
   // animation time is the same for both reads): where it's drawn, whether it's settling, and the space shown.
-  rtPhaseRead(selector: string, phase: string) {
+  // The phase sent `frames` frames from now (in that frame's callback), read before and after, each read with its time
+  // (`at`, ms); `prev`, the same read a frame earlier. WebKit reads a running transition at the moment it's read, so
+  // the behavior's own read (inside the dispatch) is a little further on than `before` on a busy machine (1.65 px in
+  // the gate of 2026-11-22): a test allows the settle's speed (prev to before) over the time the dispatch took.
+  rtPhaseRead(selector: string, phase: string, frames = 1) {
     const el = rt.target.querySelector(selector) as HTMLElement;
     const read = () => {
       const pane = el.querySelector('.space-pane:not(.m-swipe-ghost)');
       const m = pane ? /matrix\(([^)]+)\)/.exec(getComputedStyle(pane).transform) : null;
-      return { drawn: m ? parseFloat(m[1].split(',')[4]) : 0, settling: el.classList.contains('m-settling'), swiping: el.classList.contains('m-swiping'), space: (rt.runtime!.vm as any)?.space?.id as string };
+      return { drawn: m ? parseFloat(m[1].split(',')[4]) : 0, at: performance.now(), settling: el.classList.contains('m-settling'), swiping: el.classList.contains('m-swiping'), space: (rt.runtime!.vm as any)?.space?.id as string };
     };
-    const before = read();
-    document.dispatchEvent(new CustomEvent('m-wheel-phase', { detail: { phase } }));
-    return { before, after: read() };
+    type Read = ReturnType<typeof read>;
+    return new Promise<{ prev: Read, before: Read, after: Read }>((done) => {
+      let prev = read();
+      const frame = (k: number) => requestAnimationFrame(() => {
+        if (k > 1) { prev = read(); return frame(k - 1); }
+        const before = read();
+        document.dispatchEvent(new CustomEvent('m-wheel-phase', { detail: { phase } }));
+        done({ prev, before, after: read() });
+      });
+      frame(Math.max(1, frames));
+    });
   },
   // Wheel events over `selector` all in one task (no frame between them), the haptic ticks asked for by its end.
   rtTrackpadNow(selector: string, deltas: number[]) {

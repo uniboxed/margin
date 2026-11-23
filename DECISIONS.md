@@ -7520,3 +7520,16 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   request in `hosted_browser::Ask::SetWindowState`. The Mac's FFI (`margin_link_protocol`'s `setWindowState`) now uses
   the hosted one, and `HandoffRequest` is the old handoff's only again. Its times are whole milliseconds written as
   integers (`protocol::number`), as every other request's are: it had sent `1800000002000.0`.
+
+## Arcadia's "a settle caught" test: held within the settle's own travel (2026-11-22)
+
+- It failed now and then in the gate and never alone: "held where it's drawn (-80.35 → -82)", a 1.65 px gap against
+  1.5 px allowed. The swipe was right. WebKit reads a running transition at the moment it's read, and the catch
+  (`catchSettle`) reads it itself a little after the test's read, then holds it there to within 0.01 px. The catch's
+  dispatch takes 15-23 ms; on a busy machine the settle moves on in between. Earlier "passes alone" runs with
+  `--test-name-pattern` ran nothing (this file's tests are subtests), so they proved nothing.
+- Now the harness (`rtPhaseRead`) sends the phase inside the test's own frames, with no extra frame: an extra one
+  moved the early catch past halfway. Each read carries its time, and the frame before is read too. A hold passes
+  within 1.5 px, or in the way the settle was moving, as far as its speed carries it in the dispatch's time.
+- Checked: a jump of 30 px or of 5 px against the motion, put into `catchSettle` by hand, fails the test. The code as
+  it is passes 3 of 3 alone and 8 of 8 with four runs at once.

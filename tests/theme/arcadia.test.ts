@@ -192,6 +192,16 @@ for (const [name, engine] of ENGINES) {
         const spaceOf = () => page.evaluate(() => (__rt.runtime.vm as any).space.id as string);
         const asked = () => page.evaluate(() => T.rtSent().filter(([k]) => k === 'setSpace').map(([, p]) => p.spaceId as string));
         const sidebar = '.margin-sidebar';
+        // Held where it's drawn: `after` (the behavior's own read, held) at `before` (the test's, just before), give or
+        // take how far the settle moves (its speed from `prev` to `before`) in the time the dispatch took, and in the way
+        // it was moving (rtPhaseRead): a jump is tens of pixels, this a pixel or two.
+        type At = { drawn: number, at: number };
+        const heldAt = (r: { prev: At, before: At, after: At }, shift = 0) => {
+          const speed = (r.before.drawn - r.prev.drawn) / Math.max(1, r.before.at - r.prev.at); // px a ms
+          const moved = r.after.drawn - shift - r.before.drawn;
+          const allowed = Math.abs(speed) * (r.after.at - r.before.at);
+          return Math.abs(moved) <= 1.5 || (Math.sign(moved) === Math.sign(speed) && Math.abs(moved) <= allowed + 1.5);
+        };
         // (1) On past the next space: two quick swipes, a third space.
         await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, replies: { setSpace: { shown: null } } }));
         const width = (await page.evaluate(() => T.rtRect('.margin-sidebar')))!.width;
@@ -200,12 +210,12 @@ for (const [name, engine] of ENGINES) {
         await page.evaluate(() => T.rtWheelPhase('began'));
         await page.evaluate((n) => T.rtTrackpadRun('.space-title .title', Array(n).fill(20)), far);
         await page.evaluate(() => T.rtWheelPhase('ended'));
-        await page.evaluate(() => T.rtFrames(4)); // (let go a frame after the lift; a few frames into the settle)
-        const caught = await page.evaluate((sel) => T.rtPhaseRead(sel, 'mayBegin'), sidebar);
+        // (let go a frame after the lift; a few frames into the settle: caught in the fourth)
+        const caught = await page.evaluate((sel) => T.rtPhaseRead(sel, 'mayBegin', 4), sidebar);
         const second = caught.after.space;
         assert.ok(caught.before.settling && !caught.after.settling && caught.after.swiping, `caught mid-settle: ${JSON.stringify(caught)}`);
         assert.ok(second !== first, 'nearer the space it headed for: that one shown at once');
-        assert.ok(Math.abs(caught.after.drawn - (caught.before.drawn + width)) <= 1.5, `held where it's drawn, no jump (${caught.before.drawn} + ${width} → ${caught.after.drawn})`);
+        assert.ok(heldAt(caught, width), `held where it's drawn, no jump (${JSON.stringify([caught.prev, caught.before])} + ${width} → ${JSON.stringify(caught.after)})`);
         await page.evaluate((n) => T.rtTrackpadRun('.space-title .title', Array(n).fill(20)), far);
         await page.evaluate(() => T.rtWheelPhase('ended'));
         await page.waitForFunction((s) => (__rt.runtime.vm as any).space.id !== s, second, { timeout: 3000 });
@@ -220,11 +230,10 @@ for (const [name, engine] of ENGINES) {
         await page.evaluate(() => T.rtWheelPhase('began'));
         await page.evaluate(() => T.rtTrackpadRun('.space-title .title', [20, 20, 20, 20, 20, 20]));
         await page.evaluate(() => T.rtWheelPhase('ended')); // (still moving: it heads for the next space)
-        await page.evaluate(() => T.rtFrames(2));
-        const early = await page.evaluate((sel) => T.rtPhaseRead(sel, 'mayBegin'), sidebar);
+        const early = await page.evaluate((sel) => T.rtPhaseRead(sel, 'mayBegin', 2), sidebar);
         assert.ok(early.before.settling && !early.after.settling, `caught: ${JSON.stringify(early)}`);
         assert.equal(early.after.space, home, 'nearer where it set out from: still that space');
-        assert.ok(Math.abs(early.after.drawn - early.before.drawn) <= 1.5, `held where it's drawn (${early.before.drawn} → ${early.after.drawn})`);
+        assert.ok(heldAt(early), `held where it's drawn (${JSON.stringify([early.prev, early.before])} → ${JSON.stringify(early.after)})`);
         const headedFor = (await asked()).at(-1);
         assert.ok(headedFor && headedFor !== home, 'the next space had been asked for at the lift');
         await page.evaluate(() => T.rtTrackpadRun('.space-title .title', [-10, -10, -10, -10, -10, -10]));
@@ -241,8 +250,7 @@ for (const [name, engine] of ENGINES) {
         await page.evaluate(() => T.rtWheelPhase('began'));
         await page.evaluate((n) => T.rtTrackpadRun('.space-title .title', Array(n).fill(20)), far);
         await page.evaluate(() => T.rtWheelPhase('ended'));
-        await page.evaluate(() => T.rtFrames(4));
-        const touched = await page.evaluate((sel) => T.rtPhaseRead(sel, 'mayBegin'), sidebar);
+        const touched = await page.evaluate((sel) => T.rtPhaseRead(sel, 'mayBegin', 4), sidebar);
         assert.ok(!touched.after.settling && touched.after.space !== start);
         await page.evaluate(() => T.rtWheelPhase('ended'));
         await page.waitForFunction(() => T.rtCount('.m-swiping') === 0, null, { timeout: 3000 });
