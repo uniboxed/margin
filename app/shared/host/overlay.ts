@@ -34,6 +34,8 @@ import { createAppNotices, createGestureFeedback } from '../../../extension/ui/a
 import { backgroundSwitches, describeSwitchRun, OVERLAY_SWITCH_PREFIX, pickNavTab } from '../../../extension/shared/switching.ts';
 import { cycleSpace, cycleTab } from '../../../extension/shared/view.ts';
 import { pickBridge } from '../../../extension/ui/overlay-bridge.ts';
+import { numberedAction, numberedRows, togglePin } from '../../../extension/ui/shortcut-targets.ts';
+import { nextSplitPane } from '../../../extension/ui/behaviors/split.ts';
 
 // WebKit's handler on the Mac, WebView2's on Windows (ui/overlay-bridge.ts).
 const bridge = pickBridge(globalThis);
@@ -241,6 +243,29 @@ function withHoverAttr(rules: CSSRuleList) {
   }
 }
 
+// ---- ⌃⇧= Add Split View (docs/PEEK-SPLIT.md §4, decided 2026-11-21) ----------------------------------------------
+// The space's item used most recently (not the one in front, nor a pane already: behaviors/split.ts nextSplitPane) is
+// added: to the split shown, else split with the item in front. Nothing else in the space: the palette opens for a new
+// tab, and the item it opens (a search, an address, a tab, an app) is added once it's in front, as a pane beside the
+// item that was. Escape, or nothing new in front within SPLIT_PICK_MS: nothing added.
+const SPLIT_PICK_MS = 15_000;
+let splitPick: { front: number | string | null, until: number, picked: boolean } | null = null;
+function addSplitPane() {
+  if (!runtime) return;
+  const next = nextSplitPane(host?.getState(), runtime.vm);
+  if (next != null) return void runtime.dispatch('split.add', next, 'behavior');
+  splitPick = { front: runtime.vm?.tab?.id ?? null, until: Date.now() + SPLIT_PICK_MS, picked: false };
+  openPaletteTimed({ newTab: true }, '⌃⇧= Add Split View');
+}
+function followSplitPick() {
+  if (!splitPick || !runtime) return;
+  if (Date.now() > splitPick.until) { splitPick = null; return; }
+  const front = runtime.vm?.tab?.id ?? null;
+  if (!splitPick.picked || front == null || front === splitPick.front) return;
+  splitPick = null;
+  runtime.dispatch('split.add', front, 'behavior');
+}
+
 // ---- what the theme draws over the page slot ------------------------------------------
 
 let hitsQueued = false;
@@ -262,10 +287,22 @@ function reportHits() {
   const bar = preview.bar.rect();
   if (bar && !all) rects.push(bar);
   reportChrome(root);
+  reportPeekPage();
   const key = JSON.stringify([rects, all]);
   if (key === lastHits) return;
   lastHits = key;
   void post('hits', { rects, all }).catch(() => {});
+}
+// Where the theme's `<m-preview-page>` is (the preview card: Margin.app places the card's window there, docs/PEEK-SPLIT.md §2):
+// said as it changes, null once there's none. Measured as laid out, never mid-animation (ui/render.ts measurePeekPage).
+let lastPeekPage = 'null';
+function reportPeekPage() {
+  if (!host?.appWindow || !runtime) return;
+  const r = runtime.measurePeekPage();
+  const said = r ? JSON.stringify([[r.x, r.y, r.width, r.height], r.radius]) : 'null';
+  if (said === lastPeekPage) return;
+  lastPeekPage = said;
+  void post('peekRect', r ? { rect: [r.x, r.y, r.width, r.height], radius: r.radius } : { rect: null }).catch(() => {});
 }
 // Margin's own window: where the theme draws its buttons and where a drag moves it (host-app.ts chromeRects).
 let lastChrome = '';
@@ -297,11 +334,12 @@ function measureNow() {
   // takes a layout as the window's only with the window's mode in it: MarginWindowController.)
   // (Margin's own window: the colour around the page's rounded corners too, the ground the app puts under the page area.)
   const fills = host.appWindow ? cornerFill(runtime?.view.pageEl)?.fills ?? null : null;
-  const key = JSON.stringify([g.insets, g.radius, g.radii, g.container, host.mode, !!host.pageOutside, !!(host as { pageHosted?: boolean }).pageHosted, fills]);
+  const key = JSON.stringify([g.insets, g.radius, g.radii, g.container, host.mode, !!host.pageOutside, !!(host as { pageHosted?: boolean }).pageHosted, fills, g.split ?? null, g.panes ?? null]);
   if (key === lastLayout) return;
   lastLayout = key;
   // (Said as none when the theme draws nothing there: a report that leaves them out keeps the last ones, host-app.ts.)
   host.reportLayout({ ...g, windowId: host.windowId, mode: host.mode, ...(host.appWindow ? { fills } : {}) });
+  reportPeekPage();
 }
 // Which pointer positions the app hands in (runtime.pointer: only peek uses
 // them): none while the sidebar is docked (nothing to bring out), those in
@@ -339,10 +377,27 @@ function reportSpace() {
   spaceTold = told;
   void post('shownSpace', { windowId: host?.windowId ?? null, space: vm.space.id ?? null }).catch(() => {});
 }
+// How many spaces and numbered rows (⌘1–9: ui/shortcut-targets.ts) the sidebar has, told to the app when it changes: it
+// holds only the numbered keys with something behind them, so a press of another reaches the app in front
+// (Shortcuts.swift ShortcutSet.held: Carbon's hot keys can't pass one on).
+let countsTold = '';
+function reportCounts() {
+  const vm = runtime?.vm;
+  if (!vm?.space) return;
+  const counts = { spaces: vm.spaces?.length ?? 0, items: numberedRows(vm).length };
+  const told = JSON.stringify(counts);
+  if (told === countsTold) return;
+  countsTold = told;
+  void post('counts', counts).catch(() => {});
+}
+const SPLIT_ATTRS = new Set(['style', 'aria-valuenow', 'aria-valuemin', 'aria-valuemax', 'm-dragging']);
 const watcher = new MutationObserver((records) => {
   // (The page's own hover marks change nothing measured: m-hover alone, nothing to do.)
   if (records.every((r) => r.type === 'attributes' && (r.attributeName === HOVER_ATTR || r.attributeName === HOVER_OFF))) return;
-  hitsSoon(); hitsAfter(400); queueMicrotask(measureNow); queueMicrotask(reportWant); queueMicrotask(reportSpace); queueMicrotask(followPopup);
+  // (A split's panes sized again, a divider's frame of a drag: measured and reported by the drag itself, ui/behaviors/
+  // split.ts; what takes the pointer read once the dividers are still. Nothing else per frame.)
+  if (records.every((r) => r.type === 'attributes' && SPLIT_ATTRS.has(r.attributeName ?? '') && ((r.target as Element).localName === 'm-pane' || (r.target as Element).localName === 'm-divider'))) return hitsAfter(150);
+  hitsSoon(); hitsAfter(400); queueMicrotask(measureNow); queueMicrotask(reportWant); queueMicrotask(reportSpace); queueMicrotask(reportCounts); queueMicrotask(followPopup);
 });
 // A menu or prompt of Margin's opened or closed: the keys taken or given back with it (`popupOpen`, as a field's).
 function followPopup() { const want = stillHasKeys(); if (want !== hasKeys) setKeys(want); }
@@ -482,6 +537,8 @@ async function mount(pkg: any, { fallback = false, preview: previewing = false }
     // Each chain of switches (keys pressed fast, a click during them) as it ends, in Margin.app's log:
     // whether the highlight ever went back (it must not). A lone switch that landed says nothing.
     onSwitchRun: (run) => { const line = describeSwitchRun(run); if (line) log('note', line); },
+    // (⌃⇧= with nothing else to split with: the palette's pick is the new pane, `addSplitPane`.)
+    onPalette: (what) => { if (splitPick && what === 'close') splitPick = null; else if (splitPick && what === 'run') splitPick.picked = true; },
   });
   // (The page's own hover: the theme's sheets and Margin's own, every :hover also [m-hover]; the marks start again.)
   for (const sheet of runtime.view.sheets ?? []) { try { withHoverAttr(sheet.cssRules); } catch { /* a sheet not readable: its :hover only */ } }
@@ -540,6 +597,18 @@ function hostedFrameSaid(rect: unknown) {
     ? { left: rect[0], top: rect[1], right: rect[0] + rect[2], bottom: rect[1] + rect[3] } : null;
   for (const wake of [...hostedWaiters]) wake();
 }
+/** Every visible host's window in this page while more than one is (docs/PEEK-SPLIT.md §1: a card, a split's panes),
+ *  as the app last said them (`hostedFrames`), back to front; empty: one host (its frame is `hostedBox`). */
+type HostedFrame = { role: 'main' | 'pane' | 'card', focused: boolean, box: Box };
+let hostedBoxes: HostedFrame[] = [];
+function hostedFramesSaid(list: unknown) {
+  hostedBoxes = (Array.isArray(list) ? list : []).flatMap((f): HostedFrame[] => {
+    const r = f?.rect;
+    if (!Array.isArray(r) || r.length !== 4 || !r.every((v) => Number.isFinite(v)) || r[2] <= 0 || r[3] <= 0) return [];
+    const role = f.role === 'pane' || f.role === 'card' ? f.role : 'main';
+    return [{ role, focused: f.focused === true, box: { left: r[0], top: r[1], right: r[0] + r[2], bottom: r[1] + r[3] } }];
+  });
+}
 /** The page slot as the theme drawn now lays it out (the layout reported to the app). */
 function slotBox(): Box | null {
   const g = host?.layout;
@@ -588,7 +657,7 @@ async function swapTheme(pkg: any) {
 }
 
 // The palette opened: drawn how long after the word came (work, then frames until it's on screen), one line each time.
-function openPaletteTimed(options: { newTab: boolean }, by: string) {
+function openPaletteTimed(options: { newTab: boolean, query?: string, selectAll?: boolean }, by: string) {
   if (!runtime) return;
   const from = performance.now();
   runtime.openPalette(options);
@@ -768,6 +837,43 @@ function onMessage(msg: any) {
       // Margin's own window, the palette's Settings while it hosted (HostedSession.swift openLauncher): its launcher is
       // in the page area again, with its Settings open.
       else if (msg.name === 'settings' && host?.appWindow) runtime?.setUi({ settingsOpen: true, recording: null });
+      else if (msg.name === 'copy-url') runtime?.dispatch('tab.copyUrl', undefined, 'behavior');
+      else if (msg.name === 'focus-address') {
+        const cur = runtime?.vm?.tab;
+        const url = cur?.url && /^https?:\/\//i.test(cur.url) ? cur.url : '';
+        openPaletteTimed({ newTab: false, query: url, selectAll: true }, '⌘L');
+      } else if (msg.name === 'toggle-pin') {
+        // The pin bound to the row in front, in a folder or not; the toast once the request has come back.
+        host?.takeFailure(); // (an earlier request's failure isn't this one's)
+        if (runtime) void togglePin(runtime.vm, runtime, () => host?.takeFailure() != null);
+      } else if (msg.name === 'reopen-archived') runtime?.dispatch('archive.restoreLast', undefined, 'behavior');
+      // Quick Tab (⌥⌘N): the preview card with Margin's own address field (ui/behaviors/card.ts; `little-arc`, the
+      // app's command, keeps its first name).
+      else if (msg.name === 'little-arc') runtime?.card.openLittleArc();
+      else if (msg.name === 'add-split') addSplitPane();
+      else if (msg.name === 'space-index' && Number.isInteger(msg.index)) {
+        const sp = runtime?.vm?.spaces?.[msg.index - 1];
+        if (sp) runtime?.dispatch('space.switch', sp.id, 'behavior');
+      } else if (msg.name === 'item-index' && Number.isInteger(msg.index)) {
+        // Favorites, the pins as the sidebar shows them (folders included), today's rows.
+        const target = numberedAction(runtime?.vm, msg.index);
+        if (target) runtime?.dispatch(target.name, target.arg, 'behavior');
+      }
+      return;
+    case 'toast':
+      if (typeof msg.text === 'string' && msg.text) runtime?.showToast(msg.text);
+      return;
+    // The background mini player's sources for this window (the copy's `media` push, checked and given the UI's
+    // numbers for its tabs by the app: app/platforms/macos/shell/UIPush.swift): the view model picks the one shown.
+    case 'media':
+      // (Each a tab's: Safari's pages are the mini player's only sources so far.)
+      runtime?.setUi({ media: Array.isArray(msg.sources) ? msg.sources.filter((m: any) => !!m && typeof m === 'object' && Number.isInteger(m.tabId)).slice(0, 8).map((m: any) => ({ ...m, id: `tab:${m.tabId}`, source: 'tab' })) : null });
+      return;
+    // The preview card as Margin.app has it (app/platforms/macos/shell/HostedPeek.swift): drawn, or (null) closed, animated
+    // out (ui/behaviors/card.ts).
+    case 'peek':
+      runtime?.card.show(msg.peek ?? null);
+      queueMicrotask(reportPeekPage);
       return;
     case 'link':
       // (Margin's own window has no copy's link to lose.)
@@ -888,6 +994,9 @@ document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) s
     // The hosted window's bounds in this page, as they change (MarginWindowController.readHosted): a theme with a bigger
     // page area waits for them (swapTheme).
     if (msg?.type === 'hostedFrame') { hostedFrameSaid(msg.rect); return; }
+    // Every visible host's window while several are (MarginWindowController.sayHostedFrames): kept for the preview card and
+    // split view's panes (docs/PEEK-SPLIT.md §2-§4).
+    if (msg?.type === 'hostedFrames') { hostedFramesSaid(msg.frames); return; }
     // The trackpad's phases over Margin's UI (MarginWindowController.wheelPhase): for the space swipe (ui/behaviors/
     // swipe.ts), which web pages' wheel events don't tell.
     if (msg?.type === 'wheelPhase') {
@@ -918,6 +1027,24 @@ document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) s
   },
   // The counts above (the app's tests read them).
   stats: () => JSON.parse(JSON.stringify(stats)),
+  // DEV-HOOK: an action run as a theme's behaviour would (DevHooks.swift `host { ui }`, the on-screen checks of the preview card
+  // and split view), and what the page shows of them: its tab in front, its card, its split. Never addresses.
+  devDispatch: (action: string, arg?: unknown) => (runtime ? !!runtime.dispatch(action, arg, 'behavior') : false), // DEV-HOOK
+  devState: () => { // DEV-HOOK
+    const vm: any = runtime?.vm;
+    if (!vm) return 'no view model';
+    const rows = [...(vm.favorites?.items ?? []), ...(vm.space?.pinnedFlat ?? []).filter((p: any) => !p.isFolder), ...(vm.space?.today ?? [])];
+    const name = (id: unknown) => { const r = rows.find((x: any) => x.id === id || x.tabId === id); return r ? String(r.title ?? '').slice(0, 24) : String(id); };
+    return JSON.stringify({ space: vm.space?.name, tab: vm.tab ? { id: vm.tab.id, title: String(vm.tab.title ?? '').slice(0, 24) } : null,
+      today: (vm.space?.today ?? []).map((t: any) => ({ id: t.id, title: String(t.title ?? '').slice(0, 24), active: !!t.active })),
+      preview: vm.preview ? { host: vm.preview.host, quickTab: !!vm.preview.isQuickTab, loading: !!vm.preview.loading } : null,
+      // (Each pane's `tabId`: its row's number while it's open, what an action on it takes; `id` the split's own name for it.)
+      split: vm.split ? { axis: vm.split.axis, panes: (vm.split.panes ?? []).map((p: any) => ({ id: p.id, tabId: p.tabId ?? p.id, title: name(p.tabId ?? p.id), focused: !!(p.focused ?? p.active) })) } : null,
+      splits: (vm.space?.splits ?? []).map((sp: any) => ({ id: sp.id, count: sp.count })),
+      hostedFrames: hostedBoxes.length });
+  },
+  // The visible hosts' windows as the app last said them (`hostedFrames`), empty with one host. The app's tests read it.
+  hostedFrames: () => hostedBoxes.map((f) => ({ ...f, box: { ...f.box } })),
   // The window this page draws for. The app's tests read it.
   windowId: () => host?.windowId ?? null,
   // Drawn in Margin's own window, in which mode, and whether its palette is open (the app's tests read them).
@@ -975,9 +1102,11 @@ async function start() {
   const text = await post('hello');
   const hello = typeof text === 'string' ? JSON.parse(text) : text;
   if (!hello) return log('warn', 'no window for this overlay');
-  host = createAppHost({ hello, post, onMessage, onNotice: (arg) => notices.run(arg), warn: (...args) => log('warn', ...args) });
+  host = createAppHost({ hello, post, onMessage, onNotice: (arg) => notices.run(arg), warn: (...args) => log('warn', ...args), note: (...args) => log('note', ...args) });
   hostedFrameSaid(hello?.hostedFrame);
-  host.onState(() => followPage());
+  // (Several visible as it starts: the preview card, a split's panes. `hostedFrames` pushes keep it as they change.)
+  hostedFramesSaid(hello?.hostedFrames);
+  host.onState(() => { followPage(); followSplitPick(); });
   // What the copy pushed for this window before this page was there (a
   // notice, the tabs loading: an app that holds them says so in its hello's `held`), as if it came now.
   for (const msg of Array.isArray(hello.held) ? hello.held : []) host.receive({ type: 'push', msg });

@@ -47,7 +47,13 @@ final class Grid: NSView {
         NSColor(red: 1, green: 0.8, blue: 0.2, alpha: 1).setFill(); NSRect(x: bounds.width - 30, y: bounds.height - 30, width: 30, height: 30).fill()
         NSColor(red: 1, green: 0.3, blue: 0.5, alpha: 1).setFill(); NSRect(x: 0, y: 0, width: 30, height: 30).fill()
     }
-    override func mouseDown(with e: NSEvent) { clog("click at \(Int(e.locationInWindow.x)),\(Int(e.locationInWindow.y)) window \(window?.windowNumber ?? 0)"); window?.makeFirstResponder(nil) }
+    // (A click, its drags and its release, each with its count: the pane click checks, a double-click's second is count 2.)
+    // (A synthetic record with no place reaching a view: said apart, never counted as a click, never converted (Int() of
+    // a location that isn't a number traps).)
+    private func placed(_ e: NSEvent) -> String? { let p = e.locationInWindow; return p.x.isFinite && p.y.isFinite ? "\(Int(p.x)),\(Int(p.y))" : nil }
+    override func mouseDown(with e: NSEvent) { guard let at = placed(e) else { return clog("synthetic mouse record with no place reached the grid (down)") }; clog("click at \(at) window \(window?.windowNumber ?? 0) count \(e.clickCount)"); window?.makeFirstResponder(nil) }
+    override func mouseDragged(with e: NSEvent) { guard let at = placed(e) else { return }; clog("drag at \(at) window \(window?.windowNumber ?? 0)") }
+    override func mouseUp(with e: NSEvent) { guard let at = placed(e) else { return clog("synthetic mouse record with no place reached the grid (up)") }; clog("release at \(at) window \(window?.windowNumber ?? 0) count \(e.clickCount)") }
 }
 
 // AppKit's state restoration (`restore` by the system): each saved window made again by its identifier; AppKit puts
@@ -186,6 +192,13 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate, NSToolbarDel
             }
         }
         if case .at(let s)? = switches.extraWindow { DispatchQueue.main.asyncAfter(deadline: .now() + s) { [weak self] in self?.extra("timer") } }
+        // (Its state, on the suite's ask: AppKit's own word, as a split's pane kept active by Margin's records has it.)
+        DistributedNotificationCenter.default().addObserver(forName: .init(ChameleonSwitches.stateNotification), object: nil, queue: .main) { note in
+            guard (note.userInfo?["bundle"] as? String) == bundleId || (note.object as? String) == bundleId else { return }
+            let key = NSApp.keyWindow
+            let editing = key.map { $0.firstResponder is NSTextView && ($0.firstResponder as? NSTextView)?.isFieldEditor == true } ?? false
+            clog("state active \(NSApp.isActive) key \(key?.windowNumber ?? -1) main \(NSApp.mainWindow?.windowNumber ?? -1) editing \(editing) ask \(note.userInfo?["ask"] as? String ?? "-")")
+        }
         if switches.extraWindow != nil {
             DistributedNotificationCenter.default().addObserver(forName: .init(ChameleonSwitches.extraWindowNotification), object: nil, queue: .main) { [weak self] note in
                 guard (note.userInfo?["bundle"] as? String) == bundleId || (note.object as? String) == bundleId else { return }
@@ -415,7 +428,13 @@ NSApp.mainMenu = mainMenu
 // Every key press and click it gets (key codes and flags, never characters), and who has the keyboard then.
 NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown]) { e in
     if e.type == .keyDown { clog("EVENT keyDown code \(e.keyCode) flags \(String(e.modifierFlags.rawValue, radix: 16)) appActive=\(NSApp.isActive) keyWindow=\(NSApp.keyWindow?.windowNumber ?? -1)") }
-    else { clog("EVENT mouseDown at \(Int(e.locationInWindow.x)),\(Int(e.locationInWindow.y)) in window \(e.windowNumber) appActive=\(NSApp.isActive)") }
+    // (A synthetic mouse record, the window server's make-key pair as Margin's "all panes active" sends it (as yabai and
+    // AltTab do), has no place: its location isn't a number, and Int() of it traps: logged as such, never converted.)
+    else {
+        let p = e.locationInWindow
+        let at = p.x.isFinite && p.y.isFinite ? "\(Int(p.x)),\(Int(p.y))" : "no place (a synthetic record)"
+        clog("EVENT mouseDown at \(at) in window \(e.windowNumber) appActive=\(NSApp.isActive)")
+    }
     return e
 }
 NSApp.run()

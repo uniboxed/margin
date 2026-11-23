@@ -15,10 +15,20 @@ final class FakeDevWorld: DevHookWorld {
     func devDrag(dx: Int, frames: Int, done: @escaping (String) -> Void) -> String? { hosted.append("drag \(dx),\(frames)"); done("dragged \(frames) frames in 0 ms"); return nil }
     func devFront() -> String { "mechanism level, page shown" }
     func devPage(_ what: String, done: @escaping (String) -> Void) { done(what == "field" ? "focused true, length 3, palette true" : "at 120,600") }
+    func devUI(_ action: String, arg: String?, done: @escaping (String) -> Void) { done("dispatched: true") }
+    func devState(done: @escaping (String) -> Void) { done("{}") }
+    func devLayout() -> String { "one item" }
     func devPicture(watch seconds: Double?, done: @escaping (String) -> Void) { done(seconds.map { "watched \($0) s" } ?? "page shown, page area painted 0 of 81") }
 }
 
 func devHooksTests() {
+    // (The screen suite's three test copies in one `apps` field: 71 characters, kept; another field that long: dropped.)
+    let three = "test.margin.chameleon.1,test.margin.chameleon.2,test.margin.chameleon.3"
+    let f = DevHooks.fields(object: nil, userInfo: ["forget": "test", "apps": three, "url": String(repeating: "x", count: 71)])
+    check("dev hooks: the `apps` field holds the suite's three test copies (71 characters); any other field over 64 dropped", f["apps"] == three && f["url"] == nil, "\(f)")
+    check("dev hook: a ui action's argument: a number as one, an open item's id as its row's number (the UI's name for it), any other id as it is, none as null",
+          DevHooks.uiArgument("12", row: { _ in 99 }) as? Int == 12 && DevHooks.uiArgument("t-abc", row: { $0 == "t-abc" ? 7 : nil }) as? Int == 7
+          && DevHooks.uiArgument("sp-1", row: { _ in nil }) as? String == "sp-1" && DevHooks.uiArgument(nil, row: { _ in 1 }) is NSNull)
     func setup(_ on: Bool = true) -> (FakeDevWorld, DevHooks) {
         let w = FakeDevWorld()
         return (w, DevHooks(world: w, isOn: { on }))

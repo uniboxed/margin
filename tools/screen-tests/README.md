@@ -62,7 +62,8 @@ as a launch argument: no window, no window-server connection). Switches are its 
 | `extraWindow` | another window on File › New Window, on its `test.margin.chameleon.extraWindow` notification, or `at:<s>` |
 
 It logs every window event it makes and gets (made, ordered in/out, closed, key/main, full screen, occlusion, Space
-changes, reopen and terminate asks, key codes, clicks, the field's length) to `/tmp/margin-screen-tests/<id>.log`.
+changes, reopen and terminate asks, key codes, clicks with their count, its grid's drags and releases, the field's
+length) to `/tmp/margin-screen-tests/<id>.log`.
 The stand-in world plays the same switches off screen: `app/platforms/macos/shell/tests/behaviour-world.swift`
 (`tools/app-tests/run.sh unit`).
 
@@ -92,6 +93,35 @@ The stand-in world plays the same switches off screen: `app/platforms/macos/shel
   wide), nothing placed again or behind the loader; Chameleon 3 parked while the page area goes narrower than it (sized
   at its minimum, its right edge the page area's, never in a user Space), shown so for 5 s, dragged wider again.
   `real-apps-min` (opt-in, `--real-apps`): the same drags with the person's Weather (minimum 1048 wide), nothing posted.
+- `pane-clicks` (Margin's `PaneClickTap.swift`: the first click in another pane goes through): Chameleon 1 and 2 hosted,
+  made a split through the dev hook (`say: layout` for each one's item, then `ui split.add`); clicks posted only where
+  the window list says Margin's panel then that copy are under the point, each in the pane WITHOUT the keys: its grid
+  (an NSView that refuses the first mouse, as WebKit does: before the tap such a click only made its window key), its
+  button, its field then a plain key (only with the copy the front app and no field of Margin's focused), a
+  double-click (counts 1 and 2), a drag from it (press, drags, release in order); each needs Margin's `host:
+  app:test.margin.chameleon.N: a click in its pane … the click delivered` line, the copy's window key and Margin's focus
+  on it. Then 8 timed clicks back and forth (Margin's key time under the 120 ms cap; the press's post to the copy's
+  click), a click in the pane with the keys (straight through, nothing said), Margin's idle cost with the tap on, and
+  Margin's quit.
+- `panes-active` and `panes-active-crash` (Margin's `PanesActive.swift`: every pane of a split draws active): Chameleon
+  1 and 2 made a split as pane-clicks does; each copy's own word asked by its notification (`test.margin.chameleon.state`:
+  Chameleon logs `state active … key … main … editing …`, AppKit's own state): both active, each its pane's window key,
+  the focused one the front app; a grid click and a field click (its key typed reaches only it) with both active after
+  each; 6 clicks back and forth, the inactive moment of the one that had the keys timed from its own log; Margin's idle
+  cost with both active; the split hidden (Chameleon 3 shown alone): the kept one let go after the 1 s grace; Margin's
+  quit: its `let go (Margin quits` line, the kept copy's resign logged before it's quit. The crash part, from a launch of
+  its own: Margin killed (SIGKILL) with the split up, the kept copy still active, Margin opened again: `a crashed Margin
+  kept 1 app active: 1 let go`, the copy's resign logged before its quit. Clicks and keys only where pane-clicks posts
+  them. Written 2026-11-21 and dry-run only so far.
+- `cut-panes` (docs/PEEK-SPLIT.md §4b: a pane narrower than its window, `suite/CutPanes.swift`): Chameleon 1 (its
+  `minSize` 800×300) added beside Chameleon 2 as pane-clicks does, at the page area's end: its window 800 wide from its
+  pane's start, the rest past the display's edge, read every 0.5 s for 6 s (never moved, never out of its tile, nothing
+  of it over Chameleon 2's pane, Margin's `cut panes` saying only its right arrow); the pointer into its pane, its right
+  arrow pressed on Margin's own window (only where the window list says Margin's then the copy's): slid (Margin's line,
+  its window at its end alignment, behind Chameleon 2's window, its left arrow now, the press never the copy's); a first
+  click into it under Chameleon 2's pane (pane-clicks' step) and its window still behind; its left arrow: back past the
+  edge, held 4 s; Margin's idle cost with it up. 14 passed on the real screen, 2026-11-22 (slides 152-159 ms, 0.36% CPU
+  idle, 0 wakeups/s).
 - `real-apps` (opt-in, `--real-apps`): Maps, Phone, Messages, Mail, WhatsApp, Safari, Notes, Calculator (the list at the
   top of `suite/RealApps.swift`; skipped if not installed). Recorded first (running, pid, windows, saved-state defaults
   keys, Margin's library items); each hosted through the dev hook only and its desired state held 30 s; a switch to

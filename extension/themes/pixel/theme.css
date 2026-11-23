@@ -535,3 +535,183 @@ img.fav.app { width: 22px; height: 22px; margin: -2px; box-shadow: none; backgro
 @media (prefers-reduced-motion: reduce) {
   .pixel.blink .settings-category.selected::before { animation: none; }
 }
+
+/* ---- Track 2: Favorites, nested folders, sticky pin reset, split rows, mini player, preview, toast ---- */
+.favorites {
+  display: grid;
+  grid-template-columns: repeat(var(--fav-cols, 3), minmax(0, 1fr));
+  gap: 8px;
+  padding: 2px 3px 4px;
+  flex: none;
+}
+.favorite-tile {
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: 36px;
+  background: var(--deep);
+  color: var(--ink);
+  box-shadow: var(--pxs);
+  text-decoration: none;
+}
+.favorite-tile:hover { background: var(--hover); }
+.favorite-tile.on { background: var(--field); box-shadow: 0 -2px 0 var(--yellow), 0 2px 0 var(--yellow), -2px 0 0 var(--yellow), 2px 0 0 var(--yellow); }
+.favorite-tile .drift-dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 5px;
+  height: 5px;
+  background: var(--yellow);
+}
+.favorites.m-drop-into { outline: 2px solid var(--yellow); outline-offset: 2px; }
+/* No favorites yet: a drop target while a tab or pin is dragged, over what follows (nothing moves), none at rest. */
+.favorites-drop { display: none; }
+:is(.m-drag-tab, .m-drag-pin) .favorites-drop { display: block; position: relative; z-index: 5; flex: none; height: 0; margin-bottom: -12px; /* (the column's gap after it, taken back) */ }
+.favorites-drop-zone { position: absolute; left: 3px; right: 3px; top: 2px; height: 36px; box-sizing: border-box; border: 2px dashed var(--yellow); background: var(--deep); }
+.favorites-drop.m-drop-into .favorites-drop-zone { background: var(--hover); }
+
+.folder-head.nested.open .arrow { transform: rotate(90deg); }
+/* Nested folders: a sub-folder's row sits with its parent's pins; each level deeper, 14 px in. */
+.folder :is(.pin, .folder-head.nested) { --indent: calc(max(var(--depth, 1) - 1, 0) * 14px); margin-left: var(--indent); width: calc(100% - var(--indent)); }
+.pin .reset {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  color: var(--yellow);
+  flex: none;
+  cursor: pointer;
+}
+.pin .reset:hover { background: var(--hover); }
+.pin .reset .pix { width: 10px; height: 10px; fill: currentColor; }
+.pin.muted .fav, .tab.muted .fav, .favorite-tile.muted .fav { opacity: 0.5; }
+
+.split-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin: 4px 3px 6px;
+  padding: 2px;
+  background: var(--deep);
+  box-shadow: var(--pxs);
+}
+.split-row.on { box-shadow: 0 -2px 0 var(--yellow), 0 2px 0 var(--yellow), -2px 0 0 var(--yellow), 2px 0 0 var(--yellow); }
+.split-pane-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 6px;
+  color: var(--ink);
+  font-size: 15px;
+  text-align: left;
+  cursor: pointer;
+}
+.split-pane-btn + .split-pane-btn { border-left: 2px solid var(--side); }
+.split-pane-btn:hover { background: var(--hover); color: var(--yellow); }
+.split-pane-btn.on { background: var(--side); color: var(--yellow); }
+.split-pane-btn .title { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.split-row .split-swap {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.split-row .split-swap:hover { background: var(--hover); color: var(--yellow); }
+.split-row .split-swap .pix { width: 10px; height: 10px; fill: currentColor; }
+
+.mini-player {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 3px 6px;
+  padding: 6px;
+  background: var(--deep);
+  box-shadow: var(--pxs);
+  flex: none;
+}
+.mini-player.paused { opacity: 0.7; }
+.mini-info {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.mini-art { width: 26px; height: 26px; object-fit: cover; flex: none; display: grid; place-items: center; box-shadow: var(--pxs); }
+.mini-art.letter { background: var(--fav, var(--blue)); color: var(--deep); font-size: 13px; font-weight: 700; }
+.mini-text { min-width: 0; display: flex; flex-direction: column; }
+.mini-title { font-size: 14px; color: var(--yellow); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.mini-sub { font-size: 12px; color: var(--muted); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.mini-controls { display: flex; align-items: center; gap: 4px; flex: none; }
+.mini-btn { width: 24px; height: 24px; }
+.mini-btn.muted { opacity: 0.45; }
+
+.toast-slot { position: fixed; top: 18px; right: 18px; z-index: 60; pointer-events: none; }
+.toast-pill {
+  padding: 8px 12px;
+  background: var(--deep);
+  color: var(--yellow);
+  font-family: 'Press Start 2P', monospace;
+  font-size: 10px;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+/* ---- The preview card and Quick Tab (docs/PEEK-SPLIT.md §2, §3) ---------------------------------------
+   Laid over the page area alone (Margin's --m-page-* while a card is up): the page dimmed around the card (main shows
+   through, dimmed), the card's page (<m-preview-page>, where Margin.app puts the card's Safari window) clear once that
+   window is in place (.ready), covered while it loads and as it goes. Open: the dim fades in and the card comes from
+   0.96 and nothing in 150 ms; close: the reverse. Transform and opacity only; Reduce Motion: a fade. Once the window is
+   in place the dimmed page never takes the pointer (Margin.app catches a press there and closes the card); while it
+   loads, and for Quick Tab's field alone, the scrim does (a click there closes it). */
+.preview-slot { position: fixed; left: var(--m-page-left, 0px); top: var(--m-page-top, 0px); right: var(--m-page-right, 0px); bottom: var(--m-page-bottom, 0px); z-index: 50; overflow: hidden; border-radius: var(--m-page-radius, 0px); pointer-events: none; --preview-dim: rgba(11, 10, 26, 0.45); }
+@media (prefers-color-scheme: dark) { .preview-slot { --preview-dim: rgba(11, 10, 26, 0.6); } }
+.preview-backdrop { position: absolute; inset: 0; pointer-events: none; }
+.preview-backdrop > .scrim { position: absolute; inset: 0; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; animation: none; cursor: default; pointer-events: none; }
+.preview-backdrop:is(.loading, .quick-tab) > .scrim { pointer-events: auto; }
+.preview-dim, .preview-card { position: absolute; left: clamp(0px, 8%, calc(50% - 210px)); right: clamp(0px, 8%, calc(50% - 210px)); top: clamp(0px, 7%, calc(50% - 186px)); bottom: clamp(0px, 7%, calc(50% - 186px)); border-radius: 0px; }
+.preview-backdrop.quick-tab :is(.preview-dim, .preview-card) { bottom: auto; height: 50px; }
+.preview-dim { box-shadow: 0 0 0 100vmax var(--preview-dim); pointer-events: none; animation: px-preview-fade-in 150ms ease-out both; }
+.preview-backdrop.closing .preview-dim { animation: px-preview-fade-out 150ms ease-in both; }
+.preview-card { display: flex; flex-direction: column; overflow: hidden; pointer-events: none; transform-origin: 50% 40%; animation: px-preview-in 150ms cubic-bezier(.2, .8, .2, 1) both; background: transparent; color: var(--ink); }
+.preview-backdrop.closing .preview-card { animation: px-preview-out 150ms cubic-bezier(.4, 0, 1, 1) both; }
+.preview-bar { flex: none; box-sizing: border-box; height: 44px; display: flex; align-items: center; gap: 6px; padding: 0 10px; pointer-events: auto; height: 52px; gap: 8px; padding: 0 10px; background: var(--deep); box-shadow: 0 3px 0 var(--ink); }
+.preview-host { flex: 1 1 0; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 15px; color: var(--yellow); }
+.preview-field { flex: 1 1 0; min-width: 0; height: 30px; box-sizing: border-box; padding: 0 10px; font: inherit; outline: none; height: 30px; border: 0; border-radius: 0; background: var(--side); color: var(--ink); box-shadow: var(--pxs, 0 0 0 2px var(--ink)); }
+.preview-page { position: relative; flex: 1 1 auto; min-height: 0; background: transparent; }
+.preview-backdrop:not(.ready) .preview-page { background: var(--side); pointer-events: auto; }
+.preview-backdrop.quick-tab .preview-page { display: none; }
+.preview-backdrop.loading .preview-page::after { content: ''; position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; box-sizing: border-box; border: 3px solid var(--yellow); border-right-color: transparent; animation: px-spin 0.9s linear infinite; }
+@keyframes px-preview-in { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
+@keyframes px-preview-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(0.96); } }
+@keyframes px-preview-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes px-preview-fade-out { from { opacity: 1; } to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .preview-card { animation-name: px-preview-fade-in; }
+  .preview-backdrop.closing .preview-card { animation-name: px-preview-fade-out; }
+  .preview-backdrop.loading .preview-page::after { animation: none; }
+}
+.preview-btn { flex: none; }
+
+/* Split View (docs/PEEK-SPLIT.md §4): Margin's own <m-pane>s, flexed by the split's ratios, and an <m-divider> between
+   each two, in the page's place while a split is shown (m-split="row" side by side, "column" stacked). The gap is the
+   divider (--m-split-gap); its grip lights on hover and focus and while dragged ([m-dragging]); the focused pane
+   ([m-focused]) has a ring in the gap around it. Nothing here moves a pane: Margin lays them out. */
+.pixel { --m-split-gap: 12px; }
+.pixel m-divider { background: var(--ground); }
+.pixel m-divider::after { content: ""; position: absolute; left: 50%; top: 50%; width: 4px; height: 40px; transform: translate(-50%, -50%); background: repeating-linear-gradient(to bottom, var(--muted) 0 4px, transparent 4px 8px); }
+.pixel m-page[m-split="column"] > m-divider::after { width: 40px; height: 4px; background: repeating-linear-gradient(to right, var(--muted) 0 4px, transparent 4px 8px); }
+.pixel m-divider:is(:hover, :focus-visible)::after { background: repeating-linear-gradient(to bottom, var(--yellow) 0 4px, transparent 4px 8px); }
+.pixel m-page[m-split="column"] > m-divider:is(:hover, :focus-visible)::after { background: repeating-linear-gradient(to right, var(--yellow) 0 4px, transparent 4px 8px); }
+.pixel m-divider[m-dragging]::after { background: var(--yellow); }
+.pixel m-pane[m-focused] { box-shadow: 0 -3px 0 var(--yellow), 0 3px 0 var(--yellow), -3px 0 0 var(--yellow), 3px 0 0 var(--yellow); }

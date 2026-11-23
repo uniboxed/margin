@@ -1051,9 +1051,9 @@ test('link: a copy that doesn\'t own the state never links', async () => {
 });
 
 test('link: the app\'s windows calls — its requests taken, the removed ones refused, the windows calls\' refusals', async () => {
-  for (const type of ['setWindowState', 'closeWindow', 'newWindow', 'hostShow', 'hostClose']) assert.ok(APP_REQUESTS.has(type), type);
+  for (const type of ['setWindowState', 'closeWindow', 'newWindow', 'hostShow', 'hostClose', 'hostFocusWindow']) assert.ok(APP_REQUESTS.has(type), type);
   for (const type of ['parked', 'parkedActivity', 'frameProbe', 'windowDrafts', 'focusWindow', 'openSpaceWindow', 'orderSpaces', 'paletteDropped', 'devTabMoveProbe', 'framed']) assert.ok(!APP_REQUESTS.has(type), type);
-  assert.deepEqual([...WINDOW_CALLS].sort(), ['closeWindow', 'setWindowState']);
+  assert.deepEqual([...WINDOW_CALLS].sort(), ['closeWindow', 'hostFocusWindow', 'setWindowState']);
   for (const type of WINDOW_CALLS) assert.ok(APP_REQUESTS.has(type), type);
 
   const none = new Set();

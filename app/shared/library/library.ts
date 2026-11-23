@@ -15,11 +15,13 @@
 // action returns a request (`requests`) for the hosting phase (Library.swift's delegate), with the item and its
 // target resolved.
 import * as M from '../../../extension/state/model.ts';
+import { frontItemOf } from '../../../extension/shared/front-item.ts';
+import { matchAirTrafficRule } from '../../../extension/shared/air-traffic.ts';
 import { fingerprint } from '../../../extension/shared/data-set.ts';
 import type { State } from '../../../types/margin';
 
 /** The library's collections (the data set's), and `imports`: the import's marker. */
-export const COLLECTIONS = Object.freeze(['spaces', 'pins', 'folders', 'tabs', 'archive', 'windows', 'imports']);
+export const COLLECTIONS = Object.freeze(['spaces', 'pins', 'favorites', 'airTraffic', 'splits', 'folders', 'tabs', 'archive', 'windows', 'imports']);
 export const FORMAT = 1;
 
 export type WebTarget = { kind: 'web', browser: string, profile: string | null };
@@ -87,9 +89,32 @@ export function stateOf(values: Values): LibState {
   const spaces = sorted(values?.spaces).sort((a, b) => finite(a[1].order) - finite(b[1].order) || a[0].localeCompare(b[0]))
     .map(([id, s]) => ({ id, name: str(s.name, 200), emoji: str(s.emoji, 16), color: str(s.color, 32), browser: BROWSERS.has(s.browser) ? s.browser : 'safari', profile: typeof s.profile === 'string' && s.profile ? s.profile : null, ...(M.themeIdOk(s.theme) ? { theme: s.theme } : {}) }));
   const pins = sorted(values?.pins).filter(([, p]) => typeof p.spaceId === 'string' && typeof p.url === 'string')
-    .map(([id, p]) => ({ id, spaceId: p.spaceId, url: p.url, title: str(p.title), ...(typeof p.folderId === 'string' && p.folderId ? { folderId: p.folderId } : {}), pos: finite(p.pos), target: targetOf(p.target) ?? webTarget('safari', null) }));
+    .map(([id, p]) => ({ id, spaceId: p.spaceId, url: p.url, title: str(p.title), ...(typeof p.customTitle === 'string' && p.customTitle ? { customTitle: str(p.customTitle, 200) } : {}), ...(typeof p.folderId === 'string' && p.folderId ? { folderId: p.folderId } : {}), pos: finite(p.pos), target: targetOf(p.target) ?? webTarget('safari', null) }));
+  const favorites = sorted(values?.favorites).filter(([, f]) => typeof f.url === 'string')
+    .map(([id, f]) => ({ id, scope: typeof f.scope === 'string' && f.scope ? f.scope : 'global', url: f.url, title: str(f.title), ...(typeof f.customTitle === 'string' && f.customTitle ? { customTitle: str(f.customTitle, 200) } : {}), pos: finite(f.pos), target: targetOf(f.target) ?? webTarget('safari', null) }));
+  const airTraffic = sorted(values?.airTraffic).filter(([, r]) => typeof r.pattern === 'string' && typeof r.spaceId === 'string')
+    .sort((a, b) => finite(a[1].order) - finite(b[1].order) || a[0].localeCompare(b[0]))
+    .map(([id, r], i) => ({ id, pattern: str(r.pattern, 200), spaceId: r.spaceId, enabled: r.enabled !== false, order: finite(r.order, i) }));
+  // A split's panes as stored: item ids (strings), each once, at most MAX_SPLIT_PANES, each with the ratio stored at its
+  // own place (one per pane: the ratios of those left kept relative to each other); fewer than 2: no split. (Panes whose
+  // item is gone leave in perform: state/model.ts settleSplits.)
+  const splits = sorted(values?.splits).filter(([, g]) => typeof g.spaceId === 'string' && Array.isArray(g.panes)).flatMap(([id, g]) => {
+    const given: unknown[] = g.panes;
+    const at = given.flatMap((x, i) => (typeof x === 'string' && x && given.indexOf(x) === i ? [i] : [])).slice(0, M.MAX_SPLIT_PANES);
+    if (at.length < 2) return [];
+    const ratios = Array.isArray(g.ratios) && g.ratios.length === given.length ? at.map((i) => { const r = finite(g.ratios[i], 1); return r > 0 ? r : 1; }) : at.map(() => 1);
+    const sum = ratios.reduce((a, b) => a + b, 0);
+    return [{
+      id, spaceId: g.spaceId, axis: g.axis === 'vertical' ? 'vertical' as const : 'horizontal' as const,
+      panes: at.map((i) => given[i] as string),
+      ratios: ratios.map((r) => Math.round((r / sum) * 10000) / 10000),
+      ...(g.pinned ? { pinned: true } : {}),
+      ...(typeof g.folderId === 'string' && g.folderId ? { folderId: g.folderId } : {}),
+      ...(Number.isFinite(g.pos) ? { pos: g.pos } : {}),
+    }];
+  });
   const folders = sorted(values?.folders).filter(([, f]) => typeof f.spaceId === 'string')
-    .map(([id, f]) => ({ id, spaceId: f.spaceId, name: str(f.name, 200), open: f.open !== false, pos: finite(f.pos) }));
+    .map(([id, f]) => ({ id, spaceId: f.spaceId, name: str(f.name, 200), open: f.open !== false, pos: finite(f.pos), ...(typeof f.parentId === 'string' && f.parentId ? { parentId: f.parentId } : {}) }));
   const archive = sorted(values?.archive).filter(([, a]) => typeof a.url === 'string')
     .sort((a, b) => finite(b[1].closedAt) - finite(a[1].closedAt) || a[0].localeCompare(b[0]))
     .map(([id, a]) => ({ id, url: a.url, title: str(a.title), spaceId: str(a.spaceId, 256), favIconUrl: str(a.icon, 100_000), closedAt: finite(a.closedAt), target: targetOf(a.target) ?? webTarget('safari', null) }));
@@ -100,23 +125,33 @@ export function stateOf(values: Values): LibState {
       id, url: t.url, title: str(t.title), favIconUrl: str(t.icon, 100_000), spaceId: t.spaceId, order: finite(t.order),
       lastActive: finite(t.lastUsed), wasActive: t.selected === true, keptAt: finite(t.lastUsed), why: 'library',
       target: targetOf(t.target) ?? webTarget('safari', null),
+      ...(typeof t.pinnedBy === 'string' && t.pinnedBy ? { pinnedBy: t.pinnedBy } : {}),
+      ...(typeof t.favoriteId === 'string' && t.favoriteId ? { favoriteId: t.favoriteId } : {}),
+      ...(typeof t.customTitle === 'string' && t.customTitle ? { customTitle: str(t.customTitle, 200) } : {}),
       ...(isObject(t.imported) ? { imported: { browser: str(t.imported.browser, 32), profile: str(t.imported.profile, 256), id: str(t.imported.id, 256) } } : {}),
     };
   }
   const activeSpaceByWindow: Record<string, string> = {};
   for (const [w, v] of sorted(values?.windows)) if (typeof v.spaceId === 'string') activeSpaceByWindow[w] = v.spaceId;
-  return { ...base, spaces, pins, folders, archive, keptTabs, activeSpaceByWindow, tabs: {}, tabSpace: {}, awayByWindow: {}, favicons: {} } as unknown as LibState;
+  return { ...base, spaces, pins, favorites, airTraffic, splits, folders, archive, keptTabs, activeSpaceByWindow, tabs: {}, tabSpace: {}, awayByWindow: {}, favicons: {} } as unknown as LibState;
 }
 
 export function valuesOf(state: LibState, imports: Record<string, any> = {}): Values {
-  const out: Values = { spaces: {}, pins: {}, folders: {}, tabs: {}, archive: {}, windows: {}, imports: { ...imports } };
+  const out: Values = { spaces: {}, pins: {}, favorites: {}, airTraffic: {}, splits: {}, folders: {}, tabs: {}, archive: {}, windows: {}, imports: { ...imports } };
   state.spaces.forEach((s, i) => { out.spaces[s.id] = { name: s.name ?? '', emoji: s.emoji ?? '', color: s.color ?? '', order: i, browser: s.browser ?? 'safari', profile: s.profile ?? null, ...(M.themeIdOk(s.theme) ? { theme: s.theme } : {}) }; });
-  state.pins.forEach((p: any, i) => { out.pins[p.id] = { spaceId: p.spaceId, url: p.url, title: p.title ?? '', folderId: p.folderId ?? null, pos: finite(p.pos, i), target: targetOf(p.target) ?? webTarget('safari', null) }; });
-  (state.folders ?? []).forEach((f, i) => { out.folders[f.id] = { spaceId: f.spaceId, name: f.name ?? '', open: f.open !== false, pos: finite(f.pos, i) }; });
+  state.pins.forEach((p: any, i) => { out.pins[p.id] = { spaceId: p.spaceId, url: p.url, title: p.title ?? '', ...(p.customTitle ? { customTitle: p.customTitle } : {}), folderId: p.folderId ?? null, pos: finite(p.pos, i), target: targetOf(p.target) ?? webTarget('safari', null) }; });
+  (state.favorites ?? []).forEach((f: any, i) => { out.favorites[f.id] = { scope: f.scope || 'global', url: f.url, title: f.title ?? '', ...(f.customTitle ? { customTitle: f.customTitle } : {}), pos: finite(f.pos, i), target: targetOf(f.target) ?? webTarget('safari', null) }; });
+  (state.airTraffic ?? []).forEach((r: any, i) => { out.airTraffic[r.id] = { pattern: r.pattern, spaceId: r.spaceId, enabled: r.enabled !== false, order: finite(r.order, i) }; });
+  (state.splits ?? []).forEach((g: any) => { out.splits[g.id] = { spaceId: g.spaceId, axis: g.axis === 'vertical' ? 'vertical' : 'horizontal', panes: g.panes, ratios: g.ratios, ...(g.pinned ? { pinned: true } : {}), ...(g.folderId ? { folderId: g.folderId } : {}), ...(Number.isFinite(g.pos) ? { pos: g.pos } : {}) }; });
+  (state.folders ?? []).forEach((f, i) => { out.folders[f.id] = { spaceId: f.spaceId, name: f.name ?? '', open: f.open !== false, pos: finite(f.pos, i), ...(f.parentId ? { parentId: f.parentId } : {}) }; });
   for (const k of Object.values(state.keptTabs ?? {}) as any[]) {
     out.tabs[k.id] = {
       url: k.url, title: k.title ?? '', icon: k.favIconUrl ?? '', spaceId: k.spaceId, order: finite(k.order), lastUsed: finite(k.lastActive), selected: !!k.wasActive,
-      target: targetOf(k.target) ?? webTarget('safari', null), ...(k.imported ? { imported: k.imported } : {}),
+      target: targetOf(k.target) ?? webTarget('safari', null),
+      ...(k.pinnedBy ? { pinnedBy: k.pinnedBy } : {}),
+      ...(k.favoriteId ? { favoriteId: k.favoriteId } : {}),
+      ...(k.customTitle ? { customTitle: k.customTitle } : {}),
+      ...(k.imported ? { imported: k.imported } : {}),
     };
   }
   for (const a of state.archive as any[]) out.archive[a.id] = { url: a.url, title: a.title ?? '', spaceId: a.spaceId ?? '', icon: a.favIconUrl ?? '', closedAt: finite(a.closedAt), target: targetOf(a.target) ?? webTarget('safari', null) };
@@ -161,8 +196,7 @@ const spaceOf = (s: LibState, id: string) => s.spaces.find((sp) => sp.id === id)
 const windowSpace = (s: LibState, w: string | null) => (w != null && hasSpace(s, s.activeSpaceByWindow[w as any]) ? s.activeSpaceByWindow[w as any] : s.spaces[0]?.id ?? null);
 const itemsOf = (s: LibState, spaceId: string) => Object.values(s.keptTabs ?? {}).filter((k) => k.spaceId === spaceId);
 /** A space's item used last (the selected one breaks a tie). */
-const frontOf = (s: LibState, spaceId: string, except: string | null = null) => itemsOf(s, spaceId).filter((k) => k.id !== except)
-  .sort((a, b) => finite(b.lastActive) - finite(a.lastActive) || Number(!!b.wasActive) - Number(!!a.wasActive) || a.id.localeCompare(b.id))[0] ?? null;
+const frontOf = (s: LibState, spaceId: string, except: string | null = null) => frontItemOf(Object.values(s.keptTabs ?? {}), spaceId, except);
 const lastPlace = (s: LibState) => Math.max(-1, ...Object.values(s.keptTabs ?? {}).map((k) => finite(k.order)));
 const targetOfItem = (k: any): Target => targetOf(k?.target) ?? webTarget('safari', null);
 /** The target a new web item of this space gets: the space's browser and profile. */
@@ -180,8 +214,18 @@ function used(s: LibState, id: string, w: string | null, now: number): LibState 
 }
 
 // A new item, in the list's newest place.
-function addItem(s: LibState, id: string, { spaceId, url, title, icon, target, now }: { spaceId: string, url: string, title: string, icon: string, target: Target, now: number }): LibState {
-  const item = { id, url, title, favIconUrl: icon, spaceId, order: lastPlace(s) + 1, lastActive: now, wasActive: false, keptAt: now, why: 'library', target };
+// The item `k` pinned as `pinId` (pinTab, createFolder with an item): the pin takes its address, title, given name and
+// target; the item stays, bound to it (`pinnedBy`). Unchanged when the space has a pin at that address already.
+function pinOfItem(s: LibState, k: any, pinId: string, folderId: string | null, beforeId: string | null): LibState {
+  let next = M.addPin(s, { id: pinId, spaceId: k.spaceId, url: k.url, title: k.title, folderId, beforeId }) as LibState;
+  if (next === s) return s;
+  if (k.customTitle) next = M.renamePin(next, pinId, k.customTitle) as LibState;
+  next = { ...next, pins: next.pins.map((pin) => (pin.id === pinId ? { ...pin, target: targetOfItem(k) } : pin)) } as LibState;
+  return M.bindTabToPin(next, k.id, pinId) as LibState;
+}
+
+function addItem(s: LibState, id: string, { spaceId, url, title, icon, target, now, pinnedBy, favoriteId }: { spaceId: string, url: string, title: string, icon: string, target: Target, now: number, pinnedBy?: string | null, favoriteId?: string | null }): LibState {
+  const item = { id, url, title, favIconUrl: icon, spaceId, order: lastPlace(s) + 1, lastActive: now, wasActive: false, keptAt: now, why: 'library', target, ...(pinnedBy ? { pinnedBy } : {}), ...(favoriteId ? { favoriteId } : {}) };
   return { ...s, keptTabs: { ...s.keptTabs, [id]: item } } as LibState;
 }
 
@@ -198,6 +242,43 @@ function archiveItem(s: LibState, id: string, archiveId: string, now: number): L
 type Ctx = { s: LibState, p: any, now: number, ids: ReturnType<typeof idMaker>, requests: Request[] };
 type Handler = (ctx: Ctx) => { s: LibState, result?: any, error?: string };
 const fail = (s: LibState, error: string) => ({ s, error });
+
+// ---- split view's rules (docs/PEEK-SPLIT.md §4) ----
+// Why `adding` can't join a split of `panes` in `spaceId` (null: it can): 4 panes at most, one space, never Margin's own
+// pages, a Mac app once (its one window is one pane).
+function splitRefusal(s: LibState, panes: string[], adding: string[], spaceId: string): string | null {
+  const all = [...panes, ...adding.filter((id) => !panes.includes(id))];
+  if (all.length > M.MAX_SPLIT_PANES) return `a split has ${M.MAX_SPLIT_PANES} panes at most`;
+  const apps = new Set<string>();
+  for (const id of all) {
+    const k = s.keptTabs[id];
+    if (!k) return 'no such item';
+    if (k.spaceId !== spaceId) return 'a split\'s panes are of one space';
+    const t = targetOfItem(k);
+    if (t.kind === 'margin') return 'Margin\'s own pages aren\'t split';
+    if (t.kind === 'app') {
+      if (apps.has(t.bundleId)) return `${t.name} is in this split already`;
+      apps.add(t.bundleId);
+    }
+  }
+  return null;
+}
+// The hosting's request to show a split: its panes (in order), the one focused (null: the window's own choice).
+function splitShown(s: LibState, group: NonNullable<LibState['splits']>[number], focus: string | null, p: any): Request {
+  return {
+    type: 'showSplit', windowId: p?.windowId ?? null, splitId: group.id, item: focus, axis: group.axis, ratios: group.ratios,
+    panes: group.panes.filter((id) => !!s.keptTabs[id]).map((itemId) => ({ item: itemId, url: s.keptTabs[itemId]?.url ?? '', target: targetOfItem(s.keptTabs[itemId]) })),
+  };
+}
+// The item shown after `id` closes when it's a split's pane: the split's next pane (the one after it, else before it),
+// so the split goes on with the rest (or the one left, alone); null: not a pane.
+function splitNext(s: LibState, id: string): string | null {
+  const group = M.splitForItem(s, id);
+  if (!group) return null;
+  const i = group.panes.indexOf(id);
+  const rest = group.panes.filter((x) => x !== id && !!s.keptTabs[x]);
+  return rest[Math.min(i, rest.length - 1)] ?? null;
+}
 
 const ACTIONS: Record<string, Handler> = {
   // ---- spaces ----
@@ -255,7 +336,10 @@ const ACTIONS: Record<string, Handler> = {
   // The page or app asked for opened in the window's space (or `spaceId`): a new item, shown (the hosting opens it).
   newTab({ s, p, now, ids, requests }) {
     const w = win(p);
-    const spaceId = hasSpace(s, p?.spaceId) ? p.spaceId : windowSpace(s, w);
+    const matched = !hasSpace(s, p?.spaceId) && typeof p?.url === 'string'
+      ? matchAirTrafficRule(p.url, s.airTraffic, new Set(s.spaces.map((sp) => sp.id)))
+      : null;
+    const spaceId = hasSpace(s, p?.spaceId) ? p.spaceId : matched?.spaceId ?? windowSpace(s, w);
     if (!spaceId) return fail(s, 'no space');
     const target = targetOf(p?.target) ?? spaceTarget(s, spaceId);
     const { url, title } = placeOf(target, p?.url, target.kind === 'app' ? '' : p?.title);
@@ -276,7 +360,9 @@ const ACTIONS: Record<string, Handler> = {
     const { url, title } = placeOf(target, p?.url, p?.title);
     if (!url) return fail(s, 'no address');
     const id = ids.tab();
-    let next = addItem(s, id, { spaceId, url, title, icon: target.kind === 'margin' ? '' : str(p.icon, 100_000), target, now });
+    const pinnedBy = typeof p?.pinnedBy === 'string' && s.pins.some((x) => x.id === p.pinnedBy && x.spaceId === spaceId) ? p.pinnedBy : null;
+    const favoriteId = typeof p?.favoriteId === 'string' && (s.favorites ?? []).some((x) => x.id === p.favoriteId) ? p.favoriteId : null;
+    let next = addItem(s, id, { spaceId, url, title, icon: target.kind === 'margin' ? '' : str(p.icon, 100_000), target, now, pinnedBy, favoriteId });
     if (p.front) next = used(next, id, w, now);
     return { s: next, result: { tabId: id } };
   },
@@ -323,13 +409,66 @@ const ACTIONS: Record<string, Handler> = {
     return { s: used(s, k.id, win(p), now), result: { shown: k.id } };
   },
   // Closed from Margin (its ×, ⌘W): to the archive (a web page), and the hosting closes its page.
+  // A sticky pin's or a favorite's item isn't archived: the item goes (an item is a pin's open tab here) and the pin
+  // or favorite stays, not open; opened again, it opens at its own address.
   closeTab({ s, p, now, ids, requests }) {
-    const k = s.keptTabs[p?.tabId];
+    const k: any = s.keptTabs[p?.tabId];
     if (!k) return fail(s, 'no such item');
-    const next = archiveItem(s, k.id, ids.other('a'), now);
-    const after = frontOf(next, k.spaceId);
+    // (A pin of the item's own space, or a favorite: an item moved to another space is no pin's, archived as any.)
+    const isSticky = M.boundElsewhere(s, k, k.spaceId);
+    const existingSplit = M.splitForItem(s, k.id);
+    // (A split's pane: the split goes on with the rest, its next pane in front; one left: that one, alone.)
+    const paneNext = splitNext(s, k.id);
+    let next = existingSplit ? M.removeFromSplit(s, existingSplit.id, k.id) as LibState : s;
+    next = isSticky ? M.forgetKept(next, k.id) as LibState : archiveItem(next, k.id, ids.other('a'), now);
+    const after = (paneNext ? next.keptTabs[paneNext] : null) ?? frontOf(next, k.spaceId);
     requests.push({ type: 'closeTab', item: k.id, url: k.url, target: targetOfItem(k), spaceId: k.spaceId, next: after?.id ?? null });
     return { s: next };
+  },
+  // Manual sleep / unload: closes the live browser tab or asks the hosted app to quit, while keeping the item in its space.
+  unloadTab({ s, p, requests }) {
+    const k = s.keptTabs[p?.tabId];
+    if (!k) return fail(s, 'no such item');
+    const after = frontOf(s, k.spaceId, k.id);
+    requests.push({ type: 'unloadTab', windowId: p?.windowId ?? null, item: k.id, url: k.url, target: targetOfItem(k), spaceId: k.spaceId, next: after?.id ?? null });
+    return { s, result: { item: k.id } };
+  },
+  // Duplicate a web item right next to it in the same space and open it.
+  duplicateTab({ s, p, now, ids, requests }) {
+    const k: any = s.keptTabs[p?.tabId];
+    if (!k) return fail(s, 'no such item');
+    const target = targetOfItem(k);
+    if (target.kind !== 'web') return fail(s, 'only web items can be duplicated');
+    const id = ids.tab();
+    const w = win(p);
+    let next = addItem(s, id, { spaceId: k.spaceId, url: k.url, title: k.title, icon: k.favIconUrl ?? '', target, now });
+    next = M.placeKept(next, id, k.id, 'before', k.spaceId) as LibState;
+    next = used(next, id, w, now);
+    requests.push({ type: 'newTab', windowId: p?.windowId ?? null, item: id, url: k.url, target, spaceId: k.spaceId });
+    return { s: next, result: { tabId: id } };
+  },
+  // Mute / unmute a live web item's tab (hosted Safari copy toggles mutedInfo).
+  muteTab({ s, p, requests }) {
+    const k = s.keptTabs[p?.tabId];
+    if (!k) return fail(s, 'no such item');
+    requests.push({ type: 'muteTab', windowId: p?.windowId ?? null, item: k.id, url: k.url, target: targetOfItem(k), spaceId: k.spaceId });
+    return { s, result: { item: k.id } };
+  },
+  // The background mini player's buttons (M2.4) for a web item's page: play or pause, the previous or next track,
+  // done by the hosting (HostedSession.swift: the copy's `hostMedia`); mute as muteTab; `focus` shows it as
+  // activateTab does. Nothing of the library changes.
+  mediaControl(ctx) {
+    const { s, p, requests } = ctx;
+    const k = s.keptTabs[p?.tabId];
+    if (!k) return fail(s, 'no such item');
+    const command = p?.command;
+    if (command === 'focus') return ACTIONS.activateTab(ctx);
+    if (command === 'mute') return ACTIONS.muteTab(ctx);
+    if (command !== 'toggle' && command !== 'prev' && command !== 'next') return fail(s, 'not a media command');
+    const target = targetOfItem(k);
+    if (target.kind !== 'web') return fail(s, 'only a web item plays in the mini player');
+    requests.push({ type: 'mediaControl', windowId: p?.windowId ?? null, item: k.id, url: k.url, target, spaceId: k.spaceId, command });
+    return { s, result: { item: k.id } };
   },
   // Its page closed outside Margin (the browser's own tab bar, the app quit): archived as closeTab, nothing asked.
   itemClosed({ s, p, now, ids }) {
@@ -373,60 +512,289 @@ const ACTIONS: Record<string, Handler> = {
     requests.push({ type: 'restoreArchive', windowId: p.windowId ?? null, item: id, url: entry.url, target, spaceId });
     return { s: next, result: { tabId: id } };
   },
+  // ⇧⌘T: reopen the most recently archived entry in this space (or newest overall if this space has none).
+  restoreLastArchive({ s, p, now, ids, requests }) {
+    const spaceId = windowSpace(s, win(p));
+    const entry = (spaceId ? s.archive.find((a) => a.spaceId === spaceId) : null) ?? s.archive[0];
+    if (!entry) return { s, result: null };
+    return ACTIONS.restoreArchive({ s, p: { ...p, archiveId: entry.id }, now, ids, requests });
+  },
   // ---- pins ----
-  // An item pinned in its space: the item becomes the pin (as a kept tab does in the extension), its target the pin's.
+  // An item pinned in its space: a pin at its address with its target and given name, and the item stays as the pin's
+  // tab (sticky pins: `pinnedBy`, as an open tab pinned in the extension), so the page shown stays shown with its row
+  // (the pin's, open and active) and its address; hidden from Today as a pin's tab. Its close then isn't an archive
+  // (closeTab), the pin opens it (openPin), and unpinned it's Today's again (unpin: removePin unbinds it).
   pinTab({ s, p, ids }) {
     const k: any = s.keptTabs[p?.tabId];
     if (!k) return fail(s, 'no such item');
     const id = ids.other('p');
-    const next = M.addPin(s, { id, spaceId: k.spaceId, url: k.url, title: k.title, folderId: p.folderId ?? null, beforeId: p.beforeId ?? null }) as LibState;
-    if (next === s) return { s, result: null };
-    const withTarget = { ...next, pins: next.pins.map((pin) => (pin.id === id ? { ...pin, target: targetOfItem(k) } : pin)) } as LibState;
-    return { s: M.forgetKept(withTarget, k.id) as LibState, result: id };
+    const next = pinOfItem(s, k, id, p.folderId ?? null, p.beforeId ?? null);
+    return next === s ? { s, result: null } : { s: next, result: id };
   },
-  // Unpinned: the pin goes; the hosting keeps its page open as an item if it has one open (addItem).
+  // Unpinned: the pin goes; its item (open or not) stays, unbound: Today's again.
   unpin({ s, p, requests }) {
     const pin: any = s.pins.find((x) => x.id === p?.pinId);
     if (!pin) return fail(s, 'no such pin');
     requests.push({ type: 'unpin', pin: pin.id, url: pin.url, target: targetOf(pin.target), spaceId: pin.spaceId });
     return { s: M.removePin(s, pin.id) as LibState };
   },
-  // Shown in the window: its item in the space if there is one (an address the space has), else the hosting opens it.
+  // Shown in the window: its item in the space if there is one (bound via pinnedBy first, else URL), else the hosting opens it.
   openPin({ s, p, now, requests }) {
     const pin: any = s.pins.find((x) => x.id === p?.pinId);
     if (!pin) return fail(s, 'no such pin');
     const w = win(p);
-    const item = M.keptForUrl(s, pin.url, pin.spaceId);
+    const bound = Object.values(s.keptTabs ?? {}).find((k) => k.pinnedBy === pin.id && k.spaceId === pin.spaceId) ?? null;
+    // (By its address: never an item another pin or a favorite has.)
+    const item = bound ?? M.keptForUrl(s, pin.url, pin.spaceId, { pinId: pin.id });
     let next = w != null ? M.setActiveSpace(s, w as any, pin.spaceId) as LibState : s;
-    if (item) next = used(next, item.id, w, now);
-    requests.push({ type: 'openPin', windowId: p.windowId ?? null, pin: pin.id, item: item?.id ?? null, url: pin.url, target: targetOf(pin.target), spaceId: pin.spaceId });
+    if (item) {
+      if (item.pinnedBy !== pin.id) next = M.bindTabToPin(next, item.id, pin.id) as LibState;
+      next = used(next, item.id, w, now);
+    }
+    requests.push({ type: 'openPin', windowId: p.windowId ?? null, pin: pin.id, item: item?.id ?? null, url: item?.url ?? pin.url, target: targetOf(pin.target), spaceId: pin.spaceId });
     return { s: next, result: { pin: pin.id, item: item?.id ?? null } };
+  },
+  // Reset a drifted sticky pin's live item back to the pin's root URL.
+  resetPin({ s, p, now, requests }) {
+    const pin: any = s.pins.find((x) => x.id === p?.pinId);
+    if (!pin) return fail(s, 'no such pin');
+    const w = win(p);
+    const item = Object.values(s.keptTabs ?? {}).find((k) => k.pinnedBy === pin.id && k.spaceId === pin.spaceId)
+      ?? M.keptForUrl(s, pin.url, pin.spaceId, { pinId: pin.id });
+    let next = w != null ? M.setActiveSpace(s, w as any, pin.spaceId) as LibState : s;
+    if (item) {
+      next = { ...next, keptTabs: { ...next.keptTabs, [item.id]: { ...next.keptTabs[item.id], url: pin.url, title: pin.title || next.keptTabs[item.id].title } } } as LibState;
+      next = used(next, item.id, w, now);
+    }
+    requests.push({ type: 'resetPin', windowId: p.windowId ?? null, pin: pin.id, item: item?.id ?? null, url: pin.url, target: targetOf(pin.target), spaceId: pin.spaceId });
+    return { s: next, result: { pin: pin.id, item: item?.id ?? null } };
+  },
+  renamePin({ s, p }) {
+    if (!s.pins.some((x) => x.id === p?.pinId)) return fail(s, 'no such pin');
+    return { s: M.renamePin(s, p.pinId, p?.title ?? '') as LibState };
+  },
+  renameTab({ s, p }) {
+    if (!s.keptTabs[p?.tabId]) return fail(s, 'no such item');
+    return { s: M.renameTab(s, p.tabId, p?.title ?? '') as LibState };
   },
   movePin({ s, p }) {
     return { s: M.movePin(s, p?.pinId, { folderId: p?.folderId ?? null, beforeId: p?.beforeId ?? null }) as LibState };
+  },
+  // ---- favorites ----
+  addFavorite({ s, p, ids }) {
+    const k: any = typeof p?.tabId === 'string' ? s.keptTabs[p.tabId] : null;
+    const pin: any = !k && typeof p?.pinId === 'string' ? s.pins.find((x) => x.id === p.pinId) : null;
+    const spaceId = k?.spaceId ?? pin?.spaceId ?? windowSpace(s, win(p));
+    // Its scope, as the sidebar shows favorites (shared/view.ts sidebar: state/model.ts favoriteScopeOf): the person's
+    // setting `favoritesScope`, which the app gives (LibraryWindowSource, from the profile's settings, over anything the
+    // page sent), and the profile of the space the window shows (else the item's): never a scope a page names.
+    const w = win(p);
+    const shown = w != null && hasSpace(s, s.activeSpaceByWindow[w as any]) ? s.activeSpaceByWindow[w as any] : spaceId;
+    const scope = M.favoriteScopeOf({ ...s, settings: { ...s.settings, favoritesScope: p?.favoritesScope === 'profile' ? 'profile' : 'global' } } as LibState, shown);
+    const target = k ? targetOfItem(k) : pin ? targetOf(pin.target) ?? webTarget('safari', null) : targetOf(p?.target) ?? (spaceId ? spaceTarget(s, spaceId) : webTarget('safari', null));
+    const url = k?.url ?? pin?.url ?? str(p?.url);
+    const title = k?.title ?? pin?.title ?? str(p?.title) ?? url;
+    const customTitle = k?.customTitle ?? pin?.customTitle;
+    if (!url) return fail(s, 'no address');
+    const id = ids.other('fav');
+    let next = M.addFavorite(s, { id, scope, url, title, customTitle, target, beforeId: p?.beforeId ?? null }) as LibState;
+    if (next === s) return { s, result: null };
+    if (k) next = M.bindTabToFavorite(next, k.id, id) as LibState;
+    if (pin) next = M.removePin(next, pin.id) as LibState;
+    return { s: next, result: id };
+  },
+  removeFavorite({ s, p }) {
+    if (!(s.favorites ?? []).some((f) => f.id === p?.favoriteId)) return fail(s, 'no such favorite');
+    return { s: M.removeFavorite(s, p.favoriteId) as LibState };
+  },
+  openFavorite({ s, p, now, requests }) {
+    const fav: any = (s.favorites ?? []).find((x) => x.id === p?.favoriteId);
+    if (!fav) return fail(s, 'no such favorite');
+    const w = win(p);
+    const spaceId = windowSpace(s, w) ?? s.spaces[0]?.id ?? null;
+    // Its item (the one used last, if it has more), else one at its address no pin or other favorite has.
+    const bound = M.keptOfFavorite(s, fav.id)[0] ?? null;
+    const item = bound ?? Object.values(s.keptTabs ?? {}).find((k) => M.normalizeUrl(k.url) === M.normalizeUrl(fav.url) && !M.boundElsewhere(s, k, k.spaceId, { favoriteId: fav.id })) ?? null;
+    let next = s;
+    if (item) {
+      if (item.favoriteId !== fav.id) next = M.bindTabToFavorite(next, item.id, fav.id) as LibState;
+      next = used(next, item.id, null, now);
+    }
+    requests.push({ type: 'openFavorite', windowId: p.windowId ?? null, favorite: fav.id, item: item?.id ?? null, url: item?.url ?? fav.url, target: targetOf(fav.target) ?? (spaceId ? spaceTarget(s, spaceId) : webTarget('safari', null)), spaceId });
+    return { s: next, result: { favorite: fav.id, item: item?.id ?? null } };
+  },
+  resetFavorite({ s, p, now, requests }) {
+    const fav: any = (s.favorites ?? []).find((x) => x.id === p?.favoriteId);
+    if (!fav) return fail(s, 'no such favorite');
+    const w = win(p);
+    const spaceId = windowSpace(s, w) ?? s.spaces[0]?.id ?? null;
+    const item = M.keptOfFavorite(s, fav.id)[0] ?? null;
+    let next = s;
+    if (item) {
+      next = { ...next, keptTabs: { ...next.keptTabs, [item.id]: { ...next.keptTabs[item.id], url: fav.url, title: fav.title || next.keptTabs[item.id].title } } } as LibState;
+      next = used(next, item.id, null, now);
+    }
+    requests.push({ type: 'resetFavorite', windowId: p.windowId ?? null, favorite: fav.id, item: item?.id ?? null, url: fav.url, target: targetOf(fav.target) ?? (spaceId ? spaceTarget(s, spaceId) : webTarget('safari', null)), spaceId });
+    return { s: next, result: { favorite: fav.id, item: item?.id ?? null } };
+  },
+  renameFavorite({ s, p }) {
+    if (!(s.favorites ?? []).some((x) => x.id === p?.favoriteId)) return fail(s, 'no such favorite');
+    return { s: M.renameFavorite(s, p.favoriteId, p?.title ?? '') as LibState };
+  },
+  moveFavorite({ s, p }) {
+    return { s: M.moveFavorite(s, p?.favoriteId, { beforeId: p?.beforeId ?? null }) as LibState };
+  },
+  // ---- Link rules ----
+  addAirTrafficRule({ s, p, ids }) {
+    const spaceId = hasSpace(s, p?.spaceId) ? p.spaceId : windowSpace(s, win(p));
+    if (!spaceId) return fail(s, 'no space');
+    const id = ids.other('atc');
+    const next = M.addAirTrafficRule(s, { id, pattern: str(p?.pattern, 200), spaceId, enabled: p?.enabled !== false }) as LibState;
+    if (next === s) return fail(s, 'bad pattern');
+    return { s: next, result: id };
+  },
+  removeAirTrafficRule({ s, p }) {
+    return { s: M.removeAirTrafficRule(s, str(p?.ruleId, 128)) as LibState };
+  },
+  toggleAirTrafficRule({ s, p }) {
+    return { s: M.toggleAirTrafficRule(s, str(p?.ruleId, 128), typeof p?.enabled === 'boolean' ? p.enabled : undefined) as LibState };
+  },
+  routeUrl({ s, p }) {
+    const url = str(p?.url);
+    const rule = matchAirTrafficRule(url, s.airTraffic, new Set(s.spaces.map((sp) => sp.id)));
+    if (!rule) return { s, result: null };
+    return { s, result: { ruleId: rule.id, pattern: rule.pattern, spaceId: rule.spaceId, target: spaceTarget(s, rule.spaceId) } };
+  },
+  // ---- split view (2–4 panes, docs/PEEK-SPLIT.md §4) ----
+  // A split's panes are items of one space: web pages (any profile) and Mac apps, each app once (its one window can be
+  // one pane only); never one of Margin's own pages. Each change the hosting must show asks for it as `showSplit` with
+  // the pane to focus (`item`; null: the one the window shows, if it's a pane, else the first): the hosting shows the
+  // whole split for it (HostedSession.swift showSplit). A resize asks nothing: the page placed the panes as it was dragged.
+  createSplit({ s, p, ids, now, requests }) {
+    const raw: string[] = Array.isArray(p?.panes) ? p.panes.filter((x: unknown): x is string => typeof x === 'string' && !!s.keptTabs[x]) : [];
+    if (raw.length < 2) return fail(s, 'need at least 2 items');
+    const spaceId = hasSpace(s, p?.spaceId) ? p.spaceId : s.keptTabs[raw[0]].spaceId;
+    const why = splitRefusal(s, [], raw, spaceId);
+    if (why) return fail(s, why);
+    const id = ids.other('spv');
+    let next = M.createSplit(s, { id, spaceId, panes: raw, axis: p?.axis === 'vertical' ? 'vertical' : 'horizontal', ratios: p?.ratios }) as LibState;
+    const group = (next.splits ?? []).find((g) => g.id === id);
+    if (!group) return fail(s, 'not a split');
+    const focus = typeof p?.focus === 'string' && group.panes.includes(p.focus) ? p.focus : group.panes[group.panes.length - 1];
+    next = used(next, focus, win(p), now);
+    requests.push(splitShown(next, group, focus, p));
+    return { s: next, result: { splitId: id } };
+  },
+  // `tabId` into the split of the item in front of its space (`nextTo`: that item; `splitId`: that split), or a new
+  // split of the two: Arc's Add to Split View on a row. Refused: a split of 4 already, an app that's in it already, an
+  // item of another space, one of Margin's own pages. Already a pane of it: the split shown, that pane focused.
+  addToSplit({ s, p, ids, now, requests }) {
+    const k = s.keptTabs[p?.tabId];
+    if (!k) return fail(s, 'no such item');
+    const w = win(p);
+    const given = typeof p?.nextTo === 'string' && s.keptTabs[p.nextTo] && p.nextTo !== k.id ? s.keptTabs[p.nextTo] : null;
+    const front = given ?? frontOf(s, k.spaceId, k.id);
+    const existing = (typeof p?.splitId === 'string' ? (s.splits ?? []).find((g) => g.id === p.splitId) : null)
+      ?? (front ? M.splitForItem(s, front.id) : null);
+    if (existing) {
+      if (existing.panes.includes(k.id)) {
+        requests.push(splitShown(s, existing, k.id, p));
+        return { s: used(s, k.id, w, now), result: { splitId: existing.id } };
+      }
+      const why = splitRefusal(s, existing.panes, [k.id], existing.spaceId);
+      if (why) return fail(s, why);
+      const next = M.addToSplit(s, existing.id, k.id) as LibState;
+      const group = (next.splits ?? []).find((g) => g.id === existing.id);
+      if (!group || !group.panes.includes(k.id)) return fail(s, 'not added');
+      requests.push(splitShown(next, group, k.id, p));
+      return { s: used(next, k.id, w, now), result: { splitId: existing.id } };
+    }
+    if (!front) return fail(s, 'no second item to split with');
+    return ACTIONS.createSplit({ s, p: { ...p, panes: [front.id, k.id], spaceId: k.spaceId, focus: k.id }, now, ids, requests });
+  },
+  openSplit({ s, p, now, requests }) {
+    const group = (s.splits ?? []).find((g) => g.id === p?.splitId);
+    if (!group) return fail(s, 'no such split');
+    const first = group.panes.find((id) => !!s.keptTabs[id]);
+    if (!first) return fail(s, 'split has no items');
+    const focus = typeof p?.focus === 'string' && group.panes.includes(p.focus) ? p.focus : first;
+    const next = used(s, focus, win(p), now);
+    requests.push(splitShown(next, group, focus, p));
+    return { s: next, result: { splitId: group.id } };
+  },
+  // Out of its split, shown alone (the others stay a split, or the split goes with one left).
+  breakOutSplit({ s, p, now, requests }) {
+    const group = M.splitForItem(s, p?.tabId);
+    const k = s.keptTabs[p?.tabId];
+    if (!group || !k) return { s };
+    const next = used(M.removeFromSplit(s, group.id, k.id) as LibState, k.id, win(p), now);
+    requests.push({ type: 'activateTab', windowId: p.windowId ?? null, item: k.id, url: k.url, target: targetOfItem(k), spaceId: k.spaceId });
+    return { s: next };
+  },
+  // Out of its split, the rest of it shown (its next pane focused, or `focus` when it's one of the rest; one left: that
+  // one, alone). `focus`: Margin.app's own when a pane that couldn't open leaves (HostedSession.swift), the pane that had
+  // the keys keeping them.
+  removeFromSplit({ s, p, now, requests }) {
+    const group = M.splitForItem(s, p?.tabId);
+    const k = s.keptTabs[p?.tabId];
+    if (!group || !k) return { s };
+    const kept = typeof p?.focus === 'string' && p.focus !== k.id && group.panes.includes(p.focus) && !!s.keptTabs[p.focus] ? p.focus : null;
+    const after = kept ?? splitNext(s, k.id);
+    let next = M.removeFromSplit(s, group.id, k.id) as LibState;
+    const left = (next.splits ?? []).find((g) => g.id === group.id);
+    if (after && next.keptTabs[after]) {
+      next = used(next, after, win(p), now);
+      const a = next.keptTabs[after];
+      requests.push(left ? splitShown(next, left, after, p) : { type: 'activateTab', windowId: p.windowId ?? null, item: a.id, url: a.url, target: targetOfItem(a), spaceId: a.spaceId });
+    }
+    return { s: next };
+  },
+  closeSplitPane({ s, p, now, ids, requests }) {
+    return ACTIONS.closeTab({ s, p, now, ids, requests });
+  },
+  swapSplit({ s, p, requests }) {
+    const group = (s.splits ?? []).find((g) => g.id === p?.splitId);
+    if (!group) return fail(s, 'no such split');
+    const a = Number.isInteger(p?.a) ? p.a : 0;
+    const b = Number.isInteger(p?.b) ? p.b : 1;
+    const next = M.swapSplitPanes(s, group.id, a, b) as LibState;
+    const after = (next.splits ?? []).find((g) => g.id === group.id);
+    if (after && next !== s) requests.push(splitShown(next, after, null, p));
+    return { s: next };
+  },
+  resizeSplit({ s, p }) {
+    const group = (s.splits ?? []).find((g) => g.id === p?.splitId);
+    if (!group) return fail(s, 'no such split');
+    return { s: M.resizeSplit(s, group.id, p?.ratios) as LibState };
+  },
+  toggleSplitAxis({ s, p, requests }) {
+    const group = (s.splits ?? []).find((g) => g.id === p?.splitId);
+    if (!group) return fail(s, 'no such split');
+    const next = M.toggleSplitAxis(s, group.id) as LibState;
+    const after = (next.splits ?? []).find((g) => g.id === group.id);
+    if (after) requests.push(splitShown(next, after, null, p));
+    return { s: next };
   },
   // ---- folders ----
   // In the window's space (or `spaceId`), holding `pinIds`, or the item `tabId` pinned into it (it's the pin then).
   createFolder({ s, p, ids }) {
     const id = ids.other('f');
     const k: any = typeof p?.tabId === 'string' ? s.keptTabs[p.tabId] : null;
-    const spaceId = hasSpace(s, p?.spaceId) ? p.spaceId : k ? k.spaceId : windowSpace(s, win(p));
+    const parentFolder = typeof p?.parentId === 'string' ? (s.folders ?? []).find((f) => f.id === p.parentId) : null;
+    const spaceId = hasSpace(s, p?.spaceId) ? p.spaceId : parentFolder ? parentFolder.spaceId : k ? k.spaceId : windowSpace(s, win(p));
     if (!spaceId) return fail(s, 'no space');
     const pinIds: string[] = Array.isArray(p?.pinIds) ? p.pinIds.filter((x: unknown) => typeof x === 'string') : [];
     const firstPin = s.pins.find((x) => x.id === pinIds[0] && x.spaceId === spaceId);
     const before = p?.beforeId ?? (firstPin && !firstPin.folderId ? firstPin.id : null);
-    let next = M.createFolder(s, { id, spaceId, name: p?.name, pinIds, beforeId: before }) as LibState;
-    if (k) {
-      const pinId = ids.other('p');
-      const pinned = M.addPin(next, { id: pinId, spaceId, url: k.url, title: k.title, folderId: id }) as LibState;
-      if (pinned !== next) next = M.forgetKept({ ...pinned, pins: pinned.pins.map((pin) => (pin.id === pinId ? { ...pin, target: targetOfItem(k) } : pin)) }, k.id) as LibState;
-    }
+    let next = M.createFolder(s, { id, spaceId, name: p?.name, pinIds, parentId: parentFolder?.id ?? null, beforeId: before }) as LibState;
+    if (k && next !== s) next = pinOfItem(next, k, ids.other('p'), id, null);
     return { s: next, result: next === s ? null : id };
   },
   renameFolder({ s, p }) { return { s: M.renameFolder(s, p?.folderId, p?.name) as LibState }; },
   setFolderOpen({ s, p }) { return { s: M.setFolderOpen(s, p?.folderId, !!p?.open) as LibState }; },
   deleteFolder({ s, p }) { return { s: M.deleteFolder(s, p?.folderId) as LibState }; },
-  moveFolder({ s, p }) { return { s: M.moveFolder(s, p?.folderId, { beforeId: p?.beforeId ?? null }) as LibState }; },
+  moveFolder({ s, p }) { return { s: M.moveFolder(s, p?.folderId, { parentId: p?.parentId ?? null, beforeId: p?.beforeId ?? null }) as LibState }; },
+  nestFolder({ s, p }) { return { s: M.moveFolder(s, p?.folderId, { parentId: p?.parentId ?? null, beforeId: p?.beforeId ?? null }) as LibState }; },
   // ---- Margin's windows ----
   // A Margin window closed for good: its space is forgotten (a new one starts in the first space).
   forgetWindow({ s, p }) {
@@ -458,7 +826,9 @@ export function perform(values: Values, action: string, payload: any = {}, env: 
     return { ok: false, error: `failed: ${(e as Error)?.message ?? e}`, changes: [], requests: [] };
   }
   if (out.error) return { ok: false, error: out.error, changes: [], requests: [] };
-  return { ok: true, result: out.result ?? null, changes: diff(before, valuesOf(out.s, values?.imports ?? {})), requests };
+  // Splits checked against the items left (an item archived, forgotten, closed outside Margin leaves its split).
+  const after = M.settleSplits(out.s) as LibState;
+  return { ok: true, result: out.result ?? null, changes: diff(before, valuesOf(after, values?.imports ?? {})), requests };
 }
 
 /**
@@ -472,6 +842,9 @@ export function snapshot(values: Values) {
     library: { v: FORMAT, imported: isObject(values?.imports?.done) },
     spaces: s.spaces,
     pins: s.pins,
+    favorites: s.favorites ?? [],
+    airTraffic: s.airTraffic ?? [],
+    splits: s.splits ?? [],
     folders: s.folders,
     archive: s.archive,
     openTabs: { origin: 'margin-app', since: 0, synced: true, tabs: {}, tabSpace: {}, activeSpaceByWindow: s.activeSpaceByWindow, awayByWindow: {}, keptTabs: s.keptTabs },

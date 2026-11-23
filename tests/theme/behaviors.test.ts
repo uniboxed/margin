@@ -266,7 +266,7 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of themesInS
         const row = await shown('.today .tab', 0);
         await page.mouse.click(row.x, row.y, { button: 'right' });
         const labels = (await vm()).menu!;
-        assert.deepEqual(labels.slice(0, 4), ['Pin Tab', 'Pin to 📁 Reading', 'Pin to 📁 Lisbon', 'New Folder with Tab']);
+        assert.deepEqual(labels.slice(0, 6), ['Pin Tab', 'Add to Favorites', 'Add to Split View', 'Pin to 📁 Reading', 'Pin to 📁 Lisbon', 'New Folder with Tab']);
         assert.ok(labels.includes('Move to 💼 Work') && labels.includes('Close Tab'));
         assert.equal(await ev(() => T.rtCount('m-menu .menu-item')), labels.filter((l) => l).length, 'drawn from the theme\'s part');
         const menuBox = await rect('m-menu');
@@ -393,16 +393,17 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of themesInS
         await eventually(async () => assert.deepEqual((await sent()).at(-1), ['moveTabToSpace', { tabId: ids[1], spaceId: 'work' }]));
 
         // Into a folder (its row, below its top quarter): pinned there.
-        await shown('.folder-head', 1);
-        const folder = await settled('.folder-head', 1);
-        const start = await settled('.today .tab', 3);
+        // Scroll to the top first so Lisbon stays clear of the 36 px auto-scroll edge even with the Mini Player shown.
+        await shown('.folder-head', 0);
+        const start = await settled('.today .tab', 2);
+        const folder = await rect('.folder-head', 1);
         assert.ok(start.bottom < 830, 'the row in view');
         await page.mouse.move(start.x, start.y);
         await page.mouse.down();
         await page.mouse.move(folder.x, folder.top + folder.height * 0.7, { steps: 8 });
         await eventually(async () => assert.ok((await ev(() => T.rtClasses('.folder-head', 1)))!.includes('m-drop-into')));
         await page.mouse.up();
-        await eventually(async () => assert.deepEqual((await sent()).at(-1), ['pinTab', { tabId: ids[3], folderId: 'personal-f1', beforeId: null }]));
+        await eventually(async () => assert.deepEqual((await sent()).at(-1), ['pinTab', { tabId: ids[2], folderId: 'personal-f1', beforeId: null }]));
 
         // Escape: back, nothing sent.
         await shown('.today .tab', 4);

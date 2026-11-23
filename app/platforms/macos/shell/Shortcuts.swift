@@ -22,9 +22,48 @@ enum AppCommand: String, CaseIterable {
     case nextTab = "next-tab", prevTab = "prev-tab", nextSpace = "next-space", prevSpace = "prev-space", palette
     case toggleSidebar = "toggle-sidebar"
     case newWindow = "new-window" // a Margin window of its own (docs/BROWSER-WINDOWS.md §5)
+    case copyUrl = "copy-url"
+    case focusAddress = "focus-address"
+    case togglePin = "toggle-pin"
+    case reopenArchived = "reopen-archived"
+    case littleArc = "little-arc"
+    case addSplit = "add-split"
+    case space1 = "space-1", space2 = "space-2", space3 = "space-3", space4 = "space-4", space5 = "space-5"
+    case space6 = "space-6", space7 = "space-7", space8 = "space-8", space9 = "space-9"
+    case item1 = "item-1", item2 = "item-2", item3 = "item-3", item4 = "item-4", item5 = "item-5"
+    case item6 = "item-6", item7 = "item-7", item8 = "item-8", item9 = "item-9"
 
     // Held down, these run again at the Mac's key repeat (a hot key itself fires once).
     var repeats: Bool { self == .nextTab || self == .prevTab || self == .nextSpace || self == .prevSpace }
+
+    // Commands that belong to Margin or a hosted browser, never hijacked from a hosted native app (e.g. Terminal, Notes).
+    var browserOnly: Bool {
+        switch self {
+        case .copyUrl, .focusAddress, .togglePin, .reopenArchived,
+             .item1, .item2, .item3, .item4, .item5, .item6, .item7, .item8, .item9:
+            return true
+        default:
+            return false
+        }
+    }
+
+    var spaceNumber: Int? {
+        switch self {
+        case .space1: return 1; case .space2: return 2; case .space3: return 3
+        case .space4: return 4; case .space5: return 5; case .space6: return 6
+        case .space7: return 7; case .space8: return 8; case .space9: return 9
+        default: return nil
+        }
+    }
+
+    var itemNumber: Int? {
+        switch self {
+        case .item1: return 1; case .item2: return 2; case .item3: return 3
+        case .item4: return 4; case .item5: return 5; case .item6: return 6
+        case .item7: return 7; case .item8: return 8; case .item9: return 9
+        default: return nil
+        }
+    }
 }
 
 // A held key's repeat: the Mac's own delay and rate (Keyboard settings), a
@@ -91,6 +130,18 @@ enum ShortcutSet {
         .nextSpace: "Alt+Meta+ArrowRight", .prevSpace: "Alt+Meta+ArrowLeft",
         .palette: "Meta+KeyT", .toggleSidebar: "Alt+KeyS",
         .newWindow: "Meta+KeyN",
+        .copyUrl: "Shift+Meta+KeyC",
+        .focusAddress: "Meta+KeyL",
+        .togglePin: "Meta+KeyD",
+        .reopenArchived: "Shift+Meta+KeyT",
+        .littleArc: "Alt+Meta+KeyN",
+        .addSplit: "Ctrl+Shift+Equal",
+        .space1: "Ctrl+Digit1", .space2: "Ctrl+Digit2", .space3: "Ctrl+Digit3",
+        .space4: "Ctrl+Digit4", .space5: "Ctrl+Digit5", .space6: "Ctrl+Digit6",
+        .space7: "Ctrl+Digit7", .space8: "Ctrl+Digit8", .space9: "Ctrl+Digit9",
+        .item1: "Meta+Digit1", .item2: "Meta+Digit2", .item3: "Meta+Digit3",
+        .item4: "Meta+Digit4", .item5: "Meta+Digit5", .item6: "Meta+Digit6",
+        .item7: "Meta+Digit7", .item8: "Meta+Digit8", .item9: "Meta+Digit9",
     ]
 
     static var bindings: [Combo: AppCommand] {
@@ -111,6 +162,32 @@ enum ShortcutSet {
             for text in texts { if let combo = Combo.parse(text), out[combo] == nil { out[combo] = command } }
         }
         return out
+    }
+}
+
+extension ShortcutSet {
+    /// A hosted window that is a browser's (the keys only a browser has, `browserOnly`, are Margin's there): Safari's
+    /// window a copy made, or an app item that is one of the browsers Margin links with (Safari, Chrome, Edge, their
+    /// channels: `bundles`, HostedSession.isChromium).
+    static func hostIsBrowser(target: HostTarget, safariWindow: Int?, bundles: Set<String>) -> Bool {
+        if safariWindow != nil { return true }
+        switch target {
+        case .safariWindow: return true
+        case .app(let bundle): return bundles.contains(bundle) || HostedSession.isChromium(bundle)
+        }
+    }
+
+    /// The keys Margin holds now: a hosted app in front (`marginInFront` false) keeps its sidebar key, and its own
+    /// ⌘L, ⌘D, ⌘1–9… unless it's a browser (`browserOnly`); a numbered key with nothing behind it (more than the
+    /// window's spaces, `spaces`, or the sidebar's rows, `items`: its page says them) isn't held at all, so the press
+    /// reaches the app in front (Carbon's hot keys can't pass one on). Counts not said yet: every number held.
+    static func held(_ bindings: [Combo: AppCommand], marginInFront: Bool, browser: Bool, spaces: Int?, items: Int?) -> [Combo: AppCommand] {
+        bindings.filter { _, command in
+            if !marginInFront, command == .toggleSidebar || (command.browserOnly && !browser) { return false }
+            if let n = command.spaceNumber, let spaces, n > spaces { return false }
+            if let n = command.itemNumber, let items, n > items { return false }
+            return true
+        }
     }
 }
 

@@ -58,6 +58,11 @@ pub struct Look {
     pub hosted: Vec<i64>,
     /// The app of the host shown (none: nothing shown).
     pub shown_pid: Option<u32>,
+    /// The apps of every visible host (docs/PEEK-SPLIT.md §1: a card's, a split's panes'), the shown one's among them
+    /// or not: their windows count as the shown app's.
+    pub visible_pids: Vec<u32>,
+    /// The visible hosts' own rects (a card's, a pane's): a window as wide as one of them, short, is its toolbar strip.
+    pub rects: Vec<Rect>,
     pub placement: Placement,
     /// An operation ran since the last look: what's first seen now came with it.
     pub fresh: bool,
@@ -108,12 +113,12 @@ impl Others {
             if b.width < LEAST_SIDE || b.height < LEAST_SIDE || !b.intersects(&area) || page.contains_rect(b) {
                 continue;
             }
-            let shown = l.shown_pid == Some(w.pid);
+            let shown = l.shown_pid == Some(w.pid) || l.visible_pids.contains(&w.pid);
             let lets = self.seen.get(&w.number).copied().unwrap_or(!l.fresh && shown);
             seen.insert(w.number, lets);
             if !lets
                 || !shown
-                || kinds::is_strip(b, &l.placement)
+                || kinds::is_strip_of_any(b, &l.placement, &l.rects)
                 || over(b, sidebar.as_ref())
                 || w.kept_behind
                 || !w.margin_only
@@ -175,6 +180,8 @@ mod tests {
             margin_window: 10,
             hosted: vec![20],
             shown_pid: Some(SHOWN),
+            visible_pids: vec![],
+            rects: vec![],
             placement: placement(),
             fresh,
         }
@@ -247,5 +254,39 @@ mod tests {
         assert_eq!(o.look(&look(0.6, vec![second()], false)), Some(30));
         o.reset();
         assert_eq!((o.said, o.seen.len(), o.since.len()), (None, 0, 0));
+    }
+
+    // Several visible (docs/PEEK-SPLIT.md §1): a card of another app's over the one shown (focused: `shown_pid`); a
+    // window the person opened from the app under it (visible, not focused) is let in front too; a card's toolbar strip
+    // never is.
+    #[test]
+    fn every_visible_hosts_app_counts_and_a_cards_own_toolbar_never_comes_in_front() {
+        const UNDER: u32 = 60;
+        let theirs = win(40, UNDER, Rect::new(400.0, -20.0, 900.0, 600.0));
+        let mut o = Others::default();
+        let mut l = look(0.0, vec![theirs.clone()], false);
+        assert_eq!(o.look(&l), None);
+        l.now = 0.3;
+        assert_eq!(o.look(&l), None, "only the focused app's, as before: the app under the card's isn't");
+        let mut o = Others::default();
+        let mut l = look(0.0, vec![theirs.clone()], false);
+        l.visible_pids = vec![SHOWN, UNDER];
+        o.look(&l);
+        l.now = 0.3;
+        assert_eq!(o.look(&l), Some(40), "a visible host's app: its window let in front");
+        // The card's own full-screen toolbar: as wide as the card's rect, reaching above the page area.
+        let card = Rect::new(360.0, 106.0, 1000.0, 800.0);
+        let strip = win(41, SHOWN, Rect::new(360.0, -40.0, 1000.0, 120.0));
+        let mut o = Others::default();
+        let mut l = look(0.0, vec![strip.clone()], false);
+        assert_eq!(o.look(&l), None);
+        l.now = 0.3;
+        assert_eq!(o.look(&l), Some(41), "against the page area alone it was let in front");
+        let mut o = Others::default();
+        let mut l = look(0.0, vec![strip], false);
+        l.rects = vec![card];
+        o.look(&l);
+        l.now = 0.3;
+        assert_eq!(o.look(&l), None, "a card's toolbar strip is its own: never let in front");
     }
 }

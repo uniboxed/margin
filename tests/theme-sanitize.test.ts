@@ -340,7 +340,23 @@ test('the action list is PLAN.md §3\'s, plus palette.run and the behaviors\' an
   const settingsTab = ['settings.category'];
   // A theme per space (2026-11-20): the editor's theme, a space's menu's and Settings' Theme.
   const spaceThemes = ['editor.theme', 'space.setTheme'];
-  assert.deepEqual(Object.keys(ACTIONS).sort(), [...plan, 'palette.run', ...step2, ...step3, ...step4, ...settingsTab, ...spaceThemes].sort());
+  // Track 2 M2.1 (Arc QoL): copy URL, duplicate, mute, unload/sleep, reopen last archived (a toast goes by itself: no close).
+  const arcQol = ['tab.copyUrl', 'pin.copyUrl', 'tab.duplicate', 'tab.mute', 'tab.unload', 'archive.restoreLast'];
+  // Track 2 M2.2 (Sticky Pins, Inline Rename, Nested Folders).
+  const arcM22 = ['tab.rename', 'tab.setTitle', 'pin.reset', 'pin.rename', 'pin.setTitle', 'folder.newIn', 'folder.nest'];
+  // Track 2 M2.3 (Favorites Grid).
+  const arcM23 = ['favorite.open', 'favorite.add', 'favorite.addPin', 'favorite.remove', 'favorite.reset', 'favorite.rename', 'favorite.setTitle', 'favorite.move', 'favorite.copyUrl'];
+  // Track 2 M2.4 (Mini Player).
+  const arcM24 = ['media.toggle', 'media.prev', 'media.next', 'media.mute', 'media.focus'];
+  // Track 2 M2.5 (The preview card and Quick Tab).
+  const arcM25 = ['preview.close', 'preview.expand', 'preview.copyUrl', 'preview.setSpace', 'preview.back', 'preview.forward', 'quickTab.open'];
+  // Track 2 M2.6 (Link Rules).
+  const arcM26 = ['linkRules.addHost', 'linkRules.remove', 'linkRules.toggle'];
+  // Track 2 M2.7 (Universal Split View).
+  const arcM27 = ['split.add', 'split.open', 'split.focus', 'split.breakOut', 'split.closePane', 'split.swap', 'split.toggleAxis',
+    // (feat/split, docs/PEEK-SPLIT.md §4: split.add's README name, a pane out with the rest shown, a divider let go.)
+    'split.addPane', 'split.remove', 'split.resize'];
+  assert.deepEqual(Object.keys(ACTIONS).sort(), [...plan, 'palette.run', ...step2, ...step3, ...step4, ...settingsTab, ...spaceThemes, ...arcQol, ...arcM22, ...arcM23, ...arcM24, ...arcM25, ...arcM26, ...arcM27].sort());
   assert.ok(isAction('tab.activate'));
   assert.equal(isAction('toString'), false);
   assert.equal(isAction('__proto__'), false);

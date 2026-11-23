@@ -10,6 +10,7 @@
 // log (development diagnostics). Pure: runs in Node.
 import * as S from '../shared/search.ts';
 import * as shortcuts from '../shared/shortcuts.ts';
+import { APP_KEYS, appKeysFor, appKeyValue, combosOf, formatAppKey, isAppKey, isDigitKey } from '../shared/app-keys.ts';
 import { siteList } from '../shared/sleep.ts';
 import { PACKAGE_THEMES, PACKAGE_THEME_NAMES, USER_THEME_ID } from '../themes/packages.ts';
 import { settingValueOk } from './theme-schema.ts';
@@ -41,8 +42,20 @@ export const SHORTCUT_FIELDS = Object.freeze({
   nextSpace: 'Next space',
   prevSpace: 'Previous space',
 });
-const SHORTCUT_NAMES = Object.freeze({ newTab: 'New tab (the command palette)', ...SHORTCUT_FIELDS });
-export const SHORTCUT_HELP = 'Click a field, then press a key with ⌘, ⌥, ⌃ or ⇧. Esc cancels. If a combination shows nothing when you press it, Safari or macOS keeps it for itself (⌘⌥← / ⌘⌥→ switch Safari\'s tabs), so pick another.';
+// Margin.app's own keys (shared/app-keys.ts: Settings' `appKeys`), under their own heading; each can be turned off.
+// The numbered ones: a combination with a digit, its modifiers for 1 to 9.
+export const APP_SHORTCUT_FIELDS = Object.freeze({
+  focusAddress: 'Edit the address',
+  copyUrl: 'Copy the address',
+  togglePin: 'Pin or unpin the tab',
+  reopenArchived: 'Reopen the last archived tab',
+  littleArc: 'Open a Quick Tab', // (the stored key keeps its first name: settings.appKeys.littleArc)
+  addSplit: 'Add a split view',
+  spaceDigits: 'Go to space 1–9',
+  itemDigits: 'Go to favorite, pin or tab 1–9',
+});
+const SHORTCUT_NAMES = Object.freeze({ newTab: 'New tab (the command palette)', ...SHORTCUT_FIELDS, ...APP_SHORTCUT_FIELDS });
+export const SHORTCUT_HELP = 'Click a field, then press a key with ⌘, ⌥, ⌃ or ⇧. Esc cancels; Delete turns off one of Margin.app’s keys. If a combination shows nothing when you press it, Safari or macOS keeps it for itself (⌘⌥← / ⌘⌥→ switch Safari\'s tabs), so pick another.';
 
 /** Every shortcut now: the palette's fixed ⌘T and the ones from Settings. */
 export function currentShortcuts(settings: any) {
@@ -81,7 +94,7 @@ function field(f: Partial<SettingsField> & { id: string, kind: SettingsField['ki
  * and the form's own state (`ui`: the
  * shortcut being recorded, the statuses, the active theme: its id, name and theme.json settings).
  * */
-export function settingsFields(settings: any, features: any = {}, ui: { recording?: string | null, status?: Record<string, { text: string, error?: boolean } | undefined>, theme?: { id: string, name: string, settings: Record<string, any> } | null, spaceTheme?: string | null } = {}): SettingsField[] {
+export function settingsFields(settings: any, features: any = {}, ui: { recording?: string | null, status?: Record<string, { text: string, error?: boolean } | undefined>, theme?: { id: string, name: string, settings: Record<string, any> } | null, spaceTheme?: string | null, airTraffic?: { rules?: unknown, spaces?: unknown } | null } = {}): SettingsField[] {
   const s = settings ?? {};
   const f = features ?? {};
   const status = ui.status ?? {};
@@ -98,6 +111,18 @@ export function settingsFields(settings: any, features: any = {}, ui: { recordin
   list.push(field({ id: 'theme', kind: 'choice', label: spaced ? 'Theme of this space' : 'Theme', help: spaced ? 'Each space has its own theme. New spaces start with the theme of the space they’re made from.' : '', options: options.map((o) => ({ ...o, selected: o.id === theme })), value: theme, status: status.theme?.text ?? '', error: !!status.theme?.error }));
   list.push(...importFields(f, status, imported));
   list.push(field({ id: 'engine', kind: 'info', label: engineText(s, f) }));
+  const favScope = s.favoritesScope === 'profile' ? 'profile' : 'global';
+  list.push(field({
+    id: 'favoritesScope',
+    kind: 'choice',
+    label: 'Favorites scope',
+    help: 'Show the same Favorites across all Spaces, or keep separate Favorites per browser profile.',
+    value: favScope,
+    options: [
+      { id: 'global', label: 'Global across Spaces', selected: favScope === 'global' },
+      { id: 'profile', label: 'Per browser profile', selected: favScope === 'profile' },
+    ],
+  }));
   list.push(field({ id: 'archiveAfterHours', kind: 'number', label: 'Archive tabs not used for (hours, 0 = never)', value: String(s.archiveAfterHours ?? 12), min: 0, max: 720, step: '1' }));
   if (f.sleepTabs) {
     list.push(field({ id: 'sleepAfterHours', kind: 'number', label: 'Put tabs to sleep after not using them for (hours, 0 = never). A sleeping tab frees its memory and loads again when you go back to it', value: String(s.sleepAfterHours ?? 4), min: 0, max: 720, step: 'any' }));
@@ -118,7 +143,9 @@ export function settingsFields(settings: any, features: any = {}, ui: { recordin
     list.push(field({ id: 'fullscreenOnly', kind: 'toggle', label: 'Use Margin only in full screen (in a window, it offers full screen instead)', checked: s.fullscreenOnly !== false }));
   }
   list.push(field({ id: 'frameWhenHidden', kind: 'toggle', label: 'With the sidebar hidden, keep the frame around pages', checked: s.frameWhenHidden !== false }));
+  list.push(field({ id: 'autoPeekPins', kind: 'toggle', label: 'Open external links from Pinned tabs and Favorites in a preview', checked: s.autoPeekPins !== false }));
   if (f.newTabHint) list.push(field({ id: 'newTabHint', kind: 'toggle', label: 'Tell me when a new tab seems to open Safari’s homepage instead of Margin (Safari Settings › General › “New tabs open with” should be Margin)', checked: s.newTabHint !== false }));
+  list.push(...airTrafficFields(ui.airTraffic ?? null));
   // The active theme's own settings: after Margin's, under their own heading, so they don't read as Margin's.
   list.push(...themeOwnFields(s, ui.theme ?? null));
   // Keyboard shortcuts: recorded by pressing them.
@@ -127,6 +154,13 @@ export function settingsFields(settings: any, features: any = {}, ui: { recordin
   for (const [id, label] of Object.entries(SHORTCUT_FIELDS)) {
     const recording = ui.recording === id;
     list.push(field({ id, kind: 'shortcut', label, value: recording ? '' : shortcuts.format(keys[id]), recording, placeholder: 'Press keys…' }));
+  }
+  list.push(field({ id: 'appShortcuts', kind: 'group', label: 'Margin.app' }));
+  const app = appKeysFor(s);
+  for (const [id, label] of Object.entries(APP_SHORTCUT_FIELDS)) {
+    const recording = ui.recording === id;
+    const combo = app[id as keyof typeof app];
+    list.push(field({ id, kind: 'shortcut', label, value: recording ? '' : formatAppKey(id, combo), recording, placeholder: recording ? (isDigitKey(id) ? 'Press keys with a digit…' : 'Press keys…') : 'Off' }));
   }
   list.push(field({ id: 'resetShortcuts', kind: 'button', label: 'Reset shortcuts', status: status.shortcuts?.text ?? SHORTCUT_HELP, error: !!status.shortcuts?.error }));
   return list;
@@ -148,16 +182,47 @@ export const SETTINGS_CATEGORIES = Object.freeze([
 export type SettingsCategory = typeof SETTINGS_CATEGORIES[number]['id'];
 export { SETTINGS_CATEGORY_IDS } from './actions.ts'; // (the same ids, in this order: tests/settings-form.test.ts)
 export const DEFAULT_CATEGORY: SettingsCategory = 'appearance';
-const TABS_FIELDS = new Set(['archiveAfterHours', 'sleepAfterHours', 'neverSleepSites', 'wakeAll']);
-const BROWSING_FIELDS = new Set(['engine', 'blockGestures', 'swipeNavigation', 'pullToRefresh', 'marginFullscreenAuto', 'fullscreenOnly', 'frameWhenHidden', 'newTabHint']);
-const KEYBOARD_FIELDS = new Set(['shortcuts', ...Object.keys(SHORTCUT_FIELDS), 'resetShortcuts']);
+const TABS_FIELDS = new Set(['favoritesScope', 'archiveAfterHours', 'sleepAfterHours', 'neverSleepSites', 'wakeAll']);
+const BROWSING_FIELDS = new Set(['engine', 'blockGestures', 'swipeNavigation', 'pullToRefresh', 'marginFullscreenAuto', 'fullscreenOnly', 'frameWhenHidden', 'autoPeekPins', 'newTabHint']);
+const KEYBOARD_FIELDS = new Set(['shortcuts', ...Object.keys(SHORTCUT_FIELDS), 'appShortcuts', ...Object.keys(APP_SHORTCUT_FIELDS), 'resetShortcuts']);
 
 /** The category a field is in (one of SETTINGS_CATEGORIES'): Appearance for the themes' fields and any field not listed. */
 export function categoryOf(id: string): SettingsCategory {
   if (TABS_FIELDS.has(id)) return 'tabs';
   if (BROWSING_FIELDS.has(id)) return 'browsing';
   if (KEYBOARD_FIELDS.has(id)) return 'keyboard';
+  if (id === AIR_TRAFFIC_GROUP || id === AIR_TRAFFIC_NONE || id.startsWith(AIR_TRAFFIC_TOGGLE) || id.startsWith(AIR_TRAFFIC_REMOVE)) return 'browsing';
   return 'appearance';
+}
+
+// ---- Link Rules (state.airTraffic, its stored name: shared/air-traffic.ts) ---------------------------------
+// Each rule: a toggle (on routes the links it matches to its space; off, kept but not used) and Remove. Made in a
+// tab's menu ("Always Open <site> in This Space"), which also removes the one routing that tab's address.
+const AIR_TRAFFIC_GROUP = 'linkRules';
+const AIR_TRAFFIC_NONE = 'linkRulesNone';
+const AIR_TRAFFIC_TOGGLE = 'linkRule:';
+const AIR_TRAFFIC_REMOVE = 'removeLinkRule:';
+const RULE_ID = /^[A-Za-z0-9_:-]{1,64}$/;
+
+function airTrafficFields(given: { rules?: unknown, spaces?: unknown } | null) {
+  if (!given) return [];
+  const spaces = Array.isArray(given.spaces) ? given.spaces : [];
+  const rules = (Array.isArray(given.rules) ? given.rules : [])
+    .filter((r) => r && typeof r.id === 'string' && RULE_ID.test(r.id) && typeof r.pattern === 'string')
+    .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0)).slice(0, 100);
+  const out: SettingsField[] = [field({ id: AIR_TRAFFIC_GROUP, kind: 'group', label: 'Link Rules' })];
+  if (!rules.length) {
+    out.push(field({ id: AIR_TRAFFIC_NONE, kind: 'info', label: 'No rules yet. To open a site’s links in one space, choose “Always Open <site> in This Space” in a tab’s menu.' }));
+    return out;
+  }
+  for (const r of rules) {
+    const sp = spaces.find((x: any) => x?.id === r.spaceId);
+    const where = sp ? `${themeText(sp.emoji, 8)} ${themeText(sp.name, 40)}`.trim() : 'a space that’s gone';
+    const pattern = themeText(r.pattern, 200);
+    out.push(field({ id: `${AIR_TRAFFIC_TOGGLE}${r.id}`, kind: 'toggle', label: `Open ${pattern} in ${where}`, checked: r.enabled !== false }));
+    out.push(field({ id: `${AIR_TRAFFIC_REMOVE}${r.id}`, kind: 'button', label: `Remove rule for ${pattern}` }));
+  }
+  return out;
 }
 
 /** A category asked for (the UI's `settingsCategory`), else the first. */
@@ -261,9 +326,14 @@ export function removePrompt(fieldId: string, list: any[]) {
  * patch, or null (not a field, a bad value, nothing to save). `value`: what
  * the input holds (text; a toggle's checked state as a boolean).
  * */
-export function saveField(f: SettingsField | null | undefined, value: any, settings: any): { type: 'updateSettings', payload: { patch: Record<string, any> } } | null {
+export function saveField(f: SettingsField | null | undefined, value: any, settings: any): { type: 'updateSettings', payload: { patch: Record<string, any> } } | { type: 'toggleAirTrafficRule', payload: { ruleId: string, enabled: boolean } } | null {
   if (!f || f.disabled) return null;
   const patch = (p: Record<string, any>) => ({ type: ('updateSettings' as 'updateSettings'), payload: { patch: p } });
+  // A link rule turned on or off (the rule, not a setting).
+  if (f.kind === 'toggle' && f.id.startsWith(AIR_TRAFFIC_TOGGLE)) {
+    const ruleId = f.id.slice(AIR_TRAFFIC_TOGGLE.length);
+    return typeof value === 'boolean' && RULE_ID.test(ruleId) ? { type: 'toggleAirTrafficRule' as const, payload: { ruleId, enabled: value } } : null;
+  }
   switch (f.kind) {
     case 'number': {
       const n = Number(value);
@@ -278,6 +348,11 @@ export function saveField(f: SettingsField | null | undefined, value: any, setti
     case 'list': return f.id === 'neverSleepSites' ? patch({ neverSleepSites: siteList(String(value ?? '')) }) : null;
     case 'shortcut': {
       const combo = String(value ?? '');
+      // Margin.app's keys: '' turns one off; a numbered one's digit stands for 1–9.
+      if (isAppKey(f.id)) {
+        const v = appKeyValue(f.id, combo);
+        return v == null ? null : patch({ appKeys: { ...appKeysFor(settings), [f.id]: v } });
+      }
       if (!shortcuts.parse(combo) || !Object.hasOwn(SHORTCUT_FIELDS, f.id)) return null;
       if (f.id === 'sidebarShortcut') return patch({ sidebarShortcut: combo });
       return patch({ shortcuts: { ...shortcuts.navigationFor(settings), [f.id]: combo } });
@@ -292,14 +367,24 @@ export function saveField(f: SettingsField | null | undefined, value: any, setti
  * what's wrong, or null
  */
 export function shortcutTaken(id: string, combo: string, settings: any): string | null {
-  const taken = Object.entries(currentShortcuts(settings)).find(([other, value]) => other !== id && value === combo);
+  // (A numbered key stands for nine combinations: any of them taken is.)
+  const mine = isAppKey(id) ? combosOf(id, appKeyValue(id, combo) ?? '') : [combo];
+  const all: [string, string[]][] = [
+    ...(Object.entries(currentShortcuts(settings)) as [string, string][]).map(([k, v]): [string, string[]] => [k, [v]]),
+    ...(Object.entries(appKeysFor(settings)) as [string, string][]).map(([k, v]): [string, string[]] => [k, combosOf(k, v)]),
+  ];
+  const taken = all.find(([other, values]) => other !== id && values.some((v) => mine.includes(v)));
   return taken ? `${shortcuts.format(combo)} is already used for “${(SHORTCUT_NAMES as Record<string, string>)[taken[0]]}”.` : null;
 }
 
 /** What a button asks the background for. */
 export function runField(f: SettingsField | null | undefined) {
   if (f?.id === 'wakeAll') return { type: 'wakeSleeping', payload: {} };
-  if (f?.id === 'resetShortcuts') return { type: 'updateSettings', payload: { patch: { sidebarShortcut: 'Alt+KeyS', shortcuts: { ...shortcuts.NAVIGATION } } } };
+  if (f?.id === 'resetShortcuts') return { type: 'updateSettings', payload: { patch: { sidebarShortcut: 'Alt+KeyS', shortcuts: { ...shortcuts.NAVIGATION }, appKeys: { ...APP_KEYS } } } };
+  if (f?.isButton && f.id.startsWith(AIR_TRAFFIC_REMOVE)) {
+    const ruleId = f.id.slice(AIR_TRAFFIC_REMOVE.length);
+    return RULE_ID.test(ruleId) ? { type: 'removeAirTrafficRule', payload: { ruleId } } : null;
+  }
   return null;
 }
 

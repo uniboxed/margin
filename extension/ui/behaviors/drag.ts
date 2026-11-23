@@ -127,6 +127,14 @@ export function installDrag(rt: Rt) {
       const s = view.subjectOf(chip.el);
       return s?.id != null ? { zone: 'space', spaceId: s.id, el: chip.el } : null;
     }
+    const favs = view.behaviorAt(under, 'm-drop', 'favorites');
+    if (favs) {
+      const tiles = view.marked('m-drag', 'favorite').filter((r) => favs.el.contains(r));
+      const own = view.behaviorAt(under, 'm-drag', 'favorite')?.el;
+      const tile = own && tiles.includes(own) ? own : null;
+      const box = tile?.getBoundingClientRect();
+      return { zone: 'favorites', rows: tiles.map((r) => view.subjectOf(r)?.id), favorite: tile ? view.subjectOf(tile)?.id ?? null : null, x: box ? (x - box.left) / (box.width || 1) : 0, el: favs.el, rowEl: tile };
+    }
     const tabs = view.behaviorAt(under, 'm-drop', 'tabs');
     if (tabs) {
       const rows = view.marked('m-drag', 'tab').filter((r) => tabs.el.contains(r));
@@ -153,7 +161,7 @@ export function installDrag(rt: Rt) {
       const item = view.subjectOf(row);
       const kind = kindOf(row);
       const box = row.getBoundingClientRect();
-      return { zone: 'pins', row: { kind, id: item.id, folder: kind === 'pin' ? item.folderId ?? null : null }, y: (y - box.top) / (box.height || 1), el: pins.el, rowEl: row };
+      return { zone: 'pins', row: { kind, id: item.id, folder: kind === 'pin' ? item.folderId ?? null : item.parentFolderId ?? null }, y: (y - box.top) / (box.height || 1), el: pins.el, rowEl: row };
     }
     if (folderZone) {
       const f = view.subjectOf(folderZone.el);
@@ -175,7 +183,8 @@ export function installDrag(rt: Rt) {
     clearMarks();
     // (A drop target only over something: dropTarget says none over nothing.)
     const w = (where as any);
-    if (w?.space || w?.unpin) mark(over!.el, 'm-drop-into');
+    if (w?.space || w?.unpin || w?.unfavorite || w?.favoriteAdd) mark(over!.el, 'm-drop-into');
+    else if ('favoriteBefore' in (w ?? {})) mark(over!.rowEl ?? over!.el, 'm-drop-into');
     else if (w?.into) mark(folderEl(w.into) ?? over!.el, 'm-drop-into');
     else if (w?.tab != null) mark(over!.rowEl, w.side === 'before' ? 'm-drop-before' : 'm-drop-after');
     else if (w?.row) {
@@ -237,7 +246,9 @@ export function installDrag(rt: Rt) {
     const { name, arg } = dropAction({ kind: d.kind, id: d.id }, where);
     const from = d.el.getBoundingClientRect();
     const space = rt.vm?.space;
-    const pins = (space?.pinned ?? []).flatMap((p) => (p.isFolder ? p.pins : [p]));
+    const pins = space?.pinnedFlat
+      ? space.pinnedFlat.filter((p) => !p.isFolder)
+      : (space?.pinned ?? []).flatMap((p) => (p.isFolder ? p.pins : [p]));
     let find: () => Element | null = () => rowEl(d.kind, d.id);
     let same = true; // the row it lands in is the dragged one (else a new one)
     if (where.space) {

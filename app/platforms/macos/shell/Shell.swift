@@ -6,7 +6,8 @@
 //
 //  - The links to Margin's extension copies (ExtensionLink.swift, one per browser profile) stay up as the tabs'
 //    drivers: each copy's state is mirrored (StateMirror.swift), its lasting data kept (DataSync.swift), its theme
-//    package and its shortcuts heard; its `loading` pushes are the Margin window's loading bar.
+//    package and its shortcuts heard; its `loading` pushes are the Margin window's loading bar, and the pushes for
+//    its UI that UIPush.swift passes on (the mini player's `media`, `toast`) go to the Margin window they belong in.
 //  - Each read (`track`): Margin's keys held while Margin or an app it hosts is in front (Shortcuts.swift
 //    ShortcutSet.hostedActive), the host polled, Safari's restored windows swept; again every `restPoll` while
 //    something is hosted or a copy is linked.
@@ -240,6 +241,13 @@ final class Shell: ExtensionLinkDelegate {
                 entry.resyncTimer?.invalidate()
                 if case .snapshot = message { profilesSoon(); themesTellCopy(entry) }
                 if case .delta(_, _, let changes, _) = message, changes["spaces"] != nil { profilesSoon() }
+                // A Safari copy's tabs: the hosted items' sound (playing, muted), for the UI's rows (HostedSession.copyTabs).
+                var tabsChanged = false
+                if case .snapshot = message { tabsChanged = true }
+                if case .delta(_, _, let changes, _) = message, changes["openTabs"] != nil { tabsChanged = true }
+                if tabsChanged, connection.hello.browser == "safari", let tabs = (entry.mirror.value("openTabs") as? JSONObject)?["tabs"] as? JSONObject {
+                    hosted?.copyTabs(profile: connection.hello.profile, tabs: tabs)
+                }
                 tellDrawn(entry)
                 soon()
             case .gap(let expected, let got):
@@ -267,11 +275,27 @@ final class Shell: ExtensionLinkDelegate {
         case .data(let kind, let body):
             data.received(connection, kind, body)
         case .push(_, let windowId, let msg):
+            guard connection.hello.browser == "safari", let type = msg["type"] as? String else { return }
             // A Safari copy's tabs loading in the window Margin hosts for its profile, drawn as Margin's window's
             // loading bar (HostedSession.copyLoading).
-            guard msg["type"] as? String == "loading", connection.hello.browser == "safari" else { return }
-            let ids = (msg["tabIds"] as? [Any] ?? []).compactMap { int($0) }
-            hosted?.copyLoading(profile: connection.hello.profile, windowId: windowId, tabIds: ids)
+            if type == "loading" {
+                let ids = (msg["tabIds"] as? [Any] ?? []).compactMap { int($0) }
+                hosted?.copyLoading(profile: connection.hello.profile, windowId: windowId, tabIds: ids)
+                return
+            }
+            // The preview card (HostedPeek.swift): a page's click (answered at once), the copy giving up on one, the card's
+            // page as it changes, Esc and ⌘↩ in it. The session's own, never passed to a page as they come.
+            let profile = connection.hello.profile
+            switch type {
+            case "peekOpen": hosted?.peekOpen(profile: profile, windowId: windowId, msg: msg); return
+            case "peekCancel": hosted?.peekCancel(profile: profile, msg: msg); return
+            case "cardPage": hosted?.cardPage(profile: profile, windowId: windowId, msg: msg); return
+            case "cardKey": hosted?.cardKey(profile: profile, windowId: windowId, key: msg["key"] as? String ?? ""); return
+            default: break
+            }
+            // What its UI shows for that window (UIPush.swift: only the types passed on, checked there), to the Margin
+            // window it belongs in (HostedSession.copyPush). Any other push: not the page's.
+            if UIPush.forwarded[type] != nil { hosted?.copyPush(profile: connection.hello.profile, windowId: windowId, msg: msg) }
         case .keys(let epoch, let bindings):
             guard epoch == connection.epoch else { return }
             entry.keys = bindings
@@ -319,10 +343,11 @@ final class Shell: ExtensionLinkDelegate {
     func tellDrawn(_ entry: Link) {
         guard entry.connection.isUp, entry.mirror.hasState else { return }
         let hello = entry.connection.hello
-        let hostedId = hello.browser == "safari" ? hosted?.safariWindows[hello.profile] : nil
+        // (Every role's: its main window, its card, a split's panes, docs/PEEK-SPLIT.md §1.)
+        let hostedIds = hello.browser == "safari" ? Set((hosted?.safariWindows ?? [:]).filter { $0.key.profile == hello.profile }.values) : []
         let ids = windows(of: entry.connection.key).map(\.id)
         for id in ids {
-            let on = id == hostedId
+            let on = hostedIds.contains(id)
             guard entry.drawnSent[id] != on else { continue }
             entry.drawnSent[id] = on
             entry.connection.send(.drawn(epoch: entry.connection.epoch, windowId: id, on: on))

@@ -76,6 +76,174 @@ What the suite can't see (covered by `npm run test:app` and `npm run test:webkit
 
 `npm run test:screen` (tools/screen-tests/README.md): Margin hosting the behaviour test app, Chameleon, on the real window server, one scenario per behaviour class of docs/HOSTING-CORE.md plus check10's steps; opt-in, the person's own apps (`-- --real-apps`). Required before every install; never in CI. It refuses to start unless the Mac has been idle 180 s and isn't locked, prints its whole plan first, stops at the first sign of the person and puts everything back (Margin's defaults, the test apps removed, the starting Space). `-- --dry-run` prints the plan and touches nothing. Each part runs under a hard 10-minute limit; all the Chameleon parts take about half an hour. Many behaviour scenarios fail against today's engine: that's the baseline the reconciler turns green. Rule: a real-screen bug isn't fixed until its behaviour class exists in Chameleon, the stand-in world (`app/platforms/macos/shell/tests/behaviour-world.swift`) and the suite, and the suite fails without the fix.
 
+## Track 2 — Arc/Dia Feature Suite (2026-11-20)
+
+Manual verification checklist in real Safari + Margin.app (automated unit, Rust, security, theme, and headless E2E suites verify model/state/view-model/UI/layout logic; real macOS window hosting, the mini player in real Safari pages, and Safari Web Extension behavior require manual verification):
+
+- [ ] **M2.1 QoL & Shortcuts:** Press `⇧⌘C` on any web page → URL copied to clipboard and a `"Copied URL"` toast pill fades in/out. Press `⌘L` → palette opens pre-filled and selected with the current URL. Press `⌘D` → toggles pin. Press `⇧⌘T` → reopens last archived tab. Press `⌃1`–`⌃9` → jumps to Spaces 1–9; `⌘1`–`⌘9` → jumps to Favorites then Pins then Today tabs. Right-click a tab → Mute/Unmute, Duplicate, and Unload (Sleep) work cleanly.
+- [ ] **M2.2 Sticky Pins, Inline Rename & Nested Folders:** Open a pinned tab and click a link to a subpage → tab stays bound to the pin row (does not jump to Today), shows a drifted reset button (`pin.reset`), and clicking reset navigates back to the pinned root URL. Closing a sticky pinned tab unloads it without archiving it. Double-click or choose Rename on a tab/pin → custom title persists across reloads. Create subfolders up to 4 levels deep (`depth` 0–3); verify depth 5 is refused and drag-and-drop rejects cycles.
+- [ ] **M2.3 Favorites Grid:** Add up to 12 web tabs and macOS apps to Favorites via context menu or dragging into the Favorites grid. Switch Spaces → global Favorites remain fixed above Space swipes. Switch Settings → Tabs → Favorites scope to `Per-profile` and confirm per-profile filtering. `⌘1`–`⌘9` jumps to Favorites first.
+- [ ] **M2.4 Background Mini Player (Safari tabs in Margin.app):** In a Margin window, play audio/video in a web item (YouTube, YouTube Music, Spotify Web, SoundCloud), then show another item (a web item or a Mac app) → the mini player appears in the sidebar with the title, artist and artwork (the page's Media Session artwork; the site icon or a letter while it loads, or when Safari won't let the copy read it); returning to the playing item hides it. Play/Pause, Mute and the title (shows the item) work on every site; Next and Previous where the site has its own Next/Previous buttons (Previous otherwise restarts the track). Pause from the mini player → it stays (paused) for 30 s, then goes. Close the playing item, or navigate it to another site → the mini player goes at once. Quit and reopen Safari (tab ids change) and update Margin with media playing → the mini player comes back once the page plays (or at once after an update, as the content script is put in again). Media inside a frame (an embedded player) or an `Audio()` never put in the page: shown from Safari's `audible` (the tab's title), Play/Pause may do nothing there. Check that the Safari copy has the "Allow on every website" permission for artwork from other sites. Hosted Mac apps (Spotify, Music) in the mini player: later (MediaRemote is closed to third parties since macOS 15.4), not part of this check.
+- [ ] **M2.5 The preview card and Quick Tab (Margin.app, real Safari; DECISIONS.md "Peek and Little Arc in Margin.app", their first names).** Auto-preview is on by default on this branch. Watch Margin's log alongside: `/usr/bin/log show --predicate 'process == "Margin"' --last 5m --style compact | grep -E "Preview|Quick Tab|layout:|card"`.
+  - [ ] **Shift+click a link** in a web item → the page area dims (the item still visible through it), the card scales in (≈150 ms) with its bar; the first time, its page area shows a spinner until Safari's card window is in place, then the page shows through, exactly inside the card frame (no gap, no Safari toolbar showing). Log: `Peek asked by a page: shown`, `Safari window N made for hosting (its card)`, `layout: 2 item(s) shown`. Nothing of the page card's own loader ever covers the item under the card.
+  - [ ] Shift+click the same kind of link again after closing → the card comes back fast (no new window: no `made for hosting (its card)` line), the item under it never flickers or reloads.
+  - [ ] **Auto-preview:** in a pinned tab or a favorite, click a link to another site → card; a link to the same site → navigates as usual; a Google/Apple/Microsoft sign-in link → navigates as usual (never a card). A link the page handles itself (Gmail's message list, a menu, a range selection with Shift) works as before. In a Safari window of your own (not Margin's) nothing is intercepted.
+  - [ ] **Not drawn by Margin:** quit Margin.app and Shift+click in Safari → nothing intercepted (Safari's own Shift+click: Reading List). Back in Margin, a link in a window Margin doesn't host (a Safari window of your own) → Safari's own behaviour, at most a ½ s pause the first time (the app refuses: log `Peek asked by a page: refused (not a window Margin hosts)`), then the link opens once (a `target=_blank` one in a new tab).
+  - [ ] **Bar:** Back, Forward (the card's own history), Copy URL (toast; paste it), the host text follows navigation inside the card, Open in Space (Expand: the page becomes the space's tab in the sidebar, shown as the main page, logged in still, same scroll; the card goes; log `Peek: expanded into item`), ✕ closes (reverse animation, then gone; log `Peek: the card closed (its close)`).
+  - [ ] **Close every way:** Esc in the card's page (not while typing in a field there; a page that uses Esc itself, e.g. a lightbox, keeps it), ⌘W while the card has the keys (closes the card, never the item under it: check the sidebar still has it), a click on the dimmed area around the card. After each, typing goes to the item under it again.
+  - [ ] **⌘↩** in the card's page (not in a field) expands it.
+  - [ ] **Keys/focus:** with the card open, type in the card's page (keys reach it); open the palette (⌘T) and Esc it → the keys come back to the card, not the item under it.
+  - [ ] **Attached to its opener:** with a card open, pick another item in the sidebar → the card goes (no animation glitch), the other item shows alone; pick the first item again → the card is back with its page as it was. Pick an item in another space and come back → same.
+  - [ ] **A new tab inside the card** (a `target=_blank` link in the card's page) → the card shows that page (no extra Safari tab shows up anywhere).
+  - [ ] **Quick Tab (⌥⌘N):** the card's field appears over the item, focused; type an address → Return → the card loads it; type words → a search with Safari's engine; Esc or a click outside closes the field. With nothing hosted (the launcher), ⌥⌘N then an address → it opens as the space's new tab (decided: there's no page under a card there).
+  - [ ] **Look:** all five themes (Settings → Appearance), light and dark: the bar drawn in the theme, the dim over the page area only (not over the sidebar), the card's corners; Reduce Motion (System Settings → Accessibility → Display) → a fade only.
+  - [ ] **Its window:** never Safari's empty new-tab page with its toolbar down in the card; Safari's own full-screen toolbar of the card window never shows over the page or moves (log: no `park strip` for it; `host: … its full-screen toolbar` lines only). Leave the card closed 15 minutes → its Safari window is closed (log `the card window unused for 15 minutes: closed`); quitting the item's Safari window (closing its last tab from Safari) closes the card window too.
+  - [ ] **Resize:** with the card open, drag the sidebar's edge or change theme → the card's window follows its new place (or is placed once the drag ends).
+  - [ ] **Over a split (M2.7):** in a split of a web page and an app, Shift+click a link in the web pane → the card over both panes, both still visible (dimmed) at their places; ⌘W → only the card closes, the split stays with the pane that had the keys focused; open it again and drag the sidebar's edge → the panes and the card all land at their new places; click the dim → the card goes, the split stays. Log: `layout: 3 item(s) shown`, then `layout: 2 item(s) shown`.
+  - [ ] **Card over a split, the card window's FIRST open (fix/screen-card):** quit Safari's card window first (or start fresh); a STACKED split [web page (main), Notes below], main focused; Shift+click a link in main → the card's page shows the linked page only (never main's page in its top half), no dark stripe across it where the panes meet, and with the pointer left still where it was (just above the card's page, under its bar) no Safari tooltip ("Tab Group picker") appears. Window server order (front to back) must have the card's window and its toolbar above main's. A line `focused, not in front of the other visible hosts once fronted … raised again` in the log means a raise didn't take (say so). Then add a third pane (Add to Split View): its window in front, its own band above it, the keys in it.
+- [ ] **M2.6 Link Rules:** Right-click a tab → `Always Open <host> in This Space` adds a link rule. Open a link matching that host from another Space → tab auto-routes and switches to the target Space. Edit/disable/remove rules in library/settings.
+- [ ] **M2.7 Split View in Margin.app (docs/PEEK-SPLIT.md §4, feat/split).** Read Margin's log alongside:
+  `/usr/bin/log show --last 10m --style compact --predicate 'subsystem == "com.unibox.margin"'` (or `scripts/margin-log.sh 10`).
+  Each step says what the log should have; "nothing" lines must not appear.
+  1. **Two Safari tabs.** In a space with two web items A and B (same profile), right-click B → **Add to Split View**.
+     A and B side by side, an 8–12 pt gap between them with the theme's grip, B focused (ring). Log: `hosted: layout: 2
+     item(s) shown in Margin's window <n>, <B> focused`, `Safari window <id> made for hosting (its pane1)` the first time,
+     `host: layout: safari:p… main shown, safari:p…#pane1 pane shown`, `Margin's window <n>: 2 hosted windows visible`.
+     The pane window shows B's page from its first frame; **Safari's toolbar never comes down over either pane** (no
+     address field focused). Never: `didn't lay its panes out`, `not laid out`, `below its window's minimum`.
+  2. **An app pane.** Right-click a Mac app item (TextEdit, Notes) → **Add to Split View**: three panes, the app at the
+     right (`host: layout: … app:com.apple.TextEdit pane shown`). Typing goes to the app.
+  3. **Keys and focus.** Click in A: the ring moves to A, the sidebar's capsule lights A, typing goes to A. Click in the
+     app: the same for it. ⌘L, ⌘T, the palette closed with Escape: the keys go back to the pane that had them, never
+     another.
+  4. **Divider.** Drag the divider between A and B: with tiles on, both windows follow live (`host: live resize: …
+     followed …`), the holes follow without a black gap; with tiles off (a plain member), the windows stay put, then
+     jump to the new sizes under the loader at release (`hosted: page area changed`). A divider stops where a pane would
+     go below its window's minimum (Weather, Maps have one). Double-click: equal sizes. Quit and relaunch: the ratios kept.
+  5. **Sidebar drag.** Drag the sidebar's edge: every pane follows (live with tiles), the sidebar stops where the panes
+     wouldn't fit.
+  6. **Stacked.** Right-click a pane's row in the capsule → **Stacked**: the panes one above the other; **Side by Side**
+     back. **Swap Panes**: the first two change places (in a split of two, each window keeps its tab: no page reloads).
+  7. **Leaving and coming back.** Pick an item outside the split in the sidebar: it alone, the panes' windows gone from
+     sight (not in Mission Control, not on the Desktop). Click a pane in the capsule: the whole split again, that pane
+     focused, no new Safari window (`made for hosting` not said again).
+  8. **⌘W.** With three panes, ⌘W in the focused pane: its tab closes, the other two stay split, the next pane focused.
+     ⌘W again: one item left, shown alone (in the profile's main window; `Safari window … made` not said). The pane
+     window, unused, is closed 15 minutes later (`Safari window of …'s pane1 unused for 15 minutes: closed`).
+  9. **Remove / Break Out.** On a pane: **Remove from Split View** shows the rest; **Break Out of Split View** shows that
+     pane alone.
+  10. **⌃⇧=.** With a tab in front and another used before: ⌃⇧= splits them (the one used last added). In a space with
+     only one item: the palette opens; the tab picked there is added beside the one in front.
+  11. **No room.** In a small window (or with 3 panes), add a pane that can't fit: a toast "Not enough room for another
+     pane", nothing changes.
+  12. **All 5 themes**, light and dark: the gap, the grip (hover, drag), the focused ring, the capsule row.
+  13. **Real use (fix/split-real-use, 2026-11-21).** Display 1512×982, page area 1264×933 (sidebar 240).
+     a. **Split from a Safari page, its first pane window.** A shown alone; right-click B → **Add to Split View**. Seen:
+        no slide to another Space and back; A stays full width while B's box shows "Opening …" over A's right part, then A
+        and B appear side by side together. Log: `hosted: Safari window <id> made for hosting (its pane1)`;
+        `host: safari:p…#pane1 opened (…): window … (by the window server, under the freeze from its ask)` (maybe
+        `1 Space change undone under the freeze`); `host: safari:p…#pane1: full screen by the early path in … ms (born in
+        full screen, listed …, reserved …, …, the freeze let go …, in place, its Space gone …), under the freeze`;
+        `host: layout: safari:p… laid out again with safari:p…#pane1 in … ms, once it was in place`. Side by side, never
+        `out to a private Space and back` for pane1 (fix/pane-fronting: panes that don't overlap aren't ordered; step g).
+        Never: `place safari:p…#pane1 attempt`,
+        `its tile sized to the page area 240,41 628×933` before pane1's lines, `pane1, focused, not in front`, `its copy
+        asked to bring it in front`. The Dock's log (`/usr/bin/log show --last 2m --predicate 'process == "Dock"' | grep
+        becameCurrent`): a `becameCurrent` of the new Space, if any, is never seen on screen (it falls between pane1's
+        ask and its `the freeze let go` mark), and Margin's Space is current after. The freeze (the loader's spinner still)
+        lasts about the time the window took to open plus ~0.1–0.3 s.
+     b. **A third Safari pane.** With A and B side by side, right-click C → Add to Split View: the toast "Not enough room
+        for another pane", nothing opened (no `made for hosting (its pane2)`, no `#pane2` line at all). Once per Safari
+        version: `host: com.apple.Safari …: its windows' minimum 574×220 kept for it`. Quit Margin, relaunch, split A and B
+        again, add C: refused at once (the minimum from minimums.json beside routes.json, before any pane window exists).
+     c. **Stacked that can't fit.** In a small page area (a wide sidebar) with two panes whose minimums don't fit stacked,
+        **Stacked** from the pane menu: the toast "Not enough room to stack these panes", nothing changes.
+     d. **A pane that fails** (hard to cause by hand; if it happens): `hosted: split …: <item>: out of the split (…)`, a
+        toast "… couldn't open in Split View" (or "Not enough room for …"), the rest re-laid with no empty box; one left:
+        `host: layout: safari:p… left alone of the layout asked: at the page area 240,41 1264×933`.
+     e. **Divider drag between two Safari panes**, ~10 s back and forth. Log: `hosted: a split's divider dragged in
+        Margin's window <n>: 2 hosted windows follow it live` (never "the hosted window follows it live"), then `host: live
+        resize: in … ms: <n> page area changes (every … ms, p95 …), <m> sent to every window that follows (… coalesced),
+        followed … (median … ms, p95 … ms) …; <x> of <y> sends with more than one window at once; each: safari:p… <k> sent,
+        landed median … ms, p95 … ms; safari:p…#pane1 …`. Compare with 13:26:47's `median 26.0 ms, p95 48.8 ms` (each
+        window's own median now; a sidebar drag with one window was 4–5 ms) and send the line to Claude. Never a pane
+        below 574 wide (the divider stops).
+     f. **Nothing else changed**: the preview card over the split (Shift+click), stacked bands (Stacked: the 52 pt band
+        with the pane's name above the lower Safari pane), ⌘W in each pane, an item outside the split then a pane again
+        (the whole split back, no `made for hosting`), a sidebar drag with the split up (both follow), a single item
+        shown alone (as before).
+     g. **A new pane fronted once, its toolbar never over it (fix/pane-fronting).** As a: A shown alone (B's tab open in
+        A's window, as at 14:29:59), Add to Split View for B, side by side. Seen: B's box keeps "Opening …" a little longer
+        (until its page is in), then B appears with **no Safari toolbar over its top** at any moment; A untouched. Log
+        (one first open): `host: safari:p…#pane1: full screen by the early path … born in full screen …`, `host: layout:
+        safari:p… laid out again with safari:p…#pane1 …`, `host: layout: safari:p… main shown, safari:p…#pane1 pane shown,
+        focused safari:p…#pane1 in … ms`, `hosted: layout: 2 item(s) shown …`, then `hosted: page area changed: 1264×933`
+        with nothing between them about pane1's order. If its toolbar was still out when its tab came in: `host:
+        safari:p…#pane1: its full-screen toolbar out over its page by 52 pt at its reveal: resting after … ms` (under
+        ~150 ms; `still out (revealed anyway)` after 500 ms means it didn't go back up: send the log). The toolbar trace
+        (`its full-screen toolbar 2xxxx (first seen)`) should say `resting above its window` at its first read, never `OUT
+        over its window` after the reveal. Never, for pane1: `out to a private Space and back`, `focused, not in front of
+        the other visible hosts`, `its copy asked to bring it in front`, `brought in front by its copy`. Typing goes to B
+        right away (its keys). Then Stacked from the pane menu, and a card over the split (Shift+click a link in A): the
+        card in front of both panes on its first open (its out and back may still show for the card: that's expected).
+     h. **The first click in another pane goes through (feat/pane-click-tap, DECISIONS.md 2026-11-21).** One click, never
+        two, in the pane WITHOUT the keys. Read the log alongside; each held click says one line: `host: <id>: a click in
+        its pane while <other id> had the keys: its window <n> key in <ms> ms (in its own app | its app made the front
+        app): the click delivered`. Expect about 5–15 ms within Safari, 25–80 ms across apps, up to ~65 ms the first click
+        after the split appears. When the split appears: `pane clicks: on (an event tap on left presses, its own
+        thread): …`; when it goes (one pane, another item, another Space for a second): `pane clicks: off (no split shown
+        on the current Space)`; at quit `pane clicks: off (Margin quits)`. Never: `not key within`, `macOS turned the
+        event tap off`, `the event tap wasn't made`, `Accessibility isn't granted`.
+        - **Safari + Safari** (two web items side by side, A focused): click a **link** in B: it opens in B at once;
+          **Shift+click** a link in B: the preview card at once (one click); click B's page's **text field** and type:
+          the letters in B's field; **double-click** a word in B: selected (and a page's dblclick fires); **drag-select**
+          text in B from a press in B: the selection follows the drag; then ⌘W: B's tab closes (the clicked pane had the
+          keys and the sidebar's highlight moved to it with the click).
+        - **Safari + Notes** (Notes the app pane): with Safari focused, click into a note's text in Notes: the caret where
+          clicked, typing goes there; double-click a word in Notes: selected; drag-select in Notes. With Notes focused,
+          click a link in Safari: it opens at once; Shift+click: the card; type in a Safari field after one click.
+        - **Unchanged:** ⌘-click and right-click in the other pane (as before: Safari takes them without the keys); a
+          click in the pane that has the keys (no log line); the divider's drag, a double-click on the divider; the
+          stacked band; the sidebar and its edge's drag; the card's bar and the dim around a card (closes it); the
+          palette over a split (a click in a pane closes it as before); a menu or popup of the focused pane over the other
+          one (a `<select>`'s list, a context menu: the item picked, never the pane under it focused; its line says `a
+          click in its pane over another window there (window …, layer 101): let go as before`); a hosted app's own
+          menus and sheets; a single item shown (no `pane clicks: on` at all); scrolling the other pane (never held).
+        - **Costs:** with the split up and nothing touched, Activity Monitor's Margin CPU at 0 as before (the tap waits
+          for presses only); `npm run test:screen -- --part pane-clicks` says Margin's idle cost with the tap on.
+     i. **Every pane draws active (feat/panes-active, DECISIONS.md 2026-11-21 "Every pane of a split draws active").**
+        At launch the host's line ends `…; panes active ok` (else `panes active off: <why>`: then only the focused pane
+        draws active, as before; send the line). Read the log alongside: each change says one line, `panes active: <id>
+        kept active (its window <n> (pid <p>)) … (the keys: <id>; <n> kept)`, or `<id> let go (<why>; …)`.
+        - **Safari + Notes** side by side, Safari focused: Notes draws active too (its toolbar not greyed, its text
+          caret blinking where it was, its selection highlighted in colour, not grey), and Safari's page is active (its
+          field's caret, a blue selection). `panes active: app:com.apple.Notes kept active …` when the split appears.
+        - **Typing goes to the last pane clicked, only there:** type: the letters go to Safari; click once into a note
+          in Notes and type: the letters go to Notes only, Safari's caret still showing (it stays active, the line says
+          `safari:… kept active`); back and forth a few times. The menu bar always shows the last clicked app's menus
+          (Safari's, then Notes'); ⌘C/⌘V act in the last clicked pane.
+        - **The ring:** the focused pane's ring is the only one, in every theme, light and dark (Arcadia's has a thin
+          edge in the frame's text colour).
+        - **The moment between:** with each click across apps, watch the pane that had the keys: at most one frame of an
+          inactive look (the research measured ~30 ms between macOS deactivating it and Margin activating it again).
+          Report any visible flicker.
+        - **⌘-Tab away and back:** ⌘-Tab to an app outside Margin (Finder): both panes inactive at once (`… let go
+          (another app in front …`); ⌘-Tab back to Margin: both active again.
+        - **Two panes of one app** (Safari + Safari): only the focused one active (as before: AppKit has one key window per
+          app); nothing in the log for them.
+        - **The split hidden:** pick another item: about a second later `… let go (its pane gone …`; the split again:
+          kept again. A preview card over the split (Shift+click): nothing in the log for the panes under the dim.
+        - **Quit Margin** with the split up: `… let go (Margin quits …` before the quit's lines; afterwards no app draws
+          active but the front one (Notes and Safari as usual).
+        - **Crash recovery:** with the split up, `kill -9` Margin's process (Activity Monitor › Force Quit): Notes (the
+          kept one) still draws active although another app is in front: that's the crash. Open Margin again: its log
+          says `panes active: a crashed Margin kept 1 app active: 1 let go (deactivated) …` and Notes draws inactive.
+        - **Costs:** with the split up and nothing touched, Margin's CPU at 0 in Activity Monitor; `npm run test:screen
+          -- --part panes-active` says the idle cost with both panes active. `defaults write com.unibox.margin
+          MarginPanesActive -bool NO` and a relaunch: only the focused pane draws active again (`panes active: off
+          (MarginPanesActive is NO)…`).
+- [ ] **M2.8 All 5 Built-in Themes:** Switch Spaces through **Arcadia**, **Liquid Glass**, **Material**, **Neubrutalism**, and **Pixel** and inspect Favorites grid, nested folders, drifted pin reset, combined Split View row, background Mini Player, Peek modal, and Toast pill in light and dark appearance (and macOS 26 system glass for Liquid Glass).
+
 ## Safari startup (2026-11-10)
 
 - [ ] With Safari closed, Activity Monitor shows only the resident `margin-helper`. Open Safari: a second `margin-helper --splash …` briefly shows a small “Getting things ready for you” card before Margin.app's full-window cover/layout. The child goes when the app draws. Switching to another app after the card appears or quitting Safari dismisses it; a failed startup dismisses it within six seconds. No Dock icon or keyboard-focus change.

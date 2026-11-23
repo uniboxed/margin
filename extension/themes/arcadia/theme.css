@@ -992,3 +992,242 @@
 .settings-page .settings-form .actions .help { color: var(--muted); }
 .settings-page .settings-form .setting-group { margin-top: 0; padding: 16px 0 6px; font-size: 12px; font-weight: 600; color: var(--muted); }
 .settings-page .settings-form .actions button:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 5%, transparent); }
+
+/* ---- Track 2: Favorites, nested folders, sticky pin reset, split rows, mini player, preview, toast ---- */
+.favorites {
+  display: grid;
+  grid-template-columns: repeat(var(--fav-cols, 3), minmax(0, 1fr));
+  gap: 6px;
+  padding: 2px var(--pad) 6px;
+  flex: none;
+}
+.favorite-tile {
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--field);
+  color: var(--fg);
+  text-decoration: none;
+  cursor: default;
+  transition: background 120ms var(--ease), box-shadow 120ms var(--ease);
+}
+.favorite-tile:hover { background: var(--field-hover); }
+.favorite-tile.active { background: var(--active); box-shadow: var(--active-shadow); }
+.favorite-tile.open:not(.active) { box-shadow: inset 0 0 0 1px var(--border); }
+.favorite-tile .avatar { width: 18px; height: 18px; border-radius: 4px; }
+.favorite-tile .avatar.app { width: 22px; height: 22px; border-radius: 0; }
+.favorite-tile .drift-dot {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.favorites.m-drop-into { outline: 2px solid var(--drop); outline-offset: -2px; border-radius: 10px; }
+/* No favorites yet: a drop target while a tab or pin is dragged, over what follows (nothing moves), none at rest. */
+.favorites-drop { display: none; }
+:is(.m-drag-tab, .m-drag-pin) .favorites-drop { display: block; position: relative; z-index: 5; flex: none; height: 0; }
+.favorites-drop-zone { position: absolute; left: var(--pad); right: var(--pad); top: 2px; height: 40px; box-sizing: border-box; border: 2px dashed var(--border); border-radius: 10px; background: var(--field); }
+.favorites-drop.m-drop-into .favorites-drop-zone { border-color: var(--drop); background: var(--field-hover); }
+
+/* Nested folders: each level indents by the step a folder's pins have (.pin.nested, 16 px), the rows as they were up to depth 1. */
+.margin-sidebar .pins :is(.pin.nested, .folder) { margin-left: calc(var(--depth, 0) * 16px); }
+.pin .icon.reset {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--icon);
+  flex: none;
+  opacity: 0.72;
+  cursor: default;
+}
+.pin .icon.reset:hover { opacity: 1; background: var(--press); color: var(--fg); }
+.pin.muted .avatar, .tab.muted .avatar, .favorite-tile.muted .avatar { opacity: 0.65; }
+
+.split-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin: 1px 0;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--field);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.split-row.active { background: var(--active); box-shadow: var(--active-shadow); }
+.split-pane-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: default;
+}
+.split-pane-btn + .split-pane-btn { box-shadow: -1px 0 0 var(--border); }
+.split-pane-btn:hover { background: var(--hover); }
+.split-pane-btn.active { background: color-mix(in srgb, var(--fg) 8%, transparent); font-weight: 500; }
+.split-pane-btn .avatar { width: 14px; height: 14px; flex: none; }
+.split-pane-btn .title { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.split-row .split-swap {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--icon);
+  opacity: 0;
+  cursor: default;
+}
+.split-row:hover .split-swap, .split-row:focus-within .split-swap { opacity: 0.8; }
+.split-row .split-swap:hover { opacity: 1; background: var(--press); color: var(--fg); }
+
+.mini-player {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 var(--pad) 6px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: var(--field);
+  box-shadow: inset 0 0 0 1px var(--border);
+  flex: none;
+}
+.mini-player.paused { opacity: 0.72; }
+.mini-info {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: default;
+}
+.mini-art { width: 28px; height: 28px; border-radius: 6px; object-fit: cover; flex: none; display: grid; place-items: center; }
+.mini-art.letter { background: var(--letter, var(--accent)); color: #fff; font-size: 12px; font-weight: 600; }
+.mini-text { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.mini-title { font-size: 12px; font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.mini-sub { font-size: 11px; color: var(--muted); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.mini-controls { display: flex; align-items: center; gap: 2px; flex: none; }
+.mini-btn {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--icon);
+  cursor: default;
+}
+.mini-btn:hover { background: var(--press); color: var(--fg); }
+.mini-btn.muted { opacity: 0.45; }
+
+.toast-slot {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 60;
+  pointer-events: none;
+}
+.toast-pill {
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--panel-fg);
+  border: 1px solid var(--panel-edge);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+/* ---- The preview card and Quick Tab (docs/PEEK-SPLIT.md §2, §3) ---------------------------------------
+   Laid over the page area alone (Margin's --m-page-* while a card is up): the page dimmed around the card (main shows
+   through, dimmed), the card's page (<m-preview-page>, where Margin.app puts the card's Safari window) clear once that
+   window is in place (.ready), covered while it loads and as it goes. Open: the dim fades in and the card comes from
+   0.96 and nothing in 150 ms; close: the reverse. Transform and opacity only; Reduce Motion: a fade. Once the window is
+   in place the dimmed page never takes the pointer (Margin.app catches a press there and closes the card); while it
+   loads, and for Quick Tab's field alone, the scrim does (a click there closes it). */
+.preview-slot { position: fixed; left: var(--m-page-left, 0px); top: var(--m-page-top, 0px); right: var(--m-page-right, 0px); bottom: var(--m-page-bottom, 0px); z-index: 50; overflow: hidden; border-radius: var(--m-page-radius, 0px); pointer-events: none; --preview-dim: rgba(0, 0, 0, 0.26); }
+@media (prefers-color-scheme: dark) { .preview-slot { --preview-dim: rgba(0, 0, 0, 0.46); } }
+.preview-backdrop { position: absolute; inset: 0; pointer-events: none; }
+.preview-backdrop > .preview-scrim { position: absolute; inset: 0; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; animation: none; cursor: default; pointer-events: none; }
+.preview-backdrop:is(.loading, .quick-tab) > .preview-scrim { pointer-events: auto; }
+.preview-dim, .preview-card { position: absolute; left: clamp(0px, 8%, calc(50% - 210px)); right: clamp(0px, 8%, calc(50% - 210px)); top: clamp(0px, 7%, calc(50% - 186px)); bottom: clamp(0px, 7%, calc(50% - 186px)); border-radius: 12px; }
+.preview-backdrop.quick-tab :is(.preview-dim, .preview-card) { bottom: auto; height: 46px; }
+.preview-dim { box-shadow: 0 0 0 100vmax var(--preview-dim); pointer-events: none; animation: arcadia-preview-fade-in 150ms ease-out both; }
+.preview-backdrop.closing .preview-dim { animation: arcadia-preview-fade-out 150ms ease-in both; }
+.preview-card { display: flex; flex-direction: column; overflow: hidden; pointer-events: none; transform-origin: 50% 40%; animation: arcadia-preview-in 150ms cubic-bezier(.2, .8, .2, 1) both; background: transparent; box-shadow: 0 0 0 1px var(--panel-edge), 0 24px 64px rgba(0, 0, 0, 0.32); }
+.preview-backdrop.closing .preview-card { animation: arcadia-preview-out 150ms cubic-bezier(.4, 0, 1, 1) both; }
+.preview-bar { flex: none; box-sizing: border-box; height: 52px; display: flex; align-items: center; gap: 6px; padding: 0 10px; pointer-events: auto; background: var(--panel); color: var(--panel-fg); border-bottom: 1px solid var(--panel-line); }
+.preview-host { flex: 1 1 0; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12.5px; color: var(--panel-muted); }
+.preview-field { flex: 1 1 0; min-width: 0; height: 30px; box-sizing: border-box; padding: 0 10px; font: inherit; outline: none; border: 1px solid var(--panel-line); border-radius: 8px; background: transparent; color: var(--panel-fg); }
+.preview-page { position: relative; flex: 1 1 auto; min-height: 0; background: transparent; }
+.preview-backdrop:not(.ready) .preview-page { background: var(--panel); pointer-events: auto; }
+.preview-backdrop.quick-tab .preview-page { display: none; }
+.preview-backdrop.loading .preview-page::after { content: ''; position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; box-sizing: border-box; border-radius: 50%; border: 2px solid color-mix(in srgb, var(--panel-fg) 18%, transparent); border-top-color: color-mix(in srgb, var(--panel-fg) 70%, transparent); animation: arcadia-spin 0.9s linear infinite; }
+@keyframes arcadia-preview-in { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
+@keyframes arcadia-preview-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(0.96); } }
+@keyframes arcadia-preview-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes arcadia-preview-fade-out { from { opacity: 1; } to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .preview-card { animation-name: arcadia-preview-fade-in; }
+  .preview-backdrop.closing .preview-card { animation-name: arcadia-preview-fade-out; }
+  .preview-backdrop.loading .preview-page::after { animation: none; }
+}
+.preview-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--panel-line);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--panel-fg);
+  font: inherit;
+  font-size: 12px;
+  cursor: default;
+}
+.preview-btn:hover { background: var(--panel-hover); }
+.preview-btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 500; }
+.preview-btn .line-icon { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Split View (docs/PEEK-SPLIT.md §4): Margin's own <m-pane>s, flexed by the split's ratios, and an <m-divider> between
+   each two, in the page's place while a split is shown (m-split="row" side by side, "column" stacked). The gap is the
+   divider (--m-split-gap); its grip lights on hover and focus and while dragged ([m-dragging]); the focused pane
+   ([m-focused]) has a ring in the gap around it. Nothing here moves a pane: Margin lays them out. */
+.arcadia { --m-split-gap: 8px; }
+.arcadia m-divider { background: var(--frame); }
+.arcadia m-divider::after { content: ""; position: absolute; left: 50%; top: 50%; width: 4px; height: 36px; border-radius: 2px; transform: translate(-50%, -50%); background: color-mix(in srgb, currentColor 22%, transparent); transition: background-color .12s, transform .12s; }
+.arcadia m-page[m-split="column"] > m-divider::after { width: 36px; height: 4px; }
+.arcadia m-divider:hover::after, .arcadia m-divider:focus-visible::after { background: color-mix(in srgb, var(--accent) 70%, transparent); }
+.arcadia m-page[m-split="row"] > m-divider:is(:hover, :focus-visible, [m-dragging])::after { transform: translate(-50%, -50%) scaleY(1.55); }
+.arcadia m-page[m-split="column"] > m-divider:is(:hover, :focus-visible, [m-dragging])::after { transform: translate(-50%, -50%) scaleX(1.55); }
+.arcadia m-divider[m-dragging]::after { background: var(--accent); }
+.arcadia m-pane[m-focused] { border-radius: 6px; box-shadow: 0 0 0 2px var(--accent), 0 0 0 3px var(--fg); }
+@media (prefers-reduced-motion: reduce) { .arcadia m-divider::after { transition: none; } }

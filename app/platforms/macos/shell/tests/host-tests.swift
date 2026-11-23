@@ -123,6 +123,49 @@ final class FakeHostWorld: HostSystem {
         return true
     }
     func frontApp() -> pid_t? { front }
+    // All panes active (PanesActive.swift): off unless a test turns it on; every record sent (`activeCalls`, in order:
+    // "keep pid window", "move pid from→to", "release pid window", "releaseNow pid window", "makeFront pid window"), the
+    // window server's front process (`serverFront`, else `front`), AppKit's word in each app (`appActiveOf`).
+    var panesActive = false
+    var activeCalls: [String] = []
+    var serverFront: pid_t?
+    var serverFrontUnread = false
+    var appActiveOf: [pid_t: Bool] = [:]
+    var keepsPanesActive: Bool { panesActive }
+    func frontProcess() -> pid_t? { serverFrontUnread ? nil : serverFront ?? front }
+    // (Its windows left in their order: only the front app and its key window change.)
+    func focusWithoutRaise(pid: pid_t, window: Int) -> Bool {
+        activeCalls.append("focusWithoutRaise \(pid) \(window)")
+        guard apps[pid] != nil else { return false }
+        serverFront = nil
+        front = pid
+        return true
+    }
+    func makeFront(pid: pid_t, window: Int) -> Bool {
+        activeCalls.append("makeFront \(pid) \(window)")
+        guard apps[pid] != nil else { return false }
+        serverFront = nil
+        front = pid
+        return true
+    }
+    func keepActive(_ w: PaneWindow) { activeCalls.append("keep \(w.pid) \(w.window)") }
+    func moveActive(_ w: PaneWindow, from: Int) { activeCalls.append("move \(w.pid) \(from)→\(w.window)") }
+    func releaseActive(_ w: PaneWindow) { activeCalls.append("release \(w.pid) \(w.window)") }
+    func releaseActiveNow(_ list: [PaneWindow]) { for w in list { activeCalls.append("releaseNow \(w.pid) \(w.window)") } }
+    func appActive(pid: pid_t) async -> Bool? { appActiveOf[pid] }
+    // A window's page given the keys (AXFocused on its web area): out of its address field, so its toolbar slides back up
+    // (`pageFocusRests` later, as Safari's ~70 ms slide); the window made key (raised, unless its raise doesn't take).
+    var pageFocused: [Int] = []
+    var pageFocusRests = 0.07
+    var pageListedAt: [Int: Double] = [:] // a new window's page listed to Accessibility only from then (its page not there yet)
+    func focusPage(pid: pid_t, window: Int) async -> Bool {
+        calls.append("focusPage \(pid) \(window)")
+        guard wins[window]?.pid == pid, pageListedAt[window].map({ clock >= $0 }) ?? true else { return false }
+        pageFocused.append(window)
+        if toolbarOut.contains(window) { toolbarRestsAt[window] = min(toolbarRestsAt[window] ?? .infinity, clock + pageFocusRests) }
+        if !unraisable.contains(window) { raised.removeAll { $0 == window }; raised.insert(window, at: 0) }
+        return true
+    }
     // How long an app takes to answer the raise (Accessibility's, at each activation: Messages 79 ms, 2026-11-17).
     var activateLag = 0.0
     func hiddenInFullScreen(_ n: Int) -> Bool {
@@ -219,6 +262,9 @@ final class FakeHostWorld: HostSystem {
     // The window server's bounds of a window Accessibility just set: its old frame this long after (none: at once).
     var frameLag = 0.0
     var lagging: [Int: (frame: CGRect, until: Double)] = [:]
+    // Margin's own window read as a split's half this long after a tile comes into its Space (the real Mac under load,
+    // 2026-11-21: longer than `tileWait`).
+    var marginBackAfter = 0.0
     // Apps whose window comes up already in full screen, in a Space of its own (owned by the app), the app hidden: they
     // restored it so (Maps, 2026-11-17: `windowIsFullScreen=1 appIsHidden=1`, the Dock adding its Space as it launched).
     var restoredFullScreen: Set<String> = []
@@ -289,6 +335,11 @@ final class FakeHostWorld: HostSystem {
     var toolbarOf: [Int: Int] = [:] // the window → its toolbar
     func toolbarHost(_ n: Int) -> Int? { toolbarOf.first { $0.value == n }?.key }
     static let toolbarHeight: CGFloat = 52
+    // Windows whose toolbar is out over their top (Safari keeps it down while the keys are in its address field: a new
+    // window's first blank page, until a page's tab is in): `toolbarHeight` over the window's top edge, not above it.
+    var toolbarOut: Set<Int> = []
+    var toolbarRestsAt: [Int: Double] = [:] // ...back up (resting) from then on (Safari's slide once the keys left its field)
+    func isToolbarOut(_ window: Int) -> Bool { toolbarOut.contains(window) && !(toolbarRestsAt[window].map { clock >= $0 } ?? false) }
     func makeToolbar(for window: Int) {
         guard let w = wins[window], toolbarOf[window] == nil, let bundle = apps[w.pid]?.bundle, toolbarAbove.contains(bundle) else { return }
         let n = nextWindow
@@ -358,6 +409,35 @@ final class FakeHostWorld: HostSystem {
     var entered: Set<Int> = [] // windows still in their own Space when macOS's change was over (not moved out by then)
     var membersEarly: Set<Int> = [] // windows macOS brought into their own Space before its switch (`stageMember`)
     var moveLosesFrame = 0 // the next N moves of a pending window into Margin's Space leave it at the display's whole size
+    // Each app's version (its bundle's), as the engine reads it for the routes and the minimums kept per version.
+    var appVersions: [String: String] = [:]
+    func appVersion(pid: pid_t) -> String? { apps[pid].flatMap { appVersions[$0.bundle] } }
+    // macOS's switches to another Space while the screen wasn't frozen (seen by the person), and how long each freeze held.
+    var switchesSeen = 0
+    var frozenSince: Double?
+    var frozenFor: [Double] = []
+    // A window that comes up already in full screen, in a new Space of its own its app owns, listed at once (the real
+    // Mac, 2026-11-21 13:26:01: Safari's new window while its key window was full screen, the Dock's `SpaceChange.added`,
+    // `fullscreened`, `tileWindowJoined`): its Space's reservation lays it out `stageFrame` later; macOS switches the display
+    // to that Space `switchAfter` from now, if it's still there. Until it's laid out it has its Space's whole area.
+    var bornWindows: Set<Int> = []
+    func bornFullScreen(_ n: Int, switchAfter: Double = 0.3) {
+        guard var win = wins[n] else { return }
+        let space = nextId, tile = nextId + 1
+        nextId += 2
+        tiles[space] = [tile]
+        owner[space] = win.pid
+        tileWindow[tile] = n
+        win.fullScreen = true
+        win.spaces = [space]
+        win.priv = nil
+        wins[n] = win
+        makeToolbar(for: n)
+        bornWindows.insert(n)
+        pending[n] = Pending(space: space, tile: tile, asked: clock + switchAfter - stageEnter, listed: true, deliveredAt: clock)
+        stagedSpaces.insert(space)
+        noteListing()
+    }
     func advance() {
         advanceHelpers()
         for n in pending.keys.sorted() {
@@ -376,7 +456,7 @@ final class FakeHostWorld: HostSystem {
                 framedSpaces.insert(p.space)
                 framedAt[n] = clock
             }
-            if let j = stageJump, p.listed, !p.jumped, since >= j { p.jumped = true; current = stageJumpTo ?? p.space; currentSince = clock }
+            if let j = stageJump, p.listed, !p.jumped, since >= j { p.jumped = true; current = stageJumpTo ?? p.space; currentSince = clock; if !frozen { switchesSeen += 1 } }
             if p.deliveredAt == nil, p.listed, since >= (stageMember ?? stageEnter) {
                 p.deliveredAt = clock
                 if tiles[p.space] != nil {
@@ -398,7 +478,7 @@ final class FakeHostWorld: HostSystem {
             if since >= stageEnter {
                 if tiles[p.space] != nil {
                     if !p.movedOut { entered.insert(n) }
-                    if jumpOnFullScreen { current = p.space; currentSince = clock }
+                    if jumpOnFullScreen { current = p.space; currentSince = clock; if !frozen { switchesSeen += 1 } }
                 }
                 pending[n] = nil
                 continue
@@ -640,10 +720,33 @@ final class FakeHostWorld: HostSystem {
         await onSetFrame?()
         return true
     }
+    // The window server's order of the windows raised (front to back): a window raised (its app activated with it) goes
+    // in front of every other one; a window never raised isn't listed. Read by the order checks (screen-card-tests.swift).
+    var raised: [Int] = []
+    // `byRaise`: the on-screen list (`autoOnScreen`) in that order, front to back (the windows never raised behind, by
+    // number). `unraisable`: windows whose raise doesn't take (their app's Accessibility doesn't list them yet: a window
+    // made a moment ago and moved between Spaces by the bridge): its app activated, nothing reordered.
+    var byRaise = false
+    var unraisable: Set<Int> = []
+    // `moveFronts`: a window moved into Margin's Space from a private Space comes in front of the others there and can
+    // be raised from then on (the real screen's: a parked window switched in), as `raised` has it.
+    var moveFronts = false
+    // ...and `moveRaisable` false: still unraisable after it (the real screen, 2026-11-21 14:30:00: a pane's new window,
+    // in front after its out and back, then neither its raise nor its copy brought it in front again).
+    var moveRaisable = true
+    // Whether window `a` is in front of window `b` by that order (nil: either never raised).
+    func inFront(_ a: Int, of b: Int) -> Bool? {
+        guard let ia = raised.firstIndex(of: a), let ib = raised.firstIndex(of: b) else { return nil }
+        return ia < ib
+    }
     func activate(pid: pid_t, window: Int) async -> Bool {
         calls.append("activate \(pid) \(window)")
         if activateLag > 0 { await sleep(activateLag) }
         activated.insert(pid)
+        if !unraisable.contains(window) {
+            raised.removeAll { $0 == window }
+            raised.insert(window, at: 0)
+        }
         if activateShowsDesktop, let w = wins[window], w.pid == pid, w.priv == nil, w.spaces == [Self.desktop], current != Self.desktop {
             current = Self.desktop
             currentSince = clock
@@ -764,12 +867,12 @@ final class FakeHostWorld: HostSystem {
     // doesn't take it); a member: the frame it had as it came in; Margin's window: the whole area.
     func bounds(window: Int) -> CGRect? {
         guard let w = wins[window] else { return nil }
-        if let h = toolbarHost(window) { return bounds(window: h).map { CGRect(x: $0.minX, y: $0.minY - Self.toolbarHeight, width: $0.width, height: Self.toolbarHeight) } }
+        if let h = toolbarHost(window) { return bounds(window: h).map { CGRect(x: $0.minX, y: $0.minY - (isToolbarOut(h) ? 0 : Self.toolbarHeight), width: $0.width, height: Self.toolbarHeight) } }
         if let lag = lagging[window], clock < lag.until { return lag.frame }
         if window == Self.marginWindow { return tilesOn ? tileBounds(Self.marginTile) : Self.display }
         if w.tiled, w.fullScreen, let t = tileOf(window) { return tileBounds(t) }
         if w.member, let f = w.memberFrame { return f }
-        if let p = pending[window] { return p.framed ? (reservation[p.space] ?? .zero).inset(Self.display) : (w.frame ?? Self.defaultFrame) }
+        if let p = pending[window] { return p.framed ? (reservation[p.space] ?? .zero).inset(Self.display) : bornWindows.contains(window) ? Self.display : (w.frame ?? Self.defaultFrame) }
         guard w.fullScreen, w.priv == nil, let space = w.spaces.first, tiles[space] != nil else { return w.frame ?? Self.defaultFrame }
         let sidebar = apps[w.pid]?.sidebarOpen == true || apps[w.pid].map { noLayout.contains($0.bundle) } == true
         return (sidebar ? .zero : (reservation[space] ?? .zero)).inset(Self.display)
@@ -815,7 +918,8 @@ final class FakeHostWorld: HostSystem {
         if blank { return [] }
         let dropped = Set(listDrops.filter { $0.value > 0 }.keys)
         for n in dropped { listDrops[n]? -= 1 }
-        return wins.keys.sorted().filter { n in shows(n) && !dropped.contains(n) }
+        let rank = { (n: Int) in self.byRaise ? self.raised.firstIndex(of: n) ?? Int.max : 0 }
+        return wins.keys.sorted { (rank($0), $0) < (rank($1), $1) }.filter { n in shows(n) && !dropped.contains(n) }
             .compactMap { n in bounds(window: n).map { ServerWindow(number: n, pid: wins[n]?.pid ?? 0, layer: n == Self.marginWindow ? 1 : 0, bounds: $0) } }
     }
     func windowOnScreen(_ number: Int) -> (onScreen: Bool, alpha: Double)? {
@@ -894,6 +998,9 @@ final class FakeHostWorld: HostSystem {
     func move(window: Int, to space: UInt64) -> Bool {
         calls.append("move \(window) \(space)")
         if let h = toolbarHost(window) { return move(window: h, to: space) }
+        if moveFronts, space == Self.marginSpace, let w = wins[window], w.priv != nil || w.spaces.contains(where: { privates.contains($0) }) {
+            if moveRaisable { unraisable.remove(window) }; raised.removeAll { $0 == window }; raised.insert(window, at: 0)
+        }
         guard var w = wins[window], !(fail.contains("moveIn") && space == Self.marginSpace), !(noMoveIn.contains(window) && space == Self.marginSpace) else { return false }
         let before = spaces(window: window) ?? []
         if let from = pending[window]?.space ?? w.priv ?? w.spaces.first(where: { $0 != space && tiles[$0] != nil }) { movedOut[window] = (from, clock) }
@@ -947,8 +1054,8 @@ final class FakeHostWorld: HostSystem {
     func destroyPrivateSpace(_ space: UInt64) -> Bool { noteDestroy(space); return privates.remove(space) != nil }
 
     // ---- the freeze, outside opens ----
-    func freeze() -> Bool { freezes += 1; frozen = true; return true }
-    func reveal() { onReveal?(); reveals += 1; frozen = false }
+    func freeze() -> Bool { freezes += 1; frozen = true; frozenSince = clock; return true }
+    func reveal() { onReveal?(); reveals += 1; frozen = false; if let s = frozenSince { frozenFor.append(clock - s) }; frozenSince = nil }
     func watchOpens(pid: pid_t, _ heard: @escaping (Int32) -> Void) -> Bool { listeners[pid] = heard; return true }
     func stopWatchingOpens(pid: pid_t) { listeners[pid] = nil }
     func openFromOutside(_ pid: pid_t) {
@@ -1048,9 +1155,15 @@ final class FakeHostWorld: HostSystem {
         if !limitIgnored { maxTileConfig[space] = count }
         return true
     }
+    // A tiled window that takes this long to reach its tile's new rect (its app laying itself out again: a Safari page),
+    // its old bounds until then; and when each tile's rect was set (on the clock).
+    var tileLag: [Int: Double] = [:]
+    var tileRectTimes: [(tile: UInt64, at: Double)] = []
     func setTileRect(_ tile: UInt64, _ rect: CGRect) -> Bool {
         calls.append("tileRect \(tile) \(Int(rect.minX)),\(Int(rect.minY)) \(Int(rect.width))×\(Int(rect.height))")
         guard tilesOn else { return false }
+        tileRectTimes.append((tile, clock))
+        if let n = tileWindow[tile], let lag = tileLag[n], let old = bounds(window: n) { lagging[n] = (old, clock + lag) }
         if !rectsIgnored { tileRects[tile] = rect }
         if let n = tileWindow[tile], let pid = wins[n]?.pid, let bundle = apps[pid]?.bundle, answersResize.contains(bundle),
            let space = tiles.first(where: { $0.value.contains(tile) })?.key {
@@ -1118,6 +1231,9 @@ final class FakeHostWorld: HostSystem {
             if moveLag > 0 { landing[n] = (before, clock + moveLag) }
         }
         relayFirstTwo(space)
+        if marginBackAfter > 0, space == Self.marginSpace {
+            lagging[Self.marginWindow] = (CGRect(x: 0, y: 0, width: ((Self.display.width - 12) / 2).rounded(.down), height: Self.display.height), clock + marginBackAfter)
+        }
         noteListing()
         return true
     }
@@ -1319,7 +1435,8 @@ final class HostFakeResolver: PrivateResolver, @unchecked Sendable {
     var version = "27.2.1"
     var build: String? = "26B131"
     var frameworks = Set(PrivateFramework.allCases)
-    var functions = Set(HostCalls.skyFunctions + HostCalls.launchFunctions + HostCalls.launchKeys + HostCalls.noteFunctions + HostCalls.tileFunctions)
+    var functions = Set(HostCalls.skyFunctions + HostCalls.launchFunctions + HostCalls.launchKeys + HostCalls.noteFunctions + HostCalls.tileFunctions
+                        + HostCalls.activeFunctions + HostCalls.processFunctions)
     var encodings = Dictionary(uniqueKeysWithValues: (HostCalls.selectors + HostCalls.tileSelectors + HostCalls.anchorSelectors).map { ($0.label, $0.encoding) })
     var hasClass = true
     var tileClasses = Set(HostCalls.tileClasses + [HostCalls.createTileClass])
@@ -3809,7 +3926,7 @@ func hostCallsTests() {
     let all = HostCalls.evaluate(HostFakeResolver(), base: base)
     check("host calls: all there: the host and outside opens on", all.host && all.opens && all.missing.isEmpty && all.mismatched.isEmpty, "\(all)")
     check("host calls: the counts", all.functionsFound == 12 && all.functionsTotal == 12 && all.selectorsFound == 2 && all.selectorsTotal == 2, "\(all)")
-    check("host calls: the launch line", all.line(build: "26B131") == "private calls (host) on 26B131: host ok (12/12 functions and keys, 2/2 selectors, encodings ok); outside opens ok; tiles ok; anchors ok", all.line(build: "26B131"))
+    check("host calls: the launch line", all.line(build: "26B131") == "private calls (host) on 26B131: host ok (12/12 functions and keys, 2/2 selectors, encodings ok); outside opens ok; tiles ok; anchors ok; panes active ok", all.line(build: "26B131"))
     // The anchors are a part of their own: the create-tile class missing or its encoding changed turns them off, never the tiles.
     do {
         let r = HostFakeResolver()

@@ -103,6 +103,24 @@ final class LateHostEngine: HostedEngine {
     func dragging(_ on: Bool) -> Bool { resolve()?.dragging(on) ?? false }
     func follow(_ placement: HostPlacement) { resolve()?.follow(placement) }
     var shownFillsPage: Bool { resolve()?.shownFillsPage ?? false }
+    func setLayout(main: HostTarget, mainRect: CGRect?, extras: [HostExtra], focused: HostID?, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64) async -> [HostID: HostResult] {
+        await engine.setLayout(main: main, mainRect: mainRect, extras: extras, focused: focused, in: placement, marginWindow: marginWindow, marginSpace: marginSpace)
+    }
+    func focus(_ id: HostID) async -> Bool { await resolve()?.focus(id) ?? false }
+    func focus(_ id: HostID, fronted: Bool) async -> Bool { await resolve()?.focus(id, fronted: fronted) ?? false }
+    func visibleHost(at point: CGPoint) -> HostID? { resolve()?.visibleHost(at: point) }
+    func follow(_ placement: HostPlacement, rects: [HostID: CGRect]) { resolve()?.follow(placement, rects: rects) }
+    func pageRectChanged(_ placement: HostPlacement, rects: [HostID: CGRect]) async -> Bool { await resolve()?.pageRectChanged(placement, rects: rects) ?? false }
+    func minimum(of id: HostID) -> CGSize? { resolve()?.minimum(of: id) }
+    // (Every one the protocol's extension answers for a stand-in, forwarded: missed, the real app took the stand-in's
+    // answer. 2026-11-21: `showsAlone` true with a split up (an item of main's profile only a tab switch), and
+    // `liveFollowers` one window for a divider's drag of two.)
+    func showsAlone(_ id: HostID) -> Bool { resolve()?.showsAlone(id) ?? true }
+    func liveFollowers() -> (follow: Int, visible: Int) { resolve()?.liveFollowers() ?? (0, 0) }
+    var knownAppMinimums: [String: CGSize] { resolve()?.knownAppMinimums ?? [:] }
+    func toolbarsRest(_ ids: [HostID]) async -> String? { await resolve()?.toolbarsRest(ids) }
+    func focusPages(_ ids: [HostID]) async -> String? { await resolve()?.focusPages(ids) }
+    func slide(_ id: HostID, side: PaneSide) async -> Bool { await resolve()?.slide(id, side: side) ?? false }
 }
 
 extension Shell {
@@ -110,17 +128,23 @@ extension Shell {
     // session is made with an engine already there, or when the engine starts after the session.
     func wire(_ host: HostEngine, to session: HostedSession) {
         host.requestSafariWindow = { [weak session] profile in await session?.requestSafariWindow(profile) }
+        host.requestRoleWindow = { [weak session] profile, role in await session?.requestSafariWindow(profile, role: role) }
+        host.hostedWindows = { [weak session] list in session?.hostedWindows(list) }
         host.closeSafariWindow = { [weak session] profile, id in await session?.closeSafariWindow(profile, id) ?? false }
         host.safariFullScreen = { [weak session] profile, id, on in await session?.safariFullScreen(profile, id, on) ?? false }
+        host.safariFocus = { [weak session] profile, id in await session?.safariFocus(profile, id) ?? false }
         host.safariLinked = { [weak session] profile in await session?.safariLinked(profile) ?? false }
         host.loading = { [weak session] id in session?.loading(id) }
         host.hostedWindow = { [weak session] number in session?.hosted(number) }
         host.onMinimum = { [weak session] width in session?.minimum(width) }
+        host.onAppMinimums = { [weak session] in session?.appMinimumsChanged() }
         host.cover = { [weak session] number in session?.cover(number) }
         host.others = { [weak session] number in session?.others(number) }
         host.front = { [weak session] read in session?.front(read) }
         host.onRoute = { [weak session] id, route in session?.routeChanged(id, route) }
         host.onAsking = { [weak session] id in session?.appAsking(id) }
+        // (All panes active: the apps kept active, for the pane click tap.)
+        host.onKeptActive = { [weak self] pids in self?.marginWindows?.keptActiveChanged(pids) }
         let before = host.onEvent
         // (A notification of a hosted app's: the shell's read now, then fast for a while: the hosting core's schedule.)
         host.onWake = { [weak self] in self?.soon() }
@@ -210,6 +234,7 @@ extension Shell {
             if let id { return windows.controllers.first { $0.id == id } }
             return windows.front
         }
+        session.windowIds = { [weak windows] in windows?.controllers.map(\.id) ?? [] }
         windows.onPageRect = { [weak session] controller, _ in session?.pageRectChanged(controller) }
         windows.onReady = { [weak session] controller in
             guard let session, let space = session.firstSpace else { return }
@@ -220,9 +245,20 @@ extension Shell {
         windows.onLeftFullScreen = { [weak session] controller in session?.leftFullScreen(controller) }
         windows.onEnteredFullScreen = { [weak session] controller in session?.enteredFullScreen(controller) }
         windows.onPagePress = { [weak session] controller, at in session?.pagePressed(controller, at: at) }
+        windows.onPaneClick = { [weak session] controller, result in session?.paneClicked(controller, result) }
+        windows.onPaneSlide = { [weak session] controller, item, side in session?.slidePane(item, side: side, in: controller) }
+        // All panes active (PanesActive.swift): the split and the front app to the engine, its front process to the tap.
+        windows.onPanesActive = { [weak self] scene in self?.host?.panesShown(scene) }
+        windows.onFrontApp = { [weak self] pid in self?.host?.frontChanged(pid) }
+        windows.paneFronting = { [weak self] in self?.host?.paneFronting }
+        windows.paneDelivery = { [weak self] in self?.host?.paneDelivery }
+        windows.onCaughtPress = { [weak session] controller, at in session?.caughtPress(controller, at: at) }
+        windows.onCardRect = { [weak session] controller in session?.cardRectChanged(controller) }
+        windows.onPanes = { [weak session] controller in session?.pageRectChanged(controller) }
         windows.onFieldClosed = { [weak session] controller in session?.fieldClosed(controller) }
         windows.onOpen = { [weak session] controller in session?.resumeLast(controller) }
-        windows.onSidebarResizing = { [weak session] controller, on in session?.sidebarResizing(controller, on) }
+        windows.onSidebarResizing = { [weak session] controller, on, divider in session?.sidebarResizing(controller, on, divider: divider) }
+        windows.onCounts = { [weak self] _ in self?.updateHostedKeys() }
         windows.onNarrowed = { [weak self] _ in self?.host?.marginNarrowed() }
         windows.apps = { [weak self] in self?.appsJSON ?? "null" }
         windows.holdsMenu = { [weak session] in session?.startupShown == true }
@@ -247,10 +283,15 @@ extension Shell {
         let active = ShortcutSet.hostedActive(frontPid: apps.frontPid, ownPid: own, hostedPids: hostedPids, marginWindowOpen: !windows.isEmpty, marginOnCurrentSpace: here)
         if active {
             let said = links.keys.sorted().lazy.compactMap { self.links[$0] }.first { $0.connection.isUp && $0.keys != nil }?.keys
-            var bindings = ShortcutSet.bindings(from: said ?? [:])
-            // (A hosted app in front: the sidebar stays docked while hosting, so its key would only take the app's typing.)
-            if apps.frontPid != own { bindings = bindings.filter { $0.value != .toggleSidebar } }
-            shortcuts.rebind(bindings)
+            // (A hosted app in front: the sidebar key stays with it, and ⌘L, ⌘D, ⌘1–9… unless it's a browser (Safari's
+            // window, Chrome's or Edge's); a numbered key with no space or row behind it in the window the keys go to
+            // (runHosted's) isn't held, so the app in front gets the press.)
+            let front = host?.hosts.values.first { $0.pid == apps.frontPid }
+            let browser = front.map { ShortcutSet.hostIsBrowser(target: $0.target, safariWindow: $0.safariWindow, bundles: Set(options.bundleIds.values)) } ?? false
+            let target = hosted?.hostingWindow.flatMap { id in windows.first { $0.id == id } } ?? marginWindows?.front
+            let counts = target?.rowCounts
+            shortcuts.rebind(ShortcutSet.held(ShortcutSet.bindings(from: said ?? [:]), marginInFront: apps.frontPid == own, browser: browser,
+                                              spaces: counts?.spaces, items: counts?.items))
         }
         // (Which app took the front is said by its bundle id: 2026-11-17's log let go and held the keys again and again
         // and couldn't say which app came between.)
@@ -294,6 +335,12 @@ extension Shell {
             // (Tab keys: the picks they make in that window are a cycle's, an app not running yet held a moment first.)
             if command == .nextTab || command == .prevTab, let id = w?.id { hosted?.cycled(windowId: id) }
             w?.push(#"{"type":"command","name":"\#(command.rawValue)","repeat":\#(isRepeat)}"#)
+        case .copyUrl, .focusAddress, .togglePin, .reopenArchived, .littleArc, .addSplit:
+            w?.push(#"{"type":"command","name":"\#(command.rawValue)"}"#)
+        case .space1, .space2, .space3, .space4, .space5, .space6, .space7, .space8, .space9:
+            if let index = command.spaceNumber { w?.push(#"{"type":"command","name":"space-index","index":\#(index)}"#) }
+        case .item1, .item2, .item3, .item4, .item5, .item6, .item7, .item8, .item9:
+            if let index = command.itemNumber { w?.push(#"{"type":"command","name":"item-index","index":\#(index)}"#) }
         }
         w.map { hostedKeysRun.append("\(command.rawValue) → \($0.id)") }
         if hostedKeysRun.count > 50 { hostedKeysRun.removeFirst(hostedKeysRun.count - 50) }
@@ -312,6 +359,10 @@ extension Shell {
             let target = await host.keyWindow(pid: pid)
             var done: String
             switch (key, target) {
+            case (.closeTab, .hosted(let id)) where id.safariRole == .card:
+                // (The preview card has the keys: the card closes, never the item under it, HostedPeek.swift.)
+                let w = self.hosted?.hostingWindow ?? self.marginWindows?.front?.id
+                done = self.hosted?.closeCardForKey(windowId: w) == true ? "the card closed in Margin's window \(w ?? 0)" : "the card's window, no card open: nothing"
             case (.closeTab, .hosted(let id)):
                 let w = self.hosted?.hostingWindow.flatMap { n in self.marginWindows?.controllers.first { $0.id == n } } ?? self.marginWindows?.front
                 if let w { w.run(.closeTab); done = "Close Tab in Margin's window \(w.id) (\(id))" } else { done = "no Margin window: nothing" }

@@ -70,6 +70,7 @@
 import { browserName, linksApp, capabilities } from '../shared/capabilities.ts';
 import { APP_LINK_KEY } from '../shared/app-link.ts';
 import { navigationFor } from '../shared/shortcuts.ts';
+import { appKeyBindings } from '../shared/app-keys.ts';
 import { DATA_FORMAT, isName } from '../shared/data-merge.ts';
 import { switchLog } from './switch-log.ts';
 
@@ -132,11 +133,16 @@ const FAST_CLOSE_MS = 100; // a kept link closed this soon: refused (nothing lis
 // The stored values the app's UI draws from (as pages read them, before
 // shared/stored.ts fromStorage). Not the theme package (sent as `theme`), the
 // data set's times, this link's own key, page zoom or user themes.
-export const STATE_KEYS = ['openTabs', 'spaces', 'pins', 'folders', 'archive', 'settings', 'favicons', 'owner'];
+export const STATE_KEYS = ['openTabs', 'spaces', 'pins', 'favorites', 'airTraffic', 'splits', 'folders', 'archive', 'settings', 'favicons', 'owner'];
 // What the app's UI may ask (ui/actions.ts, shared/search.ts rows,
 // app/platforms/macos/shell/Shell.swift's keys), and nothing else.
 export const APP_REQUESTS = new Set([
   'activateTab', 'closeTab', 'newTab', 'pinTab', 'unpin', 'moveTabToSpace', 'moveTab', 'openPin', 'movePin',
+  'resetPin', 'renamePin', 'renameTab', 'nestFolder',
+  'addFavorite', 'removeFavorite', 'openFavorite', 'resetFavorite', 'renameFavorite', 'moveFavorite',
+  'addAirTrafficRule', 'removeAirTrafficRule', 'toggleAirTrafficRule', 'routeUrl',
+  'createSplit', 'addToSplit', 'openSplit', 'breakOutSplit', 'removeFromSplit', 'closeSplitPane', 'swapSplit', 'resizeSplit', 'toggleSplitAxis',
+  'duplicateTab', 'muteTab', 'unloadTab', 'restoreLastArchive',
   'setFolderOpen', 'createFolder', 'renameFolder', 'deleteFolder', 'moveFolder', 'setSpace', 'createSpace',
   'renameSpace', 'setSpaceTheme', 'deleteSpace', 'clearToday', 'goBack', 'goForward', 'reload', 'restoreArchive', 'openLauncher',
   'newWindow', 'search', 'toggleFullscreen', 'updateSettings', 'updateThemeSettings', 'navigate', 'sidebarScroll',
@@ -145,15 +151,19 @@ export const APP_REQUESTS = new Set([
   'noticeAction',
   // Margin.app's host (app/platforms/macos/shell/HostedSession.swift): a window it made closed, a window's state
   // without taking focus.
-  'closeWindow', 'setWindowState',
+  'closeWindow', 'setWindowState', 'hostFocusWindow',
   // Margin.app's index of the person's imported themes (app/platforms/macos/shell/ShellThemes.swift).
   'userThemes',
-  // Margin.app hosting this profile's window in its page area (background/hosted.ts): an item's tab shown, closed.
-  'hostShow', 'hostClose', 'hostPicture',
+  // Margin.app hosting this profile's window in its page area (background/hosted.ts): an item's tab shown, closed, muted, navigated, promoted from Peek.
+  'hostShow', 'hostClose', 'hostPicture', 'hostMute', 'hostNavigate', 'hostPromotePeek',
+  // The preview card (background/peek.ts, hosted.ts): the app's answer to a page's click, the card's page closed.
+  'peekAnswer', 'hostCardClose',
+  // The mini player's buttons for an item's page (M2.4, background/hosted.ts media).
+  'hostMedia',
 ]);
 // The requests that call windows.update or windows.remove for one window: each carries `notAfter`
 // from the app, and only one runs per window at a time (background/handoff.ts).
-export const WINDOW_CALLS = new Set(['setWindowState', 'closeWindow']);
+export const WINDOW_CALLS = new Set(['setWindowState', 'closeWindow', 'hostFocusWindow']);
 
 // A windows call that mustn't run, and its answer: past its `notAfter` (milliseconds since 1970, the
 // app's clock and this copy's being the same), `{ refused: 'late', pastMs }`; another windows call for
@@ -192,6 +202,8 @@ export function keyBindings(settings: any, commandKeys = {}) {
   }
   add('palette', 'Meta+KeyT');
   add('toggle-sidebar', settings?.sidebarShortcut ?? 'Alt+KeyS');
+  // Margin.app's own keys (Settings' appKeys): every one named, [] when off, so the app never falls back to its default.
+  Object.assign(out, appKeyBindings(settings));
   return out;
 }
 

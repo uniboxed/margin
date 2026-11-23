@@ -86,6 +86,36 @@ final class FakeHostedWindow: HostedWindow {
         return HostPlacement(page: page, area: FakeHostWorld.display)
     }
     func push(_ json: String) { pushed.append(json) }
+    var cardRect: CGRect? // where its page draws the preview card page (the theme's <m-preview-page>), nil: none
+    // A split as its page lays it out (docs/PEEK-SPLIT.md §4): `splitShown` says which (its id, items in order, stacked or
+    // not, ratios; a test sets it as the page would for the item in front), laid out in the page area with an 8 pt gap.
+    var splitShown: (() -> (id: String, items: [String], vertical: Bool, ratios: [CGFloat])?)?
+    var stackedGap: CGFloat = 8 // (stacked: the real page's band above a Safari pane is 52 pt, `SAFARI_TOOLBAR`)
+    var paneLayout: (split: String, panes: [PagePane])? {
+        guard hosting, let s = splitShown?(), let page = hostedPlacement?.page, s.items.count >= 2 else { return nil }
+        let gap: CGFloat = s.vertical ? stackedGap : 8, n = CGFloat(s.items.count)
+        let room = (s.vertical ? page.height : page.width) - gap * (n - 1)
+        let sum = s.ratios.count == s.items.count ? s.ratios.reduce(0, +) : n
+        var at = s.vertical ? page.minY : page.minX
+        let panes = s.items.enumerated().map { i, item -> PagePane in
+            let size = (room * (s.ratios.count == s.items.count ? s.ratios[i] : 1) / sum).rounded()
+            defer { at += size + gap }
+            return PagePane(item: item, rect: s.vertical ? CGRect(x: page.minX, y: at, width: page.width, height: size) : CGRect(x: at, y: page.minY, width: size, height: page.height))
+        }
+        return (s.id, paneRectsAs?(panes) ?? panes)
+    }
+    var paneRectsAs: (([PagePane]) -> [PagePane])? // (the page's rects changed, as a page that laid a pane past its area)
+    var paneLoadingsSaid: [(item: String?, label: String?, app: String?)] = [] // each setPaneLoading, in order
+    var onPaneLoading: (() -> Void)? // (as each is said)
+    func setPaneLoading(_ item: String?, label: String?, app: String?) { paneLoadingsSaid.append((item, label, app)); onPaneLoading?() }
+    var paneMinimumsSaid: [[String: CGSize]] = [] // each setPaneMinimums, in order
+    func setPaneMinimums(_ minimums: [String: CGSize]) { paneMinimumsSaid.append(minimums) }
+    var appMinimums: [String: CGSize] = [:] // setAppMinimums: every app's known minimum, as the page names them
+    func setAppMinimums(_ minimums: [String: CGSize]) { appMinimums = minimums }
+    var visibleSaid: [[HostShownWindow]] = [] // each setVisibleHosts, in order
+    func setVisibleHosts(_ list: [HostShownWindow]) { visibleSaid.append(list) }
+    var paneCutsSaid: [String] = [] // each setPaneCuts, in order (said only when it changes)
+    func setPaneCuts(_ json: String) { if paneCutsSaid.last != json { paneCutsSaid.append(json) } }
     var marginPage: String? // Margin's own page in its page area (setMarginPage)
     var marginPages: [String?] = [] // each setMarginPage, in order
     func setMarginPage(_ page: String?) { guard page != marginPage else { return }; marginPage = page; marginPages.append(page) }
@@ -97,6 +127,7 @@ final class FakeHostedLinks: HostedLinks {
     var nextWindow = 90, nextTab = 500
     var onNewWindow: ((Int, JSONObject) -> Void)? // the copy's id for the window it makes, and what it was asked
     var onSetWindowState: ((Int, Bool) -> Void)? // the copy's id, full screen or not
+    var onFocusWindow: ((Int) -> Void)? // the copy's id of a window brought in front by Safari (hostFocusWindow)
     var onCloseWindow: ((Int) -> Void)?
     var onHostShow: (() -> Void)? // (as the copy is asked for an item's tab)
     var refuse: Set<String> = []
@@ -147,6 +178,10 @@ final class FakeHostedLinks: HostedLinks {
         case "closeWindow":
             if let id = int(payload["windowId"]) { onCloseWindow?(id) }
             return ([:], nil)
+        case "hostFocusWindow":
+            guard let id = int(payload["windowId"]) else { return (nil, "no window") }
+            onFocusWindow?(id)
+            return (["windowId": id, "focused": true], nil)
         case "hostPicture":
             if pictureDelay > 0 { try? await Task.sleep(for: .seconds(pictureDelay)) }
             return (["data": picture ?? NSNull()], nil)
@@ -154,6 +189,8 @@ final class FakeHostedLinks: HostedLinks {
             onHostShow?()
             nextTab += 1
             return (["tabId": nextTab - 1, "created": true], nil)
+        case "hostPromotePeek":
+            return (["ok": true, "tabId": nextTab - 1, "moved": true], nil)
         default:
             return ([:], nil)
         }
@@ -789,9 +826,105 @@ func hostedTests() {
     check("hosted: a search typed in the palette: a web item at the engine's address", searched?["ok"] as? Bool == true
           && library.items(space: home).contains { ($0.value["url"] as? String)?.hasPrefix("https://www.google.com/search?") == true && ($0.value["url"] as? String)?.contains("q=margin%20app") == true })
     run {}
+
+    // ---- an open item's row: what binds it (its pin or favorite, its own name) and its sound, as the UI takes them ----
+    _ = library.perform("renameTab", ["tabId": aItem, "title": "Renamed A"])
+    let faved = source.perform("addFavorite", ["windowId": 1, "tabId": session.number(ofItem: aItem), "scope": "profile:evil", "favoritesScope": "profile"])
+    let favId = faved?["result"] as? String ?? ""
+    check("hosted: addFavorite from the page: the scope the person's settings say (none here: global), never one the page sent",
+          !favId.isEmpty && (library.dataSet.liveValues("favorites")[favId] as? JSONObject)?["scope"] as? String == "global", "\(String(describing: faved))")
+    func liveTab(_ item: String) -> JSONObject? {
+        ((session.live(library.snapshot())["openTabs"] as? JSONObject)?["tabs"] as? JSONObject ?? [:]).values.compactMap { $0 as? JSONObject }.first { $0["mid"] as? String == item }
+    }
+    let aRow = liveTab(aItem)
+    check("hosted: an open item's tab carries its own name and the favorite it's the tab of", aRow?["customTitle"] as? String == "Renamed A" && aRow?["favoriteId"] as? String == favId
+          && aRow?["audible"] == nil && aRow?["muted"] == nil, "\(String(describing: aRow))")
+    let aSafariTab = session.safariTabs[aItem] ?? -1
+    var heardChange = 0
+    let beforeChange = session.onChange
+    session.onChange = { heardChange += 1; beforeChange?() }
+    session.copyTabs(profile: "s-default", tabs: [String(aSafariTab): ["id": aSafariTab, "audible": true, "muted": true]])
+    let playing = liveTab(aItem)
+    check("hosted: its copy says its tab plays, muted: the row says so (the mini player, Unmute), the windows drawn again",
+          playing?["audible"] as? Bool == true && playing?["muted"] as? Bool == true && heardChange == 1, "\(String(describing: playing)) \(heardChange)")
+    session.copyTabs(profile: "s-default", tabs: [String(aSafariTab): ["id": aSafariTab, "audible": true, "muted": true]])
+    session.copyTabs(profile: "s-work", tabs: [String(aSafariTab): ["id": aSafariTab]])
+    check("hosted: …the same again, or another profile's tab of that number: nothing drawn again", heardChange == 1 && liveTab(aItem)?["audible"] as? Bool == true)
+    session.copyTabs(profile: "s-default", tabs: [String(aSafariTab): ["id": aSafariTab]])
+    check("hosted: …stopped: no sound marks", liveTab(aItem)?["audible"] == nil && liveTab(aItem)?["muted"] == nil && heardChange == 2)
+    session.onChange = beforeChange
+    let pinned = HostedSession.liveTab(["title": "T", "url": "https://p.example/", "pinnedBy": "p-1", "favoriteId": "", "customTitle": "Mine"], number: 7, item: "t-x", windowId: 1, index: 0, active: false, audible: false, muted: false)
+    check("hosted: a pin's open item: its pinnedBy carried (an empty binding not)", pinned["pinnedBy"] as? String == "p-1" && pinned["customTitle"] as? String == "Mine"
+          && pinned["favoriteId"] == nil && pinned["audible"] == nil && pinned["mid"] as? String == "t-x" && int(pinned["id"]) == 7)
+    // Pinned from its row (the UI's Pin Tab, by its number): the item shown stays, open, the pin's tab (sticky pins).
+    if let front = session.shown[1] {
+        let marked = links.asked.count
+        let pinnedNow = source.perform("pinTab", ["windowId": 1, "tabId": session.number(ofItem: front)])
+        run {}
+        let pinId = pinnedNow?["result"] as? String ?? ""
+        let row = liveTab(front)
+        check("hosted: an item pinned: it stays shown and open, its tab the new pin's and in front, nothing asked of the copy",
+              !pinId.isEmpty && session.shown[1] == front && session.open[front] != nil && library.items().contains { $0.id == front }
+              && row?["pinnedBy"] as? String == pinId && row?["active"] as? Bool == true && links.types(since: marked).isEmpty,
+              "\(String(describing: pinnedNow)) \(String(describing: row)) \(links.types(since: marked))")
+        _ = source.perform("unpin", ["windowId": 1, "pinId": pinId])
+        run {}
+        check("hosted: …unpinned: still shown and open, Today's again (no pin binding)",
+              session.shown[1] == front && session.open[front] != nil && liveTab(front)?["pinnedBy"] == nil, "\(String(describing: liveTab(front)))")
+    } else { check("hosted: an item shown to pin", false) }
+
     let unsupported = source.perform("renameProfile", ["windowId": 1])
     check("hosted: a request the library doesn't take: refused, said to the page", unsupported?["ok"] as? Bool == false)
     check("hosted: the UI's own bookkeeping requests: answered quietly", source.perform("sidebarScroll", ["windowId": 1])?["ok"] as? Bool == true)
+
+    // ---- the copy's pushes for its UI (UIPush.swift): the mini player's `media`, by the UI's numbers ----
+    session.windowIds = { [1] }
+    let png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+    func lastPush() -> JSONObject? { window.pushed.last.flatMap { (try? JSONSerialization.jsonObject(with: Data($0.utf8))) as? JSONObject } }
+    var pushes = window.pushed.count
+    let bTab = session.safariTabs[bItem] ?? -1 // (its tab as the last hostShow answered)
+    session.copyPush(profile: "s-default", windowId: 90, msg: ["type": "media", "evil": "<script>", "sources": [
+        ["tabId": 500, "itemId": aItem, "url": "https://a.example/", "title": String(repeating: "S", count: 300), "subtitle": "Band", "artwork": png, "playing": true, "muted": false,
+         "canPrev": true, "canNext": "yes", "updatedAt": 1700000000000.0, "pausedAt": NSNull(), "extra": ["x": 1]],
+        ["tabId": 999, "itemId": "t-not-ours", "url": "https://elsewhere.example/", "title": "Not Margin's", "playing": true],
+        ["tabId": bTab, "title": "By its tab", "artwork": "https://img.example/a.jpg", "playing": false, "pausedAt": 1700000000000.0],
+        "not an object",
+    ]])
+    let media = lastPush() ?? [:]
+    let sources = media["sources"] as? [JSONObject] ?? []
+    check("hosted: a copy's `media` push for the window Margin hosts: to Margin's window, its tabs by the UI's numbers (one not Margin's left out), only its fields, each cut and checked",
+          window.pushed.count == pushes + 1 && media["type"] as? String == "media" && media["evil"] == nil && sources.count == 2
+          && int(sources[0]["tabId"]) == aNumber && sources[0]["itemId"] == nil && sources[0]["url"] == nil && sources[0]["extra"] == nil
+          && (sources[0]["title"] as? String)?.count == 140 && sources[0]["artwork"] as? String == png && sources[0]["canPrev"] as? Bool == true && sources[0]["canNext"] as? Bool == false
+          && sources[0]["pausedAt"] is NSNull && int(sources[1]["tabId"]) == bNumber && sources[1]["artwork"] is NSNull && num(sources[1]["pausedAt"]) == 1700000000000,
+          "\(window.pushed.last ?? "none")")
+    pushes = window.pushed.count
+    session.copyPush(profile: "s-default", windowId: 3, msg: ["type": "media", "sources": [["tabId": 500, "itemId": aItem, "playing": true]]])
+    session.copyPush(profile: "s-work", windowId: 90, msg: ["type": "media", "sources": [["tabId": 500, "itemId": aItem, "playing": true]]])
+    session.copyPush(profile: "s-default", windowId: 90, msg: ["type": "peekOpen", "url": "https://x.example/"])
+    session.copyPush(profile: "s-default", windowId: 90, msg: ["type": "state", "state": [:]])
+    check("hosted: the person's own window's push, another profile's, and a type not passed on: nothing to Margin's window", window.pushed.count == pushes, "\(window.pushed.suffix(2))")
+    session.copyPush(profile: "s-default", windowId: 90, msg: ["type": "media", "sources": [["tabId": 777, "url": "https://b.example/#t=3", "playing": true]]])
+    check("hosted: a tab the session doesn't know (a copy started again, Safari's ids changed): its item found by its address; that tab kept as the item's",
+          int((lastPush()?["sources"] as? [JSONObject])?.first?["tabId"]) == bNumber && session.safariTabs[bItem] == 777, "\(window.pushed.last ?? "")")
+    session.copyPush(profile: "s-default", windowId: 90, msg: ["type": "toast", "text": String(repeating: "t", count: 500), "html": "<b>"])
+    check("hosted: a `toast` push: its words only, cut to 140", lastPush()?["type"] as? String == "toast" && (lastPush()?["text"] as? String)?.count == 140 && lastPush()?["html"] == nil)
+    // (Back as before: the item's tab as hostShow said.)
+    session.copyPush(profile: "s-default", windowId: 90, msg: ["type": "media", "sources": [["tabId": bTab, "itemId": bItem, "playing": true]]])
+    // The mini player's buttons: the library's mediaControl, the copy's hostMedia for the item, with its tab.
+    let mediaMark = links.asked.count
+    run { _ = source.perform("mediaControl", ["windowId": 1, "tabId": aNumber, "command": "toggle", "source": "tab"]) }
+    let mediaAsk = links.asked.dropFirst(mediaMark).first
+    check("hosted: the mini player's Play/Pause (the UI's number for the item): the copy's hostMedia for that item, its tab named", links.types(since: mediaMark) == ["hostMedia"]
+          && mediaAsk?.profile == "s-default" && mediaAsk?.payload["itemId"] as? String == aItem && mediaAsk?.payload["command"] as? String == "toggle" && int(mediaAsk?.payload["tabId"]) == 500,
+          "\(links.types(since: mediaMark)) \(String(describing: mediaAsk?.payload))")
+    run { _ = source.perform("mediaControl", ["windowId": 1, "tabId": bNumber, "command": "next"]) }
+    check("hosted: …and Next", links.asked.last?.type == "hostMedia" && links.asked.last?.payload["command"] as? String == "next" && int(links.asked.last?.payload["tabId"]) == bTab)
+    let refused = source.perform("mediaControl", ["windowId": 1, "tabId": aNumber, "command": "eval"])
+    run {}
+    check("hosted: …a command that isn't one: refused, nothing asked", refused?["ok"] as? Bool == false && links.types(since: mediaMark).count == 2)
+    check("hosted: UIPush: an empty standing push for a window no longer given it; none for an event's",
+          UIPush.empty("media").map { ($0["sources"] as? [Any])?.isEmpty == true && $0["type"] as? String == "media" } == true && UIPush.empty("toast") == nil)
 
     // ---- the app's item again: an instant switch ----
     let setStates = links.types().filter { $0 == "setWindowState" }.count

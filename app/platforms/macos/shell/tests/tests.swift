@@ -90,7 +90,18 @@ final class FakeRegistrar: HotKeyRegistrar {
     hostReconcilerTests() // host-reconciler-tests.swift: the hosting core's reconciler, a table row per case
     hostBehaviourTests() // host-behaviour-tests.swift: every behaviour class hosted by the engine, the desired state reached
     liveResizeTests() // live-resize-tests.swift: the hosted windows' tiles in Margin's Space, sized live (docs/HOSTING-CORE.md)
+    multiHostTests() // multi-host-tests.swift: several visible hosts per Margin window, each at its rect (docs/PEEK-SPLIT.md §1)
+    multiHostSessionTests() // multi-host-session-tests.swift: a Margin window's layout of library items, each web item's window in its role
+    peekSessionTests() // peek-session-tests.swift: the preview card and Quick Tab, the session's side (docs/PEEK-SPLIT.md §2, §3)
+    peekSplitTests() // peek-split-tests.swift: the preview card over a split, both kept (docs/PEEK-SPLIT.md §2, §4)
+    splitTests() // split-tests.swift: a split shown whole by the session, its panes at the page's rects, ⌘W, a drag, idle pane windows (docs/PEEK-SPLIT.md §4)
+    screenCardTests() // screen-card-tests.swift: the real screen's finds of 2026-11-21 with the preview card over a split (the window server's order)
+    splitRealUseTests() // split-real-use-tests.swift: split view as Tirth used it on the real screen, 2026-11-21 (a pane born in full screen, its room, its failure, its raise, a drag of two)
+    paneFrontingTests() // pane-fronting-tests.swift: a split pane's first open as the real screen had it, 2026-11-21 14:30 (fronted once, revealed once its toolbar rests)
+    screenEngineTests() // screen-engine-tests.swift: the real screen's finds of 2026-11-21 (a layout held through a lone placing, a window out of full screen by itself, Remove from Split View)
     loopGuardTests() // loop-guard-tests.swift: the hosting core's loop guard against Weather's loop (docs/ARCHITECTURE-PLAN.md)
+    paneClickTests() // pane-click-tests.swift: the first click in another pane goes through (the tap's decision, its hold, the engine's bookkeeping)
+    panesActiveTests() // panes-active-tests.swift: every pane of a split draws active (the records, their launch check, the keeper, the engine's exits)
     print(failures == 0 ? "all \(passed) checks passed" : "\(failures) of \(passed + failures) checks failed", String(format: "(%.2f s)", Date().timeIntervalSince(started)))
     exit(failures == 0 ? 0 : 1)
   }
@@ -351,7 +362,8 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("a key not known: not one", Combo.parse("Meta+Banana") == nil)
     check("a modifier twice: not one", Combo.parse("Meta+Meta+KeyT") == nil)
     check("its name", Combo.parse("Ctrl+Meta+ArrowRight")?.description == "⌃⌘ArrowRight")
-    check("seven keys by default (⌘N a new Margin window, docs/BROWSER-WINDOWS.md §5)", ShortcutSet.bindings.count == 7 && ShortcutSet.bindings[Combo.parse("Meta+KeyN")!] == .newWindow && Set(ShortcutSet.bindings.values) == Set(AppCommand.allCases))
+    let defaultCount = AppCommand.allCases.count
+    check("default keys cover every command (⌘N a new Margin window, docs/BROWSER-WINDOWS.md §5)", ShortcutSet.bindings.count == defaultCount && ShortcutSet.bindings[Combo.parse("Meta+KeyN")!] == .newWindow && Set(ShortcutSet.bindings.values) == Set(AppCommand.allCases))
     let fromCopy = ShortcutSet.bindings(from: ["next-tab": ["Alt+Meta+ArrowDown", "Ctrl+Meta+ArrowDown"], "toggle-sidebar": ["Alt+KeyK"], "palette": [], "prev-space": ["Banana"]])
     check("the copy's keys: both of a command's combinations", fromCopy[Combo.parse("Alt+Meta+ArrowDown")!] == .nextTab && fromCopy[Combo.parse("Ctrl+Meta+ArrowDown")!] == .nextTab)
     check("the copy's keys: the sidebar's own", fromCopy[Combo.parse("Alt+KeyK")!] == .toggleSidebar && fromCopy[Combo.parse("Alt+KeyS")!] == nil)
@@ -359,6 +371,30 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("the copy's keys: a command not named keeps its default", fromCopy[Combo.parse("Alt+Meta+ArrowUp")!] == .prevTab)
     check("the copy's keys: a combination that isn't one: none for it", !fromCopy.values.contains(.prevSpace))
     check("the copy's keys: one combination, one command", ShortcutSet.bindings(from: ["next-tab": ["Meta+KeyT"]])[Combo.parse("Meta+KeyT")!] == .nextTab)
+    let ownKeys = ShortcutSet.bindings(from: ["toggle-pin": [], "item-1": ["Alt+Meta+Digit1"], "space-2": []])
+    check("the copy's keys: one of Margin.app's own turned off ([]) has none", !ownKeys.values.contains(.togglePin) && ownKeys[Combo.parse("Meta+KeyD")!] == nil && !ownKeys.values.contains(.space2))
+    check("the copy's keys: a numbered one moved", ownKeys[Combo.parse("Alt+Meta+Digit1")!] == .item1 && ownKeys[Combo.parse("Meta+Digit1")!] == nil && ownKeys[Combo.parse("Meta+Digit2")!] == .item2)
+    // Which keys are held: a hosted native app keeps ⌘L, ⌘D, ⌘1–9 and its sidebar key; a browser (Safari's window,
+    // Chrome's or Edge's, any channel) gives Margin the browser ones; a number with nothing behind it isn't held.
+    let browsers: Set<String> = ["com.apple.Safari", "com.google.Chrome", "com.microsoft.edgemac"]
+    check("a browser host: Safari's window, Chrome, Chrome Beta, Edge", ShortcutSet.hostIsBrowser(target: .safariWindow(nil), safariWindow: nil, bundles: browsers)
+          && ShortcutSet.hostIsBrowser(target: .app("com.google.Chrome"), safariWindow: nil, bundles: browsers)
+          && ShortcutSet.hostIsBrowser(target: .app("com.google.Chrome.beta"), safariWindow: nil, bundles: browsers)
+          && ShortcutSet.hostIsBrowser(target: .app("com.microsoft.edgemac"), safariWindow: nil, bundles: browsers))
+    check("not a browser host: Notes, Terminal", !ShortcutSet.hostIsBrowser(target: .app("com.apple.Notes"), safariWindow: nil, bundles: browsers)
+          && !ShortcutSet.hostIsBrowser(target: .app("com.apple.Terminal"), safariWindow: nil, bundles: browsers))
+    let allKeys = ShortcutSet.bindings
+    let heldNative = ShortcutSet.held(allKeys, marginInFront: false, browser: false, spaces: 3, items: 5)
+    check("a native app in front: its ⌘L, ⌘D, ⌘1 and sidebar key stay its own", heldNative[Combo.parse("Meta+KeyL")!] == nil && heldNative[Combo.parse("Meta+KeyD")!] == nil
+          && heldNative[Combo.parse("Meta+Digit1")!] == nil && heldNative[Combo.parse("Alt+KeyS")!] == nil)
+    check("a native app in front: Margin's space keys and Add Split still Margin's (up to its spaces)", heldNative[Combo.parse("Ctrl+Digit3")!] == .space3 && heldNative[Combo.parse("Ctrl+Digit4")!] == nil
+          && heldNative[Combo.parse("Ctrl+Shift+Equal")!] == .addSplit && heldNative[Combo.parse("Alt+Meta+KeyN")!] == .littleArc)
+    let heldChrome = ShortcutSet.held(allKeys, marginInFront: false, browser: true, spaces: 3, items: 5)
+    check("a browser in front: ⌘D, ⌘L and ⌘1–5 Margin's, ⌘6–9 the browser's", heldChrome[Combo.parse("Meta+KeyD")!] == .togglePin && heldChrome[Combo.parse("Meta+KeyL")!] == .focusAddress
+          && heldChrome[Combo.parse("Meta+Digit5")!] == .item5 && heldChrome[Combo.parse("Meta+Digit6")!] == nil && heldChrome[Combo.parse("Alt+KeyS")!] == nil)
+    let heldOwn = ShortcutSet.held(allKeys, marginInFront: true, browser: false, spaces: nil, items: nil)
+    check("Margin in front, counts not said yet: every key held", heldOwn.count == allKeys.count)
+    check("Margin in front, no rows: no ⌘digit held", ShortcutSet.held(allKeys, marginInFront: true, browser: false, spaces: 1, items: 0).values.allSatisfy { $0.itemNumber == nil && ($0.spaceNumber ?? 1) <= 1 })
     check("keys Settings can record: punctuation and F keys", Combo.parse("Alt+Comma") != nil && Combo.parse("Ctrl+F5") != nil && Combo.parse("Meta+Backquote") != nil)
     // Hosting: Margin itself, or an app it hosts with a Margin window on the current Space.
     check("hosted gate: Margin in front with a window", ShortcutSet.hostedActive(frontPid: 1, ownPid: 1, hostedPids: [], marginWindowOpen: true, marginOnCurrentSpace: false))
@@ -373,9 +409,9 @@ final class FakeRegistrar: HotKeyRegistrar {
     keys.onCommand = { command, _ in ran.append(command) }
     check("not held at first", fake.held.isEmpty && !keys.isActive)
     keys.set(active: true)
-    check("held while active", fake.held.count == 7 && keys.isActive)
+    check("held while active", fake.held.count == defaultCount && keys.isActive)
     keys.set(active: true)
-    check("not registered twice", fake.registrations == 7)
+    check("not registered twice", fake.registrations == defaultCount)
     let nextTab = fake.held.first { $0.value == Combo.parse("Alt+Meta+ArrowDown") }!.key
     fake.onHit?(nextTab)
     check("a key: its command", ran == [.nextTab])
@@ -385,7 +421,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("a stray hit after letting go: nothing", ran == [.nextTab])
     fake.taken = [Combo.parse("Meta+KeyT")!]
     keys.set(active: true)
-    check("one another app holds: the rest still Margin's", fake.held.count == 6 && keys.unavailable == [Combo.parse("Meta+KeyT")!])
+    check("one another app holds: the rest still Margin's", fake.held.count == defaultCount - 1 && keys.unavailable == [Combo.parse("Meta+KeyT")!])
     fake.taken = []
     keys.rebind(fromCopy)
     check("new keys while held: the new ones held at once", keys.isActive && Set(fake.held.values) == Set(fromCopy.keys) && fake.held.count == fromCopy.count)

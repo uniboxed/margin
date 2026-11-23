@@ -14,7 +14,7 @@ import * as restore from './background/restore.ts';
 import { ensureCurrent, focusTab, forgetCurrent, handingOff, injectIntoOpenTabs, keepHandedOff, pageChanged, resolveTab, setActivationHook, shownAt, switchAsked, tabClosed, tabLeft, tabShown, userSwitched } from './background/tabs.ts';
 import { switchLog, switchLogTo } from './background/switch-log.ts';
 import { learnSearchEngine } from './background/search-engine.ts';
-import { handlers, newTabHandOff, newTabKey } from './background/handlers.ts';
+import { handlers, hostedTabs, mediaHub, newTabHandOff, newTabKey } from './background/handlers.ts';
 // This engine's own modules (Safari's set-up messages and new-tab note, Chromium's full screen), or null.
 import { engine } from '#engine';
 import { storeActiveTheme } from './background/theme-package.ts';
@@ -138,6 +138,8 @@ api.permissions?.onRemoved?.addListener(owned(() => void engine.onboarding?.repo
 api.tabs.onCreated.addListener(owned(async (tab) => {
   // Margin's stand-in for a tab shown in another window is never a Margin tab (background/away.ts).
   if (away.isStandIn(tab.id, tab.windowId, tab)) return;
+  // A new tab in Margin.app's preview card window: the card's page now (background/hosted.ts).
+  void hostedTabs.tabCreated(tab);
   // ⌘T (a new tab showing the new-tab page, in front): handed back to the
   // page the user was on at once (handlers.ts newTabHandOff); a new tab
   // that stays is tracked as usual.
@@ -166,6 +168,8 @@ api.tabs.onUpdated.addListener(owned((tabId, change, tab) => {
   if (change.status || change.url) pageChanged(tabId);
   // Into the state; a hidden tab's written a moment later (background/tab-updates.ts).
   tabUpdated(tabId, change, tab);
+  // The preview card page's address or title, for Margin.app's card bar (background/hosted.ts).
+  hostedTabs.tabUpdated(tabId, change, tab);
   // Loading or done, for Margin.app's sidebar (background/page-loads.ts: not stored).
   if (change.status) pageLoads.statusChanged(tab, change.status);
   if (change.url || change.status === 'complete') restore.tabChanged(tab); // its address may have come with the load
@@ -418,6 +422,7 @@ firstSync.then(async () => {
 api.storage.onChanged.addListener((changes, area) => { if (area === 'local' && isOwner()) appLink.onStorage(changes); });
 api.windows?.onCreated?.addListener((win) => appLink.windowCreated(win?.id));
 api.windows?.onRemoved?.addListener((windowId) => appLink.windowClosed(windowId));
+api.windows?.onRemoved?.addListener((windowId) => hostedTabs.windowRemoved(windowId));
 api.windows?.onFocusChanged?.addListener((windowId) => appLink.windowFocused(windowId));
 api.windows?.onBoundsChanged?.addListener(() => appLink.windowsChanged());
 api.tabs.onActivated.addListener(() => appLink.tabActivated());
@@ -426,10 +431,19 @@ api.windows?.onRemoved?.addListener((windowId) => handoff.windowClosed(windowId)
 // What's loading in each window, for its overlay (background/page-loads.ts):
 // a tab gone or moved, and every window again when the link comes.
 api.tabs.onRemoved.addListener((tabId) => pageLoads.tabMoved(tabId));
+// The background mini player's sources (background/media.ts): a tab closed, or its page left (a new document in its
+// main frame), goes at once; Safari's `audible` and mute for a tab, as they change. (In memory only: no storage.)
+api.tabs.onRemoved.addListener((tabId) => mediaHub.remove(tabId));
+api.webNavigation?.onCommitted.addListener((details) => { if (details.frameId === 0) mediaHub.remove(details.tabId); });
+api.tabs.onUpdated.addListener((tabId, change, tab) => {
+  if ('audible' in change && tab) mediaHub.audible({ id: tabId, windowId: tab.windowId, url: tab.url, title: tab.title, audible: !!change.audible, mutedInfo: tab.mutedInfo });
+  if (change.mutedInfo) mediaHub.muted(tabId, !!change.mutedInfo.muted);
+});
 api.tabs.onAttached.addListener((tabId, info) => pageLoads.tabMoved(tabId, info?.newWindowId ?? null));
 appLink.onPageState((state) => {
   // The notices decided while the link was down, said now (background/notices.ts).
   if (state === 'linked') void linkedAgain().catch(() => {});
+  if (state === 'linked') mediaHub.tellAll(); // (what plays, told again: Margin.app may have started since)
   if (state === 'linked') void Promise.resolve(api.windows?.getAll?.()).then((wins) => pageLoads.tellAll((wins ?? []).map((w) => w.id)), () => pageLoads.tellAll());
 });
 // Whether the app draws over a window (its `drawn`): its page in front is told at once (the

@@ -28,6 +28,7 @@ import type { InstalledApp } from '../shared/apps.ts';
 import { CONFIRM_LABEL, SPACE_COLORS, menuItems } from './behaviors/menu-items.ts';
 import type { MenuTarget } from './behaviors/menu-items.ts';
 import { SETTINGS_CATEGORIES, categoryNamed, fieldsIn, settingsFields } from './settings-form.ts';
+import { selectBackgroundMedia, type MediaSource } from '../shared/media.ts';
 
 /** The view model's version: a theme reads what this version documents. */
 export const VM_VERSION = 1;
@@ -40,9 +41,16 @@ export type UiState = {
   mode?: WindowMode,
   focused?: boolean,
   sidebar?: SidebarState | null,
-  palette?: { open?: boolean, query?: string, selected?: number, newTab?: boolean },
+  palette?: { open?: boolean, query?: string, selected?: number, newTab?: boolean, selectAll?: boolean },
+  toast?: { id: string, text: string } | null,
+  /** The background mini player's sources (Margin.app's `media` push: overlay.ts), or one. */
+  media?: MediaSource[] | MediaSource | null,
+  // The preview card and Quick Tab (docs/PEEK-SPLIT.md §2, §3; Margin.app's `peek` push, ui/behaviors/card.ts; the
+  // runtime's own names, `peek` and `littleArc`, kept): `loading` until its window is in place, `closing` as it goes,
+  // `query` Quick Tab's field. Themes see it as `preview` (PreviewView).
+  peek?: { url: string, title?: string, spaceId?: string | null, littleArc?: boolean, loading?: boolean, closing?: boolean, canGoBack?: boolean | null, canGoForward?: boolean | null, query?: string } | null,
   menu?: { kind: MenuTarget['kind'], id?: string | number | null, x?: number, y?: number, above?: boolean, confirming?: string | null } | null,
-  editing?: { kind: 'space' | 'folder', id: string } | null,
+  editing?: { kind: 'space' | 'folder' | 'tab' | 'pin' | 'favorite', id: string | number } | null,
   // (`fresh`: a space just made, switched to as its editor closes.)
   editor?: { spaceId?: string, name: string, emoji: string, color: string, theme?: string, confirmDelete?: boolean, fresh?: boolean } | null,
   newTabPending?: boolean,
@@ -98,17 +106,38 @@ export type ViewModelInput = {
 export type Face = { title: string, url: string, host: string, icon: string | null, letter: string, color: string, isApp: boolean };
 export type TabRow = Face & {
   kind: 'tab', id: number | string, active: boolean, behind: boolean, away: boolean,
-  audible: boolean, asleep: boolean, loading: boolean, pinned: false,
-  open: boolean, notOpen: boolean,
+  audible: boolean, muted: boolean, asleep: boolean, loading: boolean, pinned: false,
+  open: boolean, notOpen: boolean, hasCustomTitle: boolean,
 };
 export type PinRow = Face & {
-  kind: 'pin', isFolder: false, id: string, folderId: string | null, nested: boolean,
+  kind: 'pin', isFolder: false, id: string, folderId: string | null, nested: boolean, depth: number,
   tabId: number | null, open: boolean, active: boolean, behind: boolean, away: boolean,
-  audible: boolean, asleep: boolean, loading: boolean, pinned: true,
+  drifted: boolean, rootUrl: string, hasCustomTitle: boolean,
+  audible: boolean, muted: boolean, asleep: boolean, loading: boolean, pinned: true,
 };
+export type FavoriteRow = Face & {
+  kind: 'favorite', id: string, scope: string,
+  tabId: number | null, open: boolean, active: boolean, behind: boolean, away: boolean,
+  drifted: boolean, rootUrl: string, hasCustomTitle: boolean,
+  audible: boolean, muted: boolean, asleep: boolean, loading: boolean,
+};
+export type FavoritesView = { items: FavoriteRow[], hasItems: boolean, columns: number };
 export type FolderRow = {
   kind: 'folder', isFolder: true, id: string, name: string, open: boolean,
-  count: number, pins: PinRow[], shown: PinRow[], hasShown: boolean,
+  parentFolderId: string | null, depth: number,
+  count: number, pins: PinRow[], shown: PinRow[], shownFlat: (FolderRow | PinRow)[], hasShown: boolean,
+};
+export type SplitPaneView = Face & {
+  id: string, tabId: number | string, index: number, active: boolean, ratio: number, percent: number,
+};
+export type SplitRow = {
+  kind: 'split', isSplit: true, id: string, axis: 'horizontal' | 'vertical',
+  active: boolean, panes: SplitPaneView[], ratios: number[], count: number, title: string,
+};
+export type ActiveSplitView = {
+  id: string, axis: 'horizontal' | 'vertical', isHorizontal: boolean, isVertical: boolean,
+  panes: SplitPaneView[], dividers: { index: number, percent: number }[], canAddPane: boolean,
+  labels: { swap: string, breakOut: string, closePane: string, toggleAxis: string },
 };
 export type SpaceChip = {
   id: string, name: string, emoji: string, color: string, abbr: string,
@@ -116,12 +145,13 @@ export type SpaceChip = {
   label: string,
 };
 export type SpaceView = SpaceChip & {
-  pinned: (FolderRow | PinRow)[], folders: FolderRow[], pins: PinRow[],
+  pinned: (FolderRow | PinRow)[], pinnedFlat: (FolderRow | PinRow)[], folders: FolderRow[], pins: PinRow[],
+  splits: SplitRow[], hasSplits: boolean,
   today: TabRow[], hasToday: boolean, hasPinned: boolean,
   newTab: { active: boolean },
 };
 export type ActiveTab = Face & {
-  id: number, loading: boolean, audible: boolean, asleep: boolean, pinned: boolean, newTab: boolean,
+  id: number, loading: boolean, audible: boolean, muted: boolean, asleep: boolean, pinned: boolean, newTab: boolean,
 };
 export type ArchiveRow = Face & { id: string, spaceId: string, closedAt: number, ago: string };
 export type PaletteRow = {
@@ -144,6 +174,25 @@ export type EditorView = {
 export type NoticeAction = { id: string, label: string, primary: boolean, danger: boolean };
 export type NoticeView = { id: string, text: string, actions: NoticeAction[], hasActions: boolean };
 export type PromptView = NoticeView & { title: string };
+export type ToastView = { id: string, text: string };
+export type MediaView = {
+  id: string, source: 'tab' | 'app', tabId: number | string | null,
+  title: string, subtitle: string, artwork: string | null, icon: string | null,
+  letter: string, color: string, playing: boolean, paused: boolean, muted: boolean,
+  canPrev: boolean, canNext: boolean,
+};
+export type PreviewView = {
+  url: string, host: string, title: string, spaceId: string, spaceName: string, spaceEmoji: string,
+  /** Quick Tab: its address field first, no page yet (`isQuickTab`: the same, the name themes read). */
+  quickTab: boolean, isQuickTab: boolean,
+  /** Its window not in place yet (its page area covered, a loader there); `ready`: in place, its page showing through. */
+  loading: boolean, ready: boolean,
+  /** Going away (the reverse of its open, then gone). */
+  closing: boolean,
+  canGoBack: boolean, canGoForward: boolean,
+  query: string,
+  labels: { expand: string, copyUrl: string, close: string, back: string, forward: string, search: string },
+};
 export type GestureView = { pull: boolean, swipe: boolean, back: boolean, forward: boolean, armed: boolean, done: boolean, leaving: boolean, progress: number, percent: number };
 export type LauncherView = {
   pins: PinRow[], hasPins: boolean, archive: ArchiveRow[], hasArchive: boolean, emptyArchive: boolean,
@@ -168,15 +217,20 @@ export type ViewModel = {
   },
   space: SpaceView,
   spaces: SpaceChip[],
+  favorites: FavoritesView,
   tab: ActiveTab | null,
   archive: ArchiveRow[],
   hasArchive: boolean,
   palette: { open: boolean, query: string, newTab: boolean, rows: PaletteRow[], hasRows: boolean, selected: string | null },
   menu: { kind: string, id: string | number | null, x: number, y: number, label: string, items: MenuRow[], hasItems: boolean } | null,
-  editing: { kind: 'space' | 'folder', id: string } | null,
+  editing: { kind: 'space' | 'folder' | 'tab' | 'pin' | 'favorite', id: string | number } | null,
   editor: EditorView | null,
   notice: NoticeView | null,
   prompt: PromptView | null,
+  toast: ToastView | null,
+  media: MediaView | null,
+  preview: PreviewView | null,
+  split: ActiveSplitView | null,
   gesture: GestureView | null,
   launcher: LauncherView | null,
   /** The page card's loader (the `page-loader` part), while an item opens in the page area: Margin's words for it. */
@@ -239,43 +293,84 @@ const isLoading = (t: { status?: string, loading?: boolean } | null | undefined)
 // it), and a click opens it (tab.activate) where it was clicked.
 function tabRow(state: State, t: any): TabRow {
   const open = !t.kept;
+  const custom = typeof t.customTitle === 'string' && t.customTitle.trim() ? t.customTitle.trim() : '';
   return {
     kind: 'tab',
     id: t.id,
-    ...face(state, t, t.title || t.url || 'New Tab'),
+    ...face(state, t, custom || t.title || t.url || 'New Tab'),
     active: !!t.active,
     behind: open && !!t.behind,
     // Chosen here, but live in another window of the profile (docs/BROWSER-WINDOWS.md §9): drawn faded.
     away: open && !!t.away,
     audible: open && !!t.audible,
+    muted: open && !!t.muted,
     asleep: open && !!t.sleeping,
     loading: open && isLoading(t),
     pinned: false,
     open,
     notOpen: !open,
+    hasCustomTitle: !!custom,
   };
 }
 
 /** @param p a pin as shared/view.ts sidebar shows it */
-function pinRow(state: State, p: any, nested: boolean): PinRow {
+function pinRow(state: State, p: any, nested: boolean, depth: number = nested ? 1 : 0): PinRow {
   const tab = ((p.tabId != null ? state.tabs[p.tabId] : null) as any);
+  const custom = typeof p.customTitle === 'string' && p.customTitle.trim() ? p.customTitle.trim() : '';
+  const liveTitle = tab?.customTitle || tab?.title;
   return {
     kind: 'pin',
     isFolder: false,
     id: p.id,
-    ...face(state, p, p.title || p.url || ''),
+    ...face(state, tab ?? p, custom || (p.drifted && liveTitle ? liveTitle : p.title) || p.url || ''),
     folderId: p.folderId ?? null,
     nested,
+    depth,
     tabId: p.tabId ?? null,
     open: p.tabId != null,
     active: !!p.active,
     behind: !!p.behind,
     away: !!p.away,
+    drifted: !!p.drifted,
+    rootUrl: p.rootUrl ?? p.url ?? '',
+    hasCustomTitle: !!custom,
     audible: !!tab?.audible,
+    muted: !!tab?.muted,
     asleep: !!tab?.sleeping,
     loading: isLoading(tab),
     pinned: true,
   };
+}
+
+function favoriteRow(state: State, f: any): FavoriteRow {
+  const live = ((f.tabId != null ? state.tabs[f.tabId] : null) as any);
+  const custom = typeof f.customTitle === 'string' && f.customTitle.trim() ? f.customTitle.trim() : '';
+  return {
+    kind: 'favorite',
+    id: f.id,
+    scope: f.scope ?? 'global',
+    ...face(state, live ?? f, custom || f.title || live?.title || f.rootUrl || f.url),
+    tabId: f.tabId ?? null,
+    open: f.tabId != null,
+    active: !!f.active,
+    behind: !!f.behind,
+    away: !!f.away,
+    drifted: !!f.drifted,
+    rootUrl: f.rootUrl ?? f.url ?? '',
+    hasCustomTitle: !!custom,
+    audible: !!live?.audible,
+    muted: !!live?.muted,
+    asleep: !!live?.sleeping,
+    loading: isLoading(live),
+  };
+}
+
+function favoriteColumns(count: number): number {
+  if (count <= 0) return 3;
+  if (count <= 3) return count;
+  if (count === 4) return 4;
+  if (count <= 6) return 3;
+  return 4;
 }
 
 // ---------------------------------------------------------------------------
@@ -311,6 +406,7 @@ function fresh(input: ViewModelInput): ViewModel {
   const editing = ui.editing ? { kind: ui.editing.kind, id: ui.editing.id } : null;
   const notice = ui.notice ? noticeView(ui.notice) : null;
   const prompt = ui.prompt ? { ...noticeView(ui.prompt), title: String(ui.prompt.title ?? '') } : null;
+  const toast = ui.toast && typeof ui.toast.text === 'string' && ui.toast.text ? { id: String(ui.toast.id ?? 'toast'), text: ui.toast.text.slice(0, 140) } : null;
   const gesture = ui.gesture ? gestureView(ui.gesture) : null;
   // (Margin's own words: the name is the app's or the item's, as Margin.app says it.)
   const loadingName = ui.pageOpening ? String(ui.pageOpening.name ?? '').slice(0, 120) : '';
@@ -326,10 +422,10 @@ function fresh(input: ViewModelInput): ViewModel {
   if (!state) {
     return {
       version: VM_VERSION, ready: false, window: win,
-      space: { id: '', name: '', emoji: '', color: '', abbr: '', index: 0, number: 1, active: true, tabCount: 0, label: '', pinned: [], folders: [], pins: [], today: [], hasToday: false, hasPinned: false, newTab: { active: false } },
-      spaces: [], tab: null, archive: [], hasArchive: false,
+      space: { id: '', name: '', emoji: '', color: '', abbr: '', index: 0, number: 1, active: true, tabCount: 0, label: '', pinned: [], pinnedFlat: [], folders: [], pins: [], splits: [], hasSplits: false, today: [], hasToday: false, hasPinned: false, newTab: { active: false } },
+      spaces: [], favorites: { items: [], hasItems: false, columns: 3 }, tab: null, archive: [], hasArchive: false,
       palette: { open: !!paletteUi.open, query: paletteUi.query ?? '', newTab: !!paletteUi.newTab, rows: [], hasRows: false, selected: null },
-      menu: null, editing, editor: null, notice, prompt, gesture, launcher: null, pageLoader, settingsForm: null, settingsTab: null, settings, platform,
+      menu: null, editing, editor: null, notice, prompt, toast, media: null, preview: null, split: null, gesture, launcher: null, pageLoader, settingsForm: null, settingsTab: null, settings, platform,
     };
   }
 
@@ -347,20 +443,100 @@ function fresh(input: ViewModelInput): ViewModel {
   // (`shown`: view.peek), so the highlight stays in sight.
   const pins: PinRow[] = [];
   const folders: FolderRow[] = [];
-  const pinned = view.pinned.map((item) => {
+  const folderById = new Map<string, FolderRow>();
+  const pinById = new Map<string, PinRow>();
+  const toFlatRow = (entry: any): FolderRow | PinRow => {
+    if (entry.kind !== 'folder') return pinById.get(entry.id) ?? pinRow(state, entry, (entry.depth ?? 0) > 0, entry.depth ?? 0);
+    const existing = folderById.get(entry.id);
+    if (existing) return existing;
+    const inside = (entry.pins ?? []).map((p: any) => pinById.get(p.id) ?? pinRow(state, p, true, (entry.depth ?? 0) + 1));
+    const shown = entry.open ? inside : (entry.peek ?? []).map((p: any) => pinById.get(p.id)!).filter(Boolean);
+    const folder: FolderRow = {
+      kind: 'folder', isFolder: true, id: entry.id, name: entry.name, open: entry.open,
+      parentFolderId: entry.parentFolderId ?? null, depth: entry.depth ?? 0,
+      count: inside.length, pins: inside, shown, shownFlat: [], hasShown: shown.length > 0,
+    };
+    folderById.set(folder.id, folder);
+    folders.push(folder);
+    return folder;
+  };
+  const pinned = view.pinned.map((item: any) => {
     if (item.kind !== 'folder') {
-      const row = pinRow(state, item, false);
+      const row = pinRow(state, item, false, 0);
       pins.push(row);
+      pinById.set(row.id, row);
       return row;
     }
-    const inside = item.pins.map((p) => pinRow(state, p, true));
-    const byId = new Map(inside.map((p) => [p.id, p]));
-    const shown = item.open ? inside : item.peek.map((p) => byId.get(p.id)!); // (peek: some of its pins)
-    const folder: FolderRow = { kind: 'folder', isFolder: true, id: item.id, name: item.name, open: item.open, count: inside.length, pins: inside, shown, hasShown: shown.length > 0 };
+    const inside = item.pins.map((p: any) => {
+      const r = pinRow(state, p, true, p.depth ?? 1);
+      pinById.set(r.id, r);
+      return r;
+    });
+    const byId = new Map(inside.map((p: PinRow) => [p.id, p]));
+    const shown = item.open ? inside : item.peek.map((p: any) => byId.get(p.id)!); // (peek: some of its pins)
+    const shownFlat = (item.shownFlat ?? shown).map((entry: any) => (entry.kind === 'folder' || entry.kind === 'pin' ? toFlatRow(entry) : entry));
+    const folder: FolderRow = {
+      kind: 'folder', isFolder: true, id: item.id, name: item.name, open: item.open,
+      parentFolderId: item.parentFolderId ?? null, depth: item.depth ?? 0,
+      count: inside.length, pins: inside, shown, shownFlat, hasShown: shownFlat.length > 0,
+    };
+    folderById.set(folder.id, folder);
     folders.push(folder);
     return folder;
   });
-  const today = view.tabs.map((t) => tabRow(state, t));
+  const pinnedFlat: (FolderRow | PinRow)[] = (view.pinnedFlat ?? []).map(toFlatRow);
+  const rawToday = view.tabs.map((t) => tabRow(state, t));
+  // Combined Split View rows (Arc's single capsule row in the sidebar for 2–4 panes):
+  const splitMemberIds = new Set<string>();
+  const splits: SplitRow[] = [];
+  // Open tabs by their Margin tab's id (a pane named so), indexed once a split asks (the first with an id, as find).
+  let byMid: Map<string, any> | null = null;
+  const liveByMid = (mid: string) => {
+    if (!byMid) { byMid = new Map(); for (const t of Object.values(state.tabs) as any[]) if (t?.mid && !byMid.has(t.mid)) byMid.set(t.mid, t); }
+    return byMid.get(mid);
+  };
+  for (const g of (state.splits ?? [])) {
+    if (g.spaceId !== view.spaceId || !Array.isArray(g.panes) || g.panes.length < 2) continue;
+    const panes: SplitPaneView[] = [];
+    const rawRatios = Array.isArray(g.ratios) && g.ratios.length === g.panes.length ? g.ratios : g.panes.map(() => 1 / g.panes.length);
+    const ratioSum = rawRatios.reduce((acc, v) => acc + (Number.isFinite(v) && v > 0 ? v : 1), 0) || g.panes.length;
+    g.panes.forEach((pid, index) => {
+      const asNum = /^\d+$/.test(pid) ? Number(pid) : null;
+      const live: any = asNum != null ? state.tabs[asNum] : liveByMid(pid);
+      const kept: any = !live ? state.keptTabs?.[pid] : null;
+      const item = live ?? kept;
+      if (!item) return;
+      const tabId: number | string = live ? live.id : item.id;
+      const ratio = (Number.isFinite(rawRatios[index]) && rawRatios[index] > 0 ? rawRatios[index] : 1) / ratioSum;
+      const title = (item.customTitle || item.title || item.url || 'Pane').trim();
+      panes.push({
+        id: pid,
+        tabId,
+        index,
+        ...face(state, item, title),
+        active: !!(live && (live.id === currentTabId || (currentTabId == null && live.windowId === windowId && live.active)))
+          || !!(kept && kept.id === ui.switchingTo),
+        ratio,
+        percent: Math.round(ratio * 1000) / 10,
+      });
+    });
+    if (panes.length < 2) continue;
+    for (const p of panes) { splitMemberIds.add(String(p.id)); splitMemberIds.add(String(p.tabId)); }
+    splits.push({
+      kind: 'split',
+      isSplit: true,
+      id: g.id,
+      axis: g.axis === 'vertical' ? 'vertical' : 'horizontal',
+      active: panes.some((p) => p.active),
+      panes,
+      ratios: panes.map((p) => p.ratio),
+      count: panes.length,
+      title: panes.map((p) => p.title).join(' · '),
+    });
+  }
+  const today = rawToday.filter((t) => !splitMemberIds.has(String(t.id)));
+  const favItems = (view.favorites ?? []).map((f: any) => favoriteRow(state, f));
+  const favorites: FavoritesView = { items: favItems, hasItems: favItems.length > 0, columns: favoriteColumns(favItems.length) };
 
   // A space's tab count: its tabs open in any window of the profile (pinned or not: a space's list is the
   // space's, docs/BROWSER-WINDOWS.md §9), and its tabs that aren't open (shown in every window).
@@ -387,8 +563,11 @@ function fresh(input: ViewModelInput): ViewModel {
   const space: SpaceView = {
     ...chip,
     pinned,
+    pinnedFlat,
     folders,
     pins,
+    splits,
+    hasSplits: splits.length > 0,
     today,
     hasToday: today.length > 0,
     hasPinned: pinned.length > 0,
@@ -401,13 +580,14 @@ function fresh(input: ViewModelInput): ViewModel {
   const pinnedUrls = new Set(state.pins.filter((p) => p.spaceId === state.tabSpace[current?.id]).map((p) => V.normalizeUrl(p.url)));
   const tab = current ? {
     id: current.id,
-    ...face(state, current, current.title || current.url || 'New Tab'),
+    ...face(state, current, current.customTitle || current.title || current.url || 'New Tab'),
     // Loading: as the background records it, or this page's own load (the
     // in-page host: content/loader.js, the pill's timing).
     loading: isLoading(current) || (!!ui.pageLoading && current.id === currentTabId),
     audible: !!current.audible,
+    muted: !!current.muted,
     asleep: !!current.sleeping,
-    pinned: pinnedUrls.has(V.normalizeUrl(current.url)),
+    pinned: !!current.pinnedBy || pinnedUrls.has(V.normalizeUrl(current.url)),
     newTab: V.isNewTabPage(current.url),
   } : null;
 
@@ -458,7 +638,7 @@ function fresh(input: ViewModelInput): ViewModel {
   // A context menu (ui/behaviors/menus.ts): its rows, from what it's for.
   let menu: ViewModel['menu'] = null;
   if (ui.menu) {
-    const items = menuItems((ui.menu as any), { state, space, features: input.platform?.features ?? null });
+    const items = menuItems((ui.menu as any), { state, space, favorites, features: input.platform?.features ?? null });
     if (items.length) {
       menu = {
         kind: String(ui.menu.kind), id: ui.menu.id ?? null, x: Number(ui.menu.x) || 0, y: Number(ui.menu.y) || 0,
@@ -535,9 +715,105 @@ function fresh(input: ViewModelInput): ViewModel {
     // (Its Theme: the space this window shows, its own; ui/space-theme.ts.)
     const shownSpace = state.spaces.find((s) => s.id === space.id) ?? null;
     const spaceTheme = shownSpace && spaceThemesOn(input.platform?.features) ? spaceThemeId(shownSpace, state.settings, input.platform?.features) : null;
-    const all = settingsFields(state.settings, input.platform?.features ?? {}, { recording: ui.recording ?? null, status: ui.settingsStatus ?? {}, theme: ui.theme ?? null, spaceTheme });
+    const all = settingsFields(state.settings, input.platform?.features ?? {}, { recording: ui.recording ?? null, status: ui.settingsStatus ?? {}, theme: ui.theme ?? null, spaceTheme, airTraffic: { rules: state.airTraffic ?? [], spaces: state.spaces } });
     const fields = ui.settingsPage && ui.settingsNav ? fieldsIn(all, category) : all;
     settingsForm = { fields, hasFields: fields.length > 0 };
+  }
+
+  // The background mini player (M2.4, shared/media.ts): only what plays in the background (or paused, within its
+  // 30 s grace), never the tab or app in front of this window. Its sources: Margin.app's `media` push (ui.media),
+  // and a tab the state says is audible that none of them is.
+  const activeBundleId = current ? appOfItem(current) : null;
+  const mediaSources: MediaSource[] = (Array.isArray(ui.media) ? ui.media : ui.media ? [ui.media] : []).filter((m) => !!m && typeof m === 'object');
+  const reported = new Set(mediaSources.filter((m) => m.source === 'tab').map((m) => m.tabId));
+  for (const t of Object.values(state.tabs)) {
+    if (!t.audible) continue;
+    if (reported.has(t.id)) continue;
+    mediaSources.push({
+      id: `tab:${t.id}`,
+      source: 'tab',
+      tabId: t.id,
+      title: t.customTitle || t.title || hostOf(t.url) || 'Playing audio',
+      subtitle: hostOf(t.url) || '',
+      url: t.url,
+      playing: true,
+      muted: !!t.muted,
+      canPrev: false,
+      canNext: false,
+      updatedAt: Number(t.lastActive) || now,
+      pausedAt: null,
+    });
+  }
+  const pickedMedia = selectBackgroundMedia(mediaSources, { activeTabId: current?.id ?? null, activeBundleId, now });
+  let media: MediaView | null = null;
+  if (pickedMedia) {
+    const liveTab = pickedMedia.source === 'tab' && Number.isInteger(pickedMedia.tabId) ? state.tabs[pickedMedia.tabId as number] : null;
+    const rawIcon = pickedMedia.icon ?? (liveTab ? V.iconFor(state, liveTab) : pickedMedia.bundleId ? appIcon((state as any).apps, pickedMedia.bundleId) : null);
+    const validArt = checkIconUrl(pickedMedia.artwork) ? pickedMedia.artwork : null;
+    const validIcon = checkIconUrl(rawIcon) ? rawIcon : null;
+    const { letter, color } = V.letterAvatar(pickedMedia.subtitle || pickedMedia.title || 'M');
+    media = {
+      id: pickedMedia.id,
+      source: pickedMedia.source,
+      tabId: pickedMedia.tabId ?? null,
+      title: String(pickedMedia.title || 'Media').slice(0, 140),
+      subtitle: String(pickedMedia.subtitle || '').slice(0, 100),
+      artwork: validArt,
+      icon: validIcon,
+      letter,
+      color,
+      playing: !!pickedMedia.playing,
+      paused: !pickedMedia.playing,
+      muted: !!pickedMedia.muted,
+      canPrev: !!pickedMedia.canPrev,
+      canNext: !!pickedMedia.canNext,
+    };
+  }
+
+  let preview: PreviewView | null = null;
+  if (ui.peek && typeof ui.peek.url === 'string' && (ui.peek.url || ui.peek.littleArc || ui.peek.loading)) {
+    const targetSpace = spaces.find((s) => s.id === ui.peek?.spaceId) ?? chip;
+    const url = ui.peek.url.slice(0, 2048);
+    const quickTab = !!ui.peek.littleArc;
+    const loading = !quickTab && ui.peek.loading !== false;
+    preview = {
+      url,
+      host: url ? hostOf(url) || url : '',
+      title: String(ui.peek.title || (url ? hostOf(url) || url : '')).slice(0, 140),
+      spaceId: targetSpace?.id ?? '',
+      spaceName: targetSpace?.name ?? '',
+      spaceEmoji: targetSpace?.emoji ?? '',
+      quickTab,
+      isQuickTab: quickTab,
+      loading,
+      ready: !quickTab && !loading && !ui.peek.closing,
+      closing: !!ui.peek.closing,
+      canGoBack: ui.peek.canGoBack !== false,
+      canGoForward: ui.peek.canGoForward !== false,
+      query: String(ui.peek.query ?? '').slice(0, 2048),
+      labels: { expand: 'Open in Space', copyUrl: 'Copy URL', close: 'Close', back: 'Back', forward: 'Forward', search: 'Search or enter address' },
+    };
+  }
+
+  const activeSplitRow = splits.find((sp) => sp.active) ?? null;
+  let split: ActiveSplitView | null = null;
+  if (activeSplitRow) {
+    let acc = 0;
+    const dividers: { index: number, percent: number }[] = [];
+    for (let i = 0; i < activeSplitRow.panes.length - 1; i++) {
+      acc += activeSplitRow.panes[i].percent;
+      dividers.push({ index: i, percent: Math.round(acc * 10) / 10 });
+    }
+    split = {
+      id: activeSplitRow.id,
+      axis: activeSplitRow.axis,
+      isHorizontal: activeSplitRow.axis === 'horizontal',
+      isVertical: activeSplitRow.axis === 'vertical',
+      panes: activeSplitRow.panes,
+      dividers,
+      canAddPane: activeSplitRow.panes.length < 4,
+      labels: { swap: 'Swap Panes', breakOut: 'Break Out', closePane: 'Close Pane', toggleAxis: activeSplitRow.axis === 'horizontal' ? 'Stack Vertically' : 'Place Side by Side' },
+    };
   }
 
   return {
@@ -546,6 +822,7 @@ function fresh(input: ViewModelInput): ViewModel {
     window: win,
     space,
     spaces,
+    favorites,
     tab,
     archive,
     hasArchive: !ui.settingsPage && archive.length > 0,
@@ -555,6 +832,10 @@ function fresh(input: ViewModelInput): ViewModel {
     editor,
     notice,
     prompt,
+    toast,
+    media,
+    preview,
+    split,
     gesture,
     launcher,
     pageLoader,
@@ -599,7 +880,7 @@ function ago(ts: number, now: number) {
 const LAUNCHER_ARCHIVE = 12;
 // The words of Margin's own parts (the menu's and the editor's), which a
 // theme binds rather than writes (ui/sanitize.ts GUARDED_PARTS).
-const MENU_LABELS = Object.freeze({ tab: 'Tab', pin: 'Pin', folder: 'Folder', space: 'Space', add: 'New' });
+const MENU_LABELS = Object.freeze({ tab: 'Tab', pin: 'Pin', favorite: 'Favorite', folder: 'Folder', space: 'Space', add: 'New' });
 const EDITOR_LABELS = Object.freeze({ title: 'Edit space', name: 'Space name', emoji: 'Space emoji', colors: 'Space color', theme: 'Space theme', save: 'Save', cancel: 'Cancel' });
 
 // Rows that go somewhere (Arcadia's arrow button).

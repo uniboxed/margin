@@ -190,6 +190,69 @@ test("the app host in Margin's own window: the page card's state from the app (h
   assert.equal(over.pageState, undefined, 'over a browser (the Windows shell): no page state');
 });
 
+test("the app host in Margin's own window: a split pane's loader (`paneLoading`): its item and name, checked; none over a browser", () => {
+  const b = bridge();
+  const host = createAppHost({ hello: hello({ host: 'app-window', mode: 'fullscreen' }), post: b.post });
+  let emits = 0;
+  host.onState(() => { emits++; });
+  assert.equal(host.paneLoading, null);
+  host.receive({ type: 'paneLoading', pane: { item: 't-notes1', label: 'Notes', bundleId: 'com.apple.Notes' } });
+  assert.deepEqual(host.paneLoading, { item: 't-notes1', name: 'Notes', bundleId: 'com.apple.Notes' });
+  assert.equal(emits, 1);
+  host.receive({ type: 'paneLoading', pane: { item: 't-notes1', label: 'Notes', bundleId: 'com.apple.Notes' } });
+  assert.equal(emits, 1, 'said again as it is: nothing drawn again');
+  host.receive({ type: 'paneLoading', pane: { item: '<b>', label: 'x', bundleId: 'com.apple.Notes' } });
+  assert.equal(host.paneLoading, null, 'an item id that isn\'t one: none');
+  host.receive({ type: 'paneLoading', pane: { item: 't-a', label: 'x'.repeat(500), bundleId: '../evil' } });
+  const cut = host.paneLoading as { name: string, bundleId: string | null } | null;
+  assert.deepEqual([cut?.name.length, cut?.bundleId], [120, null], 'its name cut, a bundle id checked');
+  host.receive({ type: 'paneLoading', pane: null });
+  assert.equal(host.paneLoading, null);
+  const again = createAppHost({ hello: hello({ host: 'app-window', mode: 'fullscreen', paneLoading: { item: 't-b', label: 'Safari', bundleId: 'com.apple.Safari' } }), post: b.post });
+  assert.deepEqual(again.paneLoading, { item: 't-b', name: 'Safari', bundleId: 'com.apple.Safari' }, 'a page loaded again mid-open: its hello has it');
+  const over = createAppHost({ hello: hello(), post: b.post });
+  over.receive({ type: 'paneLoading', pane: { item: 't-a', label: 'Notes' } });
+  assert.equal(over.paneLoading, null, 'over a browser: none');
+});
+test("the app host in Margin's own window: a split's cut panes (`paneCut`): each side a slide, checked; an arrow sent only for a side the pane has", () => {
+  const b = bridge();
+  const host = createAppHost({ hello: hello({ host: 'app-window', mode: 'fullscreen' }), post: b.post });
+  host.receive({ type: 'paneCut', panes: { 't-notes1': { window: 20, right: 'slide', left: 'reveal', revealed: true }, '<b>': { window: 3, left: 'slide' } } });
+  assert.deepEqual(host.paneCuts, { 't-notes1': { window: 20, right: 'slide' } }, 'only slides, no other word kept; an item id that isn\'t one: none');
+  assert.equal(host.perform('split.slide', { item: 't-notes1', side: 'right' }), true);
+  assert.equal(host.perform('split.slide', { item: 't-notes1', side: 'left' }), false, 'a side it doesn\'t have');
+  assert.equal(host.perform('split.slide', { item: 't-notes1', side: 'back' }), false, 'no reveal to put back');
+  assert.equal(host.perform('split.slide', { item: 't-other', side: 'right' }), false, 'not a cut pane');
+  assert.deepEqual(b.posts.filter((p) => p.op === 'perform').map((p) => [p.name, p.arg]), [['split.slide', { item: 't-notes1', side: 'right' }]]);
+  host.receive({ type: 'paneHover', window: 20 });
+  assert.equal(host.paneHover, 20);
+  host.receive({ type: 'paneCut', panes: {} });
+  assert.deepEqual([host.paneCuts, host.paneHover], [{}, null], 'none cut: none hovered');
+  const over = createAppHost({ hello: hello(), post: b.post });
+  over.receive({ type: 'paneCut', panes: { 't-a': { window: 2, right: 'slide' } } });
+  assert.deepEqual(over.paneCuts, {}, 'over a browser: none');
+});
+
+test("the app host in Margin's own window: every app's known minimum (`appMin`, `web` for Safari's pages), checked; in its hello; none over a browser", () => {
+  const b = bridge();
+  const host = createAppHost({ hello: hello({ host: 'app-window', mode: 'fullscreen' }), post: b.post });
+  let emits = 0;
+  host.onState(() => { emits++; });
+  assert.deepEqual(host.appMinimums, {});
+  host.receive({ type: 'appMin', apps: { web: [574, 220], 'com.apple.Notes': [700.2, 400] } });
+  assert.deepEqual(host.appMinimums, { web: [574, 220], 'com.apple.Notes': [701, 400] });
+  assert.equal(emits, 1);
+  host.receive({ type: 'appMin', apps: { web: [574, 220], 'com.apple.Notes': [701, 400] } });
+  assert.equal(emits, 1, 'said again as it is: nothing drawn again');
+  host.receive({ type: 'appMin', apps: { '<b>': [1, 1], web: [-5, 1e9], x: 'no' } });
+  assert.deepEqual(host.appMinimums, { web: [0, 0] }, 'a key that isn\'t one, a size that isn\'t sane: dropped or nothing');
+  const again = createAppHost({ hello: hello({ host: 'app-window', mode: 'fullscreen', appMin: { web: [574, 220] } }), post: b.post });
+  assert.deepEqual(again.appMinimums, { web: [574, 220] }, 'a page loaded again: its hello has them');
+  const over = createAppHost({ hello: hello(), post: b.post });
+  over.receive({ type: 'appMin', apps: { web: [574, 220] } });
+  assert.deepEqual(over.appMinimums, {}, 'over a browser: none');
+});
+
 test("the app host in Margin's own window: a web item's picture for its card (`pagePicture`), only a picture's data URL, only while `elsewhere`; none over a browser", () => {
   const b = bridge();
   const host = createAppHost({ hello: hello({ host: 'app-window', mode: 'fullscreen' }), post: b.post });
@@ -578,6 +641,23 @@ test('hitRects: what takes the pointer over the slot, boxes inside others left o
   assert.deepEqual(hitRects((withLayer as unknown as Element), slot, { getStyle }), { rects: [], all: false });
   const many = el('div', [0, 0, 1280, 800], {}, Array.from({ length: 70 }, (_, i) => el('b', [300 + i * 10, 100, 5, 5])));
   assert.deepEqual(hitRects((many as unknown as Element), slot, { getStyle }), { rects: [], all: true });
+});
+
+test('hitRects: a split\'s dividers take the pointer, none while the preview card is up over the split (its page the card\'s)', () => {
+  type FakeEl = { localName: string, children: FakeEl[], attrs: Set<string>, hasAttribute: (n: string) => boolean, getBoundingClientRect: () => { left: number, top: number, right: number, bottom: number, width: number, height: number }, style: HitStyle };
+  const el = (name: string, r: number[], children: FakeEl[] = [], attrs: string[] = []): FakeEl => {
+    const set = new Set(attrs);
+    return {
+      localName: name, children, attrs: set, hasAttribute: (n) => set.has(n),
+      getBoundingClientRect: () => ({ left: r[0], top: r[1], right: r[0] + r[2], bottom: r[1] + r[3], width: r[2], height: r[3] }),
+      style: { pointerEvents: 'auto', visibility: 'visible' },
+    };
+  };
+  const getStyle = (e: Element) => (e as unknown as FakeEl).style;
+  const slot = { left: 260, top: 8, right: 1272, bottom: 792 };
+  const stacked = (attrs: string[]) => el('div', [0, 0, 1280, 800], [el('m-page', [260, 8, 1012, 784], [el('m-pane', [260, 8, 1012, 340]), el('m-divider', [260, 348, 1012, 52]), el('m-pane', [260, 400, 1012, 392])], attrs)]);
+  assert.deepEqual(hitRects((stacked([]) as unknown as Element), slot, { getStyle }), { rects: [[260, 348, 1012, 52]], all: false }, 'the band is Margin\'s');
+  assert.deepEqual(hitRects((stacked(['m-card-clip']) as unknown as Element), slot, { getStyle }), { rects: [], all: false }, 'a card up: the band under its page never Margin\'s');
 });
 
 test('hitRects: a box counts only as far as the ancestors that clip it show it, as CSS clips', () => {

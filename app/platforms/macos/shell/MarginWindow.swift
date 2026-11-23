@@ -400,10 +400,27 @@ final class WindowGroundView: NSView {
 
     // `radii`: the hole's corners (top-left, top-right, bottom-right, bottom-left), none where it's square.
     func show(color: NSColor, hole: CGRect, radii: [CGFloat]) {
-        guard isHidden || color != self.color || hole != self.hole || radii != self.radii else { return }
+        guard isHidden || color != self.color || hole != self.hole || radii != self.radii || !extras.isEmpty else { return }
         self.color = color
         self.hole = hole
         self.radii = radii
+        extras = []
+        isHidden = false
+        draw()
+    }
+
+    // Several visible hosts (docs/PEEK-SPLIT.md §1): every one's hole, each with its corners (rounded only where they
+    // meet the page card's); the first is `hole`, the others `extras`.
+    struct Hole: Equatable { var rect: CGRect; var radii: [CGFloat] }
+    private(set) var extras: [Hole] = []
+    func show(color: NSColor, holes: [Hole]) {
+        guard let first = holes.first else { return clear() }
+        let rest = Array(holes.dropFirst())
+        guard isHidden || color != self.color || first.rect != hole || first.radii != radii || rest != extras else { return }
+        self.color = color
+        hole = first.rect
+        radii = first.radii
+        extras = rest
         isHidden = false
         draw()
     }
@@ -414,6 +431,7 @@ final class WindowGroundView: NSView {
         color = nil
         hole = nil
         radii = []
+        extras = []
         shape.path = nil
     }
 
@@ -449,6 +467,12 @@ final class WindowGroundView: NSView {
             var flip = CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: bounds.height)
             if let outline = Self.outline(hole, radii: hole == self.hole ? radii : []).copy(using: &flip) { path.addPath(outline) }
         }
+        for e in extras {
+            let r = e.rect.intersection(bounds)
+            guard !r.isNull, r.width > 0, r.height > 0 else { continue }
+            var flip = CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: bounds.height)
+            if let outline = Self.outline(r, radii: r == e.rect ? e.radii : []).copy(using: &flip) { path.addPath(outline) }
+        }
         shape.path = path
         // (Resolved for the window's appearance: a dynamic colour's cgColor is the current appearance's.)
         var resolved = color?.cgColor
@@ -461,6 +485,7 @@ final class WindowGroundView: NSView {
     func fills(_ p: CGPoint) -> Bool {
         guard !isHidden, bounds.contains(p) else { return false }
         guard let hole else { return true }
+        if extras.contains(where: { Self.outline($0.rect, radii: $0.radii).contains(p) }) { return false }
         return !Self.outline(hole, radii: radii).contains(p)
     }
 }

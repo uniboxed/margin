@@ -118,6 +118,9 @@ Margin's slots:
 | `<m-palette>` | the `palette` part (or draw it yourself inside `<m-if test="palette.open">`) | `palette.open` |
 | `<m-notice>` | the `notice` part | `notice` |
 | `<m-prompt>` | the `prompt` part | `prompt` |
+| `<m-toast>` | the `toast` part (guarded: Margin's transient toast pill, e.g. `Copied URL`) | `toast` |
+| `<m-preview>` | the `preview` part (guarded: the preview card and Quick Tab, below) | `preview` |
+| `<m-preview-page>` (only in the `preview` part, one, empty) | where the card's page goes: Margin.app puts the card's Safari window exactly over it (measured as laid out, like `<m-page>`); never paint it while the card is `ready` | inside the part |
 | `<m-launcher>` | the `launcher` part (Margin's new-tab page) | `launcher` |
 | `<m-page-loader>` | the `page-loader` part (Margin.app: the page card while an item opens) | `pageLoader` (the page card is `loading`) |
 | `<m-settings>` | the `settings` part (put it in your launcher) | `settingsForm` (Settings open) |
@@ -125,8 +128,47 @@ Margin's slots:
 
 Parts are `<template m-part="name">` anywhere in the template: `menu`,
 `menu-item`, `space-editor`, `palette`, `palette-row`, `notice`, `prompt`,
-`launcher`, `settings`, `window-controls`, `page-loader`. What a theme puts
+`toast`, `preview`, `launcher`, `settings`, `window-controls`, `page-loader`. What a theme puts
 inside a slot is used when it has no part for it.
+
+### The preview card and Quick Tab (the `preview` part)
+
+Margin.app shows a link in a preview card over the page (Shift+click, or a click to another site from a pinned tab or a
+favorite) and Quick Tab (⌥⌘N: an address field first) in the theme's guarded `preview` part, in `<m-preview>`. The card's
+page is a Safari window of its own that Margin.app places exactly at your `<m-preview-page>`, so lay the part out with
+it in mind:
+
+- **Where.** While a card is up the root has `--m-page-left`, `--m-page-top`, `--m-page-right`, `--m-page-bottom`
+  (px from the window's edges: the page's place) and `--m-page-radius`. Put `<m-preview>` over the page area with them
+  (`position: fixed`, those four as its edges, `overflow: hidden`) and the card inside it. The built-in themes centre
+  the card with 8% of the page area beside it and 7% above and below, at least 420×320 for its page, under a 52 pt bar
+  (`left: clamp(0px, 8%, calc(50% - 210px))` and so on: no transform in its place, which the card's motion owns).
+  **The bar must be opaque and cover at least the 52 pt above `<m-preview-page>` across its width:** the card's Safari
+  window keeps its full-screen toolbar window resting just above its page, and anything of it not under an opaque part
+  of yours shows through the dim (and takes hovers).
+- **The page.** `<m-preview-page>` is measured as laid out (offsets, not the box as drawn: a scale on the card never moves
+  the window). While `preview.loading` (its window isn't in place yet) paint it opaque (your panel's colour, a spinner):
+  the window is under it. Once `preview.ready`, it must be clear and take no pointer (`pointer-events: none`): the card's
+  window shows through and takes the clicks. As it goes (`preview.closing`) paint it again.
+- **The dim.** Dim the page area around the card only, never over `<m-preview-page>`: Margin's window is above the hosted
+  windows, so a dim drawn over the card's page darkens it. The built-ins use an element at the card's place with
+  `box-shadow: 0 0 0 100vmax <dim>` (`<m-preview>`'s `overflow: hidden` keeps it in the page area); light and dark each
+  their own strength. Once the card's window is in place the dimmed area takes no pointer (Margin.app catches a press
+  there and closes the card); while it loads, and for Quick Tab's field alone, a full-size button with
+  `m-action="preview.close"` under the card takes it.
+- **The bar.** `preview.back`, `preview.forward`, `preview.copyUrl`, `preview.expand` (into the space, also ⌘↩), `preview.close`
+  (also Esc and ⌘W), the address (`preview.host`); Quick Tab: `<input m-input="preview">` (Return takes it as the palette
+  does: an address, else a search; Escape closes) in `<m-if test="preview.isQuickTab">`, with `<m-preview-page>` hidden.
+  Its words are Margin's (`preview.labels`).
+- **Motion.** Open: the dim fades in and the card comes from `scale(0.96)` and `opacity: 0` in about 150 ms; close
+  (`preview.closing`, then the part is gone 150 ms later): the reverse. Transform and opacity only; with
+  `prefers-reduced-motion`, opacity only.
+
+A theme with no `preview` part (or no `<m-preview>` with anything in it) gets Margin's default card (`m-preview[m-default]`,
+drawn in `Canvas` and `CanvasText`, restyled with rules on `m-preview[m-default]`; its own pieces are `[m-preview-card]`, `[m-preview-bar]`,
+`[m-preview-host]`, `[m-preview-field]`, `[m-preview-button="preview.…"]` and `m-preview-page`, `[m-quick-tab]` on it for
+Quick Tab): the same place, bar and motion. A
+`preview` part with no `<m-preview-page>`: Margin.app puts the card's window at that default place, under whatever you draw.
 
 **Never paint under `<m-page>`.** The browser's page shows through it: in a
 page, Margin's UI lies over the page, and in Margin.app the page slot is a
@@ -222,6 +264,40 @@ the same card is drawn without words by the slot's own `::before` and
 `::after`, and the sidebar draws a few placeholder rows on what's already
 there (backgrounds and pseudo-elements, one soft `opacity` pulse).
 
+### Split View's panes (Margin.app)
+
+While the item in front is a pane of a split and a window is hosted in the page
+area, Margin puts the split's boxes inside your `<m-page>` (docs/PEEK-SPLIT.md
+§4). They're Margin's own elements: a template can't write them (the sanitizer
+drops any `m-pane` or `m-divider` of yours), and you never place them; you
+style them.
+
+```
+<m-page m-split="row" m-split-id="…">        (or m-split="column": stacked)
+  <m-pane m-pane-id="…" m-index="0" m-focused></m-pane>
+  <m-divider m-index="0" role="separator" tabindex="0" aria-orientation="vertical"></m-divider>
+  <m-pane m-pane-id="…" m-index="1"></m-pane>
+</m-page>
+```
+
+| What | Yours to style | Margin's |
+|---|---|---|
+| `m-page[m-split]` | nothing new | `display: flex` (row or column) |
+| `m-pane` | the focused pane's ring (`m-pane[m-focused]`: a `box-shadow` outside the box, in the gap; never a background or anything inside it: the pane's window shows there) | its size: `flex-grow` by the split's ratios, `min-width` / `min-height` 220 (Arc's least; a window that needs more is shown cut, its arrows below) |
+| `m-pane-arrow` | a cut pane's arrows (`[m-side="left\|right\|up\|down"]`, `[m-mode="slide"]`): their look (Margin's default is a small round chip in the system's colours with a chevron) | when they're shown (`m-pane[m-cut-hover]`: the pointer over that pane), their sides, their press, the pointer |
+| `m-divider` | the gap's colour (paint it as your frame around the page card: the ground Margin draws under the gap is that), a grip (`::after`), its hover, `:focus-visible` and drag (`[m-dragging]`; the root has `m-split-resizing` meanwhile) | the gap's size: `--m-split-gap` (8 px if you set none: set it on your root), the cursor, the pointer, the drag |
+| `m-divider[m-band]` | stacked, above a pane hosted in a Safari window: the band its full-screen toolbar window rests in (Arc's pane header); style it as the gap, and its `<m-band-title>` (the pane's name and host, Margin's text: colour, font, opacity) | its height (52 pt at least, your gap if that's more), its title's text and place |
+| `m-pane[m-loading]` | that pane's loader while its window opens (its `<m-pane-loader>`: Margin's spinner and "Opening …"; colour, font) | when it's shown, its words; the other panes stay shown and usable |
+
+The divider is dragged by Margin (the two panes beside it follow the pointer,
+each stopping at its window's minimum; the hosted windows follow live where
+they can), a double-click makes the panes equal, and ←/→ (↑/↓ stacked) move it
+when it has the keys. Margin measures each `m-pane` with the page and places
+each pane's window there: a border, padding or margin on `m-pane` moves the
+window with it, so leave the box alone. Keep any transition on the grip (≤
+150 ms, none with `prefers-reduced-motion`): nothing about the boxes animates.
+All five built-in themes show how (each theme.css, "Split View").
+
 **Settings.** The `settings` part lays out `settingsForm.fields` (Margin's
 words only: it's guarded like a menu). Each field has one of `isNumber`,
 `isToggle`, `isChoice`, `isList`, `isShortcut`, `isColor`, `isButton`,
@@ -307,14 +383,21 @@ host. Immutable: rows that didn't change are the same objects.
   `sidebarOpen`, `peek`, `pinnedOpen` (Keep open), `frameWhenHidden`.
 - `space`: `id`, `name`, `emoji`, `color`, `abbr`, `index` (from 0),
   `number` (its place counted from 1: Pixel's "WORLD 2-1"), `tabCount`,
-  `pinned` (folders and loose pins in order; `isFolder` tells them apart),
-  `folders[]` (`name`, `open`, `count`, `pins`, `shown`, `hasShown`), `pins`,
+  `pinned` (top-level folders and loose pins in order; `isFolder` tells them apart),
+  `pinnedFlat` (pre-order flattened list of all visible folders up to depth 4 and pins, each with `depth`),
+  `folders[]` (`name`, `open`, `parentFolderId`, `depth`, `count`, `pins`, `shown`, `shownFlat`, `hasShown`), `pins`,
+  `splits[]` (`id`, `axis`, `active`, `panes[]`, `ratios`, `count`, `title`) and `hasSplits`,
   `today` (the other tabs, newest first), `hasToday`, `hasPinned`,
   `newTab.active`.
+- `favorites`: `items[]` (web tabs & hosted apps, up to 12, sticky `open`/`active`/`drifted`/`rootUrl`/`audible`/`muted`), `hasItems`, `columns` (1–4).
+- `media` (the background mini player: null unless a tab not in front of this window is playing, or paused within the last 30 s; hosted Mac apps later): `title`, `subtitle`, `artwork` (a data URL, or null), `icon`, `letter`, `color`, `playing`, `paused`, `muted`, `canPrev`, `canNext`.
+- `toast` (null unless showing; guarded): `id`, `text`.
+- `preview` (null unless open; guarded): `url`, `host`, `title`, `isQuickTab` (and `quickTab`), `loading` (its window not in place yet), `ready` (in place: `<m-preview-page>` clear), `closing`, `query` (Quick Tab's field), `canGoBack`, `canGoForward` (true unless the page said otherwise), `spaceId`, `spaceName`, `spaceEmoji`, `labels` (`expand`, `copyUrl`, `close`, `back`, `forward`, `search`).
+- `split` (null unless the active tab is inside a Split View): `id`, `axis`, `isHorizontal`, `isVertical`, `panes[]`, `dividers[]`, `canAddPane`, `labels`.
 - Each tab or pin row: `id`, `title`, `url`, `host`, `icon` (or `letter` on
   `color`; an app item's, in Margin.app: the installed app's icon, its name's
-  letter when it has none), `active`, `behind`, `away`, `audible`, `asleep`, `loading`; pins also
-  `open`, `tabId`, `folderId`, `nested`.
+  letter when it has none), `active`, `behind`, `away`, `audible`, `muted`, `asleep`, `loading`, `hasCustomTitle`; pins also
+  `open`, `tabId`, `folderId`, `nested`, `depth`, `drifted`, `rootUrl`.
 - `away` (with `active`): the row is this window's chosen tab, shown live in another window of the profile (two
   windows on one space list the same tabs, and the tab follows the window in front: docs/BROWSER-WINDOWS.md §9). Keep it
   highlighted, faded: Arcadia and Pixel fade the row, Neubrutalism fades the pressed button. Margin draws the
@@ -391,9 +474,19 @@ else is ignored and logged.
 
 - Tabs and pins: `tab.activate` (tab), `tab.close` (tab), `tab.new` (none:
   the palette for a new tab; or a space), `tab.pin` (tab), `tab.unpin` (pin),
-  `pin.open` (pin).
-- Folders: `folder.toggle`, `folder.new`, `folder.newWithTab` (tab),
+  `tab.copyUrl`, `tab.mute`, `tab.duplicate`, `tab.unload`, `tab.reopenLast`,
+  `tab.rename`, `tab.setTitle`, `pin.open` (pin), `pin.reset` (drifted sticky pin),
+  `pin.rename`, `pin.setTitle`.
+- Favorites: `favorite.open`, `favorite.add`, `favorite.remove`, `favorite.move`, `favorite.reset`.
+- Folders: `folder.toggle`, `folder.new`, `folder.newSubfolder`, `folder.newWithTab` (tab),
   `folder.newWithPin` (pin), `folder.rename`, `folder.delete` (its pins stay).
+- Media Mini Player: `media.toggle`, `media.prev`, `media.next`, `media.mute`, `media.focus`.
+- The preview card and Quick Tab: `preview.close`, `preview.expand`, `preview.back`, `preview.forward`, `preview.copyUrl`, `preview.setSpace` (space), `quickTab.open`.
+- Link Rules: `linkRules.addHost` (a tab: always open its site in this space), `linkRules.remove` (rule), `linkRules.toggle` (rule).
+- Split View: `split.focus` (a pane's tab: the split shown with it focused), `split.add` (also `split.addPane`: a tab into the
+  split of the item in front, or split with it), `split.open` (a split's id: shown), `split.remove` (a pane out, the rest
+  shown), `split.breakOut` (a pane out, shown alone), `split.closePane` (its tab closed: the split goes on), `split.swap`
+  and `split.toggleAxis` (a split's id). `split.resize` is Margin's own (its dividers), never a button's.
 - Spaces: `space.switch`, `space.new`, `space.edit`, `space.rename`,
   `today.clear`.
 - The palette: `palette.open`, `palette.close`, `palette.run` (a row).
@@ -421,7 +514,7 @@ Opt in with attributes; they stay on the element, so CSS can select them.
 
 | Attribute | Values | What Margin does |
 |---|---|---|
-| `m-input` | `palette`, `space-name`, `space-emoji`, `launcher`, `setting-number`, `setting-toggle`, `setting-choice` (a `<select>`), `setting-list` (a `<textarea>`), `setting-shortcut`, `setting-color` (a colour well) | Margin's own fields (the only inputs allowed): typing, keys, focus |
+| `m-input` | `palette`, `space-name`, `space-emoji`, `launcher`, `preview` (Quick Tab's field, in the `preview` part), `setting-number`, `setting-toggle`, `setting-choice` (a `<select>`), `setting-list` (a `<textarea>`), `setting-shortcut`, `setting-color` (a colour well) | Margin's own fields (the only inputs allowed): typing, keys, focus |
 | `m-peek` | `left`, `right`, `top`, `bottom` | the hover zone that brings a hidden sidebar out (`--m-reveal-zone` is its size) |
 | `m-resize` | `sidebar` | drags the `sidebarWidth` setting; double-click resets it |
 | `m-drag` | `tab`, `pin`, `folder`, `space` | the row can be dragged |
@@ -450,7 +543,8 @@ Classes and variables Margin sets for you to style:
   Margin.app past halfway): under `m-settling` Margin then gives the settle as
   `--m-swipe-transition` (the spring sampled into a `linear()` easing), so use it on the
   moving part: `transition: var(--m-swipe-transition, none)` (Arcadia does this);
-- `--m-menu-x`, `--m-menu-y` (`<m-menu>`), `--m-reveal-zone` (`m-peek`),
+- `--m-menu-x`, `--m-menu-y` (`<m-menu>`), `--m-reveal-zone` (`m-peek`), `--m-page-left`, `--m-page-top`,
+  `--m-page-right`, `--m-page-bottom`, `--m-page-radius` (on the root while the preview card is up: the page's place),
   `--m-<setting>` (your settings).
 
 ## Motion

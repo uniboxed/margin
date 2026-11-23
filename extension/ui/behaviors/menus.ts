@@ -18,7 +18,7 @@ import { menuItems } from './menu-items.ts';
 import type { MenuTarget } from './menu-items.ts';
 
 // What a row's action says it is (for rows with no m-drag).
-const ROW_OF_ACTION: Record<string, MenuTarget['kind']> = { 'tab.activate': 'tab', 'pin.open': 'pin', 'folder.toggle': 'folder', 'space.switch': 'space', 'space.edit': 'space' };
+const ROW_OF_ACTION: Record<string, MenuTarget['kind']> = { 'tab.activate': 'tab', 'split.focus': 'tab', 'pin.open': 'pin', 'favorite.open': 'favorite', 'folder.toggle': 'folder', 'space.switch': 'space', 'space.edit': 'space' };
 
 export function installMenus(rt: Rt) {
   const { view, container, doc } = rt;
@@ -109,7 +109,7 @@ export function installMenus(rt: Rt) {
     run(itemId: string) {
       const menu = rt.ui.menu;
       if (!menu) return false;
-      const item = menuItems(menu, { state: rt.viewState(), space: rt.vm?.space, features: (rt.host.platform as any)?.features ?? null }).find((i) => i.id === itemId && !i.separator);
+      const item = menuItems(menu, { state: rt.viewState(), space: rt.vm?.space, favorites: rt.vm?.favorites, features: (rt.host.platform as any)?.features ?? null }).find((i) => i.id === itemId && !i.separator);
       if (!item) return false;
       if (item.confirm && menu.confirming !== item.id) {
         rt.setUi({ menu: { ...menu, confirming: item.id } });

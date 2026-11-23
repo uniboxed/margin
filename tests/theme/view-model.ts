@@ -253,6 +253,17 @@ export class MockState {
     this.state = { ...this.state, folders: this.state.folders.map((f) => (f.id === id ? { ...f, open: !f.open } : f)) };
     return this.build();
   }
+  // A folder inside `parentId` (nested folders), open, holding the parent's last `count` pins.
+  nestFolder(parentId: string, id: string, name: string, count: number) {
+    const parent = this.state.folders.find((f) => f.id === parentId)!;
+    const moved = new Set(this.state.pins.filter((p) => p.folderId === parentId).slice(-count).map((p) => p.id));
+    this.state = {
+      ...this.state,
+      folders: [...this.state.folders, { id, spaceId: parent.spaceId, name, open: true, pos: 99, parentId }],
+      pins: this.state.pins.map((p) => (moved.has(p.id) ? { ...p, folderId: id } : p)),
+    };
+    return this.build();
+  }
   switchSpace(id: string) {
     this.state = { ...this.state, activeSpaceByWindow: { ...this.state.activeSpaceByWindow, [WINDOW]: id } };
     return this.build();

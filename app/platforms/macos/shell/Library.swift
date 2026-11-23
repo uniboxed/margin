@@ -75,7 +75,7 @@ struct LibraryOutcome {
 }
 
 final class Library {
-    static let collections = ["spaces", "pins", "folders", "tabs", "archive", "windows", "imports"]
+    static let collections = ["spaces", "pins", "favorites", "airTraffic", "splits", "folders", "tabs", "archive", "windows", "imports"]
     // The set's key in its store (the store is flat: the key names no folder).
     static let key = DataProfile(browser: "app", profile: "library")
     static let requestsKept = 100
@@ -144,6 +144,23 @@ final class Library {
 
     func target(ofItem id: String) -> ItemTarget? { ItemTarget(json: (dataSet.liveValues("tabs")[id] as? JSONObject)?["target"]) }
     func space(ofItem id: String) -> String? { (dataSet.liveValues("tabs")[id] as? JSONObject)?["spaceId"] as? String }
+
+    // A split (docs/PEEK-SPLIT.md §4): its panes (items, in its order: those still there) and its axis; nil: none, or
+    // fewer than two panes left.
+    struct Split: Equatable { let id: String; let panes: [String]; let vertical: Bool }
+    func split(_ id: String) -> Split? {
+        guard let g = dataSet.liveValues("splits")[id] as? JSONObject else { return nil }
+        let items = dataSet.liveValues("tabs")
+        let panes = (g["panes"] as? [Any] ?? []).compactMap { $0 as? String }.filter { items[$0] != nil }
+        return panes.count >= 2 ? Split(id: id, panes: panes, vertical: g["axis"] as? String == "vertical") : nil
+    }
+    func split(ofItem item: String) -> Split? {
+        let all = dataSet.liveValues("splits")
+        for id in all.keys.sorted() where ((all[id] as? JSONObject)?["panes"] as? [Any])?.contains(where: { $0 as? String == item }) == true {
+            if let s = split(id), s.panes.contains(item) { return s }
+        }
+        return nil
+    }
 
     // The space a Margin window shows (nil: none chosen yet).
     func space(ofWindow windowId: Int) -> String? { (dataSet.liveValues("windows")[String(windowId)] as? JSONObject)?["spaceId"] as? String }

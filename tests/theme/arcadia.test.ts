@@ -347,17 +347,20 @@ for (const [name, engine] of ENGINES) {
           };
         });
         const f = await form();
-        assert.deepEqual(f.select, [['arcadia', ['Arcadia', 'Neubrutalism', 'Pixel', 'Liquid Glass', 'Material']]]);
+        assert.deepEqual(f.select, [
+          ['arcadia', ['Arcadia', 'Neubrutalism', 'Pixel', 'Liquid Glass', 'Material']],
+          ['global', ['Global across Spaces', 'Per browser profile']],
+        ]);
         assert.equal(f.numbers.length, 3, 'two of Margin\'s, and Arcadia\'s own sidebar width (Settings of “Arcadia”)');
-        assert.equal(f.toggles.length, 5);
+        assert.equal(f.toggles.length, 6);
         assert.equal(f.lists, 1);
-        assert.equal(f.shortcuts.length, 5);
+        assert.equal(f.shortcuts.length, 13, 'the five, and Margin.app\'s eight');
         assert.ok(f.shortcuts.every(([ro]) => ro));
         const lastSent = (type: string) => page.evaluate((t) => T.rtSent().filter(([k]) => k === t).at(-1) ?? null, type);
         await page.click('label:has-text("keep the frame") input');
         assert.deepEqual(await lastSent('updateSettings'), ['updateSettings', { patch: { frameWhenHidden: false } }]);
         // Theme: the theme of the space shown (2026-11-20: each space has its own), not the profile's.
-        await page.selectOption('.settings-form select', 'neubrutalism');
+        await page.selectOption('.settings-form select >> nth=0', 'neubrutalism');
         const space = await page.evaluate(() => T.rtVmFull().space);
         assert.deepEqual(await lastSent('setSpaceTheme'), ['setSpaceTheme', { spaceId: space, theme: 'neubrutalism' }]);
         assert.equal((await page.evaluate(() => T.rtSent().filter(([k, p]) => k === 'updateSettings' && 'theme' in (p?.patch ?? {})))).length, 0, 'the profile\'s theme left as it is');
@@ -370,6 +373,15 @@ for (const [name, engine] of ENGINES) {
         await page.keyboard.press('Alt+KeyS');
         assert.match(await page.evaluate(() => document.querySelector('.settings-form .help.error')?.textContent ?? ''), /already used for “Show or hide the sidebar”/);
         await page.keyboard.press('Escape');
+        // Margin.app's keys: Delete turns one off; a numbered one takes a digit (its modifiers for 1–9).
+        await page.click('label:has-text("Pin or unpin the tab") input');
+        await page.keyboard.press('Backspace');
+        assert.equal((await lastSent('updateSettings'))![1].patch.appKeys.togglePin, '');
+        await page.click('label:has-text("Go to space 1–9") input');
+        await page.keyboard.press('Alt+Meta+KeyP');
+        assert.match(await page.evaluate(() => document.querySelector('.settings-form .help.error')?.textContent ?? ''), /takes a digit/);
+        await page.keyboard.press('Alt+Control+Digit4');
+        assert.equal((await lastSent('updateSettings'))![1].patch.appKeys.spaceDigits, 'Ctrl+Alt+Digit1');
         await page.click('button:has-text("Wake all sleeping tabs")');
         await page.waitForFunction(() => /No tabs are asleep/.test(document.querySelector('.settings-form')?.textContent ?? ''));
         assert.deepEqual(await lastSent('wakeSleeping'), ['wakeSleeping', {}]);

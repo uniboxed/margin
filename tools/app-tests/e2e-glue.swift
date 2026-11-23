@@ -52,6 +52,14 @@ final class GlueHostWorld: HostSystem {
   var onAppQuit: ((pid_t) -> Void)?
   var onLaunch: ((String) -> Void)? // (the test's: what Margin's window shows as an app is launched)
   var listsMarginOnly: Bool { fullScreenSpaces == [Self.marginSpace] }
+  // All panes active (PanesActive.swift): off unless a scenario turns it on; each record asked for, in order.
+  var panesActive = false
+  var activeCalls: [String] = []
+  var keepsPanesActive: Bool { panesActive }
+  func keepActive(_ w: PaneWindow) { activeCalls.append("keep \(w.pid) \(w.window)") }
+  func moveActive(_ w: PaneWindow, from: Int) { activeCalls.append("move \(w.pid) \(from)→\(w.window)") }
+  func releaseActive(_ w: PaneWindow) { activeCalls.append("release \(w.pid) \(w.window)") }
+  func releaseActiveNow(_ list: [PaneWindow]) { for w in list { activeCalls.append("releaseNow \(w.pid) \(w.window)") } }
 
   func now() -> Double { Date().timeIntervalSince1970 }
   func sleep(_ seconds: Double) async { try? await Task.sleep(nanoseconds: UInt64(max(0.005, seconds) * 1_000_000_000)) }
@@ -514,6 +522,8 @@ func glueScenario() async {
         holeAlpha?.allSatisfy { $0 == 0 } == true, "\(String(describing: holeAlpha))")
   check("shown, as the window server pictures it: painted (alpha 255) on the sidebar, on the theme's frame at each side of the page area and outside the curve of its rounded corners",
         solidAlpha?.allSatisfy { $0 == 255 } == true, "\(String(describing: solidAlpha))")
+  // Several visible hosts (docs/PEEK-SPLIT.md §1): holes for each, the pointer through them, a card's content alone.
+  await multiHoleChecks(c, page: page, main: editWindow, bounds: { world.bounds(window: $0) }, check: check)
   // The pointer: through the hole to the app, Margin's on its sidebar, its frame and the card's rounded corners; a drag keeps who had it.
   let middle = CGPoint(x: page.midX, y: page.midY)
   check("the pointer's slot is the hole (its radius the card's); the catch fill everywhere but there", c.slot?.rect == page && c.slot?.radius == radius && c.slot?.captureAll == false, "\(String(describing: c.slot))")
@@ -620,6 +630,53 @@ func glueScenario() async {
   guard await until(5, { fake.first("hostShow", since: since2) != nil }) else { return check("the second web item's tab", false) }
   await session.idle()
   check("a second web item of the profile: only its tab, the engine not asked", world.calls.count == calls && fake.all("req", since: since2).count == 1, "\(world.calls.dropFirst(calls))")
+
+  // ---- the background mini player (M2.4): the copy's `media` push drawn in Margin's window, its buttons back to the copy ----
+  do {
+    let firstTab = session.safariTabs[web] ?? -1
+    let source: JSONObject = ["tabId": firstTab, "itemId": web, "url": "https://example.com/", "title": "Background Song", "subtitle": "The Band", "playing": true, "muted": false,
+                              "canPrev": true, "canNext": true, "updatedAt": Date().timeIntervalSince1970 * 1000, "pausedAt": NSNull()]
+    let pushesBefore = c.pushes
+    fake.tell(["do": "send", "id": "S", "msg": ["k": "push", "windowId": 90, "msg": ["type": "media", "sources": [source]]]])
+    let drawn = await waitJS(c.webView, "const p = document.querySelector('.mini-player'); return !!p && p.querySelector('.mini-title')?.textContent.trim() === 'Background Song' && p.querySelector('.mini-sub')?.textContent.trim() === 'The Band' && !!p.querySelector('[aria-label=\"Next track\"]')")
+    let pushed = c.pushed.suffix(c.pushes - pushesBefore).first { $0.contains(#""type":"media""#) } ?? ""
+    let player = await js(c.webView, "return (document.querySelector('.mini-player')?.outerHTML ?? 'no mini player').slice(0, 600)") as? String ?? "?"
+    check("mini player: the copy's `media` push for its hosted window reaches Margin's window (its tab by the UI's number, no item id or address) and the theme draws it, the playing item in the background",
+          drawn && pushed.contains(#""tabId":\#(session.number(ofItem: web))"#) && !pushed.contains("itemId") && !pushed.contains("example.com"), "\(pushed) \(player)")
+    // (Its Play/Pause, pressed: a real press on the theme's button, as the UI takes only those.)
+    let reqsBefore = fake.events.count
+    let at = await js(c.webView, "const r = document.querySelector('.mini-player [aria-label=\"Play or pause\"]')?.getBoundingClientRect(); return r ? [r.left + r.width / 2, r.top + r.height / 2] : null") as? [Double]
+    if let at, at.count == 2 {
+      let spot = CGPoint(x: at[0], y: at[1])
+      c.pointerMoved(CGPoint(x: display.minX + spot.x, y: display.minY + spot.y), buttonsDown: false)
+      press(c.panel, at: spot)
+    }
+    let asked = await until(5) { fake.first("req", since: reqsBefore) { ($0["msg"] as? JSONObject)?["type"] as? String == "hostMedia" } != nil }
+    let media = (fake.first("req", since: reqsBefore) { ($0["msg"] as? JSONObject)?["type"] as? String == "hostMedia" }?["msg"] as? JSONObject)?["payload"] as? JSONObject ?? [:]
+    check("mini player: its Play/Pause: the copy asked hostMedia for that item's tab (the library's mediaControl, the session)",
+          asked && media["itemId"] as? String == web && media["command"] as? String == "toggle" && int(media["tabId"]) == firstTab, "\(media) \(session.done.suffix(3))")
+    // The playing item in front: the mini player goes; another in front: it's back.
+    _ = library.perform("activateTab", ["windowId": c.id, "tabId": web])
+    await session.idle()
+    let hiddenInFront = await waitJS(c.webView, "return !document.querySelector('.mini-player')")
+    let second = library.items(space: first).first { $0.value["url"] as? String == "https://second.example/" }?.id ?? ""
+    _ = library.perform("activateTab", ["windowId": c.id, "tabId": second])
+    await session.idle()
+    let backInBackground = await waitJS(c.webView, "return !!document.querySelector('.mini-player')")
+    check("mini player: never for the item in front (its page shows it), back once another is", hiddenInFront && backInBackground)
+    // A push of a type not passed on, from the person's own window, and the copy's sources gone (a tab closed): nothing, then none.
+    let before = c.pushes
+    let sentBefore = fake.all("sent").count
+    let none: [JSONObject] = []
+    fake.tell(["do": "send", "id": "S", "msg": ["k": "push", "windowId": 90, "msg": ["type": "peekOpen", "url": "https://x.example/"]]])
+    fake.tell(["do": "send", "id": "S", "msg": ["k": "push", "windowId": 1, "msg": ["type": "media", "sources": [source]]]])
+    fake.tell(["do": "send", "id": "S", "msg": ["k": "push", "windowId": 90, "msg": ["type": "media", "sources": none]]])
+    _ = await until(3) { fake.all("sent").count >= sentBefore + 3 }
+    let gone = await waitJS(c.webView, "return !document.querySelector('.mini-player')")
+    let passed = c.pushed.suffix(c.pushes - before)
+    check("mini player: gone once the copy has no sources; a push not passed on, or for the person's own window, never reaches the page",
+          gone && passed.count == 1 && passed.first.map { $0.contains(#""type":"media""#) && $0.contains(#""sources":[]"#) } == true, "\(passed) sent \(fake.all("sent").count - sentBefore)")
+  }
 
   // ---- an app that can't go full screen (Calculator): window mode, Margin's window its whole width below it ----
   let since3 = world.calls.count
@@ -1327,6 +1384,121 @@ func glueScenario() async {
 // `loading` with its name, so the first frame is the loader, never the launcher; its app is opened once Margin's
 // window is in full screen with its page area; then `shown`.
 @MainActor
+// Several visible hosts in Margin's real window and page (docs/PEEK-SPLIT.md §1), told as the engine tells them
+// (`setVisibleHosts`), two stand-in windows beside the hosted one (their bounds given here): a split's two panes, each a
+// hole of its own in the ground (its corners rounded only where they meet the page card's), the pointer through both and
+// not the gap; a card over main: the pointer only through the card's content, the page around it caught (a press there
+// reported), never see-through for the window server; then one host again, as it was.
+func multiHoleChecks(_ c: MarginWindowController, page: CGRect, main: Int, bounds: @escaping (Int) -> CGRect?, check: (String, Bool, @autoclosure () -> String) -> Void) async {
+  let content = c.contentFrame
+  func local(_ p: CGPoint) -> CGPoint { CGPoint(x: p.x - content.minX, y: p.y - content.minY) }
+  func mid(_ r: CGRect) -> CGPoint { CGPoint(x: r.midX, y: r.midY) }
+  let radius = CGFloat(c.layout?.radii.first ?? 0)
+  let half = ((page.width - 8) / 2).rounded(.down)
+  let left = CGRect(x: page.minX, y: page.minY, width: half, height: page.height)
+  let right = CGRect(x: page.maxX - half, y: page.minY, width: half, height: page.height)
+  let gap = CGPoint(x: (left.maxX + right.minX) / 2, y: page.midY)
+  let pane = 99901, card = 99902
+  let cardRect = page.insetBy(dx: (page.width * 0.08).rounded(), dy: (page.height * 0.07).rounded())
+  let was = c.hostedBounds
+  c.hostedBounds = { n in n == pane ? right : n == card ? cardRect : bounds(n) }
+  defer { c.hostedBounds = was }
+  let pushedBefore = c.pushed.count
+
+  // ---- a split of two ----
+  c.setVisibleHosts([HostShownWindow(window: main, rect: left, role: .main, z: 0, focused: true), HostShownWindow(window: pane, rect: right, role: .pane, z: 1, focused: false)])
+  check("several hosts: a split's two holes, each its window's frame inside its rect; the focused one's is `hole`",
+        c.holes == [left, right] && c.hole == left && c.pageState == .shown, "\(c.holes) \(String(describing: c.hole))")
+  check("several hosts: the ground cut for both (its corners rounded only where they meet the page card's), drawn in the gap between them",
+        !c.ground.fills(local(mid(left))) && !c.ground.fills(local(mid(right))) && c.ground.fills(local(gap)) && c.ground.extras.count == 1
+        && c.ground.radii == [radius, 0, 0, radius] && c.ground.extras.first?.radii == [0, radius, radius, 0] && radius > 0,
+        "\(c.ground.radii) \(String(describing: c.ground.extras)) gap \(c.ground.fills(local(gap)))")
+  check("several hosts: the pointer through each hole to its window, Margin's in the gap (caught there)",
+        PassThrough.pageGets(mid(left), c.slot) && PassThrough.pageGets(mid(right), c.slot) && !PassThrough.pageGets(gap, c.slot) && c.catchRegion.contains(local(gap), in: content.size)
+        && !c.catchRegion.contains(local(mid(right)), in: content.size), "\(String(describing: c.slot))")
+  let points = [local(mid(left)), local(mid(right)), local(gap)]
+  _ = await until(3) { windowAlpha(c.panel, at: points).map { $0[0] == 0 && $0[1] == 0 && $0[2] == 255 } == true }
+  let alpha = windowAlpha(c.panel, at: points)
+  check("several hosts: as the window server pictures Margin's window: see-through in both holes, painted in the gap", alpha.map { $0[0] == 0 && $0[1] == 0 && $0[2] == 255 } == true, "\(String(describing: alpha))")
+  let frames = c.pushed.dropFirst(pushedBefore).filter { $0.contains(#""type":"hostedFrames""#) }
+  let seen = await js(c.webView, "return marginApp.hostedFrames().map(f => f.role + (f.focused ? '*' : '')).join(',')") as? String
+  check("several hosts: their frames pushed to the page beside `hostedFrame` (unchanged), back to front, the page keeping them",
+        frames.count == 1 && frames.first?.contains(#""role":"main","focused":true"#) == true && frames.first?.contains(#""role":"pane","focused":false"#) == true && seen == "main*,pane",
+        "\(frames) \(String(describing: seen))")
+
+  // ---- a card over main ----
+  // (A still pointer over where the card's bar comes, in main's hole until then: the page's, through to main.)
+  let overBar = CGPoint(x: cardRect.midX, y: cardRect.minY - 20)
+  c.setVisibleHosts([])
+  c.pointerMoved(overBar, buttonsDown: false)
+  let passedBefore = c.panel.ignoresMouseEvents
+  c.setVisibleHosts([HostShownWindow(window: main, rect: page, role: .main, z: 0, focused: false), HostShownWindow(window: card, rect: cardRect, role: .card, z: 1, focused: true)])
+  check("several hosts: a card opening under a STILL pointer over its bar (in main's hole until then): Margin's panel takes the mouse there at once, with no move (never Safari's toolbar under the bar)",
+        passedBefore && !c.panel.ignoresMouseEvents, "before \(passedBefore), now ignoring \(c.panel.ignoresMouseEvents)")
+  // (Still there as the card closes: main's again at once; still over the card's content as it opens: the card's.)
+  c.setVisibleHosts([])
+  let throughMain = c.panel.ignoresMouseEvents
+  c.pointerMoved(mid(cardRect), buttonsDown: false)
+  c.setVisibleHosts([HostShownWindow(window: main, rect: page, role: .main, z: 0, focused: false), HostShownWindow(window: card, rect: cardRect, role: .card, z: 1, focused: true)])
+  let throughCard = c.panel.ignoresMouseEvents
+  c.setVisibleHosts([])
+  c.pointerMoved(overBar, buttonsDown: true) // (a drag from the page: its way kept whatever the slot does)
+  c.setVisibleHosts([HostShownWindow(window: main, rect: page, role: .main, z: 0, focused: false), HostShownWindow(window: card, rect: cardRect, role: .card, z: 1, focused: true)])
+  let dragKept = c.panel.ignoresMouseEvents
+  c.pointerMoved(overBar, buttonsDown: false)
+  check("several hosts: …a still pointer there goes through to main again as soon as the card's gone, one over the card's content to the card as it opens; a held button keeps the drag's way through a slot's change",
+        throughMain && throughCard && dragKept && !c.panel.ignoresMouseEvents, "main \(throughMain) card \(throughCard) drag \(dragKept) after \(c.panel.ignoresMouseEvents)")
+  let around = CGPoint(x: page.minX + 20, y: page.midY)
+  check("several hosts: a card open: main's hole and the card's, the card's the focused one; the ground cut for the page area (the card's inside it)",
+        c.holes == [page, cardRect] && c.hole == cardRect && !c.ground.fills(local(mid(cardRect))) && !c.ground.fills(local(around)) && c.ground.extras.isEmpty, "\(c.holes) \(c.ground.extras)")
+  check("several hosts: a card open: the pointer only through its content, the page around it caught",
+        PassThrough.pageGets(mid(cardRect), c.slot) && !PassThrough.pageGets(around, c.slot) && c.catchRegion.contains(local(around), in: content.size)
+        && !c.catchRegion.contains(local(mid(cardRect)), in: content.size), "\(String(describing: c.slot?.holes))")
+  _ = await until(3) { windowAlpha(c.panel, at: [local(around)]).map { $0[0] > 0 } == true }
+  let caughtAlpha = windowAlpha(c.panel, at: [local(around), local(mid(cardRect))])
+  check("several hosts: a card open: the page around it never see-through to the window server (the pointer can't pass), the card's content is",
+        caughtAlpha.map { $0[0] > 0 && $0[1] == 0 } == true, "\(String(describing: caughtAlpha))")
+  let caught = c.caughtPresses.count
+  c.pressed(around)
+  let afterAround = c.caughtPresses.count
+  c.pressed(mid(cardRect))
+  check("several hosts: a card open: a press on the page around it reported as caught (Preview closes the card then), one on the card's content not",
+        afterAround == caught + 1 && c.caughtPresses.count == afterAround && c.caughtPresses.last == around, "\(c.caughtPresses)")
+  let hello = c.pageHello()
+  check("several hosts: a page's hello has every visible host's frame (a page started again while a card is open knows them at once)",
+        hello.contains(#""hostedFrames":[{"role":"main","focused":false"#) && hello.contains(#"{"role":"card","focused":true"#), String(hello.prefix(0)))
+
+  // ---- The preview card drawn by the real page (Arcadia): where its <m-preview-page> is, for the card's window ----
+  let rectsBefore = c.pushed.count
+  c.push(#"{"type":"peek","peek":{"url":"https://docs.example.org/guide","title":"The Guide","loading":true}}"#)
+  _ = await until(3) { c.cardRect != nil }
+  let drawn = c.cardRect ?? .zero
+  let near = { (a: CGFloat, b: CGFloat) in abs(a - b) <= 3 }
+  check("Preview: the page draws the card and says where its page is (the theme's <m-preview-page>): centred in the page area, 8% each side, 7% and a 52 pt bar above (the card window's toolbar rests under it)",
+        c.cardRect != nil && near(drawn.minX - page.minX, page.maxX - drawn.maxX) && near(drawn.minX - page.minX, (page.width * 0.08).rounded())
+        && near(drawn.minY - page.minY, (page.height * 0.07).rounded() + 52) && page.contains(drawn), "\(drawn) in \(page)")
+  let loaderUp = await js(c.webView, "return getComputedStyle(document.querySelector('m-preview-page')).backgroundColor") as? String
+  check("Preview: while its window isn't in place the card's page is covered (its own loader), never the page card's loader over main",
+        loaderUp != nil && loaderUp != "rgba(0, 0, 0, 0)" && c.pageState == .shown, "\(String(describing: loaderUp)) \(c.pageState)")
+  c.push(#"{"type":"peek","peek":{"url":"https://docs.example.org/guide","title":"The Guide","loading":false}}"#)
+  var clear: String?
+  for _ in 0..<60 {
+    clear = await js(c.webView, "return getComputedStyle(document.querySelector('m-preview-page')).backgroundColor") as? String
+    if clear == "rgba(0, 0, 0, 0)" { break }
+    try? await Task.sleep(nanoseconds: 50_000_000)
+  }
+  check("Preview: in place: the card's page clear (its window shows through), at the same place", clear == "rgba(0, 0, 0, 0)" && c.cardRect == drawn, "\(String(describing: clear)) \(String(describing: c.cardRect))")
+  c.push(#"{"type":"peek","peek":null}"#)
+  _ = await until(3) { c.cardRect == nil }
+  check("Preview: closed by the app: animated out, then no card page any more (said once)", c.cardRect == nil && c.pushed.count > rectsBefore, "\(String(describing: c.cardRect))")
+
+  // ---- one host again ----
+  c.setVisibleHosts([])
+  check("several hosts: one again: the hole the hosted window's alone, the ground and the pointer as before, the page told none",
+        c.holes == [page] && c.hole == page && c.ground.extras.isEmpty && c.ground.hole == CGRect(origin: local(page.origin), size: page.size) && c.slot?.holes == nil && c.slot?.rect == page
+        && c.pushed.last == #"{"type":"hostedFrames","frames":[]}"#, "\(c.holes) \(String(describing: c.slot)) \(String(describing: c.pushed.last))")
+}
+
 func glueResumeScenario() async {
   func check(_ label: String, _ ok: Bool, _ detail: @autoclosure () -> String = "") { e2eCheck("glue: at launch: \(label)", ok, detail()) }
   let root = FileManager.default.temporaryDirectory.appendingPathComponent("margin-e2e-resume-\(UUID().uuidString)")

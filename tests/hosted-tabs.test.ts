@@ -87,6 +87,62 @@ test('hostShow: an item\'s tab gone or in another window: found by its address, 
   assert.deepEqual((await h.show({ windowId: 7, itemId: 't-aaaa', url: 'https://a.example/' })).created, true);
 });
 
+// Several hosted windows per profile (docs/PEEK-SPLIT.md §1: a split's panes, the preview card): an item's tab in another of
+// the app's windows is moved where it's shown (its page kept), never made again.
+function withMove(f: ReturnType<typeof fakeTabs>) {
+  return {
+    ...f.api,
+    async move(id: number, { windowId, index }: { windowId: number, index: number }) {
+      const t = f.tabs.get(id);
+      if (!t) throw new Error(`No tab with id: ${id}`);
+      t.windowId = windowId;
+      t.active = false;
+      f.calls.push(`move ${id} ${windowId} ${index}`);
+      return { ...t };
+    },
+  };
+}
+
+test('hostShow: an item\'s tab in another of the app\'s windows is moved there (its page kept), then brought to the front', async () => {
+  const f = fakeTabs([{ id: 1, windowId: 9, url: NEW_TAB, active: true }, { id: 2, windowId: 7, url: NEW_TAB, active: true }]);
+  const h = createHostedTabs(() => withMove(f));
+  await h.show({ windowId: 9, itemId: 't-aaaa', url: 'https://a.example/' }); // (tab 100 in window 9)
+  await h.show({ windowId: 9, itemId: 't-bbbb', url: 'https://b.example/' }); // (tab 101, window 9 has two)
+  await h.show({ windowId: 7, itemId: 't-cccc', url: 'https://c.example/' }); // (window 7 is the app's too now)
+  f.calls.length = 0;
+  assert.deepEqual(await h.show({ windowId: 7, itemId: 't-aaaa', url: 'https://a.example/' }), { tabId: 100, created: false, moved: true });
+  assert.deepEqual(f.calls, ['move 100 7 -1', 'update 100 active'], 'moved, not made again or navigated');
+  assert.equal(f.tabs.get(100)!.windowId, 7);
+  assert.equal(f.tabs.get(100)!.active, true);
+  assert.equal(f.tabs.get(100)!.url, 'https://a.example/', 'its page kept');
+  assert.equal(h.tags().get('t-aaaa'), 100);
+  // Shown where it is now: a tab switch only.
+  f.calls.length = 0;
+  assert.deepEqual(await h.show({ windowId: 7, itemId: 't-aaaa', url: 'https://a.example/' }), { tabId: 100, created: false });
+  assert.deepEqual(f.calls, ['update 100 active']);
+});
+
+test('hostShow: a tab alone in its window gets a blank one left behind before it moves (the window stays); one in a window the app never showed in stays', async () => {
+  const f = fakeTabs([{ id: 1, windowId: 9, url: NEW_TAB, active: true }, { id: 2, windowId: 7, url: NEW_TAB, active: true }]);
+  const h = createHostedTabs(() => withMove(f));
+  await h.show({ windowId: 9, itemId: 't-aaaa', url: 'https://a.example/' }); // (tab 100, alone in window 9)
+  await h.show({ windowId: 7, itemId: 't-cccc', url: 'https://c.example/' });
+  f.calls.length = 0;
+  assert.deepEqual(await h.show({ windowId: 7, itemId: 't-aaaa', url: 'https://a.example/' }), { tabId: 100, created: false, moved: true });
+  assert.deepEqual(f.calls, ['create 9 about:blank', 'move 100 7 -1', 'update 100 active']);
+  assert.equal([...f.tabs.values()].filter((t) => t.windowId === 9).length, 1, 'window 9 keeps a tab');
+  // Its tab dragged by the person into a window of their own (one the app never showed an item in): never taken back
+  // from it; a new tab for it where it's shown.
+  const g = fakeTabs([{ id: 5, windowId: 3, url: 'https://keep.example/', active: true }, { id: 6, windowId: 4, url: NEW_TAB, active: true }]);
+  const k = createHostedTabs(() => withMove(g));
+  await k.show({ windowId: 4, itemId: 't-dddd', url: 'https://d.example/' }); // (tab 100 in window 4)
+  g.tabs.get(100)!.windowId = 3;
+  g.calls.length = 0;
+  assert.deepEqual(await k.show({ windowId: 4, itemId: 't-dddd', url: 'https://d.example/' }), { tabId: 101, created: true });
+  assert.equal(g.calls.some((c) => c.startsWith('move')), false, 'the person\'s window keeps its tab');
+  assert.equal(g.tabs.get(100)!.windowId, 3);
+});
+
 test('hostShow: refuses what isn\'t a window, an item or a page address', async () => {
   const f = fakeTabs([]);
   const h = createHostedTabs(() => f.api);
@@ -142,4 +198,33 @@ test('hostPicture: the item\'s page while its tab is in front, made smaller; not
   const failing = createHostedTabs(() => api, async () => { throw new Error('no canvas'); });
   await failing.show({ windowId: 9, itemId: 't-bbbb', url: 'https://b.example/' });
   assert.deepEqual(await failing.picture({ windowId: 9, itemId: 't-bbbb' }), { data: 'data:image/jpeg;base64,QUJD' });
+});
+
+// (A split's pane window made AROUND its item's tab, open in another of the app's windows: no blank first page, whose
+// address field keeps Safari's full-screen toolbar down over the pane: the real screen, 2026-11-21.)
+test('windowAround: a pane\'s window made with its item\'s tab in it (full screen asked), a blank left behind in a window it would empty; no tab or the browser refuses: null', async () => {
+  const f = fakeTabs([{ id: 1, windowId: 9, url: NEW_TAB, active: true }]);
+  const h = createHostedTabs(() => withMove(f));
+  await h.show({ windowId: 9, itemId: 't-aaaa', url: 'https://a.example/' }); // (tab 100, alone in window 9 once the new-tab page goes)
+  f.calls.length = 0;
+  const made: { tabId: number, focused: boolean, state?: string }[] = [];
+  const create = async (p: { tabId: number, focused: boolean, state?: string }) => { made.push(p); const t = f.tabs.get(p.tabId)!; t.windowId = 50; return { id: 50 }; };
+  assert.deepEqual(await h.windowAround('t-aaaa', create, true), { id: 50 });
+  assert.deepEqual(made, [{ tabId: 100, focused: true, state: 'fullscreen' }], 'made around the tab, full screen asked at once');
+  assert.deepEqual(f.calls, ['create 9 about:blank'], 'window 9 kept with a blank tab, nothing else made or navigated');
+  assert.equal(f.tabs.get(100)!.url, 'https://a.example/', 'its page kept');
+  // Shown there next: a tab switch, never a move or a new tab.
+  f.calls.length = 0;
+  assert.deepEqual(await h.show({ windowId: 50, itemId: 't-aaaa', url: 'https://a.example/' }), { tabId: 100, created: false });
+  // Full screen refused at creation: made again without it.
+  const g = fakeTabs([{ id: 1, windowId: 9, url: NEW_TAB, active: true }]);
+  const k = createHostedTabs(() => withMove(g));
+  await k.show({ windowId: 9, itemId: 't-bbbb', url: 'https://b.example/' });
+  await k.show({ windowId: 9, itemId: 't-cccc', url: 'https://c.example/' });
+  const asked: unknown[] = [];
+  assert.deepEqual(await k.windowAround('t-bbbb', async (p) => { asked.push(p); if (p.state) throw new Error('no full screen'); return { id: 51 }; }, true), { id: 51 });
+  assert.equal(asked.length, 2);
+  // No such tab, or the browser won't make it: null (the caller opens the window as before).
+  assert.equal(await k.windowAround('t-zzzz', async () => ({ id: 52 }), false), null);
+  assert.equal(await k.windowAround('t-cccc', async () => null, false), null);
 });

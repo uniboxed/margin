@@ -1321,3 +1321,237 @@
   .opening-mark::after, .m3[m-starting][m-page-state="empty"] .page-loader::after, .m3 > m-startup::after { animation: none; }
   .margin-sidebar :is(.tab, .pin, .new-tab-row, .folder) { transition: none; }
 }
+
+/* ---- Track 2: Favorites, nested folders, sticky pin reset, split rows, mini player, preview, toast ---- */
+.favorites {
+  display: grid;
+  grid-template-columns: repeat(var(--fav-cols, 3), minmax(0, 1fr));
+  gap: 8px;
+  padding: 2px var(--pad) 8px;
+  flex: none;
+}
+.favorite-tile {
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: 44px;
+  border-radius: 16px;
+  background: var(--sc-low);
+  color: var(--on-surface);
+  text-decoration: none;
+  cursor: default;
+  transition: background-color 150ms var(--ease), border-radius 150ms var(--ease);
+}
+.favorite-tile:hover { background: var(--sc-high); }
+.favorite-tile.active { background: var(--secondary-container); color: var(--on-secondary-container); border-radius: 22px; }
+.favorite-tile.open:not(.active) { box-shadow: inset 0 0 0 1px var(--outline-variant); }
+.favorite-tile .avatar { width: 18px; height: 18px; border-radius: 4px; }
+.favorite-tile .avatar.app { width: 22px; height: 22px; border-radius: 0; }
+.favorite-tile .drift-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--primary);
+}
+.favorites.m-drop-into { outline: 2px solid var(--primary); outline-offset: -2px; border-radius: 16px; }
+/* No favorites yet: a drop target while a tab or pin is dragged, over what follows (nothing moves), none at rest. */
+.favorites-drop { display: none; }
+:is(.m-drag-tab, .m-drag-pin) .favorites-drop { display: block; position: relative; z-index: 5; flex: none; height: 0; }
+.favorites-drop-zone { position: absolute; left: var(--pad); right: var(--pad); top: 2px; height: 44px; box-sizing: border-box; border: 2px dashed var(--outline); border-radius: 16px; background: var(--sc-low); }
+.favorites-drop.m-drop-into .favorites-drop-zone { border-color: var(--primary); background: var(--sc-high); }
+
+/* Nested folders: each level indents by the step a folder's pins have (.pin.nested, 20 px), the rows as they were up to depth 1. */
+.margin-sidebar .pins :is(.pin.nested, .folder) { margin-left: calc(var(--depth, 0) * 20px); }
+.pin .icon.reset {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--on-surface-variant);
+  flex: none;
+  opacity: 0.78;
+  cursor: default;
+}
+.pin .icon.reset:hover { opacity: 1; background: color-mix(in srgb, var(--on-surface) 10%, transparent); color: var(--on-surface); }
+.pin.muted .avatar, .tab.muted .avatar, .favorite-tile.muted .avatar { opacity: 0.6; }
+
+.split-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin: 2px 0;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--sc-low);
+  box-shadow: inset 0 0 0 1px var(--outline-variant);
+}
+.split-row.active { background: var(--secondary-container); color: var(--on-secondary-container); box-shadow: none; }
+.split-pane-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: default;
+}
+.split-pane-btn + .split-pane-btn { box-shadow: -1px 0 0 var(--outline-variant); border-top-left-radius: 4px; border-bottom-left-radius: 4px; }
+.split-pane-btn:hover { background: color-mix(in srgb, var(--on-surface) 8%, transparent); }
+.split-pane-btn.active { background: color-mix(in srgb, var(--primary) 16%, transparent); font-weight: 500; }
+.split-pane-btn .avatar { width: 15px; height: 15px; flex: none; }
+.split-pane-btn .title { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.split-row .split-swap {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--on-surface-variant);
+  opacity: 0;
+  cursor: default;
+}
+.split-row:hover .split-swap, .split-row:focus-within .split-swap { opacity: 0.85; }
+.split-row .split-swap:hover { opacity: 1; background: color-mix(in srgb, var(--on-surface) 10%, transparent); }
+
+.mini-player {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 var(--pad) 8px;
+  padding: 8px 10px;
+  border-radius: 20px;
+  background: var(--sc-high);
+  color: var(--on-surface);
+  flex: none;
+}
+.mini-player.paused { opacity: 0.72; }
+.mini-info {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: default;
+}
+.mini-art { width: 32px; height: 32px; border-radius: 10px; object-fit: cover; flex: none; display: grid; place-items: center; }
+.mini-art.letter { background: var(--letter, var(--primary)); color: var(--on-primary); font-size: 13px; font-weight: 600; }
+.mini-text { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.mini-title { font-size: 13px; font-weight: 500; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.mini-sub { font-size: 11.5px; color: var(--on-surface-variant); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.mini-controls { display: flex; align-items: center; gap: 2px; flex: none; }
+.mini-btn {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--on-surface-variant);
+  cursor: default;
+}
+.mini-btn:hover { background: color-mix(in srgb, var(--on-surface) 10%, transparent); color: var(--on-surface); }
+.mini-btn.muted { opacity: 0.45; }
+
+.toast-slot { position: fixed; top: 16px; right: 16px; z-index: 60; pointer-events: none; }
+.toast-pill {
+  padding: 10px 18px;
+  border-radius: 999px;
+  background: var(--inverse-surface);
+  color: var(--inverse-on-surface);
+  box-shadow: var(--elev-2);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* ---- The preview card and Quick Tab (docs/PEEK-SPLIT.md §2, §3) ---------------------------------------
+   Laid over the page area alone (Margin's --m-page-* while a card is up): the page dimmed around the card (main shows
+   through, dimmed), the card's page (<m-preview-page>, where Margin.app puts the card's Safari window) clear once that
+   window is in place (.ready), covered while it loads and as it goes. Open: the dim fades in and the card comes from
+   0.96 and nothing in 150 ms; close: the reverse. Transform and opacity only; Reduce Motion: a fade. Once the window is
+   in place the dimmed page never takes the pointer (Margin.app catches a press there and closes the card); while it
+   loads, and for Quick Tab's field alone, the scrim does (a click there closes it). */
+.preview-slot { position: fixed; left: var(--m-page-left, 0px); top: var(--m-page-top, 0px); right: var(--m-page-right, 0px); bottom: var(--m-page-bottom, 0px); z-index: 50; overflow: hidden; border-radius: var(--m-page-radius, 0px); pointer-events: none; --preview-dim: color-mix(in srgb, var(--scrim) 70%, transparent); }
+@media (prefers-color-scheme: dark) { .preview-slot { --preview-dim: color-mix(in srgb, var(--scrim) 90%, transparent); } }
+.preview-backdrop { position: absolute; inset: 0; pointer-events: none; }
+.preview-backdrop > .preview-scrim { position: absolute; inset: 0; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; animation: none; cursor: default; pointer-events: none; }
+.preview-backdrop:is(.loading, .quick-tab) > .preview-scrim { pointer-events: auto; }
+.preview-dim, .preview-card { position: absolute; left: clamp(0px, 8%, calc(50% - 210px)); right: clamp(0px, 8%, calc(50% - 210px)); top: clamp(0px, 7%, calc(50% - 186px)); bottom: clamp(0px, 7%, calc(50% - 186px)); border-radius: 28px; }
+.preview-backdrop.quick-tab :is(.preview-dim, .preview-card) { bottom: auto; height: 48px; }
+.preview-dim { box-shadow: 0 0 0 100vmax var(--preview-dim); pointer-events: none; animation: m3-preview-fade-in 150ms ease-out both; }
+.preview-backdrop.closing .preview-dim { animation: m3-preview-fade-out 150ms ease-in both; }
+.preview-card { display: flex; flex-direction: column; overflow: hidden; pointer-events: none; transform-origin: 50% 40%; animation: m3-preview-in 150ms cubic-bezier(.2, .8, .2, 1) both; background: transparent; color: var(--on-surface); box-shadow: var(--elev-3); }
+.preview-backdrop.closing .preview-card { animation: m3-preview-out 150ms cubic-bezier(.4, 0, 1, 1) both; }
+.preview-bar { flex: none; box-sizing: border-box; height: 44px; display: flex; align-items: center; gap: 6px; padding: 0 10px; pointer-events: auto; height: 52px; gap: 8px; padding: 0 14px; background: var(--sc-low); color: var(--on-surface); border-bottom: 1px solid var(--outline-variant); }
+.preview-host { flex: 1 1 0; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13px; color: var(--on-surface-variant); }
+.preview-field { flex: 1 1 0; min-width: 0; height: 30px; box-sizing: border-box; padding: 0 10px; font: inherit; outline: none; height: 34px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--sc-high); color: var(--on-surface); }
+.preview-page { position: relative; flex: 1 1 auto; min-height: 0; background: transparent; }
+.preview-backdrop:not(.ready) .preview-page { background: var(--sc-low); pointer-events: auto; }
+.preview-backdrop.quick-tab .preview-page { display: none; }
+.preview-backdrop.loading .preview-page::after { content: ''; position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; box-sizing: border-box; border-radius: 50%; border: 3px solid color-mix(in srgb, var(--primary) 22%, transparent); border-top-color: var(--primary); animation: m3-spin 0.9s linear infinite; }
+@keyframes m3-preview-in { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
+@keyframes m3-preview-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(0.96); } }
+@keyframes m3-preview-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes m3-preview-fade-out { from { opacity: 1; } to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .preview-card { animation-name: m3-preview-fade-in; }
+  .preview-backdrop.closing .preview-card { animation-name: m3-preview-fade-out; }
+  .preview-backdrop.loading .preview-page::after { animation: none; }
+}
+.preview-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--sc-high);
+  color: var(--on-surface);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: default;
+}
+.preview-btn:hover { background: var(--sc-highest); }
+.preview-btn.primary { background: var(--primary); color: var(--on-primary); }
+.preview-btn .line-icon { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Split View (docs/PEEK-SPLIT.md §4): Margin's own <m-pane>s, flexed by the split's ratios, and an <m-divider> between
+   each two, in the page's place while a split is shown (m-split="row" side by side, "column" stacked). The gap is the
+   divider (--m-split-gap); its grip lights on hover and focus and while dragged ([m-dragging]); the focused pane
+   ([m-focused]) has a ring in the gap around it. Nothing here moves a pane: Margin lays them out. */
+.m3 { --m-split-gap: 8px; }
+.m3 m-divider { background: var(--frame); }
+.m3 m-divider::after { content: ""; position: absolute; left: 50%; top: 50%; width: 4px; height: 48px; border-radius: 2px; transform: translate(-50%, -50%); background: color-mix(in srgb, currentColor 28%, transparent); transition: background-color .15s cubic-bezier(.2, 0, 0, 1), transform .15s cubic-bezier(.2, 0, 0, 1); }
+.m3 m-page[m-split="column"] > m-divider::after { width: 48px; height: 4px; }
+.m3 m-divider:is(:hover, :focus-visible)::after { background: var(--accent); }
+.m3 m-page[m-split="row"] > m-divider:is(:hover, :focus-visible)::after { transform: translate(-50%, -50%) scaleY(1.34); }
+.m3 m-page[m-split="column"] > m-divider:is(:hover, :focus-visible)::after { transform: translate(-50%, -50%) scaleX(1.34); }
+.m3 m-page[m-split="row"] > m-divider[m-dragging]::after { background: var(--accent); transform: translate(-50%, -50%) scale(1.5, 1.34); }
+.m3 m-page[m-split="column"] > m-divider[m-dragging]::after { background: var(--accent); transform: translate(-50%, -50%) scale(1.34, 1.5); }
+.m3 m-pane[m-focused] { border-radius: 12px; box-shadow: 0 0 0 2px var(--accent); }
+@media (prefers-reduced-motion: reduce) { .m3 m-divider::after { transition: none; } }

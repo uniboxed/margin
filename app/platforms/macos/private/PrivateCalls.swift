@@ -31,12 +31,16 @@ nonisolated enum PrivateFramework: String, CaseIterable, Sendable {
     case windowManagement = "WindowManagement.framework"
     // Public, but the host's calls in it are private (HostCalls.swift): its no-Dock launch and its notifications.
     case launchServices = "LaunchServices.framework"
+    // Public, its process calls deprecated (unavailable in Swift): a pid's process serial number and back, for the panes
+    // kept active (HostCalls.swift, PaneRecords.swift).
+    case hiServices = "HIServices.framework"
 
     var path: String {
         switch self {
         case .skyLight: return "/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight"
         case .windowManagement: return "/System/Library/PrivateFrameworks/WindowManagement.framework/WindowManagement"
         case .launchServices: return "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/LaunchServices"
+        case .hiServices: return "/System/Library/Frameworks/ApplicationServices.framework/Frameworks/HIServices.framework/HIServices"
         }
     }
 }

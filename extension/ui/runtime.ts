@@ -29,8 +29,10 @@ import * as V from '../shared/view.ts';
 import { createSwitching, NEW_TAB, opensNewTab } from '../shared/switching.ts';
 import { installPalette } from './behaviors/palette.ts';
 import { installPeek } from './behaviors/peek.ts';
+import { installCard } from './behaviors/card.ts';
 import { installResize } from './behaviors/resize.ts';
 import { installMenus } from './behaviors/menus.ts';
+import { installSplit } from './behaviors/split.ts';
 import { installRename } from './behaviors/rename.ts';
 import { installEditor } from './behaviors/editor.ts';
 import { installDrag } from './behaviors/drag.ts';
@@ -42,7 +44,8 @@ import { createIntents } from './intents.ts';
 import type { Front } from './intents.ts';
 import { createRowMotion } from './row-motion.ts';
 
-const CLOSED_PALETTE = Object.freeze({ open: false, query: '', selected: 0, newTab: false });
+const CLOSED_PALETTE = Object.freeze({ open: false, query: '', selected: 0, newTab: false, selectAll: false });
+const TOAST_MS = 1800;
 // What's shown ahead of the state lasts this long at most (sidebar.js SHOWN_SPACE_MS).
 const PENDING_MS = 3000;
 // The page was shown this recently: its own tab's space until the state
@@ -53,9 +56,9 @@ const JUST_SHOWN_MS = 2000;
 // (content/palette.js newTabCloser).
 const NEW_TAB_HOLD_MS = 1500;
 const SHOWS_ANOTHER_TAB = new Set(['activateTab', 'newTab', 'openPin', 'restoreArchive', 'search', 'openLauncher']);
-const SWITCH_REQUESTS = new Set(['activateTab', 'openPin', 'setSpace']);
+const SWITCH_REQUESTS = new Set(['activateTab', 'openPin', 'openFavorite', 'setSpace']);
 // Rows a ⌃-click opens the menu on rather than runs (the Mac's right-click).
-const ROW_ACTIONS = new Set(['tab.activate', 'pin.open', 'folder.toggle']);
+const ROW_ACTIONS = new Set(['tab.activate', 'pin.open', 'favorite.open', 'folder.toggle']);
 
 // The UI's own state (always with a palette: closed, or as it's open).
 type Ui = UiState & { palette: NonNullable<UiState['palette']> } & Record<string, any>;
@@ -93,6 +96,8 @@ export type Rt = {
   cancel(id: ReturnType<typeof setTimeout> | null | undefined): void,
   readonly destroyed: boolean,
   spaceView(id: string): ViewModel | null,
+  /** A short note at the top of the window (the `toast` part, or Margin's own). */
+  showToast(text: string, ms?: number): void,
   // Each behavior's own (createRuntime: set before any is installed).
   behaviors: Record<string, any>,
 };
@@ -122,7 +127,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   onSwitchRun?: (run: import('../shared/switching.ts').SwitchRun) => void,
 }) {
   // (Always with a palette: closed, or as it's open.)
-  let ui: Ui = { sidebar: null, palette: CLOSED_PALETTE, menu: null, editing: null, editor: null, notice: null, focused: true, switchingTo: null, newTabPending: false, opening: null, ...start };
+  let ui: Ui = { sidebar: null, palette: CLOSED_PALETTE, menu: null, editing: null, editor: null, notice: null, prompt: null, toast: null, focused: true, switchingTo: null, newTabPending: false, opening: null, ...start };
   let vm: ViewModel | null = null;
   let drawn: ViewModel | null = null;
   let savedKey: string | null = null; // the theme's saved settings last applied (as JSON)
@@ -269,7 +274,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     sheets: [theme.sheet, theme.settingsSheet].filter(Boolean),
     onAction: (name, arg, info) => { themeClick(name, arg, info); },
     onInput: (name, value) => { for (const b of list) b.onInput?.(name, value); },
-    onLayout: (geometry) => { placeLoader(); host.reportLayout({ ...geometry, windowId: windowId(), mode: host.mode ?? 'inpage' }); },
+    onLayout: (geometry) => { placeLoader(); behaviors.card?.layout?.(); host.reportLayout({ ...geometry, windowId: windowId(), mode: host.mode ?? 'inpage' }); },
     onWarn: (message) => warn(message),
   });
   drawsSettingsNav = view.reads('settingsTab');
@@ -308,6 +313,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       if (moving) motion.after();
     }
     followPage();
+    followToast();
     if (vm.ready) firstRender = false;
     for (const b of list) b.afterRender?.(vm, prev);
     expireLater();
@@ -325,6 +331,47 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   // `shown` for its fade-out, see-through and never taking the pointer.
   // `m-starting`: from the root's first frame until a frame after the state's data was first drawn (a theme's
   // skeleton); never set when the data is there at the first draw.
+  let defaultToast: HTMLElement | null = null;
+  let toastTimer: Timer | null = null;
+  let toastSeq = 0;
+  function showToast(text: string, ms: number = TOAST_MS) {
+    const clean = String(text ?? '').trim().slice(0, 140);
+    if (!clean || destroyed) return;
+    clearTimeout(toastTimer);
+    const id = `toast-${++toastSeq}`;
+    setUi({ toast: { id, text: clean } });
+    toastTimer = setTimeout(() => {
+      toastTimer = null;
+      if (!destroyed && ui.toast?.id === id) setUi({ toast: null });
+    }, Math.max(300, ms));
+  }
+  function followToast() {
+    const root = (view.rootElement() as HTMLElement | null);
+    if (!root) return;
+    const own = view.parts.has('toast') && !!root.querySelector('m-toast:not([m-default])');
+    if (own || !vm?.toast) {
+      if (defaultToast) { defaultToast.remove(); defaultToast = null; }
+      return;
+    }
+    if (!defaultToast) {
+      defaultToast = doc.createElement('m-toast');
+      defaultToast.setAttribute('m-default', '');
+      defaultToast.setAttribute('role', 'status');
+      defaultToast.setAttribute('aria-live', 'polite');
+    }
+    if (defaultToast.textContent !== vm.toast.text) defaultToast.textContent = vm.toast.text;
+    if (defaultToast.parentNode !== root) root.appendChild(defaultToast);
+  }
+  function copyText(text: string, label: string) {
+    if (!text) return false;
+    if (host.perform?.('copyUrl', { url: text })) { showToast(label); return true; }
+    try {
+      void win.navigator?.clipboard?.writeText?.(text).catch(() => {});
+    } catch {}
+    showToast(label);
+    return true;
+  }
+
   let defaultLoader: HTMLElement | null = null;
   // `elsewhere` with a web item's picture (host.pagePicture): `<m-page-picture>` over the page's place, above any
   // loader: the page as Safari last showed it, faded, and the card's words (BASE_CSS; a theme may restyle it). Made
@@ -505,6 +552,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     const state = (host.getState() as any);
     const target = type === 'activateTab' ? payload.tabId
       : type === 'openPin' && state ? V.pinTabId(state, payload.pinId, payload.windowId ?? windowId())
+      : type === 'openFavorite' && state ? V.favoriteTabId(state, payload.favoriteId, payload.windowId ?? windowId())
       : opensNewTab(type, payload) ? NEW_TAB : null;
     if (Number.isInteger(target) || typeof target === 'string') {
       // Back to the tab in front: a switch away still under way ends, or, in
@@ -584,7 +632,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     const now = fullUi();
     // (The palette's rows as drawn: from the state as the UI shows it, a row closed a moment ago not among them.)
     const items = ui.palette.open ? paletteItems(viewState(state), now, host.platform) : [];
-    const menu = ui.menu && vm ? menuItems((ui.menu as any), { state: viewState(state), space: vm.space, features: (host.platform as any)?.features ?? null }) : [];
+    const menu = ui.menu && vm ? menuItems((ui.menu as any), { state: viewState(state), space: vm.space, favorites: vm.favorites, features: (host.platform as any)?.features ?? null }) : [];
     const colors = vm?.editor ? vm.editor.colors.map((c) => c.id) : [];
     const noticeIds = vm?.notice?.actions.map((a) => a.id) ?? [];
     const promptIds = vm?.prompt?.actions.map((a) => a.id) ?? [];
@@ -592,6 +640,16 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     const themeIds = themeChoices((host.platform as any)?.features).map((c) => c.id);
     const verdict = checkAction(name, arg, contextFromState(state, items.map((i) => i.id), { menuIds: menu.filter((i) => !i.separator).map((i) => i.id), colorIds: colors, noticeIds, promptIds, settingIds, themeIds }));
     if (!verdict.ok) return refuse(name, arg, (verdict as any).reason);
+    // A pane that can't fit in Margin's window's page area beside the others (each one's minimum): not added, said.
+    if (name === 'split.add' || name === 'split.addPane') {
+      const why = behaviors.split?.refusesAdd?.(arg);
+      if (why) { showToast(why); return refuse(name, arg, why); }
+    }
+    // ...nor stacked (or put side by side) when they wouldn't fit along the other axis.
+    if (name === 'split.toggleAxis') {
+      const why = behaviors.split?.refusesAxis?.(arg);
+      if (why) { showToast(why); return refuse(name, arg, why); }
+    }
     // Margin's own pages over a browser (the launcher) open their Settings in place; Margin's window opens its Settings
     // tab (the host's openLauncher: HostedSession.swift, a margin://settings item).
     if (name === 'settings.open' && host.launcher && !host.appWindow) return local('settings.toggle', undefined, info);
@@ -636,7 +694,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
         void Promise.resolve(host.send(type, payload)).then((res) => { if (typeof res?.spaceId === 'string') behaviors.editor.openWhenThere(res.spaceId, { fresh: true }); });
         return true;
       }
-      case 'folder.new': case 'folder.newWithTab': case 'folder.newWithPin':
+      case 'folder.new': case 'folder.newIn': case 'folder.newWithTab': case 'folder.newWithPin':
         // Its name, edited in place once it's drawn (sidebar.js folderCreated).
         void Promise.resolve(host.send(type, payload)).then((id) => { if (typeof id === 'string') behaviors.rename.startWhenThere('folder', id); });
         return true;
@@ -655,6 +713,13 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
         behaviors.peek?.reset();
         ui = { ...ui, sidebar: null };
         break;
+      case 'media.toggle': case 'media.prev': case 'media.next': case 'media.mute': case 'media.focus': {
+        const m = vm?.media;
+        if (!m) return false;
+        if (name === 'media.focus' && m.tabId != null) return send('activateTab', { tabId: m.tabId, windowId: windowId() ?? undefined });
+        if (name === 'media.mute' && m.tabId != null) return send('muteTab', { tabId: m.tabId, windowId: windowId() ?? undefined });
+        return send(type, { ...payload, tabId: m.tabId, source: m.source });
+      }
       case 'folder.toggle':
         lastToggle = { folderId: arg, wasOpen: !payload.open, at: Date.now() };
         break;
@@ -667,6 +732,8 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     for (const id of closing) intents.close(id, before, windowId(), request);
     if (name === 'tab.move') return request;
     render();
+    // (⌘D's toast waits for the answer: the new pin's id, or null, ui/shortcut-targets.ts togglePin.)
+    if (name === 'tab.pin' || name === 'tab.unpin') return request;
     return true;
   }
 
@@ -690,7 +757,10 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   function local(name: string, arg: any, info: any): unknown {
     switch (name) {
       case 'palette.open':
-        setUi({ palette: { open: true, query: '', selected: 0, newTab: !!arg?.newTab }, menu: null, newTabPending: false });
+        setUi({
+          palette: { open: true, query: typeof arg?.query === 'string' ? arg.query : '', selected: 0, newTab: !!arg?.newTab, selectAll: !!arg?.selectAll },
+          menu: null, newTabPending: false,
+        });
         return true;
       case 'palette.close':
         if (!ui.palette.open) return true;
@@ -698,9 +768,50 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
         behaviors.palette?.closed(false);
         onPalette?.('close');
         return true;
+      case 'tab.copyUrl': {
+        const state = host.getState();
+        const targetId = arg !== undefined && arg !== null && arg !== '' ? arg : frontTab();
+        const item = typeof targetId === 'string' ? state?.keptTabs?.[targetId] : targetId != null ? state?.tabs?.[targetId] : null;
+        const url = item?.url ?? '';
+        if (!/^https?:\/\//i.test(url)) return false;
+        return copyText(url, arg == null || arg === '' ? 'Copied Current URL' : 'Copied URL');
+      }
+      case 'pin.copyUrl': {
+        const pin = host.getState()?.pins?.find((p: { id: string }) => p.id === arg);
+        const url = pin?.url ?? '';
+        if (!/^https?:\/\//i.test(url)) return false;
+        return copyText(url, 'Copied URL');
+      }
+      case 'favorite.copyUrl': {
+        const fav = host.getState()?.favorites?.find((f: { id: string }) => f.id === arg);
+        const url = fav?.url ?? '';
+        if (!/^https?:\/\//i.test(url)) return false;
+        return copyText(url, 'Copied URL');
+      }
+      // The preview card and Quick Tab (behaviors/card.ts).
+      case 'preview.close': return behaviors.card.close();
+      case 'preview.expand': return behaviors.card.expand();
+      case 'quickTab.open': return behaviors.card.openLittleArc();
+      case 'preview.copyUrl': {
+        const url = ui.peek?.url ?? '';
+        if (!/^https?:\/\//i.test(url)) return false;
+        return copyText(url, 'Copied URL');
+      }
+      case 'preview.setSpace':
+        if (!ui.peek) return false;
+        setUi({ peek: { ...ui.peek, spaceId: arg } });
+        host.perform?.('peek.setSpace', { spaceId: arg });
+        return true;
+      case 'preview.back':
+        return !!ui.peek && !ui.peek.littleArc && !!host.perform?.('peek.back', {});
+      case 'preview.forward':
+        return !!ui.peek && !ui.peek.littleArc && !!host.perform?.('peek.forward', {});
       case 'space.edit': return behaviors.editor.open(arg);
       case 'space.rename': return behaviors.rename.start('space', arg);
       case 'folder.rename': return behaviors.rename.start('folder', arg);
+      case 'tab.rename': return behaviors.rename.start('tab', arg);
+      case 'pin.rename': return behaviors.rename.start('pin', arg);
+      case 'favorite.rename': return behaviors.rename.start('favorite', arg);
       case 'menu.open': {
         const box = info?.element?.getBoundingClientRect?.();
         return behaviors.menus.open({ kind: arg, id: null }, box ? { x: box.left, y: box.top } : { x: 0, y: 0 }, { above: true });
@@ -794,7 +905,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     get ui() { return ui; },
     get state() { return host.getState(); },
     viewState: () => viewState(host.getState()),
-    setUi, render, dispatch, send, refuse, warn, runQuery,
+    setUi, render, dispatch, send, refuse, warn, runQuery, showToast,
     windowId, ownTab, frontTab, recentTabOf, switchSpace,
     /** Space `spaceId` kept shown for `ms`, whatever the state says meanwhile (a swipe's slide coming in). */
     holdSpace(spaceId: string, ms: number) {
@@ -841,7 +952,9 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     press: installPress(rt),
     palette: installPalette(rt),
     peek: installPeek(rt),
+    card: installCard(rt),
     resize: installResize(rt),
+    split: installSplit(rt),
     menus: installMenus(rt),
     rename: installRename(rt),
     editor: installEditor(rt),
@@ -912,10 +1025,19 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       if (tabId === frontTab()) switching.toFront(tabId, request);
       else switching.start(tabId, request);
     },
-    /** The palette, opened by the host (its key, ⌘T's hand-off): `newTab`, to choose a new tab. */
-    openPalette: ({ newTab = false } = {}) => local('palette.open', { newTab }, null),
+    /** The palette, opened by the host (its key, ⌘T's hand-off, ⌘L address): `newTab`, to choose a new tab. */
+    openPalette: ({ newTab = false, query = '', selectAll = false }: { newTab?: boolean, query?: string, selectAll?: boolean } = {}) => local('palette.open', { newTab, query, selectAll }, null),
     closePalette: () => { if (ui.palette.open) local('palette.close', undefined, null); },
     get paletteOpen() { return !!ui.palette.open; },
+    showToast,
+    /** The preview card (behaviors/card.ts): the app's word on it (null: gone), Quick Tab opened by the app's key. */
+    card: {
+      show: (peek: unknown) => behaviors.card.show(peek),
+      openLittleArc: () => behaviors.card.openLittleArc(),
+      get open() { return !!ui.peek && !ui.peek.closing; },
+    },
+    /** Where the theme's `<m-preview-page>` is now (ui/render.ts View.measurePeekPage): null when no card is drawn. */
+    measurePeekPage: () => view.measurePeekPage(),
     /** The new-tab launcher's field focused, by the host's word (its overlay shown over a new window: behaviors/palette.js). */
     focusLauncher: () => !!behaviors.palette?.focusLauncher(),
     /** The tab list's scroll: saved now (before a switch), or set (a page prepared for a show). */
@@ -936,6 +1058,9 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       motion.destroy();
       clearTimeout(expiryTimer);
       clearTimeout(newTabTimer);
+      clearTimeout(toastTimer);
+      defaultToast?.remove();
+      defaultToast = null;
       for (const id of timers) clearTimeout(id);
       for (const fn of offs.splice(0)) fn();
       view.destroy();

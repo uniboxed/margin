@@ -167,7 +167,24 @@ export function hitRects(root: Element, slot: { left: number, top: number, right
   const found: Box[] = [];
   const walk = (el: Element, up: Clips) => {
     for (const child of (el.children as any) as Element[]) {
-      if (child.localName === 'm-page' || child.localName === 'template') continue;
+      if (child.localName === 'template') continue;
+      if (child.localName === 'm-page') {
+        // (Nothing of the page's place takes the pointer but a split's dividers and a cut pane's arrows while they're
+        // shown, Margin's own: docs/PEEK-SPLIT.md §4, §4b; none while the preview card is up over it, `m-card-clip`: its
+        // page is the card's, the dim around it Margin's.)
+        if (child.hasAttribute?.('m-card-clip')) continue;
+        const add = (b: DOMRect) => { if (b.width > 0 && b.height > 0 && b.left < slot.right && b.right > slot.left && b.top < slot.bottom && b.bottom > slot.top) found.push(box(b.left, b.top, b.right, b.bottom)); };
+        for (const d of (child.children as any) as Element[]) {
+          if (d.localName === 'm-divider') { add(d.getBoundingClientRect()); continue; }
+          if (d.localName !== 'm-pane') continue;
+          for (const a of (d.children as any) as Element[]) {
+            if (a.localName !== 'm-pane-arrow') continue;
+            const st = getStyle(a);
+            if (st.pointerEvents !== 'none' && st.visibility !== 'hidden') add(a.getBoundingClientRect());
+          }
+        }
+        continue;
+      }
       const st = once(() => getStyle(child));
       const c = clipsOf(child, st, up);
       const b = child.getBoundingClientRect();
@@ -292,13 +309,20 @@ export function chromeRects(root: Element | null): { controls: number[] | null, 
  * state (theme, command, pointer, pressOutside, blur, shown, push), for the page.
  * `onNotice({ id, action })`: a button of a notice the overlay put up.
  * */
-export function createAppHost({ hello, post, onMessage = () => {}, onNotice = () => {}, warn = (...args) => console.warn('[margin]', ...args) }: {
+/** A split's cut pane (docs/PEEK-SPLIT.md §4b): its window, and its hidden sides its arrows slide into its pane. */
+export type PaneSide = 'left' | 'right' | 'up' | 'down';
+export const PANE_SIDES: readonly PaneSide[] = Object.freeze(['left', 'right', 'up', 'down']);
+export type PaneCut = { window: number } & Partial<Record<PaneSide, 'slide'>>;
+
+export function createAppHost({ hello, post, onMessage = () => {}, onNotice = () => {}, warn = (...args) => console.warn('[margin]', ...args), note = (...args) => console.info('[margin]', ...args) }: {
   hello: any,
   post: (op: string, body?: Record<string, any>) => Promise<any>,
   onMessage?: (msg: any) => void,
   onNotice?: (arg: { id?: string, action?: string }) => void,
   warn?: (...args: any[]) => void,
-}): Host & { readonly platform: Host['platform'] & { app: boolean, features: Record<string, any> }, readonly appWindow: boolean, readonly pageOutside: boolean, readonly pageHosted: boolean, readonly marginPage: 'settings' | null, readonly pageMinWidth: number, readonly pageStuck: string | null, readonly sidebarDocked: boolean, perform(name: string, arg?: any): boolean | undefined, staysOnScreen: boolean, receive(msg: any): void, readonly windows: any[], readonly layout: Geometry | null, readonly settingsAsked: boolean, readonly pageTabId: number | null, readonly frontTabId: number | null, readonly loading: number[], readonly userThemes: any[], takeFailure(): { type: string, error: string } | null, destroy(): void } {
+  /** A line for Margin.app's log (a decision worth reading back from the real screen, never per frame). */
+  note?: (...args: any[]) => void,
+}): Host & { readonly platform: Host['platform'] & { app: boolean, features: Record<string, any> }, readonly appWindow: boolean, readonly pageOutside: boolean, readonly pageHosted: boolean, readonly marginPage: 'settings' | null, readonly pageMinWidth: number, readonly paneMinimums: Record<string, [number, number]>, readonly appMinimums: Record<string, [number, number]>, note(text: string): void, readonly paneLoading: { item: string, name: string, bundleId: string | null } | null, readonly paneCuts: Record<string, PaneCut>, readonly paneHover: number | null, readonly pageStuck: string | null, readonly sidebarDocked: boolean, perform(name: string, arg?: any): boolean | undefined, staysOnScreen: boolean, receive(msg: any): void, readonly windows: any[], readonly layout: Geometry | null, readonly settingsAsked: boolean, readonly pageTabId: number | null, readonly frontTabId: number | null, readonly loading: number[], readonly userThemes: any[], takeFailure(): { type: string, error: string } | null, destroy(): void } {
   const windowId = Number.isInteger(hello?.windowId) ? hello.windowId : null;
   let raw: Record<string, any> | null = hello?.state && typeof hello.state === 'object' ? hello.state : null;
   let state: any = null;
@@ -317,6 +341,46 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   // The hosted window's own minimum width (Margin's points; 0: none): a drag of the sidebar's edge stops there.
   const minOf = (v: unknown) => (appWindow && typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.ceil(v) : 0);
   let pageMinWidth = minOf(hello?.pageMinWidth);
+  // A split's panes' windows' own minimums (item id: [width, height], Margin's points): its page never lays a pane below
+  // its own and its divider stops there (behaviors/split.ts). At most 4, each a sane size.
+  const paneMinOf = (v: unknown, most = 8): Record<string, [number, number]> => {
+    if (!appWindow || !v || typeof v !== 'object' || Array.isArray(v)) return {};
+    const out: Record<string, [number, number]> = {};
+    for (const [k, m] of Object.entries(v as Record<string, unknown>).slice(0, most)) {
+      if (!/^[A-Za-z0-9_.:-]{1,256}$/.test(k) || !Array.isArray(m) || m.length !== 2) continue;
+      const [w, h] = m.map((x) => (typeof x === 'number' && Number.isFinite(x) && x >= 0 && x < 20000 ? Math.ceil(x) : 0));
+      out[k] = [w, h];
+    }
+    return out;
+  };
+  let paneMinimums = paneMinOf(hello?.paneMin);
+  // Every app's windows' known minimum (its bundle id; `web`: the web pages Safari hosts), whether a window of it is open
+  // or not (docs/PEEK-SPLIT.md §4): no pane laid out below its app's, a pane that can't fit refused before anything is
+  // opened (behaviors/split.ts `paneFloors`). At most 64, each a sane size.
+  let appMinimums = paneMinOf(hello?.appMin, 64);
+  // A split's pane whose window is opening beside the panes shown (its item, its name, its app): its loader over that
+  // pane's box only (behaviors/split.ts), never the page card's over all of them. Margin's own window only.
+  const paneLoadingOf = (v: any): { item: string, name: string, bundleId: string | null } | null => {
+    if (!appWindow || !v || typeof v !== 'object' || typeof v.item !== 'string' || !/^[A-Za-z0-9_.:-]{1,256}$/.test(v.item)) return null;
+    return { item: v.item, name: typeof v.label === 'string' ? v.label.slice(0, 120) : '', bundleId: isBundleId(v.bundleId) ? v.bundleId : null };
+  };
+  let paneLoading = paneLoadingOf(hello?.paneLoading);
+  // A split's cut panes (docs/PEEK-SPLIT.md §4b): each one's window, its sides' arrows (each a slide); at most 4 (a
+  // split's panes), each side checked.
+  const paneCutsOf = (v: unknown): Record<string, PaneCut> => {
+    const out: Record<string, PaneCut> = {};
+    if (!appWindow || !v || typeof v !== 'object' || Array.isArray(v)) return out;
+    for (const [item, c] of Object.entries(v as Record<string, any>).slice(0, 4)) {
+      if (!/^[A-Za-z0-9_.:-]{1,256}$/.test(item) || !c || typeof c !== 'object' || !Number.isInteger(c.window)) continue;
+      const cut: PaneCut = { window: c.window };
+      for (const side of PANE_SIDES) if (c[side] === 'slide') cut[side] = 'slide';
+      out[item] = cut;
+    }
+    return out;
+  };
+  let paneCuts = paneCutsOf(hello?.paneCut);
+  // The cut pane's window the pointer is over (Margin.app says it as the pointer enters and leaves one), null: none.
+  let paneHover: number | null = null;
   // The page card's state (Margin's own window only), and the name of what's opening while it's `loading`.
   const pageStateOf = (v: unknown) => (v === 'shown' || v === 'loading' || v === 'elsewhere' ? v : 'empty');
   // (Its item's name and app said while it opens, and while it's in another Margin window: its card.)
@@ -419,6 +483,13 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
     get marginPage() { return marginPage; },
     /** The hosted window's own minimum width (0: none): the page area is never dragged narrower (behaviors/resize.ts). */
     get pageMinWidth() { return pageMinWidth; },
+    get paneMinimums() { return paneMinimums; },
+    get appMinimums() { return appMinimums; },
+    /** A line in Margin.app's log. */
+    note(text: string) { note(text); },
+    get paneLoading() { return paneLoading; },
+    get paneCuts() { return paneCuts; },
+    get paneHover() { return paneHover; },
     /** The page card's state (Margin's own window; undefined over a browser: its page is always there). */
     get pageState() { return appWindow ? pageState : undefined; },
     get pageOpening() { return pageOpening; },
@@ -475,7 +546,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
       // (Whether it was measured hosting, too: the app places a hosted window only by a layout its page drew for hosting,
       // never the launcher's from before, whose sidebar is always docked: 2026-11-20, a hidden sidebar's page area.)
       const next = { ...geometry, ...kept, mode: geometry.mode ?? mode, pageOutside, pageHosted };
-      const key = (g: any) => JSON.stringify([g.insets, g.radius, g.radii ?? null, g.container, g.mode ?? null, !!g.pageOutside, !!g.pageHosted, g.fills ?? null]);
+      const key = (g: any) => JSON.stringify([g.insets, g.radius, g.radii ?? null, g.container, g.mode ?? null, !!g.pageOutside, !!g.pageHosted, g.fills ?? null, g.split ?? null, g.panes ?? null]);
       if (layout && key(layout) === key(next)) return;
       layout = next;
       void post('layout', { geometry: next }).catch(() => {});
@@ -496,6 +567,33 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
         case 'window.fullscreen':
           void post('perform', { name, arg: arg ?? null }).catch(() => {});
           return true;
+        case 'copyUrl':
+          if (typeof arg?.url !== 'string' || !arg.url) return false;
+          void post('perform', { name, arg: { url: arg.url } }).catch(() => {});
+          return true;
+        // The preview card and Quick Tab (ui/behaviors/card.ts; app/platforms/macos/shell/HostedPeek.swift): only
+        // Margin's own window has one. Close, back and forward say nothing more; Expand its space; Quick Tab's field its
+        // address or search (`peek.go`), and that it's open (`peek.littleArc`: ⌘W and Esc are the card's then). These
+        // `peek.*` names are the app's (Margin.app's perform), not the theme's `preview.*` actions: kept.
+        case 'peek.close':
+        case 'peek.back':
+        case 'peek.forward':
+          if (!appWindow) return false;
+          void post('perform', { name, arg: {} }).catch(() => {});
+          return true;
+        case 'peek.expand':
+        case 'peek.littleArc':
+          if (!appWindow) return false;
+          void post('perform', { name, arg: { spaceId: typeof arg?.spaceId === 'string' ? arg.spaceId : null } }).catch(() => {});
+          return true;
+        case 'peek.go': {
+          if (!appWindow) return false;
+          const url = typeof arg?.url === 'string' && /^https?:\/\//i.test(arg.url) && arg.url.length <= 2048 ? arg.url : null;
+          const query = typeof arg?.query === 'string' && arg.query.trim() ? arg.query.trim().slice(0, 1000) : null;
+          if (!url && !query) return false;
+          void post('perform', { name, arg: { ...(url ? { url } : { query }), spaceId: typeof arg?.spaceId === 'string' ? arg.spaceId : null } }).catch(() => {});
+          return true;
+        }
         // Themes (app/platforms/macos/shell/ShellThemes.swift): the file picker; a checked theme kept; one removed.
         case 'theme.import':
           void post('perform', { name, arg: null }).catch(() => {});
@@ -522,8 +620,16 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
         // The sidebar's width being dragged, or let go (behaviors/resize.ts): Margin's own window holds a hosted
         // window's placing until it's over (app/platforms/macos/shell/HostedSession.swift sidebarResizing).
         case 'sidebar.resizing':
+        // A split's divider dragged, or let go (behaviors/split.ts): the same, every pane's window following its rect.
+        case 'split.resizing':
           if (!appWindow || typeof arg?.on !== 'boolean') return false;
           void post('perform', { name, arg: { on: arg.on } }).catch(() => {});
+          return true;
+        // A cut pane's arrow (behaviors/split.ts, docs/PEEK-SPLIT.md §4b): its window slid to show that side, one it
+        // has; Margin.app's engine does it.
+        case 'split.slide':
+          if (!appWindow || typeof arg?.item !== 'string' || !PANE_SIDES.includes(arg?.side) || paneCuts[arg.item]?.[arg.side as PaneSide] !== 'slide') return false;
+          void post('perform', { name, arg: { item: arg.item, side: arg.side } }).catch(() => {});
           return true;
         // A space swipe's detent (behaviors/swipe.ts, Arc's feel): the trackpad's alignment tick, as Arc gives it.
         case 'haptic.alignment':
@@ -580,6 +686,38 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           // (Read by the drag itself, at each move: nothing to draw.)
           pageMinWidth = minOf(msg.width);
           return;
+        case 'paneMin': {
+          // A split's panes' windows' minimums (docs/PEEK-SPLIT.md §4): no pane laid out below its own.
+          const next = paneMinOf(msg.items);
+          if (JSON.stringify(next) === JSON.stringify(paneMinimums)) return;
+          paneMinimums = next;
+          return emit();
+        }
+        case 'appMin': {
+          const next = paneMinOf(msg.apps, 64);
+          if (JSON.stringify(next) === JSON.stringify(appMinimums)) return;
+          appMinimums = next;
+          return emit();
+        }
+        case 'paneCut': {
+          const next = paneCutsOf(msg.panes);
+          if (JSON.stringify(next) === JSON.stringify(paneCuts)) return;
+          paneCuts = next;
+          if (paneHover != null && !Object.values(paneCuts).some((c) => c.window === paneHover)) paneHover = null;
+          return emit();
+        }
+        case 'paneHover': {
+          const next = Number.isInteger(msg.window) && Object.values(paneCuts).some((c) => c.window === msg.window) ? msg.window as number : null;
+          if (next === paneHover) return;
+          paneHover = next;
+          return emit();
+        }
+        case 'paneLoading': {
+          const next = paneLoadingOf(msg.pane);
+          if (JSON.stringify(next) === JSON.stringify(paneLoading)) return;
+          paneLoading = next;
+          return emit();
+        }
         case 'pageState': {
           if (!appWindow) return;
           const next = pageStateOf(msg.state);

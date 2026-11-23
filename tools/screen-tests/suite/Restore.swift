@@ -62,7 +62,7 @@ func backHome(_ why: String) {
 // Items this run added for the person's apps: removed only for apps that had none before.
 func forgettable() -> [String] { before.realApps.filter { $0.libraryItems == 0 }.map(\.bundle) }
 func forgetTestItems() {
-  // (One app per notification: the hook takes values of 64 characters at most.)
+  // (One app per notification: one item list per ask, its own line in Margin's log.)
   for id in copies.map(\.id) + forgettable() { hook(["forget": "test", "apps": id]); spin(0.4) }
   spin(1.0)
 }
@@ -72,8 +72,10 @@ func restore(_ why: String) {
   guard first else { return }
   log("RESTORE (\(why))")
   if app(marginId) != nil { forgetTestItems() }
-  else if !forgettable().isEmpty, defaultsRead(marginId, "MarginDevHooks") == "1", FileManager.default.fileExists(atPath: before.builtMargin) {
-    // (The real-apps part quits Margin as a step: opened again in the background only to remove the items it added.)
+  // (A part that quits Margin as a step (the real apps', panes-active's) leaves the test copies' items too: Margin opened
+  // again in the background to remove them, or the next part's Margin finds them, a copy's split shown for another's host.)
+  else if !forgettable().isEmpty || copies.contains(where: { libraryItems($0.id) > 0 }), defaultsRead(marginId, "MarginDevHooks") == "1", FileManager.default.fileExists(atPath: before.builtMargin) {
+    // (Opened again in the background only to remove the items the run added.)
     sh("/usr/bin/open", ["-g", before.builtMargin, "--args", "--background"])
     if spin(10, { app(marginId) != nil }) { spin(4); forgetTestItems() }
   }

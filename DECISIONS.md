@@ -6587,3 +6587,877 @@ animation: the theme before stays on screen until the window covers the new page
 nothing hosted: at once (the window bigger than it a moment, under the theme's frame). `marginApp.stats().themeSwaps`
 records each (waited, covered). Checks (the real overlay in WebKit): smaller at once; bigger held ~120 ms until the
 window said it was there; never there: drawn after 300 ms.
+
+## Track 2 — Arc/Dia Feature Suite (M2.1–M2.8, 2026-11-20)
+
+- **M2.1 QoL, Toasts, Mute, Unload & Shortcuts (`87217e83`):** Added guarded `<m-toast>` slot & `toast` part, `⇧⌘C` Copy URL + toast, `⌘L` focus-address pre-filled & selected, `⌘D` toggle pin, `⇧⌘T` reopen last archived, `⌃1–9` Space jump, `⌘1–9` item jump, Mute/Unmute, Duplicate, and manual Unload/Sleep.
+- **M2.2 Sticky Pins, Inline Rename & Nested Folders (`1a701a96`):** Pinned tabs keep a sticky `pinnedBy` binding across sub-navigation with `drifted` indicator and `pin.reset` back to `rootUrl`; closing a sticky pin unloads it without archiving. Added `customTitle` inline rename (`m-rename="tab|pin"`) and nested folders up to `MAX_FOLDER_DEPTH = 4` with cycle/depth guards, pre-order `space.pinnedFlat`, and per-folder `shownFlat` for card-grouped themes (`liquid-glass`, `neubrutalism`, `pixel`) so existing `.folder` card layouts and DOM mutation budgets stay intact.
+- **M2.3 Favorites Grid (`39b408f4`):** Added `favorites` collection (cap 12, web tabs & macOS apps, sticky `favoriteId` binding, global across Spaces by default with `settings.favoritesScope: 'global' | 'profile'` in Settings → Tabs, `⌘1–9` prioritizes Favorites first).
+- **M2.4 Background Mini Player (`882a4016`):** Added `extension/content/media.ts` (Media Session + `<audio>`/`<video>` observer), `extension/background/media.ts` (strictly background-only visibility, active tab suppresses mini player). It never reached Margin.app's window (its pushes were dropped, its buttons unsupported there); rebuilt on `feat/arc-media` (below). Its `NowPlaying.swift` (MediaRemote, never instantiated) is removed.
+- **M2.5 Hosted Safari Peek & Little Arc (`3a73f380`):** Added `extension/shared/peek.ts`, `extension/content/peek.ts` (Shift+Click & optional `settings.autoPeekPins` external link capture), guarded `<m-peek>` slot & `peek` part, `hostPromotePeek`, and `⌥⌘N` Little Arc shortcut.
+- **M2.6 Air Traffic Control (`9ce02101`):** Added `extension/shared/air-traffic.ts` and `airTraffic` collection across model/library/Swift, 1-click "Always Open `<host>` in This Space" context menu, and automatic URL-to-Space routing on `newTab`.
+- **M2.7 Universal Split View (`de714188`):** Added multi-pane layout & divider math in Rust (`app/shared/core/src/host/panes.rs` + `api.rs`: `LayoutPanes`, `ResizeDivider`, 2–4 panes, horizontal/vertical axes), `splits` collection, combined capsule `SplitRow` in `ViewModel` + `ActiveSplitView`, and `⌃⇧=` shortcut.
+- **M2.8 All 5 Built-in Themes:** Wired complete Track 2 markup and bespoke sanitizer-clean CSS (no `backdrop-filter`, zero removed by `sanitizeTemplate`/`sanitizeCss`) across Arcadia, Liquid Glass, Material, Neubrutalism, and Pixel, and updated `extension/themes/README.md` and `TESTING.md`. Real Safari/macOS interactive behavior remains manual verification (`TESTING.md`).
+
+## Track 2 — Arc data fixes (fix/arc-data, 2026-11-21)
+
+- **What binds a Margin tab travels with it.** `customTitle`, `pinnedBy` and `favoriteId` (state/model.ts `BINDINGS`) go open → kept (`keptRecord`) and kept → open (`linkKept`, `reclaimTabs`) alike, so a renamed tab keeps its name and a pin's or favorite's tab stays theirs through a sleep, a window closing and coming back, and a restart.
+- **A pin's binding holds in its own space only.** `moveTab` (moveTabToSpace, both sides) drops `pinnedBy` when the pin isn't in the new space; `deleteSpace` re-checks every binding (`settleBindings`: the duplicate pins it drops free their tabs). `closeTab`'s "is it pinned" check is the same rule (`boundElsewhere`: a pin of the tab's own space, or a favorite), so a moved tab closes into the archive as any.
+- **A pin's or favorite's search by address never takes another's tab** (`boundElsewhere`, `keptForUrl`'s `forWhom`): openPin, resetPin (library), openFavorite, and the view's `pinTabId` guess.
+- **A favorite has one tab.** openFavorite (extension) reuses its kept tab (asleep, lost with its window) as that Margin tab, in the space the window shows, instead of opening another beside the hidden one; resetFavorite too. Kept tabs an earlier build piled up for one favorite (hidden: the sidebar never lists a favorite's tabs) go to the archive on its next click (`settleFavorite`), the one used last kept.
+- **A favorite is a web page (http/https) or a Mac app item only** (`favoriteUrlOk`): never about:, an extension's or browser's own page, a file, or one of Margin's pages.
+- **Favorites' scope is the app's, never the page's.** Margin.app's library takes `favoritesScope` from the profile's settings (LibraryWindowSource sets it over anything the page sent, and drops any `scope`) and the profile of the space the window shows (`favoriteScopeOf`, as the sidebar filters), so the 12-per-scope cap holds and a favorite shows where it was added.
+- **Add to Favorites on a pin moves it (Arc's own behaviour, kept), with no undo.** The pin goes and the favorite takes its address, title and given name (`customTitle`); its tab, if open, stays open (unbound from the pin as the pin goes, then found by the favorite at its address). Nothing the person made is lost but the pin's place (its folder, its position among the pins), so no undo is offered: to go back, Remove from Favorites (its tab, if open, returns to the space's list) and Pin Tab on it. Refused (nothing removed) when the favorites are full (12) or already have its address.
+- **Closing a sticky pin's (or favorite's) tab doesn't archive.** In the extension the tab closes and its record goes; in the library its item goes (an item is a pin's open tab there). Either way the pin record stays and shows as not open; opening it again opens its own address.
+- **Splits are by Margin tab ids** (an open tab's `mid`, a kept tab's or library item's id), never the browser's tab ids, which change at a restart and as Margin updates: a pane outlives its tab sleeping, its window coming back and a renumbering, as pins' and kept tabs' bindings do. `settleSplits` runs after every change (background/store.ts `mutate`, library.ts `perform`): a pane whose Margin tab is gone (closed, archived, forgotten, closed outside Margin) leaves, the others' ratios kept relative to each other; fewer than 2 panes: the split goes. Panes saved by browser id by this branch's first build become their open tab's Margin id (or go). The library reads a split's ratios at their panes' own places, one per pane, normalized.
+- **Air Traffic rules can be removed and turned off:** actions `airTraffic.remove` and `airTraffic.toggle` (argument kind `rule`), a tab's menu "Remove Rule for `<pattern>`" for the rule that routes its address, and Settings › Browsing › Air Traffic Control listing every rule (a toggle and Remove each). At the cap of 100, a rule for a pattern already there is still replaced.
+- **Margin.app's open items carry their bindings and sound**: HostedSession `live()` gives each open item's tab `pinnedBy`, `favoriteId`, `customTitle` (the library's item), and `audible`/`muted` from its profile's copy (`copyTabs`, from the copy's `openTabs` as the shell mirrors it). Hosted Mac apps' sound isn't carried yet: NowPlaying.swift isn't wired to anything.
+- **Compatibility:** no migration. Every new field is optional and only written when it has a value; earlier builds ignore unknown fields and collections (a split's panes were new on this branch only).
+
+## The background mini player in Margin.app (M2.4, `feat/arc-media`, 2026-11-21)
+
+Decided by Tirth: the mini player for Safari tabs now; hosted Mac apps later (MediaRemote, the only way to read and
+drive another app's Now Playing, is closed to third parties since macOS 15.4). `NowPlaying.swift` is gone; nothing
+claims hosted apps.
+
+- **The path.** A page (`content/media.ts`) says what it plays (`mediaState`) → the copy keeps each tab's source in
+  memory (`background/media.ts` `createMediaHub`) and pushes `{ type: 'media', sources }` for that tab's window, each
+  source with the item the tab shows (`hostedTabs.itemOf`) → Margin.app passes it on (`Shell.linkReceived` →
+  `HostedSession.copyPush`, checked by `UIPush.swift`) to a Margin window's page → `overlay.ts` `media` →
+  `ui.media` → the view model picks the one shown (`shared/media.ts` `selectBackgroundMedia`) → the themes'
+  `media` part (all five draw it).
+- **The buttons.** Play/Pause, Previous, Next: the UI's `mediaControl` → the library's `mediaControl` (a request,
+  nothing changed) → `HostedSession` → the copy's `hostMedia { itemId, command, tabId }` → the item's tab's page
+  (`mediaCommand`). Mute: `muteTab` (→ `hostMute`, `tabs.update` muted; the copy hears `mutedInfo` and says so).
+  The title: `activateTab` (the item shown, as a sidebar pick).
+- **The UI pushes from a copy, one route.** Margin.app passes only the types in `UIPush.forwarded` (now `media`,
+  `toast`), and of each only its listed fields, each checked and cut (text lengths, http(s) addresses, image data
+  URLs under 128 KB, flags, times); a copy's tab ids never reach the page: each becomes the UI's number for its item,
+  and an entry whose tab isn't an item open in Margin is dropped. Only pushes for the Safari window Margin hosts for
+  that profile; the person's own windows' are not Margin's. A new type (`peekOpen`) is one line.
+- **Which Margin window.** The one showing the space of the item the push is about (its first source: the copy lists
+  playing ones first, newest first); several: the hosting one, else the one in front, else the lowest id; none
+  showing it: the hosting window, else the one in front. A standing push (`media`) given to another window is taken
+  back from the one that had it (its empty one). The window is chosen again at each push, not when a window
+  switches space.
+- **Shown when.** Only for a tab not in front of that window (any item in front: a web item or a Mac app). Playing
+  ones before paused, the newest first. Paused: stays 30 s (`PAUSE_GRACE_MS`, everywhere), then goes: the copy's
+  one timer, only while something is paused. A tab closed (`tabs.onRemoved`) or its page left (a new document in its
+  main frame: `webNavigation.onCommitted`, frameId 0) goes at once.
+- **Safari's tab ids** change on a restart or an update: nothing outlives the background (memory only), the page
+  reports again when it plays (and once as its script starts, which an update's re-injection is). The app finds the
+  item by the copy's tag, else the tab hostShow answered, else the open item of that profile at the page's address;
+  that tab is then kept as the item's and named in `hostMedia`, which the copy uses when its tag is gone.
+- **What a page can't do from Margin's world.** The page's Media Session action handlers belong to the page's world
+  (no `ExecutionWorld.MAIN` in Safari 27.2): Previous and Next press the page's own buttons labelled exactly
+  Next/Previous (with what's played and a shortcut allowed: never "Next page", "Skip ad"); Previous otherwise starts
+  the track again. Media in a frame (`all_frames` is false), a shadow root, or an `Audio()` never in the page isn't
+  seen by the content script: Safari's `audible` for the tab stands in (its title and host; its Play/Pause may do
+  nothing).
+- **Artwork.** The page's Media Session artwork (the largest it lists): fetched by the copy's background (its host
+  permissions; `credentials: 'omit'`, no referrer, https or an image data URL only, an image only, 2 MB at most,
+  6 s), drawn at most 128 px (OffscreenCanvas; else a small one as it is), sent as a PNG data URL (under 96 KB). The
+  report never waits for it: sent without, then again with it. The last 16 kept per address. In Safari without
+  "Allow on every website", a site that doesn't send CORS headers gives none: the site icon, or the letter.
+- **Cost.** Content script: one capturing listener per media event on the document, a report at most every 120 ms
+  after one, the page's elements and its buttons read only then; no MutationObserver, no polling. Background: woken
+  only by those reports and the tab events it already listens to; no timer unless something is paused.
+- **Checked** (headless): unit (`tests/media-player.test.ts`: the rule, the 30 s grace on a fake clock and timer,
+  closed tabs, mute and audible, artwork never waited for and cached, `loadArtwork`'s limits, the page's report and
+  buttons on a stand-in document, `hostMedia`, the library's `mediaControl`); the five themes in WebKit and Chromium
+  (`tests/theme/mini-player.test.ts`: drawn, hidden for the tab in front, paused, gone; real presses send the
+  requests); Swift (`hosted-tests.swift`: `copyPush`'s checks, numbers, windows, the address fallback, `hostMedia`);
+  the app's e2e (`e2e-glue.swift`: a real `media` push over the link drawn in Margin's off-screen WKWebView, a real
+  press on Play/Pause reaching the copy as `hostMedia`, hidden for the item in front, gone with no sources; failing
+  first with the route off). Only by hand in real Safari: TESTING.md M2.4.
+
+
+## Several visible hosts per Margin window: the foundation (docs/PEEK-SPLIT.md §1, 2026-11-21)
+
+Step 1 of the plan, on feat/multi-host; not wired to any UI yet (steps 2–3 call it).
+
+- **Identity.** `HostTarget.safariWindow(profile, SafariRole)`, `main` by default (every `.safariWindow(p)` as before);
+  ids `safari:<p>` for main, `#card`, `#pane1`…`#pane3` after it for the others, logged so (`safari:p1234#card`). Routes
+  and the loop guard's app key take a card's or pane's profile's main id (`HostID.main`): its Safari as a whole. The
+  marker needs nothing new (each window by number, copy id and profile): a card's window is given back and closed by its
+  copy at the next launch like main's (checked).
+- **Engine.** `visible` (rect, role, z) beside `shown`, which stays the focused host; kept as `[shown: main]` by `shown`
+  itself whenever no layout is being applied, so every one-host path is the old one. Each host keeps its own role and
+  rect (`Host.rect`, nil: the page area; kept while parked, so a parked card is never sized for the page area); every
+  rect computation and check reads `pageOf(host)` instead of `placement.page`. `setLayout` applies a whole layout in the
+  queue: main first (a switch as today), each extra back to front beside it (`before(id)`: the one shown is parked only
+  when the incoming host and it aren't both in the layout), the ones left out parked, then fronted back to front, the
+  focused one last. A card's or pane's rect below its window's known minimum is refused (never under the sidebar).
+  `open`/`show` with several visible (or a host in another role) are a layout of it alone. Live resize: every visible
+  tile or window-mode host follows its rect in each frame (`follow(_:rects:)`), one change in flight each. Stray, strip
+  (any visible host of the app speaks for its own toolbar), on-screen and front looks per visible host; `FrontRead` is of
+  the frontmost one. `hostedWindows` tells Margin's window every visible window only while more than one is (and `[]`
+  once after): nothing new is said with one host.
+- **Session.** `safariWindows: [SafariKey: Int]` (profile + role; a string literal is main's key), `requestSafariWindow`
+  with a role (the engine's `requestRoleWindow`), `layout[w]` per Margin window, `setLayout(window:main:extras:focused:)`
+  (a profile's first web item uses its main window, a card its card window, other panes `#pane1`…). The sweeps spare
+  every role's window (they take `safariWindows.values`). `live()` marks the other visible items `visible`. Every
+  role's Safari window is `drawn` for its copy.
+- **Margin's window.** `holes` (each visible host's frame inside its rect); the ground cut for all of them, each one less
+  the ones before it so an overlap (a card over panes) is never filled again by the even-odd fill; the pointer's slot
+  through those holes only, a card's content alone while one is open (the page around it caught, a press there
+  `onCaughtPress`, for Peek's close in step 2); a press in another pane focuses its host (`visibleHost(at:)`, `focus`),
+  never main over a card. `hostedFrames` pushed to the page beside `hostedFrame` (unchanged), kept by the overlay
+  (`marginApp.hostedFrames()`).
+- **Extension.** `hostShow` moves an item's tab from another window it showed items in (tabs.move, its page kept),
+  leaving a blank tab behind in a window it would empty.
+- Not done here: the core's `is_strip` still measures against Margin's page area (a pane's or card's toolbar reads as a
+  transient: never acted on); `lookForOthers` (the core's front.rs) takes the focused app only; a card's first open
+  shows the page card's loader over the whole page area (Peek's own loader is step 2). Tests: the stand-in world
+  (multi-host-tests.swift, multi-host-session-tests.swift), Margin's real window off screen (e2e-glue `multiHoleChecks`),
+  the copy's tabs (hosted-tabs.test.ts). Nothing on the real screen yet (step 4).
+
+## Split View in Margin.app (docs/PEEK-SPLIT.md §4, feat/split, 2026-11-21)
+
+Step 3 of the plan, on the foundation (§1). Decided here (Tirth's decisions are the doc's: 2–4 panes, Safari tabs and Mac
+apps mixed, side by side or stacked, live dividers, each Safari pane a window of its own in the space's profile).
+
+- **Showing.** A split's item shown anywhere (a sidebar pick, the capsule, ⌘1–9, a key, a show after a close) shows the
+  whole split, that pane focused (HostedSession `showSplit`): its panes are the split's items that can be hosted (Safari
+  web pages, Mac apps, each app once: its one window is one pane; Margin's own pages and Chrome/Edge items are left out,
+  said). Main is the pane that keeps its window: the window's layout of this split already, else the split's first web
+  pane (its profile's main window), else its first pane; a profile's other web panes `#pane1`…`#pane3`. Fewer than two
+  hostable panes: the item alone. The library's split actions ask for `showSplit` (create, add, open, swap, axis,
+  remove), with the pane to focus (none: the one the window has focused, else the first); a resize asks nothing.
+- **Rects come from the page, never computed twice.** Margin's renderer puts `<m-pane>`s (flexed by the ratios) and
+  `<m-divider>`s inside `<m-page>` (ui/behaviors/split.ts) while the item in front is a pane and a window is hosted;
+  `View.measure` reports `split` and each pane's box; `PageLayout.panes` → `MarginWindowController.paneLayout` (whole
+  points, screen coordinates) → the session (`paneRects`, waited for up to `pageWait`, the page asked to measure at
+  each look) → `engine.setLayout`. The core's `host/panes.rs` (LayoutPanes, ResizeDivider, never called) is removed:
+  the page is the one geometry source, the engine's `belowMinimum` the one check.
+- **Pane windows** open at their pane's page (`newWindow { url }`, http(s)), or blank when the item's tab is open in
+  another of Margin's windows: it's moved in (`hostShow`) and the blank first page closed (background/hosted.ts), never
+  Safari's new-tab page (its address field keeps the toolbar down). A pane's last tab closed (⌘W) leaves its window a
+  blank page (Margin's window, never closed by Safari with its tab). A pane window in no layout for `paneIdle` (15
+  min) is closed by its copy (the shell's poll, `closeIdlePaneWindows`); with its profile's main window gone, at once.
+- **Leaving** (an item outside the split picked): the engine's one-host switch parks the other panes; the split stays.
+- **Dividers.** Dragged in the page: the two panes beside it take the pointer's change, each stopping at its floor (its
+  window's minimum, `paneMin` from the engine's `minimum(of:)`, else 200 × 140); at most one frame applied per display
+  frame (a 50 ms timer for a window with no frames), measured and reported in that frame; the app told `split.resizing`
+  (the sidebar drag's path: `sidebarResizing`, `engine.dragging`), so tiles and window-mode hosts follow live
+  (`follow(_:rects:)`, every pane's rect), plain members are placed again at the release under their loader. Let go:
+  `split.resize` saves the ratios (drawn ahead of the state until it has them). Double-click: equal. Focused (Tab):
+  ←/→ (↑/↓ stacked) 2%, ⇧ 10%, Home/End, Enter equal; each saved. (Margin.app's panel takes the keys only for its
+  fields, so the keyboard path works in the page, not from a hosted app's focus.)
+- **Live holes.** `follow(_:rects:)` tells Margin's window every visible host's rect in that frame at once
+  (`sayHostedWindows(live:)`); while following, the window takes only the rects (no window-server reads, no log line,
+  no reorder) and its holes and the pointer's way through them follow the page. The overlay's mutation watcher skips a
+  drag frame's own attribute changes on `m-pane`/`m-divider` (what takes the pointer read 150 ms after the last).
+- **The page area changed with several visible** (`pageRectChanged(_:rects:)`): the layout is held while each host is
+  placed again (a plain member's out-of-full-screen-and-in made the one shown the layout alone, so the other panes were
+  never placed and dropped out of it: found by split-tests.swift's drag at release).
+- **Off-screen budgets per host.** `backOnScreen`'s tries, its once-per-show act and what it said are each host's own
+  (Host.offTries, visibleAt, …): a pane's try never uses up main's.
+- **Focus and keys.** A press in a pane focuses it (`pressedHost`: the engine's `shown`, the session's `shown[w]`, the
+  capsule's highlight). ⌘W in a hosted app closes `shown[w]`, the focused pane; the library's `closeTab` then shows the
+  split's next pane (the one after it, else before it), so the split goes on with the rest, or ends at the one left,
+  shown alone; a pane closed while another is focused re-shows the split around the focused one. keysBack and a
+  field's close front the visible hosts back to front, the focused one last. A press on a divider is Margin's (it's in
+  the page's `hits`), never a pane's.
+- **Menus.** A pane's row (the capsule's pane buttons open the tab menu now): Remove from Split View (`split.remove`:
+  the rest shown, its next pane focused), Break Out of Split View (`split.breakOut`: shown alone), Swap Panes (the
+  first two), Stacked / Side by Side. Any other row (not one of Margin's own pages): Add to Split View, into the split
+  of the item in front, or split with it — the row's menu is the chooser of what's added.
+- **⌃⇧= (decided here).** Adds the space's item used most recently that isn't in front or a pane already (Arc pairs the
+  tab you were on before); none: the palette opens for a new tab, and the item it opens is added beside the one in
+  front once it's in front (Escape, or 15 s with nothing new: nothing added).
+- **Refusals.** The library: 4 panes at most, one space, Margin's own pages never, an app once. The page: a pane that
+  can't fit (each pane's floor and the gaps wider than the page area) isn't asked for, a toast says "Not enough room for
+  another pane". The sidebar's edge stops where the panes would no longer fit (`floor`, behaviors/resize.ts). The
+  engine still refuses a rect below a window's known minimum (that pane not shown, said).
+- **Themes.** All five style `m-divider` (gap colour = their frame, a grip, hover/focus/drag), `m-pane[m-focused]` (a
+  ring in the gap), light and dark through their own tokens, `--m-split-gap` 8–12 px; nothing moves the boxes.
+- **Not done / known limits.** Pane windows' loading bar (the copy's `loading` push is read for main windows only); a
+  pane refused by its minimum isn't laid out again once the page re-lays out at the minimum (pick it again); swap of
+  three or more web panes may move tabs between pane windows (roles follow the order); the keyboard divider works only
+  where the page has the keys. Nothing here was run on the real screen: TESTING.md M2.7 is the list.
+- **Checked** (headless): unit (`tests/split-view.test.ts`: the library's requests and refusals, ⌘W's next pane, the
+  actions, a pane's menu, the divider's arithmetic, ⌃⇧='s pick, the copy's pane windows), themes in WebKit and
+  Chromium (`tests/theme/split-view.test.ts`: panes drawn and measured, a real drag, the minimum, double-click, stacked,
+  refusal), Swift (`split-tests.swift`: the session on the stand-in world end to end; live holes; per-host budgets),
+  the app's e2e with the real page (`tools/app-tests/e2e-split.swift`: two apps split, panes measured by the real
+  WKWebView page, windows at those boxes, a divider dragged by pointer events, saved, placed again).
+
+## Peek and Little Arc in Margin.app (docs/PEEK-SPLIT.md §2, §3, 2026-11-21)
+
+Step 2 of the plan, on feat/peek (from feat/arc-suite), on the several-visible-hosts foundation (§1, above). The
+user's choices (the doc's table) as built; what was decided here is marked so.
+
+- **The click, the page's side** (content/peek.ts, core.ts). Only in a window Margin.app draws (the copy's `appDrawn`
+  for the tab's window) and never in a copy that stood back. Heard in the bubble phase on `window`, after the page's own
+  handlers: a click the page handled (`defaultPrevented`) is left alone, nothing ever stops the event. Only trusted
+  primary clicks with no ⌘/⌃/⌥, on an `<a href>` (SVG links too; never `download`, never a same-page `#` link). The
+  default is cancelled at once (it can't be later), then the card asked for; refused, or no answer in 400 ms: the
+  link's own default done by the page (`location.assign`, or the copy's new tab for `target=_blank` and other named
+  targets, `window.open` only if the background didn't answer). Shift+click's own Safari default (Reading List) isn't
+  one a page can do: it opens as a plain click would (decided). Auto-Peek: a pinned tab's or favorite's link to another
+  site, never an auth flow (shared/peek.ts, unchanged). Which pages are a pin's or favorite's in Margin.app is the
+  library's word, not the copy's state (which has no library pins): each `hostShow` says `pinned`, the copy tells the
+  tab's page (`peekPinned`, and hello's `pinned`).
+- **The answer** (background/peek.ts, handlers.ts). The copy pushes `peekOpen { id, url, source, tabId, notAfter }`
+  (a request back is the protocol's only way an app answers a push, as `paletteDropped` is for `palette`): Margin.app
+  answers `peekAnswer { id, ok }` at once (a new request in `APP_REQUESTS`). The copy waits only until `notAfter`
+  (350 ms after the click, under the page's 400 ms); later, it's a no and the app is told `peekCancel { id }` (a card it
+  opened for that click is closed again): a link never opens twice. Chosen over a UI push (`UIPush.forwarded`): the
+  card must be answered and laid out natively before the page can show it (documented in UIPush.swift).
+- **The card's window.** `safari:<profile>#card`, made at the first Peek through `requestSafariWindow(role: .card)`,
+  asked of the copy as `newWindow { url }` at the card's own address (the copy takes an http(s) address only from the
+  app; the empty new-tab page's address field kept Safari's toolbar down). Its page is the copy's tab tagged
+  `peek-card` (background/hosted.ts `CARD_ITEM`, `hostShow { role: 'card', fresh }`: `fresh` sends a tagged tab to a new
+  Peek's address); never one of the library's items, so not in the sidebar, not archived, not counted by the keys. A
+  new tab in the card window (a `_blank` link there) is the card's page from then (the one before closed). Closed:
+  `hostCardClose` closes the tab and leaves `about:blank` so the window stays, parked. Opening a parked one is a layout
+  change (`HostedSession.applyLayout` with the card's extra: main never parked). Closed by Margin after 15 minutes
+  unused (the shell's poll through the sweep) and when its profile's main window goes.
+- **Geometry.** The `peek` part's `<m-peek-page>` (sanitizer: only there, once, empty, never in a list) is measured as
+  laid out (offsets: the card's scale never moves the window) and sent as its own message `peekRect` (decided: not a
+  field of the page's `layout`, which split view grows too, so the two stay apart), turned into screen points by
+  Margin's window (`cardRect`). The session waits for it 300 ms, else Margin's default rect (centred, 8% each side, 7%
+  above and below, at least 420×320, under a 44 pt bar: `HostedSession.defaultCardRect`). The engine refuses a card
+  below its window's known minimum: the card goes and a toast says there's no room. While a card is up the theme's
+  root has `--m-page-*` (the page's place), so `<m-peek>` lays its dim over the page area alone.
+- **Look and motion** (all five themes; Margin's own default card, `m-peek[m-default]`, for themes with none). The
+  dim is a spread shadow around an element at the card's place (never painted over the card's page: Margin's window is
+  above the hosted ones); the card's page is covered while its window isn't in place (`peek.loading`, its own spinner)
+  and as it goes (`peek.closing`), clear once `ready`. Open 150 ms (dim fade, card from 0.96 and nothing), close the
+  reverse, then gone; Reduce Motion: a fade. A card's first open never shows the page card's loader over main (the
+  engine's slow step for a card is the card's own: `cardLoadingStep`). Found by the theme tests: Liquid Glass's and
+  Neubrutalism's ✕ was hidden (their `.close` is a row's hover-only button): it's `peek-close` now.
+- **Focus and keys.** The card is the focused host (keys to its window); the item under it stays the window's item
+  shown (the sidebar's highlight). Fields letting go give the keys to the card, never main over it. Closing lays out
+  main alone again (its app active). ⌘W: Margin's Close Tab and a hosted app's ⌘W both close the card (or Little Arc's
+  field) when one is up, never the item. Esc: in Margin's UI (the card behavior) and in the card's page (a listener only
+  in pages of the card's window, told by the copy: hello's `card`, `cardWindow`), only when the page didn't handle it
+  and focus isn't in a field; ⌘↩ the same for Expand. A press on the dimmed area is the foundation's caught press,
+  which now closes the card.
+- **Attached to its opener.** A pick of another item in that window (any show: the sidebar, the keys, the palette's
+  apps) hides it (parked, kept with its page); the opener shown again brings it back (a pick of the opener itself
+  while it's up keeps it hidden until another item is picked and the opener again). One card per profile: a Peek
+  elsewhere replaces it.
+- **Expand.** A new item of the card's space at its current address and title (target the card's profile), the
+  card's tab moved into the profile's main window as that item's (`hostPromotePeek`, which now leaves a blank tab
+  behind), then shown as main; the card window parked. Over a split, the expanded page is shown alone, as any item
+  picked outside a split (the split stays for its next pick).
+- **Over a split** (merged with split view, §4). A card opens over a split as one more visible host: the split's
+  layout is kept (`HostedLayout.split`, its panes at their `<m-pane>`s, asked of the page again; the card keeps its own
+  `<m-peek-page>` rect, never a pane's), the focused pane stays the window's item shown. Closing it (any way) lays the
+  split out again without it, its focused pane focused. ⌘W: the card when one is up (Margin's Close Tab and a hosted
+  app's ⌘W alike), else the focused pane (split's rule). A page-area change or a drag places the card at its
+  `<m-peek-page>` with the panes (one engine call, the layout held for all). One helper leaves the blank tab in any of
+  Margin's windows a move, a close or an Expand would empty (background/hosted.ts `leaveBlank`). The copy takes an
+  http(s) `newWindow` address from Margin.app only (a card's or a pane's window). Checked: peek-split-tests.swift.
+- **Little Arc** (⌥⌘N, `littleArc.open`): the card with Margin's own field (`m-input="peek"`, no window yet;
+  `peek.littleArc` tells the app so ⌘W closes it). Return takes what's typed as the palette does (shared/search.ts
+  `resolveInput`): an address, else a search, its address from the engine Safari searches with (the palette's
+  `searchUrl`); `peek.go` opens the card at it, then it's Peek. With nothing hosted in the window (the launcher) there's
+  no page under a card: what's chosen opens as the space's new tab at once (decided).
+- **Foundation gaps closed.** A card's or pane's own full-screen toolbar is a strip of its own rect (core
+  `is_strip_of_any`, the hosts' rects given to the observer per app: `hostRects`), never a small transient window, and
+  never moved or parked; the windows let in front of Margin's (core front.rs) count every visible host's app, each
+  one's rect for its strip; the page's hello has `hostedFrames`; a stand-in-world check fails if `desired()` keeps only
+  the focused host shown (a window under a card moved off its place is put back).
+- **Checked** headless: unit (`tests/peek-click.test.ts`: the bubble phase, never stopping the event, the page's own
+  clicks left alone, undrawn windows, the fallback once and in time, the copy's wait; `tests/peek-card.test.ts`: the
+  card's tab, its window, a new tab there, close and Expand; `tests/peek.test.ts`: the sanitizer's `m-peek-page`, the
+  view model), the five themes and the default in WebKit and Chromium (`tests/theme/peek-card.test.ts`: place, cover,
+  clear, the dim, real presses on every button, Esc, ⌘↩, motion and Reduce Motion, Little Arc's address and search,
+  dark), Swift (`peek-session-tests.swift`, `multi-host-tests.swift`), Rust (`kinds/tests.rs`, `front.rs`), the app's
+  e2e (`e2e-glue.swift`: the real page's `peekRect` in Margin's off-screen window, covered then clear, gone; the hello's
+  frames). Nothing on the real screen with real Safari yet: TESTING.md M2.5.
+
+## The real screen's engine finds of 2026-11-21 (fix/screen-engine)
+
+From Margin's log on the real screen (split view and Peek with real Safari). UI and page-side finds are another branch's.
+
+- **An item outside a split, same profile as main, main focused** (a sidebar pick, the keys, a new tab, a pin or
+  favorite, a card's Expand: every show goes through `HostedSession.show`): a web item whose window is in a layout of
+  several is never only a tab switch (the copy's `hostShow`): the engine lays it out alone (`showsAlone`), the other
+  panes parked, the split kept. Before, msu.edu showed in the split's top pane's rect with the other panes on screen.
+- **A visible host placed again on its own** (the reconciler's `placeAgain`, a route moved down, a window brought
+  back): the layout is held through its out-of-full-screen-and-in (`holdLayout`), each host at its own rect, the focus
+  put back. Before, the one shown changing on the way made it the layout alone while it was placed at its old pane's
+  rect ("reserved 240/8/8/635" with the engine saying main at the page area), the other panes left on screen. A host
+  made the layout alone keeps no pane's rect (`followShown`).
+- **A hosted window out of full screen by itself** (Safari's own Esc in its page): a "left full screen" event, not a
+  tile's fight. Taken so in the reconciler's turn before a tile's sizing or a member's placing when the window is still
+  in Margin's Space and its tile holds no window of its, or every toolbar window of its own is gone, or Accessibility
+  reads it out of full screen; a window full screen in its tile that doesn't take the rect is still the loop guard's.
+  Put back into full screen at its rect behind the loader (its empty tile out), Margin's own operation: no try counted,
+  its route kept, nothing saved in routes.json; `returnsMax` times in `returnsWithin`, then left to the reconciler.
+  A routes.json that already holds Safari's demotion keeps it until Safari's next version (or the entry is removed).
+- **The log's drag line** says what's dragged (a split's divider or the sidebar's edge) and how many hosted windows
+  follow it live, the rest placed again at the release.
+- **Remove from Split View** works end to end by the row's number (the pane menu's way): the UI names an open item by
+  its number, so a dispatch with the library's item id is refused (the on-screen dev hook's `false`). The dev hook now
+  maps an open item's id to its row's number, and its `say: state` gives each pane's `tabId`.
+- Checked: `split-tests.swift` (every show path out of a split with main focused), `screen-engine-tests.swift` (the
+  layout held; out of full screen by itself, alone, in a split, as a plain member; a real tile fight still demoted; the
+  drag line), `devhooks-tests.swift`, the app's e2e (`e2e-split.swift`: Remove from Split View on an app's pane of two).
+
+## Fixes from the real screen of Peek and split view (fix/screen-ui, 2026-11-21)
+
+- **An item pinned in Margin.app stays, the pin's tab.** The library's `pinTab` (and `createFolder` with an item) forgot
+  the item, so the page stayed shown with no item behind it: no highlighted row, an empty address field until the pin
+  was clicked again. Now (sticky pins, M2.2) the item stays, bound to the new pin (`pinnedBy`; the pin takes its address,
+  title, given name and target): the pin shows open and active, the item isn't in Today, nothing is asked of the
+  hosting (the page stays shown, `shown` unchanged). Its close isn't an archive (closeTab's rule for a pin's tab), the
+  pin opens that item (openPin finds it by its binding), and unpinned it's Today's again, still open (removePin unbinds
+  it). The extension already bound an open tab this way. Checked: `tests/arc-data.test.ts` (12), `hosted-tests.swift`.
+- **Esc in a hosted page never takes Safari's window out of full screen** (`content/keep-fullscreen.ts`). Safari's own
+  action for an Escape keydown no page took is leaving its window's full screen, which the engine then had to undo
+  (about a second, the page area empty). In a window Margin.app draws (the copy's `appDrawn`: main's, a card's, a pane's
+  windows), an Escape the page left alone has its default prevented. Decided last: a bubble listener is added on the
+  window as the key's capture phase passes it, so it runs after every listener the page has there (the DOM takes each
+  target's listeners as the event reaches it) and after Peek's card's Esc (which closes the card and prevents it
+  itself). Left alone: ⌘/⌃/⌥/⇧ held, a key being composed, an element in full screen (a video's Esc is Safari's), a
+  search field, a modal dialog and an open popover (the engine's own Esc closes or clears them), a key the page stopped.
+  Not covered: a key in a frame (the content script is the top frame's). Checked: `tests/keep-fullscreen.test.ts`
+  (stand-in), `tests/theme/keep-fullscreen.test.ts` (WebKit and Chromium: the order, the dialog closing, the popover).
+- **Stacked split: a band above each Safari pane for its toolbar.** Safari's full-screen toolbar window rests just
+  above its window (on screen: 1264×52 at the pane's top − 52) and is drawn whenever that window was raised after the
+  pane above it (the focused pane is raised last): it showed inside the upper pane's hole. It's never moved or parked
+  (that broke Safari's full screen, 2026-11-07), so the fix is geometry: stacked, the divider above a pane hosted in a
+  Safari window (a web item's; not a Mac app's) is a band at least `SAFARI_TOOLBAR` (52 pt) tall (`<m-divider m-band>`,
+  `flex-basis: max(--m-split-gap, 52px)`), and the toolbar rests in Margin's opaque ground there. The band carries the
+  pane's name and host (`<m-band-title>`, Margin's text; base CSS, each theme's divider colour and grip) like Arc's pane
+  header. The room check for another pane counts the bands (`dividerSizes`, `panesFit` with each divider's size); a
+  pane's own minimum is unchanged (the band is the divider's). Side by side nothing changes (the toolbars rest under
+  Margin's top frame, as one window's does). The app doesn't read the toolbar's height (only the engine knows that
+  window): 52 is the measured one. Checked: `tests/split-view.test.ts`, `tests/theme/split-view.test.ts` (5 themes, both
+  engines: the band's height, place, name; the stacked room check).
+- **Peek's card: its bar covers the card window's toolbar.** The card window's own Safari toolbar window rests just above
+  the card's page (on screen: 1062×52 at the page's top − 52) while every bar was 44–50 pt: its top showed, dimmed,
+  through the dim above the card, and a still pointer there got Safari's "Tab Group picker" tooltip once. Every card
+  bar (the five themes' and Margin's default) is now 52 pt and opaque (Liquid Glass's was 96% `--pop-fill`), so the
+  toolbar rests under it; Margin's default rect (HostedPeek `defaultCardRect`) is under a 52 pt bar, and the cards'
+  clamp keeps 320 pt for the page (`50% - 186px`). The themes README says a card's bar must cover those 52 pt. Left: a
+  rounded card's top corners (radius up to 28 pt in Material) leave the toolbar's square top corners outside the
+  card's curve, a few points under the dim. Checked: `tests/theme/peek-card.test.ts` (the bar covers the 52 pt above
+  `<m-peek-page>` across its width, opaque), `peek-session-tests.swift`.
+- **A split pane opening: its loader over its own box.** Adding a pane (Notes) covered the whole page area with the page
+  card's loader ("Opening Notes…", 2.2 s on screen) while the other panes were shown. The engine's slow step for a
+  host being laid out as a split's pane beside the panes shown (HostedSession `panesLaying`, set around applyLayout's
+  `engine.setLayout`; main's too when that split is what the window shows already) is now that pane's
+  (`paneLoadingStep`): Margin's window says `paneLoading { item, label, bundleId }` (and in its hello), and the page
+  draws `<m-pane m-loading>` with Margin's loader in it (`<m-pane-loader>`: a spinner, "Opening …" with the app's name
+  or the page's title; Canvas/CanvasText so it reads on any ground; a theme may restyle it), never the page area's. The
+  other panes stay shown and usable (their holes, the pointer); the item's row keeps its loading bar. A switch to one
+  item, a card's first open and the first host of a split are as before. Panes already shown that the engine places
+  again as plain members (no tiles) each get their own box's loader meanwhile. Checked: `split-tests.swift` (no
+  page-area loader, the pane's item and name), `tests/ui-host-app.test.ts` (the message and hello, checked),
+  `tests/theme/split-view.test.ts` (5 themes, both engines: the loader in that pane's box only, readable, gone after).
+
+## Peek's card over a split on the real screen (fix/screen-card, 2026-11-21)
+
+- **The card window's first open over a split: in front of the panes.** The real screen had main's window above the
+  new card window (main's page in the card's top half); a second open (a switch) was right. The engine's own order of
+  raises was already the layout's (checked on the stand-in world: main, the pane, the card last), so the difference is
+  the new window itself: its raise by Accessibility can fail for a window its app made a moment ago and the bridge
+  moved between Spaces (not listed yet), while main's (listed long ago) works, so fronting main again buried the card.
+  The fix, decided here: `frontVisible` (every layout's change, `holdLayout`'s release, a focus, a press around a
+  window, a field's close) reads the window server's order first; the focused host already in front of the other
+  visible ones (a new window is its app's front one), only its app is made active (its keys), nothing raised over it;
+  else the hosts from the first out of place are raised, back to front, the focused one last. Then it's read again up
+  to `orderWait` (150 ms) and, the focused one still not in front, it alone is raised once more (said in the log).
+  The other panes' order among themselves isn't forced when the focused one is in front (panes don't overlap; a
+  stacked pane's toolbar rests in its band). `holdLayout` wasn't the path: a layout's own placing never holds one.
+- **Nothing of Margin's window inside the card's page.** The ground cuts the card's whole rect while a card is up
+  (each visible host's frame ∩ its rect as before for the others), whatever its window's frame reads. The page clips
+  `<m-page>` out of the card's `<m-peek-page>` box while a card is up (behaviors/card.ts: an even-odd `clip-path` on
+  `<m-page>`, `m-card-clip`, its outer edge far outside so a theme's frame or shadow on it is never cut): a split's
+  dividers, bands, pane loaders and a theme's pane ring never paint or take a press there; the dividers aren't reported
+  in `hits` then (host-app.ts), so Margin's catch fill isn't over the card's page either (the dim around it is Margin's).
+- **A still pointer under a change of the pointer's slot.** Margin's panel's `ignoresMouseEvents` was set only on
+  pointer moves; a card opening under a still pointer (last over the page's hole) left the panel passing the mouse
+  over the card's bar, and Safari's toolbar resting under it showed its tooltip. Now every change of the slot
+  (`updateHole`: a card or pane opening or closing, a layout's change, the page's hits, the loader) looks at the
+  pointer again at once (`NSEvent.mouseLocation`; the harness's last move in tests); never in a drag's frames (the
+  page area followed live) or with a button held (a drag keeps its way), nothing said to the page, no cost per move.
+- Checked: `screen-card-tests.swift` (the stand-in world's window-server order, a new window's raise failing: the
+  card's first open over a split with main focused, a pane's first open), the app's e2e (`e2e-split.swift`: the real
+  page's `<m-page>` clipped under the card, Margin's window see-through there as the window server pictures it, the
+  ground cut whatever the card's frame reads; `e2e-glue.swift`: a card opening and closing under a still pointer, a
+  held button kept), `tests/theme/card-over-split.test.ts` (5 themes and the default card, both engines: nothing of
+  `<m-page>` at the band inside the card's page, its pixels as with no `<m-page>`, a pane's loader too, whole again
+  after), `tests/ui-host-app.test.ts` (no divider hits while the card clips). Nothing on the real screen yet.
+
+## A card's new window Accessibility can't raise: Safari brings it in front (2026-11-21)
+
+On the real screen, Peek's card window opened for the first time over a split (main Safari focused) landed behind main,
+and Accessibility's raise of it didn't take, also when tried again (`… focused, not in front of the other visible hosts
+once fronted … raised again`): a window Safari made a moment ago and the bridge moved between Spaces. The parked card's
+later opens were ordered right. Now, when the retry still leaves the focused Safari window (a card or a pane) behind,
+the engine asks its copy to bring it in front (`hostFocusWindow`: `windows.update(id, { focused: true })`, the app's
+request only, a windows call with `notAfter` and one per window at a time) and reads the order again, one log line
+either way. On the real screen that didn't take either (`asked, still not in front`), so the last way is the move
+that does: the window out to a private Space and straight back into Margin's (a window moved into Margin's Space comes
+in front of the others there, as a parked card's switch showed), under the card's or pane's own loader (not revealed
+yet), so no freeze; its rect set again if its tile was laid out meanwhile. The name `focusWindow` stays refused: it was the overlay era's request, removed with it. Checks: the stand-in
+world's new window behind main and unraisable (screen-card-tests.swift, failing without the hook), the copy's handler
+(tests/handoff-copy.test.ts), the app requests list (tests/link.test.ts).
+
+## Margin's own names for Arc's features (2026-11-21)
+
+Tirth decided Margin never uses Arc's names in the product. Everything a person or a theme author sees now says:
+**Quick Tab** (was Little Arc: the ⌥⌘N card with an address field first), **preview** / **the preview card** (was Peek:
+the card a link opens in, Shift+click; Auto-Peek is **auto-preview**, in Settings "Open external links from Pinned tabs
+and Favorites in a preview") and **Link Rules** (was Air Traffic Control: Settings' group; the menu's "Always Open
+<host> in This Space" and "Remove Rule for …" stay). Arcadia's description no longer says "Arc's look"; the theme keeps
+its name. Older entries here keep the old names.
+
+- Theme API (themes/README.md, all five themes, the sanitizer): `<m-peek>` → `<m-preview>`, the guarded `peek` part →
+  `preview`, `<m-peek-page>` → `<m-preview-page>`, `m-input="peek"` → `m-input="preview"`, the view model's `peek` →
+  `preview` (`isLittleArc`/`littleArc` → `isQuickTab`/`quickTab`, type `PreviewView`), actions `peek.*` → `preview.*`,
+  `littleArc.open` → `quickTab.open`, `airTraffic.addHost|remove|toggle` → `linkRules.*`; Margin's default card
+  `m-preview[m-default]` with `[m-preview-card|bar|host|field|button]` and `[m-quick-tab]`; the themes' classes
+  `.preview-*`, `.quick-tab`, `--preview-dim`, `*-preview-in|out` keyframes. The old names are refused like any unknown
+  slot, part or action (tests/feature-names.test.ts). The renamed card is unreleased (feat/arc-suite), so
+  `VM_VERSION` stays 1. Settings' link-rule field ids: `linkRules`, `linkRulesNone`, `linkRule:<id>`,
+  `removeLinkRule:<id>` (never stored). The app key's label: "Open a Quick Tab".
+- "Peek" stays the sidebar's hover reveal (the `m-peek` attribute, `window.sidebar === 'peek'`, `vm.window.peek`,
+  ui/behaviors/peek.ts, PassThrough's peek edges), and a closed folder's `peek` pins: neither is Arc's Peek.
+- Kept, with why: the stored setting `autoPeekPins` and the stored key `settings.appKeys.littleArc` (users' data); the
+  library and extension collection `airTraffic` and its records (stored); the wire between copy, page and app
+  (`peekOpen`, `peekCancel`, `peekAnswer`, `peekPinned`, `openPeek`, `hostPromotePeek`, `hostCardClose`, `cardPage`,
+  `cardKey`, `peekRect`, the app's `peek` push, Margin's page's `peek.close|back|forward|expand|setSpace|littleArc|go`
+  performs, the `addAirTrafficRule`/`removeAirTrafficRule`/`toggleAirTrafficRule` requests, the `little-arc` command
+  and `AppCommand.littleArc`: an older copy with a newer app, or the reverse, must still talk); native identifiers
+  (`card`, HostedPeek.swift, `PeekCard`, `SafariRole.card`, `littleArcs`); code names no one sees (the runtime's
+  `ui.peek` and its `littleArc` flag, `behaviors.card.openLittleArc`, `measurePeekPage`, shared/peek.ts,
+  shared/air-traffic.ts, background/peek.ts, content/peek.ts, the `CARD_ITEM` tag `peek-card`); file names
+  (docs/PEEK-SPLIT.md, its many references kept; the tests' file names). Margin.app's log lines say "Preview:" and
+  "Quick Tab" now. Comments use the new names where they name the feature.
+- Not renamed (not one of the three names): the theme value `--m-swipe-feel: arc` (Arc's swipe feel) and comments
+  that credit Arc's behaviour.
+
+## Split view in real use (fix/split-real-use, 2026-11-21)
+
+From Tirth's real use of Margin.app at 13:25–13:28 (a Safari page split with another, a third Safari pane, divider drags).
+Each fix has a failing-first check on the stand-in world (`split-real-use-tests.swift`, the log's case played: the old code
+reproduced the log's own lines, e.g. `place …#pane1 attempt 1: its window 0,33 1512×949` and one Space switch seen).
+
+- **A pane's or card's first window: macOS's Space switch never shown.** Safari made the pane's window already in full
+  screen (its key window was full screen), in a new Space of its own, and macOS switched the display there and back while
+  nothing was frozen (the Dock's `fullscreened`, `becameCurrent` of the new Space, then Margin's): the screen slid. Why the
+  plain path: the engine found the window already in a Space of its own, so the early path (which watches for a *new*
+  Space after an ask) was skipped and the freeze held only for the 18 ms of "full screen". Now a card's or a pane's window
+  is asked in full screen (`newWindow { fullscreen: true }`: deterministic, one ask instead of a window then
+  `setWindowState`), the freeze is taken at that ask and handed to its placing, Margin's Space is kept current while the
+  window is awaited (macOS's switch undone at once, a Space the person went to left alone), and the window's new Space is
+  taken by the early path (`born`: reserved for the pane's rect, its tile into Margin's Space, the Space destroyed, no
+  wait for a switch already undone). A card's or a pane's freeze is let go as soon as its Space is gone (its window is
+  under its own loader until its layout is done), not after the settle. Decided: a freeze, because the switch's animation
+  starts as the Space is added (before Margin can see it), so nothing short of a freeze from the ask hides it (the woken
+  window's trick, destroying the Space before the switch, can't: the window server lists the window ~0.4 s after the
+  ask). It's as short as it can be: the window's making plus the early path's own steps (stand-in: 409 ms; the card's
+  path on the real screen was 858 ms from its full-screen ask alone). A window that comes up normal anyway goes the card's
+  old way (its ask) under the same freeze. Main windows are unchanged.
+- **Main kept until the new pane is in place.** `applyLayout`: when hosts come in beside the ones shown (a split's new
+  pane, opened or unparked) and the shown ones can be laid out again in place (tiles, window mode), they keep their rects
+  and stay shown; the newcomers come in at their rects (under their own pane loader, held up until the end:
+  `loadingHeld`, revealNow only lets the freeze go), then the shown ones are laid out again in one go (`placeTogether`:
+  every tile's rect sent in one turn, waited for together), then the holes and the loader off. A plain member (tiles
+  off) is placed first, as before (its placing activates its app: done after, it buried the newcomer).
+- **Every app's minimum known before its window exists.** The engine keeps each app's window minimum as its tile said it
+  (`learnMinimum`; Safari's from any Safari window) per app version, in `minimums.json` beside routes.json, loaded at
+  launch (`knownMinimum`, `knownAppMinimums`; another running version: not used, learnt again). The session tells the page
+  (`appMin { web: [w,h], <bundle>: … }`, also in the hello) whenever one changes and whenever it hosts; the page's floors
+  take a pane's own minimum (`paneMin`), else its app's (`web` for Safari's pages), so main, panes not opened yet and a
+  pane being added all count (`paneFloors(split, minimums, apps)`). The room check refuses an add (as before, now with
+  those minimums) and an axis toggle that wouldn't fit (`refusesAxis`: "Not enough room to stack these panes" / "…side
+  by side"); a divider and the sidebar's edge stop at them. The engine refuses an extra whose rect is below its app's
+  known minimum before anything is started or asked (no window made only to be refused).
+- **A failed pane leaves the split.** Decided: out of the split in the library (`removeFromSplit` with Margin.app's
+  `focus`: the pane that had the keys keeps them), not only marked: the page lays out the library's split, so a pane
+  marked failed would stay an empty box and its dividers would drag nothing (the log: three boxes, two drags with "0 page
+  area changes"). The item stays in its space, open; a toast says why ("Not enough room for “B” in Split View", "“B”
+  couldn't open in Split View"). The panes coming in go first: a pane shown before that failed only beside a newcomer
+  stays. The rest is laid out by the show the removal asks for. The engine's rule beside it: a layout that ends with one
+  visible host puts that host at the page area (13:27: main left at 775 wide, the rest blank), and with the deferral main
+  never moved for a newcomer that didn't come.
+- **A new pane's raise.** A window that came into Margin's Space with its tile as part of a layout's first open
+  (`freshFront`) is, when it isn't in front at the first read after its raise, brought in front by the move out to a
+  private Space and back at once (`outAndBack`): no 150 ms waits, no raise again, no copy asked (on the real screen those
+  took ~550 ms and never worked; the move took 19 ms). Other cases keep raise → copy → out and back. The log line says
+  how long from the first raise.
+- **A divider's drag: per window, never in lockstep.** The pump sent every window its rect, then waited until all had
+  landed before the next frame, so the quicker window waited for the slower (two Safari panes: median 26 ms, p95 49 ms,
+  289 of 547 frames coalesced; one window: 4–5 ms). Now each host has its own rect in flight: a host whose rect landed
+  (or was given up after `liveWait`) gets the newest frame at once, hosts free in the same tick are sent in the same
+  tick (tiles first, nothing awaited between them), at most one change a display frame each. The drag's line says the
+  page's cadence, the frames sent to every window, how many sends had more than one window, and each window's sends and
+  landing times. Stand-in (60 Hz page, 60 frames): one window 4 ms and one 30 ms: before 34 and 34 frames sent, the quick
+  one's frames landing at 30 ms; after 60 and 34, the quick one at 4 ms. Two windows alike (8 ms): 60 of 60 frames sent
+  to both in the same tick, before and after. What only the real screen shows: whether two Safari windows' reflows
+  (one Safari process) are slower together than apart, the WindowServer's share, and the page's own frame rate.
+- **The shell's engine forwarded too little.** `LateHostEngine` (the real app's) didn't forward `liveFollowers` and
+  `showsAlone`, so the real app took the protocol's stand-in answers: a divider's drag of two logged "the hosted window
+  follows it live", and an item of main's profile picked with a split up was only a tab switch unless the session had a
+  layout recorded (fix/screen-engine's `showsAlone`). Both forwarded, and `knownAppMinimums`.
+- Checked: `split-real-use-tests.swift` (the session and engine on the stand-in world: born window, freeze, main kept,
+  raise, room, failure, a drag of a quick and a slow window, the glue), `tests/split-view.test.ts` (floors by app,
+  `removeFromSplit`'s focus), `tests/ui-host-app.test.ts` (`appMin`), `tests/theme/split-view.test.ts` (5 themes, both
+  engines: no pane below its app's minimum, a divider stopping there, three Safari panes in 1264 pt refused, side by side
+  refused when it wouldn't fit). Nothing on the real screen: TESTING.md M2.7 step 13.
+
+## A split pane's first open: fronted once, revealed once its toolbar rests (fix/pane-fronting, 2026-11-21)
+
+The real screen at 14:29:59–14:30:00 (a Safari page B added beside A, side by side; main window 23758, the pane's new
+window 23774): the pane was fronted twice and its toolbar showed over its page. Read from Margin's and the copy's logs:
+
+- **The second fronting's cause.** After the layout (00.215, the pane in front after one move out and back), the
+  session showed the pane's item in its window (`hostShow`, 00.215–00.375): its tab moved in from main's window, the
+  blank page closed, and Safari put main's window back in front of the pane's, unasked. Then the page's next report of
+  its panes' rects (the session's `placeAgain`, `hosted: page area changed: 1264×933` at 00.975) ran the engine's
+  `pageRectChanged`, whose `frontVisible` read main in front of the focused pane: main raised (the copy heard window 414
+  focused at 00.399), the pane raised (heard 549 at 00.445; its raise never takes for a new window, before or after a
+  move), then `raised again`, its copy asked, and out to a private Space and back (00.970): ~590 ms and a second move
+  between Spaces. (The keys given back at 59.962, "its Space shown again", came from macOS's undone switch; not the cause.)
+- **Decided: only the order that shows is kept.** Two visible hosts need an order only when they overlap: their windows
+  (each as it is and where the layout puts it), a full-screen window counted with its toolbar's room above it
+  (`toolbarRoom`, 52 pt: Safari's toolbar window rests just above its window, measured on the real screen). A card over
+  the panes: kept as before (the card last, out and back for its new window). Panes side by side never overlap, and a
+  stacked split's band above a Safari pane is 52 pt, as tall as its toolbar (it meets the pane above, never overlaps
+  it): their order isn't chased, whatever Safari does to its own windows. The focused one only gets the keys (its app
+  made active, its window made its app's main one: that takes even when the raise doesn't). The focused one in front of
+  every host it overlaps: none of those raised over it; two others out of order between them only when neither overlaps
+  it. Only when the focused one is behind a host it overlaps: the raises, its copy, out and back, as before.
+  So a side-by-side pane's first open has no move out and back at all (the stand-in: the split 30 ms sooner) and the
+  page's next report costs nothing (stand-in: 494 ms → 0).
+- **The pane's loader until its tab is in and its toolbar rests.** Safari keeps its full-screen toolbar down while the
+  keys are in a new window's address field (its blank first page): at 00.298 it was out over the new pane (876,41
+  628×52), resting at 00.368, once the copy had moved the tab in; the pane's loader had been lifted at 00.215 (the
+  engine's end), so up to ~150 ms of Safari's toolbar over the new pane. Now a pane whose window is made in that layout
+  keeps its own loader (`revealHeld`, HostedSession) after the engine's slow step, through its tab's `hostShow`, then
+  the engine reads its toolbar (`toolbarsRest`: the toolbar trace's rule, its own strip at its window's top edge in its
+  window's Spaces, out when its bottom is below its window's top; from the window server, read every 10 ms only while
+  one is out, at most `toolbarRestWait` 0.5 s, never moved or parked) and the loader goes. Said when it waited: `host:
+  <id>: its full-screen toolbar out over its page by N pt at its reveal: resting after … ms` (or `still out (revealed
+  anyway)`). A pane shown before (its tab shown before the layout) and a card are unchanged.
+- Kept: born in full screen under the freeze, main kept until the pane is in, the per-pane loader, the card's first
+  open over a split, the stacked band, ⌘W per pane.
+- Checked: `pane-fronting-tests.swift` (the log's case on the stand-in world: the new window unraisable after a move
+  too, born with its toolbar out, the copy's `hostShow` putting main back in front; failing without the fix: out and
+  back twice, raised again, its copy asked, the loader lifted with the toolbar out; side by side, stacked across an
+  8 pt gap (order kept), stacked across the 52 pt band (not chased), a toolbar that stays out (revealed after 0.5 s)),
+  `split-real-use-tests.swift` 4 (no out and back side by side, the keys the pane's), `screen-card-tests.swift`
+  (unchanged: the card's order). Nothing on the real screen: TESTING.md M2.7 step 13g.
+
+## Tiles kept when Margin's own window comes back late after a tile change (2026-11-21)
+
+On the real Mac under load (two research test apps busy), Margin's launch turned live resize off for the whole run:
+"a tile's rect didn't take (its tile came in and its window is at 240,41 1264×933, not 240,41 1264×933)". The hosted
+window was at its rect; what `reapplyTiles` hadn't seen within `tileWait` (0.3 s) was Margin's own window back at the
+display's width (a tile change lays it out as a split's half for a moment). With tiles off, Safari was a plain member:
+every split resize became a re-place out of full screen and in (1 s behind the loader), and the chain that followed
+(order chased, main out of full screen) came from that. Now `tileIn` looks once more (another `reapplyTiles`) before
+tiles go off for the run, says when it took longer, and the off message names Margin's own window's bounds too.
+Check: screen-engine-tests.swift (Margin's own window back after 0.4 s: tiles kept; never back: off, as before).
+
+## A split's pane window made around its open tab (2026-11-21)
+
+On the real screen a new pane whose tab was open in the main window came up with Safari's full-screen toolbar down
+over it and the address field focused (blue ring): its window had been opened blank, the tab moved in after, and Safari
+had already put the keys in the blank window's address field (the same cause as the 2026-11-20 toolbar). The engine's
+reveal waited 0.5 s and gave up ("still out (revealed anyway)"). Now the app names the item (`newWindow { itemId }`)
+and the copy makes the window around that tab (`windows.create({ tabId, focused, state: 'fullscreen' })`, hosted.ts
+`windowAround`: a blank left behind in a window it would empty), so the window never has a blank first page. An older
+copy ignores `itemId` and opens blank, as before; a browser that refuses `tabId` falls back the same way. Checks:
+tests/hosted-tabs.test.ts (windowAround), split-tests.swift (the payload names the item; failing without it).
+
+## A new pane's or card's Safari window: its page given the keys before it's revealed (2026-11-21)
+
+On the real screen a new pane window came up with Safari's full-screen toolbar down over it and the keys in its address
+field (its text selected), whether it was made at its page (`windows.create({ url })`) or around an open tab. Safari
+keeps the toolbar down while the keys are there, and it stayed down (even a click in the pane didn't move them). Tested by
+hand: Accessibility's AXFocused on the window's AXWebArea moved the keys into the page and the toolbar rested at once
+(822,41 → 822,-11); the window became key with it, and giving the keys back to the main pane kept the pane's toolbar at
+rest. Now, for every Safari window made in a layout (a pane's, the card's), the engine gives its page the keys under its
+loader (`HostEngine.focusPages`, `HostSystem.focusPage`: a breadth-first walk to the AXWebArea, 64 elements at most),
+then fronts the layout again so the focused host has the keys, then waits for the toolbar to rest (`toolbarsRest`)
+before the reveal. No private call, no polling; one Accessibility call per new window. Checks: pane-fronting-tests.swift
+(a toolbar that wouldn't rest by itself: page focused, revealed resting; failing without it).
+
+## The first click in another pane goes through (2026-11-21)
+
+Decided by Tirth: in a split, a click in the pane that doesn't have the keys took two clicks (a link in the other
+Safari pane, a note's text in Notes). Each pane is its own hosted window under Margin's window, which lets the pointer
+through holes over them; a press on a window that isn't key only made it key: WebKit refuses the first mouse
+(`WebViewImpl::acceptsFirstMouse` is NO but for a selection drag or a legacy scrollbar), and so do AppKit's text
+views (an `NSButton` takes it). ⌘-click and right-click already reach Safari without the keys.
+
+The lab (the click-through research of 2026-11-21, a Margin-like non-activating panel with holes over two WKWebView
+windows and a native one): catching the press in Margin's window and replaying it fails (the window server keeps
+routing the press's events to the window that got the down); SkyLight's front-process-with-window focus (yabai's)
+fails within one app. An active CGEventTap on presses that makes the pane's window key with Accessibility, then lets the
+press go on, delivered every kind of click exactly once: a link, Shift+click, a button, a text field, a double-click
+with its dblclick, a drag-select, a right-click, across apps both ways. 6-13 ms within one app, 25-80 ms across apps,
+58-66 ms the first time (a cold Accessibility cache).
+
+- **Held in the callback (the lab's variant c'), not swallowed and re-posted (c).** Both measured the same. Held, the
+  window server's event stream waits for the callback, so every event keeps its order: a key typed right after the
+  click reaches the pane clicked, and a scroll, a trackpad's pressure or a key can't overtake the press (a re-post lets
+  every event outside the tap's mask through first). Only left presses come through the tap; a re-post needs every
+  drag and release too (a round trip each, for every drag anywhere while a split is up). Nothing is copied, posted or
+  tagged. The cost: all input waits while the window is made key, so the hold is capped at 120 ms (the lab's slowest
+  was 80): not key by then, the press goes on as before (it only focuses) and the pane is focused the usual way.
+- **When there's a tap at all.** Only while a Margin window shows two or more hosted windows (a split, or the preview
+  card over main) on the current Space, Accessibility is granted (`AXIsProcessTrusted`) and Margin isn't quitting.
+  One pane, nothing hosted, another Space current: no tap, no thread, nothing. When it's no longer wanted every press
+  passes at once and the tap goes a second later unless it's wanted again (a layout's change takes the panes away for
+  a moment); at quit, at once. On a thread and run loop of its own (`margin.pane-click-tap`, user-interactive), never
+  the main thread's: Margin busy never holds the input. macOS's "too slow" or "user input" off: on again at once.
+- **What it decides with** (`PaneClick.decide`, a pure function): the hosting window's scene, published as its holes
+  change, a field of Margin's takes or lets go of the keys, or the Space changes (`MarginWindowController.paneScene`:
+  each pane's hole with its window and app, the one with the keys, Margin's slot with its hits, Margin's own window
+  numbers). A press passes untouched over Margin's own UI (`PassThrough.pageGets`: the divider, a stacked band, the
+  card's bar, menus, the palette, the dim around a card), outside every hole, in the pane with the keys, with ⌘ or ⌃
+  (unchanged: Safari takes them without the keys), with another button held, or while a field of Margin's has the keys.
+  A card open: only its page counts. Shift and ⌥ are held (Shift+click's Preview is one click now). Last, for a press
+  it would hold, the window server's list of windows above the pane's (no permission) at the point: any other window
+  there that shows (a menu or popup of any app, a sheet, the Dock, a banner) and the press passes as before.
+- **The quick focus** (`AXPaneFocus`, HostSystem.swift): its app made the front app (AXFrontmost) only if it isn't,
+  the window its app's main one (AXMain) and raised (AXRaise); key once its app is the front one with that window
+  focused, both read from the app itself every 1 ms. Each call's messaging timeout is the press's time left, set on
+  this class's own elements only (never the system-wide element, which would set every element's in Margin, HostAX's
+  too). Only ever the pane's own window, by its number: never a full-screen Safari window's toolbar. The panes' window
+  elements are looked up ahead on a queue of their own as the panes change. Its window key already (Margin's word
+  behind): let go at once.
+- **Bookkeeping without fronting.** `HostEngine.focus(_:fronted: true)` records the one shown and the holes' focus and
+  fronts nothing: `frontVisible` around the press would make another app the front one mid-click. The tap says each
+  press it held on the main thread (`onPaneClick` → `HostedSession.paneClicked` → `pressedHost(fronted: true)`: the
+  keys, the sidebar's highlight, ⌘W's target); the press's own monitor (`pressed(at:number:)`) knows it by its event
+  number (AppKit's `eventNumber` is the event's `mouseEventNumber`; by its point when it has none) and leaves it
+  (`paneTapClaimed`). A press the tap let go (not key in time, covered) isn't claimed: the monitor focuses it the
+  usual way, as before.
+- **Log**, at the host lines' level, one line per press it held: `host: <id>: a click in its pane while <id> had the
+  keys: its window <n> key in <ms> ms (in its own app | its app made the front app): the click delivered`, `… key
+  already (<ms> ms; Margin's word behind) …`, `… not key within <ms> ms: the click let go as before …`, `… over another
+  window there (window <n>, pid <p>, layer <l>): let go as before`; `pane clicks: on (…)`, `pane clicks: off (no split
+  shown on the current Space | Margin quits)`; said once: `pane clicks: Accessibility isn't granted …`, `the event tap
+  wasn't made …`. Nothing per move.
+- **Costs (the stand-in):** a press that passes costs the tap's decision about 1.5 µs (a lock, the scene, pageGets; no
+  Accessibility, no window list); a held press costs its focus (the lab's numbers above). Idle: nothing (a tap on
+  presses is woken only by a press). Memory: one thread and one Mach port while a split is up; the scene is a few
+  hundred bytes. Nothing private is new (`_AXUIElementGetWindow`, already HostAX's, finds a window's element).
+- **Checks:** `pane-click-tests.swift` (the decision for every case, the hold on a stand-in focuser and a pipe of
+  events: a click, a double-click, a drag from the other pane, the cap, key already, across apps, covered, the claims,
+  the mask; the engine's `fronted` focus with nothing fronted, failing when it fronts), `split-tests.swift` (the
+  session's bookkeeping for the tap's word: focused, highlight, nothing fronted; a let-go press changes nothing),
+  `e2e-split.swift` (the tap's life in Margin's own window: made at two visible and told each pane, its claimed press
+  left by the monitor, the card's page alone, another Space for a moment and for good, gone at one, Margin's quit).
+  The real screen: the `pane-clicks` part of `npm run test:screen` (two Chameleon copies; Chameleon's grid refuses the
+  first mouse as WebKit does) and TESTING.md M2.7 step 13h (Safari+Safari, Safari+Notes).
+
+## The pane click tap: overlays aren't covers (2026-11-21)
+
+On the real Mac the screen suite's first run of the pane-clicks part let every held press go: "a click in its pane over
+another window there (window 36, pid 874, layer 2147483628)", a keep-awake app's two full-screen windows at the
+shielding level, over the whole display and letting the pointer through. Windows at the assistive-technology level
+(1500) and above (screen dimmers, keep-awake and zoom overlays, shielding, cursor) are never covers now
+(`PaneClick.overlay`); a menu, a sheet or panel, the Dock or a system dialog still is.
+
+## Row slides under Reduce Motion: asked afresh, a running one stopped (2026-11-21)
+
+The theme suite's "reduced motion: a close is drawn at once, nothing slides" check failed now and then in WebKit (Pixel
+most), on base 93722290 too (3 in 8). The cause was in `ui/row-motion.ts`, not the test: it kept the
+`prefers-reduced-motion` MediaQueryList made at its start, and WebKit's kept list still said no-preference for a moment
+after Reduce Motion came on (a fresh `matchMedia` already said reduce), so that change slid its rows 34–42 px. It's now
+asked afresh at each change of the rows (only at a click, a close or an open: never per frame). And when rows change
+with no slide this time (Reduce Motion, a hidden page, a drag), a slide still running from the change before is stopped,
+so the rows are at their own places instead of sliding on toward old ones. (Found with the rows' own animations: the
+sidebar is in a shadow tree, which `document.getAnimations()` doesn't list.) Check: tests/theme/intents.test.ts "a slide
+still running when a change is drawn with reduced motion" (failing in all 5 themes × 2 engines before; 6 of 6 and 3 of 3
+whole-file runs green after).
+
+## Every pane of a split draws active (2026-11-21)
+
+Decided by Tirth, as polish on the pane click tap: in a split only the window server's front app drew active. The
+other panes showed as inactive windows do (Safari's grey toolbar and selection, no caret, `document.hasFocus()` false,
+no `:focus`), so a split read as one live pane and one dead one. Now every pane whose app isn't the front one is kept
+active (`app/platforms/macos/shell/PanesActive.swift`, `app/platforms/macos/private/PaneRecords.swift`).
+
+The research (2026-11-21, its scratchpad's `allfocus/`: two probe apps, experiments e1-e6, WebKit's sources, yabai's
+`window_manager.c`). AppKit decides inside each app whether it's active and which window is key, from the event records
+the window server delivers to it. Margin sends a pane's app two kinds with SkyLight's `SLPSPostEventRecordTo`, as yabai
+and AltTab do: an *application activated* record (an AppKit-defined event, type 13, subtype 1) and the *make-key* pair
+(a left mouse down and up whose byte 0x3a is 0x10: the window made key, no click). That app then takes itself for the
+active app and makes that window key, while another app stays the window server's front process. `NSApp.isActive`, the
+key and main window, the active appearance, WebKit's `WindowIsActive`/`IsFocused`, `document.hasFocus()`, `:focus`, the
+blue selection and the caret are all real. A *deactivated* record (subtype 2) gives it back cleanly. It held 10 s and
+more, and timers and `requestAnimationFrame` aren't throttled by inactivity anyway (only by visibility). Inside an app
+that's already active, the make-key pair alone doesn't move its key window: the old one's app is deactivated, then the
+new one activated and made key, 40 ms apart (yabai's recipe). `SLSSetWindowHasKeyAppearance` and `SLSSetWindowActive`
+sent from another process do nothing.
+
+- **Who.** In a split shown in Margin's hosting window on the current Space (the scene the pane click tap is told,
+  `MarginWindowController.paneScene`), every visible pane whose app isn't the front one, one window per app: the one
+  focused last in it, else its frontmost pane. AppKit has one key window per app (WebKit's `isViewWindowActive` is
+  `isKeyWindow`), so two panes of the same app can't both be active; it's never tried. Margin in front (its menu, a
+  prompt): the focused pane's app counts as the front one, which draws inactive as it did (the keys are Margin's then).
+  Never kept: Margin itself, an app Margin doesn't host, a pane whose window isn't shown, an app quitting. An app with
+  a sheet or an alert up is kept as any other: its sheet draws active with its window, and the keys still go only to
+  the front app (the ring says which). A preview card open: nothing kept or let go for it. Its dim covers the split and
+  the card has the keys; the split's apps are left as they were until it closes (no records for a card's open and close).
+- **The keys and the menu bar** stay the window server's front process, the pane last clicked: the pane click tap makes
+  that pane's app the front one. A kept app takes itself for active, so Accessibility's AXFrontmost reads true and its
+  pane's window focused. The tap's "key already" fast path now needs the window server's front process to be that app
+  too (`SLPSGetFrontProcess`); otherwise the window server makes it the front one (`_SLPSSetFrontProcessWithOptions`,
+  kCPSUserGenerated, and the make-key pair), because AppKit's own activation, which AXFrontmost asks for, may be taken
+  for done in an app that believes it's active. The engine's own fronting (a press the usual way, the sidebar, a
+  layout) does the same for a kept app first. The keyboard follows the click, and the app that had it is kept from then.
+- **When.** Told the scene as it changes (only its panes' windows, apps, roles and focused window count: a drag's rects
+  every frame are nothing) and each change of the front app (NSWorkspace's activation; the tap's own word on a press it
+  focused, before NSWorkspace's). An activation only counts when its app is the window server's front process: an
+  activation by a record is never one, so a record can't start a loop. Applied once per main-queue turn, never through
+  the engine's operation queue: a front change re-asserts at once, whatever operation runs. An app the window server
+  deactivated since (it was the front one and another is now, or it was between two steps) is kept again. One kept and
+  still kept is never sent anything again. Nothing at rest: no timer, no polling, nothing per pointer move. A loop's
+  guard: an app kept more than 60 times in 10 s is left alone for the run, said once.
+- **Let go** (a deactivated record): its pane gone from the scene, or not shown, for 1 s (the tap's grace: a layout's
+  change takes the panes away for a moment, and an operation moving a window has it not shown for a moment). Released
+  at once when another app that Margin doesn't host comes in front, when its app is quitting (a row's close, Margin's
+  quit), and when Margin quits: sent and waited for before the quit's steps (`quitAll`), and again at
+  `willTerminate`. When its app quits, it's forgotten and nothing is sent. Margin's windows closed: the scene's gone.
+  After a crash: the marker (`hosted.json`, `keptActive`: pid, window, app, launch) lists the apps sent active since
+  they were last let go, written only when that list changes (a split's start and end, not each click). The next
+  launch's recovery deactivates each one that's still that launch, isn't the front app and still takes itself for
+  active (AXFrontmost; unread counts as yes). A record is never sent to the window server's front app (read just
+  before, on the records' own queue): it's active for real.
+- **The records** (`PaneRecords`): 0x100 bytes zeroed (AltTab: the window server reads past 0xf8 since 14.7.4), the
+  length 0xf8 at 0x04, the type at 0x08, the window's number at 0x3c, the subtype at 0x8a. **The launch check** builds
+  an AppKit-defined event (subtype 1, data1 and data2 set) and a mouse press and release with public calls (NSEvent),
+  reads them back as the window server's records (`SLEventRecordPointer`) and compares every offset. Any mismatch, or
+  any of the six calls missing, turns the part off for the run (today's behaviour), said once in the host's launch line
+  (`… ; panes active ok` / `panes active off: <why>`). The make-key flag can't be made with a public call: it's yabai's
+  and AltTab's, and the research's. A record the window server refuses (a nonzero result): off for the run, said once.
+  `defaults write com.unibox.margin MarginPanesActive -bool NO`: never kept, while a crash's leftovers are still let go.
+- **Off the main thread.** Records are sent on a queue of their own (`margin.panes-active`, user-interactive). The
+  front process is read inline, at about 2.7 µs a read, and made front inline: on the tap's thread for a press, on the
+  main thread for the engine.
+- **The ring says where the keys go.** Several panes draw active now, so Margin's ring around the focused pane is what
+  says where typing goes. `tests/theme/pane-ring.test.ts` measures it in all five themes, light and dark, in WebKit and
+  Chromium: on the focused pane only, at least 2 px, its outer edge at least 3:1 against the gap (WCAG 2.1 1.4.11).
+  Arcadia's and Liquid Glass's rings were the accent at 70% and 60% (2.4:1 and 2.1:1 in light), so both are the full
+  accent now. Arcadia's frame takes the space's colour (an accent ring fell to 1.9:1 in dark over a yellow space), so
+  its ring has a 1 px edge in the frame's own text colour (`--fg`). Material, Neubrutalism and Pixel pass as they were.
+- **Log:** `panes active: <id> kept active (its window <n> (pid <p>)); <id> let go (<why>; …) (the keys: <id>; <n>
+  kept)`, one line per step that sends anything; the tap's line for a kept pane: `… (its app, kept active, made the
+  front app by the window server): the click delivered`; at launch, the host's line `… ; panes active ok`; after a crash,
+  `panes active: a crashed Margin kept <n> app(s) active: <m> let go (deactivated), …`; said once:
+  `panes active: the window server refused a record (error <n>): off for the run …`, `panes active: off
+  (MarginPanesActive is NO) …`, `panes active: pid <p> kept active <n> times in 10 s (a loop?) …`.
+- **Costs (the stand-in):** a step at rest sends nothing and costs about 7-12 µs (unoptimised test build: the keeper
+  over four panes, or the engine's step with the front read and the hosts looked up). A front change costs one step
+  and three records for each app kept anew (the window server's work: microseconds each). No timer except while a
+  let-go waits out its grace. Memory: a few dictionaries keyed by pid.
+- **Risks and unknowns** (for the hand checks): app logic keyed on `isActive` (panels that hide on deactivate,
+  notifications held while active, an app that refreshes on each activation); input methods, dead keys and secure input
+  follow the real front app; the ~30 ms between the window server deactivating the app that had the keys and Margin
+  activating it again (the research's swap: 27-36 ms) may draw one inactive frame; real Safari's and Notes' behaviour
+  beyond the probes' (WebKit's own state matched them in the research); AXFrontmost reading a kept app's own
+  `isActive` (believed so: the crash recovery and the tap rely on the window server's word, and AXFrontmost only gates
+  the recovery).
+- **Checks:** `panes-active-tests.swift` (the records' bytes; the launch check against the window server's own record
+  as read on 27.2.1 and every offset moved; the part's own launch check; the keeper's every case; the engine on the
+  stand-in world, which keeps, re-asserts and lets go on every exit path, its marker and the next launch's recovery,
+  coalescing, and its cost), `pane-click-tests.swift` (`paneClickKeptTests`: a kept app's pane is never "key already",
+  the window server's way), `e2e-split.swift` (Margin's own window: the split kept, the tap's scene carrying it, let go
+  at the split's end and when the windows close), `tests/theme/pane-ring.test.ts`. The real screen: the `panes-active`
+  and `panes-active-crash` parts of `npm run test:screen` (Chameleon's `state` probe: AppKit's own word), and
+  TESTING.md M2.7 step 13i (Safari + Notes).
+- **Verified on the real screen (2026-11-21, build 7bb83541):** `panes-active` 29 of 29 (both active after every click
+  of 6 flips, the kept pane's inactive gap a median of 12 ms, most 13; let go on the split hidden and on Margin's quit;
+  idle with a split up 0.43% CPU, 0 idle wakeups a second, footprint 104 MB) and `panes-active-crash` 10 of 10 (killed:
+  the kept copy still active; the next launch lets it go). Safari + Notes by hand: Notes kept active beside Safari's
+  pane with the keys (both apps' AXFrontmost true, Notes drawing active); a click in Notes' pane gave it the keys and
+  kept Safari active, a click back on Safari's page 7.2 ms; keys typed then reached only Safari's field; Margin's quit
+  let Notes go before quitting the apps it opened. The click check now takes "already key while kept active" (no new
+  `becameKey` is logged for a window that stayed key).
+- **A real app's risk found by the screen run:** the make-key pair's location is NaN on purpose (the bytes yabai and
+  AltTab send). An app's own mouse monitor that converts the location to an integer traps on it: the first run crashed
+  Chameleon (`Int(locationInWindow.x)` in its local monitor) 40 ms after it was kept, now guarded in the test app. Real
+  apps rarely convert a monitor's location unchecked, and yabai and AltTab send the same record to every app they
+  focus, but a crash of a hosted app on being kept would point here first (`MarginPanesActive` NO turns it off).
+
+## A split that can't fit is refused before anything moves (2026-11-21)
+
+The real screen, 19:32:02: "Add to Split View" on the row of the Safari tab in front, Notes used just before it, both
+open in Margin's window. The library splits an added item with the item used last in its space besides it, so it made
+Notes + that tab (Notes first). Notes' window said 701 pt at least, Safari's 574, the page area 1264: they couldn't fit.
+The page's own room check let it through, the page laid Safari's pane at 949…1523 (past the page area and the display),
+Safari's full screen had no plan there, and each of five asks in 12 s made and dropped a Space of its own before failing;
+then both panes "failed" and the page showed the launcher.
+
+- **The page's check pairs as the library does** (`extension/shared/front-item.ts` `frontItemOf`, used by both
+  `app/shared/library/library.ts` `addToSplit` and `extension/ui/behaviors/split.ts` `refusesAdd`): the item used last
+  in the added one's space, not itself, joined to that item's split if it has one. It had measured the front tab beside
+  itself (574 + 574: fits). Its items are the closed ones (`keptTabs`) and the ones open in Margin's window, which the
+  app puts in `tabs` as rows of a number (`mid` the item: HostedSession `liveTab`) and takes out of the kept ones; the
+  menu names an open row by its number. Each add is said in Margin's log (`split add: com.apple.Notes 701 + web 574 +
+  gaps 8 in 1264 (horizontal): refused; apps known: …`).
+- **Margin.app checks again before any window moves** (`HostedSession.noRoom`): every pane within the page area (1 pt)
+  and at its window's known least (its host's as learnt, else its app's). One that isn't: the panes coming in leave the
+  split (main never; else the ones that don't fit; else the last pane), the person told ("Not enough room for … in Split
+  View"), the pane that had the keys keeps them, nothing asked of any window (`layout: split …: no room in the page area
+  … nothing moved`). A split's main that fails for room lets the newcomers go too, so main is shown again alone.
+- **A page area with no full-screen plan is never asked into full screen** (`HostEngine.enterFullScreen`): it fails at
+  once, "no room for it", which `leaveSplit` reads as no room. The no-plan log lines name the host's own page area, not
+  Margin's.
+- Checked: `tests/front-item.test.ts`; `tests/theme/split-view.test.ts` (the real screen's pair, both open by row
+  number, and Notes closed: refused; in 1400 pt: added; each failing on the code before); `split-real-use-tests.swift`
+  (`splitRoomTests`; part 7: a pane past the page area, nothing asked, no Space made, the newcomer out, the item shown
+  before kept). On the real screen with the person's own items: refused by the page with its toast, Notes never opened;
+  and, with the page check bypassed (the build before), refused by Margin.app with nothing moved and no Space made.
+- **Open:** Notes' least as its tile says it changes while it goes full screen: 701×53 first, 501×300 ~90 ms later (its
+  folder column shown or not). Whichever came last is kept, so Notes beside a Safari tab is refused at 701 though Notes
+  can sit at 628 (it did, at 501). Taking the settled reading is a follow-up.
+
+## A pane narrower than its window is shown cut, with arrows (2026-11-22)
+
+Tirth (2026-11-21): rather than refusing an app or tab that can't fit in its split pane, "allow them in there but show
+however much can fit inside it", arrows on hover on the sides with more to show, and split limits like Arc's.
+
+- **Arc's limits**, read from Arc 1.174.0's binary (its `ARCUI.SplitViewController`): `minimumPaneWidth` 220 pt, a
+  constant, also the least height stacked; a divider's drag snaps to an even split of its two panes within 14 pt, a
+  haptic only when the drag is slower than 120 pt/s; 4 panes at most (Margin had that). Now `PANE_FLOOR` 220×220 for
+  every pane (`ui/behaviors/split.ts`), whatever its window needs; adds and axis toggles refused only where 220 each
+  and the gaps don't fit; Margin.app's own check before any window moves (`HostedSession.noRoom`) uses 220 too.
+- **The cut pane** (docs/PEEK-SPLIT.md §4b): its window at its own minimum within the display (margin-core
+  `layout::cut`, the engine's `frame`), Margin's hole the pane, kept under the panes beside it (`frontVisible`), its keys
+  without a raise (kCPSNoWindows + the make-key pair), its presses delivered to its window as records by the pane click
+  tap (never routed: routing raises the clicked window), put back under them if its app comes in front another way.
+- **Arrows**: a slide (its tile's rect, 150 ms eased) to its other alignment, which shows that side whole. First built
+  as "slide where there's room, reveal over its neighbours at the display's edge" (Tirth's choice, 2026-11-22); then
+  Tirth asked to move the window to the screen's edge properly instead (2026-11-22, below), and the reveal went.
+- **Past the display's edge** (2026-11-22): the earlier finding that macOS ejects a tile past the display's edge was
+  wrong. Read in AppKit (`_NSFullScreenContentController reshapeContentForTileFrame:…` and its delayed block): a window
+  leaves its tile only when it can't take the tile's size, never for its position. Measured with a Chameleon test copy
+  (Margin paused so its keeper didn't put it back): tiles 388 past the right edge, 300 past the left, 400 past the
+  bottom, 300 past the top, each kept, drawn clipped at the edge. So a cut pane's window lies away from the other
+  panes (`layout::cut` with no alignment asked): an edge pane's rest goes past the display's edge or under the sidebar,
+  under no pane (nothing kept behind, nothing polled, its focus and presses as any pane's); a middle pane's under the
+  pane before it (a chain, ordered by `tuckedOrder`); a slide that would put two cut panes over each other's isn't
+  offered. Only tiles may pass the edge: a window entering, a member and tiles off keep a frame within the display
+  (`layout::within`), since a full-screen Space's reservation can't be negative (`layout::plan`); `layout::tile` takes
+  a page past the area now.
+- **Research that ruled things out** (2026-11-21/22, on the real screen with Chameleon test copies and a Safari test
+  page; lab dev hook on `lab/split-overflow`, never merged): a window-mode window can hang off the edge but draws above full-screen tiles (its hidden part over the
+  neighbour), shows its title bar and stops short of the Dock; a tile's own Space ignores `SLSBridgedSpaceSet
+  {Transform,Shape}Operation` (stored, never drawn); Codex's two-root scene (two full-screen Spaces shown together,
+  clipped and translated) draws the second Space only while it's the current Space here too, and any click in the
+  other one blanks it, so every click in Margin's Space would have to be re-delivered: kept as research. A click on a
+  window behind another, routed by the window server, raises it; the same click as the window's own record doesn't.
+- **Cost**: nothing at rest. The tap now also hears every button's drags and releases while a split is up (one
+  comparison each, a cut pane's taken); `paneHover` is said only as the pointer enters or leaves a cut pane; a slide is
+  ~9 rects of ~0.2 ms; a press on a cut pane lying under another reads its window's origin once. The poll's look at the
+  window order runs only while a cut pane lies under another (not for edge panes). No timer.
+- **Seen on the real screen** (2026-11-22): Chameleon past the edge, slid both ways; Notes (pane 328, window 501) past
+  the edge beside Safari, slid under Safari's pane and back; the screen suite's `cut-panes` part, 14 of 14.
+- **Open**: a second display beside this one (none connected yet): a tile past the edge should stay clipped to its own
+  display.

@@ -24,9 +24,10 @@ const byId = (fields: SettingsField[]) => Object.fromEntries(fields.map((f) => [
 test('Settings covers today\'s form: theme, search engine, archive, sleep, never-sleep sites, gestures, frame, the ⌘T hint, shortcuts; Wake all where sleeping tabs are discarded', () => {
   const fields = settingsFields({ theme: 'arcadia', archiveAfterHours: 12, sleepAfterHours: 4, neverSleepSites: ['mail.example.com'] }, SAFARI);
   assert.deepEqual(fields.map((f) => `${f.id}:${f.kind}`), [
-    'theme:choice', 'engine:info', 'archiveAfterHours:number', 'sleepAfterHours:number', 'neverSleepSites:list',
-    'blockGestures:toggle', 'swipeNavigation:toggle', 'pullToRefresh:toggle', 'frameWhenHidden:toggle', 'newTabHint:toggle',
-    'shortcuts:group', 'sidebarShortcut:shortcut', 'nextTab:shortcut', 'prevTab:shortcut', 'nextSpace:shortcut', 'prevSpace:shortcut', 'resetShortcuts:button',
+    'theme:choice', 'engine:info', 'favoritesScope:choice', 'archiveAfterHours:number', 'sleepAfterHours:number', 'neverSleepSites:list',
+    'blockGestures:toggle', 'swipeNavigation:toggle', 'pullToRefresh:toggle', 'frameWhenHidden:toggle', 'autoPeekPins:toggle', 'newTabHint:toggle',
+    'shortcuts:group', 'sidebarShortcut:shortcut', 'nextTab:shortcut', 'prevTab:shortcut', 'nextSpace:shortcut', 'prevSpace:shortcut',
+    'appShortcuts:group', 'focusAddress:shortcut', 'copyUrl:shortcut', 'togglePin:shortcut', 'reopenArchived:shortcut', 'littleArc:shortcut', 'addSplit:shortcut', 'spaceDigits:shortcut', 'itemDigits:shortcut', 'resetShortcuts:button',
   ]);
   const f = byId(fields);
   assert.deepEqual(f.theme.options.map((o) => [o.id, o.label, o.selected]), [['arcadia', 'Arcadia', true], ['neubrutalism', 'Neubrutalism', false], ['pixel', 'Pixel', false], ['liquid-glass', 'Liquid Glass', false], ['material', 'Material', false]]);
@@ -137,9 +138,9 @@ test('the Settings page\'s categories (Tirth, 2026-11-20): Appearance, Tabs, Bro
   const all = settingsFields({ theme: 'arcadia' }, { ...DISCARDS, marginFullscreen: true, importThemes: true, userThemes: [{ id: 'mine', name: 'Mine', version: '1.0.0' }] }, { theme });
   const ids = (category: Parameters<typeof fieldsIn>[1]) => fieldsIn(all, category).map((f) => f.id);
   assert.deepEqual(ids('appearance'), ['theme', 'themeImport', 'userTheme:mine', 'removeTheme:mine', 'themeSettings', 'themeSetting:sidebarWidth']);
-  assert.deepEqual(ids('tabs'), ['archiveAfterHours', 'sleepAfterHours', 'neverSleepSites', 'wakeAll']);
-  assert.deepEqual(ids('browsing'), ['engine', 'blockGestures', 'swipeNavigation', 'pullToRefresh', 'marginFullscreenAuto', 'fullscreenOnly', 'frameWhenHidden', 'newTabHint']);
-  assert.deepEqual(ids('keyboard'), ['sidebarShortcut', 'nextTab', 'prevTab', 'nextSpace', 'prevSpace', 'resetShortcuts'], 'its own heading goes: the page says Keyboard');
+  assert.deepEqual(ids('tabs'), ['favoritesScope', 'archiveAfterHours', 'sleepAfterHours', 'neverSleepSites', 'wakeAll']);
+  assert.deepEqual(ids('browsing'), ['engine', 'blockGestures', 'swipeNavigation', 'pullToRefresh', 'marginFullscreenAuto', 'fullscreenOnly', 'frameWhenHidden', 'autoPeekPins', 'newTabHint']);
+  assert.deepEqual(ids('keyboard'), ['sidebarShortcut', 'nextTab', 'prevTab', 'nextSpace', 'prevSpace', 'appShortcuts', 'focusAddress', 'copyUrl', 'togglePin', 'reopenArchived', 'littleArc', 'addSplit', 'spaceDigits', 'itemDigits', 'resetShortcuts'], 'its own heading goes: the page says Keyboard');
   const shown = new Set(SETTINGS_CATEGORY_IDS.flatMap((c) => fieldsIn(all, c as any).map((f) => f.id)));
   assert.deepEqual(all.map((f) => f.id).filter((id) => !shown.has(id)), ['shortcuts'], 'no field lost');
   assert.equal(categoryOf('anything-new'), 'appearance', 'a field not listed still shows');
@@ -161,7 +162,7 @@ test('the Settings page in the view model: its categories and the one shown; the
   const keys = vm({ launcherPage: true, settingsPage: true, settingsNav: true, settingsCategory: 'keyboard' });
   assert.equal(keys.settingsTab!.current.label, 'Keyboard');
   assert.ok(keys.settingsTab!.categories.find((c) => c.id === 'keyboard')!.isKeyboard);
-  assert.ok(keys.settingsForm!.fields.every((f) => f.isShortcut || f.id === 'resetShortcuts'));
+  assert.ok(keys.settingsForm!.fields.every((f) => f.isShortcut || f.id === 'resetShortcuts' || f.id === 'appShortcuts'));
   const plain = vm({ launcherPage: true, settingsPage: true, settingsCategory: 'keyboard' });
   assert.ok(plain.settingsForm!.fields.some((f) => f.id === 'theme') && plain.settingsForm!.fields.some((f) => f.id === 'nextTab'), 'a theme with no categories: the whole form');
   // Settings under the search field: not in Margin.app's window (its own tab there).
@@ -173,4 +174,37 @@ test('the Settings page in the view model: its categories and the one shown; the
   assert.equal(checkAction('settings.category', 'evil', ctx).ok, false);
   assert.equal(checkAction('settings.category', undefined, ctx).ok, false);
   assert.deepEqual(requestFor('settings.category', 'tabs', { state, ui: { windowId: 7 } }), { kind: 'local', name: 'settings.category', arg: 'tabs' });
+});
+
+test('Settings: Margin.app\'s own keys (⌘L, ⌘D, ⌃1–9, ⌘1–9…) can be changed or turned off, and reach the app as its keys', async () => {
+  const { keyBindings } = await import('../extension/background/link.ts');
+  const f = byId(settingsFields({}, SAFARI));
+  assert.deepEqual([f.togglePin.value, f.focusAddress.value, f.spaceDigits.value, f.itemDigits.value, f.addSplit.value], ['⌘D', '⌘L', '⌃1–9', '⌘1–9', '⌃⇧=']);
+  // Another combination; a numbered one takes its digit's modifiers for 1–9 (any digit pressed).
+  assert.deepEqual((saveField(f.togglePin, 'Alt+Meta+KeyP', {}) as Saved).payload.patch.appKeys.togglePin, 'Alt+Meta+KeyP');
+  assert.equal((saveField(f.itemDigits, 'Alt+Meta+Digit7', {}) as Saved).payload.patch.appKeys.itemDigits, 'Alt+Meta+Digit1');
+  assert.equal(saveField(f.itemDigits, 'Alt+Meta+KeyP', {}), null, 'a numbered key needs a digit');
+  // Off.
+  const off = (saveField(f.togglePin, '', {}) as Saved).payload.patch.appKeys;
+  assert.equal(off.togglePin, '');
+  assert.equal(off.copyUrl, 'Shift+Meta+KeyC', 'the others kept');
+  const shown = byId(settingsFields({ appKeys: off }, SAFARI));
+  assert.equal(shown.togglePin.value, '');
+  assert.equal(shown.togglePin.placeholder, 'Off');
+  // Taken: a numbered key's nine combinations count.
+  assert.match(shortcutTaken('togglePin', 'Meta+Digit3', {})!, /already used for “Go to favorite, pin or tab 1–9”/);
+  assert.equal(shortcutTaken('itemDigits', 'Meta+Digit4', {}), null, 'its own');
+  assert.match(shortcutTaken('spaceDigits', 'Meta+Digit2', {})!, /favorite, pin or tab/);
+  assert.match(shortcutTaken('copyUrl', 'Alt+KeyS', {})!, /sidebar/);
+  // Reset: their defaults too.
+  assert.equal((runField(f.resetShortcuts) as Saved).payload.patch.appKeys.togglePin, 'Meta+KeyD');
+  // What the app is told: every one named, [] off (so it never falls back to its default), the digits one each.
+  const keys = keyBindings({ appKeys: { togglePin: '', itemDigits: 'Alt+Meta+Digit1' } });
+  assert.deepEqual(keys['toggle-pin'], []);
+  assert.deepEqual(keys['focus-address'], ['Meta+KeyL']);
+  assert.deepEqual(keys['item-1'], ['Alt+Meta+Digit1']);
+  assert.deepEqual(keys['item-9'], ['Alt+Meta+Digit9']);
+  assert.deepEqual(keys['space-3'], ['Ctrl+Digit3']);
+  const none = keyBindings({ appKeys: { spaceDigits: '' } });
+  assert.deepEqual(Array.from({ length: 9 }, (_, i) => none[`space-${i + 1}`]), Array(9).fill([]));
 });

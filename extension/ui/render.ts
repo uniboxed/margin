@@ -37,9 +37,58 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 // never takes clicks: the browser's page is there.
 const BASE_CSS = `
 m-page{display:block;box-sizing:border-box;background:none!important;pointer-events:none!important}
-m-window-controls,m-drag-region,m-palette,m-notice,m-menu,m-editor,m-launcher,m-prompt,m-settings,m-page-loader{display:block}
+m-page[m-split]{display:flex!important;flex-direction:row;align-items:stretch}
+m-page[m-split="column"]{flex-direction:column}
+m-pane{display:block;box-sizing:border-box;flex:1 1 0px;min-width:0;min-height:0;background:none!important;pointer-events:none!important}
+m-divider{display:block;box-sizing:border-box;flex:0 0 var(--m-split-gap,8px);position:relative;pointer-events:auto!important;cursor:col-resize;touch-action:none;outline:none;-webkit-user-select:none;user-select:none}
+m-page[m-split="column"]>m-divider{cursor:row-resize}
+m-pane{position:relative}
+m-pane>m-pane-loader{position:absolute;inset:0;display:flex;background:Canvas;color:CanvasText;color-scheme:light dark;flex-direction:column;align-items:center;justify-content:center;gap:10px;overflow:hidden;pointer-events:none;font:500 13px/1.3 -apple-system,BlinkMacSystemFont,system-ui,sans-serif;-webkit-user-select:none;user-select:none}
+m-pane-loader>m-pane-spinner{display:block;flex:none;width:20px;height:20px;box-sizing:border-box;border-radius:50%;border:2px solid color-mix(in srgb,currentColor 18%,transparent);border-top-color:color-mix(in srgb,currentColor 70%,transparent);animation:m-pane-spin .9s linear infinite}
+m-pane-loader>m-pane-label{display:block;max-width:90%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;opacity:.72}
+@keyframes m-pane-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){m-pane-loader>m-pane-spinner{animation-duration:2.4s}}
+m-pane>m-pane-arrow{position:absolute;z-index:1;display:flex;align-items:center;justify-content:center;box-sizing:border-box;width:28px;height:48px;border-radius:14px;background:color-mix(in srgb,Canvas 84%,transparent);color:CanvasText;color-scheme:light dark;box-shadow:0 1px 3px rgba(0,0,0,.22),0 0 0 .5px color-mix(in srgb,CanvasText 18%,transparent);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);cursor:pointer;opacity:0;visibility:hidden;pointer-events:none!important;transition:opacity .12s ease,visibility .12s;-webkit-user-select:none;user-select:none}
+m-pane[m-cut-hover]>m-pane-arrow{opacity:1;visibility:visible;pointer-events:auto!important}
+m-pane>m-pane-arrow:hover,m-pane>m-pane-arrow[m-hover]{background:color-mix(in srgb,Canvas 96%,transparent)}
+m-pane>m-pane-arrow[m-side=left]{left:10px;top:50%;transform:translateY(-50%)}
+m-pane>m-pane-arrow[m-side=right]{right:10px;top:50%;transform:translateY(-50%)}
+m-pane>m-pane-arrow[m-side=up]{top:10px;left:50%;transform:translateX(-50%);width:48px;height:28px}
+m-pane>m-pane-arrow[m-side=down]{bottom:10px;left:50%;transform:translateX(-50%);width:48px;height:28px}
+m-pane>m-pane-arrow::before{content:"";display:block;width:7px;height:7px;border:solid currentColor;border-width:0 0 2px 2px;opacity:.8}
+m-pane>m-pane-arrow[m-side=left]::before{transform:translateX(1.5px) rotate(45deg)}
+m-pane>m-pane-arrow[m-side=right]::before{transform:translateX(-1.5px) rotate(-135deg)}
+m-pane>m-pane-arrow[m-side=up]::before{transform:translateY(1.5px) rotate(135deg)}
+m-pane>m-pane-arrow[m-side=down]::before{transform:translateY(-1.5px) rotate(-45deg)}
+@media (prefers-reduced-motion:reduce){m-pane>m-pane-arrow{transition:none}}
+m-divider>m-band-title{position:absolute;left:12px;right:calc(50% + 34px);top:50%;transform:translateY(-50%);display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font:500 12px/16px -apple-system,BlinkMacSystemFont,system-ui,sans-serif;opacity:.72;pointer-events:none;-webkit-user-select:none;user-select:none}
+m-window-controls,m-drag-region,m-palette,m-notice,m-menu,m-editor,m-launcher,m-prompt,m-settings,m-page-loader,m-toast,m-preview{display:block}
+m-preview-page{display:block}
+m-preview[m-default]{position:fixed;left:var(--m-page-left,0px);top:var(--m-page-top,0px);right:var(--m-page-right,0px);bottom:var(--m-page-bottom,0px);z-index:2147483630;overflow:hidden;border-radius:var(--m-page-radius,0px);pointer-events:none;color-scheme:light dark;font:13px/1.3 -apple-system,BlinkMacSystemFont,system-ui,sans-serif}
+m-preview[m-default]:is([m-loading],[m-quick-tab]){pointer-events:auto}
+m-preview[m-default]>[m-preview-card]{position:absolute;left:clamp(0px,8%,calc(50% - 210px));right:clamp(0px,8%,calc(50% - 210px));top:clamp(0px,7%,calc(50% - 186px));bottom:clamp(0px,7%,calc(50% - 186px));display:flex;flex-direction:column;border-radius:12px;overflow:hidden;background:Canvas;color:CanvasText;box-shadow:0 0 0 100vmax rgba(0,0,0,.32),0 18px 48px rgba(0,0,0,.3);animation:m-preview-in .15s cubic-bezier(.2,.8,.2,1) both}
+m-preview[m-default][m-quick-tab]>[m-preview-card]{bottom:auto;height:44px}
+m-preview[m-default][m-closing]>[m-preview-card]{animation:m-preview-out .15s cubic-bezier(.4,0,1,1) both}
+m-preview[m-default] [m-preview-bar]{flex:none;height:52px;box-sizing:border-box;display:flex;align-items:center;gap:6px;padding:0 10px;pointer-events:auto;border-bottom:1px solid color-mix(in srgb,CanvasText 12%,transparent)}
+m-preview[m-default] [m-preview-bar] button{font:inherit;color:inherit;height:28px;min-width:28px;padding:0 9px;border-radius:7px;border:1px solid color-mix(in srgb,CanvasText 16%,transparent);background:transparent;cursor:default}
+m-preview[m-default] [m-preview-bar] button:hover{background:color-mix(in srgb,CanvasText 8%,transparent)}
+m-preview[m-default] [m-preview-host]{flex:1 1 0;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;opacity:.7}
+m-preview[m-default] [m-preview-field]{display:none;flex:1 1 0;min-width:0;height:30px;box-sizing:border-box;padding:0 10px;border-radius:8px;border:1px solid color-mix(in srgb,CanvasText 18%,transparent);background:transparent;color:inherit;font:inherit;outline:none}
+m-preview[m-default][m-quick-tab] [m-preview-field]{display:block}
+m-preview[m-default][m-quick-tab] :is([m-preview-host],[m-preview-button="preview.back"],[m-preview-button="preview.forward"],[m-preview-button="preview.copyUrl"],[m-preview-button="preview.expand"]){display:none}
+m-preview[m-default][m-quick-tab] m-preview-page{display:none}
+m-preview[m-default] m-preview-page{flex:1 1 auto;min-height:0;background:transparent}
+m-preview[m-default]:is([m-loading],[m-closing]) m-preview-page{background:Canvas}
+@keyframes m-preview-in{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
+@keyframes m-preview-out{from{opacity:1;transform:none}to{opacity:0;transform:scale(.96)}}
+@keyframes m-preview-fade-in{from{opacity:0}to{opacity:1}}
+@keyframes m-preview-fade-out{from{opacity:1}to{opacity:0}}
+@media (prefers-reduced-motion:reduce){m-preview[m-default]>[m-preview-card]{animation-name:m-preview-fade-in}m-preview[m-default][m-closing]>[m-preview-card]{animation-name:m-preview-fade-out}}
 m-menu{position:fixed;left:var(--m-menu-x,0px);top:var(--m-menu-y,0px);z-index:2147483600;outline:none}
-m-menu:empty,m-editor:empty,m-palette:empty,m-notice:empty,m-launcher:empty,m-prompt:empty,m-settings:empty,m-page-loader:empty{display:none}
+m-menu:empty,m-editor:empty,m-palette:empty,m-notice:empty,m-launcher:empty,m-prompt:empty,m-settings:empty,m-page-loader:empty,m-toast:empty,m-preview:empty{display:none}
+m-toast[m-default]{position:fixed;left:50%;top:18px;transform:translateX(-50%);z-index:2147483640;padding:7px 14px;border-radius:999px;background:rgba(28,28,32,.9);color:#f5f5f7;font:500 12.5px/1.3 -apple-system,BlinkMacSystemFont,system-ui,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.28),0 0 0 1px rgba(255,255,255,.12);pointer-events:none;white-space:nowrap;max-width:min(80vw,360px);overflow:hidden;text-overflow:ellipsis;animation:m-toast-in .14s ease-out}
+@keyframes m-toast-in{from{opacity:0;transform:translate(-50%,-6px) scale(.97)}to{opacity:1;transform:translate(-50%,0) scale(1)}}
+@media (prefers-reduced-motion:reduce){m-toast[m-default]{animation:none}}
 m-page-loader[m-default]{position:fixed;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;background:Canvas;color:CanvasText;font:13px/1.3 system-ui,sans-serif;text-align:center;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .12s linear,visibility 0s linear .12s}
 [m-page-state="loading"]>m-page-loader[m-default]{opacity:1;visibility:visible;pointer-events:auto;transition:none}
 [m-page-state="elsewhere"]>m-page-loader[m-default]{opacity:.55;visibility:visible;pointer-events:none;transition:none}
@@ -101,6 +150,8 @@ const SLOTS: Record<string, { part: string, test: string[] }> = {
   'm-page-loader': { part: 'page-loader', test: ['pageLoader'] },
   'm-prompt': { part: 'prompt', test: ['prompt'] },
   'm-settings': { part: 'settings', test: ['settingsForm'] },
+  'm-toast': { part: 'toast', test: ['toast'] },
+  'm-preview': { part: 'preview', test: ['preview'] },
 };
 // Margin's own words (ui/sanitize.ts GUARDED_PARTS): inside these parts and
 // slots, text the theme wrote is dropped again here, whatever tree the
@@ -703,7 +754,11 @@ function collectRows(block: Block, out: Element[]) {
 
 type Edges = { left: number, top: number, right: number, bottom: number };
 // Where the page goes (View.measure).
-export type Layout = { insets: Edges, radius: number, radii: number[], outer: Edges & { radius: number }, container: { width: number, height: number } };
+export type Layout = {
+  insets: Edges, radius: number, radii: number[], outer: Edges & { radius: number }, container: { width: number, height: number },
+  /** A split's panes laid out in `<m-page>` (ui/behaviors/split.ts): the split's id, each `<m-pane>`'s box by its item. */
+  split?: string, panes?: { id: string, rect: number[] }[],
+};
 
 export type ViewOptions = {
   onAction?: (name: string, arg: any, info: { element: Element, event: Event }) => void,
@@ -950,12 +1005,55 @@ export class View {
     const corner = (v: string) => px(String(v).split(' ')[0]);
     const radii = [cs.borderTopLeftRadius, cs.borderTopRightRadius, cs.borderBottomRightRadius, cs.borderBottomLeftRadius].map(corner);
     const border = Math.max(px(cs.borderTopWidth), px(cs.borderLeftWidth));
+    // (A split's panes, Margin's own `<m-pane>`s in the page's place: each one's box, by its item, in order.)
+    const paneEls = [...el.children].filter((p) => p.localName === 'm-pane' && p.hasAttribute('m-pane-id'));
+    const split = paneEls.length >= 2 ? el.getAttribute('m-split-id') : null;
     return {
       insets: { left: round(outer.left + bw.left), top: round(outer.top + bw.top), right: round(outer.right + bw.right), bottom: round(outer.bottom + bw.bottom) },
       radius: round(Math.max(0, radii[0] - border)),
       radii: radii.map((v) => round(Math.max(0, v - border))),
       outer: { left: round(outer.left), top: round(outer.top), right: round(outer.right), bottom: round(outer.bottom), radius: round(radii[0]) },
       container: { width: round(c.width), height: round(c.height) },
+      ...(split ? {
+        split,
+        panes: paneEls.map((p) => {
+          const b = p.getBoundingClientRect();
+          return { id: p.getAttribute('m-pane-id') ?? '', rect: [round(b.left - c.left), round(b.top - c.top), round(b.width), round(b.height)] };
+        }),
+      } : {}),
+    };
+  }
+
+  /**
+   * Where the preview card's window goes (docs/PEEK-SPLIT.md §2): the theme's `<m-preview-page>` (in its `preview` part) as the
+   * page's own box is measured, its content box in the container's coordinates, and its inner corner radius. Laid out,
+   * not as drawn: the card's open (a scale) and close never move it (offsets ignore transforms). Null with no card drawn
+   * (none in the theme, Quick Tab's field alone, the element hidden).
+   */
+  measurePeekPage(): { x: number, y: number, width: number, height: number, radius: number } | null {
+    const root = this.rootElement();
+    const el = root?.querySelector('m-preview-page') as HTMLElement | null;
+    if (!el || !el.isConnected || typeof el.offsetWidth !== 'number') return null;
+    const win = this.doc.defaultView!;
+    const cs = win.getComputedStyle(el);
+    if (cs.display === 'none' || cs.visibility === 'hidden' || el.offsetWidth <= 0 || el.offsetHeight <= 0) return null;
+    let x = 0, y = 0;
+    // (Each offset is from its offset parent's padding edge: that parent's border added.)
+    for (let n: HTMLElement | null = el; n; n = n.offsetParent as HTMLElement | null) {
+      x += n.offsetLeft;
+      y += n.offsetTop;
+      const p = n.offsetParent as HTMLElement | null;
+      if (p) { x += p.clientLeft; y += p.clientTop; }
+    }
+    const c = this.container.nodeType === 9 ? { left: 0, top: 0 } : (this.container as ShadowRoot).host.getBoundingClientRect();
+    const px = (v: string) => parseFloat(v) || 0;
+    const left = px(cs.borderLeftWidth) + px(cs.paddingLeft), top = px(cs.borderTopWidth) + px(cs.paddingTop);
+    const right = px(cs.borderRightWidth) + px(cs.paddingRight), bottom = px(cs.borderBottomWidth) + px(cs.paddingBottom);
+    const round = (v: number) => Math.round(v * 100) / 100;
+    return {
+      x: round(x - c.left + left), y: round(y - c.top + top),
+      width: round(Math.max(0, el.offsetWidth - left - right)), height: round(Math.max(0, el.offsetHeight - top - bottom)),
+      radius: round(Math.max(0, px(String(cs.borderBottomLeftRadius).split(' ')[0]) - Math.max(px(cs.borderTopWidth), px(cs.borderLeftWidth)))),
     };
   }
 
@@ -972,7 +1070,8 @@ export class View {
 // A layout is new when the page's insets or radius changed, or the
 // container's size did (the window resized: the page's box with it).
 const sameLayout = (a: Layout, b: Layout | null) => b && (['left', 'top', 'right', 'bottom'] as const).every((k) => a.insets[k] === b.insets[k]) && a.radius === b.radius
-  && a.container.width === b.container.width && a.container.height === b.container.height;
+  && a.container.width === b.container.width && a.container.height === b.container.height
+  && a.split === b.split && JSON.stringify(a.panes ?? null) === JSON.stringify(b.panes ?? null);
 
 const bases: WeakMap<Document, CSSStyleSheet> = new WeakMap();
 function baseSheet(doc: Document) {

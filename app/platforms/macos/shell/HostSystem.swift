@@ -79,6 +79,10 @@ protocol HostSystem: AnyObject {
     func frontmost(pid: pid_t) async -> Bool
     // The front app's pid now (NSWorkspace's), for the log; nil: unread.
     func frontApp() -> pid_t?
+    // A window's web page given the keys within its window (Accessibility's AXFocused on its AXWebArea): Safari's keys
+    // out of its address field, so its full-screen toolbar rests (a window Safari made keeps them in its address field,
+    // and its toolbar down over the page: the real screen, 2026-11-21). Makes that window key too. True: taken.
+    func focusPage(pid: pid_t, window: Int) async -> Bool
     func pointer() -> CGPoint? // the pointer, top-left coordinates (nil: unread)
     // Closed as its close button would (AXPress on its AXCloseButton, an action, never a click). True: asked.
     func close(pid: pid_t, window: Int) async -> Bool
@@ -164,6 +168,24 @@ protocol HostSystem: AnyObject {
     var anchorsAvailable: Bool { get }
     func createTile(in space: UInt64) -> UInt64?
     func setLiveResizing(_ space: UInt64, _ on: Bool) -> Bool // a drag under way in that Space's layout (its windows' live resize)
+
+    // ---- all panes active (PanesActive.swift): a split's other apps kept active by the window server's records ----
+    var keepsPanesActive: Bool { get } // its calls and records' layout passed, the setting on, no record refused
+    var paneFronting: PaneFronting? { get } // the window server's front process for the pane click tap (nil: none)
+    // A cut pane's focus without a raise and its presses as records (docs/PEEK-SPLIT.md §4b), whatever the all-panes-
+    // active setting: the records' calls and layout passed, none refused (nil: none, presses routed as before).
+    var paneDelivery: PaneFronting? { get }
+    func frontProcess() -> pid_t? // the window server's front process (nil: unread)
+    // A kept app made the front one by the window server (its own activation may be taken for done): true, taken.
+    func makeFront(pid: pid_t, window: Int) -> Bool
+    // The app made the front one, `window` its key one, its windows left where they are in the window server's order (a
+    // split's cut pane, kept behind the panes it lies under: docs/PEEK-SPLIT.md §4b). True: taken.
+    func focusWithoutRaise(pid: pid_t, window: Int) -> Bool
+    func keepActive(_ w: PaneWindow) // sent on its own queue, never to the front app
+    func moveActive(_ w: PaneWindow, from: Int) // an app kept: its other window made the key one
+    func releaseActive(_ w: PaneWindow)
+    func releaseActiveNow(_ list: [PaneWindow]) // sent before it returns (Margin quits)
+    func appActive(pid: pid_t) async -> Bool? // AppKit's own word in that app (AXFrontmost: its isActive); nil: unread
 }
 
 extension HostSystem {
@@ -175,6 +197,7 @@ extension HostSystem {
     // (A stand-in that doesn't play it: not taken, front app unread.)
     func frontmost(pid: pid_t) async -> Bool { false }
     func frontApp() -> pid_t? { nil }
+    func focusPage(pid: pid_t, window: Int) async -> Bool { false }
     func pointer() -> CGPoint? { nil }
     // (A stand-in that doesn't play it: none.)
     func focusedWindow(pid: pid_t) async -> Int? { nil }
@@ -204,6 +227,17 @@ extension HostSystem {
     var anchorsAvailable: Bool { false }
     func createTile(in space: UInt64) -> UInt64? { nil }
     func setLiveResizing(_ space: UInt64, _ on: Bool) -> Bool { false }
+    var keepsPanesActive: Bool { false }
+    var paneFronting: PaneFronting? { nil }
+    var paneDelivery: PaneFronting? { nil }
+    func frontProcess() -> pid_t? { nil }
+    func makeFront(pid: pid_t, window: Int) -> Bool { false }
+    func focusWithoutRaise(pid: pid_t, window: Int) -> Bool { false }
+    func keepActive(_ w: PaneWindow) {}
+    func moveActive(_ w: PaneWindow, from: Int) {}
+    func releaseActive(_ w: PaneWindow) {}
+    func releaseActiveNow(_ list: [PaneWindow]) {}
+    func appActive(pid: pid_t) async -> Bool? { nil }
 }
 
 // ---- the real one ----
@@ -298,6 +332,30 @@ nonisolated final class HostAX: @unchecked Sendable {
     func windows(pid: pid_t) async -> [HostWindow]? {
         guard !refuses, AXIsProcessTrusted() else { return nil }
         return await withCheckedContinuation { c in queue.async { c.resume(returning: self.read(pid)) } }
+    }
+
+    func focusPage(pid: pid_t, window: Int) async -> Bool {
+        guard !refuses, AXIsProcessTrusted() else { return false }
+        return await withCheckedContinuation { c in
+            queue.async {
+                guard let w = self.element(pid, window) else { return c.resume(returning: false) }
+                // (Its web area: window → split group → tab group → groups → scroll area → AXWebArea, a few levels; walked
+                // breadth first, at most 64 elements read.)
+                // (The toolbar's own items skipped: the page is under the window's split group.)
+                var queue: [AXUIElement] = [w], read = 0
+                while !queue.isEmpty, read < 64 {
+                    let e = queue.removeFirst()
+                    read += 1
+                    let role = self.attr(e, kAXRoleAttribute) as? String
+                    if role == "AXWebArea" {
+                        return c.resume(returning: AXUIElementSetAttributeValue(e, kAXFocusedAttribute as CFString, kCFBooleanTrue) == .success)
+                    }
+                    if role == "AXToolbar" { continue }
+                    queue.append(contentsOf: (self.attr(e, kAXChildrenAttribute) as? [AXUIElement]) ?? [])
+                }
+                c.resume(returning: false)
+            }
+        }
     }
 
     func setFullScreen(pid: pid_t, window: Int, _ on: Bool) async -> Bool {
@@ -401,6 +459,18 @@ nonisolated final class HostAX: @unchecked Sendable {
         }
     }
 
+    // Whether AppKit in that app takes itself for the active app (AXFrontmost read: NSApp.isActive); nil: unread.
+    func isFrontmost(pid: pid_t) async -> Bool? {
+        guard !refuses, AXIsProcessTrusted() else { return nil }
+        return await withCheckedContinuation { c in
+            queue.async {
+                let app = AXUIElementCreateApplication(pid)
+                AXUIElementSetMessagingTimeout(app, 0.5)
+                c.resume(returning: self.attr(app, kAXFrontmostAttribute) as? Bool)
+            }
+        }
+    }
+
     // The window raised and made its app's main one (actions and attributes, never a click).
     func raise(pid: pid_t, window: Int) async -> Bool {
         guard !refuses, AXIsProcessTrusted() else { return false }
@@ -462,6 +532,139 @@ nonisolated final class HostAX: @unchecked Sendable {
     func forget(pid: pid_t) { queue.async { self.elements = self.elements.filter { $0.value.pid != pid } } }
 }
 
+// The quick focus of the pane click tap (PaneClickTap.swift), on the tap's own thread while a press waits: a pane's
+// window made key through Accessibility, never a click: its app made the front app (AXFrontmost) when it isn't, the
+// window its app's main one (AXMain) and raised (AXRaise); key once its app is the front one with that window focused
+// (both read from the app itself, every 1 ms by the tap). Only ever the pane's own window, found by its number: never
+// a full-screen Safari window's toolbar, which is a window of its own. Each call bounded by the press's time left
+// (Accessibility's messaging timeout, set on this class's own elements only: never the system-wide one, which would
+// set every element's in Margin, HostAX's too), so a busy app never holds the input past the tap's cap. The panes'
+// window elements looked up ahead on a queue of their own (`warm`); on the tap's thread only one missing at a press.
+nonisolated final class AXPaneFocus: PaneFocusing, @unchecked Sendable {
+    private let lock = NSLock()
+    private var elements: [Int: (pid: pid_t, element: AXUIElement)] = [:]
+    private let warmQueue = DispatchQueue(label: "margin.pane-click.warm", qos: .utility)
+    let refuses = PrivateCalls.inTests
+    // The window server's front process (all panes active, PanesActive.swift); nil: Accessibility's word alone.
+    private let fronting: PaneFronting?
+    // A cut pane's focus without a raise and its presses as records (HostSystem `paneDelivery`); nil: none.
+    private let delivery: PaneFronting?
+
+    init(fronting: PaneFronting? = nil, delivery: PaneFronting? = nil) { self.fronting = fronting; self.delivery = delivery }
+
+    func focusWithoutRaise(pid: pid_t, window: Int) -> Bool { !refuses && delivery?.focusWithoutRaise(pid: pid, window: window) == true }
+    func deliver(_ event: CGEvent, pid: pid_t, window: Int, origin: CGPoint) -> Bool { !refuses && delivery?.deliver(event, pid: pid, window: window, origin: origin) == true }
+    // Its window's top left as the window server has it now (nil: unread).
+    func windowOrigin(_ window: Int) -> CGPoint? {
+        guard !refuses, let n = CGWindowID(exactly: window), let info = (CGWindowListCopyWindowInfo(.optionIncludingWindow, n) as? [[String: Any]])?.first,
+              let b = info[kCGWindowBounds as String] as? [String: Double], let x = b["X"], let y = b["Y"] else { return nil }
+        return CGPoint(x: x, y: y)
+    }
+
+    func frontProcess() -> pid_t? { refuses ? nil : fronting?.frontProcess() }
+    func makeFront(pid: pid_t, window: Int) -> Bool { !refuses && fronting?.makeFront(pid: pid, window: window) == true }
+
+    func now() -> Double { Double(clock_gettime_nsec_np(CLOCK_UPTIME_RAW)) / 1e9 }
+    func pause(_ seconds: Double) { if seconds > 0 { usleep(useconds_t(seconds * 1e6)) } }
+
+    // A messaging timeout for what's left (5 ms at least, 150 at most); nil: no time left.
+    private func timeout(_ until: Double) -> Float? {
+        let left = until - now()
+        return left <= 0 ? nil : Float(min(0.15, max(0.005, left)))
+    }
+
+    private func attr(_ e: AXUIElement, _ name: String) -> AnyObject? {
+        var v: AnyObject?
+        return AXUIElementCopyAttributeValue(e, name as CFString, &v) == .success ? v : nil
+    }
+
+    private func number(_ e: AnyObject?) -> Int? {
+        guard let e, CFGetTypeID(e) == AXUIElementGetTypeID() else { return nil }
+        var n: CGWindowID = 0
+        return hostWindowNumber(e as! AXUIElement, &n) == .success && n > 0 ? Int(n) : nil
+    }
+
+    func keyState(pid: pid_t, until: Double) -> (front: Bool, window: Int?)? {
+        guard !refuses, let t = timeout(until) else { return nil }
+        let app = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(app, t)
+        guard let front = attr(app, kAXFrontmostAttribute) as? Bool else { return nil }
+        guard let t2 = timeout(until) else { return (front, nil) }
+        AXUIElementSetMessagingTimeout(app, t2)
+        return (front, number(attr(app, kAXFocusedWindowAttribute)))
+    }
+
+    // Its element by its number: kept, else read from its app's windows (`until`: the time it may take).
+    private func element(pid: pid_t, window: Int, until: Double) -> AXUIElement? {
+        lock.lock()
+        let kept = elements[window]
+        lock.unlock()
+        if let kept, kept.pid == pid { return kept.element }
+        guard let t = timeout(until) else { return nil }
+        let app = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(app, t)
+        guard let list = attr(app, kAXWindowsAttribute) as? [AXUIElement], let found = list.first(where: { number($0) == window }) else { return nil }
+        lock.lock()
+        elements[window] = (pid, found)
+        lock.unlock()
+        return found
+    }
+
+    func focus(pid: pid_t, window: Int, frontmost: Bool, until: Double) -> Bool {
+        guard !refuses else { return false }
+        var asked = false
+        if frontmost, let t = timeout(until) {
+            let app = AXUIElementCreateApplication(pid)
+            AXUIElementSetMessagingTimeout(app, t)
+            asked = AXUIElementSetAttributeValue(app, kAXFrontmostAttribute as CFString, kCFBooleanTrue) == .success
+        }
+        guard let w = element(pid: pid, window: window, until: until) else { return asked }
+        if let t = timeout(until) {
+            AXUIElementSetMessagingTimeout(w, t)
+            asked = AXUIElementSetAttributeValue(w, kAXMainAttribute as CFString, kCFBooleanTrue) == .success || asked
+        }
+        if let t = timeout(until) {
+            AXUIElementSetMessagingTimeout(w, t)
+            asked = AXUIElementPerformAction(w, kAXRaiseAction as CFString) == .success || asked
+        }
+        // (A stale element, its window gone from Accessibility's list since: looked up again at the next press.)
+        if !asked {
+            lock.lock()
+            if elements[window]?.element === w { elements[window] = nil }
+            lock.unlock()
+        }
+        return asked
+    }
+
+    // The window server's on-screen windows above the pane's, front to back (its own list: no permission), the first
+    // that holds the point and shows (alpha above 0), none of Margin's own.
+    func cover(at point: CGPoint, above window: Int, except: [Int]) -> PaneClickCover? {
+        guard let n = CGWindowID(exactly: window), let list = CGWindowListCopyWindowInfo(.optionOnScreenAboveWindow, n) as? [[String: Any]] else { return nil }
+        for w in list {
+            guard let number = (w[kCGWindowNumber as String] as? NSNumber)?.intValue, !except.contains(number) else { continue }
+            if let alpha = (w[kCGWindowAlpha as String] as? NSNumber)?.doubleValue, alpha <= 0 { continue }
+            if PaneClick.overlay(layer: (w[kCGWindowLayer as String] as? NSNumber)?.intValue ?? 0) { continue }
+            guard let b = w[kCGWindowBounds as String], CFGetTypeID(b as CFTypeRef) == CFDictionaryGetTypeID(),
+                  let r = CGRect(dictionaryRepresentation: b as! CFDictionary), r.contains(point) else { continue }
+            return PaneClickCover(window: number, pid: (w[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value ?? 0,
+                                  layer: (w[kCGWindowLayer as String] as? NSNumber)?.intValue ?? 0)
+        }
+        return nil
+    }
+
+    func warm(_ panes: [PaneClickScene.Pane]) {
+        let keep = Dictionary(panes.map { ($0.window, $0.pid) }, uniquingKeysWith: { a, _ in a })
+        lock.lock()
+        elements = elements.filter { keep[$0.key] == $0.value.pid }
+        let missing = panes.filter { elements[$0.window] == nil }
+        lock.unlock()
+        guard !refuses, !missing.isEmpty, AXIsProcessTrusted() else { return }
+        warmQueue.async {
+            for p in missing { _ = self.element(pid: p.pid, window: p.window, until: self.now() + 0.5) }
+        }
+    }
+}
+
 final class RealHostSystem: HostSystem {
     private let calls: HostPrivate
     private let sky: SkyLight
@@ -473,9 +676,16 @@ final class RealHostSystem: HostSystem {
     private var listeners: [pid_t: UnsafeRawPointer] = [:]
     private var quitObserver: NSObjectProtocol?
     var onAppQuit: ((pid_t) -> Void)?
+    // All panes active (PanesActive.swift): made when its part passed; `keepsActive` the setting
+    // (`MarginPanesActive` NO: never kept; a crash's leftovers still let go).
+    private let activator: PaneActivator?
+    private let keepsActive: Bool
 
     init(calls: HostPrivate, sky: SkyLight, spaces: SkyLightSpaces, slots: SlotSpaces, freezer: Freezer?,
-         sidebarMenu: @escaping () -> SidebarMenu?) {
+         sidebarMenu: @escaping () -> SidebarMenu?, keepsActive: Bool = true) {
+        activator = calls.hasPanesActive && !PrivateCalls.inTests
+            ? PaneActivator(calls: calls, said: { line in DispatchQueue.main.async { MainActor.assumeIsolated { Diagnostics.warn(line) } } }) : nil
+        self.keepsActive = keepsActive
         self.calls = calls
         self.sky = sky
         self.spacesRW = spaces
@@ -659,6 +869,27 @@ final class RealHostSystem: HostSystem {
         return await ax.frontmost(pid: pid)
     }
     func frontApp() -> pid_t? { NSWorkspace.shared.frontmostApplication?.processIdentifier }
+
+    // ---- all panes active ----
+    var keepsPanesActive: Bool { keepsActive && activator.map { !$0.refused } == true }
+    var paneFronting: PaneFronting? { keepsPanesActive ? activator : nil }
+    var paneDelivery: PaneFronting? { activator.flatMap { $0.refused ? nil : $0 } }
+    func frontProcess() -> pid_t? { activator?.frontProcess() }
+    func makeFront(pid: pid_t, window: Int) -> Bool { activator?.makeFront(pid: pid, window: window) ?? false }
+    func focusWithoutRaise(pid: pid_t, window: Int) -> Bool { activator?.focusWithoutRaise(pid: pid, window: window) ?? false }
+    func keepActive(_ w: PaneWindow) { activator?.keep(w) }
+    func moveActive(_ w: PaneWindow, from: Int) { activator?.move(w, from: from) }
+    func releaseActive(_ w: PaneWindow) { activator?.release(w) }
+    func releaseActiveNow(_ list: [PaneWindow]) { if !list.isEmpty { activator?.releaseAll(list) } }
+    func appActive(pid: pid_t) async -> Bool? {
+        guard !PrivateCalls.inTests, NSRunningApplication(processIdentifier: pid).map({ !$0.isTerminated }) == true else { return nil }
+        return await ax.isFrontmost(pid: pid)
+    }
+
+    func focusPage(pid: pid_t, window: Int) async -> Bool {
+        guard !PrivateCalls.inTests, NSRunningApplication(processIdentifier: pid).map({ !$0.isTerminated }) == true else { return false }
+        return await ax.focusPage(pid: pid, window: window)
+    }
     func pointer() -> CGPoint? { PointerWatch.location }
 
     // The View › Show Sidebar item's title (SafariAX, ShellSafariSidebar.swift): "Hide Sidebar" while it's open,

@@ -88,6 +88,19 @@ enum Step: Equatable {
   // the budgets (docs/ARCHITECTURE-PLAN.md "Scheduler and budgets")
   case idleCost(String, seconds: Double)          // idle-cost: Margin's CPU, wakeups and footprint with nothing happening
   case animations(String)                         // what Margin's page keeps redrawing for (dev hook `say animations`), said
+  // the first click in another pane (PaneClicks.swift; Margin's PaneClickTap.swift)
+  case splitWith(Int, adding: Int)                // a split of two hosted copies (dev hook `ui split.add`)
+  case paneClick(Int, PaneClickKind)              // a first click of that kind in that copy's pane without the keys
+  case paneClickTimes(Int, Int, times: Int)       // grid clicks back and forth, timed; then one in the pane with the keys
+  case cutPaneEdge(Int, other: Int, minWidth: CGFloat, seconds: Double) // a cut pane at the display's edge: past it, held
+  case cutPaneSlide(Int, other: Int, side: String) // its arrow pressed on Margin's window: slid to show that side
+  case cutPaneStillBehind(Int, other: Int)        // after a click into it: still behind the pane it lies under
+  // every pane of a split draws active (PanesActive.swift; Margin's PanesActive.swift)
+  case panesActive(Int, Int)                      // both copies active, each its pane's window key; the focused one the front app
+  case panesActiveFlips(Int, Int, times: Int)     // clicks back and forth: both active after each, the inactive gaps timed
+  case panesActiveHidden(Int, Int, alone: Int)    // the split hidden: the kept one let go after the grace
+  case panesActiveQuit(Int, Int)                  // Margin quits: the kept one let go before the copies quit
+  case panesActiveCrash(Int, Int)                 // Margin killed: the kept one still active; opened again: let go first
 
   var text: String {
     switch self {
@@ -128,6 +141,26 @@ enum Step: Equatable {
     case .overflow(let t, let s): return "overflow: \(t.text), wider by its own minimum than the page area, held \(Int(s)) s in Margin's Space at its minimum width, its right edge the page area's"
     case .animations(let label): return "animations (\(label)): Margin's page's running animations and its own frame requests in a second (dev hook), said"
     case .idleCost(let label, let s): return "idle-cost (\(label)): nothing done for \(Int(s)) s: Margin's CPU time, its idle wakeups a second and its memory footprint (the kernel's own counts), said; the budget: under 0.5% CPU"
+    case .splitWith(let main, let adding): return "split: Chameleon \(adding) added beside Chameleon \(main) (each shown once for its item id, dev hook `ui split.add`, as the row's menu): side by side in Margin's Space, Margin says `pane clicks: on`"
+    case .paneClick(let n, let kind):
+      let what: String
+      switch kind {
+      case .grid: what = "its grid (an NSView that refuses the first mouse, as WebKit does): its click and release logged by it"
+      case .button: what = "its button (it takes the first mouse anyway: unchanged)"
+      case .field: what = "its field, then a plain key (a), only if the copy is the front app and no field of Margin's has the keys: the field's length up by one"
+      case .double: what = "a double-click on its grid (counts 1 and 2 posted): clicks with counts 1 and 2"
+      case .drag: what = "a drag from its grid (a press, 10 drags 16 ms apart, a release): its press, drags and release, in order"
+      }
+      return "pane click (\(kind.rawValue)): a first click in Chameleon \(n)'s pane while the other has the keys (the other's grid clicked first if needed), only where the window list says Margin's panel then the copy are under the point: \(what); its window key, Margin's focus on it, Margin's `a click in its pane … the click delivered` line"
+    case .cutPaneEdge(let n, let o, let w, let s): return "cut pane: Chameleon \(n)'s window at its minimum (\(Int(w))) from its pane's start, the rest past the display's edge, in Margin's Space, nothing of it over Chameleon \(o)'s pane, its right its one arrow (Margin's `cut panes`); held \(Int(s)) s, a read every 0.5 s: never moved, never out of its tile"
+    case .cutPaneSlide(let n, let o, let side): return "cut pane: the pointer into Chameleon \(n)'s pane, then its \(side) arrow pressed (on Margin's own window, after the window list says so): Margin slides it, its window at its other alignment\(side == "right" ? ", behind Chameleon \(o)'s window" : ", past the display's edge again"), its other arrow now; the press never the copy's"
+    case .cutPaneStillBehind(let n, let o): return "cut pane: after the click into it, Chameleon \(n)'s window still behind Chameleon \(o)'s (delivered without a raise)"
+    case .paneClickTimes(let a, let b, let t): return "pane click times: \(t) grid clicks back and forth between Chameleon \(a) and \(b), each in the pane without the keys: every one delivered, Margin's key time (median, most; under the 120 ms cap) and the press's post to the copy's click; then a click in the pane with the keys: straight through, Margin says nothing"
+    case .panesActive(let a, let b): return "panes active: Chameleon \(a) and \(b) each asked its state (its notification: AppKit's own word): both active, each its pane's window key, the focused one the window server's front app"
+    case .panesActiveFlips(let a, let b, let t): return "panes active flips: \(t) grid clicks back and forth between Chameleon \(a) and \(b) (each a pane click, posted as pane-clicks posts them): both active after every one; the one that had the keys inactive for a moment only (its own resign and activation times)"
+    case .panesActiveHidden(let a, let b, let alone): return "panes active: Chameleon \(alone) shown alone (dev hook): the kept one of Chameleon \(a) and \(b) let go after the grace (1 s), inactive"
+    case .panesActiveQuit(let a, let b): return "panes active: quit Margin with Chameleon \(a) and \(b) in a split: Margin's `(Margin quits` let-go line, the kept copy's own resign logged before it's quit"
+    case .panesActiveCrash(let a, let b): return "panes active: Margin killed (SIGKILL) with Chameleon \(a) and \(b) in a split: the kept copy still says it's active; Margin opened again: `a crashed Margin kept 1 app active: 1 let go`, the copy's resign logged before its quit"
     case .settled(let t, let s): return "settled: \(t.text) shown and left alone \(Int(s)) s: Margin's Space's tiles laid out again by a change Margin didn't make at most 3 times (the loop guard's limit; 2026-11-18 13:30: 54 times in 18 s), \(t.text) at the page area in Margin's Space at the end"
     }
   }
@@ -331,6 +364,57 @@ let idleProfile = Scenario(name: "idle-profile", title: "Margin idle with three 
   .openMargin, .wait(20, "nothing hosted, for a profile"), .host(.copy(1)), .host(.copy(2)), .host(.copy(3)), .wait(70, "three hosted, for a profile"), .marginQuitTiles([1, 2, 3]),
 ], estimate: 150)
 
+// The first click in another pane (PaneClicks.swift; Margin's PaneClickTap.swift): a split of Chameleon 1 and 2, first
+// clicks of each kind in the pane without the keys, the times, Margin's idle cost with the tap on.
+let paneClicks = Scenario(name: "pane-clicks", title: "a split of two copies: a first click in the pane without the keys reaches its content (grid, button, field, double-click, drag), timed; the pane with the keys untouched; idle cost with the tap on",
+                          copies: [1, 2], steps: [
+  .setSwitches(1, [:]), .setSwitches(2, [:]),
+  .openMargin, .host(.copy(1)), .host(.copy(2)), .splitWith(2, adding: 1),
+  .paneClick(2, .grid), .paneClick(1, .grid), .paneClick(2, .button), .paneClick(1, .field), .paneClick(2, .double), .paneClick(1, .drag),
+  .paneClickTimes(1, 2, times: 8),
+  .idleCost("a split up, the pane click tap on", seconds: 30),
+  .marginQuitTiles([1, 2]),
+], estimate: 150)
+
+// A cut pane (CutPanes.swift; docs/PEEK-SPLIT.md §4b): Chameleon 1 (its minimum 800 wide) beside Chameleon 2 at the
+// page area's end: past the display's edge and held; slid under Chameleon 2's pane by its arrow, a click into it
+// delivered without a raise, slid back; Margin's idle cost with it up.
+let cutPanes = Scenario(name: "cut-panes", title: "a split whose pane at the display's edge is narrower than its window: the window past the edge, held; slid both ways by its arrows; a click into it while it's under the other pane",
+                        copies: [1, 2], steps: [
+  .setSwitches(1, ["minSize": "800x300"]), .setSwitches(2, [:]),
+  .openMargin, .host(.copy(1)), .host(.copy(2)), .splitWith(2, adding: 1),
+  .cutPaneEdge(1, other: 2, minWidth: 800, seconds: 6),
+  .cutPaneSlide(1, other: 2, side: "right"),
+  .paneClick(1, .grid), .cutPaneStillBehind(1, other: 2),
+  .cutPaneSlide(1, other: 2, side: "left"),
+  .cutPaneEdge(1, other: 2, minWidth: 800, seconds: 4),
+  .idleCost("a split up, a cut pane past the display's edge", seconds: 20),
+  .marginQuitTiles([1, 2]),
+], estimate: 120)
+
+// Every pane of a split draws active (PanesActive.swift; Margin's PanesActive.swift): a split of Chameleon 1 and 2, both
+// active, clicks back and forth, a key after a click, another app in front, the split hidden, Margin's quit; then, from a
+// launch of its own, Margin killed with the split up and opened again.
+let panesActiveScenario = Scenario(name: "panes-active", title: "a split of two copies: both draw active (each its own word), the keys the clicked one's; another app in front, the split hidden, Margin's quit and crash let the kept one go",
+                                   copies: [1, 2, 3], steps: [
+  .setSwitches(1, [:]), .setSwitches(2, [:]), .setSwitches(3, [:]),
+  .openMargin, .host(.copy(3)), .host(.copy(1)), .host(.copy(2)), .splitWith(2, adding: 1),
+  .panesActive(1, 2),
+  .paneClick(1, .grid), .panesActive(1, 2),
+  .paneClick(2, .field), .panesActive(1, 2),
+  .panesActiveFlips(1, 2, times: 6),
+  .idleCost("a split up, both panes active", seconds: 30),
+  .panesActiveHidden(1, 2, alone: 3),
+  .show(.copy(2), maxMs: nil), .panesActive(1, 2),
+  .panesActiveQuit(1, 2),
+], estimate: 150)
+let panesActiveCrashScenario = Scenario(name: "panes-active-crash", title: "Margin killed with a split up: the kept copy left active; Margin opened again lets it go first",
+                                        copies: [1, 2], steps: [
+  .setSwitches(1, [:]), .setSwitches(2, [:]),
+  .openMargin, .host(.copy(1)), .host(.copy(2)), .splitWith(2, adding: 1), .panesActive(1, 2),
+  .panesActiveCrash(1, 2),
+], estimate: 90)
+
 // The parts: core; the behaviour scenarios in parts of about 6 minutes each (each from its own Margin launch);
 // the real apps' (opt-in).
 func parts(realApps withReal: Bool) -> [Part] {
@@ -349,6 +433,10 @@ func parts(realApps withReal: Bool) -> [Part] {
   out.append(Part(name: "idle-cost", scenarios: [idleCost], realApps: false))
   out.append(Part(name: "idle-profile", scenarios: [idleProfile], realApps: false))
   out.append(Part(name: "page-frames", scenarios: [pageFrames], realApps: false))
+  out.append(Part(name: "pane-clicks", scenarios: [paneClicks], realApps: false))
+  out.append(Part(name: "panes-active", scenarios: [panesActiveScenario], realApps: false))
+  out.append(Part(name: "panes-active-crash", scenarios: [panesActiveCrashScenario], realApps: false))
+  out.append(Part(name: "cut-panes", scenarios: [cutPanes], realApps: false))
   if withReal { out.append(Part(name: "real-apps", scenarios: [realAppsScenario(installedRealApps())], realApps: true)) }
   if withReal, isInstalled(weather.bundle) { out.append(Part(name: "real-apps-min", scenarios: [realMinScenario(weather)], realApps: true, apps: [weather])) }
   if withReal, isInstalled(weather.bundle), isInstalled(maps.bundle) { out.append(Part(name: "real-apps-loop", scenarios: [realLoopScenario(weather, maps)], realApps: true, apps: [weather, maps])) }

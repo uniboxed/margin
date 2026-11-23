@@ -137,9 +137,15 @@ final class Runner: NSObject, NSApplicationDelegate {
   func applicationDidFinishLaunching(_ notification: Notification) {
     if env["MARGIN_APP_VERBOSE"] != nil { Diagnostics.echo = { print("  app:", $0) } }
     Task { @MainActor in
+      if env["MARGIN_E2E_ONLY"] == "split" {
+        await glueSplitScenario()
+        print(failures == 0 ? "all \(passed) split view checks passed" : "\(failures) split view checks failed")
+        exit(failures == 0 ? 0 : 1)
+      }
       if env["MARGIN_E2E_ONLY"] == "glue" {
         await glueScenario()
         await glueResumeScenario()
+        await glueSplitScenario() // e2e-split.swift
         print(failures == 0 ? "all \(passed) hosting checks passed" : "\(failures) hosting checks failed")
         exit(failures == 0 ? 0 : 1)
       }
@@ -153,6 +159,7 @@ final class Runner: NSObject, NSApplicationDelegate {
       await hostedScenario() // e2e-hosted.swift
       await glueScenario() // e2e-glue.swift
       await glueResumeScenario()
+      await glueSplitScenario() // e2e-split.swift
       print(failures == 0 ? "all \(passed) end-to-end checks passed" : "\(failures) of \(passed + failures) end-to-end checks failed")
       exit(failures == 0 ? 0 : 1)
     }

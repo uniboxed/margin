@@ -136,12 +136,12 @@ test('library: items: web or app, moved, ordered, pinned, and the hosting asked 
   assert.deepEqual([lib.values.tabs[two].url, lib.values.tabs[two].title, lib.values.tabs[two].icon], ['https://two.example/next', 'Next', 'data:image/png;base64,AA==']);
   lib.act('updateItem', { tabId: notes, url: 'https://x.example/' });
   assert.equal(lib.values.tabs[notes].url, 'app://com.apple.Notes', 'an app item has no address to change');
-  // Pinned: the item is the pin from then on, with its target.
+  // Pinned: a pin with its target, the item kept as the pin's tab (sticky pins).
   const pin = lib.act('pinTab', { tabId: notes }).result;
-  assert.equal(lib.values.tabs[notes], undefined);
+  assert.equal(lib.values.tabs[notes].pinnedBy, pin);
   assert.deepEqual([lib.values.pins[pin].url, lib.values.pins[pin].target.kind], ['app://com.apple.Notes', 'app']);
   const open = lib.act('openPin', { pinId: pin, windowId: 3 });
-  assert.deepEqual(open.requests[0], { type: 'openPin', windowId: 3, pin, item: null, url: 'app://com.apple.Notes', target: { kind: 'app', bundleId: 'com.apple.Notes', name: 'Notes' }, spaceId: 'b' });
+  assert.deepEqual(open.requests[0], { type: 'openPin', windowId: 3, pin, item: notes, url: 'app://com.apple.Notes', target: { kind: 'app', bundleId: 'com.apple.Notes', name: 'Notes' }, spaceId: 'b' });
   assert.equal(lib.values.windows['3'].spaceId, 'b', 'the window shows the pin\'s space');
   assert.equal(lib.act('unpin', { pinId: pin }).requests[0].type, 'unpin');
   assert.equal(lib.values.pins[pin], undefined);
@@ -226,8 +226,9 @@ test('library: folders and pins follow the model\'s order rules', () => {
   // An item pinned straight into a new folder.
   const item = lib.act('newTab', { windowId: 1, url: 'https://w.example/' }).result.tabId;
   const f2 = lib.act('createFolder', { windowId: 1, tabId: item }).result;
-  assert.equal(lib.values.tabs[item], undefined);
-  assert.equal(Object.values(lib.values.pins).filter((p) => p.folderId === f2).length, 1);
+  const inFolder = Object.entries(lib.values.pins).filter(([, p]) => p.folderId === f2);
+  assert.equal(inFolder.length, 1);
+  assert.equal(lib.values.tabs[item].pinnedBy, inFolder[0][0], 'the item stays, its pin\'s tab');
   lib.act('deleteFolder', { folderId: folder });
   assert.equal(lib.values.folders[folder], undefined);
   assert.equal(Object.values(lib.values.pins).filter((p) => p.folderId === folder).length, 0, 'its pins stay, loose');

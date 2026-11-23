@@ -144,6 +144,18 @@ final class HostEngine {
         var lateWatch = 3.0
         var memberWait = 0.6 // a window moved by the bridge (into Margin's Space, or parked): there by then
         var memberEvery = 0.005 // ...read this often (a switch is a move each way: well under 100 ms in all)
+        // The visible hosts' order looked at after they're fronted, until the focused one is in front, for this long
+        // (then the ones out of place raised once more: `frontVisible`).
+        var orderWait = 0.15
+        // A full-screen window's room above it for its own toolbar window (Safari's, resting just above its window:
+        // 52 pt, measured on the real screen), counted in two visible hosts' overlap (`overlapping`). A stacked split's
+        // band above a Safari pane is as tall (`SAFARI_TOOLBAR`): its toolbar meets the pane above, never overlaps it.
+        var toolbarRoom: CGFloat = 52
+        // A new pane's toolbar out over its page at its reveal: waited for this long at most, read this often.
+        var toolbarRestWait = 0.5
+        var pageFocusWait = 0.8 // a new window's page given its keys: tried this long at most (its page listed late)
+        var pageFocusEvery = 0.03
+        var toolbarEvery = 0.01
         var destroyWait = 1.5
         var placeWait = 1.5 // its own Space's reservation taking effect
         var windowPlaceWait = 0.6 // a window-mode host's frame set by Accessibility: at most this long for the window server's bounds
@@ -227,9 +239,13 @@ final class HostEngine {
         var tileWait = 0.3
         var tileLimitWait = 0.5
         var tileEvery = 0.002
+        // A cut pane's slide (docs/PEEK-SPLIT.md §4b): its window's move between its two alignments, eased.
+        var slideTime = 0.15
         var tileSettleWatch = 0.03 // the first switch after a tile change watched this long for the tiles laid out again
         var liveFrame = 1.0 / 120
         var liveWait = 0.05
+        // All panes active (PanesActive.swift): each change applied once per main-queue turn (off: at once, the tests').
+        var activesCoalesced = true
     }
 
     enum Phase: Equatable { case preparing, shown, parked }
@@ -300,6 +316,39 @@ final class HostEngine {
         // one it's taken to have once it leaves a narrower one (the first rect it didn't take).
         var narrowestHeld: CGFloat?
         var minUnreadSaid = false
+        // Its role and rect in Margin's page area as it was last laid out (docs/PEEK-SPLIT.md §1): main at the page area
+        // (nil) unless a layout gave it a card's or a pane's rect (`setLayout`).
+        var role = HostRole.main
+        var rect: CGRect?
+        // A split pane whose window can't be as small as its pane (docs/PEEK-SPLIT.md §4b): its window at its own minimum
+        // (`frame`: HostLayout.cut), the rest away from the other panes; after an arrow's slide, where the slide put it
+        // (its pane then, its alignment along each axis: true its end at the pane's end), as long as its pane stays that
+        // rect (a divider's drag, a new layout: away from the other panes again). Nil when it leaves a split.
+        var slid: PaneSlide?
+        // Its own look at being off screen while it's visible (`backOnScreen`, docs/PEEK-SPLIT.md §4: every visible host
+        // its own budget, never one shared by a split's panes): when it was last shown (made visible, or the one shown),
+        // the times it was brought back, whether giving up was said, the show the look acted for with nothing to move.
+        var visibleAt = 0.0
+        var offTries: [Double] = []
+        var offSaid = false
+        var offActedFor: Double?
+        var offInPlaceSaid: Double?
+        // When its window was last put back into full screen after leaving it by itself (`reenterFullScreen`: Safari's
+        // own Esc, 2026-11-21), and whether giving up on that was said: `returnsMax` within `returnsWithin`, then left to
+        // the reconciler's own corrections.
+        var reentries: [Double] = []
+        var reentrySaid = false
+        // A card's or a pane's new Safari window (asked in full screen, born in a full-screen Space of its own: `openNew`):
+        // the full-screen Spaces listed before its ask (its own is the new one), the freeze taken at that ask and handed to
+        // its placing (macOS's switch to its Space comes as the window does), and whether that switch was seen and undone
+        // already while its window was awaited (its early path then waits for no switch).
+        var bornBefore: Set<UInt64>?
+        var bornFrozen = false
+        var bornSwitched = false
+        // Its window came into Margin's Space with its tile a moment ago (its first open): a raise doesn't take for it
+        // (made a moment ago, moved between Spaces), so it's brought in front by the move out and back at once
+        // (`frontVisible`). Cleared once it has been fronted.
+        var freshFront = false
         init(id: HostID, target: HostTarget, pid: pid_t, window: Int, launchedByMargin: Bool, madeByMargin: Bool, safariWindow: Int? = nil) {
             self.id = id
             self.target = target
@@ -315,8 +364,12 @@ final class HostEngine {
             return false
         }
         var profile: String? {
-            if case .safariWindow(let p) = target { return p }
+            if case .safariWindow(let p, _) = target { return p }
             return nil
+        }
+        var safariRole: SafariRole {
+            if case .safariWindow(_, let role) = target { return role }
+            return .main
         }
     }
 
@@ -324,8 +377,22 @@ final class HostEngine {
     private let sys: HostSystem
     private let markerURL: URL?
     private let ownPid: Int32
+    // All panes active (PanesActive.swift, the section below): the kept set, the scene Margin's window last told, the
+    // one step queued, the let-go waiting for its grace.
+    let actives = PanesActiveKeeper()
+    private var activeScene: PaneClickScene?
+    private var activeQueued = false
+    private var activeDue: DispatchWorkItem?
+    private var activeTerminate: NSObjectProtocol?
+    var onKeptActive: ((Set<pid_t>) -> Void)? // the apps kept active changed (the pane click tap's word)
     private(set) var hosts: [HostID: Host] = [:]
-    private(set) var shown: HostID? { didSet { if shown != nil, shown != oldValue { shownAt = sys.now() }; announceHosted() } }
+    // The focused host (docs/PEEK-SPLIT.md §1): the visible host with the keys. With one visible host, the one shown.
+    private(set) var shown: HostID? { didSet { if let id = shown, shown != oldValue { shownAt = sys.now(); hosts[id]?.visibleAt = shownAt }; followShown(oldValue); announceHosted() } }
+    // Every host visible in Margin's page area now (`shown` among them), each at its rect (nil: the page area), its role
+    // and its place back to front. With one visible host: `[shown: main at the page area]`, kept so by `shown` itself.
+    private(set) var visible: [HostID: HostVisible] = [:]
+    // A whole layout being applied (`setLayout`): `visible` is the layout's, not `shown`'s, until it's done.
+    private var applyingLayout = false
     private(set) var launched: [pid_t: HostApp] = [:] // apps Margin started, while they run
     private(set) var leftSpaces: Set<UInt64> = [] // hosted windows' own full-screen Spaces a destroy hasn't taken yet
     private(set) var leftSafariWindows: [HostMarker.SafariWindow] = [] // Safari windows Margin asked for, their close not confirmed
@@ -346,11 +413,21 @@ final class HostEngine {
     // Wired by the shell to the extension's request for a new window (a profile's; nil the default one): the copy's
     // answer (its id for the window, its bounds), nil if it wasn't made.
     var requestSafariWindow: ((String?) async -> HostSafariWindow?)?
+    // ...and for a window in another role (a card, a pane: docs/PEEK-SPLIT.md §1): its profile and role. Nil: only main
+    // windows are asked for (a card's or a pane's first open fails at its window).
+    var requestRoleWindow: ((String?, SafariRole) async -> HostSafariWindow?)?
+    // Told every visible host's window as they change (docs/PEEK-SPLIT.md §1: Margin's window's holes): each one's
+    // window, rect, role, place and focus, back to front; only while more than one is visible, and once ([]) after.
+    var hostedWindows: (([HostShownWindow]) -> Void)?
+    private var hostedWindowsSaid: [HostShownWindow] = []
     // Wired by the shell to the copy's close of a window it made for Margin (the profile, the copy's id). True: asked.
     var closeSafariWindow: ((String?, Int) async -> Bool)?
     // Wired by the shell to the copy's `setWindowState` (the profile, the copy's id, full screen or normal): a Safari
     // window's full screen, which Accessibility can't set while it's on another Space. True: the copy asked Safari.
     var safariFullScreen: ((String?, Int, Bool) async -> Bool)?
+    // Wired by the shell to the copy's `hostFocusWindow` (the profile, the copy's id): a Safari window brought in front of
+    // its app's others by Safari itself, when Accessibility's raise didn't take (frontVisible). True: done.
+    var safariFocus: ((String?, Int) async -> Bool)?
     // Wired by the shell: waits until that profile's extension copy is linked (true), before Safari's windows are read
     // and a window asked for, so windows a Safari just started restores meanwhile are never taken for Margin's own.
     var safariLinked: ((String?) async -> Bool)?
@@ -383,10 +460,7 @@ final class HostEngine {
     // The poll's look at the window server's on-screen list: reads in a row something of Margin's Space wasn't on
     // screen, when it was last acted on, and whether giving up was said.
     private var offReads = 0
-    private var offTries: [Double] = []
-    private var offSaid = false
-    private var offActedFor: Double? // the show (its `shownAt`) the look acted for with nothing to move: once per show
-    private var offInPlaceSaid: Double?
+    // (The tries, and what was said, are each host's own: Host.offTries, `backOnScreen`.)
     // What the poll last read of each host, said when it changes (the log of a stray names what was read before it).
     private struct PollRead: Equatable { var phase: Phase; var spaces: [UInt64]?; var marginHere: Bool; var onScreen: String }
     private var pollSaid: [HostID: PollRead] = [:]
@@ -443,12 +517,43 @@ final class HostEngine {
     private var livePending: HostPlacement?
     private var livePump: Task<Void, Never>?
     private var liveStats = LiveStats()
+    private(set) var lastLive: LiveStats? // (the last drag's numbers, as said: the tests read them)
     private var liveLast = 0.0 // the drag's last page area: a drag never said over is over after `liveForget`
     // The one shown left its tile during this drag (found out of Margin's Space and brought back): not followed again
     // until the drag is over, so it can't happen twice in one drag; the drag's end places it once.
     private var liveHeld = false
     var liveForget = 10.0
-    struct LiveStats { var asked = 0, sent = 0, followed: [Double] = [], late = 0, held = 0, since = 0.0 }
+    // A drag's numbers, said as it ends: the page's frames (and the time between them), the frames sent to every follower
+    // (`frames`), the ticks that sent any and how many sent more than one host at once, and per host its sends, how long
+    // each took to land (its window at its rect) and the ones given up after `liveWait`.
+    struct LiveStats {
+        struct PerHost { var sent = 0, followed: [Double] = [], late = 0 }
+        var asked = 0, frames = 0, ticks = 0, together = 0, late = 0, held = 0, since = 0.0
+        var followed: [Double] = []
+        var gaps: [Double] = []
+        var lastAsk: Double?
+        var perHost: [HostID: PerHost] = [:]
+        mutating func landed(_ id: HostID, _ t: Double) { followed.append(t); perHost[id, default: PerHost()].followed.append(t) }
+        mutating func missed(_ id: HostID) { late += 1; perHost[id, default: PerHost()].late += 1 }
+        mutating func sent(_ id: HostID) { perHost[id, default: PerHost()].sent += 1 }
+        nonisolated static func quantile(_ list: [Double], _ q: Double) -> String {
+            let sorted = list.sorted()
+            return sorted.isEmpty ? "-" : String(format: "%.1f", sorted[min(sorted.count - 1, Int(Double(sorted.count) * q))] * 1000)
+        }
+        var line: String {
+            let q = LiveStats.quantile
+            var out = "\(asked) page area changes (every \(q(gaps, 0.5)) ms, p95 \(q(gaps, 0.95)))"
+            out += ", \(frames) sent to every window that follows (\(asked - frames) coalesced), followed \(followed.count) (median \(q(followed, 0.5)) ms, p95 \(q(followed, 0.95)) ms), \(late) not followed within the wait, \(held) frames held by an operation"
+            if perHost.count > 1 {
+                out += "; \(together) of \(ticks) sends with more than one window at once; each: "
+                out += perHost.keys.sorted { $0.raw < $1.raw }.map { id in
+                    let h = perHost[id]!
+                    return "\(id) \(h.sent) sent, landed median \(q(h.followed, 0.5)) ms, p95 \(q(h.followed, 0.95)) ms\(h.late > 0 ? ", \(h.late) late" : "")"
+                }.joined(separator: "; ")
+            }
+            return out
+        }
+    }
 
     init(system: HostSystem, marker: URL?, options: Options = Options(), pid: Int32 = ProcessInfo.processInfo.processIdentifier, observation: HostObservation? = nil) {
         sys = system
@@ -461,7 +566,14 @@ final class HostEngine {
         observer.onHeard = { [weak self] in self?.heardSomething() }
         sys.onAppQuit = { [weak self] pid in self?.appQuit(pid) }
         if let routesURL { core.loadRoutes(from: routesURL) }
+        loadMinimums()
+        // (Margin ending without its quit's steps: every app kept active let go before it does.)
+        activeTerminate = NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.releaseActivesNow(why: "Margin ends") }
+        }
     }
+
+    deinit { if let activeTerminate { NotificationCenter.default.removeObserver(activeTerminate) } }
 
     var hasHosts: Bool { !hosts.isEmpty || !launched.isEmpty }
     // The pid of a running app of this bundle that Margin started itself (no Dock icon), if any.
@@ -483,10 +595,334 @@ final class HostEngine {
             self.marginSpace = marginSpace
             self.openWanted = wanted
             defer { self.openWanted = nil }
-            let r = await self.openNow(target)
+            // (Several visible, or it was in another role: a layout of it alone, the others parked.)
+            let r = self.alone(target.id) ? await self.openNow(target) : await self.applyLayout(main: target, mainRect: nil, extras: [], focused: nil)[target.id] ?? .failed(.window, "not laid out")
             self.checkListed("after \(target.id)'s open")
             return r
         }
+    }
+
+    // A whole layout of Margin's page area at once (docs/PEEK-SPLIT.md §1: the preview card, Quick Tab, a split's panes):
+    // `main` at the page area (`mainRect`: a split's pane of its own), each of `extras` at its rect in its role, back to
+    // front, `focused` with the keys (nil: main). Hosts newly visible are brought in (opened, or unparked) at their rect,
+    // the ones visible already placed at theirs, the ones no longer visible parked, then each fronted back to front, the
+    // focused one last. A card or a pane never parks main (only the role it replaces leaves). An extra whose rect is
+    // below its window's minimum isn't laid out (never under the sidebar: the UI clamps first). Each host's result.
+    func setLayout(main: HostTarget, mainRect: CGRect? = nil, extras: [HostExtra], focused: HostID? = nil, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64) async -> [HostID: HostResult] {
+        await serial(planned: true) {
+            self.placement = placement
+            self.marginWindow = marginWindow
+            self.marginSpace = marginSpace
+            let r = await self.applyLayout(main: main, mainRect: mainRect, extras: extras, focused: focused)
+            self.checkListed("after a layout's change")
+            return r
+        }
+    }
+
+    // The keys to a visible host (a press in its pane: docs/PEEK-SPLIT.md §1): it's the one shown from now, the visible
+    // ones fronted back to front, it last (never main raised over a card: a card open has the focus). False: not visible.
+    // `fronted`: its window has the keys already (the pane click tap made it key for the press it held, PaneClickTap.swift):
+    // only Margin's word follows (the one shown, the holes' focus), nothing fronted: fronting the visible ones again
+    // while that press goes on would make another app the front one mid-click.
+    @discardableResult func focus(_ id: HostID) async -> Bool { await focus(id, fronted: false) }
+    @discardableResult func focus(_ id: HostID, fronted: Bool) async -> Bool {
+        await serial(planned: true) {
+            guard self.isVisible(id), let host = self.hosts[id] else { return false }
+            if let card = self.visibleHosts.last(where: { $0.role == .card }), card !== host { return false }
+            self.focusWanted = id
+            if self.shown != id { self.shown = id }
+            if !fronted { await self.frontVisible() }
+            return true
+        }
+    }
+
+    // One host at most is visible, main at the page area, and `id` would be too: today's one-host way.
+    private func alone(_ id: HostID) -> Bool {
+        visible.count <= 1 && visible.values.allSatisfy { $0.role == .main && $0.rect == nil } && hosts[id].map { $0.role == .main && $0.rect == nil } != false
+    }
+
+    // (The session's word: a show of `id` is today's one-host way, else a layout of it alone. HostedEngine.)
+    func showsAlone(_ id: HostID) -> Bool { alone(id) }
+    func liveFollowers() -> (follow: Int, visible: Int) {
+        let list = visible.count > 1 ? visibleHosts : shown.flatMap { hosts[$0] }.map { [$0] } ?? []
+        return (list.filter { $0.tile != nil || $0.mode == .window }.count, list.count)
+    }
+
+    // `setLayout`'s steps, in the engine's queue.
+    // A host coming in beside the ones shown (a split's new pane: opened, or unparked): the ones shown keep their rects
+    // and stay shown until it's in place (under its own loader meanwhile), then they're laid out again all at once, a
+    // tile's rects sent in one go (the real screen, 2026-11-21 13:26:01: main shrunk at once, an empty box beside it for
+    // the 1.4 s the new pane took). One that doesn't come leaves them as they were. Whenever the layout ends with one host
+    // visible, that one is at the page area (never left at a pane's rect: 13:27, main at 775 wide, the rest blank).
+    private func applyLayout(main: HostTarget, mainRect: CGRect?, extras: [HostExtra], focused: HostID?) async -> [HostID: HostResult] {
+        var results: [HostID: HostResult] = [:]
+        var accepted: [HostExtra] = []
+        for x in extras {
+            let id = x.target.id
+            if id == main.id || accepted.contains(where: { $0.target.id == id }) { results[id] = .failed(.place, "in the layout twice"); continue }
+            // (A card below its app's known minimum: refused before anything is made for it, a window it would only
+            // refuse. A pane never is: its window is cut, docs/PEEK-SPLIT.md §4b.)
+            if x.role == .card, let m = knownMinimum(of: x.target), x.rect.width < m.width - options.tolerance || x.rect.height < m.height - options.tolerance {
+                results[id] = fail(id, .place, "its \(x.role.rawValue) rect \(r(x.rect)) is below its window's minimum \(Int(m.width))×\(Int(m.height))\(hosts[id] == nil ? " (its app's, known before its window is made: none made)" : "")")
+                continue
+            }
+            accepted.append(x)
+        }
+        let before = visibleHosts
+        let was = Set(before.map(\.id))
+        var next: [HostID: HostVisible] = [main.id: HostVisible(rect: mainRect, role: .main, z: 0)]
+        for (i, x) in accepted.enumerated() { next[x.target.id] = HostVisible(rect: x.rect, role: x.role, z: i + 1) }
+        let order = [main] + accepted.map(\.target)
+        let shownNow = { (id: HostID) in self.hosts[id].map { $0.phase == .shown && was.contains(id) } ?? false }
+        let arriving = order.map(\.id).filter { !shownNow($0) }
+        // (Main shown already and staying: the others come in beside it, the ones shown laid out again after them; only
+        // when those can be laid out again in place, a tile's rect or a window's frame: a plain member's placing is out of
+        // full screen and in, its app activated after, under its own loader: placed first, as before, so the newcomer
+        // still comes in last, in front.)
+        let relaid = next.keys.filter { id in shownNow(id) && hosts[id].map { $0.rect != next[id]?.rect || $0.role != next[id]?.role } == true }
+        let inPlace = relaid.allSatisfy { id in hosts[id].map { ($0.tile != nil && !$0.noTiles) || $0.mode == .window } ?? false }
+        let deferring = !arriving.isEmpty && shownNow(main.id) && inPlace
+        var held: [HostID: HostVisible] = [:]
+        for (id, v) in next {
+            guard let h = hosts[id] else { continue } // (a new one's as it's made: `opened`)
+            if deferring, shownNow(id), h.rect != v.rect || h.role != v.role { held[id] = v; continue }
+            h.role = v.role
+            h.rect = v.rect
+        }
+        let t0 = sys.now()
+        applyingLayout = true
+        visible = next
+        for (id, v) in held { visible[id] = HostVisible(rect: hosts[id]?.rect, role: hosts[id]?.role ?? v.role, z: v.z) }
+        loadingHeld = deferring
+        // Main first (the one it replaces parked as today's switch does: in before it leaves), then each extra back to
+        // front beside it, never in its place.
+        var mainFailed = false
+        var fresh: Set<HostID> = []
+        for target in order {
+            let id = target.id
+            if mainFailed { results[id] = .failed(.window, "main wasn't shown"); visible[id] = nil; continue }
+            let r: HostResult
+            if let h = hosts[id], h.phase == .shown, was.contains(id) {
+                if held[id] != nil { results[id] = .shown(id, placed: true); continue } // (laid out again below, with the rest)
+                r = .shown(id, placed: await place(h))
+            } else {
+                r = await openNow(target)
+            }
+            results[id] = r
+            if case .failed = r {
+                visible[id] = nil
+                if id == main.id { mainFailed = true }
+            } else if !was.contains(id), let h = hosts[id] {
+                h.visibleAt = sys.now()
+                h.offSaid = false
+                if h.freshFront { fresh.insert(id) }
+            }
+        }
+        // The ones shown, laid out again now the others are in: every tile's rect sent in one go, then waited for together.
+        // (One that didn't come: they stay as they were; the session lays out what's left, or one alone at the page area.)
+        let cameIn = arriving.allSatisfy { if case .shown? = results[$0] { return true }; return false }
+        if !held.isEmpty, cameIn {
+            for (id, v) in held { hosts[id]?.role = v.role; hosts[id]?.rect = v.rect; visible[id] = v }
+            let list = held.keys.compactMap { hosts[$0] }.sorted { (next[$0.id]?.z ?? 0) < (next[$1.id]?.z ?? 0) }
+            let t1 = sys.now()
+            await placeTogether(list)
+            for h in list { results[h.id] = .shown(h.id, placed: isVisible(h.id)) }
+            Diagnostics.note("host: layout: \(list.map(\.id.description).joined(separator: ", ")) laid out again with \(arriving.map(\.description).joined(separator: ", ")) in \(ms(since: t1)) ms, once \(arriving.count == 1 ? "it was" : "they were") in place")
+        }
+        // What's no longer in the layout: parked (a member as it is, a window-mode window at its frame).
+        for h in before where next[h.id] == nil && h.phase == .shown && hosts[h.id] === h {
+            if await !retire(h) {
+                let frozen = holdFreeze()
+                await backOut(h)
+                releaseFreeze(frozen)
+                await park(h)
+            }
+            if shown == h.id { shown = nil }
+        }
+        applyingLayout = false
+        visible = visible.filter { isVisible($0.key) }
+        // (One left of a layout of several asked: it alone, at the page area.)
+        if visible.count == 1, let id = visible.keys.first, let h = hosts[id], h.rect != nil || h.role != .main {
+            visible = [id: HostVisible(rect: nil, role: .main, z: 0)]
+            h.rect = nil
+            h.role = .main
+            h.slid = nil; cutOrderRight(h.id)
+            let placed = await place(h)
+            Diagnostics.note("host: layout: \(id) left alone of the layout asked: at the page area \(r(placement.page))\(placed ? "" : " (not placed there yet)")")
+        }
+        let want = focused.flatMap { visible[$0] != nil ? $0 : nil } ?? (visible[main.id] != nil ? main.id : visibleHosts.last?.id)
+        focusWanted = visible.count > 1 ? want : nil
+        if let want, shown != want { shown = want } else if shown.map({ visible[$0] == nil }) == true { shown = nil }
+        if visible.count > 1 || was.count > 1 { await frontVisible(fresh: fresh) }
+        for h in hosts.values where h.freshFront { h.freshFront = false }
+        hostedSaid = nil
+        announceHosted()
+        // (The arriving one's loader off last: its hole and the others' new ones are said just before.)
+        if loadingHeld { loadingHeld = false; say(loading: nil) }
+        Diagnostics.note("host: layout: \(order.map { "\($0.id) \(next[$0.id]?.role.rawValue ?? "?") \(results[$0.id].map { if case .shown = $0 { return "shown" }; return "failed" } ?? "?")" }.joined(separator: ", "))"
+                         + "\(before.filter { next[$0.id] == nil }.isEmpty ? "" : "; parked: " + before.filter { next[$0.id] == nil }.map(\.id.description).joined(separator: ", "))"
+                         + ", focused \(shown.map(\.description) ?? "none") in \(ms(since: t0)) ms")
+        return results
+    }
+
+    // Hosts already shown, laid out again at their new rects as one change (a layout's): each tile's rect sent in the
+    // same turn, then all waited for together (`tileWait`); anything not there by then, or not a tile, placed its own way.
+    private func placeTogether(_ list: [Host]) async {
+        let tiled = list.filter { $0.phase == .shown && $0.tile != nil && !$0.noTiles && !belowMinimum($0) }
+        for h in tiled { if let t = h.tile, let rect = tileRect(for: h) { sendTileRect(h, t, rect) } }
+        func there(_ h: Host) -> Bool { sys.bounds(window: h.window).map { HostLayout.near($0, frame(h), within: options.tolerance) } ?? false }
+        if !tiled.isEmpty { _ = await wait(options.tileWait, every: options.tileEvery) { tiled.allSatisfy(there) } }
+        for h in tiled where there(h) { h.placedPage = pageOf(h); h.offPageReads = 0; held(h, frame(h).width) }
+        for h in list { _ = await place(h) }
+    }
+
+    // Every visible host's app in front back to front, the focused one last (its app active, its window key): their
+    // order in the window server right, Margin's window kept in front of them by its own rule. The layout's order wins
+    // (back to front by z, the focused one last), never the order from before, and nothing is raised over the focused
+    // one once it's in front: the window server's order read first; the focused one in front of the others already (a
+    // host newly brought in: a window its app just made is its front one), only its app made active (its keys); else
+    // the hosts from the first one out of place raised, back to front. The real screen, 2026-11-21: main raised over
+    // The preview's new card window, whose own raise then didn't take (its app's Accessibility doesn't list a window made a
+    // moment ago and moved between Spaces by the bridge), so main's page showed in the card. Then read again until the
+    // focused one is in front, else it alone raised once more (raising another would bury it again).
+    // `fresh`: hosts whose window came into Margin's Space with its tile a moment ago (a layout's first open). Their raise
+    // never took on the real screen (2026-11-21 13:26:02: `raised again`, +~230 ms, then the copy's focus, +~320 ms, then
+    // out to a private Space and back, 19 ms, in front): the focused one, if fresh and not in front at the first read
+    // after its raise, goes out and back at once, no wait, no copy asked (it's under its own loader: never seen).
+    // Only the order that shows is kept (the real screen, 2026-11-21 14:30:00: a pane's first open beside main, side by
+    // side, fronted twice: once in its layout, then again by the page's next report of its panes' rects, after Safari had
+    // put main's window back in front as the copy moved the pane's tab in from it; raise, its copy, out to a private
+    // Space and back, ~590 ms and a second move between Spaces, for an order nobody could see). Two visible hosts need
+    // an order only when they overlap (`overlapping`: their windows, a full-screen window's toolbar above it): a card over
+    // the panes, a stacked pane's toolbar against the pane above. Panes side by side never do; the focused one only needs
+    // the keys (its app made active, its window made its app's main one: that takes even when the raise doesn't).
+    // Nothing more is done for an order among non-overlapping hosts, whatever Safari does to its own windows' order.
+    private func frontVisible(fresh: Set<HostID> = []) async {
+        let focused = shown.flatMap { id in hosts[id].flatMap { $0.phase == .shown ? $0 : nil } }
+        // (A cut pane lying under another pane, docs/PEEK-SPLIT.md §4b: behind the panes it lies under, the focused one too,
+        // so the part of its window past its pane stays under them; it gets the keys without a raise. Several: each behind
+        // the ones it lies under (`tuckedOrder`). A cut pane lying under none (its rest past the display's edge or under
+        // Margin's window) is as any pane.)
+        let tucked = { (h: Host) in self.tucked(h) }
+        let others = visibleHosts.filter { $0 !== focused }
+        let cutFocused = focused.map(tucked) ?? false
+        let wanted = tuckedOrder(others.filter(tucked) + (cutFocused ? [focused!] : [])) + others.filter { !tucked($0) } + (cutFocused ? [] : focused.map { [$0] } ?? []) // (back to front)
+        guard let top = wanted.last else { return }
+        // (A pane raised over a cut one lying under it: an app kept active (PanesActive.swift) takes the window server's
+        // activation for done and its window stays where it is (the real screen, 2026-11-22: raised again and again, never
+        // over); let go first (its deactivated record), its activation is real and AppKit raises its window: `raiseOver`.
+        // It's kept again once the cut pane has the keys back. Over none, as before.)
+        func raise(_ h: Host) async -> Bool {
+            if let i = wanted.firstIndex(where: { $0 === h }), let below = wanted[..<i].last(where: { tucked($0) && self.lyingUnder($0).contains { $0 === h } }) {
+                return await raiseOver(h, below)
+            }
+            return await front(h)
+        }
+        // (The keys: the focused one's, by a raise when it's in front of the others, without one when it's cut.)
+        func keys() async { if cutFocused, let f = focused { _ = sys.focusWithoutRaise(pid: f.pid, window: f.window) } else { _ = await front(top) } }
+        let t0 = sys.now()
+        let pairs = overlapping(wanted)
+        let topIndex = wanted.count - 1
+        // (Each pair whose front one, by the layout, is behind the other in the window server's order; unread: `unread`.)
+        func violated(_ order: [Int]?, unread: [(Int, Int)]) -> [(Int, Int)] {
+            guard let order else { return unread }
+            let at = Dictionary(order.enumerated().map { ($0.element, $0.offset) }, uniquingKeysWith: { a, _ in a })
+            return pairs.filter { (at[wanted[$0.1].window] ?? 0) < (at[wanted[$0.0].window] ?? 0) }
+        }
+        let bad = violated(serverOrder(of: wanted), unread: pairs)
+        // (In the order that shows already, or nothing overlapping: only the focused one's keys.)
+        if bad.isEmpty { await keys(); return }
+        let involved = Set(pairs.flatMap { [$0.0, $0.1] })
+        // (Two cut panes out of order, one lying under the other (four panes or more): every one from the first out of place
+        // raised, back to front, the cut ones too, so each ends behind the ones it lies under.)
+        let tuckedPair = bad.contains { tucked(wanted[$0.0]) && tucked(wanted[$0.1]) }
+        // (The focused one in front of every host it overlaps: none of those raised over it (its raise may not take);
+        // two others out of order between them only when neither overlaps it, then it last, for its keys.)
+        if !tuckedPair, !bad.contains(where: { $0.1 == topIndex }) {
+            let under = Set(pairs.filter { $0.1 == topIndex }.map(\.0))
+            let fix = Set(bad.filter { !under.contains($0.0) && !under.contains($0.1) }.flatMap { [$0.0, $0.1] })
+            for k in fix.sorted() where !tucked(wanted[k]) { _ = await raise(wanted[k]) }
+            await keys()
+            return
+        }
+        // Else the ones from the first out of place that overlap another raised, back to front, the focused one last.
+        let from = bad.map(\.0).min() ?? 0
+        for k in from..<wanted.count where (k == topIndex || involved.contains(k)) && (tuckedPair || !tucked(wanted[k])) { _ = await raise(wanted[k]) }
+        if cutFocused { await keys(); return }
+        guard wanted.count > 1, top === focused else { return }
+        // (Read again: the focused one behind a host it overlaps. Unread: taken as in front, as before.)
+        func topBehind() -> Bool { violated(serverOrder(of: wanted), unread: []).contains { $0.1 == topIndex } }
+        if fresh.contains(top.id) {
+            if !topBehind() { return }
+            await outAndBack(top, wanted, since: t0, why: "its window just came in with its tile (its raise doesn't take then)", behind: topBehind)
+            return
+        }
+        if await wait(options.orderWait, every: options.memberEvery, { !topBehind() }) { return }
+        Diagnostics.note("host: \(top.id), focused, not in front of the other visible hosts once fronted (back to front \(serverOrder(of: wanted).map { $0.map(String.init).joined(separator: ", ") } ?? "unread"), wanted \(wanted.map { String($0.window) }.joined(separator: ", "))): raised again")
+        _ = await front(top)
+        // (A Safari window made a moment ago that Accessibility can't raise, seen on the real screen 2026-11-21: Safari
+        // itself asked to put it in front, through its copy, then read again.)
+        func inFront() async -> Bool { await wait(options.orderWait, every: options.memberEvery, { !topBehind() }) }
+        if await inFront() { return }
+        if let copyId = top.safariWindow, let safariFocus {
+            let asked = await safariFocus(top.profile, copyId)
+            let now = await inFront()
+            Diagnostics.note("host: \(top.id): still not in front after its raise: its copy asked to bring it in front (\(asked ? "asked" : "not asked")), \(now ? "in front now" : "still not in front")")
+            if now { return }
+        }
+        await outAndBack(top, wanted, since: t0, why: "nothing else brought it in front", behind: topBehind)
+    }
+
+    // The pairs of `list` (back to front, by index) whose order shows: their windows overlap, each as it is and where the
+    // layout puts it, a full-screen window with its toolbar's room above it (Safari's toolbar window rests just above
+    // its window: a stacked pane's against the pane above, across its band).
+    private func overlapping(_ list: [Host]) -> [(Int, Int)] {
+        let zones = list.map { h -> CGRect in
+            var r = frame(h)
+            if let b = sys.bounds(window: h.window) { r = r.union(b) }
+            if h.mode == .fullScreen { r = CGRect(x: r.minX, y: r.minY - options.toolbarRoom, width: r.width, height: r.height + options.toolbarRoom) }
+            return r
+        }
+        var out: [(Int, Int)] = []
+        for i in zones.indices {
+            for j in zones.indices where j > i {
+                let x = zones[i].intersection(zones[j])
+                if !x.isNull, x.width > options.tolerance, x.height > options.tolerance { out.append((i, j)) }
+            }
+        }
+        return out
+    }
+
+    // The last way to bring `top` in front of the other visible hosts: its window out to a private Space and straight back
+    // in. A window moved into Margin's Space comes in front of the others there (the real screen, 2026-11-21: a card
+    // window that came in with its tile stayed behind main whatever raised it; the same window parked and switched in, a
+    // move, was in front). Done under its own loader (a card's or a pane's opening: the window isn't revealed yet), so no
+    // freeze. Its rect set again if its tile was laid out meanwhile.
+    private var movingOutAndBack = 0
+    private func outAndBack(_ top: Host, _ wanted: [Host], since t0: Double, why: String, behind: () -> Bool) async {
+        guard sys.spaces(window: top.window) == [marginSpace], let priv = sys.createPrivateSpace() else { return }
+        movingOutAndBack += 1
+        defer { movingOutAndBack -= 1 }
+        let t1 = sys.now()
+        var out = false, back = false
+        if sys.move(window: top.window, to: priv) { out = await wait(options.parkWait, every: options.memberEvery) { self.sys.spaces(window: top.window) == [] } }
+        if out || sys.spaces(window: top.window) != [marginSpace] {
+            if sys.move(window: top.window, to: marginSpace) { back = await wait(options.memberWait, every: options.memberEvery) { self.sys.spaces(window: top.window) == [self.marginSpace] } }
+        }
+        retirePrivate(priv)
+        _ = await front(top)
+        if top.tile != nil, let b = sys.bounds(window: top.window), !HostLayout.near(b, frame(top), within: options.tolerance) { await reapplyTiles(first: top) }
+        let now = await wait(options.orderWait, every: options.memberEvery) { !behind() }
+        Diagnostics.note("host: \(top.id): out to a private Space and back into Margin's (\(why); \(out ? "out" : "not out"), \(back ? "back" : "not back")) in \(ms(since: t1)) ms, \(ms(since: t0)) ms from its first raise: \(now ? "in front now" : "still not in front")")
+    }
+    // These hosts' windows in the window server's order now, back to front (its on-screen list is front to back); nil:
+    // unread, or one of them not in it.
+    private func serverOrder(of list: [Host]) -> [Int]? {
+        guard let screen = sys.onScreenWindows() else { return nil }
+        let mine = Set(list.map(\.window))
+        let order = screen.map(\.number).filter { mine.contains($0) }
+        guard order.count == mine.count, Set(order) == mine else { return nil }
+        return order.reversed()
     }
 
     // An app (the person's default browser, at Margin's launch) started with no Dock icon if it isn't running, as a
@@ -538,6 +974,8 @@ final class HostEngine {
     func show(_ id: HostID) async -> HostResult {
         await serial(planned: true) {
             guard let host = self.hosts[id] else { return .failed(.window, "not hosted") }
+            // (Several visible, or it was in another role: a layout of it alone, the others parked.)
+            guard self.alone(id) else { return await self.applyLayout(main: host.target, mainRect: nil, extras: [], focused: nil)[id] ?? .failed(.window, "not laid out") }
             let r: HostResult = self.shown == id ? .shown(id, placed: await self.place(host)) : await self.bringIn(host, isNew: false)
             self.checkListed("after \(id)'s show")
             return r
@@ -556,13 +994,34 @@ final class HostEngine {
 
     // The placement moved (another theme, the display): the one shown placed again (window mode: by Accessibility; full
     // screen: out of it and in again, its own Space reserved for the new page area); parked ones when they're shown.
-    func pageRectChanged(_ placement: HostPlacement) async -> Bool {
+    // Several visible (docs/PEEK-SPLIT.md §1): `rects` gives the ones whose rect moved with it (a card's, a pane's, a
+    // split's main pane's), each placed at its own after the one shown.
+    func pageRectChanged(_ placement: HostPlacement) async -> Bool { await pageRectChanged(placement, rects: [:]) }
+    func pageRectChanged(_ placement: HostPlacement, rects: [HostID: CGRect]) async -> Bool {
         await serial(planned: true) {
             self.placement = placement
+            for (id, r) in rects where self.visible[id] != nil { self.hosts[id]?.rect = r; self.visible[id]?.rect = r }
             // (Live resize: the parked ones' tiles then, one at a time, by the reconciler: `sizeTile`.)
             defer { self.sizeTilesSoon() }
             guard let id = self.shown, let host = self.hosts[id] else { return true }
+            // (Several visible: the layout held as it is while each is placed again; a plain member's placing goes out of
+            // full screen and in, the one shown with it, which alone would make it the layout by itself and the others
+            // never placed: docs/PEEK-SPLIT.md §4, a split's divider let go.)
+            let several = self.visible.count > 1
+            let kept = self.visible
+            if several { self.applyingLayout = true }
             let placed = await self.place(host)
+            for h in self.visibleHosts where h !== host { _ = await self.place(h) }
+            if several {
+                self.applyingLayout = false
+                self.visible = kept.filter { self.isVisible($0.key) }
+                if self.shown == nil, self.isVisible(id) { self.shown = id }
+                self.settleVisible()
+                await self.frontVisible()
+                self.hostedSaid = nil
+                self.hostedWindowsSaid = []
+                self.announceHosted()
+            }
             self.checkListed("after placing \(id) again")
             return placed
         }
@@ -581,6 +1040,7 @@ final class HostEngine {
     // is done; the apps finish on their own. What isn't done stays in the marker for the next launch's recovery: a
     // window not given back (`leftWindows`), an app asked to quit and still running then (asked again if it still runs).
     func quitAll() async {
+        releaseActivesNow(why: "Margin quits")
         quitting = true
         if liveOn { dragging(false) }
         await serial {
@@ -721,7 +1181,10 @@ final class HostEngine {
     func poll() { sys.batch { pollNow() } }
 
     private func pollNow() {
-        if busy {
+        // (A window out to a private Space and back (`outAndBack`, not always under `serial`): read mid-way it's "in no
+        // Space", a stray brought back and placed alone (2026-11-22: a split's pane, the split gone). Held off as by an
+        // operation.)
+        if busy || movingOutAndBack > 0 {
             if let since = pollHeldSince {
                 if since >= 0, sys.now() - since > 1 { Diagnostics.note("host: poll held off by an operation for over \(ms(since: since)) ms"); pollHeldSince = -1 }
             } else { pollHeldSince = sys.now() }
@@ -798,6 +1261,16 @@ final class HostEngine {
                 Task { await serial { await self.strayed(id, marginHere: marginHere) } }
             }
         }
+        // (A cut pane's window raised over a pane it lies under with no app activated (the app itself ordering it
+        // front, an Accessibility raise): no event says so, so the poll looks, from the on-screen list it shares, and
+        // only while a cut pane lying under another is shown (none for one whose rest is past the display's edge or under
+        // Margin's window). Activation's case is `frontChanged`'s, at once.)
+        let tuckedNow = visibleHosts.filter { tucked($0) }
+        if !tuckedNow.isEmpty, let list = screenList()?.map(\.number) {
+            for cut in tuckedNow {
+                if overPaneItLiesUnder(cut, list: list) { Task { _ = await self.repairCutOrder(cut.pid) }; break } else { cutOrderRight(cut.id) }
+            }
+        }
         keepCurrentLate()
         lookOnScreen()
         lookForOthers()
@@ -842,6 +1315,63 @@ final class HostEngine {
         if toolbarSaid.count > 64 { toolbarSaid = seen }
     }
 
+    // A new pane's reveal waits for its own full-screen toolbar to rest (the real screen, 2026-11-21 14:30:00.298:
+    // a pane's toolbar out over its page, 628×52 at its top, for ~70–150 ms after its loader was lifted; Safari keeps it
+    // down while the keys are in a new window's address field, its first blank page, until its tab is moved in). Read
+    // from the window server as the toolbar trace reads it (its own strip at its window's top edge, in its window's
+    // Spaces: out when its bottom is below its window's top), at most `toolbarRestWait`, only while one is out (a read
+    // per host otherwise: never polled at rest). Never moved, parked or reordered (2026-11-07). Nil: none was out;
+    // else what was waited for, said.
+    func focusPages(_ ids: [HostID]) async -> String? {
+        let list = ids.compactMap { hosts[$0] }.filter { $0.phase == .shown && $0.safariWindow != nil && isVisible($0.id) }
+        guard !list.isEmpty else { return nil }
+        let t0 = sys.now()
+        var taken: [String] = []
+        // (A window Safari made a moment ago lists its page to Accessibility only once its page is there: tried again every
+        // `pageFocusEvery` for `pageFocusWait` at most, under its loader.)
+        for h in list {
+            var ok = await sys.focusPage(pid: h.pid, window: h.window)
+            let t1 = sys.now()
+            while !ok, sys.now() - t1 < options.pageFocusWait {
+                await sys.sleep(options.pageFocusEvery)
+                ok = await sys.focusPage(pid: h.pid, window: h.window)
+            }
+            taken.append("\(h.id) \(ok ? "taken" : "not taken") after \(ms(since: t1)) ms")
+        }
+        // (Each focus made its window key: the layout's order and keys as they should be again, the focused one last.)
+        if visible.count > 1 { await frontVisible() } else if let s = shown.flatMap({ hosts[$0] }) { _ = await front(s) }
+        let line = "host: new windows' pages given their keys (\(taken.joined(separator: ", "))), the keys back to \(shown.map(\.description) ?? "none") in \(ms(since: t0)) ms"
+        Diagnostics.note(line)
+        return line
+    }
+
+    func toolbarsRest(_ ids: [HostID]) async -> String? {
+        let list = ids.compactMap { hosts[$0] }.filter { $0.phase == .shown && $0.mode == .fullScreen && isVisible($0.id) }
+        guard !list.isEmpty else { return nil }
+        let t0 = sys.now()
+        func out() -> [(host: Host, over: Int)] { list.compactMap { h in toolbarOver(h).map { (h, $0) } } }
+        let first = out()
+        guard !first.isEmpty else { return nil }
+        let rested = await wait(options.toolbarRestWait, every: options.toolbarEvery) { out().isEmpty }
+        let line = "host: \(first.map { "\($0.host.id): its full-screen toolbar out over its page by \($0.over) pt" }.joined(separator: "; ")) at its reveal: \(rested ? "resting" : "still out (revealed anyway)") after \(ms(since: t0)) ms"
+        Diagnostics.note(line)
+        return line
+    }
+
+    // How far its own full-screen toolbar window is out over its window's top now (pt), nil: resting (or none).
+    private func toolbarOver(_ host: Host) -> Int? {
+        guard let f = sys.bounds(window: host.window), let list = sys.serverWindows(pid: host.pid) else { return nil }
+        let others = Set(hosts.values.map(\.window))
+        let spaces = sys.spaces(window: host.window)
+        for w in list where w.number != host.window && !others.contains(w.number) && w.onScreen && w.bounds.height <= options.stripMaxHeight && Self.toolbarOf(w.bounds, window: f) {
+            let over = Int((w.bounds.maxY - f.minY).rounded())
+            guard over > 2 else { continue }
+            if let spaces, let its = sys.spaces(window: w.number), its != spaces { continue }
+            return over
+        }
+        return nil
+    }
+
     // A strip at a full-screen window's top edge: its left edge and width the window's, from just above its top to inside it.
     static func toolbarOf(_ b: CGRect, window f: CGRect) -> Bool {
         f.width > 0 && abs(b.minX - f.minX) <= 2 && abs(b.width - f.width) <= 2 && b.maxY >= f.minY - 2 && b.minY <= f.minY + 2 + 150
@@ -858,7 +1388,7 @@ final class HostEngine {
     // ---- the reconciler (HostReconciler.swift, docs/HOSTING-CORE.md stage 3) ----
 
     // What each host should be now: the one shown, at the page area; the others parked.
-    private func desired(_ host: Host) -> HostDesired { host.phase == .shown && shown == host.id ? .shown(placement) : .parked }
+    private func desired(_ host: Host) -> HostDesired { isVisible(host.id) ? .shown(placementFor(host)) : .parked }
 
     // What Margin sees of a host now, from its own record and the observed model (fed by this poll).
     func situation(of id: HostID) -> HostSituation? { hosts[id].map(situation) }
@@ -880,7 +1410,7 @@ final class HostEngine {
         if host.mode == .window, host.phase == .shown { s.atPage = atPageArea(host) }
         // (Live resize: its tile not at the page area: placed for another one, or found off it twice in a row.)
         s.tile = host.tile != nil
-        s.tileStale = host.tile != nil && (!(host.placedPage.map { HostLayout.near($0, placement.page, within: options.tolerance) } ?? false) || host.offPageReads >= HostReconciler.offPageAfter)
+        s.tileStale = host.tile != nil && (!(host.placedPage.map { HostLayout.near($0, pageOf(host), within: options.tolerance) } ?? false) || host.offPageReads >= HostReconciler.offPageAfter)
         s.dragging = liveOn
         guard let app = observer.model.apps[host.pid] else { return s }
         let mine = app.windows[host.window]
@@ -898,7 +1428,7 @@ final class HostEngine {
         let parked = parkedOthers[host.pid]?.windows ?? []
         // (Only one host of an app speaks for its leftovers and strips: the one shown, else the first.)
         let sameApp = hosts.values.filter { $0.pid == host.pid }
-        let speaker = sameApp.first { $0.phase == .shown && shown == $0.id } ?? sameApp.min { $0.id.raw < $1.id.raw }
+        let speaker = sameApp.first { $0.phase == .shown && shown == $0.id } ?? sameApp.filter { isVisible($0.id) }.min { $0.id.raw < $1.id.raw } ?? sameApp.min { $0.id.raw < $1.id.raw }
         guard speaker === host else { return s }
         var keepsRead: Bool?
         func keeps() -> Bool { if let k = keepsRead { return k }; let k = sys.keepsWindowsAtQuit(pid: host.pid); keepsRead = k; return k } // (read only for a leftover)
@@ -918,7 +1448,8 @@ final class HostEngine {
                                              closable: w.number < host.window && w.place == .margin && s.marginCurrent && w.ax != nil && !keeps()))
             case .strip:
                 // (Its full-screen window's own toolbar is the app's: never parked, moved or reordered.)
-                guard !ownToolbar(w, of: host, mine: mine) else { continue }
+                // (Any of its app's hosts' own: a card's or a pane's toolbar is its own, as main's is.)
+                guard !sameApp.contains(where: { $0 === host ? ownToolbar(w, of: host, mine: mine) : ownToolbar(w, of: $0, mine: app.windows[$0.window]) }) else { continue }
                 s.strips.append(HostOther(number: w.number, place: w.place, onScreen: w.onScreen))
             default: break
             }
@@ -949,18 +1480,21 @@ final class HostEngine {
     private func reconcile() {
         guard !quitting, !reconcileQueued, marginSpace > 0 else { return }
         // (The one shown first: its corrections are the ones seen.)
-        for id in hosts.keys.sorted(by: { ($0 == shown ? 0 : 1, $0.raw) < ($1 == shown ? 0 : 1, $1.raw) }) {
+        for id in hosts.keys.sorted(by: { (rank($0), $0.raw) < (rank($1), $1.raw) }) {
             guard let host = hosts[id], host.phase != .preparing else { continue }
             // (A member too once the show's late watch is over: right after a show, a member off screen is placed again,
             // `backOnScreen`; later, its app ordered it out (ordersOut after, 2026-11-17 19:08: in Margin's Space, off
             // screen, for good): brought forward like a window-mode one, its app's own reopen the rung that brings it.)
-            if host.phase == .shown, shown == id, host.mode == .window || sys.now() - shownAt >= options.lateWatch { noteOffScreen(host) } else { host.offScreenReads = 0 }
-            if host.member, host.phase == .shown, shown == id || host.tile != nil { noteOffPage(host) } else if host.tile != nil, host.phase == .parked { noteOffPage(host) } else { host.offPageReads = 0 }
+            if isVisible(id), host.mode == .window || sys.now() - shownAt >= options.lateWatch { noteOffScreen(host) } else { host.offScreenReads = 0 }
+            if host.member, host.phase == .shown, isVisible(id) || host.tile != nil { noteOffPage(host) } else if host.tile != nil, host.phase == .parked { noteOffPage(host) } else { host.offPageReads = 0 }
             guard let c = decide(host) else { continue }
             reconcileQueued = true
             Task { await serial {
                 self.reconcileQueued = false
                 guard let host = self.hosts[id] else { return }
+                // (A tile sized or a member placed again for a window that left full screen by itself: back into full
+                // screen instead, never a try of these.)
+                if [.sizeTile, .placeAgain].contains(c), await self.leftFullScreen(host) { return }
                 // (Read again in its turn: an operation in between may have settled it.)
                 let now = self.situation(host)
                 guard self.decide(host, now) == c, let tried = self.admitted(host, c) else { return }
@@ -975,13 +1509,14 @@ final class HostEngine {
     // them; it sizes its own tile first). Nothing while a drag is under way.
     private func sizeTilesSoon() {
         guard !quitting, !liveOn, tilesOK, !reconcileQueued else { return }
-        for id in hosts.keys.sorted(by: { ($0 == shown ? 0 : 1, $0.raw) < ($1 == shown ? 0 : 1, $1.raw) }) {
+        for id in hosts.keys.sorted(by: { (rank($0), $0.raw) < (rank($1), $1.raw) }) {
             guard let host = hosts[id], host.tile != nil, host.phase != .preparing else { continue }
             guard decide(host) == .sizeTile else { continue }
             reconcileQueued = true
             Task { await serial {
                 self.reconcileQueued = false
                 guard let host = self.hosts[id] else { return self.sizeTilesSoon() }
+                if await self.leftFullScreen(host) { return self.sizeTilesSoon() }
                 let now = self.situation(host)
                 guard self.decide(host, now) == .sizeTile, let tried = self.admitted(host, .sizeTile) else { return self.sizeTilesSoon() }
                 await self.apply(.sizeTile, host, now, tried: tried)
@@ -1014,6 +1549,79 @@ final class HostEngine {
         }
     }
 
+    // ---- a hosted window out of full screen by itself ----
+
+    // Its window, shown as a full-screen member (a tile or a plain member), left full screen by itself and is still in
+    // Margin's Space as a normal window: Safari's own Esc in its page exits its window's full screen (the real screen,
+    // 2026-11-21, twice: its toolbar strip gone first, the window at its own frame, 0,46 667×865, its tile empty). Sizing
+    // its tile or placing it as a member can't bring it back (its window isn't in the tile; it isn't full screen to leave),
+    // and counted as a tile's fight it moved Safari down to members for its version, saved. Why it's taken so (nil: it
+    // isn't, or not surely): its tile in Margin's Space holding no window of its; every toolbar window of its own gone
+    // with the window still listed; Accessibility reading it out of full screen. A window full screen in its tile that
+    // doesn't take the rect is a real fight: the loop guard's.
+    private func leftFullScreenSign(_ host: Host) -> String? {
+        guard host.phase == .shown, host.member, host.mode == .fullScreen, isVisible(host.id), !host.gone,
+              sys.bounds(window: host.window) != nil, sys.spaces(window: host.window) == [marginSpace] else { return nil }
+        if let t = host.tile {
+            // (Still in its tile: full screen there, whatever else reads.)
+            if sys.tileWindow(t) == host.window { return nil }
+            if sys.tiles(of: marginSpace)?.contains(t) == true, sys.tileRect(t) != nil {
+                return sys.tileWindow(t).map { "its tile \(t) holds another window, \($0)" } ?? "its tile \(t) is empty"
+            }
+        }
+        if !host.toolbars.isEmpty, host.toolbars.allSatisfy({ sys.bounds(window: $0) == nil }) {
+            return "its own toolbar window\(host.toolbars.count == 1 ? "" : "s") \(host.toolbars.sorted().map(String.init).joined(separator: ", ")) gone"
+        }
+        if observer.model.apps[host.pid]?.windows[host.window]?.ax?.fullScreen == false { return "Accessibility reads it out of full screen" }
+        return nil
+    }
+
+    // In the reconciler's turn, before a tile is sized or a member placed again: its window out of full screen by
+    // itself (`leftFullScreenSign`, else Accessibility's read now) is put back into full screen at its rect instead.
+    // True: it was (nothing else to do this turn).
+    private func leftFullScreen(_ host: Host) async -> Bool {
+        guard hosts[host.id] === host, host.phase == .shown, host.member, host.mode == .fullScreen, isVisible(host.id) else { return false }
+        var why = leftFullScreenSign(host)
+        if why == nil, sys.spaces(window: host.window) == [marginSpace], host.tile.map({ sys.tileWindow($0) != host.window }) ?? true,
+           await sys.isFullScreen(pid: host.pid, window: host.window) == false {
+            why = "Accessibility reads it out of full screen"
+        }
+        guard let why else { return false }
+        return await reenterFullScreen(host, why)
+    }
+
+    // A "left full screen" event: back into full screen at its rect (the page area, its pane's, its card's), behind the
+    // loader, the layout held; its old tile out of Margin's Space (empty: destroyed with the next look). Margin's own
+    // operation: never a reaction the loop guard counts, its budgets anew, its route kept (it comes back on tiles when
+    // they're on). `returnsMax` times within `returnsWithin`; past that, false (left to the reconciler, said once).
+    private func reenterFullScreen(_ host: Host, _ why: String) async -> Bool {
+        host.reentries = host.reentries.filter { sys.now() - $0 < options.returnsWithin }
+        guard host.reentries.count < options.returnsMax else {
+            if !host.reentrySaid { host.reentrySaid = true; Diagnostics.warn("host: \(host.id): its window left full screen again (\(why)), \(host.reentries.count) times in \(Int(options.returnsWithin)) s: left to the reconciler") }
+            return false
+        }
+        host.reentries.append(sys.now())
+        host.reentrySaid = false
+        planned = true // (what this changes is Margin's plan, not a reaction)
+        let t0 = sys.now()
+        Diagnostics.note("host: \(host.id): its window left full screen by itself (\(why)), at \(sys.bounds(window: host.window).map(r) ?? "?") in Margin's Space: back into full screen at \(r(pageOf(host))), behind the loader (no tile's fight: no try counted, its route kept)")
+        core.resetTries(host: host.id.raw)
+        core.cleared(host: host.id.raw)
+        let release = holdLayout(for: host)
+        if host.tile != nil { await tileLeft(host) }
+        host.member = false
+        host.placedPage = nil
+        host.toolbars = []
+        host.offPageReads = 0
+        host.phase = .preparing
+        let result = await placeFullScreenNow(host, isNew: false, retrying: false)
+        await release?()
+        if case .failed = result, !isVisible(host.id) { emit(.unshown(host.id)) }
+        if case .shown = result { Diagnostics.note("host: \(host.id): back in full screen at its rect in \(ms(since: t0)) ms") }
+        checkListed("after \(host.id) came back into full screen")
+        return true
+    }
+
     // A window shown in Margin's Space (window mode, or a member after the show's late watch), the current one at rest,
     // missing from the on-screen list and off screen by its own read: counted (the reconciler brings it forward at the
     // second read in a row).
@@ -1037,15 +1645,15 @@ final class HostEngine {
             // until it's shown (sized then, out of sight): sizing a parked tile makes its app draw a window in Margin's
             // Space, whose close lays the first two tiles out again: a loop, seen as blinking (Weather, 2026-11-18).)
             if host.phase == .parked { host.offPageReads = 0; return }
-            guard !liveOn, let placed = host.placedPage, HostLayout.near(placed, placement.page, within: options.tolerance), let b = sys.bounds(window: host.window),
+            guard !liveOn, let placed = host.placedPage, HostLayout.near(placed, pageOf(host), within: options.tolerance), let b = sys.bounds(window: host.window),
                   host.phase == .parked ? sys.spaces(window: host.window) == [] : sys.spaces(window: host.window) == [marginSpace] else { host.offPageReads = 0; return }
             host.offPageReads = HostLayout.near(b, frame(host), within: options.tolerance) ? 0 : host.offPageReads + 1
             return
         }
         guard sys.now() - shownAt > options.lateWatch, sys.spaces(window: host.window) == [marginSpace],
               sys.currentSpace(onDisplayOf: marginSpace) == marginSpace, let b = sys.bounds(window: host.window),
-              let placed = host.placedPage, HostLayout.near(placed, placement.page, within: options.tolerance) else { host.offPageReads = 0; return }
-        host.offPageReads = HostLayout.near(b, placement.page, within: options.tolerance) ? 0 : host.offPageReads + 1
+              let placed = host.placedPage, HostLayout.near(placed, pageOf(host), within: options.tolerance) else { host.offPageReads = 0; return }
+        host.offPageReads = HostLayout.near(b, pageOf(host), within: options.tolerance) ? 0 : host.offPageReads + 1
     }
 
     // One correction, through the engine's own steps, its line in the log (what was observed, what's done, the budget
@@ -1088,7 +1696,7 @@ final class HostEngine {
                 }
             }
         case .sizeTile:
-            if await sizeTile(host), host.phase == .shown, shown == host.id { hostedSaid = nil; announceHosted() }
+            if await sizeTile(host), isVisible(host.id) { hostedSaid = nil; hostedWindowsSaid = []; announceHosted() }
             sizeTilesSoon()
         default:
             break
@@ -1291,6 +1899,8 @@ final class HostEngine {
             t.hosted[host.window] = host.id.description
             if host.phase == .parked, let priv = host.privateSpace { t.parked[host.window] = priv }
             t.launchWindows.formUnion(host.launchWindows)
+            // (A card's or a pane's own rect: its full-screen toolbar is a strip of that width, never a small window.)
+            if let r = host.rect, !t.hostRects.contains(r) { t.hostRects.append(r) }
             out[host.pid] = t
         }
         for (pid, app) in launched where out[pid] == nil {
@@ -1368,7 +1978,7 @@ final class HostEngine {
     // process no Space for the shown window while nothing here was logged). Nothing is said while all is as it should be.
     private func sayRead(_ host: Host, spaces: [UInt64]?, marginHere: Bool) {
         var screen = ""
-        if host.phase == .shown, shown == host.id, let look = screenLook(screenList()) {
+        if isVisible(host.id), let look = screenLook(screenList(), of: host) {
             screen = "Margin's window \(look.margin ? "on" : "off") screen, its window \(look.host ? "on" : "off") screen"
             if look.margin, look.host { screen = "" }
         }
@@ -1402,8 +2012,9 @@ final class HostEngine {
     // both: something shown, Margin's window in its Space, that Space the current one of its display by the window
     // server's list of displays (or the current one a Space that isn't listed at all: never the person's doing), the
     // screen not locked or asleep, neither app hidden. Nil: it doesn't apply (the person is on another Space), or no list.
-    private func screenLook(_ list: [ServerWindow]?) -> (margin: Bool, host: Bool)? {
-        guard let id = shown, let host = hosts[id], host.phase == .shown, marginWindow != 0, marginSpace > 0, !quitting,
+    // (`of`: a visible host's, the one shown when none is given.)
+    private func screenLook(_ list: [ServerWindow]?, of given: Host? = nil) -> (margin: Bool, host: Bool)? {
+        guard let host = given ?? shown.flatMap({ hosts[$0] }), host.phase == .shown, marginWindow != 0, marginSpace > 0, !quitting,
               sys.spaces(window: marginWindow)?.contains(marginSpace) != false,
               let current = sys.currentSpace(onDisplayOf: marginSpace), current == marginSpace || sys.spaceExists(current) == false,
               !sys.screenAway(), sys.isHidden(pid: ownPid) != true, sys.isHidden(pid: host.pid) != true, let list else { return nil }
@@ -1418,7 +2029,9 @@ final class HostEngine {
     // its show). The hosted window alone missing is asked of the window server once more by its own read (its on-screen
     // flag and alpha, `windowOnScreen`): on screen by that, nothing. Later than `lateWatch` after its show, with Margin's
     // window on screen, a missing hosted window is its app's own doing (minimized): said by the poll's read, left alone.
+    // Every visible host is looked at so (docs/PEEK-SPLIT.md §1), each counting its own reads; the one shown as before.
     private func lookOnScreen() {
+        defer { lookOnScreenOthers() }
         // (A window-mode window off screen in Margin's Space, at rest: the reconciler's `bringForward`, `noteOffScreen`.)
         if let id = shown, let host = hosts[id], host.mode == .window, sys.spaces(window: host.window) == [marginSpace],
            sys.currentSpace(onDisplayOf: marginSpace) == marginSpace, screenLook(screenList())?.margin == true {
@@ -1428,7 +2041,7 @@ final class HostEngine {
         // (Not a window gone or unread: its item's grace is the reconciler's; placed again, it would fail and be parked.)
         guard let id = shown, let host = hosts[id], !host.gone, host.unread == 0, let look = screenLook(screenList()), !(look.margin && look.host) else {
             offReads = 0
-            if shown == nil || screenLook(screenList()) != nil { offSaid = false }
+            if let id = shown, screenLook(screenList()) != nil { hosts[id]?.offSaid = false }
             return
         }
         if look.margin, let own = sys.windowOnScreen(host.window), own.onScreen, own.alpha > 0 { offReads = 0; return }
@@ -1437,6 +2050,24 @@ final class HostEngine {
         guard offReads >= 2, look.margin ? fresh : true else { return }
         offReads = 0
         Task { await serial { await self.backOnScreen(id) } }
+    }
+    // The other visible hosts (a card, panes): the same look, each its own count. Nothing while only one is visible.
+    private var offReadsOf: [HostID: Int] = [:]
+    private func lookOnScreenOthers() {
+        let others = visibleHosts.filter { $0.id != shown }
+        offReadsOf = offReadsOf.filter { id, _ in others.contains { $0.id == id } }
+        for host in others {
+            if host.mode == .window, sys.spaces(window: host.window) == [marginSpace], sys.currentSpace(onDisplayOf: marginSpace) == marginSpace,
+               screenLook(screenList(), of: host)?.margin == true { offReadsOf[host.id] = 0; continue }
+            guard !host.gone, host.unread == 0, let look = screenLook(screenList(), of: host), !(look.margin && look.host) else { offReadsOf[host.id] = 0; host.offSaid = false; continue }
+            if look.margin, let own = sys.windowOnScreen(host.window), own.onScreen, own.alpha > 0 { offReadsOf[host.id] = 0; continue }
+            let n = (offReadsOf[host.id] ?? 0) + 1
+            offReadsOf[host.id] = n
+            guard n >= 2, look.margin ? sys.now() - host.visibleAt < options.lateWatch : true else { continue }
+            offReadsOf[host.id] = 0
+            let id = host.id
+            Task { await serial { await self.backOnScreen(id) } }
+        }
     }
 
     // A window of the hosted app shown that the person opened in Margin's Space (the poll; one window-server read): let in
@@ -1455,15 +2086,20 @@ final class HostEngine {
         guard let list = steadyScreen() else { return core.frontUnsteady() }
         let hosted = Set(hosts.values.map(\.window))
         let shownPid = shown.flatMap { hosts[$0] }.flatMap { $0.phase == .shown ? $0.pid : nil }
-        // (The Spaces read only for the shown app's own windows: no other's can be let in front.)
+        // (Several visible, docs/PEEK-SPLIT.md §1: every visible host's app counts as the shown one's, and each one's own
+        // rect is where its toolbar strip is measured.)
+        let visible = visibleHosts.filter { $0.phase == .shown }
+        let visiblePids = Set(visible.map(\.pid)).union(shownPid.map { [$0] } ?? [])
+        let rects = visible.compactMap(\.rect)
+        // (The Spaces read only for the visible apps' own windows: no other's can be let in front.)
         let windows: [[String: Any]] = list.map { w in
             var d = w.coreJSON
             d["keptBehind"] = keptBehind(w)
-            d["marginOnly"] = w.pid == shownPid && w.layer == 0 && !hosted.contains(w.number) && sys.spaces(window: w.number) == [marginSpace]
+            d["marginOnly"] = visiblePids.contains(w.pid) && w.layer == 0 && !hosted.contains(w.number) && sys.spaces(window: w.number) == [marginSpace]
             return d
         }
         say(other: core.front(now: sys.now(), windows: windows, ownPid: ownPid, marginWindow: marginWindow, hosted: Array(hosted),
-                              shownPid: shownPid, placement: placement, fresh: fresh))
+                              shownPid: shownPid, visiblePids: visible.count > 1 ? Array(visiblePids).sorted() : [], rects: rects, placement: placement, fresh: fresh))
     }
 
     // What Margin's window checks at each poll at rest (`front`): the poll's on-screen list (front to back) has both
@@ -1474,11 +2110,19 @@ final class HostEngine {
         var marginLayer: Int
         var marginAbove: Bool
     }
+    // (Several visible: Margin's window above the frontmost of them, every one of them in the list.)
     private func lookFront() {
         guard let front, !busy, !quitting, let id = shown, let host = hosts[id], host.phase == .shown, !sys.screenAway(),
               sys.isHidden(pid: ownPid) != true, sys.isHidden(pid: host.pid) != true, let list = steadyScreen(),
               let m = list.firstIndex(where: { $0.number == marginWindow }), let h = list.firstIndex(where: { $0.number == host.window }) else { return }
-        front(FrontRead(hosted: host.window, marginLayer: list[m].layer, marginAbove: m < h))
+        let others = visibleHosts.filter { $0 !== host }
+        guard !others.isEmpty else { return front(FrontRead(hosted: host.window, marginLayer: list[m].layer, marginAbove: m < h)) }
+        var top = (index: h, window: host.window)
+        for o in others {
+            guard sys.isHidden(pid: o.pid) != true, let i = list.firstIndex(where: { $0.number == o.window }) else { return }
+            if i < top.index { top = (i, o.window) }
+        }
+        front(FrontRead(hosted: top.window, marginLayer: list[m].layer, marginAbove: m < top.index))
     }
 
     private func say(other number: Int?) {
@@ -1499,7 +2143,23 @@ final class HostEngine {
     func activateShown(at point: CGPoint? = nil) async {
         guard !busy, !quitting, let id = shown, let host = hosts[id], host.phase == .shown else { return }
         if let point, let b = sys.bounds(window: host.window), b.contains(point) { return }
-        _ = await front(host)
+        // (Several visible, docs/PEEK-SPLIT.md §1: each fronted back to front so their order is right, the one shown
+        // last, never main over a card; a press on another one's window is its app's already.)
+        let others = visibleHosts.filter { $0 !== host }
+        guard !others.isEmpty else { _ = await front(host); return }
+        if let point, others.contains(where: { sys.bounds(window: $0.window)?.contains(point) == true }) { return }
+        await frontVisible()
+    }
+
+    // A host's window's own minimum as learnt (its tile's), nil: none known (a split's page never lays its pane below it).
+    func minimum(of id: HostID) -> CGSize? { hosts[id]?.minSize }
+
+    // The visible host whose window (else whose rect) is under a point (top left), the frontmost first: a press's.
+    func visibleHost(at point: CGPoint) -> HostID? {
+        for h in visibleHosts.reversed() {
+            if (sys.bounds(window: h.window).map { $0.intersection(frame(h)) } ?? frame(h)).contains(point) { return h.id }
+        }
+        return nil
     }
 
     // A private Space a window was just moved out of: destroyed later, never in the same breath as the move.
@@ -1571,6 +2231,9 @@ final class HostEngine {
             sys.reveal()
         }
         revealed = host.id
+        // (A host coming into a layout beside the ones shown, a split's pane: revealed with the whole layout at its end, the
+        // ones shown laid out again with it, under its own pane's loader until then. Only the freeze let go here.)
+        if applyingLayout, loadingHeld { return }
         // (The window told first, then the loader off: the other way, the page card is a wordless loader for a frame.)
         hostedSaid = host.window
         hostedWindow?(host.window)
@@ -1580,10 +2243,35 @@ final class HostEngine {
 
     private func announceHosted() {
         sayMinimum()
+        sayHostedWindows()
         let now = shownWindow
         guard now != hostedSaid else { return }
         hostedSaid = now
         hostedWindow?(now)
+    }
+
+    // Every visible host's window, back to front, while more than one is visible (Margin's window's holes), and once
+    // ([]) when it's one again: nothing said while only one ever is. Not mid-way through a layout's change (said at
+    // its end, as it is then).
+    // `live`: a drag's frame (`follow`): each one's rect as the page measured it in that frame, not its window's frame yet.
+    private func sayHostedWindows(live: HostPlacement? = nil) {
+        guard !applyingLayout, let tell = hostedWindows else { return }
+        let list = visibleHosts
+        let now: [HostShownWindow] = list.count > 1 ? list.map { h in
+            // (Its pane, the hole; its window's frame apart: a cut pane's window is wider or taller, docs/PEEK-SPLIT.md §4b.)
+            let rect = live.map { liveRects[h.id] ?? h.rect ?? $0.page } ?? (h.rect ?? frame(h))
+            let window = live.map { p -> CGRect in
+                var q = p
+                q.page = liveRects[h.id] ?? h.rect ?? p.page
+                return frame(h, q)
+            } ?? frame(h)
+            let tucked = isCut(h) && list.contains { o in o !== h && o.role != .card && (o.rect ?? placement.page).insetBy(dx: options.tolerance, dy: options.tolerance).intersects(window) }
+            return HostShownWindow(window: h.window, rect: rect, role: visible[h.id]?.role ?? h.role, z: visible[h.id]?.z ?? 0, focused: h.id == shown,
+                                   frame: window, tucked: tucked, cut: live == nil ? cutOf(h) : nil)
+        } : []
+        guard now != hostedWindowsSaid else { return }
+        hostedWindowsSaid = now
+        tell(now)
     }
 
     private func say(cover number: Int?) {
@@ -1592,7 +2280,11 @@ final class HostEngine {
         cover?(number)
     }
 
+    // (While a layout brings a host in beside the ones shown (`applyLayout`'s `deferring`), its loader stays up until the
+    // whole layout is done: the ones shown are laid out again only then.)
+    private var loadingHeld = false
     private func say(loading id: HostID?) {
+        if id == nil, loadingHeld { return }
         guard id != loadingSaid else { return }
         loadingSaid = id
         loading?(id)
@@ -1632,6 +2324,7 @@ final class HostEngine {
             if planned { self.core.person(now: self.sys.now()) }
             self.planned = planned
             let value = await body()
+            self.settleVisible()
             self.planned = false
             self.activity()
             self.parkWoken() // (a window opened to wake a profile during it: out of sight before anything else is seen)
@@ -1661,7 +2354,7 @@ final class HostEngine {
         say(loading: id)
         defer { say(loading: nil) }
         var previous: Host?
-        if let was = shown.flatMap({ hosts[$0] }) {
+        if let was = before(id) {
             let t0 = sys.now()
             let parked = await retire(was) // (a window-mode one as it is: its frame is given back only with it)
             guard parked else { return fail(id, .park, "the one shown before (\(was.id)) couldn't leave Margin's Space") }
@@ -1712,7 +2405,7 @@ final class HostEngine {
         let windowStarted = sys.now()
         let launchedByMargin = launched[app.pid] != nil
         var number: Int?
-        if case .safariWindow(let profile) = target, !launchedByMargin || profile != nil || hosts.values.contains(where: { $0.pid == app.pid }) {
+        if case .safariWindow(let profile, let role) = target, !launchedByMargin || profile != nil || role != .main || hosts.values.contains(where: { $0.pid == app.pid }) {
             // A window of Margin's own in Safari: asked of its extension, known as the window that wasn't there before.
             if !launchedByMargin {
                 switch sys.safariAutoShowsToolbar() {
@@ -1747,34 +2440,54 @@ final class HostEngine {
             // Every window Safari has now, on every Space (the window server's), and the ones Accessibility lists: read
             // before the ask, so the window it makes is the one that wasn't there.
             let before = Set((serverList(pid: app.pid) ?? []).map(\.number)).union((await sys.windows(pid: app.pid) ?? []).map(\.number))
+            // A card's or a pane's window (docs/PEEK-SPLIT.md §2, §4) is asked in full screen (the session's newWindow
+            // `fullscreen`): Safari makes it in a full-screen Space of its own, and macOS switches the display to that
+            // Space as the window comes (the real screen, 2026-11-21 13:26:01: a pane's window, the Dock's
+            // `fullscreened` then `becameCurrent` of the new Space and back, animated: "it slided the window"). So the
+            // freeze is held from the ask (it's the only moment macOS would visibly change Spaces) and handed to the
+            // window's placing, which takes its new Space by the early path (reserved for its rect, its tile moved into
+            // Margin's Space, that Space destroyed) and lets the freeze go as soon as that Space is gone. Margin's Space
+            // is kept current meanwhile: macOS's switch undone at once (a Space the person went to is left alone).
+            let born = role != .main && !preparing
+            let bornBefore: Set<UInt64>? = born ? sys.fullScreenSpaceOwners().map { Set($0.keys) } : nil
+            let bornFrozen = born && holdFreeze()
             // Out of sight: Margin's Space kept current while Safari makes its window (asked focused, Safari comes to the
             // front and macOS may switch to the Space its new window opens in, the Desktop): undone at once.
-            let keepSpace = preparing && sys.currentSpace(onDisplayOf: marginSpace) == marginSpace
+            let keepSpace = (preparing || born) && sys.currentSpace(onDisplayOf: marginSpace) == marginSpace
             var undone = 0
             func keepMarginCurrent() {
                 guard keepSpace, let now = sys.currentSpace(onDisplayOf: marginSpace), now != marginSpace else { return }
+                if born, bornBefore?.contains(now) == true || sys.spaceType(now) == ManagedSpace.desktopType { return } // (the person's)
                 if sys.setCurrentSpace(marginSpace) { undone += 1 }
             }
-            guard let request = requestSafariWindow, let asked = await request(profile) else {
+            // (A card's or a pane's window: asked for in its role, kept apart from the profile's main one.)
+            let ask: ((String?) async -> HostSafariWindow?)? = role == .main ? requestSafariWindow : requestRoleWindow.map { r in { await r($0, role) } }
+            guard let request = ask, let asked = await request(profile) else {
+                releaseFreeze(bornFrozen)
                 if startedNow { await quitApp(app.pid, bundle: bundle) }
                 return fail(id, .window, "Safari's extension wasn't asked for a window (no link)")
             }
             keepMarginCurrent()
             var seen = 0
-            _ = await wait(options.windowWait) {
+            _ = await wait(options.windowWait, every: born ? options.memberEvery : options.every) {
                 keepMarginCurrent()
                 (number, seen) = self.newSafariWindow(pid: app.pid, before: before, near: asked.bounds)
                 return number != nil
             }
-            if undone > 0 { times.append("\(undone) Space change\(undone == 1 ? "" : "s") undone") }
+            keepMarginCurrent()
+            if undone > 0 { times.append("\(undone) Space change\(undone == 1 ? "" : "s") undone\(bornFrozen ? " under the freeze" : "")") }
             guard let window = number else {
+                releaseFreeze(bornFrozen)
                 await closeAskedSafariWindow(asked.id, profile: profile, pid: app.pid, number: nil, why: "its window wasn't found")
                 if startedNow { await quitApp(app.pid, bundle: bundle) }
                 return fail(id, .window, seen > 1 ? "\(seen) new Safari windows within \(Int(options.windowWait)) s, none told apart by the copy's bounds"
                                                   : "no new Safari window in the window server's list within \(Int(options.windowWait)) s")
             }
-            times.append("window \(ms(since: windowStarted)) (by the window server)")
+            times.append("window \(ms(since: windowStarted)) (by the window server\(bornFrozen ? ", under the freeze from its ask" : ""))")
             let host = Host(id: id, target: target, pid: app.pid, window: window, launchedByMargin: launchedByMargin, madeByMargin: !launchedByMargin, safariWindow: asked.id)
+            host.bornBefore = bornBefore
+            host.bornFrozen = bornFrozen
+            host.bornSwitched = undone > 0
             return await opened(host, started: started, times: times)
         }
         // Its main window as Accessibility lists it (the current Space's), else its front window by the window server
@@ -1911,6 +2624,8 @@ final class HostEngine {
     private func opened(_ host: Host, started: Double, times: [String]) async -> HostResult {
         let id = host.id, pid = host.pid
         hosts[id] = host
+        // (Made for a layout: its role and rect in it from the start, its first placing at its rect.)
+        if applyingLayout, let v = visible[id] { host.role = v.role; host.rect = v.rect }
         applyHeldRoute(host)
         saveMarker()
         if !sys.watchOpens(pid: pid, { [weak self] code in self?.heard(code, pid: pid) }) {
@@ -1919,6 +2634,9 @@ final class HostEngine {
         emit(.opened(id, ms: ms(since: started)))
         Diagnostics.note("host: \(id) opened (pid \(pid), window \(host.window)\(host.safariWindow.map { ", the copy's \($0)" } ?? "")): \(times.joined(separator: ", "))")
         let result = await bringIn(host, isNew: true)
+        // (The freeze from a born window's ask, if its placing never took it: let go now, whatever happened.)
+        if host.bornFrozen { host.bornFrozen = false; releaseFreeze(true) }
+        host.bornBefore = nil
         // (Its app's windows as its first show ends, an app Margin started: what it restored or made as it launched, the
         // window it hosts aside. The model's leftovers: HostModel's launchWindows, WindowKinds rule 8b.)
         if hosts[id] === host, host.launchedByMargin, case .app = host.target {
@@ -2152,7 +2870,7 @@ final class HostEngine {
         let atPage = !isNew && host.frameChanged && atPageArea(host)
         let frozen = atPage ? false : holdFreeze()
         defer { releaseFreeze(frozen) }
-        let previous = shown.flatMap { $0 == host.id ? nil : hosts[$0] }
+        let previous = before(host.id)
         var t0 = sys.now()
         if let previous {
             guard await retire(previous) else {
@@ -2209,7 +2927,7 @@ final class HostEngine {
     }
 
     // The page area for a window-mode host (Margin's own layout's, its window its whole width).
-    private var windowArea: CGRect { placement.page }
+    private func windowArea(_ host: Host) -> CGRect { pageOf(host) }
 
     private func centredIn(_ page: CGRect, _ size: CGSize) -> CGRect {
         CGRect(x: (page.minX + max(0, (page.width - size.width) / 2)).rounded(), y: (page.minY + max(0, (page.height - size.height) / 2)).rounded(), width: size.width, height: size.height)
@@ -2217,8 +2935,9 @@ final class HostEngine {
     // Whether a window-mode host's window is where `placeWindow` puts it: the page area, or its own size centred in it
     // (a fixed size, or a resizable one at its own limits).
     private func atPageArea(_ host: Host) -> Bool {
-        guard let b = sys.bounds(window: host.window), b.width <= windowArea.width + options.tolerance, b.height <= windowArea.height + options.tolerance else { return false }
-        return HostLayout.near(b, windowArea, within: options.tolerance) || HostLayout.near(b, centredIn(windowArea, b.size), within: options.tolerance)
+        let area = windowArea(host)
+        guard let b = sys.bounds(window: host.window), b.width <= area.width + options.tolerance, b.height <= area.height + options.tolerance else { return false }
+        return HostLayout.near(b, area, within: options.tolerance) || HostLayout.near(b, centredIn(area, b.size), within: options.tolerance)
     }
 
 
@@ -2228,7 +2947,7 @@ final class HostEngine {
     // Its frame is recorded (and `frameChanged` saved) before anything is set.
     @discardableResult private func placeWindow(_ host: Host) async -> Bool {
         guard host.phase == .shown, host.mode == .window else { return false }
-        let page = windowArea
+        let page = windowArea(host)
         guard page.width >= 1, page.height >= 1 else {
             emit(.failed(host.id, .place, "no page area"))
             return false
@@ -2443,7 +3162,7 @@ final class HostEngine {
             let stale = !tileAtPage(host)
             if await sizeTile(host), stale { Diagnostics.note("host: \(host.id): its tile sized to the page area before it's shown") }
         }
-        if host.member, let placed = host.placedPage, HostLayout.near(placed, placement.page, within: options.tolerance) {
+        if host.member, let placed = host.placedPage, HostLayout.near(placed, pageOf(host), within: options.tolerance) {
             return await switchIn(host)
         }
         if host.member { Diagnostics.note("host: \(host.id): placed for another page area (\(host.placedPage.map(r) ?? "none")): placed again as it's shown") }
@@ -2461,7 +3180,7 @@ final class HostEngine {
         let started = sys.now()
         var times: [String] = []
         func step(_ name: String, _ t0: Double) { times.append("\(name) \(ms(since: t0))") }
-        let previous = shown.flatMap { $0 == host.id ? nil : hosts[$0] } // (a window-mode one leaves as it is, at the page area's frame: no freeze)
+        let previous = before(host.id) // (a window-mode one leaves as it is, at the page area's frame: no freeze)
         // (Live resize: the first switch after a tile came into or left Margin's Space can lay the first two tiles out again
         // as its window comes in or the one before leaves (the real Mac, 2026-11-17 23:52:23: the second tile's window at a
         // quarter's width for 21 ms, Margin's own window with it): that switch under the freeze, watched `tileSettleWatch`
@@ -2535,7 +3254,41 @@ final class HostEngine {
     // first). Margin's page area shows the loading animation meanwhile; the freeze holds only from the full-screen ask
     // until macOS's jump to the new Space is undone (and, for an app's member placed again, its exit before it, which is
     // seen on the current Space).
+    // Several visible (a split's pane, main under a card): the layout held while it's placed again on its own (a
+    // correction, a route's change, a window brought back), each one's rect kept, the focus put back after. Its placing
+    // goes out of full screen and in, its window parked on the way: the one shown changing outside a layout's change made
+    // it the layout alone, the others still on screen and its rect still its pane's (the real screen, 2026-11-21:
+    // "placed again … reserved 240/8/8/635", the old pane's rect, the engine's layout saying main at the page area).
     private func placeFullScreen(_ host: Host, isNew: Bool, retrying: Bool) async -> HostResult {
+        guard let release = holdLayout(for: host) else { return await placeFullScreenNow(host, isNew: isNew, retrying: retrying) }
+        let r = await placeFullScreenNow(host, isNew: isNew, retrying: retrying)
+        await release()
+        return r
+    }
+
+    // The layout as it is, held while `host` (visible, beside others) is placed on its own, outside a whole layout's
+    // change (`applyingLayout`); nil: nothing to hold (one visible host, or a layout being applied already). The release
+    // puts back each one still shown at its rect, the focus where it was asked, fronts them back to front and tells
+    // Margin's window.
+    private func holdLayout(for host: Host) -> (() async -> Void)? {
+        guard !applyingLayout, visible.count > 1, visible[host.id] != nil else { return nil }
+        let kept = visible, focus = focusWanted ?? shown
+        applyingLayout = true
+        return { [self] in
+            applyingLayout = false
+            visible = kept.filter { hosts[$0.key]?.phase == .shown }
+            for (id, v) in visible { hosts[id]?.role = v.role; hosts[id]?.rect = v.rect }
+            if let f = focus, isVisible(f) { if focusWanted == nil, visible.count > 1 { focusWanted = f }; if shown != f { shown = f } }
+            else if shown.map({ visible[$0] == nil }) ?? true { shown = visibleHosts.last?.id }
+            settleVisible()
+            if visible.count > 1 { await frontVisible() }
+            hostedSaid = nil
+            hostedWindowsSaid = []
+            announceHosted()
+        }
+    }
+
+    private func placeFullScreenNow(_ host: Host, isNew: Bool, retrying: Bool) async -> HostResult {
         let started = sys.now()
         revealed = nil
         var times: [String] = []
@@ -2548,18 +3301,20 @@ final class HostEngine {
         }
         defer { if !prepared { say(loading: nil) } }
         let again = host.member
-        let previous = shown.flatMap { $0 == host.id ? nil : hosts[$0] }
+        let previous = before(host.id)
+        // (A card's or a pane's new window born in full screen: the freeze from its ask, held on through its full screen.)
+        var frozen = host.bornFrozen
+        host.bornFrozen = false
         // 1. the one shown before out (parked), so the loading animation is what's seen.
         var t0 = sys.now()
         if let previous {
             let parked = await retire(previous)
-            guard parked else { return await giveUp(host, isNew: isNew, .park, "the one shown before (\(previous.id)) couldn't leave Margin's Space", previous: nil) }
+            guard parked else { releaseFreeze(frozen); return await giveUp(host, isNew: isNew, .park, "the one shown before (\(previous.id)) couldn't leave Margin's Space", previous: nil) }
             step("park \(previous.id)", t0)
         }
         // 2. a member placed again: out of full screen first. Safari's through its copy wherever it is: parked first, its
         // exit isn't seen. An app's on the current Space (Accessibility acts only there): seen, so under the freeze, which
         // holds on through its full screen below.
-        var frozen = false
         if again {
             t0 = sys.now()
             if viaCopy(host) {
@@ -2680,7 +3435,9 @@ final class HostEngine {
             }
         }
         host.member = true
-        host.placedPage = placement.page
+        host.placedPage = pageOf(host)
+        // (Its first open into a layout, its window in with its tile: brought in front by the move out and back at once.)
+        host.freshFront = isNew && applyingLayout && host.tile != nil
         if prepared {
             // 8. made ready out of sight: parked at once, its app not activated.
             t0 = sys.now()
@@ -2713,7 +3470,7 @@ final class HostEngine {
     // The item is never closed for it (2026-11-17: a failed second placing lost the Safari window).
     private func keepAsPlaced(_ host: Host, _ reason: String) async -> HostResult {
         emit(.failed(host.id, .exitFullScreen, reason))
-        Diagnostics.note("host: \(host.id): \(reason): kept as it was (\(host.placedPage.map(r) ?? "its frame"); the page area is \(r(placement.page)))")
+        Diagnostics.note("host: \(host.id): \(reason): kept as it was (\(host.placedPage.map(r) ?? "its frame"); the page area is \(r(pageOf(host))))")
         if sys.spaces(window: host.window) != [marginSpace] {
             guard sys.move(window: host.window, to: marginSpace),
                   await wait(options.memberWait, every: options.memberEvery, { self.sys.spaces(window: host.window) == [self.marginSpace] }) else {
@@ -2801,7 +3558,7 @@ final class HostEngine {
         }
         func strips() -> [ServerWindow] {
             (serverList(pid: host.pid) ?? []).filter { w in
-                w.number != host.window && !host.windowsBeforeAsk.contains(w.number) && !isHosted(window: w.number) && w.layer == 0 && isStrip(w.bounds)
+                w.number != host.window && !host.windowsBeforeAsk.contains(w.number) && !isHosted(window: w.number) && w.layer == 0 && isStrip(w.bounds, of: host)
                     && !(sys.spaces(window: w.number) ?? []).isEmpty
             }
         }
@@ -2814,8 +3571,9 @@ final class HostEngine {
 
     // A full-screen window's toolbar strip: as wide as the page area at least (the display's whole width for one that
     // went full screen on its own), at most `stripMaxHeight` tall.
-    private func isStrip(_ b: CGRect) -> Bool {
-        b.height > 0 && b.height <= options.stripMaxHeight && b.width >= min(placement.area.width * 0.9, placement.page.width - 2) && b.width > 0
+    // (Measured against the host's own rect: a card's or a pane's toolbar is as wide as its own window.)
+    private func isStrip(_ b: CGRect, of host: Host) -> Bool {
+        b.height > 0 && b.height <= options.stripMaxHeight && b.width >= min(placement.area.width * 0.9, pageOf(host).width - 2) && b.width > 0
     }
 
     // Margin's sidebar: the display's area left of the page area (none narrower than 40 pt: the sidebar hidden).
@@ -2953,6 +3711,11 @@ final class HostEngine {
     // way, which showed as a flash of that Space on a first open (2026-11-17: `1 Space change undone … no freeze`).
     // What's frozen is Margin's window with its loader.
     private func enterFullScreen(_ host: Host, frozen: inout Bool) async -> Entry {
+        // (A page area its full-screen window can't be put at (a pane's rect past the display's edge: no plan): never
+        // asked. Asked, its own Space was made, the slow path ran and the place failed anyway, each time: the real screen,
+        // 2026-11-21 19:32, Safari's pane at 949…1523 beside Notes, five Spaces made and dropped in 12 s.)
+        let target = entryFitted(host)
+        if HostLayout.plan(target) == nil { return .failed("no room for it: its page area can't be reached from the display's (\(target.text))") }
         func ownSpace() -> UInt64? {
             guard let list = sys.spaces(window: host.window) else { return nil }
             return list.first { $0 != marginSpace && sys.spaceType($0) == ManagedSpace.fullScreenType }
@@ -2996,7 +3759,12 @@ final class HostEngine {
         // The full-screen Spaces listed before the ask: the early path watches for a new one (nil: not tried, as when
         // its window already has a Space of its own, or the list doesn't read).
         var before: Set<UInt64>?
+        // (A card's or a pane's window born in full screen, in a Space of its own that wasn't there at its ask: nothing to
+        // ask, that Space taken by the early path from here, under the freeze held from the ask.)
+        var born = false
         if options.earlyFullScreen, ownSpace() == nil, let owners = sys.fullScreenSpaceOwners() { before = Set(owners.keys) }
+        else if options.earlyFullScreen, copy, let was = host.bornBefore, let s = ownSpace(), !was.contains(s) { before = was; born = true }
+        host.bornBefore = nil
         let listed = before ?? Set(sys.listedFullScreenSpaces() ?? [])
         var axBefore: Bool? // its AXFullScreen right before the last ask (true after false: macOS took the ask)
         if copy {
@@ -3022,9 +3790,9 @@ final class HostEngine {
         lateAsk = (asked, listed)
         if let before {
             let t = sys.now()
-            switch await early(host, before: before, refused: { copy && ask?.answer == false }) {
+            switch await early(host, before: before, refused: { copy && ask?.answer == false }, switched: born && host.bornSwitched) {
             case .placed(let how):
-                Diagnostics.note("host: \(host.id): full screen by the early path in \(ms(since: t)) ms (\(how)), \(frozen ? "under the freeze" : "the freeze not taken")")
+                Diagnostics.note("host: \(host.id): full screen by the early path in \(ms(since: t)) ms (\(born ? "born in full screen, " : "")\(how)), \(frozen ? "under the freeze" : "the freeze not taken")")
                 return .member(how)
             case .slow(let why):
                 Diagnostics.note("host: \(host.id): the early full screen fell back after \(ms(since: t)) ms (\(why)): the slow path")
@@ -3186,19 +3954,24 @@ final class HostEngine {
     // all along, under the freeze the caller holds (macOS's switch would be seen). `.slow`: nothing undone, the ask
     // still running (the slow path takes it from there, its Space as the one found); `.again`: the window isn't where it
     // should be after the move and destroy (backed out and asked again by the caller).
-    private func early(_ host: Host, before: Set<UInt64>, refused: () -> Bool) async -> Early {
-        guard var edges = HostLayout.plan(fitted(host)) else { return .slow("no plan for the page area (\(placement.text))") }
+    // `switched`: macOS's switch to its Space seen and undone already while its window was awaited (a card's or a pane's
+    // window born in full screen, nothing asked here): none waited for. A card's or a pane's freeze is
+    // let go as soon as its own Space is gone (nothing of macOS's change can show after that; its window is under its
+    // own loader until its layout is done), not after the settle.
+    private func early(_ host: Host, before: Set<UInt64>, refused: () -> Bool, switched already: Bool = false) async -> Early {
+        guard var edges = HostLayout.plan(entryFitted(host)) else { return .slow("no plan for its page area (\(entryFitted(host).text))") }
         // (Live resize: its tile moved into Margin's Space in place of the window alone, below.)
         let tiling = await tilesReady(for: host)
         let t0 = sys.now()
-        var page = frame(host)
+        var page = entryFitted(host).page
         var space: UInt64?
         var reservedAt = t0
         var memberAt: Double? // when the window server first had the window in its own Space: macOS's change brought it there
-        var switched = false // macOS made a Space current that wasn't listed before the ask (undone): the last step of its change
+        var switched = already // macOS made a Space current that wasn't listed before the ask (undone): the last step of its change
         var sized = false
         var times: [String] = []
         func mark(_ what: String) { times.append("\(what) \(ms(since: t0))") }
+        if already { mark("macOS's switch undone as its window came") }
         func said() -> String { times.joined(separator: ", ") + (jumps > 0 ? "; \(jumps) Space change\(jumps == 1 ? "" : "s") undone" : "") }
         func there() -> Bool { sys.bounds(window: host.window).map { HostLayout.near($0, page, within: options.tolerance) } ?? false }
         func inOwn(_ s: UInt64) -> Bool { sys.spaces(window: host.window)?.contains(s) == true }
@@ -3233,7 +4006,7 @@ final class HostEngine {
                     saveMarker()
                     if inOwn(s) { memberAt = sys.now(); mark("in its Space") }
                     // (Its window's own minimum, from its new Space's tile: reserved for no less, never a size it can't take.)
-                    if let t = ownTile(host, in: s), learnMinimum(host, tile: t), let e = HostLayout.plan(fitted(host)) { edges = e; page = frame(host); mark("its minimum \(Int(host.minSize?.width ?? 0)) wide") }
+                    if let t = ownTile(host, in: s), learnMinimum(host, tile: t), let e = HostLayout.plan(entryFitted(host)) { edges = e; page = entryFitted(host).page; mark("its minimum \(Int(host.minSize?.width ?? 0)) wide") }
                     _ = sys.reserve(edges, space: s)
                     reservedAt = sys.now()
                     mark("reserved \(edges.text)")
@@ -3267,6 +4040,7 @@ final class HostEngine {
             switch await tileIn(host, from: own, each: keepCurrent) {
             case .placed:
                 tiled = true
+                page = frame(host) // (a tile now: a cut pane's window where its tile puts it, past the display's edge too)
                 mark("its tile in Margin's Space at the page area")
             case .notMoved(let why):
                 turnOffTiles("a tile didn't move into Margin's Space (\(why))")
@@ -3312,6 +4086,12 @@ final class HostEngine {
         if moved {
             // (Its Space gone from the list first, the destroy really done; then the membership, read after it.)
             if destroyed { gone = await wait(options.memberWait, every: options.earlyEvery) { keepCurrent(); return self.sys.spaceExists(own) == false } }
+            // (A card's or a pane's: its Space gone, macOS has nothing left to switch to; under its own loader still.)
+            if gone, host.role != .main || host.safariRole != .main, freezeHolds == 1 {
+                freezeHolds = 0
+                sys.reveal()
+                mark("the freeze let go")
+            }
             let (settled, readds) = await settleMember(host, at: there, each: keepCurrent)
             inPlace = settled
             if readds > 0 { mark("put back into Margin's Space \(readds)×") }
@@ -3355,11 +4135,11 @@ final class HostEngine {
         guard let own = host.fullScreenSpace else { return false }
         // (Its window's own minimum, from its own Space's tile: reserved for no less.)
         if let t = ownTile(host, in: own) { learnMinimum(host, tile: t) }
-        guard let edges = HostLayout.plan(fitted(host)) else {
-            Diagnostics.note("host: place \(host.id): no plan (\(placement.text))")
+        guard let edges = HostLayout.plan(entryFitted(host)) else {
+            Diagnostics.note("host: place \(host.id): no plan (\(entryFitted(host).text))")
             return false
         }
-        let page = frame(host)
+        let page = entryFitted(host).page
         func there() -> Bool { sys.bounds(window: host.window).map { HostLayout.near($0, page, within: options.tolerance) } ?? false }
         for attempt in 1...2 {
             // (At the page area with its Space reserved for it: a window at the page area's frame as a window, mid-way into
@@ -3506,7 +4286,7 @@ final class HostEngine {
     @discardableResult private func place(_ host: Host) async -> Bool {
         guard host.phase == .shown else { return false }
         if host.mode == .window { return await placeWindow(host) }
-        if let placed = host.placedPage, HostLayout.near(placed, placement.page, within: options.tolerance), host.tile == nil || sys.bounds(window: host.window).map({ HostLayout.near($0, frame(host), within: options.tolerance) }) == true { return true }
+        if let placed = host.placedPage, HostLayout.near(placed, pageOf(host), within: options.tolerance), host.tile == nil || sys.bounds(window: host.window).map({ HostLayout.near($0, frame(host), within: options.tolerance) }) == true { return true }
         // (Live resize: its tile's rect, no full-screen change; failing that, placed again the old way. Its window gone (closed,
         // its item about to close): nothing placed.)
         if host.tile != nil, sys.bounds(window: host.window) == nil || host.gone { return false }
@@ -3515,13 +4295,13 @@ final class HostEngine {
             if await sizeTile(host) {
                 hostedSaid = nil
                 announceHosted()
-                Diagnostics.note("host: \(host.id): its tile sized to the page area \(r(placement.page)) in \(ms(since: t0)) ms")
+                Diagnostics.note("host: \(host.id): its tile sized to the page area \(r(pageOf(host))) in \(ms(since: t0)) ms")
                 return true
             }
             Diagnostics.note("host: \(host.id): its tile's rect didn't take: placed again out of full screen and in")
         }
-        Diagnostics.note("host: \(host.id): the page area moved (\(host.placedPage.map(r) ?? "none") → \(r(placement.page))): placed again")
-        if case .shown(_, let placed) = await placeFullScreen(host, isNew: false, retrying: false) { return placed && shown == host.id }
+        Diagnostics.note("host: \(host.id): the page area moved (\(host.placedPage.map(r) ?? "none") → \(r(pageOf(host)))): placed again")
+        if case .shown(_, let placed) = await placeFullScreen(host, isNew: false, retrying: false) { return placed && isVisible(host.id) }
         return false
     }
 
@@ -3538,6 +4318,8 @@ final class HostEngine {
 
     private func front(_ host: Host) async -> Bool {
         guard !quitting else { return false }
+        // (An app kept active takes AppKit's own activation for done: the window server makes it the front one first.)
+        if actives.kept[host.pid] != nil { _ = sys.makeFront(pid: host.pid, window: host.window) }
         let asked = await sys.frontmost(pid: host.pid)
         return await sys.activate(pid: host.pid, window: host.window) || asked
     }
@@ -3719,14 +4501,258 @@ final class HostEngine {
     // Where a full-screen host's window goes for a page area (`p`, else Margin's): the page area, or (its own minimum
     // wider or taller) that minimum, its right edge and top the page area's (HostLayout.fit). A window-mode one: the
     // page area (Accessibility keeps its own limits, centred).
+    // Its page area is its own rect when it's visible in another role (a card, a pane: docs/PEEK-SPLIT.md §1), and
+    // such a rect is never overflowed under the sidebar: one below its minimum isn't laid out (`belowMinimum`).
     private func frame(_ host: Host, _ p: HostPlacement? = nil) -> CGRect {
-        let pl = p ?? placement
-        return host.mode == .window ? pl.page : HostLayout.fit(pl.page, min: host.minSize, in: pl.area)
+        let pl = p ?? placementFor(host)
+        if host.mode == .window { return pl.page }
+        // (A card: its own rect. A split's pane: cut, its window never below its own minimum, Arc's 220 its pane's least.)
+        if host.rect != nil {
+            if host.role == .card { return pl.page }
+            // (Where its arrow slid it while its pane is still the one it was slid in; else away from the other panes.)
+            let slid = host.slid.flatMap { HostLayout.near($0.pane, pl.page, within: options.tolerance) ? $0 : nil }
+            return paneFrame(host, pl.page, area: pl.area, endX: slid?.endX, endY: slid?.endY)
+        }
+        return HostLayout.fit(pl.page, min: host.minSize, in: pl.area)
+    }
+    // A pane's window frame at an alignment (HostLayout.cut, away from the other panes when nil), held within the display
+    // while it isn't a tile in Margin's Space: macOS keeps a tile past the display's edge, never a full-screen Space's
+    // reservation (its window entering, a member's, tiles off: HostLayout.plan).
+    private func paneFrame(_ host: Host, _ pane: CGRect, area: CGRect, endX: Bool?, endY: Bool?) -> CGRect {
+        let f = HostLayout.cut(pane, min: paneMinimum(host), in: area, page: livePage ?? placement.page, endX: endX, endY: endY)
+        return f != pane && (host.tile == nil || host.noTiles) ? HostLayout.within(f, area) : f
+    }
+    // Its placement as its own full-screen Space reserves it (its window entering, a member placed): its frame held within
+    // the display (`paneFrame`), whatever its tile's would be.
+    private func entryFitted(_ host: Host) -> HostPlacement {
+        var pl = fitted(host)
+        if isCut(host) { pl.page = HostLayout.within(pl.page, pl.area) }
+        return pl
+    }
+    // The page area of a drag of the sidebar's edge as it's followed (a split's panes are laid out away from each other
+    // within it: `frame`), nil: none under way.
+    private var livePage: CGRect?
+    // A pane's window's minimum as it's laid out now: its own as read (never its app's narrowest: a tile narrower than its
+    // window's minimum now makes it leave the tile), else its app's known one before any of its windows was read.
+    private func paneMinimum(_ host: Host) -> CGSize? { host.minSize ?? appMinimum(appKey(host.target), pid: host.pid) }
+    // A cut pane's sides (docs/PEEK-SPLIT.md §4b): each one with part of its window hidden, which its arrow slides into its
+    // pane (its other alignment along that axis: never held within the display). None that would put its window over
+    // a cut pane whose own window lies over this pane (two panes each over the other's: no order shows both). Nil: not
+    // cut.
+    func cutOf(_ host: Host) -> PaneCut? {
+        guard isCut(host), let r = host.rect else { return nil }
+        let f = frame(host), tol = options.tolerance
+        var out = PaneCut()
+        for side in PaneSide.allCases where hidden(side, pane: r, window: f) > tol {
+            let to = slidFrame(host, side)
+            // (Its window held within the display, not a tile: only a slide that shows more of it.)
+            guard hidden(side, pane: r, window: to) < hidden(side, pane: r, window: f) - tol else { continue }
+            let mine = r.insetBy(dx: tol, dy: tol)
+            let crossing = visibleHosts.contains { o in
+                o !== host && o.role != .card && (o.rect ?? placement.page).insetBy(dx: tol, dy: tol).intersects(to) && isCut(o) && frame(o).intersects(mine)
+            }
+            if !crossing { out.sides.insert(side) }
+        }
+        return out
+    }
+    // How far a pane's window passes it on `side` (points; 0 or less: not at all).
+    private func hidden(_ side: PaneSide, pane r: CGRect, window w: CGRect) -> CGFloat {
+        switch side { case .left: r.minX - w.minX; case .right: w.maxX - r.maxX; case .up: r.minY - w.minY; case .down: w.maxY - r.maxY }
+    }
+    // A cut pane's alignment that shows `side` (its window's start at the pane's for its left or top, its end at the
+    // pane's for its right or bottom), the other axis as it is now.
+    private func slideFor(_ host: Host, _ side: PaneSide) -> PaneSlide? {
+        guard let r = host.rect else { return nil }
+        let f = frame(host), tol = options.tolerance
+        // (Along an axis now: true when its window passes its pane's start, false its end, nil neither.)
+        func now(_ start: CGFloat, _ end: CGFloat, _ ws: CGFloat, _ we: CGFloat) -> Bool? { ws < start - tol ? true : we > end + tol ? false : nil }
+        let x = now(r.minX, r.maxX, f.minX, f.maxX), y = now(r.minY, r.maxY, f.minY, f.maxY)
+        switch side {
+        case .left: return PaneSlide(pane: r, endX: false, endY: y)
+        case .right: return PaneSlide(pane: r, endX: true, endY: y)
+        case .up: return PaneSlide(pane: r, endX: x, endY: false)
+        case .down: return PaneSlide(pane: r, endX: x, endY: true)
+        }
+    }
+    // Its window's frame once slid to show `side`.
+    private func slidFrame(_ host: Host, _ side: PaneSide) -> CGRect {
+        guard let r = host.rect, let s = slideFor(host, side) else { return frame(host) }
+        return paneFrame(host, r, area: placementFor(host).area, endX: s.endX, endY: s.endY)
+    }
+    // The visible panes a cut pane's window lies under (it passes its own pane into theirs): it's kept behind them. None
+    // for one that isn't cut, or whose rest is past the display's edge or under Margin's window.
+    private func lyingUnder(_ h: Host) -> [Host] {
+        guard isCut(h) else { return [] }
+        let f = frame(h), tol = options.tolerance
+        return visibleHosts.filter { o in o !== h && o.role != .card && (o.rect ?? placement.page).insetBy(dx: tol, dy: tol).intersects(f) }
+    }
+    private func tucked(_ h: Host) -> Bool { !lyingUnder(h).isEmpty }
+    // Cut panes lying under others, back to front: each behind every one it lies under, else as given (the focused one,
+    // given last, as far in front as that lets it). A loop (two over each other's, which `cutOf` never offers): as given.
+    private func tuckedOrder(_ list: [Host]) -> [Host] {
+        guard list.count > 1 else { return list }
+        var left = list, out: [Host] = []
+        while !left.isEmpty {
+            // (The first one no other left lies under: nothing left must be behind it.)
+            guard let i = left.firstIndex(where: { h in !left.contains { o in o !== h && lyingUnder(o).contains { $0 === h } } }) else { return out + left }
+            out.append(left.remove(at: i))
+        }
+        return out
+    }
+
+    // Whether a visible pane's window is wider or taller than its pane (cut), and so lies partly under another.
+    func isCut(_ host: Host) -> Bool {
+        guard host.mode != .window, host.role != .card, let r = host.rect else { return false }
+        let f = frame(host)
+        return f.width > r.width + options.tolerance || f.height > r.height + options.tolerance
     }
     private func fitted(_ host: Host, _ p: HostPlacement? = nil) -> HostPlacement {
-        var pl = p ?? placement
+        var pl = p ?? placementFor(host)
         pl.page = frame(host, pl)
         return pl
+    }
+
+    // ---- several visible hosts per Margin window (docs/PEEK-SPLIT.md §1) ----
+
+    // A host's own page area: its rect in its role (a card's, a pane's; a split's main pane's), else Margin's page area.
+    // Kept on the host while it's parked, so a parked card is never sized for the page area.
+    private func pageOf(_ host: Host) -> CGRect { host.rect ?? placement.page }
+    // Margin's placement with the host's own page area in it.
+    private func placementFor(_ host: Host) -> HostPlacement {
+        guard let rect = host.rect else { return placement }
+        var p = placement
+        p.page = rect
+        return p
+    }
+    // Visible now: in the layout and shown (with one host: the one shown).
+    private func isVisible(_ id: HostID) -> Bool { visible[id] != nil && hosts[id]?.phase == .shown }
+    // The hosts visible now, back to front (`z`), the focused one last among equals.
+    private var visibleHosts: [Host] {
+        visible.sorted { ($0.value.z, $0.key == shown ? 1 : 0, $0.key.raw) < ($1.value.z, $1.key == shown ? 1 : 0, $1.key.raw) }
+            .compactMap { hosts[$0.key] }.filter { $0.phase == .shown }
+    }
+    // The visible host at the page area's own role (main), else the focused one.
+    private var mainHost: Host? { visibleHosts.first { $0.role == .main } ?? shown.flatMap { hosts[$0] } }
+    // A card's or a pane's rect narrower or lower than its window's own minimum: never laid out so (never under the
+    // sidebar, never below its minimum: the UI clamps first, §4).
+    private func belowMinimum(_ host: Host, _ rect: CGRect? = nil) -> Bool {
+        // (A split's pane never is: its window is cut, `frame`. A card only.)
+        guard host.mode != .window, host.role == .card, let m = host.minSize ?? appMinimum(appKey(host.target), pid: host.pid), let r = rect ?? host.rect else { return false }
+        return r.width < m.width - options.tolerance || r.height < m.height - options.tolerance
+    }
+
+    // ---- every app's own window minimum, known before its window is made (docs/PEEK-SPLIT.md §4) ----
+    // The real screen, 2026-11-21 13:26:54: a third Safari pane let into a split of two (3 × 574 + gaps > 1264), its
+    // window made and refused 0.6 s later: the page knew only the minimums of the hosts shown, and a new pane's window
+    // doesn't exist yet. Now each app's minimum, as its tile said it (`learnMinimum`: Safari's from any of its windows),
+    // is kept per app and per version of it, in minimums.json beside routes.json (as the routes are, so it's known from
+    // the next launch on), told to the page for every pane (`appMinimums`), and checked before anything is opened.
+    private struct AppMinimum: Codable, Equatable { var version: String; var width: Double; var height: Double }
+    private var appMinimums: [String: AppMinimum] = [:]
+    private var minimumsURL: URL? { markerURL?.deletingLastPathComponent().appendingPathComponent("minimums.json") }
+    private var versions: [pid_t: String] = [:] // (read once per process: a minimum looked up per frame of a drag reads none)
+    // Told whenever an app's known minimum changes (the session tells Margin's window's page: `knownAppMinimums`).
+    var onAppMinimums: (() -> Void)?
+    // The app a host's window belongs to, by its bundle id (every Safari window: Safari's).
+    private func appKey(_ target: HostTarget) -> String {
+        switch target {
+        case .app(let bundle): return bundle
+        case .safariWindow: return options.safariBundle
+        }
+    }
+    private func version(of pid: pid_t) -> String? {
+        if let v = versions[pid] { return v }
+        let v = sys.appVersion(pid: pid)
+        if let v { versions[pid] = v }
+        return v
+    }
+    // An app's known minimum (nil: none known, or kept for another version of it than the one running as `pid`).
+    private func appMinimum(_ key: String, pid: pid_t? = nil) -> CGSize? {
+        guard let m = appMinimums[key] else { return nil }
+        if let pid = pid ?? sys.running(bundleId: key).first?.pid, let v = version(of: pid), v != m.version { return nil }
+        return CGSize(width: m.width, height: m.height)
+    }
+    // A target's window's minimum: its own host's as learnt, else its app's known one. Nil: none known (a window-mode
+    // host's is its own business).
+    func knownMinimum(of target: HostTarget) -> CGSize? {
+        if let h = hosts[target.id] { return h.mode == .window ? nil : h.minSize ?? appMinimum(appKey(target), pid: h.pid) }
+        return appMinimum(appKey(target))
+    }
+    // Every app's known minimum, by bundle id (the running version's only).
+    var knownAppMinimums: [String: CGSize] {
+        var out: [String: CGSize] = [:]
+        for key in appMinimums.keys { if let m = appMinimum(key) { out[key] = m } }
+        for h in hosts.values where h.mode != .window { if let m = h.minSize { out[appKey(h.target)] = m } }
+        return out
+    }
+    // A host's minimum as just learnt, kept as its app's (and saved) when it's new for that app's version.
+    private func rememberMinimum(_ host: Host, _ m: CGSize) {
+        let key = appKey(host.target)
+        let v = version(of: host.pid) ?? "?"
+        let next = AppMinimum(version: v, width: Double(m.width), height: Double(m.height))
+        guard appMinimums[key] != next else { return }
+        appMinimums[key] = next
+        saveMinimums()
+        Diagnostics.note("host: \(key) \(v): its windows' minimum \(Int(m.width))×\(Int(m.height)) kept for it (before any of its windows is made, from now on)")
+        onAppMinimums?()
+    }
+    private func loadMinimums() {
+        guard let url = minimumsURL, let data = try? Data(contentsOf: url),
+              let read = try? JSONDecoder().decode([String: AppMinimum].self, from: data) else { return }
+        appMinimums = read.filter { $0.value.width >= 0 && $0.value.height >= 0 && $0.value.width < 20000 && $0.value.height < 20000 }
+    }
+    private func saveMinimums() {
+        guard let url = minimumsURL, let data = try? JSONEncoder().encode(appMinimums) else { return }
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? data.write(to: url, options: .atomic)
+    }
+    // `shown` changed outside a whole layout's change: the layout is it alone (main at the page area), or what's left.
+    private func followShown(_ was: HostID?) {
+        guard !applyingLayout else { return }
+        if let id = shown {
+            // (Alone at the page area from now: its rect and role as the layout says, never a pane's rect kept on it,
+            // which every placing reads: `pageOf`.)
+            if visible[id] == nil { visible = [id: HostVisible(rect: nil, role: .main, z: 0)]; hosts[id]?.rect = nil; hosts[id]?.role = .main; hosts[id]?.slid = nil }
+        } else if let was {
+            visible[was] = nil
+        }
+    }
+    // The order hosts are looked at in: the focused one, the others visible, the rest.
+    private func rank(_ id: HostID) -> Int { id == shown ? 0 : isVisible(id) ? 1 : 2 }
+    // A card's or a pane's rect below its window's minimum, said once for that rect (and told as a failed placing).
+    private var belowSaid: [HostID: CGRect] = [:]
+    private func sayBelowMinimum(_ host: Host) {
+        guard let r = host.rect, belowSaid[host.id] != r else { return }
+        belowSaid[host.id] = r
+        let m = host.minSize ?? .zero
+        Diagnostics.note("host: \(host.id): its \(host.role.rawValue) rect \(self.r(r)) is below its window's minimum \(Int(m.width))×\(Int(m.height)): not laid out there (never under the sidebar)")
+        emit(.failed(host.id, .place, "its \(host.role.rawValue) rect is below its window's minimum"))
+    }
+    // The one shown before `id` comes in, to be parked as it does: none while both are in the layout (a card or a pane
+    // comes in beside main, never in its place).
+    private func before(_ id: HostID) -> Host? {
+        guard let s = shown, s != id, let h = hosts[s] else { return nil }
+        return visible[id] != nil && visible[s] != nil ? nil : h
+    }
+    // Hosts no longer visible (parked, gone) out of the layout; never the one shown.
+    private func pruneVisible() {
+        guard !applyingLayout else { return }
+        visible = visible.filter { $0.key == shown || hosts[$0.key].map { $0.phase != .parked } == true }
+    }
+    // The focus asked for (`setLayout`, `focus`): kept while it's visible (a step that shows another host in the layout
+    // moves `shown` to it on its way). Nil: with one visible host, always.
+    private var focusWanted: HostID?
+    // At the end of each operation: the layout as it is (hosts parked or gone out of it), the focus where it was asked
+    // (or on the frontmost one left when the focused one went), said to Margin's window if any of it changed. Nothing
+    // with one visible host (nothing changes then).
+    private func settleVisible() {
+        guard !applyingLayout else { return }
+        let was = (visible, shown)
+        pruneVisible()
+        if visible.count <= 1 { focusWanted = nil }
+        if shown == nil, let next = visibleHosts.last { shown = next.id }
+        if let f = focusWanted, f != shown, isVisible(f) { shown = f }
+        if visible != was.0 || shown != was.1 || !hostedWindowsSaid.isEmpty || visible.count > 1 { announceHosted() }
     }
     // Its tile's rect for a page area: never narrower than its window's minimum.
     private func tileRect(for host: Host, _ p: HostPlacement? = nil) -> CGRect? { tileHome.flatMap { HostLayout.tile(fitted(host, p), home: $0) } }
@@ -3751,7 +4777,9 @@ final class HostEngine {
         guard m != host.minSize else { return false }
         host.minSize = m
         Diagnostics.note("host: \(host.id): its window's own minimum \(Int(m.width))×\(Int(m.height)) (its tile's): never sized smaller, the sidebar's edge stops there while it's shown")
-        if shown == host.id { sayMinimum() }
+        rememberMinimum(host, m)
+        // (A split's pane's too: its page's divider stops there, docs/PEEK-SPLIT.md §4.)
+        if shown == host.id || mainHost === host || isVisible(host.id) { sayMinimum() }
         return true
     }
 
@@ -3763,7 +4791,7 @@ final class HostEngine {
         guard host.mode != .window, host.minSize == nil, let w = host.narrowestHeld else { return }
         host.minSize = CGSize(width: w.rounded(.up), height: 0)
         Diagnostics.note("host: \(host.id): its tile says no minimum and it left one narrower than \(Int(w)): \(Int(w)) taken for its minimum width (never sized narrower)")
-        if shown == host.id { sayMinimum() }
+        if shown == host.id || mainHost === host { sayMinimum() }
     }
 
     // The one shown's own minimum width, told to Margin's window (nil: none, or nothing shown) whenever the one shown
@@ -3772,7 +4800,8 @@ final class HostEngine {
     // page area would be narrower (ui/behaviors/resize.ts), like Split View's divider.
     var onMinimum: ((CGFloat?) -> Void)?
     private func sayMinimum() { onMinimum?(shownMinimumWidth) }
-    var shownMinimumWidth: CGFloat? { shown.flatMap { hosts[$0] }.flatMap { $0.phase == .shown && $0.mode != .window ? $0.minSize?.width : nil } }
+    // (Several visible: main's, the one at the page area; a card's or a pane's minimum never stops the sidebar's edge.)
+    var shownMinimumWidth: CGFloat? { mainHost.flatMap { $0.phase == .shown && $0.mode != .window && $0.rect == nil ? $0.minSize?.width : nil } }
 
     // Its window's own tile (in its own full-screen Space `own`) into Margin's Space at the end of its layout (its window
     // with it, still full screen), the tile limit raised first, then every rect set again, its own to the page area.
@@ -3802,9 +4831,18 @@ final class HostEngine {
         tileCount = sys.tiles(of: marginSpace)?.count ?? list.count + 1
         saveMarker()
         learnMinimum(host)
-        let sized = await reapplyTiles(first: host, each: each)
+        var sized = await reapplyTiles(first: host, each: each)
+        // (One more look before tiles go off for the run: under load the window server can lay Margin's own window out
+        // again, after a tile change, later than `tileWait` — the real Mac, 2026-11-21 15:09, with other test apps
+        // busy: the window at its rect, Margin's own still a split's half, and live resize was off for the whole run.)
+        if landed, !sized {
+            let t1 = sys.now()
+            sized = await reapplyTiles(first: host, each: each)
+            if sized { Diagnostics.note("host: \(host.id): its tile's rect and Margin's own window took \(ms(since: t1)) ms more than \(Int(options.tileWait * 1000)) ms: tiles kept") }
+        }
         guard landed, sized else {
-            return .notSized("its tile \(tile) \(landed ? "came in" : "came in without its window") and its window is at \(sys.bounds(window: host.window).map(r) ?? "?"), not \(r(frame(host)))")
+            let mine = sys.bounds(window: marginWindow)
+            return .notSized("its tile \(tile) \(landed ? "came in" : "came in without its window") and its window is at \(sys.bounds(window: host.window).map(r) ?? "?") (wanted \(r(frame(host)))), Margin's own window at \(mine.map(r) ?? "?") (wanted the display's width \(Int(placement.area.width)))")
         }
         Diagnostics.note("host: \(host.id): its tile \(tile) moved into Margin's Space and sized to the page area in \(ms(since: t0)) ms (\(tileCount) tiles there)")
         return .placed
@@ -3816,7 +4854,6 @@ final class HostEngine {
     // True: the ones waited for are there.
     @discardableResult private func reapplyTiles(first: Host? = nil, each: () -> Void = {}) async -> Bool {
         guard let mine = marginTile, let home = tileHome, tileRect() != nil else { return false }
-        let page = placement.page
         setTileRectIfNeeded(mine, home)
         let lead = first ?? shown.flatMap { hosts[$0] }.flatMap { $0.tile != nil ? $0 : nil }
         var order = hosts.values.filter { $0.tile != nil && $0 !== lead }.sorted { $0.id.raw < $1.id.raw }
@@ -3828,11 +4865,11 @@ final class HostEngine {
         let ok = await wait(options.tileWait, every: options.tileEvery) {
             each()
             let marginBack = self.sys.bounds(window: self.marginWindow).map { $0.width >= area.width - 1 } ?? true
-            let leadThere = lead.map { h in self.sys.bounds(window: h.window).map { HostLayout.near($0, leadFrame ?? page, within: self.options.tolerance) } ?? false } ?? true
+            let leadThere = lead.map { h in self.sys.bounds(window: h.window).map { HostLayout.near($0, leadFrame ?? self.pageOf(h), within: self.options.tolerance) } ?? false } ?? true
             return marginBack && leadThere
         }
         for h in order where h === lead || !parkedAtPage(h) {
-            if h === lead, ok { h.placedPage = page; h.offPageReads = 0; held(h, frame(h).width) } else if h !== lead { h.placedPage = sys.bounds(window: h.window).map { HostLayout.near($0, frame(h), within: options.tolerance) } == true ? page : nil }
+            if h === lead, ok { h.placedPage = pageOf(h); h.offPageReads = 0; held(h, frame(h).width) } else if h !== lead { h.placedPage = sys.bounds(window: h.window).map { HostLayout.near($0, frame(h), within: options.tolerance) } == true ? pageOf(h) : nil }
         }
         tileCount = sys.tiles(of: marginSpace)?.count ?? tileCount
         return ok
@@ -3842,6 +4879,8 @@ final class HostEngine {
     // makes at that size right after is its answer: a helper, never one of its own) and to the causes.
     private func sendTileRect(_ h: Host, _ tile: UInt64, _ rect: CGRect) {
         if sys.tileRect(tile).map({ HostLayout.near($0, rect, within: 0.5) }) == true { return }
+        // (A card's or a pane's rect below its window's minimum: never sent, it would leave its tile.)
+        if belowMinimum(h) { return sayBelowMinimum(h) }
         sized(h, [rect, frame(h)])
         _ = sys.setTileRect(tile, rect)
     }
@@ -3859,7 +4898,7 @@ final class HostEngine {
     // A parked host's tile sized for the page area as it is now (whatever a tile change Margin didn't make did to it
     // since: left so until it's shown).
     private func parkedAtPage(_ h: Host) -> Bool {
-        h.phase == .parked && h.placedPage.map { HostLayout.near($0, placement.page, within: options.tolerance) } == true
+        h.phase == .parked && h.placedPage.map { HostLayout.near($0, pageOf(h), within: options.tolerance) } == true
     }
 
     // Its tile's rect the page area's, and its window there.
@@ -3874,8 +4913,9 @@ final class HostEngine {
     @discardableResult private func sizeTile(_ host: Host) async -> Bool {
         guard let tile = host.tile else { return false }
         learnMinimum(host)
+        if belowMinimum(host) { sayBelowMinimum(host); return false }
         guard let rect = tileRect(for: host) else { return false }
-        let page = placement.page, want = frame(host)
+        let page = pageOf(host), want = frame(host)
         func there() -> Bool { sys.bounds(window: host.window).map { HostLayout.near($0, want, within: options.tolerance) } ?? false }
         if there(), sys.tileRect(tile).map({ HostLayout.near($0, rect, within: 0.5) }) == true { host.placedPage = page; host.offPageReads = 0; return true }
         let t0 = sys.now()
@@ -3976,7 +5016,7 @@ final class HostEngine {
     // Every hosted tile's rect at once (the one shown first), each only if it isn't that already.
     private func sendHostedRects() {
         guard tileRect() != nil else { return }
-        let order = hosts.values.filter { $0.tile != nil }.sorted { ($0.id == shown ? 0 : 1, $0.id.raw) < ($1.id == shown ? 0 : 1, $1.id.raw) }
+        let order = hosts.values.filter { $0.tile != nil }.sorted { (rank($0.id), $0.id.raw) < (rank($1.id), $1.id.raw) }
         for h in order where !parkedAtPage(h) && !h.noTiles { if let t = h.tile, let rect = tileRect(for: h) { sendTileRect(h, t, rect) } }
     }
 
@@ -4033,7 +5073,7 @@ final class HostEngine {
 
     // Its app's identity for the routes: bundle id and version (a new version tries the better route again).
     private func identity(_ host: Host) -> (bundle: String, version: String) {
-        (host.bundleId ?? host.id.raw, sys.appVersion(pid: host.pid) ?? "?")
+        (host.bundleId ?? host.id.main.raw, sys.appVersion(pid: host.pid) ?? "?") // (a card's or pane's: its profile's main window's)
     }
 
     // The route a host opens on, the routes held (an app that fought its tile in an earlier run of this version: a
@@ -4100,24 +5140,31 @@ final class HostEngine {
     // after: the hosted app gets one live-resize start and end, not one per frame: the kit's lead 4).
     @discardableResult func dragging(_ on: Bool) -> Bool {
         if on {
-            guard !liveOn, !quitting, let id = shown, let host = hosts[id], host.phase == .shown, host.tile != nil || host.mode == .window else { return false }
+            // (Several visible, docs/PEEK-SPLIT.md §1: every visible tile or window-mode window follows, each its own rect.)
+            let others = visibleHosts.filter { $0.id != shown && ($0.tile != nil || $0.mode == .window) }
+            guard !liveOn, !quitting, let id = shown, let host = hosts[id], host.phase == .shown, host.tile != nil || host.mode == .window || !others.isEmpty else { return false }
             liveOn = true
             liveHeld = false
             liveLast = sys.now()
             liveStats = LiveStats(since: sys.now())
+            liveRects = [:]
             // (Its minimum read once more as the drag begins (one read, none per frame): the page's edge stops there.)
             if host.tile != nil { learnMinimum(host); _ = sys.setLiveResizing(marginSpace, true) }
+            for o in others where o.tile != nil {
+                learnMinimum(o)
+                if host.tile == nil { _ = sys.setLiveResizing(marginSpace, true) }
+            }
             return true
         }
         guard liveOn else { return false }
         liveOn = false
         liveHeld = false
         livePending = nil
+        liveRects = [:]
+        livePage = nil
         if tilesOK { _ = sys.setLiveResizing(marginSpace, false) }
-        let s = liveStats
-        let sorted = s.followed.sorted()
-        func at(_ q: Double) -> String { sorted.isEmpty ? "-" : String(format: "%.1f", sorted[min(sorted.count - 1, Int(Double(sorted.count) * q))] * 1000) }
-        Diagnostics.note("host: live resize: \(s.asked) page area changes in \(ms(since: s.since)) ms, \(s.sent) sent (\(s.asked - s.sent) coalesced), followed \(s.followed.count) (median \(at(0.5)) ms, p95 \(at(0.95)) ms), \(s.late) not followed within \(Int(options.liveWait * 1000)) ms, \(s.held) frames held by an operation")
+        Diagnostics.note("host: live resize: in \(ms(since: liveStats.since)) ms: \(liveStats.line) (wait \(Int(options.liveWait * 1000)) ms)")
+        lastLive = liveStats
         return true
     }
 
@@ -4126,48 +5173,124 @@ final class HostEngine {
 
     // The page area during a drag (each of the page's layouts): the one shown follows, at most one change a display frame
     // and one in flight; the newest wins. Not Margin's desired page area yet: that's the drag's end (`pageRectChanged`).
-    func follow(_ p: HostPlacement) {
+    func follow(_ p: HostPlacement) { follow(p, rects: [:]) }
+    // `rects`: the other visible hosts' rects in this frame of the drag (a card's, a pane's: the page's measure); one
+    // not given keeps its own. The newest frame wins for every host at once.
+    func follow(_ p: HostPlacement, rects: [HostID: CGRect]) {
         guard liveOn else { return }
         liveLast = sys.now()
         liveStats.asked += 1
+        if let last = liveStats.lastAsk { liveStats.gaps.append(liveLast - last) }
+        liveStats.lastAsk = liveLast
         livePending = p
+        livePage = p.page
+        if !rects.isEmpty, rects != liveRects {
+            liveRects = rects
+            // (Several visible: Margin's window told every one's rect in this frame at once, its holes and the pointer's
+            // way through them following the page, as the one shown's hole follows the page area: docs/PEEK-SPLIT.md §4.)
+            sayHostedWindows(live: p)
+        }
         if livePump == nil { livePump = Task { await self.pumpLive() } }
     }
+    private var liveRects: [HostID: CGRect] = [:]
 
+    // One visible host sent its rect for this frame of a drag (its tile's rect, or its window's frame by Accessibility),
+    // nothing read: the one shown at its own rect in the frame (a split's pane, a card: the page's measure) or the page
+    // area; another visible one at its own, never below its minimum (not sent this frame). What its window should be
+    // at after, nil: nothing sent.
+    private func sendLive(_ host: Host, _ p: HostPlacement) async -> CGRect? {
+        guard host.phase == .shown, host.tile != nil || host.mode == .window else { return nil }
+        var q = p
+        q.page = liveRects[host.id] ?? host.rect ?? p.page
+        // (Never narrower than its window's own minimum: a comparison, nothing read. The page's divider and the sidebar's
+        // edge stop there already; this holds for a minimum learnt mid-drag too.)
+        if host.id != shown, host.rect != nil || liveRects[host.id] != nil, belowMinimum(host, q.page) { return nil }
+        let page = host.tile != nil ? frame(host, q) : q.page
+        if let tile = host.tile, let rect = tileRect(for: host, q) {
+            observer.sized(pid: host.pid, rects: [rect, page]) // (no cause noted a frame: a drag is the person's)
+            guard sys.setTileRect(tile, rect) else { return nil }
+        } else if host.mode == .window {
+            let want = host.resizable ? page : centredIn(page, sys.bounds(window: host.window)?.size ?? page.size)
+            guard await sys.setFrame(pid: host.pid, window: host.window, want, size: host.resizable) else { return nil }
+            host.frameChanged = true
+        } else { return nil }
+        return page
+    }
+
+    // The drag's frames to every visible host that follows (a tile, a window-mode window): each its own rect, at most one
+    // change a display frame and one in flight per host, the newest frame winning. Per host, never in lockstep: a host
+    // whose last rect has landed gets the newest frame at once, whatever another one is still doing (2026-11-21, a
+    // divider between two Safari panes: 255 frames followed, median 26 ms, p95 49 ms, every frame waiting for the slower
+    // of the two before either got the next; one window alone: 4-5 ms). Hosts free in the same tick are sent in the
+    // same tick, tiles first (nothing awaited between them), a window-mode window's frame after.
     private func pumpLive() async {
         defer { livePump = nil }
-        while liveOn, let p = livePending {
-            let t0 = sys.now()
+        // (Each host's rect in flight (where its window should land) and when it was sent; when it was last sent.)
+        var flights: [HostID: (want: CGRect, at: Double, exact: Bool)] = [:]
+        var lastSent: [HostID: Double] = [:]
+        var frame: HostPlacement?
+        var owed: Set<HostID> = [] // followers not yet sent the newest frame
+        while liveOn {
+            let now = sys.now()
+            // (Landed, or given up on after `liveWait`: free for the next frame.)
+            for (id, f) in flights {
+                guard let h = hosts[id] else { flights[id] = nil; continue }
+                let there = !f.exact || sys.bounds(window: h.window).map { HostLayout.near($0, f.want, within: options.tolerance) } == true
+                if there {
+                    liveStats.landed(id, now - f.at)
+                    if h.tile != nil { held(h, f.want.width) }
+                    flights[id] = nil
+                } else if now - f.at >= options.liveWait {
+                    liveStats.missed(id)
+                    flights[id] = nil
+                }
+            }
+            if let p = livePending {
+                livePending = nil
+                frame = p
+                owed = Set(liveFollowersList().map(\.id))
+            }
             // (An operation running, or the one shown left its tile in this drag: held a frame, the newest kept.)
             guard !busy, !quitting, !liveHeld, let id = shown, let host = hosts[id], host.phase == .shown else {
-                liveStats.held += 1
+                if frame != nil, !owed.isEmpty { liveStats.held += 1 }
+                if frame == nil || owed.isEmpty, flights.isEmpty { break }
                 await sys.sleep(options.liveFrame)
                 continue
             }
-            livePending = nil
-            // (Never narrower than its window's own minimum: a comparison, nothing read. The sidebar's edge stops there
-            // in the page already; this holds for a minimum learnt mid-drag too.)
-            let page = host.tile != nil ? frame(host, p) : p.page
-            if let tile = host.tile, let rect = tileRect(for: host, p) {
-                observer.sized(pid: host.pid, rects: [rect, page]) // (no cause noted a frame: a drag is the person's)
-                guard sys.setTileRect(tile, rect) else { break }
-            } else if host.mode == .window {
-                let want = host.resizable ? page : centredIn(page, sys.bounds(window: host.window)?.size ?? page.size)
-                guard await sys.setFrame(pid: host.pid, window: host.window, want, size: host.resizable) else { break }
-                host.frameChanged = true
-            } else { break }
-            liveStats.sent += 1
-            let followed = await wait(options.liveWait, every: options.tileEvery) {
-                self.sys.bounds(window: host.window).map { HostLayout.near($0, page, within: self.options.tolerance) || (host.mode == .window && !host.resizable) } ?? false
+            if let p = frame, !owed.isEmpty {
+                let free = liveFollowersList().filter { owed.contains($0.id) && flights[$0.id] == nil && now - (lastSent[$0.id] ?? -.infinity) >= options.liveFrame - 1e-6 }
+                    .sorted { ($0.tile != nil ? 0 : 1) < ($1.tile != nil ? 0 : 1) }
+                var sentNow: [Host] = []
+                for h in free {
+                    owed.remove(h.id)
+                    let at = sys.now()
+                    guard let want = await sendLive(h, p) else { continue }
+                    flights[h.id] = (want, at, h.mode != .window || h.resizable)
+                    lastSent[h.id] = at
+                    liveStats.sent(h.id)
+                    sentNow.append(h)
+                }
+                if !sentNow.isEmpty {
+                    liveStats.ticks += 1
+                    if sentNow.count > 1 { liveStats.together += 1 }
+                    if owed.isEmpty { liveStats.frames += 1 }
+                    // (A window-mode window's hole is its bounds: Margin's window reads them again now it's moved.)
+                    if host.mode == .window, sentNow.contains(where: { $0 === host }) { hostedWindow?(host.window) }
+                    if sentNow.contains(where: { $0 !== host && $0.mode == .window }) { hostedWindowsSaid = []; sayHostedWindows(live: liveOn ? p : nil) }
+                }
+                if owed.isEmpty { frame = nil }
             }
-            if followed { liveStats.followed.append(sys.now() - t0); if host.tile != nil { held(host, page.width) } } else { liveStats.late += 1 }
-            // (A window-mode window's hole is its bounds: Margin's window reads them again now it's moved.)
-            if host.mode == .window { hostedWindow?(host.window) }
-            let left = options.liveFrame - (sys.now() - t0)
-            if left > 0 { await sys.sleep(left) }
+            if frame == nil, flights.isEmpty, livePending == nil { break }
+            await sys.sleep(options.tileEvery)
         }
     }
 
+    // The visible hosts that follow a drag live (a tile, a window-mode window), the one shown first.
+    private func liveFollowersList() -> [Host] {
+        let list = visible.count > 1 ? visibleHosts : shown.flatMap { hosts[$0] }.map { [$0] } ?? []
+        let shownFirst = list.filter { $0.id == shown } + list.filter { $0.id != shown }
+        return shownFirst.filter { $0.phase == .shown && ($0.tile != nil || $0.mode == .window) }
+    }
     // Live resize: the one shown left its tile for a full-screen Space of its own (its app's answer to a tile it
     // couldn't take: Weather on the real Mac, 2026-11-18 09:08, its tile sent narrower than its minimum): its tile there
     // moved back into Margin's Space and sized (never below its minimum, read from that tile first), that Space
@@ -4203,7 +5326,26 @@ final class HostEngine {
     // The one shown parked with nothing in its place (Margin's window leaving full screen, its window strayed): a
     // member as it is, a window its frame given back first; failing that, out of full screen wherever it is, then
     // parked. Margin's old Space, left with no window of Margin's, destroyed (Mission Control would list it).
-    private func parkShownNow(why: String) async {
+    // Several visible (docs/PEEK-SPLIT.md §1): every one of them parked so, the one shown last; `only`: that one alone (its
+    // window strayed), the focus then on the frontmost one left.
+    private func parkShownNow(why: String, only: Host? = nil) async {
+        for h in visibleHosts.reversed() where h.id != shown && (only == nil || h === only) {
+            let t0 = sys.now()
+            if await !retire(h) {
+                let frozen = holdFreeze()
+                await backOut(h)
+                releaseFreeze(frozen)
+                await park(h)
+                emit(.parked(h.id))
+            }
+            visible[h.id] = nil
+            saveMarker()
+            Diagnostics.note("host: \(h.id) parked (\(why)) in \(ms(since: t0)) ms")
+            emit(.unshown(h.id))
+        }
+        if let only, only.id != shown { return }
+        let rest = only == nil ? [] : visibleHosts.filter { $0.id != shown }
+        defer { if let next = rest.last(where: { $0.phase == .shown }), shown == nil { shown = next.id } }
         guard let id = shown, let host = hosts[id] else { return }
         let t0 = sys.now()
         // (Strayed, it may be in a full-screen Space of its own by now: given back once it's left.)
@@ -4252,7 +5394,7 @@ final class HostEngine {
         // (Closed meanwhile, its close told after the poll's read: the poll's gone path and the reconciler's grace, never
         // brought back: a closed window put back in Margin's Space was placed again, refused, and reopened, 19:04.)
         guard let host = hosts[id], !closedByItsApp(host) else { return }
-        if host.phase == .shown, shown == id {
+        if isVisible(id) {
             let spaces = sys.spaces(window: host.window)
             // (Mid-drag: not followed again until it's over, whatever comes of it; never twice in one drag.)
             if liveOn, spaces != [marginSpace] { liveHeld = true }
@@ -4270,7 +5412,7 @@ final class HostEngine {
             guard host.returns.count <= options.returnsMax else {
                 Diagnostics.note("host: \(id): shown, out of Margin's Space again (\(seen)), \(host.returns.count) times in \(Int(options.returnsWithin)) s: parked")
                 host.returns = []
-                return await parkShownNow(why: "its window keeps leaving Margin's Space")
+                return await parkShownNow(why: "its window keeps leaving Margin's Space", only: host)
             }
             guard guarded(host, "put back") else { return }
             Diagnostics.note("host: \(id): shown, found out of Margin's Space (\(seen)): brought back")
@@ -4293,13 +5435,13 @@ final class HostEngine {
               await wait(options.memberWait, every: options.memberEvery, { self.sys.spaces(window: host.window) == [self.marginSpace] }) else {
             // In no Space at all and the bridge doesn't put it back: out of full screen and placed again (what the early
             // path's own fallback did on the real Mac, 2026-11-17), behind the loader. Else parked, nothing shown.
-            guard spaces.isEmpty, host.mode != .window else { return await parkShownNow(why: "its window left Margin's Space and didn't come back into it") }
+            guard spaces.isEmpty, host.mode != .window else { return await parkShownNow(why: "its window left Margin's Space and didn't come back into it", only: host) }
             Diagnostics.note("host: \(host.id): in no Space and not put back by a move: out of full screen and placed again")
             let frozen = holdFreeze()
             await backOut(host)
             releaseFreeze(frozen)
             host.phase = .preparing
-            if case .failed = await placeFullScreen(host, isNew: false, retrying: false), shown != host.id { emit(.unshown(host.id)) }
+            if case .failed = await placeFullScreen(host, isNew: false, retrying: false), !isVisible(host.id) { emit(.unshown(host.id)) }
             return
         }
         for space in own where sys.spaceExists(space) == true {
@@ -4320,7 +5462,7 @@ final class HostEngine {
             host.placedPage = nil
             if shown == host.id { shown = nil }
             host.phase = .preparing
-            if case .failed = await placeFullScreen(host, isNew: false, retrying: false), shown != host.id { emit(.unshown(host.id)) }
+            if case .failed = await placeFullScreen(host, isNew: false, retrying: false), !isVisible(host.id) { emit(.unshown(host.id)) }
         }
         checkListed("after \(host.id) was brought back")
     }
@@ -4341,7 +5483,7 @@ final class HostEngine {
     //   (what brought it back on the real Mac, 2026-11-17). `returnsMax` times in `returnsWithin` at most, then left as it
     //   is, said once.
     private func backOnScreen(_ id: HostID) async {
-        guard let host = hosts[id], host.phase == .shown, shown == id, let look = screenLook(sys.onScreenWindows()), !(look.margin && look.host) else { return }
+        guard let host = hosts[id], isVisible(id), let look = screenLook(sys.onScreenWindows(), of: host), !(look.margin && look.host) else { return }
         let own = sys.windowOnScreen(host.window)
         if look.margin, let own, own.onScreen, own.alpha > 0 { return }
         let spaces = sys.spaces(window: host.window)
@@ -4351,14 +5493,15 @@ final class HostEngine {
             + ", Margin's Space \(marginSpace), its window in \(sys.spaces(window: marginWindow).map { "\($0)" } ?? "Spaces that don't read")"
             + ", the displays' current Spaces \(sys.currentSpaces().map { $0.joined(separator: ", ") } ?? "unread")"
             + (host.askedFullScreenAt.map { ", \(ms(since: $0)) ms after it was last asked into full screen" } ?? "")
-        offTries = offTries.filter { sys.now() - $0 < options.returnsWithin }
+        // (Its own budget: a split's other panes' tries never use it up, docs/PEEK-SPLIT.md §4.)
+        host.offTries = host.offTries.filter { sys.now() - $0 < options.returnsWithin }
         if look.margin, current == marginSpace, spaces == [marginSpace] {
-            guard offActedFor != shownAt, offTries.count < options.returnsMax else {
-                if offInPlaceSaid != shownAt { offInPlaceSaid = shownAt; Diagnostics.note("host: \(id): shown, still not on screen in Margin's Space (\(seen)): left as it is until it's shown again") }
+            guard host.offActedFor != host.visibleAt, host.offTries.count < options.returnsMax else {
+                if host.offInPlaceSaid != host.visibleAt { host.offInPlaceSaid = host.visibleAt; Diagnostics.note("host: \(id): shown, still not on screen in Margin's Space (\(seen)): left as it is until it's shown again") }
                 return
             }
-            offActedFor = shownAt
-            offTries.append(sys.now())
+            host.offActedFor = host.visibleAt
+            host.offTries.append(sys.now())
             // (Its app's own first, the reconciler's rungs not tried yet this show: an app that ordered its window out
             // orders it in again at its activation or its reopen (ordersOut after: placing it again only took it out of
             // full screen and back, again and again). Then placed again: macOS's own change that left it undrawn.)
@@ -4372,21 +5515,21 @@ final class HostEngine {
             await backOut(host)
             releaseFreeze(frozen)
             host.phase = .preparing
-            if case .failed = await placeFullScreen(host, isNew: false, retrying: false), shown != host.id { emit(.unshown(host.id)) }
+            if case .failed = await placeFullScreen(host, isNew: false, retrying: false), !isVisible(host.id) { emit(.unshown(host.id)) }
             return
         }
-        guard offTries.count < options.returnsMax else {
-            if !offSaid { offSaid = true; Diagnostics.warn("host: \(id): shown, not on screen (\(seen)), \(offTries.count) times in \(Int(options.returnsWithin)) s: left as it is") }
+        guard host.offTries.count < options.returnsMax else {
+            if !host.offSaid { host.offSaid = true; Diagnostics.warn("host: \(id): shown, not on screen (\(seen)), \(host.offTries.count) times in \(Int(options.returnsWithin)) s: left as it is") }
             return
         }
-        offTries.append(sys.now())
+        host.offTries.append(sys.now())
         let t0 = sys.now()
         let makeCurrent = current != marginSpace || !look.margin
         let moveIn = !look.host && (spaces != [marginSpace] || !look.margin)
         Diagnostics.note("host: \(id): shown, not on screen (\(seen)): \([makeCurrent ? "Margin's Space made current again" : nil, moveIn ? "its window moved into it again" : nil].compactMap { $0 }.joined(separator: ", "))")
         if makeCurrent { _ = sys.setCurrentSpace(marginSpace) }
         if moveIn { _ = sys.move(window: host.window, to: marginSpace) }
-        let back = await wait(options.memberWait, every: options.memberEvery) { self.screenLook(self.sys.onScreenWindows()).map { $0.margin && $0.host } ?? true }
+        let back = await wait(options.memberWait, every: options.memberEvery) { self.screenLook(self.sys.onScreenWindows(), of: host).map { $0.margin && $0.host } ?? true }
         if back {
             Diagnostics.note("host: \(id) on screen again in \(ms(since: t0)) ms, still shown")
             hostedSaid = nil
@@ -4398,7 +5541,7 @@ final class HostEngine {
         await backOut(host)
         releaseFreeze(frozen)
         host.phase = .preparing
-        if case .failed = await placeFullScreen(host, isNew: false, retrying: false), shown != host.id { emit(.unshown(host.id)) }
+        if case .failed = await placeFullScreen(host, isNew: false, retrying: false), !isVisible(host.id) { emit(.unshown(host.id)) }
     }
 
     // The one shown before, out of Margin's Space: a member parked as it is (still full screen); a window its frame
@@ -4465,6 +5608,45 @@ final class HostEngine {
         host.phase = .parked
         if shown == host.id { shown = nil }
         saveMarker()
+    }
+
+    // ---- a cut pane's arrows (docs/PEEK-SPLIT.md §4b) ----
+
+    // `side` of a cut pane's window shown: its window slid to its other alignment along that axis (`slideFor`: past the
+    // display's edge too), its tile's rect moved there over `slideTime`, eased, one rect a frame (~0.2 ms each, the window
+    // a frame behind at most, measured 2026-11-21 with Safari). Coming in under a pane it will lie under: ordered behind
+    // it first, so it never shows over it on its way. A member (no tile) moves at once. False: not a side its arrow shows
+    // (`cutOf`), or not shown.
+    @discardableResult func slide(_ id: HostID, side: PaneSide) async -> Bool {
+        await serial(planned: true) {
+            guard let h = self.hosts[id], h.phase == .shown, self.isVisible(id), let cut = self.cutOf(h), cut.sides.contains(side), let to = self.slideFor(h, side) else { return false }
+            let from = self.frame(h)
+            let wasUnder = self.tucked(h)
+            h.slid = to
+            let target = self.frame(h)
+            if self.tucked(h), !wasUnder { await self.frontVisible() }
+            if let tile = h.tile, !h.noTiles, let home = self.tileHome {
+                let t0 = self.sys.now()
+                var steps = 0
+                while true {
+                    let k = min(1, (self.sys.now() - t0) / self.options.slideTime)
+                    let e = 1 - pow(1 - k, 3) // (ease out)
+                    var p = self.placement
+                    p.page = CGRect(x: from.minX + (target.minX - from.minX) * e, y: from.minY + (target.minY - from.minY) * e, width: target.width, height: target.height)
+                    if let rect = HostLayout.tile(p, home: home) { self.sendTileRect(h, tile, rect) }
+                    steps += 1
+                    if k >= 1 { break }
+                    await self.sys.sleep(self.options.liveFrame)
+                }
+                Diagnostics.note("host: \(id): slid to show its \(side.rawValue) side, \(self.r(from)) → \(self.r(target)) in \(self.ms(since: t0)) ms (\(steps) rects)\(self.tucked(h) ? ", under the pane beside it" : "")")
+            } else {
+                _ = await self.place(h)
+                Diagnostics.note("host: \(id): moved to show its \(side.rawValue) side, \(self.r(from)) → \(self.r(target)) (no tile: at once)")
+            }
+            if !self.tucked(h) { self.cutOrderRight(h.id) }
+            self.sayHostedWindows()
+            return true
+        }
     }
 
     // ---- closing ----
@@ -4860,6 +6042,7 @@ final class HostEngine {
     // still running: nothing changes (still hosted, still Margin's), said once.
     private var quitDoubted: Set<pid_t> = []
     private func appQuit(_ pid: pid_t) {
+        if !sys.processRuns(pid: pid) { versions[pid] = nil } // (its version read again for whatever runs as that pid next)
         if sys.processRuns(pid: pid) {
             let ids = hosts.values.filter { $0.pid == pid }.map(\.id.description).sorted()
             if (!ids.isEmpty || launched[pid] != nil), quitDoubted.insert(pid).inserted {
@@ -4869,6 +6052,7 @@ final class HostEngine {
         }
         quitDoubted.remove(pid)
         exited(pid)
+        if actives.kept[pid] != nil || actives.touched[pid] != nil { actives.gone(pid); onKeptActive?(Set(actives.kept.keys)) }
         let gone = hosts.values.filter { $0.pid == pid }
         let wasLaunched = launched.removeValue(forKey: pid) != nil
         guard !gone.isEmpty || wasLaunched else { return }
@@ -4948,6 +6132,183 @@ final class HostEngine {
         emit(.listed(still))
     }
 
+    // ---- all panes active (PanesActive.swift) ----
+    // Never through `serial`: a front change re-asserts the split's other panes at once, whatever operation runs.
+
+    // Margin's hosting window's split as the pane click tap is told it (nil: none shown on the current Space).
+    // Only its panes' windows, apps and roles and its focused window count (a drag's rects every frame: nothing).
+    func panesShown(_ scene: PaneClickScene?) {
+        let next = scene.map { s in PaneClickScene(panes: s.panes.map { PaneClickScene.Pane(rect: .zero, pid: $0.pid, window: $0.window, card: $0.card) }, focused: s.focused) }
+        guard next != activeScene else { return }
+        activeScene = next
+        queueActives()
+    }
+
+    // An app made the front one (NSWorkspace's activation, the tap's focus): counted only if it is the window server's
+    // front process now (a record's activation is never the window server's).
+    func frontChanged(_ pid: pid_t?) {
+        // (A cut pane's app made the front one some other way (⌘-Tab, the app itself): macOS raised its window over a pane
+        // it lies under: the order put right again, its keys kept without a raise. Only then: one read of the window list,
+        // nothing for any other app or a cut pane still behind (Margin's own focus without a raise).)
+        if let pid, visibleHosts.contains(where: { $0.pid == pid && overPaneItLiesUnder($0) }) { Task { _ = await self.repairCutOrder(pid) } }
+        // (No split shown and nothing kept: nothing, whatever app comes in front.)
+        guard activeScene != nil || !actives.kept.isEmpty, sys.keepsPanesActive || !actives.kept.isEmpty else { return }
+        if let pid, (sys.frontProcess() ?? sys.frontApp()) == pid { actives.heardFront(pid) }
+        queueActives()
+    }
+
+    private var cutRepairs: [HostID: [Double]] = [:]
+    private var cutRepairSaid: Set<HostID> = []
+    private var cutRepairsFailed: [HostID: Int] = [:]
+    // `h`'s window raised over `below`'s (overlapping: a neighbour over a cut pane lying under it, a cut pane over another
+    // lying under it). Its activation must be a real one for AppKit to raise its window: not kept active by records (let
+    // go first; PanesActive keeps it again later), and not the front app already (the front handed to `below` first,
+    // without a raise): the sequence the real screen took, 2026-11-21/22. Its app raises its window as it takes the
+    // activation, on its own thread: the keys moved on before then and it never does (2026-11-22: a neighbour activated
+    // and the keys back 10 ms later, its window still under, eight tries). Waited for until the window server shows it
+    // over, `orderWait` at most; unread: not waited for.
+    private func raiseOver(_ h: Host, _ below: Host) async -> Bool {
+        if let w = actives.kept[h.pid] { sys.releaseActiveNow([PaneWindow(pid: h.pid, window: w)]) }
+        if (sys.frontProcess() ?? sys.frontApp()) == h.pid { _ = sys.focusWithoutRaise(pid: below.pid, window: below.window) }
+        let ok = await front(h)
+        _ = await wait(options.orderWait, every: options.memberEvery) { self.windowBehind(below.window, h.window) ?? true }
+        return ok
+    }
+    // Whether a visible cut pane's window is over a pane it lies under (the window server's order; `list`: an on-screen
+    // list already read, the poll's; nil: read now). False: it isn't, it lies under none, or unread.
+    private func overPaneItLiesUnder(_ h: Host, list: [Int]? = nil) -> Bool {
+        let under = lyingUnder(h)
+        guard !under.isEmpty else { return false }
+        let behind: (Int, Int) -> Bool? = { a, b in
+            guard let list else { return self.windowBehind(a, b) }
+            guard let ia = list.firstIndex(of: a), let ib = list.firstIndex(of: b) else { return nil }
+            return ia > ib
+        }
+        return under.contains { behind($0.window, h.window) == true }
+    }
+    // A visible cut pane of `pid`'s app whose window is over a pane it lies under now, nil: none.
+    private func cutWindowOver(_ pid: pid_t) -> Host? { visibleHosts.first { $0.pid == pid && overPaneItLiesUnder($0) } }
+    // That cut pane put back under the panes it lies under, its keys kept without a raise (`frontVisible`). True: it was over.
+    func repairCutOrder(_ pid: pid_t) async -> Bool {
+        await serial(planned: true) {
+            guard let h = self.cutWindowOver(pid) else { return false }
+            // (A loop's guard: put back 3 times in 5 s and over again each time (the app raising it again), or 3 put-backs
+            // in a row that didn't take (its neighbour's raise refused): left as it is, said once, and not tried again
+            // until its window is seen behind them (the poll) or it leaves the split. Never a few tries every 5 s for good.)
+            guard !self.cutRepairSaid.contains(h.id) else { return false }
+            let now = self.sys.now()
+            var tries = (self.cutRepairs[h.id] ?? []).filter { now - $0 < 5 }
+            let failed = self.cutRepairsFailed[h.id] ?? 0
+            guard tries.count < 3, failed < 3 else {
+                self.cutRepairSaid.insert(h.id)
+                Diagnostics.warn("host: \(h.id): " + (failed >= 3 ? "put back under the panes beside it 3 times and it never went under: left as it is" : "put back under the panes beside it 3 times in 5 s and over them again: left as it is"))
+                return false
+            }
+            tries.append(now)
+            self.cutRepairs[h.id] = tries
+            Diagnostics.note("host: \(h.id): its app came in front some other way, its window over a pane it lies under: put back under it")
+            await self.frontVisible()
+            let took = self.cutWindowOver(pid) == nil
+            self.cutRepairsFailed[h.id] = took ? 0 : failed + 1
+            if !took { Diagnostics.note("host: \(h.id): put back, still over the pane it lies under (\(failed + 1) in a row)") }
+            return true
+        }
+    }
+    // (Seen behind the panes it lies under, or out of the split: its loop's guard reset.)
+    private func cutOrderRight(_ id: HostID) { cutRepairSaid.remove(id); cutRepairsFailed[id] = nil }
+
+    var keptActive: Set<pid_t> { Set(actives.kept.keys) }
+    var paneFronting: PaneFronting? { sys.paneFronting }
+    var paneDelivery: PaneFronting? { sys.paneDelivery }
+
+    private func queueActives() {
+        guard sys.keepsPanesActive || !actives.kept.isEmpty else { return } // (off with nothing kept: nothing at all)
+        guard options.activesCoalesced else { return stepActives() }
+        guard !activeQueued else { return }
+        activeQueued = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.activeQueued = false
+            self.stepActives()
+        }
+    }
+
+    // One step of the keeper over the scene, the window server's front app and what's hosted; its records sent off the
+    // main thread (RealHostSystem's queue); a let-go waiting for its grace stepped again then (no timer otherwise).
+    func stepActives() {
+        activeDue?.cancel()
+        activeDue = nil
+        let touched = actives.touched, kept = actives.kept
+        let actions: [PanesActiveKeeper.Action]
+        if quitting || !sys.keepsPanesActive {
+            actions = actives.releaseAll(why: quitting ? "Margin quits" : "panes active off")
+        } else {
+            let scene = activeScene
+            let front = sys.frontProcess() ?? sys.frontApp()
+            actions = actives.step(panes: scene?.panes ?? [], focused: scene?.focused, front: front, margin: ownPid,
+                                   hosted: { pid in self.hosts.values.contains { $0.pid == pid } },
+                                   allowed: { p in self.exiting[p.pid] == nil && self.hosts.values.contains { $0.window == p.window && $0.pid == p.pid && $0.phase == .shown } },
+                                   ending: { pid in self.exiting[pid] != nil || self.quitAsked.contains(pid) }, now: sys.now())
+        }
+        for a in actions {
+            switch a {
+            case .keep(let w): sys.keepActive(w)
+            case .move(let w, let from): sys.moveActive(w, from: from)
+            case .release(let w, _): sys.releaseActive(w)
+            }
+        }
+        if !actions.isEmpty { sayActives(actions) }
+        if actives.touched != touched { saveMarker() }
+        if actives.kept != kept { onKeptActive?(Set(actives.kept.keys)) }
+        if let due = actives.due {
+            let item = DispatchWorkItem { [weak self] in self?.stepActives() }
+            activeDue = item
+            DispatchQueue.main.asyncAfter(deadline: .now() + max(0.01, due - sys.now()), execute: item)
+        }
+    }
+
+    // Every app kept let go at once, its records sent before this returns (Margin quits or ends).
+    func releaseActivesNow(why: String) {
+        activeDue?.cancel()
+        activeDue = nil
+        let actions = actives.releaseAll(why: why)
+        guard !actions.isEmpty else { return }
+        sys.releaseActiveNow(actions.compactMap { if case .release(let w, _) = $0 { return w }; return nil })
+        sayActives(actions)
+        saveMarker()
+        onKeptActive?([])
+    }
+
+    // One line a step: what was kept, moved, let go (and why), and the app with the keys.
+    private func sayActives(_ actions: [PanesActiveKeeper.Action]) {
+        func name(_ w: PaneWindow) -> String { hosts.values.first { $0.window == w.window }.map { "\($0.id)" } ?? "pid \(w.pid)" }
+        let parts = actions.map { a -> String in
+            switch a {
+            case .keep(let w): return "\(name(w)) kept active (its \(w))"
+            case .move(let w, let from): return "\(name(w)) kept active by its \(w) (was window \(from))"
+            case .release(let w, let why): return "\(name(w)) let go (\(why); its \(w))"
+            }
+        }
+        let front = sys.frontProcess() ?? sys.frontApp()
+        let keys = front.flatMap { f in hosts.values.first { $0.pid == f }.map { "\($0.id)" } } ?? front.map { "pid \($0)" } ?? "unread"
+        Diagnostics.note("panes active: " + parts.joined(separator: "; ") + " (the keys: \(keys); \(actives.kept.count) kept)")
+    }
+
+    // After a crash: each app the marker says was kept active, still that launch, not the front one, and still taking
+    // itself for the active app (AppKit's word; unread: taken as so), deactivated. Their count.
+    private func releaseCrashedActives(_ list: [HostMarker.Kept]) async -> Int {
+        var n = 0
+        for k in list {
+            guard let now = sys.app(pid: k.pid), k.bundleId == nil || now.bundleId == k.bundleId else { continue }
+            if let then = k.launchedAt, let at = now.launchedAt, abs(then - at) >= 2 { continue } // (its pid used again)
+            guard (sys.frontProcess() ?? sys.frontApp()) != k.pid, await sys.appActive(pid: k.pid) != false else { continue }
+            sys.releaseActiveNow([PaneWindow(pid: k.pid, window: k.window)])
+            n += 1
+        }
+        if !list.isEmpty { Diagnostics.note("panes active: a crashed Margin kept \(list.count) app\(list.count == 1 ? "" : "s") active: \(n) let go (deactivated), \(list.count - n) gone, in front or not active") }
+        return n
+    }
+
     // ---- the crash marker ----
 
     private func saveMarker() {
@@ -4964,6 +6325,13 @@ final class HostEngine {
         if !hosts.isEmpty || !goneTiles.isEmpty { m.marginTile = marginTile; m.goneTiles = goneTiles.isEmpty ? nil : goneTiles.sorted() }
         // (The anchors: a killed Margin's stay in its Space and keep it listed; its next launch destroys them.)
         if !anchorTiles.isEmpty { m.anchors = anchorTiles; m.marginTile = marginTile }
+        // (All panes active: apps sent active, for the next launch to let go after a crash.)
+        if !actives.touched.isEmpty {
+            m.keptActive = actives.touched.sorted { $0.key < $1.key }.map { pid, window in
+                let app = sys.app(pid: pid)
+                return HostMarker.Kept(pid: pid, window: window, bundleId: app?.bundleId, launchedAt: app?.launchedAt)
+            }
+        }
         if m.isEmpty { try? FileManager.default.removeItem(at: markerURL); return }
         if !m.write(markerURL) { Diagnostics.warn("host: the crash marker wasn't written") }
     }
@@ -4998,6 +6366,7 @@ final class HostEngine {
         }
         let alive = m.apps.filter(same)
         let alivePids = Set(alive.map(\.pid))
+        let letGo = await releaseCrashedActives(m.keptActive ?? [])
         // That Safari still running, the same launch (a pid used again by another Safari isn't it).
         func sameSafari(_ pid: Int32, _ launchedAt: Double?) -> Bool {
             guard let now = sys.app(pid: pid), now.bundleId == options.safariBundle else { return false }
@@ -5085,6 +6454,7 @@ final class HostEngine {
             return
         }
         Diagnostics.note("host: a marker from a Margin that didn't quit cleanly: \(m.apps.count) app\(m.apps.count == 1 ? "" : "s") (\(alive.count) still running, \(quit) quit), "
+                         + (m.keptActive.map { "\($0.count) kept active (\(letGo) let go), " } ?? "")
                          + "\(m.windows.count) window\(m.windows.count == 1 ? "" : "s") (\(outOfFullScreen) out of full screen, \(givenBack) given back where they were), \(destroyed) Space\(destroyed == 1 ? "" : "s") destroyed, "
                          + (tileIds.isEmpty ? "" : "\(tilesDestroyed) of \(tileIds.count) hosted tile\(tileIds.count == 1 ? "" : "s") destroyed, ")
                          + "\(leftSafariWindows.count) Safari window\(leftSafariWindows.count == 1 ? "" : "s") Margin asked for still to close, in \(ms(since: started)) ms")

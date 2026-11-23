@@ -15,21 +15,26 @@
 
 import AppKit
 
-// The page slot of one overlay, in the window server's coordinates (top left).
-struct Slot: Equatable {
+// The page slot of one overlay, in the window server's coordinates (top left). (Nonisolated: the pane click tap reads it
+// on its own thread, PaneClickTap.swift.)
+nonisolated struct Slot: Equatable, Sendable {
     var rect: CGRect
     var radius: CGFloat = 0
     // What the theme draws over the slot that takes the pointer.
     var hits: [CGRect] = []
     // The page asked for the whole window (more over the slot than it could list).
     var captureAll = false
+    // Several visible hosts (docs/PEEK-SPLIT.md §1): the pointer goes through only inside these (each one's hole; a
+    // card's content alone while a card is open), the rest of the slot Margin's. Nil: the whole slot, as before.
+    var holes: [CGRect]? = nil
 }
 
 enum PassThrough {
     // Whether the page gets the pointer at `point` (the overlay ignores the mouse there).
-    static func pageGets(_ point: CGPoint, _ slot: Slot?) -> Bool {
+    nonisolated static func pageGets(_ point: CGPoint, _ slot: Slot?) -> Bool {
         guard let slot, !slot.captureAll, slot.rect.contains(point) else { return false }
         if slot.hits.contains(where: { $0.contains(point) }) { return false }
+        if let holes = slot.holes, !holes.contains(where: { $0.contains(point) }) { return false }
         // Outside a rounded corner of the slot: the theme's.
         let r = min(slot.radius, slot.rect.width / 2, slot.rect.height / 2)
         if r > 0 {
@@ -66,13 +71,15 @@ struct CatchRegion: Equatable {
     var hole: CGRect? // the slot, in the frame's coordinates (top left), cut out
     var radius: CGFloat = 0
     var hits: [CGRect] = [] // filled again over the hole
+    var holes: [CGRect]? = nil // (several visible hosts: only these cut out of the hole, the rest of it filled)
 
     // For an overlay at `frame` (top left) with this slot (window server coordinates).
     static func of(frame: CGRect, slot: Slot?) -> CatchRegion {
         guard let slot, !slot.captureAll else { return CatchRegion(all: true, hole: nil) }
         let hole = slot.rect.offsetBy(dx: -frame.minX, dy: -frame.minY).intersection(CGRect(origin: .zero, size: frame.size))
         guard !hole.isNull, hole.width > 0, hole.height > 0 else { return CatchRegion(all: true, hole: nil) }
-        return CatchRegion(all: false, hole: hole, radius: min(slot.radius, hole.width / 2, hole.height / 2), hits: slot.hits.map { $0.offsetBy(dx: -frame.minX, dy: -frame.minY) })
+        return CatchRegion(all: false, hole: hole, radius: min(slot.radius, hole.width / 2, hole.height / 2), hits: slot.hits.map { $0.offsetBy(dx: -frame.minX, dy: -frame.minY) },
+                           holes: slot.holes.map { $0.map { $0.offsetBy(dx: -frame.minX, dy: -frame.minY).intersection(hole) }.filter { !$0.isNull && $0.width > 0 && $0.height > 0 } })
     }
 
     // Whether a point (in the frame, top left) is filled: the same answer as !PassThrough.pageGets.
@@ -80,7 +87,7 @@ struct CatchRegion: Equatable {
         guard CGRect(origin: .zero, size: size).contains(p) else { return false }
         guard !all, let hole else { return true }
         if hits.contains(where: { $0.contains(p) }) { return true }
-        return !PassThrough.pageGets(p, Slot(rect: hole, radius: radius))
+        return !PassThrough.pageGets(p, Slot(rect: hole, radius: radius, holes: holes))
     }
 }
 
@@ -122,7 +129,7 @@ struct PointerWant: Equatable {
 // each press (a press in the browser re-orders the overlays above it).
 final class PointerWatch {
     var onMove: ((CGPoint) -> Void)? // top-left coordinates
-    var onPress: ((CGPoint) -> Void)?
+    var onPress: ((CGPoint, Int) -> Void)? // (and the press's event number: the window server's, its CGEvent's mouseEventNumber)
     private var monitors: [Any] = []
 
     var isStarted: Bool { !monitors.isEmpty }
@@ -133,7 +140,7 @@ final class PointerWatch {
         let presses: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
         let handle: (NSEvent) -> Void = { [weak self] event in
             let at = ScreenGeometry.topLeftPoint(NSEvent.mouseLocation)
-            if presses.contains(NSEvent.EventTypeMask(rawValue: 1 << event.type.rawValue)) { self?.onPress?(at) } else { self?.onMove?(at) }
+            if presses.contains(NSEvent.EventTypeMask(rawValue: 1 << event.type.rawValue)) { self?.onPress?(at, event.eventNumber) } else { self?.onMove?(at) }
         }
         if let global = NSEvent.addGlobalMonitorForEvents(matching: moves.union(presses), handler: { event in MainActor.assumeIsolated { handle(event) } }) {
             monitors.append(global)
@@ -168,7 +175,11 @@ final class CatchView: NSView {
         fill.setFill()
         NSGraphicsContext.current?.compositingOperation = .copy
         let path = NSBezierPath(rect: bounds)
-        if !region.all, let hole = region.hole {
+        if !region.all, let holes = region.holes {
+            // (Several visible hosts: each one's hole cut out, never overlapping; the rest of the slot filled.)
+            for h in holes { path.append(NSBezierPath(rect: h)) }
+            path.windingRule = .evenOdd
+        } else if !region.all, let hole = region.hole {
             path.append(NSBezierPath(roundedRect: hole, xRadius: region.radius, yRadius: region.radius))
             path.windingRule = .evenOdd
         }
