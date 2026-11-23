@@ -1422,7 +1422,8 @@ The three changes come after the pure moves, each its own commit with tests pinn
    awaits by hand would not.*
 2. **A library edit as a step answered in the same turn** (re-entrant delegate kept) until step 4. *Default: yes.*
 3. **`resetPin`/`resetFavorite` aren't skipped when overtaken** (HS:509-513 vs 495-496). *Default: kept so; say if a
-   reset should be skippable like an open.*
+   reset should be skippable like an open.* *Done (commit 5's second commit): navigated back, then skipped as an open
+   is, checked after the navigate.*
 4. **The page picture's rule:** the Swift's prefix check or hosted_browser's (with its 8 MiB cap). *Default: the
    Swift's.*
 5. **The start screen's 50 ms looks while held up** (HS:1559): kept, or re-checked only on an input (no wakes).

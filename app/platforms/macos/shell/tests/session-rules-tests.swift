@@ -148,15 +148,16 @@ private func libraryPinRequestTests() {
         run { ask(k.reset, ["type": k.reset, "windowId": 1, "item": NSNull(), "url": "", "target": web.json, k.key: k.id, "spaceId": home]) }
         check("pin requests: \(k.reset) with none, addItem refused: silent, nothing shown or made",
               session.done.count == done && shows(since: mark).isEmpty && library.items().count == items && session.shown[1] == reset, "\(session.done.dropFirst(done))")
-        // Reset with its item, overtaken (another item asked for meanwhile): never skipped, the reset's item shown, then the pick.
+        // Reset with its item, overtaken (another item asked for meanwhile; Tirth, 2026-11-23): its tab navigated back still,
+        // not shown (no flash of it before the pick), the pick shown.
         mark = links.asked.count
         done = session.done.count
         run {
             ask(k.reset, ["type": k.reset, "windowId": 1, "item": a, "url": "https://a.example/", "target": web.json, k.key: k.id, "spaceId": home])
             _ = library.perform("activateTab", ["windowId": 1, "tabId": b])
         }
-        check("pin requests: \(k.reset) overtaken: not skipped (navigated, shown), then the later pick shown",
-              !session.done.dropFirst(done).contains { $0.contains("not shown") } && navigates(since: mark).count == 1 && shows(since: mark) == [a, b] && session.shown[1] == b,
+        check("pin requests: \(k.reset) overtaken: navigated back, not shown (said), the later pick shown",
+              session.done.dropFirst(done).contains("\(a): not shown, \(b) asked for since") && navigates(since: mark).count == 1 && shows(since: mark) == [b] && session.shown[1] == b,
               "\(session.done.dropFirst(done)) \(shows(since: mark))")
     }
     run { await engine.quitAll() }

@@ -252,6 +252,31 @@ fn a_pins_open_and_reset_the_four_paths_as_one() {
     assert_eq!(kinds(&seen), ["ask hostNavigate", "ask hostShow"], "a tab switch in the window shown");
     let Command::Ask { payload, .. } = &seen[1] else { panic!() };
     assert_eq!(payload["url"], json!("https://p/"), "the pin's address, not the item's");
+    // Overtaken (Tirth, 2026-11-23): its tab back at its address still, not shown; the item picked after it is.
+    item(
+        &shelf,
+        "w2",
+        json!({ "target": { "kind": "web", "browser": "safari", "profile": "s-default" }, "url": "https://two/" }),
+    );
+    for kind in ["resetPin", "resetFavorite"] {
+        let n = s.done().len();
+        s.input(&json!({ "type": "library", "request": { "type": kind, "item": "w1", "url": "https://p/", "windowId": 1 } }));
+        let out =
+            s.input(&json!({ "type": "library", "request": { "type": "activateTab", "item": "w2", "windowId": 1 } }));
+        let seen = pump(&s, &world, out, &mut usual);
+        assert_eq!(kinds(&seen), ["ask hostNavigate", "ask hostShow"], "{kind}");
+        let (Command::Ask { kind: k0, payload: p0, .. }, Command::Ask { payload: p1, .. }) = (&seen[0], &seen[1])
+        else {
+            panic!()
+        };
+        assert_eq!(
+            (k0.as_str(), p0["itemId"].clone(), p1["itemId"].clone()),
+            ("hostNavigate", json!("w1"), json!("w2")),
+            "{kind}"
+        );
+        assert_eq!(s.done()[n], "w1: not shown, w2 asked for since", "{kind}");
+        assert_eq!(s.core().shown_in(1).as_deref(), Some("w2"));
+    }
 }
 
 #[test]

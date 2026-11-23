@@ -8269,3 +8269,16 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   +120 to +135 µs a switch, the ports' and fields' JSON on the Swift side (a dozen ports a show); well inside the
   16 ms budget, and nothing per frame. The waker's look (`link_wanted`) allocates nothing (no_alloc.rs). The app's
   checks: 2150 pass.
+
+
+## A pin's or favourite's reset overtaken: its tab back at its address, not shown (Tirth, 2026-11-23: step 3's open question 3)
+
+- Tirth's answer to the design's question 3: a reset (a pin's or a favourite's) that another pick in its window
+  overtook before its turn still navigates its open item's tab back to its address (the copy's `hostNavigate`), but
+  isn't shown: no flash of it before the item picked after it. Until now only an open was skipped so (HS:495-496,
+  525-526); a reset showed its item, then the later pick.
+- Where it's checked: after the navigate, at the point an open checks it (right before the show), so a pick made
+  while the navigate was under way counts too; said as an open's is (`<item>: not shown, <newest> asked for since`).
+  A reset with no item (one made at its address) is shown as before: nothing could have been asked for it.
+- Pinned: the core's (requests_tests.rs, both resets: the navigate, then only the later pick's hostShow, the line)
+  and the Swift's (T/session-rules-tests.swift: commit 0's check of the old behaviour turned into the new one).

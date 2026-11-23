@@ -5,9 +5,9 @@
 //!
 //! - A show request's item is drawn in front in its window at once (`requested`), its handling queued; a show
 //!   overtaken before it started by a newer one for its window is skipped, said.
-//! - A pin's and a favourite's open and reset are one flow (`open_by`), the three differences as `reset`: a reset
-//!   navigates an open item's tab back to its address first, isn't checked for being overtaken, and returns silently
-//!   when no item could be made.
+//! - A pin's and a favourite's open and reset are one flow (`open_by`), the differences as `reset`: a reset navigates
+//!   an open item's tab back to its address first, and returns silently when no item could be made. Overtaken, both
+//!   are skipped; a reset's tab is navigated back still (Tirth, 2026-11-23: no flash of it before the item picked after).
 //! - `show`: the split first, then an app (the cycle's hold, the engine's open or show), a web item (its profile's
 //!   window, the copy's `hostShow`) or Margin's own page; the item shown before drawn in front again when it fails.
 
@@ -354,11 +354,12 @@ impl Core {
             return;
         }
         if let Some(item) = r.item() {
-            if reset {
-                if let Some(p) = self.open_item(item).and_then(|o| o.profile) {
-                    self.ask(&p, "hostNavigate", object(json!({ "itemId": item, "url": url }))).await;
-                }
-            } else if self.overtaken(item, r.window()) {
+            // (A reset's tab back at its address whatever comes next; then, as an open, not shown when another item was
+            // asked for in its window since: Tirth, 2026-11-23.)
+            if reset && let Some(p) = self.open_item(item).and_then(|o| o.profile) {
+                self.ask(&p, "hostNavigate", object(json!({ "itemId": item, "url": url }))).await;
+            }
+            if self.overtaken(item, r.window()) {
                 return;
             }
             return self.show(item, url, r.target(), r.window()).await;
