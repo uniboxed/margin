@@ -1035,6 +1035,22 @@ T/multi-host-session-tests.swift, T/peek-split-tests.swift, T/screen-card-tests.
 **Windows:** §10 item 1's "the page's layouts per Margin window (page area, pane rects, card rect)", its `Show
 { visible, focused }` (the engine's `setLayout`), `PaneCut`.
 
+*As built (commit 6):* session/layouts.rs (`show_split`, `pane_rects`, `page_app_minimums`, `refresh_pane_minimums`,
+`apply_layout` with its three after-steps run only once reached, as Swift's `defer`s registered part-way, `leave_split`,
+`forget_in_layouts`, `prepare`), writing commit 7's `layouts` field (the facade reads its rows; `pressedHost`'s write
+goes back as its difference). The card's layouts are this flow now (card.rs calls it; commit 7's interim `applyLayout`
+Swift command is gone), its parts the core's (the card's part and its hostShow payload, its window's rect in a
+placing and a drag's frame, its rect kept after a placing). `paneAddress`/`paneItem` are the core's (`PaneOpens`, read
+by `request_window`: the interim `paneFor`, `hasLayout`, `clearLayout`, `layoutsWith` and the `prepare`/`showSplit`
+Swift commands are gone). What it still asks of later parts' Swift goes through the `swift` port by name: the
+elsewhere card's (`showElsewhere`, and `pagePicture` a Swift command) and the cut panes' (`paneCuts`); the loading
+bar's `panesLaying` and `revealHeld` are commit 9's core fields, written by this flow. Two things the sketch lacked:
+the engine's layout results come with their Swift description (`"\(result)"`, which names the module: the layout's
+line prints it), and a placement Margin's window gave the core goes back to the engine as the window's own value (a
+token the port answers with it), never one made again of JSON numbers. `prepare`'s ports are typed (a show's: the
+window's number, full screen, layout mode, placement, hosting, Space, every app's minimum, `MarginSessionCall` 40-47).
+`HostedSession.applyLayout` stays the API `setLayout` queues (the tests'; a `call`).
+
 **Risks.** `applyLayout` suspends at seven kinds of point and reads `layout`, `engine.isHosted` and `shown` between
 them: transliterated, never planned up front. `noRoom`'s edges are float compares with 1 pt slack (HS:984-985):
 vectors at the edges. ~250 Swift lines deleted.
@@ -1071,7 +1087,7 @@ which the Mac uses: a click's id, address and time, no JSON; `cancel`, `page`, `
 `rect`). The flows are card.rs's, the `Card` (and `cards`, `littleArcs` and the core-only `card_used_at`) state.rs's.
 The design left out three things the flows need: the layout they read is part 3's, so its field (`layouts`) moved to
 the core now, Swift's applyLayout still writing it through the facade and laying out through a `Swift` command
-(`applyLayout`) until commit 6; Quick Tab's new tab and Expand's item are library edits made inside a synchronous call,
+(`applyLayout`) until commit 6 (done: the card's flows call layouts.rs's `apply_layout`); Quick Tab's new tab and Expand's item are library edits made inside a synchronous call,
 so a `perform` port (the delegate's requests re-entrant, as `Library.perform` ran them); and `tellPage`'s title is
 Foundation's `URL.host` (card.rs `web_host`, ported with Foundation's answers as vectors; a host outside ASCII is the
 OS's IDNA, a `urlHost` port). The ports: `cardRect`, `hostedPage` and the wall clock typed (a peek open's path), `idna`,
@@ -1205,6 +1221,19 @@ bytes as WebKit hands them, no object made of them on either side, the Swift val
 report on the Swift side (3.7 with a split), was 6.6 (12.0) before commit 1 and 10.7 (15.0) after it, on this Mac's
 same run; WebKit no longer builds an NSDictionary for it either. The parse is still serde's `Value` (it allocates,
 4 µs in the core): commit 6's typed follow path can make it allocation-free.
+
+*As built (commit 6):* the report is read straight into the Page's kept layout (page/report.rs: serde_json's own
+deserializer through a seed, every value through `deserialize_any` as a `Value` is read, each key's last; the layout
+and a spare taking turns, so a drag's frame allocates nothing once both have grown): 0.8 µs, was 4.1. The page area's
+change is `margin_session_page_rect(s, window, page, content, display, card)`: the window's Page (MWC's `pageFrame`;
+a test's window has none and is read through the ports), its content and display as MWC reads them, the preview
+card's host and rect while the card is Swift's; following a drag, the placement and the panes' rects are read from the
+Page and handed to the engine through the typed `MarginSessionFollow` (`margin_session_set_follow`), its ids lent for
+the call; the card's window there when the core's card is in place, at the rect the window measures (`card`: Swift
+hands in its `cardRect`, the core decides). 0.2 µs, nothing allocated (no_alloc.rs `a_drags_frame_allocates_nothing`, drag_cost.rs). The engine's one
+shown is read after the drag's hold, not before it (a read: the same answer), so a drag not followed asks nothing per
+frame either. `sidebarResizing`, `refreshPaneMinimums`, `appMinimumsChanged`, `forgetInLayouts` are inputs; `resizing`
+and `following` a typed read (`margin_session_drag`).
 
 **Risks.** Two FFI hops a frame where there were none: measured against step 2's `live-resize` numbers (followed
 median and p95 no worse). ~70 Swift lines deleted.
@@ -1449,7 +1478,7 @@ until step 4 (open question 6).
 | 3 | The Page (part 11, and the page area's placement of part 7): MWC's decisions deleted, its mechanism over the Page. **Done 2026-11-23** (step3/page, one commit: core/page/, ffi page.rs's `MarginPage` the core's `Page`, PageCore.swift; the layout report as its JSON text, the hello's `layoutText`; each decision a typed call at the Swift's point, no out-callback; the grace a deadline on the window's own timer; `page-frames` and `idle-cost` not measured: no screen suite on that branch) | ~480 (~530 in: PageCore.swift's wrapper and MWC's glue) | ~3,400 (a fifth tests and measures) | `page-frames`, `idle-cost` |
 | 4 | The session's skeleton: executor, ports, commands, the facade, the re-entrance test adapter; `navigate` (HS:2378-2385) the first flow moved, as the proof; `SafariWaker` split out in Swift (no behaviour moved). **Done 2026-11-23** (step3/skeleton, three commits: SafariWaker.swift, a move only; navigate's checks against the Swift; core/session/ with exec.rs, state.rs, host_id.rs, navigate.rs, ffi session.rs and the facade, `shown`, `open`, `safariWindows` and `done` the core's, Swift's `enqueue` in the core's queue. Inputs run nothing in their call, the one finding; nothing per frame) | ~10 | ~700 | |
 | 5 | Parts 1 and 2: the library's requests, `show`, `close`, `host`, the choices, the engine's window asks. **Done 2026-11-23** (step3/requests, two commits: the move, then Tirth's change 3; session/requests.rs, hosting.rs, items.rs, `ItemTarget(json:)` into target.rs, `DefaultBrowser` into choice.rs; 14 more fields the core's; the Swift of later parts through one `swift` port and a `Swift` command, interim; the notes through a `log` port; the comparison on generated sequences with overtaking, failures and re-entrance; a switch measured) | ~455 (+~335 of facade) | ~2,300 (a third tests) | a switch |
-| 6 | Parts 3 and 7: layouts, splits, the page area moving, the drag's typed path | ~320 | ~1,000 | `live-resize` |
+| 6 | Parts 3 and 7: layouts, splits, the page area moving, the drag's typed path. **Done 2026-11-23** (step3/layouts, one commit, over commits 7 and 9: session/layouts.rs, page_area.rs, page/report.rs; commit 7's `layouts` and commit 9's `panesLaying`/`revealHeld` written by the core's flow, the card's layouts through it and commit 7's interim `applyLayout` command gone; the drag's frame typed end to end; the comparison on generated sequences with splits, refusals, no room, minimums, drags mid-show, the retry and the re-entrant page rect against each base; `live-resize` not measured: no screen suite on this branch) | ~490 (+~230 of facade and ports) | ~3,700 (a third tests) | `live-resize` |
 | 7 | Part 4: the card and Quick Tab. **Done 2026-11-23** (step3/card, one commit: card.rs's flows and `web_host`, `Card`, `cards`, `littleArcs` and part 3's `layouts` the core's fields, HostedPeek.swift the facade; the interim card entries of the `swift` port gone; a peek open measured) | ~350 (+~200: the facade, the ports, the fields' rows) | ~1,580 (a quarter tests) | a peek open |
 | 8 | Parts 5 and 6: elsewhere, the start, `resumeLast`, `settleHosting`, the launcher, the preparation | ~300 | ~900 | `idle-cost` |
 | 9 | Parts 8, 9, 10: the loading bar, the pushes and the mini player, `drawn`, the hello and the ops' routing, the UI's requests, `live_plan`. **Done 2026-11-23** (step3/routing, one commit: session/loading.rs, route.rs, ui.rs's requests and rows, page/said.rs, hello.rs; the push as its text from the link, `drawn`'s diff kept by the link object, the page's ops as their text; a push and a draw measured) | ~380 (~450 in: the typed facade, PageCore's said and hello) | ~2,600 (a third tests and measures) | a push, a draw |

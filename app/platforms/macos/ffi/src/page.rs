@@ -155,7 +155,7 @@ pub struct MarginPointer {
 /// One Margin window's page: margin-core's `page::Page`.
 #[derive(Default)]
 pub struct MarginPage {
-    page: Page,
+    pub(crate) page: Page,
 }
 
 /// # Safety

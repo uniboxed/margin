@@ -24,12 +24,15 @@ use std::ffi::c_void;
 
 use margin_core::data::library::LibraryStore;
 use margin_core::geometry::Rect;
+use margin_core::host::layout::{Placement, Size};
 use margin_core::json;
 use margin_core::session::state::rect_read;
-use margin_core::session::{Field, LibraryView, Out, Performed, Ports, Row, Session};
+use margin_core::session::{Field, Frame, LibraryView, Out, Performed, Ports, Row, Session};
 use serde_json::{Map, Value, json};
 
 use crate::data::{MarginLibrary, answer, text};
+use crate::page::MarginPage;
+use crate::{MarginPlacement, MarginRect};
 
 unsafe extern "C" {
     fn free(ptr: *mut c_void);
@@ -75,6 +78,7 @@ pub struct MarginPortArgs {
 pub struct MarginPortOut {
     texts: Vec<String>,
     ints: Vec<i64>,
+    floats: Vec<f64>,
 }
 
 /// A typed port (`kind`: session.rs `PortKind`'s number): its answer, a number (`i64::MIN`: none).
@@ -102,6 +106,18 @@ pub unsafe extern "C" fn margin_port_out_int(out: *mut MarginPortOut, n: i64) {
     // SAFETY: as margin_port_out_text.
     if let Some(out) = unsafe { out.as_mut() } {
         out.ints.push(n);
+    }
+}
+
+/// A number with a fraction a typed port answers (its list's next: a placement's, a minimum's).
+///
+/// # Safety
+/// As [`margin_port_out_text`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_port_out_float(out: *mut MarginPortOut, n: f64) {
+    // SAFETY: as margin_port_out_text.
+    if let Some(out) = unsafe { out.as_mut() } {
+        out.floats.push(n);
     }
 }
 
@@ -139,12 +155,36 @@ enum PortKind {
     SetLoading = 31,
     SetPaneLoading = 32,
     SetLoadingTabs = 33,
+    // (Commit 6's, the ones a show asks: Margin's window made ready to host.)
+    WindowNumber = 40,
+    WindowFullScreen = 41,
+    WindowLayoutMode = 42,
+    HostedPlacement = 43,
+    SetHosting = 44,
+    FullScreenSpace = 45,
+    KnownAppMinimums = 46,
+    SetAppMinimums = 47,
 }
 
 const NONE: i64 = i64::MIN;
 
+/// A host's rect in a frame of a drag: its id (`len` bytes of UTF-8, the session's for the call's length) and rect.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct MarginHostRect {
+    pub host: *const u8,
+    pub len: usize,
+    pub rect: MarginRect,
+}
+
+/// A frame of a drag the one shown follows: the page area, and the other visible hosts' rects in it (`n` 0: the one
+/// shown alone). Per frame, typed.
+pub type MarginSessionFollow =
+    extern "C" fn(ctx: *mut c_void, placement: *const MarginPlacement, rects: *const MarginHostRect, n: usize);
+
 pub struct MarginSession {
     session: Session,
+    follow: std::rc::Rc<std::cell::Cell<Option<MarginSessionFollow>>>,
 }
 
 struct SwiftPorts {
@@ -152,6 +192,7 @@ struct SwiftPorts {
     now: Option<MarginSessionNow>,
     port: Option<MarginSessionPort>,
     call: Option<MarginSessionCall>,
+    follow: std::rc::Rc<std::cell::Cell<Option<MarginSessionFollow>>>,
 }
 
 impl SwiftPorts {
@@ -211,6 +252,27 @@ impl SwiftPorts {
         json::array(v.get(k))
             .map(|l| l.iter().filter_map(Value::as_str).map(str::to_string).collect())
             .unwrap_or_default()
+    }
+
+    fn flag(v: &Value, k: &str) -> bool {
+        v.get(k).and_then(Value::as_bool) == Some(true)
+    }
+
+    fn rect_of(v: Option<&Value>) -> Option<Rect> {
+        match json::array(v)?.as_slice() {
+            [x, y, w, h] => {
+                Some(Rect::new(json::num(Some(x))?, json::num(Some(y))?, json::num(Some(w))?, json::num(Some(h))?))
+            }
+            _ => None,
+        }
+    }
+
+    fn sizes(m: &[(String, Size)]) -> Value {
+        Value::Array(m.iter().map(|(k, s)| json!([k, s.width, s.height])).collect())
+    }
+
+    fn window(&self, port: &str, window: i64) -> Value {
+        self.ask(json!({ "port": port, "window": window }))
     }
 }
 
@@ -423,6 +485,189 @@ impl Ports for SwiftPorts {
     fn perform(&self, action: &str, payload: &Map<String, Value>) -> Performed {
         Performed::read(&self.ask(json!({ "port": "perform", "action": action, "payload": payload })))
     }
+    fn window_number(&self, window: i64) -> i64 {
+        if let Some(c) = self.call {
+            let n = self.number(c, PortKind::WindowNumber, Some(window), false, [None; 3]);
+            return if n == NONE { -1 } else { n };
+        }
+        json::int(self.window("windowNumber", window).get("number")).unwrap_or(-1)
+    }
+    fn window_full_screen(&self, window: i64) -> bool {
+        if let Some(c) = self.call {
+            return self.number(c, PortKind::WindowFullScreen, Some(window), false, [None; 3]) == 1;
+        }
+        Self::flag(&self.window("windowFullScreen", window), "on")
+    }
+    fn window_full_screen_state(&self, window: i64) -> String {
+        Self::string(&self.window("windowFullScreenState", window), "state").unwrap_or_default()
+    }
+    fn window_why_not(&self, window: i64) -> String {
+        Self::string(&self.window("windowWhyNot", window), "why").unwrap_or_default()
+    }
+    fn window_layout_mode(&self, window: i64) -> Option<String> {
+        if let Some(c) = self.call {
+            return self.text(c, PortKind::WindowLayoutMode, Some(window), [None; 3]);
+        }
+        Self::string(&self.window("windowLayoutMode", window), "mode")
+    }
+    fn hosted_placement(&self, window: i64) -> Option<(Placement, i64)> {
+        if let Some(c) = self.call {
+            let mut out = MarginPortOut::default();
+            let token = self.typed(c, PortKind::HostedPlacement, Some(window), false, [None; 3], &mut out);
+            let [px, py, pw, ph, ax, ay, aw, ah, dx, dy, dw, dh] = out.floats[..] else { return None };
+            let p = Placement {
+                page: Rect::new(px, py, pw, ph),
+                area: Rect::new(ax, ay, aw, ah),
+                display: Rect::new(dx, dy, dw, dh),
+            };
+            return Some((p, if token == NONE { -1 } else { token }));
+        }
+        let v = self.window("hostedPlacement", window);
+        let p = Placement {
+            page: Self::rect_of(v.get("page"))?,
+            area: Self::rect_of(v.get("area"))?,
+            display: Self::rect_of(v.get("display")).unwrap_or(Rect::ZERO),
+        };
+        Some((p, json::int(v.get("token")).unwrap_or(-1)))
+    }
+    fn pane_layout(&self, window: i64) -> Option<margin_core::session::PaneLayout> {
+        let v = self.window("paneLayout", window);
+        let split = Self::string(&v, "split")?;
+        let panes = json::array(v.get("panes"))?
+            .iter()
+            .filter_map(|p| {
+                let p = p.as_array()?;
+                let item = p.first()?.as_str()?.to_string();
+                let r = match p.get(1..)? {
+                    [x, y, w, h] => {
+                        Rect::new(json::num(Some(x))?, json::num(Some(y))?, json::num(Some(w))?, json::num(Some(h))?)
+                    }
+                    _ => return None,
+                };
+                Some((item, r))
+            })
+            .collect();
+        Some((split, panes))
+    }
+    fn remeasure(&self, window: i64) {
+        self.window("remeasure", window);
+    }
+    fn to_full_screen(&self, window: i64) {
+        self.window("toFullScreen", window);
+    }
+    fn window_set_hosting(&self, window: i64, on: bool) {
+        if let Some(c) = self.call {
+            self.number(c, PortKind::SetHosting, Some(window), on, [None; 3]);
+            return;
+        }
+        self.ask(json!({ "port": "setHosting", "window": window, "on": on }));
+    }
+    fn set_hosted(&self, window: i64, number: Option<i64>) {
+        self.ask(json!({ "port": "setHosted", "window": window, "number": number }));
+    }
+    fn set_app_minimums(&self, window: i64, minimums: &[(String, Size)]) {
+        if let Some(c) = self.call {
+            // (Typed: the names one a line, the sizes' numbers as Rust writes them, each read back exactly.)
+            let mut names = String::new();
+            let mut sizes = String::new();
+            for (i, (n, m)) in minimums.iter().enumerate() {
+                if i > 0 {
+                    names.push('\n');
+                    sizes.push(' ');
+                }
+                names.push_str(n);
+                sizes.push_str(&format!("{:?} {:?}", m.width, m.height));
+            }
+            self.number(c, PortKind::SetAppMinimums, Some(window), false, [Some(&names), Some(&sizes), None]);
+            return;
+        }
+        self.ask(json!({ "port": "setAppMinimums", "window": window, "minimums": Self::sizes(minimums) }));
+    }
+    fn set_pane_minimums(&self, window: i64, minimums: &[(String, Size)]) {
+        self.ask(json!({ "port": "setPaneMinimums", "window": window, "minimums": Self::sizes(minimums) }));
+    }
+    fn follows_page(&self, window: i64, on: bool) {
+        self.ask(json!({ "port": "followsPage", "window": window, "on": on }));
+    }
+    fn hosted_moved(&self, window: i64) {
+        self.window("hostedMoved", window);
+    }
+    fn full_screen_space(&self, number: i64) -> Option<u64> {
+        if let Some(c) = self.call {
+            let n = self.number(c, PortKind::FullScreenSpace, Some(number), false, [None; 3]);
+            return (n != NONE).then_some(n as u64);
+        }
+        self.ask(json!({ "port": "fullScreenSpace", "number": number })).get("space").and_then(Value::as_u64)
+    }
+    fn known_app_minimums(&self) -> Vec<(String, Size)> {
+        if let Some(c) = self.call {
+            let mut out = MarginPortOut::default();
+            self.typed(c, PortKind::KnownAppMinimums, None, false, [None; 3], &mut out);
+            return out
+                .texts
+                .into_iter()
+                .zip(out.floats.chunks_exact(2))
+                .map(|(b, m)| (b, Size::new(m[0], m[1])))
+                .collect();
+        }
+        let v = self.ask(json!({ "port": "knownAppMinimums" }));
+        json::array(v.get("minimums"))
+            .map(|l| {
+                l.iter()
+                    .filter_map(|m| match m.as_array()?.as_slice() {
+                        [b, w, h] => {
+                            Some((b.as_str()?.to_string(), Size::new(json::num(Some(w))?, json::num(Some(h))?)))
+                        }
+                        _ => None,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+    fn minimum(&self, host: &str) -> Option<Size> {
+        let v = self.ask(json!({ "port": "minimum", "host": host }));
+        match json::array(v.get("size"))?.as_slice() {
+            [w, h] => Some(Size::new(json::num(Some(w))?, json::num(Some(h))?)),
+            _ => None,
+        }
+    }
+    fn dragging(&self, on: bool) -> bool {
+        Self::flag(&self.ask(json!({ "port": "dragging", "on": on })), "follows")
+    }
+    fn shown_fills_page(&self) -> bool {
+        Self::flag(&self.ask(json!({ "port": "shownFillsPage" })), "fills")
+    }
+    fn live_followers(&self) -> (i64, i64) {
+        let v = self.ask(json!({ "port": "liveFollowers" }));
+        (json::int(v.get("follow")).unwrap_or(0), json::int(v.get("visible")).unwrap_or(0))
+    }
+    fn follow(&self, placement: &Placement, rects: &[(&str, Rect)]) {
+        let p = MarginPlacement {
+            page: placement.page.into(),
+            area: placement.area.into(),
+            display: placement.display.into(),
+        };
+        let Some(follow) = self.follow.get() else {
+            // (No typed follow set: the port, as JSON.)
+            let rects: Vec<Value> = rects.iter().map(|(h, r)| json!([h, r.x, r.y, r.width, r.height])).collect();
+            let r = |r: &Rect| json!([r.x, r.y, r.width, r.height]);
+            let p = json!({ "page": r(&placement.page), "area": r(&placement.area), "display": r(&placement.display) });
+            self.ask(json!({ "port": "follow", "placement": p, "rects": rects }));
+            return;
+        };
+        // (On the stack: a split's four panes and a card; a longer list (never one) on the heap.)
+        let mut list = [MarginHostRect { host: std::ptr::null(), len: 0, rect: MarginRect::default() }; 5];
+        if rects.len() <= list.len() {
+            for (slot, (h, r)) in list.iter_mut().zip(rects) {
+                *slot = MarginHostRect { host: h.as_ptr(), len: h.len(), rect: (*r).into() };
+            }
+            follow(self.ctx, &p, list.as_ptr(), rects.len());
+            return;
+        }
+        let all: Vec<MarginHostRect> =
+            rects.iter().map(|(h, r)| MarginHostRect { host: h.as_ptr(), len: h.len(), rect: (*r).into() }).collect();
+        follow(self.ctx, &p, all.as_ptr(), all.len());
+    }
 }
 
 impl SwiftPorts {
@@ -495,9 +740,10 @@ pub unsafe extern "C" fn margin_session_new(
     call: Option<MarginSessionCall>,
 ) -> *mut MarginSession {
     let options = text(options, len).and_then(|t| serde_json::from_str(t).ok()).unwrap_or(Value::Null);
-    let ports = SwiftPorts { ctx, now, port, call };
+    let follow = std::rc::Rc::new(std::cell::Cell::new(None));
+    let ports = SwiftPorts { ctx, now, port, call, follow: follow.clone() };
     let session = Session::new(Box::new(ports), Box::new(LibraryRef(library)), &options);
-    Box::into_raw(Box::new(MarginSession { session }))
+    Box::into_raw(Box::new(MarginSession { session, follow }))
 }
 
 /// # Safety
@@ -795,21 +1041,6 @@ pub unsafe extern "C" fn margin_session_refresh_loading(
     give(&s.refresh_loading(), status, out_len)
 }
 
-/// A Margin window's new pane's loader let go (applyLayout's `releaseReveal`).
-///
-/// # Safety
-/// As [`margin_session_tick`].
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn margin_session_release_reveal(
-    s: *const MarginSession,
-    window: i64,
-    status: *mut MarginSessionStatus,
-    out_len: *mut usize,
-) -> *mut u8 {
-    let Some(s) = session(s) else { return answer(&json!({ "error": "no session" }), out_len) };
-    give(&s.release_reveal(window), status, out_len)
-}
-
 /// A copy's push as it came: its browser and profile (texts), its window (`has_window`), its message's JSON bytes;
 /// routed by the core (the loading bar's, the preview card's, the UI's).
 ///
@@ -970,6 +1201,66 @@ pub unsafe extern "C" fn margin_session_drawn_windows(
         }
     }
     ids.len()
+}
+
+/// The typed follow of a drag's frames (the same `ctx` as the ports'; NULL: through the `port`, as JSON).
+///
+/// # Safety
+/// `s` from [`margin_session_new`] (or null), not freed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_session_set_follow(s: *const MarginSession, follow: Option<MarginSessionFollow>) {
+    if !s.is_null() {
+        // SAFETY: from margin_session_new and not freed (the caller's contract).
+        unsafe { (*s).follow.set(follow) };
+    }
+}
+
+/// A Margin window's page area changed (every frame of a drag): its page (`page`, null: read through the ports, a
+/// window with no page in the core) at its content and display now, and where it draws the preview card's page
+/// (`card`, null: none; the core decides whether a card is there). 0: nothing done, 1: a drag's frame followed, 2: a
+/// placing queued (tick in the next turn). Nothing allocated while it follows a drag.
+///
+/// # Safety
+/// `s` from [`margin_session_new`] (or null), not freed; `page` null or a live page; `display` and `card` null or
+/// readable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_session_page_rect(
+    s: *const MarginSession,
+    window: i64,
+    page: *const MarginPage,
+    content: MarginRect,
+    display: *const MarginRect,
+    card: *const MarginRect,
+) -> u8 {
+    let Some(s) = session(s) else { return 0 };
+    // SAFETY: the contract above.
+    let display = unsafe { display.as_ref() }.map(|d| Rect::from(*d));
+    // SAFETY: the contract above.
+    let card = unsafe { card.as_ref() }.map(|c| Rect::from(*c));
+    // SAFETY: the contract above.
+    let frame = match unsafe { page.as_ref() } {
+        Some(p) => Frame::Page { page: &p.page, content: content.into(), display, card },
+        None => Frame::Ports,
+    };
+    s.page_rect(window, &frame).code()
+}
+
+/// The Margin window whose sidebar's edge is being dragged (-1: none) and whether the one shown follows it live.
+///
+/// # Safety
+/// `s` from [`margin_session_new`] (or null), not freed; `window` and `following` writable or null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_session_drag(s: *const MarginSession, window: *mut i64, following: *mut bool) {
+    let (w, f) = session(s).map(Session::drag).unwrap_or((None, false));
+    // SAFETY: the contract above.
+    unsafe {
+        if let Some(out) = window.as_mut() {
+            *out = w.unwrap_or(-1);
+        }
+        if let Some(out) = following.as_mut() {
+            *out = f;
+        }
+    }
 }
 
 #[cfg(test)]

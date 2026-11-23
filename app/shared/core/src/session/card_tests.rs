@@ -1,5 +1,5 @@
 //! The preview card and Quick Tab (card.rs) through the re-entrant test adapter: what each flow says to Margin's
-//! windows, asks of the copies, the library and the layout (Swift's until commit 6), in order. (The same flows are
+//! windows, asks of the copies, the library and the engine's layout (layouts.rs's), in order. (The same flows are
 //! compared against the deleted Swift on generated vectors in the step's harness; these pin the shapes.)
 
 use super::requests_tests::{acts, kinds, named, pump};
@@ -15,13 +15,17 @@ fn hosted() -> (Session, Rc<World>, Rc<Shelf>) {
     shelf
         .0
         .borrow_mut()
-        .insert(("tabs".into(), "b1".into()), json!({ "url": "https://b.example/", "spaceId": "home" }));
+        .insert(("tabs".into(), "b1".into()), json!({ "url": "https://b.example/", "spaceId": "home",
+                                                      "target": { "kind": "web", "browser": "safari", "profile": null } }));
     shelf.0.borrow_mut().insert(("spaces".into(), "home".into()), json!({ "name": "Home", "profile": "" }));
     set(
         &s,
         json!({ "shown": { "put": [[1, "b1"]] }, "open": { "put": [["b1", "safari:s-default", "s-default"]] },
-                "safariWindows": { "put": [["s-default", "main", 90]] }, "hostingWindow": { "put": [[1]] } }),
+                "safariWindows": { "put": [["s-default", "main", 90], ["s-default", "card", 91]] }, "hostingWindow": { "put": [[1]] } }),
     );
+    // (Its main window and its card window hosted already: their tabs shown first, out of sight, then the layout.)
+    world.hosted.borrow_mut().extend(["safari:s-default".to_string(), "safari:s-default#card".to_string()]);
+    *world.shown.borrow_mut() = Some("safari:s-default".into());
     world.card_rects.borrow_mut().insert(1, RECT);
     world.pages.borrow_mut().insert(1, Rect::new(260.0, 41.0, 1244.0, 933.0));
     (s, world, shelf)
@@ -43,22 +47,22 @@ fn pushes(acts: &[Value]) -> Vec<Value> {
     named(acts, "push").iter().filter_map(|a| serde_json::from_str(a[2].as_str()?).ok()).collect()
 }
 
-/// The usual answers, and the layout Swift's applyLayout makes: each taken as asked (its extras shown), written to the
-/// core's `layouts` as the facade writes it.
-fn laid_out(s: &Session) -> impl FnMut(&Command) -> Value + '_ {
+/// The usual answers, and the engine's layout: every host it's asked for shown.
+fn laid_out(_: &Session) -> impl FnMut(&Command) -> Value + '_ {
     move |c| match c {
-        Command::Swift { call, args } if call == "applyLayout" => {
-            let extras: Vec<Value> = json::array(args.get("extras"))
-                .map(|l| l.iter().map(|e| json!([e["item"], e["role"], e["rect"]])).collect())
-                .unwrap_or_default();
-            let w = args["window"].clone();
-            let edit = if extras.is_empty() {
-                json!({ "layouts": { "del": [w] } })
-            } else {
-                json!({ "layouts": { "put": [[w, args["main"], args["mainRect"], extras, args["focused"], null]] } })
-            };
-            s.input(&json!({ "type": "state", "set": edit }));
-            json!({})
+        Command::Engine { op, args } if op == "setLayout" => {
+            let mut hosts = vec![args["main"].clone()];
+            hosts.extend(json::array(args.get("extras")).into_iter().flatten().map(|e| e["target"].clone()));
+            let results: Vec<Value> = hosts
+                .iter()
+                .map(|t| {
+                    let role = t["role"].as_str().unwrap_or("main");
+                    let suffix = if role == "main" { String::new() } else { format!("#{role}") };
+                    let id = format!("safari:{}{suffix}", t["profile"].as_str().unwrap_or(""));
+                    json!([id, { "shown": id, "placed": true }, format!("shown({id}, placed: true)")])
+                })
+                .collect();
+            json!({ "results": results })
         }
         Command::Ask { kind, .. } if kind == "hostPromotePeek" => json!({ "result": { "ok": true } }),
         c => super::requests_tests::usual(c),
@@ -78,21 +82,39 @@ fn a_pages_click_answered_at_once_then_the_card_laid_out_at_its_rect_the_page_to
                                             "loading": true, "spaceId": "home" } })]
     );
     let seen = pump(&s, &world, out, &mut laid_out(&s));
-    assert_eq!(kinds(&seen), ["ask peekAnswer", "swift applyLayout"], "answered before anything else is asked");
+    // (The layout's: the two tabs in front first, out of sight, main's then the card's new page, then the engine.)
+    assert_eq!(
+        kinds(&seen),
+        ["ask peekAnswer", "ask hostShow", "ask hostShow", "engine setLayout"],
+        "answered before anything else is asked"
+    );
     let Command::Ask { payload, .. } = &seen[0] else { panic!() };
     assert_eq!(Value::Object(payload.clone()), json!({ "id": "peek-1", "ok": true }));
-    let Command::Swift { args, .. } = &seen[1] else { panic!() };
+    let Command::Ask { payload, .. } = &seen[2] else { panic!() };
     assert_eq!(
-        Value::Object(args.clone()),
-        json!({ "window": 1, "main": "b1", "mainRect": null, "focused": "card:s-default", "split": null,
-                "extras": [{ "item": "card:s-default", "role": "card", "rect": [360, 150, 1044, 700] }] })
+        Value::Object(payload.clone()),
+        json!({ "windowId": 91, "itemId": "peek-card", "url": "https://docs.example.org/guide", "role": "card", "fresh": true })
+    );
+    let Command::Engine { args, .. } = &seen[3] else { panic!() };
+    assert_eq!(
+        (args["main"].clone(), args["mainRect"].clone(), args["focused"].clone(), args["extras"].clone()),
+        (
+            json!({ "kind": "safari", "profile": "s-default", "role": "main" }),
+            Value::Null,
+            json!("safari:s-default#card"),
+            json!([{ "target": { "kind": "safari", "profile": "s-default", "role": "card" }, "role": "card", "rect": [360.0, 150.0, 1044.0, 700.0] }])
+        )
     );
     let c = s.core().card("s-default").expect("a card");
     assert!(c.open && c.ready && !c.fresh && c.rect == Some(RECT) && c.click.as_deref() == Some("peek-1"));
     assert_eq!(pushes(&acts(&world))[0]["peek"]["loading"], json!(false), "in place");
     assert_eq!(
         s.done(),
-        ["Preview asked by a page: shown", "Preview: a card in Margin's window 1 over b1"],
+        [
+            "Preview asked by a page: shown",
+            "Preview: a card in Margin's window 1 over b1",
+            "layout: 2 item(s) shown in Margin's window 1, card:s-default focused"
+        ],
         "the page's <m-preview-page>: no default rect said"
     );
     assert_eq!(
@@ -149,11 +171,12 @@ fn closed_the_page_told_first_then_the_rest_laid_out_again_and_its_tab_closed() 
     assert!(s.core().card("s-default").is_none());
     let t0 = world.now.get();
     let seen = pump(&s, &world, out, &mut laid_out(&s));
-    assert_eq!(kinds(&seen), ["swift applyLayout", "ask hostCardClose"]);
+    assert_eq!(kinds(&seen), ["ask hostShow", "engine setLayout", "ask hostCardClose"]);
     assert!((world.now.get() - t0 - CARD_COVER_WAIT).abs() < 1e-9, "after the page had its moment to cover it");
-    let Command::Swift { args, .. } = &seen[0] else { panic!() };
-    assert_eq!((args["extras"].clone(), args["focused"].clone()), (json!([]), json!("b1")));
-    assert_eq!(s.done().last().map(String::as_str), Some("Preview: the card closed (⌘W)"));
+    let Command::Engine { args, .. } = &seen[1] else { panic!() };
+    assert_eq!((args["extras"].clone(), args["focused"].clone()), (json!([]), json!("safari:s-default")));
+    assert!(s.core().layout_of(1).is_none(), "main alone again: no layout kept");
+    assert!(s.done().iter().any(|l| l == "Preview: the card closed (⌘W)"), "{:?}", s.done());
     assert_eq!(
         peek(&s, "closeForKey", json!({ "window": 1 })).reply,
         Some(json!(false)),
@@ -176,7 +199,7 @@ fn hidden_with_its_opener_and_shown_again_on_its_return() {
     assert!(s.core().card("s-default").unwrap().open);
     let out = s.tick(0.0);
     let seen = pump(&s, &world, out, &mut laid_out(&s));
-    assert_eq!(kinds(&seen), ["swift applyLayout"]);
+    assert_eq!(kinds(&seen), ["ask hostShow", "ask hostShow", "engine setLayout"]);
     assert!(s.core().card("s-default").unwrap().ready);
     // (The opener picked while it was hidden by it: it stays hidden.)
     s.core().card_leaving(1, Some("b1"));
@@ -319,7 +342,7 @@ fn a_window_laid_out_with_several_never_only_switches_tabs_and_a_show_clears_its
     let out = show(&s);
     assert_eq!(
         kinds(&pump(&s, &world, out, &mut laid_out(&s))),
-        ["ask hostShow", "swift prepare", "engine open"],
+        ["ask hostShow", "engine open"],
         "laid out with a card: shown again, alone"
     );
     assert!(s.core().layout_of(1).is_none(), "its layout cleared");

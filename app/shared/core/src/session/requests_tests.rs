@@ -48,13 +48,9 @@ pub(super) fn pump(s: &Session, world: &World, first: Out, answer: &mut dyn FnMu
     seen
 }
 
-/// The usual answers: the Swift flows' prepare made, the engine's open shown, a copy's hostShow a tab.
+/// The usual answers: the engine's open shown, a copy's hostShow a tab.
 pub(super) fn usual(c: &Command) -> Value {
     match c {
-        Command::Swift { call, .. } if call == "prepare" => {
-            json!({ "placement": { "page": [260, 8, 1244, 933], "area": [0, 0, 1512, 949], "display": [0, 0, 1512, 982] }, "space": 7 })
-        }
-        Command::Swift { call, .. } if call == "showSplit" => json!({ "shown": false }),
         Command::Engine { op, args } if op == "open" => {
             json!({ "shown": json::string(json::object(args.get("target")).and_then(|t| t.get("kind"))).map(|k| if k == "app" { format!("app:{}", args["target"]["bundle"].as_str().unwrap_or("")) } else { format!("safari:{}", args["target"]["profile"].as_str().unwrap_or("")) }), "placed": true })
         }
@@ -87,7 +83,7 @@ pub(super) fn named(acts: &[Value], name: &str) -> Vec<Value> {
     acts.iter().filter(|a| a[0] == json!(name) || a[1] == json!(name)).cloned().collect()
 }
 
-fn item(shelf: &Shelf, id: &str, v: Value) {
+pub(super) fn item(shelf: &Shelf, id: &str, v: Value) {
     shelf.0.borrow_mut().insert(("tabs".into(), id.into()), v);
 }
 
@@ -102,8 +98,8 @@ fn a_show_request_drawn_in_front_at_once_then_an_app_hosted() {
     let a = acts(&world);
     assert_eq!(a, [json!(["changed"])], "(no card there to hide: card.rs, the core's own)");
     let seen = pump(&s, &world, out, &mut usual);
-    assert_eq!(kinds(&seen), ["swift prepare", "engine open"]);
-    let Command::Engine { args, .. } = &seen[1] else { panic!() };
+    assert_eq!(kinds(&seen), ["engine open"]);
+    let Command::Engine { args, .. } = &seen[0] else { panic!() };
     assert_eq!(args["target"], json!({ "kind": "app", "bundle": "com.apple.Notes" }));
     assert_eq!(
         (args["window"].clone(), args["item"].clone(), args["space"].clone()),
@@ -139,7 +135,7 @@ fn a_show_overtaken_before_it_started_is_skipped_and_a_failed_one_draws_the_one_
         Command::Engine { op, .. } if op == "open" => json!({ "failed": "launch", "why": "no such app" }),
         c => usual(c),
     });
-    assert_eq!(kinds(&seen), ["swift prepare", "engine open"]);
+    assert_eq!(kinds(&seen), ["engine open"]);
     assert_eq!(s.done(), ["a1: not shown, a2 asked for since", "app:com.b: launch failed: no such app"]);
     assert_eq!(s.core().shown_in(1), None);
     assert_eq!(s.core().requested_in(1), None, "no longer asked for");
@@ -169,8 +165,8 @@ fn a_web_item_its_profiles_window_made_then_its_tab_shown() {
         c => usual(c),
     });
     assert!(made);
-    assert_eq!(kinds(&seen), ["swift prepare", "engine open", "ask hostShow"]);
-    let Command::Ask { payload, profile, .. } = &seen[2] else { panic!() };
+    assert_eq!(kinds(&seen), ["engine open", "ask hostShow"]);
+    let Command::Ask { payload, profile, .. } = &seen[1] else { panic!() };
     assert_eq!(profile, "s-default");
     assert_eq!(
         Value::Object(payload.clone()),
@@ -292,17 +288,13 @@ fn a_cycles_pick_of_an_app_not_running_held_and_never_started_when_passed_over()
     first.ready = true;
     let seen = pump(&s, &world, first, &mut usual);
     assert_eq!(s.done()[0], "a1: passed over by the tab keys (com.a not started)");
-    assert_eq!(
-        kinds(&seen),
-        ["swift prepare", "engine open"],
-        "only the second (com.b's running state unknown: never held)"
-    );
+    assert_eq!(kinds(&seen), ["engine open"], "only the second (com.b's running state unknown: never held)");
     // A click (no key) is never held.
     let (s, world, shelf) = session();
     world.runs.borrow_mut().insert("com.a".into(), false);
     item(&shelf, "a1", json!({ "target": { "kind": "app", "bundleId": "com.a", "name": "A" } }));
     let out = s.input(&json!({ "type": "library", "request": { "type": "activateTab", "item": "a1", "windowId": 1 } }));
-    assert_eq!(kinds(&pump(&s, &world, out, &mut usual)), ["swift prepare", "engine open"]);
+    assert_eq!(kinds(&pump(&s, &world, out, &mut usual)), ["engine open"]);
 }
 
 #[test]
@@ -330,7 +322,8 @@ fn closing_its_page_closed_the_next_one_shown_and_the_split_around_it_again() {
         &json!({ "type": "library", "request": { "type": "closeTab", "item": "w1", "next": "a2", "windowId": 1 } }),
     );
     let seen = pump(&s, &world, out, &mut usual);
-    assert_eq!(kinds(&seen), ["ask hostClose", "swift prepare", "engine open", "swift prepare", "engine open"]);
+    // (The next item shown in window 1, then the split around it in window 2: window 1's parked first, pictured.)
+    assert_eq!(kinds(&seen), ["ask hostClose", "engine open", "swift pagePicture", "engine parkShown", "engine open"]);
     assert_eq!(s.done()[0], "w1: closed");
     assert_eq!(s.core().open_item("w1"), None);
     // Clear today: each closed, a list of strings only.
@@ -383,7 +376,11 @@ fn the_profile_fallback_said_once_its_profile_cant_be_opened() {
 fn a_window_asked_of_a_stale_copy_asked_again_once_its_link_is_back() {
     let (s, world, _) = session();
     world.profiles.borrow_mut().push("s-default".into());
-    world.swift.borrow_mut().insert("paneFor".into(), json!({ "address": "HTTPS://pane/", "item": "w2" }));
+    {
+        let mut p = s.core().panes.borrow_mut();
+        p.address_for.insert(("s-default".into(), Role::Pane(2)), "HTTPS://pane/".into());
+        p.item_for.insert(("s-default".into(), Role::Pane(2)), "w2".into());
+    }
     let mut asks = 0;
     let out = s.input(
         &json!({ "type": "call", "id": 1, "flow": "requestWindow", "args": { "profile": null, "role": "pane2" } }),
@@ -531,7 +528,7 @@ fn an_app_picked_in_the_palette() {
             json!({ "windowId": 1, "target": { "kind": "app", "bundleId": "com.c", "name": "com.c" }, "front": true, "spaceId": "sp" })
         )
     );
-    assert_eq!(kinds(&seen), ["perform addItem", "swift prepare", "engine open"]);
+    assert_eq!(kinds(&seen), ["perform addItem", "engine open"]);
     assert_eq!(s.done()[s.done().len() - 2], "com.c: item new added");
 }
 

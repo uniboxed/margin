@@ -11,6 +11,7 @@ use serde_json::{Value, json};
 
 use super::exec::{Either, Exec, first_of};
 use super::*;
+use crate::host::layout::Size;
 
 type Log = Rc<RefCell<Vec<String>>>;
 
@@ -223,6 +224,12 @@ struct World {
     pages: RefCell<BTreeMap<i64, Rect>>,
     performs: RefCell<std::collections::VecDeque<Value>>,
     perform_requests: RefCell<Vec<Object>>,
+    // (Commit 6's: Margin's windows' facts, the engine's minimums and the drag.)
+    not_full_screen: RefCell<Vec<i64>>,
+    placement: RefCell<Option<Placement>>,
+    panes: RefCell<Option<PaneLayout>>,
+    minimums: RefCell<BTreeMap<String, Size>>,
+    follows: Cell<bool>,
 }
 
 impl World {
@@ -386,6 +393,98 @@ impl Ports for Reentrant {
             error: Some("refused".into()),
         })
     }
+    fn window_number(&self, window: i64) -> i64 {
+        self.reenter("windowNumber");
+        100 + window
+    }
+    fn window_full_screen(&self, window: i64) -> bool {
+        self.reenter("windowFullScreen");
+        !self.0.not_full_screen.borrow().contains(&window)
+    }
+    fn window_full_screen_state(&self, _: i64) -> String {
+        self.reenter("windowFullScreenState");
+        "test".into()
+    }
+    fn window_why_not(&self, _: i64) -> String {
+        self.reenter("windowWhyNot");
+        "test".into()
+    }
+    fn window_layout_mode(&self, _: i64) -> Option<String> {
+        self.reenter("windowLayoutMode");
+        Some("fullscreen".into())
+    }
+    fn hosted_placement(&self, _: i64) -> Option<(Placement, i64)> {
+        self.reenter("hostedPlacement");
+        self.0.placement.borrow().map(|p| (p, -1))
+    }
+    fn pane_layout(&self, _: i64) -> Option<PaneLayout> {
+        self.reenter("paneLayout");
+        self.0.panes.borrow().clone()
+    }
+    fn remeasure(&self, window: i64) {
+        self.reenter("remeasure");
+        self.0.act(json!(["remeasure", window]));
+    }
+    fn to_full_screen(&self, window: i64) {
+        self.reenter("toFullScreen");
+        self.0.act(json!(["toFullScreen", window]));
+        self.0.not_full_screen.borrow_mut().retain(|w| *w != window);
+    }
+    fn window_set_hosting(&self, window: i64, on: bool) {
+        self.reenter("setHosting");
+        self.0.act(json!(["setHosting", window, on]));
+    }
+    fn set_hosted(&self, window: i64, number: Option<i64>) {
+        self.reenter("setHosted");
+        self.0.act(json!(["setHosted", window, number]));
+    }
+    fn set_app_minimums(&self, window: i64, m: &[(String, Size)]) {
+        self.reenter("setAppMinimums");
+        self.0.act(json!(["setAppMinimums", window, m.len()]));
+    }
+    fn set_pane_minimums(&self, window: i64, m: &[(String, Size)]) {
+        self.reenter("setPaneMinimums");
+        let m: Vec<Value> = m.iter().map(|(i, s)| json!([i, s.width, s.height])).collect();
+        self.0.act(json!(["setPaneMinimums", window, m]));
+    }
+    fn follows_page(&self, window: i64, on: bool) {
+        self.reenter("followsPage");
+        self.0.act(json!(["followsPage", window, on]));
+    }
+    fn hosted_moved(&self, window: i64) {
+        self.reenter("hostedMoved");
+        self.0.act(json!(["hostedMoved", window]));
+    }
+    fn full_screen_space(&self, _: i64) -> Option<u64> {
+        self.reenter("fullScreenSpace");
+        Some(7)
+    }
+    fn known_app_minimums(&self) -> Vec<(String, Size)> {
+        self.reenter("knownAppMinimums");
+        self.0.minimums.borrow().iter().map(|(b, s)| (b.clone(), *s)).collect()
+    }
+    fn minimum(&self, host: &str) -> Option<Size> {
+        self.reenter("minimum");
+        self.0.minimums.borrow().get(host).copied()
+    }
+    fn dragging(&self, on: bool) -> bool {
+        self.reenter("dragging");
+        self.0.act(json!(["dragging", on]));
+        on && self.0.follows.get()
+    }
+    fn shown_fills_page(&self) -> bool {
+        self.reenter("shownFillsPage");
+        true
+    }
+    fn live_followers(&self) -> (i64, i64) {
+        self.reenter("liveFollowers");
+        (1, 1)
+    }
+    fn follow(&self, p: &Placement, rects: &[(&str, Rect)]) {
+        // (Per frame: no re-entry from the engine's follow, which calls nothing of the session's back.)
+        let rects: Vec<Value> = rects.iter().map(|(h, r)| json!([h, r.x, r.y, r.width, r.height])).collect();
+        self.0.act(json!(["follow", p.page.width, rects]));
+    }
 }
 
 #[derive(Default)]
@@ -408,6 +507,12 @@ impl LibraryView for Rc<Shelf> {
 fn session() -> (Session, Rc<World>, Rc<Shelf>) {
     let world = Rc::new(World::default());
     world.windows.borrow_mut().push(1);
+    // (Margin's window's page area, measured: what `prepare` waits for.)
+    *world.placement.borrow_mut() = Some(Placement {
+        page: Rect::new(260.0, 8.0, 1244.0, 933.0),
+        area: Rect::new(0.0, 0.0, 1512.0, 949.0),
+        display: Rect::new(0.0, 0.0, 1512.0, 982.0),
+    });
     let shelf = Rc::new(Shelf::default());
     let s = Session::new(Box::new(Reentrant(world.clone())), Box::new(shelf.clone()), &json!({ "every": 0.05 }));
     *world.core.borrow_mut() = Rc::downgrade(s.core());
@@ -651,3 +756,6 @@ mod requests_tests;
 mod card_tests;
 #[path = "routing_tests.rs"]
 mod routing_tests;
+
+#[path = "layouts_tests.rs"]
+mod layouts_tests;

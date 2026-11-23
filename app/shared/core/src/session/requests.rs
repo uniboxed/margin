@@ -169,10 +169,6 @@ impl Core {
         self.swift("settleHosting", Value::Null);
     }
 
-    fn has_layout(&self, w: i64) -> bool {
-        self.read(|s| s.layouts.contains_key(&w))
-    }
-
     // ---- the library's requests ----
 
     /// The Library's delegate (inside its `perform`): a show request's item in front in its window at once (its preview
@@ -265,9 +261,7 @@ impl Core {
                 let windows: Vec<i64> =
                     self.read(|s| s.shown.iter().filter(|(_, i)| *i == item).map(|(w, _)| *w).collect());
                 // (A split's pane not focused: the window showing the split shows it again without it, its focus kept.)
-                let mut around: Vec<i64> = self.read(|s| {
-                    s.layouts.iter().filter(|(_, l)| l.items().any(|i| i == item)).map(|(w, _)| *w).collect()
-                });
+                let mut around: Vec<i64> = self.layouts_with(item);
                 around.retain(|w| self.shown_in(*w).as_deref() != Some(item));
                 around.sort_unstable();
                 let next = r.string("next");
@@ -404,8 +398,7 @@ impl Core {
         };
         // (A split's pane: the whole split, this pane focused; one that can't be: it alone.)
         if let Some(split) = self.split_of_item(item) {
-            let shown = self.swift_flow("showSplit", json!({ "split": split.id, "focus": item, "window": w })).await;
-            if shown.get("shown").and_then(Value::as_bool) == Some(true) {
+            if self.show_split(&split, item, w).await {
                 drawn.set(true);
                 return;
             }
@@ -464,10 +457,7 @@ impl Core {
             self.ports.set_margin_page(w, None);
         }
         self.set_shown(w, Some(item));
-        // (One item shown: the engine laid it out alone.)
-        if self.read(|s| s.layouts.contains_key(&w)) {
-            self.edit(Field::Layouts, |s| s.layouts.remove(&w));
-        }
+        self.set_layout_of(w, None); // (one item shown: the engine laid it out alone)
         if self.requested_in(w).as_deref() == Some(item) {
             self.set_requested(w, None);
         }

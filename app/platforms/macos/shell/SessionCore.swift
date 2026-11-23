@@ -41,6 +41,7 @@ final class SessionCore {
         case settleHosting = 23
         case leaveMarginPage = 25
         case clearElsewhere = 28, forgetElsewhere, hostedPage, setLoading, setPaneLoading, setLoadingTabs
+        case windowNumber = 40, windowFullScreen, windowLayoutMode, hostedPlacement, setHosting, fullScreenSpace, knownAppMinimums, setAppMinimums
     }
     // A typed port's "none".
     static let none = Int64.min
@@ -67,9 +68,23 @@ final class SessionCore {
                 }
             })
         }
+        setFollow()
     }
 
     deinit { margin_session_free(core) }
+
+    // The object, for the typed hot calls (`margin_session_page_rect`).
+    var pointer: OpaquePointer? { core }
+
+    // A drag's frames to the engine, typed: the page area and the other visible hosts' rects, the ids the core's for the
+    // call's length.
+    private func setFollow() {
+        margin_session_set_follow(core) { ctx, p, rects, n in
+            guard let ctx, let p else { return }
+            let list = UnsafeBufferPointer(start: rects, count: rects == nil ? 0 : n)
+            MainActor.assumeIsolated { Unmanaged<Box>.fromOpaque(ctx).takeUnretainedValue().owner?.follow(p.pointee, list) }
+        }
+    }
 
     // A text the core gave (none: a null pointer).
     nonisolated static func text(_ b: MarginBytes) -> String? {
@@ -172,7 +187,6 @@ final class SessionCore {
         Self.with(host) { h in call { margin_session_loading(core, h.ptr, h.len, $0, $1) } }
     }
     func refreshLoading() -> JSONObject { call { margin_session_refresh_loading(core, $0, $1) } }
-    func releaseReveal(_ window: Int) -> JSONObject { call { margin_session_release_reveal(core, Int64(window), $0, $1) } }
 
     // A copy's push as it came (its JSON's bytes), routed by the core: its answer.
     func copyMessage(browser: String, profile: String, window: Int?, _ msg: UnsafeBufferPointer<UInt8>) -> JSONObject {
@@ -248,5 +262,11 @@ final class SessionCore {
     // engine's): typed, nothing allocated.
     func linkWanted(_ profile: String) -> Bool { KeysCore.bytes(profile) { margin_session_link_wanted(core, $0, $1) } }
     func pinned(_ item: String) -> Bool { KeysCore.bytes(item) { margin_session_pinned(core, $0, $1) } }
+    // The Margin window whose sidebar's edge is dragged and whether the one shown follows it: typed.
+    var drag: (window: Int?, following: Bool) {
+        var w: Int64 = -1, f = false
+        margin_session_drag(core, &w, &f)
+        return (w < 0 ? nil : Int(w), f)
+    }
     func openWanted(window: Int, item: String) -> Bool { KeysCore.bytes(item) { margin_session_open_wanted(core, Int64(window), $0, $1) } }
 }

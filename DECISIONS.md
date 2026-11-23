@@ -8529,3 +8529,72 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   3.6 µs (was 2.8). The core alone: a loading push 0.9 µs, a slow step 0.65, a draw's plan 1.1, a UI request's route
   2.1, a `pointerWant` 0.6, ten hits 1.6, a log line 0.4, a hello over a 42 KB state 2.5, a poll's drawn look 42 ns,
   which allocates nothing (no_alloc.rs). Nothing per frame changed: a layout report still goes straight to the Page.
+## Core refactor step 3, commit 6: layouts, splits and the page area moving in the core, a drag's frame typed (2026-11-23)
+
+- Moved (session/layouts.rs, page_area.rs; their Swift deleted): `showSplit` (an app one pane, main the pane that
+  keeps its window else the first web one, the panes' first addresses and items for their windows), `paneRects`
+  (waited `pageWait`, the page asked to measure again at each look), `paneHostRects`, `pageAppMinimums`,
+  `refreshPaneMinimums`, `appMinimumsChanged`, `applyLayout` (each decision at the Swift's point between the same
+  awaits; its three `defer`s run only once reached, in reverse order), `leaveSplit` (the library's `removeFromSplit`
+  and the toast), `forgetInLayouts`, `prepare` (the other window's item pictured and parked first; full screen, its
+  page's full-screen layout, hosting, its page area measured), `pageRectChanged` (a drag the one shown follows: each
+  frame to the engine at once; else one placing per burst), `placeAgain` with its one retry after `refitRetryAfter`,
+  `sidebarResizing` and its `dragLine`. It writes commit 7's `layouts` field and commit 9's `panesLaying` and
+  `revealHeld` (the facade's writers of the last two, and `margin_session_release_reveal`, are gone: applyLayout was
+  their one user). `paneAddress`/`paneItem` are the core's (`PaneOpens`): the interim `prepare`, `showSplit` and
+  `applyLayout` Swift commands and the `paneFor` port are gone. The card's layouts are this flow (card.rs calls it),
+  the card's parts in it the core's (its part, its hostShow payload, its window's rect in a placing and a drag's frame,
+  its rect kept after a placing): HostedPeek's `cardPart`, `cardShowPayload`, `cardHostRects`, `cardPlaced` and the
+  facade's `cardPages` gone. `HostID.iconApp` is commit 9's `loading::icon_app` now (the Swift copy gone).
+- Left Swift, by name through the `swift` port (rare: a layout's): the elsewhere card's `showElsewhere` (and
+  `pagePicture`, async, a Swift command) and the cut panes' `paneCuts`, until their parts move. `HostedSession.
+  applyLayout` stays the API `setLayout` queues (the tests'), a `call`. `noRoom`, `isNoRoom`, `noRoomReason`,
+  `paneLeast`, `dragLine` stay the static wrappers the tests read.
+- The ports `prepare` asks on a show are typed (`MarginSessionCall` 40-47: the window's number, full screen, its
+  layout's mode, its placement with a token, hosting, its Space, every app's known minimum and their setting); the rest
+  are JSON (a layout's, a placing's, a drag's start and end). Two things the design's sketch lacked:
+  - The engine's layout results come with their Swift description (`"\(result)"`): the layout's "not shown" line
+    prints it, and it names the Swift module, which the core can't know.
+  - A placement Margin's window gave the core goes back to the engine as the window's own value: the port answers a
+    token with it, and the commands carry it (no placement made again of JSON numbers, which JSONSerialization can
+    read an ulp or two off for long decimals). It replaces the typed-ports commit's interim number for `prepare`'s.
+- The hot path, a drag's frame (≤120 a second): the page's layout report is read straight into the Page's kept layout
+  (page/report.rs: serde_json's own deserializer through a seed, every value through `deserialize_any` as a `Value` is,
+  so the same numbers, escapes, nesting limit and refusals; each key's last; the layout and a spare taking turns: no
+  allocation once both have grown; 200,000 generated reports and near-reports against `from_geometry` over a `Value`,
+  bit for bit). Then `updatePage` → the page rect → the session's `pageRectChanged` →
+  `margin_session_page_rect(s, window, page, content, display, card)`: the window's Page in the core
+  (`HostedWindow.pageFrame`, MWC's; a test's window has none and is read through the ports), its content and display
+  as MWC reads them, and where its page draws the card (`cardRect`: the core decides whether its card is there). While
+  the one shown follows, the core reads the placement and the panes' rects from the Page and the hosts from its state
+  (copied to the stack: nothing borrowed across the call out) and calls the engine's typed `MarginSessionFollow`
+  (`margin_session_set_follow`): no JSON, nothing allocated (no_alloc.rs `a_drags_frame_allocates_nothing`: 400 frames
+  of a split, with and without the card). The engine's `shown` is read after the drag's hold now, not before it (a
+  read: the same answer), so a drag that isn't followed asks nothing per frame either.
+- Checked before the Swift went (scratch harness layouts/: commit 5's driver extended): Margin's windows each a real
+  Page in the core whose layout report the driver writes from what's in front (the sidebar's width, the split of the
+  item in front and its ratio, a pane past the page area, none laid out yet, a stale layout, windowed), its
+  `setHosting` telling the session its page rect at once (`prepare`'s re-entrant `pageRectChanged`); the engine's
+  layouts with generated refusals (below a minimum, no room, didn't open, not laid out) and the copy's windows asked
+  for them, placings again (placed, kept, left full screen), drags of the edge and of a split's divider, followed or
+  not, with the card over them, splits of every shape (web and app, two of a profile and an app, an app twice and a
+  Chrome page, an app first, four), `setLayout` of up to six items, minimums, host events, presses, Quick Tab's card and
+  its close, full screen left, a narrowed window. Against the Swift at each base this branch sat on: f78d6598 (commit
+  5's typed ports) 192 + 86 vectors, commit 7 (187a6525) 196, commit 9 (40f909d4) 72: 541 of 546 the same to the line.
+  The five others are two sleepers due at the same virtual instant (`prepare`'s look and a link's wait, both the
+  core's now and so ordered by creation, the Swift's on its own timer; real deadlines never tie). A first run also
+  showed a Swift caller of the test-only `setLayout` going on one main-actor turn sooner (the `call`'s reply; nothing
+  of the app awaits it: the card's flows are the core's), which the driver no longer prints. Commit 7's merge found one bug, fixed (a card's hostShow
+  asked `pinnedOrFavorite` of Swift after commit 7 made it the core's).
+- The harness caught 23 of 32 deliberate breaks of the core over its runs (19 on this branch's final tree with three
+  seeds of eight vectors); of the nine it missed, seven are caught by the core's tests (an app twice, a profile's
+  fourth pane, the reveal held, the panes laid out for main, the focus moved back when a layout's host goes, a card's
+  rect not over a pane's, a pane the layout hasn't not followed: layouts_tests.rs), and two by neither: a no-room's
+  focus kept and the failed panes' order (newcomers out first): rare in the driver's world (two refusals beside a
+  focus change) and pinned only by T/split-real-use-tests.swift.
+- Cost. The core's side (release, ffi tests/drag_cost.rs): the report's parse 0.84 µs (was 4.1 with `Value`), the
+  session's page rect with the typed follow 0.2 µs, a whole frame (report, page area, session, holes) 1.4 µs. Through
+  the facade (scratch bench, main thread CPU, five alternating rounds against commit 9): a drag's frame 4.1-4.5 µs →
+  1.29-1.35 µs; a switch the same (web tab 68-97 against 66-88 µs, app 74-120 against 69-94); a peek open with commit
+  7's bench median 403-507 against 430-534 µs, best 265-307 against 253-303 (the card's layout now the core's whole,
+  `prepare`'s ports typed). The app's checks: 2150 unit and 321 end-to-end pass.

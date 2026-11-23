@@ -13,13 +13,14 @@
 //! Commit 7's (the preview card and Quick Tab): `cards` `[[profile, window, opener, space | null, url, title, open,
 //! ready, fresh, rect | null, hiddenBy | null, click | null]]` (`rect`: `[x, y, width, height]`), `littleArcs`
 //! `[[window, space]]`; `layouts` `[[window, main, mainRect | null, [[item, role, rect]…], focused, split | null]]`
-//! (part 3's: Swift's applyLayout still writes it, the card's flows read it).
+//! (part 3's: the core's layouts write it, the card's flows and the facade read it).
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{Value, json};
 
 use crate::geometry::{Rect, cg};
+use crate::host::model::Role as HostRole;
 use crate::hosted_browser::Role;
 use crate::json;
 
@@ -119,6 +120,34 @@ impl Layout {
     /// Main, then the others (`items`).
     pub fn items(&self) -> impl Iterator<Item = &str> {
         std::iter::once(self.main.as_str()).chain(self.extras.iter().map(|e| e.item.as_str()))
+    }
+    pub fn has(&self, item: &str) -> bool {
+        self.items().any(|i| i == item)
+    }
+}
+
+impl Extra {
+    /// Its role as the host model has it (an unknown word: a pane; Swift writes only the three).
+    pub fn host_role(&self) -> HostRole {
+        host_role_named(&self.role).unwrap_or(HostRole::Pane)
+    }
+}
+
+/// A host role as Swift's `HostRole.rawValue` says it.
+pub fn host_role_name(r: HostRole) -> &'static str {
+    match r {
+        HostRole::Main => "main",
+        HostRole::Pane => "pane",
+        HostRole::Card => "card",
+    }
+}
+
+pub fn host_role_named(name: &str) -> Option<HostRole> {
+    match name {
+        "main" => Some(HostRole::Main),
+        "pane" => Some(HostRole::Pane),
+        "card" => Some(HostRole::Card),
+        _ => None,
     }
 }
 
@@ -276,7 +305,7 @@ pub struct State {
     pub cards: BTreeMap<String, Card>,
     pub card_used_at: BTreeMap<String, f64>,
     pub little_arcs: BTreeMap<i64, String>,
-    /// Each Margin window's layout of several (part 3's, written by Swift's applyLayout until it moves).
+    /// Each Margin window's layout of several (part 3's).
     pub layouts: BTreeMap<i64, Layout>,
     /// The split's panes being laid out in each Margin window now, by their hosts (applyLayout, around the engine's
     /// setLayout), the pane whose slow step is under way (its window, its host), and the windows whose new pane keeps

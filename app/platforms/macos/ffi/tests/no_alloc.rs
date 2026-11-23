@@ -791,3 +791,48 @@ fn a_polls_drawn_look_with_nothing_changed_allocates_nothing() {
     // SAFETY: from margin_link_new, freed once.
     unsafe { margin_link_free(link) };
 }
+
+// ---- a drag's frame (step 3 commit 6): the layout report read into the page, the page area, the session's follow ----
+
+#[path = "drag/world.rs"]
+mod drag;
+
+#[test]
+fn a_drags_frame_allocates_nothing() {
+    let w = drag::world();
+    // (Where the window's page draws the card: the session's card is in place there.)
+    let card = MarginRect { x: 400.0, y: 100.0, width: 600.0, height: 500.0 };
+    let reports: Vec<String> = (0..40).map(drag::report).collect();
+    // (The page's two layouts' buffers grown first, the session's first frames.)
+    // SAFETY: the world's live objects.
+    unsafe {
+        for r in &reports[..4] {
+            drag::frame(&w, r.as_bytes(), Some(&card));
+        }
+    }
+    let mut followed = 0;
+    let n = allocations(|| {
+        for (i, r) in reports.iter().cycle().take(400).enumerate() {
+            // SAFETY: the world's live objects.
+            followed += usize::from(unsafe { drag::frame(&w, r.as_bytes(), (i % 2 == 0).then_some(&card)) } == 1);
+        }
+    });
+    assert_eq!(n, 0, "a drag's frame allocated {n} times");
+    assert_eq!((followed, w.counter.0), (400, 404), "every frame followed");
+    // (The page's report read without serde's Value: alone, nothing either.)
+    let page = margin_page_new();
+    // (Its first two reports grow its two layouts' buffers.)
+    for r in &reports[..2] {
+        // SAFETY: a live page, the report's bytes.
+        unsafe { margin_page_set_layout(page, r.as_ptr(), r.len()) };
+    }
+    let n = allocations(|| {
+        for r in reports.iter().cycle().take(200) {
+            // SAFETY: as above.
+            unsafe { margin_page_set_layout(page, r.as_ptr(), r.len()) };
+        }
+    });
+    assert_eq!(n, 0, "the report's parse allocated {n} times once grown");
+    // SAFETY: the live page, freed once.
+    unsafe { margin_page_free(page) };
+}

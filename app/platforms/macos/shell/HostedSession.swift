@@ -321,9 +321,14 @@ protocol HostedWindow: AnyObject {
     // A split's pane whose window is opening beside the panes shown (its item, its name, the app whose icon its loader
     // shows), nil: none: its page draws a loader over that pane's box only, the others stay shown and usable.
     func setPaneLoading(_ item: String?, label: String?, app: String?)
+    // Its page in the core (Margin's own window's PageCore) with its content's and display's frames now: what the
+    // session reads at each frame of a drag, typed (docs/CORE-REFACTOR.md step 3 part 7). Nil: a window with no page in
+    // the core (a test's), read through `hostedPlacement` and `paneLayout`.
+    var pageFrame: (page: OpaquePointer?, content: CGRect, display: CGRect?)? { get }
 }
 
 extension HostedWindow {
+    var pageFrame: (page: OpaquePointer?, content: CGRect, display: CGRect?)? { nil }
     func setShowing(_ label: String?) { setShowing(label, app: nil, slow: false) }
     func setShowing(_ label: String?, slow: Bool) { setShowing(label, app: nil, slow: slow) }
     func setShowing(_ label: String?, app: String?) { setShowing(label, app: app, slow: false) }
@@ -343,10 +348,6 @@ extension HostedWindow {
     func setPaneLoading(_ item: String?, label: String?, app: String?) {}
 }
 
-// The app whose icon a host's loader shows: an app's own, a Safari window's Safari.
-extension HostID {
-    var iconApp: String { raw.hasPrefix("app:") ? String(raw.dropFirst("app:".count)) : safariIdentifier }
-}
 
 extension MarginWindowController: HostedWindow {
     var number: Int { window.windowNumber }
@@ -540,10 +541,6 @@ final class HostedSession: LibraryDelegate {
         set { setMap(.cards, old: cards, newValue) { p, c in CoreRow(s0: p, s1: c?.cells) } }
     }
     var littleArcs: [Int: String] { field(.littleArcs) { Self.intText($0) } }
-    // (What the layout reads of a card, typed: its address, a new page or not.)
-    var cardPages: [String: (url: String, fresh: Bool)] {
-        field(.cardPages) { rows in Dictionary(rows.compactMap { r in r.s0.flatMap { p in r.s1.map { (p, (url: $0, fresh: r.b0)) } } }, uniquingKeysWith: { a, _ in a }) }
-    }
 
     init(library: Library, engine: HostedEngine, links: HostedLinks, options: Options = Options()) {
         self.library = library
@@ -672,7 +669,7 @@ final class HostedSession: LibraryDelegate {
             let args = c["args"] as? JSONObject ?? [:]
             switch c["name"] as? String {
             case "open":
-                guard let target = Self.hostTarget(args["target"]), let placement = int(args["placement"]).flatMap({ placements.removeValue(forKey: $0) }),
+                guard let target = Self.hostTarget(args["target"]), let placement = placement(args["placement"]),
                       let wid = int(args["window"]) else {
                     drive(core.answer(id, ["failed": HostStep.margin.rawValue, "why": "the core's open wasn't one"]))
                     return
@@ -696,6 +693,41 @@ final class HostedSession: LibraryDelegate {
                 startNow {
                     await self.engine.close(host)
                     self.drive(self.core.answer(id, [:]))
+                }
+            case "show":
+                let host = HostID(raw: args["host"] as? String ?? "")
+                startNow {
+                    let result = await self.engine.show(host)
+                    self.drive(self.core.answer(id, Self.json(result)))
+                }
+            case "setLayout":
+                guard let main = Self.hostTarget(args["main"]), let placement = placement(args["placement"]), let number = int(args["window"]) else {
+                    drive(core.answer(id, ["results": []]))
+                    return
+                }
+                let extras = (args["extras"] as? [JSONObject] ?? []).compactMap { e -> HostExtra? in
+                    guard let t = Self.hostTarget(e["target"]), let role = (e["role"] as? String).flatMap(HostRole.init(rawValue:)), let r = Self.rect(e["rect"]) else { return nil }
+                    return HostExtra(target: t, role: role, rect: r)
+                }
+                let mainRect = Self.rect(args["mainRect"]), focused = (args["focused"] as? String).map(HostID.init(raw:))
+                let space = (args["space"] as? NSNumber)?.uint64Value ?? 0
+                startNow {
+                    let results = await self.engine.setLayout(main: main, mainRect: mainRect, extras: extras, focused: focused, in: placement, marginWindow: number, marginSpace: space)
+                    // (Each result as the Swift writes it too, for the layout's line.)
+                    self.drive(self.core.answer(id, ["results": results.map { [$0.key.raw, Self.json($0.value), "\($0.value)"] }]))
+                }
+            case "focusPages", "toolbarsRest":
+                let hosts = (args["hosts"] as? [String] ?? []).map(HostID.init(raw:)), focus = c["name"] as? String == "focusPages"
+                startNow {
+                    _ = focus ? await self.engine.focusPages(hosts) : await self.engine.toolbarsRest(hosts)
+                    self.drive(self.core.answer(id, [:]))
+                }
+            case "pageRectChanged":
+                guard let placement = placement(args["placement"]) else { drive(core.answer(id, ["placed": false])); return }
+                let rects = (args["rects"] as? [[Any]]).map { Self.hostRects($0) }
+                startNow {
+                    let placed = if let rects { await self.engine.pageRectChanged(placement, rects: rects) } else { await self.engine.pageRectChanged(placement) }
+                    self.drive(self.core.answer(id, ["placed": placed]))
                 }
             default:
                 drive(core.answer(id, ["error": "not an engine operation"]))
@@ -721,38 +753,11 @@ final class HostedSession: LibraryDelegate {
             // (The flows of the parts not moved yet, docs/CORE-REFACTOR.md step 3's later commits.)
             let args = c["args"] as? JSONObject ?? [:]
             switch c["name"] as? String {
-            case "prepare":
-                guard let w = held(int(args["window"])), let target = Self.hostTarget(args["target"]) else { drive(core.answer(id, [:])); return }
+            case "pagePicture":
+                let item = args["item"] as? String ?? ""
                 startNow {
-                    let made = await self.prepare(w, for: target)
-                    // (The placement kept here, the core given its number: it only passes it to the engine's open.)
-                    let answer: JSONObject = made.map { made in
-                        self.nextPlacement += 1
-                        self.placements[self.nextPlacement] = made.0
-                        return ["placement": self.nextPlacement, "space": NSNumber(value: made.1)]
-                    } ?? [:]
-                    self.drive(self.core.answer(id, answer))
-                }
-            case "showSplit":
-                guard let w = held(int(args["window"])), let split = (args["split"] as? String).flatMap({ library.split($0) }), let focus = args["focus"] as? String else {
-                    drive(core.answer(id, ["shown": false]))
-                    return
-                }
-                startNow {
-                    let shown = await self.showSplit(split, focus: focus, in: w)
-                    self.drive(self.core.answer(id, ["shown": shown]))
-                }
-            case "applyLayout":
-                // (The preview card's layout changes, HostedPeek.swift's moved flows: part 3's until commit 6.)
-                let extras = (args["extras"] as? [JSONObject] ?? []).compactMap { e -> HostedLayout.Extra? in
-                    guard let item = e["item"] as? String, let role = (e["role"] as? String).flatMap(HostRole.init(rawValue:)), let r = Self.rect(e["rect"]) else { return nil }
-                    return HostedLayout.Extra(item: item, role: role, rect: r)
-                }
-                let split = (args["split"] as? JSONObject).flatMap { s in (s["id"] as? String).map { (id: $0, items: s["items"] as? [String] ?? []) } }
-                let window = int(args["window"]), main = args["main"] as? String ?? "", mainRect = Self.rect(args["mainRect"]), focused = args["focused"] as? String
-                startNow {
-                    await self.applyLayout(window, main: main, mainRect: mainRect, extras: extras, focused: focused, split: split)
-                    self.drive(self.core.answer(id, [:]))
+                    let picture = await self.pagePicture(of: item)
+                    self.drive(self.core.answer(id, ["picture": picture ?? NSNull()]))
                 }
             default:
                 drive(core.answer(id, ["error": "not a swift flow"]))
@@ -823,6 +828,37 @@ final class HostedSession: LibraryDelegate {
         case "log":
             if let text = ask["text"] as? String { if ask["warn"] as? Bool == true { Diagnostics.warn(text) } else { Diagnostics.note(text) } }
             return [:]
+        // (Margin's windows' facts and acts, the engine's minimums and the drag: layouts and the page area; the ones a show
+        // asks are typed, `typedPort`.)
+        case "windowNumber": return ["number": held(int(ask["window"]))?.number ?? -1]
+        case "windowFullScreen": return ["on": held(int(ask["window"]))?.isFullScreen == true]
+        case "windowFullScreenState": return ["state": held(int(ask["window"]))?.fullScreenState ?? ""]
+        case "windowWhyNot": return ["why": held(int(ask["window"]))?.pageAreaWhyNot ?? ""]
+        case "windowLayoutMode": return held(int(ask["window"]))?.layoutMode.map { ["mode": $0] } ?? [:]
+        case "hostedPlacement":
+            guard let p = held(int(ask["window"]))?.hostedPlacement else { return [:] }
+            return ["page": Self.json(p.page), "area": Self.json(p.area), "display": Self.json(p.display), "token": keep(p)]
+        case "paneLayout":
+            guard let pl = held(int(ask["window"]))?.paneLayout else { return [:] }
+            return ["split": pl.split, "panes": pl.panes.map { [$0.item] + Self.json($0.rect) }]
+        case "remeasure": held(int(ask["window"]))?.remeasure(); return [:]
+        case "toFullScreen": held(int(ask["window"]))?.toFullScreen(); return [:]
+        case "setHosting": held(int(ask["window"]))?.setHosting(ask["on"] as? Bool == true); return [:]
+        case "setHosted": held(int(ask["window"]))?.setHosted(int(ask["number"])); return [:]
+        case "setAppMinimums": held(int(ask["window"]))?.setAppMinimums(Self.sizes(ask["minimums"])); return [:]
+        case "setPaneMinimums": held(int(ask["window"]))?.setPaneMinimums(Self.sizes(ask["minimums"])); return [:]
+        case "followsPage": held(int(ask["window"]))?.followsPage(ask["on"] as? Bool == true); return [:]
+        case "hostedMoved": held(int(ask["window"]))?.hostedMoved(); return [:]
+        case "fullScreenSpace": return int(ask["number"]).flatMap { engine.fullScreenSpace(ofWindow: $0) }.map { ["space": NSNumber(value: $0)] } ?? [:]
+        case "knownAppMinimums": return ["minimums": engine.knownAppMinimums.map { [$0.key, Double($0.value.width), Double($0.value.height)] }]
+        case "minimum": return engine.minimum(of: HostID(raw: ask["host"] as? String ?? "")).map { ["size": [Double($0.width), Double($0.height)]] } ?? [:]
+        case "dragging": return ["follows": engine.dragging(ask["on"] as? Bool == true)]
+        case "shownFillsPage": return ["fills": engine.shownFillsPage]
+        case "liveFollowers": let n = engine.liveFollowers(); return ["follow": n.follow, "visible": n.visible]
+        case "follow":
+            // (The typed follow is set: this only if it isn't.)
+            if let p = placement(ask["placement"]) { let rects = Self.hostRects(ask["rects"] as? [[Any]] ?? []); rects.isEmpty ? engine.follow(p) : engine.follow(p, rects: rects) }
+            return [:]
         case "wokenByMenu": return ["woken": wokenByMenu[ask["profile"] as? String ?? ""] != nil]
         case "unopenable": return ["unopenable": unopenable.contains(ask["profile"] as? String ?? "")]
         case "swift": return ["value": swiftCall(ask["call"] as? String ?? "", ask["args"] as? JSONObject ?? [:]) ?? NSNull()]
@@ -875,6 +911,31 @@ final class HostedSession: LibraryDelegate {
         case .leaveMarginPage?: if let win = held(w) { leaveMarginPage(win) }
         case .clearElsewhere?: if let win = held(w), elsewhere[win.id] != nil { elsewhere[win.id] = nil; win.setElsewhere(nil, app: nil) }
         case .forgetElsewhere?: forgetElsewhere(item: text())
+        // (Margin's window made ready to host: a show's.)
+        case .windowNumber?: return held(w).map { Int64($0.number) } ?? none
+        case .windowFullScreen?: return held(w)?.isFullScreen == true ? 1 : 0
+        case .windowLayoutMode?: if let m = held(w)?.layoutMode { SessionCore.give(m, out) }
+        case .hostedPlacement?:
+            guard let p = held(w)?.hostedPlacement else { return none }
+            for r in [p.page, p.area, p.display] { for v in Self.json(r) { margin_port_out_float(out, v) } }
+            return Int64(keep(p))
+        case .setHosting?: held(w)?.setHosting(a.flag)
+        case .fullScreenSpace?: return w.flatMap { engine.fullScreenSpace(ofWindow: $0) }.map { Int64(bitPattern: $0) } ?? none
+        case .knownAppMinimums?:
+            for (bundle, m) in engine.knownAppMinimums {
+                SessionCore.give(bundle, out)
+                margin_port_out_float(out, Double(m.width))
+                margin_port_out_float(out, Double(m.height))
+            }
+        case .setAppMinimums?:
+            // (The names one a line, their sizes' numbers after, as the core writes them.)
+            let names = (text() ?? "").split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+            let sizes = (SessionCore.text(a.b) ?? "").split(separator: " ").compactMap { Double($0) }
+            var m: [String: CGSize] = [:]
+            if text()?.isEmpty == false, sizes.count == names.count * 2 {
+                for (i, n) in names.enumerated() { m[n] = CGSize(width: sizes[2 * i], height: sizes[2 * i + 1]) }
+            }
+            held(w)?.setAppMinimums(m)
         case .setLoading?: held(w)?.setLoading(text(), app: SessionCore.text(a.b))
         case .setPaneLoading?: held(w)?.setPaneLoading(text(), label: SessionCore.text(a.b), app: SessionCore.text(a.c))
         case .setLoadingTabs?: held(w)?.setLoadingTabs((text() ?? "").split(separator: ",").compactMap { Int($0) })
@@ -903,10 +964,10 @@ final class HostedSession: LibraryDelegate {
         case "leaveMarginPage": if let w { leaveMarginPage(w) }
         case "clearElsewhere": if let w, elsewhere[w.id] != nil { elsewhere[w.id] = nil; w.setElsewhere(nil, app: nil) }
         case "forgetElsewhere": forgetElsewhere(item: a["item"] as? String)
-        case "paneFor":
-            guard let p = a["profile"] as? String, let role = (a["role"] as? String).flatMap(SafariRole.init(name:)) else { return nil }
-            let k = SafariKey(p, role)
-            return ["address": paneAddressFor[k] ?? NSNull(), "item": paneItemFor[k] ?? NSNull()] as JSONObject
+        // (Part 5's: an item shown in another Margin window.)
+        case "showElsewhere": if let w, let item = a["item"] as? String { showElsewhere(item, in: w, picture: a["picture"] as? String) }
+        // (Part 9's: a split's cut panes said again.)
+        case "paneCuts": if let w { w.setPaneCuts(paneCutsJSON(shownList)) }
         default: Diagnostics.warn("hosted: the core asked for \(call), which isn't a Swift flow")
         }
         return nil
@@ -925,10 +986,37 @@ final class HostedSession: LibraryDelegate {
         }
     }
 
-    // The placements Margin's windows were made ready with (the interim `prepare`), by the number the core passes on to
-    // the engine's open (one each: taken there).
-    private var placements: [Int: HostPlacement] = [:]
+    // The placements Margin's windows gave the core, by the token it passes back with them to the engine's operations
+    // (the engine given the window's own value, not one made again of JSON numbers): the last 16 kept.
+    private var placements: [(token: Int, placement: HostPlacement)] = []
     private var nextPlacement = 0
+    private func keep(_ p: HostPlacement) -> Int {
+        nextPlacement += 1
+        placements.append((nextPlacement, p))
+        if placements.count > 16 { placements.removeFirst() }
+        return nextPlacement
+    }
+    // A placement as the core's commands carry it: its token's, else its numbers.
+    private func placement(_ v: Any?) -> HostPlacement? {
+        guard let o = v as? JSONObject else { return nil }
+        if let t = int(o["token"]), let p = placements.last(where: { $0.token == t })?.placement { return p }
+        guard let page = Self.rect(o["page"]), let area = Self.rect(o["area"]) else { return nil }
+        return HostPlacement(page: page, area: area, display: Self.rect(o["display"]) ?? .zero)
+    }
+    private static func sizes(_ v: Any?) -> [String: CGSize] {
+        var out: [String: CGSize] = [:]
+        for r in v as? [[Any]] ?? [] where r.count == 3 {
+            if let k = r[0] as? String, let w = num(r[1]), let h = num(r[2]) { out[k] = CGSize(width: w, height: h) }
+        }
+        return out
+    }
+    private static func hostRects(_ rows: [[Any]]) -> [HostID: CGRect] {
+        var out: [HostID: CGRect] = [:]
+        for r in rows where r.count == 5 {
+            if let h = r[0] as? String, let rect = Self.rect(Array(r[1...])) { out[HostID(raw: h)] = rect }
+        }
+        return out
+    }
 
     // A host target and an engine's result as the core's commands carry them.
     private static func hostTarget(_ v: Any?) -> HostTarget? {
@@ -1024,226 +1112,26 @@ final class HostedSession: LibraryDelegate {
         }
     }
 
-    struct LayoutPart { let item: String; let target: HostTarget; let profile: String?; let url: String; let role: HostRole; var rect: CGRect? }
-
-    // ---- split view (docs/PEEK-SPLIT.md §4) ----
-
-    // A split's item picked in `w`: the whole split shown, `focus` with the keys. Its panes are the split's items that
-    // can be hosted (web pages in Safari, Mac apps: each app once); fewer than two: false (the item is shown alone).
-    // Main is the pane that keeps its window (the window's layout of this split already: its main; else the split's
-    // first web pane, which uses its profile's main window, else its first pane); the others are panes, a profile's
-    // other web panes in `#pane1`…`#pane3`. Each pane's rect is its `<m-pane>` as the window's page lays the split out
-    // (asked for by the item in front: `requested`, drawn in the sidebar's capsule at once). True: shown.
-    private func showSplit(_ split: Library.Split, focus: String, in w: HostedWindow) async -> Bool {
-        var panes: [String] = [], apps: Set<String> = [], webs: [String] = []
-        for id in split.panes {
-            switch library.target(ofItem: id) {
-            case .app(let bundle, _)?: if apps.insert(bundle).inserted { panes.append(id) } else { note("split \(split.id): \(id): \(bundle) is in it already (an app is one pane)") }
-            case .web(let browser, _)? where browser == "safari": panes.append(id); webs.append(id)
-            default: note("split \(split.id): \(id): can't be a pane (not hosted beside others)")
-            }
-        }
-        guard panes.count >= 2, panes.contains(focus) else { note("split \(split.id): fewer than two panes to show: \(focus) alone"); return false }
-        if requested[w.id] != focus { requested[w.id] = focus; onChange?() } // (the page lays the split out for the item in front)
-        let had = layout[w.id].flatMap { $0.split == split.id && panes.contains($0.main) ? $0.main : nil }
-        let main = had ?? webs.first ?? panes[0]
-        // (A web pane's window not made yet is opened at its page, or blank when its tab is open elsewhere (moved in, the
-        // blank page closed then: background/hosted.ts): never Safari's empty new-tab page, whose address field keeps
-        // Safari's toolbar down over the page: `requestSafariWindow`.)
-        for id in webs { paneAddress[id] = open[id] == nil ? library.items().first { $0.id == id }?.value["url"] as? String : "about:blank" }
-        // (Its tab open elsewhere: the window made around that tab by the copy (`newWindow { itemId }`), so it never has a
-        // blank page first, whose address field keeps Safari's toolbar down; an older copy ignores it and opens blank.)
-        for id in webs where open[id] != nil { paneItem[id] = id }
-        defer { paneItem = [:] }
-        defer { paneAddress = [:] }
-        await applyLayout(w.id, main: main, mainRect: nil, extras: panes.filter { $0 != main }.map { HostedLayout.Extra(item: $0, role: .pane, rect: .zero) },
-                          focused: focus, split: (split.id, split.panes))
-        guard layout[w.id]?.split == split.id else { return false }
-        refreshPaneMinimums(w)
-        return true
-    }
-    // The address each web pane being laid out opens at, for its window's first page (`requestSafariWindow`).
-    private var paneAddress: [String: String?] = [:]
-    private var paneAddressFor: [SafariKey: String] = [:]
-    // A web pane whose tab is open in another of Margin's windows: its window made around that tab (`newWindow { itemId }`).
-    private var paneItem: [String: String] = [:]
-    private var paneItemFor: [SafariKey: String] = [:]
-
-    // The split's panes as `w`'s page lays them out now, each pane's rect by its item (`items` in that order: the
-    // split's, as the page has them), waited for (`pageWait`), the page asked to measure again at each look; nil: not
-    // laid out so in time.
-    private func paneRects(_ w: HostedWindow, split: String, items: [String]) async -> [String: CGRect]? {
-        func now() -> [String: CGRect]? {
-            guard let pl = w.paneLayout, pl.split == split, pl.panes.map(\.item) == items else { return nil }
-            return Dictionary(uniqueKeysWithValues: pl.panes.map { ($0.item, $0.rect) })
-        }
-        if let r = now() { return r }
-        guard await wait(options.pageWait, { if now() != nil { return true }; w.remeasure(); return false }) else { return nil }
-        return now()
-    }
-    // Each visible host's rect in `w`'s split as its page lays it out now (by its item's host): what a drag's frame and a
-    // change of the page area place them at. Empty: no split shown there, or the page's isn't it.
-    private func paneHostRects(_ w: HostedWindow) -> [HostID: CGRect] {
-        guard let l = layout[w.id], let split = l.split, let pl = w.paneLayout, pl.split == split else { return [:] }
-        var out: [HostID: CGRect] = [:]
-        for p in pl.panes where l.items.contains(p.item) { if let h = open[p.item]?.host { out[h] = p.rect } }
-        return out
-    }
-    // Every app's windows' known minimum as the page names their panes: a web page's (Safari's) as `web`, an app's by its
-    // bundle id (behaviors/split.ts `paneFloors`), whether a window of it is open or not.
-    func pageAppMinimums() -> [String: CGSize] {
-        var out: [String: CGSize] = [:]
-        for (bundle, m) in engine.knownAppMinimums { out[bundle == safariIdentifier ? "web" : bundle] = m }
-        return out
-    }
-    // An app's known minimum changed (HostEngine `onAppMinimums`): told to the Margin window hosting.
-    func appMinimumsChanged() { window(hostingWindow)?.setAppMinimums(pageAppMinimums()) }
-    // Each pane's window's minimum told to `w`'s page (its divider stops there): the engine's, as learnt.
-    private func refreshPaneMinimums(_ w: HostedWindow) {
-        var out: [String: CGSize] = [:]
-        if let l = layout[w.id], l.split != nil {
-            for item in l.items { if let h = open[item]?.host, let m = engine.minimum(of: h) { out[item] = m } }
-        }
-        w.setPaneMinimums(out)
-    }
-
+    // A whole layout of a Margin window's page area (`main` at the page area or `mainRect`, `extras` at theirs, `focused`
+    // with the keys, a split's panes at its page's `<m-pane>`s): the core's (core/session/layouts.rs), run now as the
+    // Swift call ran its first part at once. `setLayout` calls it (the tests' API).
     func applyLayout(_ windowId: Int?, main: String, mainRect: CGRect?, extras: [HostedLayout.Extra], focused: String?, split: (id: String, items: [String])? = nil) async {
-        guard let w = window(windowId) else { return note("layout: no Margin window to lay it out in") }
-        let hadItems = Set(layout[w.id]?.items ?? [])
-        let hadFocus = layout[w.id]?.focused
-        var parts: [LayoutPart] = []
-        var mainUsed: Set<String> = [], panes: [String: Int] = [:]
-        let asked: [(item: String, role: HostRole, rect: CGRect?)] = [(main, .main, mainRect)] + extras.map { ($0.item, $0.role, $0.rect) }
-        for (i, a) in asked.enumerated() {
-            // (The preview card: its profile's card window at the card's page, HostedPeek.swift.)
-            if i > 0, let card = cardPart(a.item, rect: a.rect) { parts.append(card); continue }
-            guard let t = library.target(ofItem: a.item) else { note("layout: \(a.item): no target"); if i == 0 { return }; continue }
-            let url = (library.items().first { $0.id == a.item }?.value["url"] as? String) ?? ""
-            switch t {
-            case .app(let bundle, let name):
-                labels[HostTarget.app(bundle).id] = appName(bundle) ?? (name.isEmpty ? nil : name) ?? bundle
-                parts.append(LayoutPart(item: a.item, target: .app(bundle), profile: nil, url: url, role: a.role, rect: a.rect))
-            case .web(let browser, let profile):
-                guard browser == "safari" else { note("layout: \(a.item): \(browser) isn't hosted yet"); if i == 0 { return }; continue }
-                let p = await profileFallback(resolve(profile), space: library.space(ofItem: a.item))
-                let role: SafariRole
-                if a.role == .card { role = .card } else if !mainUsed.contains(p) { role = .main; mainUsed.insert(p) } else {
-                    let n = (panes[p] ?? 0) + 1
-                    guard n <= 3 else { note("layout: \(a.item): a profile's fourth pane: not laid out (three at most)"); continue }
-                    panes[p] = n
-                    role = .pane(n)
-                }
-                if role != .main, role != .card, let address = paneAddress[a.item] ?? nil { paneAddressFor[SafariKey(p, role)] = address }
-                if role != .main, role != .card { paneItemFor[SafariKey(p, role)] = paneItem[a.item] }
-                labels[HostTarget.safariWindow(p, role).id] = "Safari"
-                parts.append(LayoutPart(item: a.item, target: .safariWindow(p, role), profile: p, url: url, role: a.role, rect: a.rect))
-            case .margin:
-                note("layout: \(a.item): Margin's own page isn't laid out beside others")
-                if i == 0 { return }
-            }
-        }
-        guard let lead = parts.first, lead.item == main else { return }
-        // (A web item whose window is there already: its tab in front first, out of sight, as a show does.)
-        func showTab(_ part: LayoutPart) async -> Bool {
-            guard let p = part.profile, case .safariWindow(_, let role) = part.target, let windowId = safariWindows[SafariKey(p, role)] else { return false }
-            let (result, error) = await links.request(profile: p, "hostShow", cardShowPayload(part.item, windowId: windowId) ?? ["windowId": windowId, "itemId": part.item, "url": part.url.isEmpty ? "about:blank" : part.url, "pinned": pinnedOrFavorite(part.item)])
-            guard let result else { note("layout: \(part.item): its tab wasn't shown (\(error ?? "no answer"))"); return false }
-            open[part.item] = OpenItem(host: part.target.id, profile: p)
-            if let tab = int(result["tabId"]) { safariTabs[part.item] = tab }
-            return true
-        }
-        var tabbed: Set<String> = []
-        for part in parts where part.profile != nil && engine.isHosted(part.target.id) { if await showTab(part) { tabbed.insert(part.item) } }
-        defer { paneAddressFor = [:]; paneItemFor = [:] }
-        guard let (placement, space) = await prepare(w, for: lead.target) else { settleHosting(); return }
-        // (A split: every pane's rect as the page lays the split out, docs/PEEK-SPLIT.md §4.)
-        if let split {
-            guard let rects = await paneRects(w, split: split.id, items: split.items) else {
-                note("layout: split \(split.id): Margin's window \(w.id)'s page didn't lay its panes out within \(options.pageWait) s: not shown")
-                settleHosting()
-                return
-            }
-            // (The preview card over the split keeps its own rect, its <m-preview-page>'s: it's no pane. HostedPeek.swift.)
-            for i in parts.indices where parts[i].role != .card { parts[i].rect = rects[parts[i].item] }
-            guard parts.allSatisfy({ $0.rect != nil }) else { note("layout: split \(split.id): a pane with no rect from the page: not shown"); settleHosting(); return }
-            // (Room, before any window moves: every pane within the page area and at its window's known minimum. One that
-            // isn't can't be placed (a rect past the display's edge has no full-screen plan), and trying made and dropped
-            // its window's own Space at each ask. The real screen, 2026-11-21 19:32:02: Notes (701) added beside a Safari
-            // tab (574) in 1264 pt, Safari's pane laid out at 949…1523, past the page area; Safari failed five times, the
-            // split shown as an empty page. The ones coming in go, the person told, the item shown before kept.)
-            if let out = Self.noRoom(parts.map { ($0.item, $0.role, $0.rect, Self.paneLeast) }, page: placement.page, had: hadItems) {
-                note("layout: split \(split.id): no room in the page area \(Int(placement.page.width))×\(Int(placement.page.height)) (\(parts.filter { $0.role != .card }.map { p in "\(p.item) \(p.rect.map { "\(Int($0.minX))…\(Int($0.maxX))×\(Int($0.height))" } ?? "-") " }.joined(separator: ", ")), each pane 220 at least): nothing moved")
-                let keep = hadFocus.flatMap { f in parts.contains { $0.item == f } && !out.contains(f) ? f : nil } ?? main
-                leaveSplit(split.id, out.map { ($0, .failed(.place, Self.noRoomReason)) }, focus: keep, in: w)
-                settleHosting()
-                return
-            }
-        }
-        let first = parts[0]
-        var wanted: [HostExtra] = []
-        for part in parts.dropFirst() { if let r = part.rect { wanted.append(HostExtra(target: part.target, role: part.role, rect: r)) } }
-        let focusPart = focused.flatMap { f in parts.first { $0.item == f } }
-        // (A split's pane opened or placed again beside the panes shown: its loader over its own box, not the page area's;
-        // main's too when this split is what the window shows already. `paneLoadingStep`.)
-        if let split, engine.shown != nil {
-            let again = layout[w.id]?.split == split.id
-            panesLaying[w.id] = Dictionary(parts.enumerated().filter { $0.offset > 0 ? $0.element.role == .pane : again }.map { ($0.element.target.id, $0.element.item) }, uniquingKeysWith: { a, _ in a })
-        }
-        defer { panesLaying[w.id] = nil }
-        // (A pane whose window is made now: its loader kept over its box until its tab is in and its window's own
-        // full-screen toolbar rests: `revealHeld`. The real screen, 2026-11-21 14:30:00: lifted as the engine was done,
-        // before the copy moved the pane's tab in, Safari's toolbar out over the new pane's page for ~150 ms meanwhile.)
-        let made = panesLaying[w.id] == nil ? [] : parts.dropFirst().filter { $0.role == .pane && $0.profile != nil && !engine.isHosted($0.target.id) }.map(\.target.id)
-        if !made.isEmpty { revealHeld.insert(w.id) }
-        defer { releaseReveal(w.id) }
-        let results = await engine.setLayout(main: first.target, mainRect: first.rect, extras: wanted, focused: focusPart?.target.id, in: placement, marginWindow: w.number, marginSpace: space)
-        var shownItems: [String] = []
-        for part in parts {
-            guard case .shown? = results[part.target.id] else { note("layout: \(part.item): not shown (\(results[part.target.id].map { "\($0)" } ?? "not laid out"))"); continue }
-            if part.profile != nil, !tabbed.contains(part.item) { guard await showTab(part) else { continue } }
-            if part.profile == nil { open[part.item] = OpenItem(host: part.target.id, profile: nil) }
-            shownItems.append(part.item)
-        }
-        if !made.isEmpty {
-            let new = made.filter { id in parts.contains { $0.target.id == id && shownItems.contains($0.item) } }
-            // (Its page given the keys first, under its loader: a window Safari made keeps them in its address field and
-            // its toolbar down over the page whatever made it, at its page or around its tab: the real screen, 2026-11-21.)
-            _ = await engine.focusPages(new)
-            _ = await engine.toolbarsRest(new)
-            releaseReveal(w.id)
-        }
-        guard shownItems.contains(main) else {
-            // (A split's main that found no room beside the panes coming in: they go, so main is laid out again alone.)
-            if let split, case .failed(_, let why)? = results[first.target.id], Self.isNoRoom(why) {
-                let incoming = parts.dropFirst().filter { $0.role == .pane && !hadItems.contains($0.item) }
-                let keep = hadFocus.flatMap { f in parts.contains { $0.item == f } && !incoming.contains { $0.item == f } ? f : nil } ?? main
-                if !incoming.isEmpty { leaveSplit(split.id, incoming.map { ($0.item, .failed(.place, Self.noRoomReason)) }, focus: keep, in: w) }
-            }
-            settleHosting(); onChange?(); return
-        }
-        let focus = focused.flatMap { shownItems.contains($0) ? $0 : nil } ?? main
-        // (A split's pane that didn't come: out of it, the rest laid out again: `leaveSplit`.)
-        if let split {
-            // (The ones coming in first: a pane shown before that failed only beside a newcomer goes back to its rect once
-            // the newcomer is out.)
-            let failed = parts.dropFirst().filter { $0.role == .pane && !shownItems.contains($0.item) }
-            let new = failed.filter { !hadItems.contains($0.item) }
-            let out = new.isEmpty ? failed : new
-            // (The pane that had the keys before keeps them, when the one asked to have them is what failed.)
-            let keep = focused.map { f in out.contains { $0.item == f } } == true ? hadFocus.flatMap { shownItems.contains($0) ? $0 : nil } ?? focus : focus
-            if !out.isEmpty { leaveSplit(split.id, out.map { ($0.item, results[$0.target.id]) }, focus: keep, in: w) }
-        }
-        let others = parts.dropFirst().filter { shownItems.contains($0.item) }
-        layout[w.id] = others.isEmpty ? nil : HostedLayout(main: main, mainRect: first.rect, extras: others.map { HostedLayout.Extra(item: $0.item, role: $0.role, rect: $0.rect ?? .zero) }, focused: focus, split: split?.id)
-        if split != nil, others.isEmpty { w.setPaneMinimums([:]) }
-        if marginPages[w.id] != nil { marginPages[w.id] = nil; w.setMarginPage(nil) }
-        // (A card focused: the item under it stays the window's item shown, the sidebar's highlight (a split's focused
-        // pane, as it was); the card isn't one.)
-        shown[w.id] = Self.isCardItem(focus) ? (shown[w.id].flatMap { shownItems.contains($0) && !Self.isCardItem($0) ? $0 : nil } ?? main) : focus
-        if requested[w.id] == main || requested[w.id] == focus { requested[w.id] = nil }
-        onChange?()
-        note("layout: \(shownItems.count) item(s) shown in Margin's window \(w.id), \(focus) focused")
-        if w.id == hostingWindow { w.setPaneCuts(paneCutsJSON(shownList)) }
+        func r(_ c: CGRect) -> [Any] { [Double(c.origin.x), Double(c.origin.y), Double(c.size.width), Double(c.size.height)] }
+        let args: JSONObject = [
+            "window": windowId ?? NSNull(), "main": main, "mainRect": mainRect.map(r) ?? NSNull(),
+            "extras": extras.map { [$0.item, $0.role.rawValue] + r($0.rect) }, "focused": focused ?? NSNull(),
+            "split": split.map { ["id": $0.id, "items": $0.items] as JSONObject } ?? NSNull(),
+        ]
+        _ = await call("applyLayout", args)
+    }
+
+    // An app's known minimum changed (HostEngine `onAppMinimums`): every app's told to the Margin window hosting (the
+    // core's).
+    func appMinimumsChanged() { drive(core.input(["type": "appMinimumsChanged"])) }
+    // Each pane's window's minimum told to `w`'s page (its divider stops there): the core's.
+    private func refreshPaneMinimums(_ w: HostedWindow) {
+        hold(w)
+        drive(core.input(["type": "refreshPaneMinimums", "window": w.id]))
     }
 
     // A pane's least size, Arc's 220×220 (the core's session/layout.rs `PANE_LEAST`). A pane's window may be wider:
@@ -1253,8 +1141,8 @@ final class HostedSession: LibraryDelegate {
         return n.count == 2 ? CGSize(width: n[0], height: n[1]) : .zero
     }()
 
-    // Why a pane didn't come, as `leaveSplit` and the toast say it, and whether a failure's words mean no room for it
-    // (the core's `NO_ROOM_REASON`, `is_no_room`).
+    // Why a pane didn't come, as the toast says it, and whether a failure's words mean no room for it (the core's
+    // `NO_ROOM_REASON`, `is_no_room`; the tests read them).
     static let noRoomReason = SessionRules.constants["noRoomReason"] as? String ?? ""
     static func isNoRoom(_ why: String) -> Bool { KeysCore.bytes(why) { margin_session_is_no_room($0, $1) } }
 
@@ -1269,84 +1157,11 @@ final class HostedSession: LibraryDelegate {
         return zip(panes, leave).filter(\.1).map(\.0.item)
     }
 
-    // Panes of a split shown in `w` that didn't come (their window refused its rect, below its app's minimum; or it
-    // didn't open): out of the split at once, in the library (decided 2026-11-21: the page lays out the library's split,
-    // so a pane only marked failed would stay an empty box, its dividers dragging nothing; the item itself stays in its
-    // space, open, and can be added again), the person told why (a toast), the rest laid out again by the show the
-    // removal asks for, `focus` keeping the keys. The real screen, 2026-11-21 13:26:54: a third Safari pane failed, the
-    // page kept three boxes, one empty, and two drags did nothing.
-    private func leaveSplit(_ split: String, _ failed: [(item: String, result: HostResult?)], focus: String, in w: HostedWindow) {
-        var room = false
-        var names: [String] = []
-        for (item, result) in failed {
-            var why = "not laid out"
-            if case .failed(_, let reason)? = result { why = reason }
-            let noRoom = Self.isNoRoom(why)
-            room = room || noRoom
-            let title = (library.items().first { $0.id == item }?.value["title"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-            names.append(title ?? (noRoom ? "that pane" : "a pane"))
-            note("split \(split): \(item): out of the split (\(noRoom ? "no room for it" : "it didn't open"): \(why)); the rest laid out again")
-            _ = library.perform("removeFromSplit", ["windowId": w.id, "tabId": item, "focus": focus])
-        }
-        let name = names.count == 1 ? "“\(String(names[0].prefix(60)))”" : "\(names.count) panes"
-        let text = room ? "Not enough room for \(name) in Split View" : "\(name) couldn't open in Split View"
-        if let t = jsonString(text) { w.push(#"{"type":"toast","text":"# + t + "}") }
-    }
+    // A host gone, or parked with nothing in its place: out of every layout (the core's).
+    private func forgetInLayouts(_ id: HostID) { drive(core.input(["type": "forgetInLayouts", "host": id.raw])) }
 
-    // A host gone, or parked with nothing in its place: out of every layout (one that was main ends that layout).
-    private func forgetInLayouts(_ id: HostID) {
-        for (wid, var l) in layout {
-            if open[l.main]?.host == id { layout[wid] = nil; continue }
-            let before = l.extras.count
-            l.extras.removeAll { open[$0.item]?.host == id }
-            guard l.extras.count != before else { continue }
-            if !l.items.contains(l.focused) { l.focused = l.main }
-            layout[wid] = l.extras.isEmpty ? nil : l
-        }
-    }
-
-    // Margin's window ready to host in its page area: in full screen (it always is; asked once more if it isn't, a
-    // safety check), its page drawing its own layout for hosting, its page area measured. Nil: it couldn't be.
-    private func prepare(_ w: HostedWindow, for target: HostTarget) async -> (HostPlacement, UInt64)? {
-        if let other = hostingWindow, other != w.id, let was = window(other) {
-            // (One Margin window hosts at a time: the one shown in the other parked first. That window keeps its item as a
-            // card, faded, and takes it back once it's in front: `focused`.)
-            let item = shown[other]
-            // (A web item's page pictured first, while its window still shows it: its card there is that, faded.)
-            var picture: String?
-            if let item { picture = await pagePicture(of: item) }
-            await engine.parkShown(why: "another Margin window hosts")
-            shown[other] = nil
-            hostingWindow = nil
-            was.setHosted(nil)
-            was.setShowing(nil)
-            was.setHosting(false)
-            if let item { showElsewhere(item, in: was, picture: picture) }
-        }
-        // (This window's own card stays until it hosts (below): cleared before, its launcher was drawn in between.)
-        if !w.isFullScreen {
-            note("Margin's window \(w.id) not in full screen (it always is while hosting is on: \(w.fullScreenState)): asked")
-            w.toFullScreen()
-            guard await wait(options.fullScreenWait, { w.isFullScreen }) else {
-                note("Margin's window \(w.id) didn't go full screen (\(w.fullScreenState)): nothing hosted")
-                return nil
-            }
-        }
-        if await !wait(1.5, { w.layoutMode == "fullscreen" }) {
-            note("Margin's window \(w.id): no full-screen layout from its page in 1.5 s (\(w.layoutMode ?? "none")): its last one is used")
-        }
-        w.setHosting(true)
-        hostingWindow = w.id
-        w.setAppMinimums(pageAppMinimums())
-        // (Its card, if it had one, goes now that it hosts: straight to the loader, never its launcher for a frame.)
-        if elsewhere[w.id] != nil { elsewhere[w.id] = nil; w.setElsewhere(nil, app: nil) }
-        // (Asked to measure again at every look: a size the window took may not have been drawn yet.)
-        guard await wait(options.pageWait, { if w.hostedPlacement != nil { return true }; w.remeasure(); return false }), let placement = w.hostedPlacement else {
-            note("Margin's window \(w.id): no page area (\(w.pageAreaWhyNot))")
-            return nil
-        }
-        return (placement, engine.fullScreenSpace(ofWindow: w.number) ?? 0)
-    }
+    // A Margin window the core is to tell (its id), held as the Swift flows held theirs until nothing is under way.
+    private func hold(_ w: HostedWindow) { if seen[w.id] !== w { seen[w.id] = w } }
 
     // Margin's window about to leave full screen while hosting (macOS's green button, Mission Control: Margin itself
     // never asks): the one shown parked at once, while it's still in Margin's Space. Not queued behind the session's own
@@ -1392,39 +1207,6 @@ final class HostedSession: LibraryDelegate {
     // window's page card is opaque, with the theme's loader and the app's name; a split's pane's own loader; the bar
     // (the core's, core/session/loading.rs).
     func loading(_ id: HostID?) { drive(core.loading(id?.raw)) }
-
-    // The split's panes being laid out in each Margin window now, by their hosts (applyLayout, around the engine's
-    // setLayout), and the Margin windows whose new pane keeps its loader after the engine's slow step is over
-    // (applyLayout: until its tab is shown and its toolbar rests), let go by `releaseReveal`. (The core's.)
-    var panesLaying: [Int: [HostID: String]] {
-        get {
-            field(.panesLaying) { rows in
-                var m: [Int: [HostID: String]] = [:]
-                for r in rows { if let h = r.s0, let i = r.s1 { m[r.i0, default: [:]][HostID(raw: h)] = i } }
-                return m
-            }
-        }
-        set {
-            let old = panesLaying
-            func flat(_ m: [Int: [HostID: String]]) -> [String: (Int, String, String)] {
-                var out: [String: (Int, String, String)] = [:]
-                for (w, panes) in m { for (h, i) in panes { out["\(w) \(h.raw)"] = (w, h.raw, i) } }
-                return out
-            }
-            let (was, now) = (flat(old), flat(newValue))
-            write(.panesLaying, newValue,
-                  puts: now.filter { was[$0.key]?.2 != $0.value.2 }.map { CoreRow(i0: $0.value.0, s0: $0.value.1, s1: $0.value.2) },
-                  dels: was.filter { now[$0.key] == nil }.map { CoreRow(i0: $0.value.0, s0: $0.value.1) })
-        }
-    }
-    private var revealHeld: Set<Int> {
-        get { field(.revealHeld) { Set($0.map(\.i0)) } }
-        set {
-            let old = revealHeld
-            write(.revealHeld, newValue, puts: newValue.subtracting(old).map { CoreRow(i0: $0) }, dels: old.subtracting(newValue).map { CoreRow(i0: $0) })
-        }
-    }
-    private func releaseReveal(_ wid: Int) { drive(core.releaseReveal(wid)) }
 
     // A Safari profile's copy's `loading` push (background/page-loads.ts: its tabs loading in one of its windows), as
     // the tests give it: the core's, as the copy's push comes (`copyMessage`).
@@ -2163,91 +1945,54 @@ final class HostedSession: LibraryDelegate {
 
     // ---- the page area moved (the sidebar's width, another theme, another display) ----
 
-    // Taken once per run of changes (a theme's layout reports come in bursts): the newest placement, when its turn comes.
-    // Held while the sidebar's edge is dragged (`resizing`): one placing when the drag is over.
-    private var placing = false
+    // A Margin window's page area changed (its setPageRect; a split's panes laid out again): the core's
+    // (core/session/page_area.rs). Every frame of a drag comes here: Margin's own window's page is read in the core and
+    // the frame told to the engine through the typed follow, no JSON (`margin_session_page_rect`); a window with no page
+    // in the core (a test's) through the ports.
     func pageRectChanged(_ window: HostedWindow) {
-        // (A drag the one shown follows live: each page area of it to the engine at once; Margin's own once it's over.)
-        if following, resizing == window.id, window.id == hostingWindow, let p = window.hostedPlacement {
-            // (A split's panes too, each at its `<m-pane>` in this frame: docs/PEEK-SPLIT.md §4.)
-            // (The preview card too, at its <m-preview-page> in this frame: HostedPeek.swift.)
-            let rects = paneHostRects(window).merging(cardHostRects(window)) { a, _ in a }
-            return rects.isEmpty ? engine.follow(p) : engine.follow(p, rects: rects) // (a window-mode window's hole read again as it moves: the engine says so)
-        }
-        guard window.id == hostingWindow, engine.shown != nil, resizing != window.id, !placing else { return }
-        placing = true
-        enqueue {
-            self.placing = false
-            // (Asked before a drag began, its turn come during it: the drag's end places.)
-            guard self.resizing != window.id else { return }
-            await self.placeAgain(window)
-        }
-    }
-
-    // The hosted window placed for the page area as it is now. Never at the cost of the item (bug of 2026-11-17: a
-    // second placing failed and the window was lost): the engine keeps a window that didn't leave full screen shown at
-    // the frame it had (`placed` false, still shown: the hole follows its bounds, the theme's frame colour in any gap,
-    // placed again when it's next shown); one that left full screen and didn't come back in at the new size is hosted
-    // still, out of sight: shown again once, `refitRetryAfter` later (Safari may be mid-transition), behind the loader;
-    // failing that too, the launcher, its item kept in the sidebar (a click shows it again).
-    private func placeAgain(_ window: HostedWindow) async {
-        guard window.id == hostingWindow, let id = engine.shown, let placement = window.hostedPlacement else { return }
-        // (A split shown: each pane's window at its `<m-pane>` as laid out now, its rects kept with the layout.)
-        // (The preview card over it too, at its <m-preview-page> as laid out now: kept in the layout with the panes.)
-        let rects = paneHostRects(window).merging(cardHostRects(window)) { a, _ in a }
-        cardPlaced(window, rects: rects)
-        if !rects.isEmpty, var l = layout[window.id] {
-            if let h = open[l.main]?.host, let r = rects[h] { l.mainRect = r }
-            for i in l.extras.indices { if let h = open[l.extras[i].item]?.host, let r = rects[h] { l.extras[i].rect = r } }
-            layout[window.id] = l
-        }
-        let placed = rects.isEmpty ? await engine.pageRectChanged(placement) : await engine.pageRectChanged(placement, rects: rects)
-        window.hostedMoved()
-        let kept = !placed && engine.shown == id
-        note("page area changed: \(Int(placement.page.width))×\(Int(placement.page.height))\(placed ? "" : kept ? " (not fitted: shown at the frame it had)" : " (not fitted)")")
-        guard !placed, engine.shown == nil, engine.isHosted(id) else { return }
-        window.setShowing(labels[id] ?? id.description, app: id.iconApp)
-        defer { window.setShowing(nil); settleHosting() }
-        await sleep(options.refitRetryAfter)
-        guard hostingWindow == window.id, engine.shown == nil, engine.isHosted(id), requested[window.id] == nil else { return }
-        let result = await engine.show(id)
-        if case .failed(let step, let why) = result {
-            note("\(id): not shown again after its placing failed (\(step.rawValue): \(why)): hosted still, out of sight; its item is kept")
+        hold(window)
+        if let f = window.pageFrame {
+            // (Where its page draws the preview card's page, as the window measures it: the core decides if a card is there.)
+            let card = window.cardRect?.raw
+            let said: UInt8 = withUnsafePointer(to: card ?? MarginRect()) { cp in
+                let cardAt = card == nil ? nil : cp
+                if var d = f.display?.raw { return margin_session_page_rect(core.pointer, Int64(window.id), f.page, f.content.raw, &d, cardAt) }
+                return margin_session_page_rect(core.pointer, Int64(window.id), f.page, f.content.raw, nil, cardAt)
+            }
+            if said == 2 { runSoon() }
         } else {
-            note("\(id): shown again after its placing failed")
+            drive(core.input(["type": "pageRect", "window": window.id]))
         }
     }
 
-    // The Margin window whose sidebar's edge is being dragged (its page area's changes held while it hosts, or followed
-    // live: `following`).
-    private(set) var resizing: Int?
-    private(set) var following = false
+    // A drag's frame the one shown follows (the core's typed `follow`): the page area, the other visible hosts' rects.
+    func follow(_ p: MarginPlacement, _ rects: UnsafeBufferPointer<MarginHostRect>) {
+        let placement = HostPlacement(page: CGRect(p.page), area: CGRect(p.area), display: CGRect(p.display))
+        guard !rects.isEmpty else { return engine.follow(placement) }
+        var out: [HostID: CGRect] = [:]
+        for r in rects { out[hostID(r.host, r.len)] = CGRect(r.rect) }
+        engine.follow(placement, rects: out)
+    }
+    // (The ids a drag's frames name, made once: a drag names the same few each frame.)
+    private var frameHosts: [HostID] = []
+    private func hostID(_ p: UnsafePointer<UInt8>?, _ n: Int) -> HostID {
+        let bytes = UnsafeBufferPointer(start: p, count: p == nil ? 0 : n)
+        if let had = frameHosts.first(where: { $0.raw.utf8.elementsEqual(bytes) }) { return had }
+        let id = HostID(raw: String(decoding: bytes, as: UTF8.self))
+        if frameHosts.count >= 16 { frameHosts.removeFirst() }
+        frameHosts.append(id)
+        return id
+    }
 
-    // A change of a Margin window's sidebar's width began (a drag of its edge: the page says so at the first change of
-    // the width), or is over (its last layout reported first: ui/behaviors/resize.ts). Begun: the page area's changes
-    // are held from now on; the sidebar slides over the hosted window as it is (Margin's window is in front of it).
-    // Over: the hosted window placed once, at the page area as it is now (a window by Accessibility; a full-screen
-    // member out of full screen and in, behind the loader). Nothing shown: nothing to place.
+    // The Margin window whose sidebar's edge is being dragged, and whether the one shown follows it live (the core's).
+    var resizing: Int? { core.drag.window }
+    var following: Bool { core.drag.following }
+
+    // A change of a Margin window's sidebar's width began (a drag of its edge or a split's divider: the page says so at
+    // the first change of the width), or is over (its last layout reported first: ui/behaviors/resize.ts): the core's.
     func sidebarResizing(_ window: HostedWindow, _ on: Bool, divider: Bool = false) {
-        if on {
-            guard resizing == nil else { return }
-            resizing = window.id
-            guard window.id == hostingWindow, engine.shown != nil else { return }
-            following = engine.dragging(true)
-            // (A split's panes follow too: the holes are their rects meanwhile, the engine says them each frame.)
-            window.followsPage(following && (engine.shownFillsPage || layout[window.id]?.split != nil))
-            note(Self.dragLine(divider: divider, window: window.id, following: following, engine.liveFollowers()))
-            return
-        }
-        guard resizing == window.id else { return }
-        resizing = nil
-        if following {
-            following = false
-            _ = engine.dragging(false)
-            window.followsPage(false)
-        }
-        guard window.id == hostingWindow, engine.shown != nil else { return }
-        enqueue { await self.placeAgain(window) }
+        hold(window)
+        drive(core.input(["type": "sidebarResizing", "window": window.id, "on": on, "divider": divider]))
     }
 
     // A drag's line in the log: what's dragged (a split's divider, the sidebar's edge) and how many hosted windows follow

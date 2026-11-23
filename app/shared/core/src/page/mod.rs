@@ -20,13 +20,14 @@
 //! Sans IO: the window server's reads (a hosted window's bounds) are the caller's, made where the Swift made them and
 //! handed in before the decision that needs them; the panel, its level and order, the ground's drawing, the keys and
 //! the pushes are the caller's, carried out from the answers in their order. Nothing allocated on a drag's frames once
-//! the buffers have grown, but the layout report's parse (a frame's one JSON).
+//! the buffers have grown, the layout report's parse among them (report.rs: read into the layout kept, no `Value`).
 
 pub mod area;
 pub mod fill;
 pub mod front;
 pub mod hello;
 pub mod holes;
+pub mod report;
 pub mod said;
 
 use crate::geometry::{Rect, cg};
@@ -157,6 +158,8 @@ pub struct Page {
     grace: f64,
     startup_label: String,
     layout: Option<PageLayout>,
+    // (The next report's buffers: the layout before this one.)
+    spare: PageLayout,
     layout_ground: Option<Rgba>,
     hits: Vec<Rect>,
     capture_all: bool,
@@ -212,6 +215,7 @@ impl Page {
             grace,
             startup_label: startup_label.to_owned(),
             layout: None,
+            spare: PageLayout::default(),
             layout_ground: None,
             hits: Vec::new(),
             capture_all: false,
@@ -334,13 +338,13 @@ impl Page {
     /// The page's layout report (`{ geometry }`'s object, its JSON as the page sent it): parsed (protocol.rs
     /// `PageLayout::from_geometry`) and kept; nothing kept if it isn't one.
     pub fn set_layout_bytes(&mut self, bytes: &[u8]) -> LayoutSaid {
-        let Ok(serde_json::Value::Object(g)) = serde_json::from_slice::<serde_json::Value>(bytes) else {
+        // (Read into the spare layout, its buffers reused: once both have grown, a drag's frame allocates nothing.)
+        let mut next = std::mem::take(&mut self.spare);
+        if !report::read_into(bytes, &mut next) {
+            self.spare = next;
             return LayoutSaid::default();
-        };
-        match PageLayout::from_geometry(&g) {
-            Some(l) => self.set_layout(l),
-            None => LayoutSaid::default(),
         }
+        self.set_layout(next)
     }
 
     /// A layout report kept: whether a split's panes changed (another split, or its panes' items or boxes; the first
@@ -351,7 +355,10 @@ impl Page {
         if self.layout.as_ref().is_none_or(|was| was.fills != l.fills) {
             self.layout_ground = fill::ground(&l.fills);
         }
-        self.layout = Some(l);
+        // (The layout before kept as the spare, for the next report's buffers.)
+        if let Some(was) = self.layout.replace(l) {
+            self.spare = was;
+        }
         LayoutSaid { taken: true, panes_changed }
     }
 

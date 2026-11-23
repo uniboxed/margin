@@ -31,8 +31,10 @@ pub mod host_id;
 mod hosting;
 mod items;
 pub mod layout;
+mod layouts;
 mod loading;
 mod navigate;
+mod page_area;
 pub mod push;
 mod requests;
 pub mod route;
@@ -51,15 +53,20 @@ use std::rc::{Rc, Weak};
 use serde_json::{Map, Value, json};
 
 use crate::geometry::Rect;
+use crate::host::layout::{Placement, Size};
 use crate::hosted_browser::Role;
 use crate::json::{self, Object};
 use exec::Exec;
 pub use hosting::HostTarget;
 pub use items::Split;
+pub use page_area::{Frame, PageRect};
 pub use requests::{By, Request};
-pub use state::{Card, Field, Layout, OpenItem, Row, State};
+pub use state::{Card, Extra, Field, Layout, OpenItem, Row, State};
 pub use target::Target;
 pub use ui::LiveRow;
+
+/// A split as a page lays it out: its id, and each pane's item and box on the screen, in the split's order.
+pub type PaneLayout = (String, Vec<(String, Rect)>);
 
 /// The log lines kept (HostedSession `done`).
 pub const DONE_KEPT: usize = 200;
@@ -117,8 +124,9 @@ pub trait Ports {
     fn log(&self, warn: bool, text: &str);
     /// The Swift flows of the parts not moved yet (step 3's later commits), called synchronously by name, gone as each
     /// part moves: `settleHosting`, `leaveMarginPage` `{ window }`, `clearElsewhere` `{ window }`,
-    /// `forgetElsewhere` `{ item }`, `paneFor` `{ profile, role }` → `{ address, item }`; commit 9's: `uiSettings` → the
-    /// settings object (the profile source's), `startupRetry`, `startupSkip`, `openLauncher` `{ window, settings }`.
+    /// `forgetElsewhere` `{ item }`; commit 9's: `uiSettings` → the settings object (the profile source's),
+    /// `startupRetry`, `startupSkip`, `openLauncher` `{ window, settings }`; part 5's `showElsewhere` `{ window, item,
+    /// picture }`; part 9's `paneCuts` `{ window }` (its cut panes said again).
     fn swift(&self, call: &str, args: Value) -> Value;
     /// Where a Margin window's page draws the preview card's page (the theme's `<m-preview-page>`,
     /// `HostedWindow.cardRect`), None: none drawn. The window as the flow had it.
@@ -133,6 +141,46 @@ pub trait Ports {
     /// A library edit made now (`Library.perform`), its requests reaching the session re-entrantly before it returns,
     /// as a synchronous Swift flow made it (the card's Quick Tab and Expand). Flows that await use `Command::Perform`.
     fn perform(&self, action: &str, payload: &Object) -> Performed;
+
+    // ---- commit 6's (layouts and splits, the page area moving) ----
+
+    /// A Margin window's facts as the flow reads them (the window as the flow had it): the window server's number,
+    /// whether it's in full screen, its full-screen state and why it has no page area (for the log), its page's last
+    /// layout's mode.
+    fn window_number(&self, window: i64) -> i64;
+    fn window_full_screen(&self, window: i64) -> bool;
+    fn window_full_screen_state(&self, window: i64) -> String;
+    fn window_why_not(&self, window: i64) -> String;
+    fn window_layout_mode(&self, window: i64) -> Option<String>;
+    /// Where the hosted window goes while hosting (`hostedPlacement`), None until measured; and the caller's token for
+    /// it (-1: none), passed back with it to the engine's operations so the caller hands them its own value.
+    fn hosted_placement(&self, window: i64) -> Option<(Placement, i64)>;
+    /// A split as its page lays it out now (`paneLayout`): its id and each pane's item and box on the screen, in the
+    /// split's order; None: none.
+    fn pane_layout(&self, window: i64) -> Option<PaneLayout>;
+    /// Its page asked to measure again; into full screen; hosting or not; the hosted window shown in it (None: none);
+    /// every app's known minimum and a split's panes' (by the page's names: `web`, a bundle id, an item); the hosted
+    /// window following a drag; the hosted window placed again (its bounds read again).
+    fn remeasure(&self, window: i64);
+    fn to_full_screen(&self, window: i64);
+    fn window_set_hosting(&self, window: i64, on: bool);
+    fn set_hosted(&self, window: i64, number: Option<i64>);
+    fn set_app_minimums(&self, window: i64, minimums: &[(String, Size)]);
+    fn set_pane_minimums(&self, window: i64, minimums: &[(String, Size)]);
+    fn follows_page(&self, window: i64, on: bool);
+    fn hosted_moved(&self, window: i64);
+    /// The engine's: a Margin window's full-screen Space, every app's windows' known minimum (by bundle id), a host's
+    /// window's minimum, a drag begun (true: the one shown follows it live) or over, the one shown fills the page area
+    /// (a tile), how many visible hosts follow a drag of all visible.
+    fn full_screen_space(&self, number: i64) -> Option<u64>;
+    fn known_app_minimums(&self) -> Vec<(String, Size)>;
+    fn minimum(&self, host: &str) -> Option<Size>;
+    fn dragging(&self, on: bool) -> bool;
+    fn shown_fills_page(&self) -> bool;
+    fn live_followers(&self) -> (i64, i64);
+    /// A frame of a drag the one shown follows (`HostedEngine.follow`): the page area, and the other visible hosts'
+    /// rects in it (none: the one shown alone, `follow(placement)`). Per frame: typed, nothing allocated.
+    fn follow(&self, placement: &Placement, rects: &[(&str, Rect)]);
 }
 
 /// The library's values as its set has them now (Library.swift's reads over margin-core's `LibraryStore`).
@@ -156,15 +204,16 @@ pub enum Command {
     /// A Swift job of the session's queue (HostedSession `enqueue`'s body), its turn come: answered when it's over.
     Run { job: u64 },
     /// An engine operation (`open` `{ target, placement, space, window, item }` → `{ shown, placed }` or
-    /// `{ failed, why }`, `parkShown` `{ why }`, `close` `{ host }`): answered when it's over.
+    /// `{ failed, why }`, `parkShown` `{ why }`, `close` `{ host }`, `show` `{ host }` → a result as `open`'s,
+    /// `setLayout` `{ main, mainRect, extras: [{ target, role, rect }], focused, placement, window, space }` →
+    /// `{ results: [[host, result, said]] }` (`said`: the result as the Swift writes it), `focusPages` and
+    /// `toolbarsRest` `{ hosts }`, `pageRectChanged` `{ placement, rects? }` → `{ placed }`): answered when it's over.
     Engine { op: String, args: Object },
     /// The Safari waker's (Safari's own window mechanics, the Mac's): `ensureLinked` `{ profile }` → `{ linked }`
     /// (woken through Safari's menu if it has no window, `margin_session_link_wanted` read at each look),
     /// `closeWoken` `{ profile, except, why }`.
     Waker { op: String, args: Object },
-    /// A Swift flow of a part not moved yet (interim): `prepare` `{ window, target }` → `{ placement, space }` or
-    /// `{}`, `showSplit` `{ split, focus, window }` → `{ shown }`, `applyLayout` `{ window, main, mainRect, extras,
-    /// focused, split: { id, items } }` → `{}`.
+    /// A Swift flow of a part not moved yet (interim): part 5's `pagePicture` `{ item }` → `{ picture }`.
     Swift { call: String, args: Object },
     /// The answer to a Swift caller (an engine's ask, a Swift flow's call of one of these): its continuation resumed,
     /// and the run goes on once that caller had its turn (the next main-actor turn).
@@ -281,6 +330,11 @@ pub struct Options {
     pub cycle_hold: f64,
     /// Safari's bundle ids (an app picked that is one: a new web item).
     pub safari_bundles: Vec<String>,
+    /// Margin's window into full screen; its page area measured; a placing again that left the window out of full
+    /// screen: shown again once, this long after.
+    pub full_screen_wait: f64,
+    pub page_wait: f64,
+    pub refit_retry_after: f64,
 }
 
 impl Default for Options {
@@ -291,6 +345,9 @@ impl Default for Options {
             cycle_window: 1.0,
             cycle_hold: 0.35,
             safari_bundles: vec![SAFARI_BUNDLE.into(), "com.apple.SafariTechnologyPreview".into()],
+            full_screen_wait: 6.0,
+            page_wait: 3.0,
+            refit_retry_after: 1.5,
         }
     }
 }
@@ -306,6 +363,9 @@ impl Options {
             safari_bundles: json::array(v.get("safariBundles"))
                 .map(|l| l.iter().filter_map(Value::as_str).map(str::to_string).collect())
                 .unwrap_or_else(|| was.safari_bundles.clone()),
+            full_screen_wait: n("fullScreenWait", was.full_screen_wait),
+            page_wait: n("pageWait", was.page_wait),
+            refit_retry_after: n("refitRetryAfter", was.refit_retry_after),
         }
     }
 }
@@ -319,31 +379,79 @@ pub enum Input {
     /// The options changed (the Swift struct's every field).
     Options(Value),
     /// The facade's read of fields (`get`) and its edit of them (`set`: each field's `put` and `del`).
-    State { get: Vec<String>, set: Option<Object> },
+    State {
+        get: Vec<String>,
+        set: Option<Object>,
+    },
     /// A Swift flow's log line.
     Note(String),
     /// A Swift job enqueued (its body the facade's, run when its turn comes).
-    Enqueue { job: u64 },
+    Enqueue {
+        job: u64,
+    },
     /// The page's history for the item shown in a Margin window (`goBack`, `goForward`, `reload`).
-    Navigate { kind: String, window: Option<i64> },
+    Navigate {
+        kind: String,
+        window: Option<i64>,
+    },
     /// A library request (the Library's delegate, inside its `perform`): its item drawn in front at once, then handled
     /// in the session's queue.
     Library(Object),
     /// A flow called by Swift (an engine's ask, a Swift flow's call; `openApp` from the palette): run now, as Swift's
     /// call ran its first part at once, its answer (`id`: a caller that awaits it) a `Reply`.
-    Call { id: Option<u64>, flow: String, args: Object },
+    Call {
+        id: Option<u64>,
+        flow: String,
+        args: Object,
+    },
     /// A show overtaken before it started (a Swift flow's check), answered in `reply`.
-    Overtaken { item: String, window: Option<i64> },
+    Overtaken {
+        item: String,
+        window: Option<i64>,
+    },
     /// The next/previous-tab key pressed in a Margin window (each press and repeat).
-    Cycled { window: i64 },
+    Cycled {
+        window: i64,
+    },
     /// The preview card's and Quick Tab's word (the copy's pushes, the page's `peek.*`, ⌘W, a host gone, the poll):
     /// card.rs `peek_input`, its reply for the ones that answer.
-    Peek { kind: String, args: Object },
+    Peek {
+        kind: String,
+        args: Object,
+    },
     /// A request the UI makes (`LibraryWindowSource.perform`), its route in `reply`.
-    Ui { kind: String, payload: Object },
+    Ui {
+        kind: String,
+        payload: Object,
+    },
     /// What the loading bar kept for a Margin window gone (`standing`: its standing pushes' window; `said`: what it
     /// was told), or for a profile's copy whose main window went.
-    LoadingForget { window: Option<i64>, standing: bool, said: bool, profile: Option<String> },
+    LoadingForget {
+        window: Option<i64>,
+        standing: bool,
+        said: bool,
+        profile: Option<String>,
+    },
+    /// A change of a Margin window's sidebar's width began (a drag of its edge, or of a split's divider) or is over.
+    SidebarResizing {
+        window: i64,
+        on: bool,
+        divider: bool,
+    },
+    /// A Margin window's page area changed, read through the ports (a window with no page in the core: the tests').
+    PageRect {
+        window: i64,
+    },
+    /// A host gone, or parked with nothing in its place: out of every layout.
+    ForgetInLayouts {
+        host: String,
+    },
+    /// The one shown's minimum changed (each pane's told to the hosting window's page) and an app's known minimum
+    /// changed (every app's told).
+    RefreshPaneMinimums {
+        window: i64,
+    },
+    AppMinimumsChanged,
 }
 
 impl Input {
@@ -386,6 +494,17 @@ impl Input {
                 said: o.get("said").and_then(Value::as_bool) == Some(true),
                 profile: s("profile").map(str::to_string),
             }),
+            "sidebarResizing" => Ok(Input::SidebarResizing {
+                window: swift_int(o.get("window")).ok_or("no window")?,
+                on: o.get("on").and_then(Value::as_bool).ok_or("no on")?,
+                divider: o.get("divider").and_then(Value::as_bool) == Some(true),
+            }),
+            "pageRect" => Ok(Input::PageRect { window: swift_int(o.get("window")).ok_or("no window")? }),
+            "forgetInLayouts" => Ok(Input::ForgetInLayouts { host: s("host").ok_or("no host")?.to_string() }),
+            "refreshPaneMinimums" => {
+                Ok(Input::RefreshPaneMinimums { window: swift_int(o.get("window")).ok_or("no window")? })
+            }
+            "appMinimumsChanged" => Ok(Input::AppMinimumsChanged),
             other => Err(format!("{other:?} isn't an input")),
         }
     }
@@ -427,6 +546,13 @@ pub(crate) struct Core {
     options: RefCell<Options>,
     errors_said: RefCell<BTreeSet<String>>,
     depth: Cell<u32>,
+    /// Commit 6's (layouts and splits, the page area moving): the addresses and items the panes being laid out open
+    /// at (`paneAddress`, `paneItem` by item; `paneAddressFor`, `paneItemFor` by profile and role); the Margin window
+    /// whose sidebar's edge is dragged, whether the one shown follows it live, a placing queued.
+    panes: RefCell<layouts::PaneOpens>,
+    resizing: Cell<Option<i64>>,
+    following: Cell<bool>,
+    placing: Cell<bool>,
 }
 
 /// The session: one per app. Every entry takes `&self` (re-entrant).
@@ -454,6 +580,10 @@ impl Session {
             options: RefCell::new(options),
             errors_said: RefCell::default(),
             depth: Cell::new(0),
+            panes: RefCell::default(),
+            resizing: Cell::new(None),
+            following: Cell::new(false),
+            placing: Cell::new(false),
         }))
     }
 
@@ -509,14 +639,6 @@ impl Session {
     pub fn refresh_loading(&self) -> Out {
         self.0.call(false, |c| {
             c.refresh_loading();
-            (None, None)
-        })
-    }
-
-    /// A Margin window's new pane's loader let go (applyLayout's).
-    pub fn release_reveal(&self, window: i64) -> Out {
-        self.0.call(false, |c| {
-            c.release_reveal(window);
             (None, None)
         })
     }
@@ -626,6 +748,24 @@ impl Session {
         !out.start.is_empty() || !out.log.is_empty() || out.reply.is_some() || out.error.is_some()
     }
 
+    /// A Margin window's page area changed (MarginWindow `setPageRect`'s, a split's panes laid out again): a drag's
+    /// frame the one shown follows goes to the engine at once (`Ports::follow`); else one placing per burst, queued.
+    /// Per frame of a drag: nothing allocated, no JSON; what it queued runs at the caller's next tick (`ready`), as an
+    /// input's.
+    pub fn page_rect(&self, window: i64, frame: &Frame<'_>) -> PageRect {
+        let c = &self.0;
+        let depth = c.depth.get() + 1;
+        c.depth.set(depth);
+        let r = c.page_rect_changed(window, frame);
+        c.depth.set(depth - 1);
+        r
+    }
+
+    /// The Margin window whose sidebar's edge is being dragged, and whether the one shown follows it live.
+    pub fn drag(&self) -> (Option<i64>, bool) {
+        (self.0.resizing.get(), self.0.following.get())
+    }
+
     #[cfg(test)]
     fn core(&self) -> &Rc<Core> {
         &self.0
@@ -713,6 +853,13 @@ impl Core {
             Input::LoadingForget { window, standing, said, profile } => {
                 self.loading_forget(window, standing, said, profile.as_deref());
             }
+            Input::SidebarResizing { window, on, divider } => self.sidebar_resizing(window, on, divider),
+            Input::PageRect { window } => {
+                self.page_rect_changed(window, &Frame::Ports);
+            }
+            Input::ForgetInLayouts { host } => self.forget_in_layouts(&host),
+            Input::RefreshPaneMinimums { window } => self.refresh_pane_minimums(window),
+            Input::AppMinimumsChanged => self.app_minimums_changed(),
         }
         (None, None)
     }

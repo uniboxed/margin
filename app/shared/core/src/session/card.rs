@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 
 use super::hosting::HostTarget;
 use super::items::Split;
-use super::state::{Card, Extra, Layout, rect_json};
+use super::state::{Card, Extra, Layout};
 use super::target::Target;
 use super::{Core, Field, host_id, object, swift_int, swift_max, swift_min};
 use crate::geometry::{Rect, cg};
@@ -218,8 +218,7 @@ pub fn web_host(s: &str, os: impl FnOnce() -> Option<String>) -> Option<String> 
 // covered it), expanded (a new item, its tab moved, `hostPromotePeek`) or dropped (no room, no page area). Quick Tab's
 // field is `little_arcs[window]`.
 //
-// The layout itself is part 3's, still Swift's (`applyLayout` its command; the layouts it makes the core's field,
-// `layouts`, which the card reads): the command goes once commit 6 moves it.
+// The layout itself is part 3's (layouts.rs `apply_layout`: the card a part of it, at its rect, in its card window).
 
 /// The copy's tag for the card's page (background/hosted.ts CARD_ITEM), and the card's item in a layout.
 pub const CARD_TAG: &str = "peek-card";
@@ -239,10 +238,6 @@ pub fn is_card_item(item: &str) -> bool {
     item.starts_with(CARD_PREFIX)
 }
 
-fn extra_json(e: &Extra) -> Value {
-    json!({ "item": e.item, "role": e.role, "rect": rect_json(&e.rect) })
-}
-
 /// A rect's edges moved by more than a point (CGRect's `minX`, `minY`, `width`, `height`: standardized).
 fn moved(a: &Rect, b: &Rect) -> bool {
     let (a, b) = (cg::standard(a), cg::standard(b));
@@ -259,7 +254,7 @@ impl Core {
         self.read(|s| s.cards.get(profile).cloned())
     }
 
-    fn set_card(&self, profile: &str, c: Option<Card>) {
+    pub(crate) fn set_card(&self, profile: &str, c: Option<Card>) {
         self.edit(Field::Cards, |s| match c {
             Some(c) => s.cards.insert(profile.to_string(), c),
             None => s.cards.remove(profile),
@@ -287,7 +282,7 @@ impl Core {
         self.read(|s| s.cards.values().find(|c| c.window == w).cloned())
     }
 
-    fn open_card_in(&self, w: i64) -> Option<Card> {
+    pub(crate) fn open_card_in(&self, w: i64) -> Option<Card> {
         self.read(|s| s.cards.values().find(|c| c.window == w && c.open).cloned())
     }
 
@@ -317,31 +312,6 @@ impl Core {
     /// The space a card's or Quick Tab's choice goes to: the one named if the library has it, else `or`.
     fn space_named(&self, named: Option<&str>, or: impl FnOnce() -> Option<String>) -> Option<String> {
         named.filter(|s| self.has_space(s)).map(str::to_string).or_else(or)
-    }
-
-    /// A window's layout of several (part 3's field), and laying one out (its Swift command until commit 6).
-    pub(crate) fn layout_of(&self, w: i64) -> Option<Layout> {
-        self.read(|s| s.layouts.get(&w).cloned())
-    }
-
-    async fn apply_layout(
-        &self,
-        w: i64,
-        main: &str,
-        main_rect: Option<Rect>,
-        extras: &[Extra],
-        focused: &str,
-        split: Option<Split>,
-    ) {
-        let args = json!({
-            "window": w,
-            "main": main,
-            "mainRect": main_rect.as_ref().map(rect_json),
-            "extras": extras.iter().map(extra_json).collect::<Vec<_>>(),
-            "focused": focused,
-            "split": split.map(|s| json!({ "id": s.id, "items": s.panes })),
-        });
-        self.swift_flow("applyLayout", args).await;
     }
 
     /// The split a window's layout shows, for laying it out again with or without the card (`splitOf`).
@@ -598,7 +568,8 @@ impl Core {
         extras.push(Extra { item: item.clone(), role: "card".into(), rect });
         // (Over a split: the split's own layout kept, its panes at their <m-pane>s, the card above them.)
         let split = base.as_ref().and_then(|b| self.split_of_layout(b));
-        self.apply_layout(w, &main, base.as_ref().and_then(|b| b.main_rect), &extras, &item, split).await;
+        let main_rect = base.as_ref().and_then(|b| b.main_rect);
+        self.apply_layout(Some(w), &main, main_rect, extras, Some(&item), split.map(|s| (s.id, s.panes))).await;
         let Some(after) = self.card(profile).filter(|a| a.open && a.window == w) else { return };
         if !self.layout_of(w).is_some_and(|l| l.extras.iter().any(|e| e.item == item)) {
             self.note("Preview: the card wasn't shown (refused or failed: see the layout's line)".into());
@@ -704,7 +675,8 @@ impl Core {
                     .filter(|s| *s == main || extras.iter().any(|e| &e.item == s))
                     .unwrap_or_else(|| main.clone());
                 let split = core.split_of_layout(&base);
-                core.apply_layout(w, &main, base.main_rect, &extras, &under, split).await;
+                core.apply_layout(Some(w), &main, base.main_rect, extras, Some(&under), split.map(|s| (s.id, s.panes)))
+                    .await;
             }
             core.ask(&p, "hostCardClose", Object::new()).await;
         });

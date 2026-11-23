@@ -76,43 +76,8 @@ extension HostedSession {
     // sites open in a card (auto-preview, settings.autoPeekPins), told to the copy with each hostShow. The core's.
     func pinnedOrFavorite(_ item: String) -> Bool { core.pinned(item) }
 
-    // ---- what the layout needs of a card (HostedSession.applyLayout: part 3's, still Swift's) ----
-
-    func cardPart(_ item: String, rect: CGRect?) -> LayoutPart? {
-        guard Self.isCardItem(item) else { return nil }
-        let p = String(item.dropFirst(Self.cardPrefix.count))
-        guard let c = cardPages[p] else { return nil }
-        let target = HostTarget.safariWindow(p, .card)
-        labels[target.id] = "Safari"
-        return LayoutPart(item: item, target: target, profile: p, url: c.url, role: .card, rect: rect)
-    }
-
-    // The copy's hostShow for the card's page: in the card's window only (`role`), at its address when it's a new one.
-    func cardShowPayload(_ item: String, windowId: Int) -> JSONObject? {
-        guard Self.isCardItem(item) else { return nil }
-        let p = String(item.dropFirst(Self.cardPrefix.count))
-        guard let c = cardPages[p] else { return nil }
-        var out: JSONObject = ["windowId": windowId, "itemId": Self.cardTag, "url": c.url.isEmpty ? "about:blank" : c.url, "role": "card"]
-        if c.fresh { out["fresh"] = true }
-        return out
-    }
-
-
     // The card a Margin window shows (one open card in a window: the core's).
     func openCard(in windowId: Int) -> PeekCard? { cards.values.first { $0.window == windowId && $0.open } }
-
-    // The card's window at its <m-preview-page> as the page lays it out now (a page area's change, a drag's frame), by its
-    // host; empty: no card in place there. (The page area's moves, part 7's.)
-    func cardHostRects(_ w: HostedWindow) -> [HostID: CGRect] {
-        guard let c = openCard(in: w.id), c.ready, let r = w.cardRect else { return [:] }
-        return [HostTarget.safariWindow(c.profile, .card).id: r]
-    }
-    // ...placed there by the page area's change: its rect kept (its own <m-preview-page> report then changes nothing).
-    func cardPlaced(_ w: HostedWindow, rects: [HostID: CGRect]) {
-        guard var c = openCard(in: w.id), let r = rects[HostTarget.safariWindow(c.profile, .card).id] else { return }
-        c.rect = r
-        cards[c.profile] = c
-    }
 
     // ---- the copy's word (Shell.swift routes its pushes here): the core's ----
 

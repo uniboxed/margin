@@ -48,6 +48,9 @@ final class PageCore {
 
     deinit { margin_page_free(page) }
 
+    // The page object, for the session's typed read of a drag's frame (`margin_session_page_rect`).
+    var pointer: OpaquePointer? { page }
+
     // The loader's grace, the start's loader label, how it's kept in front (the mechanism asked for, the window levels).
     func configure(grace: TimeInterval, startupLabel: String, order: Bool, raised: Int, normal: Int) {
         withText(startupLabel) { t, n, _ in margin_page_configure(page, grace, t, n, order, Int64(raised), Int64(normal)) }

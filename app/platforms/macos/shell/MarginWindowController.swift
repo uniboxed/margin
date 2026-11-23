@@ -954,6 +954,8 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // layout its page measured hosting: the launcher's, from before, has the sidebar docked whatever Keep open says,
     // and a hidden sidebar's page area is wider: placed by it, the window would be placed again at once. (The core's.)
     var hostedPlacement: HostPlacement? { core.hostedPlacement(content: contentFrame, display: displayFrame) }
+    // Its page in the core and its content's and display's frames now: the session reads a drag's frame there (typed).
+    var pageFrame: (page: OpaquePointer?, content: CGRect, display: CGRect?)? { (core.pointer, contentFrame, displayFrame) }
     // In full screen and narrower than its screen (laid out as a split's half by a tile change in its Space). The core's.
     private var narrowed: Bool {
         withUnsafePointer(to: displayFrame?.raw ?? MarginRect()) { margin_page_narrowed(isFullScreen, contentFrame.raw, displayFrame == nil ? nil : $0) }

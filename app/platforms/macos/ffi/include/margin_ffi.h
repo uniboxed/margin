@@ -477,6 +477,22 @@ MarginSession *margin_session_new(MarginLibrary *library, const uint8_t *options
 void margin_session_free(MarginSession *session);
 void margin_port_out_text(MarginPortOut *out, const uint8_t *ptr, size_t len);
 void margin_port_out_int(MarginPortOut *out, int64_t n);
+void margin_port_out_float(MarginPortOut *out, double n);
+// Layouts and the page area moving (step 3 commit 6): `drag` (the Margin window whose sidebar's edge is dragged, -1
+// none, and whether the one shown follows it). The hot path, `page_rect`: each change of a Margin window's page area
+// (every frame of a drag), its page read in the core (NULL: through the ports), where it draws the preview card's page
+// (NULL: none): 0 nothing, 1 a drag's frame followed (through `follow`, set with `set_follow`: the page area
+// and the other visible hosts' rects, their ids the session's for the call's length), 2 a placing queued (tick in the
+// next turn). Nothing allocated, no JSON. Field 18: layouts (read as JSON, `state`).
+typedef struct MarginHostRect {
+    const uint8_t *host;
+    size_t len;
+    MarginRect rect;
+} MarginHostRect;
+typedef void (*MarginSessionFollow)(void *ctx, const MarginPlacement *placement, const MarginHostRect *rects, size_t n);
+void margin_session_set_follow(const MarginSession *session, MarginSessionFollow follow);
+uint8_t margin_session_page_rect(const MarginSession *session, int64_t window, const MarginPage *page, MarginRect content, const MarginRect *display, const MarginRect *card);
+void margin_session_drag(const MarginSession *session, int64_t *window, bool *following);
 uint8_t *margin_session_input(const MarginSession *session, const uint8_t *input, size_t len, MarginSessionStatus *status, size_t *out_len);
 uint8_t *margin_session_answer(const MarginSession *session, uint64_t id, const uint8_t *reply, size_t len, MarginSessionStatus *status, size_t *out_len);
 uint8_t *margin_session_tick(const MarginSession *session, double due, MarginSessionStatus *status, size_t *out_len);
@@ -502,7 +518,6 @@ uint8_t *margin_session_peek_open(const MarginSession *session, MarginBytes prof
 // (false: none listed).
 uint8_t *margin_session_loading(const MarginSession *session, const uint8_t *host, size_t len, MarginSessionStatus *status, size_t *out_len);
 uint8_t *margin_session_refresh_loading(const MarginSession *session, MarginSessionStatus *status, size_t *out_len);
-uint8_t *margin_session_release_reveal(const MarginSession *session, int64_t window, MarginSessionStatus *status, size_t *out_len);
 uint8_t *margin_session_copy_message(const MarginSession *session, MarginBytes browser, MarginBytes profile, bool has_window, int64_t window, const uint8_t *msg, size_t len, MarginSessionStatus *status, size_t *out_len);
 uint8_t *margin_session_copy_tabs(const MarginSession *session, MarginBytes profile, const uint8_t *state, size_t len, MarginSessionStatus *status, size_t *out_len);
 int64_t margin_session_number(const MarginSession *session, const uint8_t *item, size_t len);

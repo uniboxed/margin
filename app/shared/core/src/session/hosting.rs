@@ -52,7 +52,7 @@ pub fn ask_again(error: &str) -> bool {
 }
 
 /// A number as Swift's `Double.description` says it (`1.0`, `0.0001`, `1e-05`, `1e+16`).
-fn swift_double(d: f64) -> String {
+pub(crate) fn swift_double(d: f64) -> String {
     if d.is_nan() {
         return "nan".into();
     }
@@ -144,11 +144,11 @@ impl Core {
     /// The engine's open (the first time) or show, into `w`'s page area, for `item`; Margin's window made ready first.
     /// False: not shown.
     pub(crate) async fn host(&self, target: &HostTarget, w: i64, item: &str) -> bool {
-        let prepared = self.swift_flow("prepare", json!({ "window": w, "target": target.json() })).await;
-        let (Some(placement), Some(space)) = (prepared.get("placement"), prepared.get("space")) else {
+        let Some((placement, token, space)) = self.prepare(w, target).await else {
             self.settle_hosting();
             return false;
         };
+        let placement = super::page_area::placement_json(&placement, token);
         // (A new app's open that's waiting for its window is given up as soon as another item is picked in this
         // window, or its window closed: the engine asks `open_wanted`.)
         let args =
@@ -256,13 +256,17 @@ impl Core {
             payload.insert("url".into(), json!(url));
         }
         if let Role::Pane(_) = role {
-            let pane = self.swift("paneFor", json!({ "profile": p, "role": role_name(role) }));
-            if let Some(address) = pane.get("address").and_then(Value::as_str)
+            let key = (p.to_string(), role);
+            let (address, item) = {
+                let o = self.panes.borrow();
+                (o.address_for.get(&key).cloned(), o.item_for.get(&key).cloned())
+            };
+            if let Some(address) = address
                 && (address == "about:blank" || address.to_lowercase().starts_with("http"))
             {
                 payload.insert("url".into(), json!(address));
             }
-            if let Some(item) = pane.get("item").and_then(Value::as_str) {
+            if let Some(item) = item {
                 payload.insert("itemId".into(), json!(item));
             }
         }
@@ -403,6 +407,7 @@ impl Core {
             "closeWindow",
             "safariFullScreen",
             "safariFocus",
+            "applyLayout",
         ];
         if !FLOWS.contains(&flow) {
             return self.refused("call", &format!("no flow {flow:?}"));
@@ -460,6 +465,14 @@ impl Core {
                     Some(n) => json!(c.safari_focus(s("profile").as_deref(), n).await),
                     None => json!(false),
                 },
+                "applyLayout" => {
+                    if let Some(main) = s("main") {
+                        let (main_rect, extras, split) = super::layouts::layout_args(&args);
+                        let focused = s("focused");
+                        c.apply_layout(window, &main, main_rect, extras, focused.as_deref(), split).await;
+                    }
+                    Value::Null
+                }
                 _ => Value::Null,
             };
             if let Some(to) = id {

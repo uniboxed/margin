@@ -92,13 +92,13 @@ fn a_panes_own_loader_kept_until_its_reveal_is_let_go() {
     assert_eq!(named(&a, "setLoading"), [json!(["setLoading", 1, null, null])], "never the page area's loader");
     s.loading(None);
     assert!(named(&acts(&world), "setPaneLoading").is_empty(), "held while its reveal is");
-    s.release_reveal(1);
+    s.core().release_reveal(1);
     assert_eq!(named(&acts(&world), "setPaneLoading"), [json!(["setPaneLoading", 1, null, null, null])]);
     s.loading(Some("app:com.n"));
     assert_eq!(named(&acts(&world), "setPaneLoading"), [json!(["setPaneLoading", 1, "n", "Notes", "com.n"])]);
     // (Its slow step still under way: the reveal let go keeps it.)
     set(&s, json!({ "revealHeld": { "put": [[1]] } }));
-    s.release_reveal(1);
+    s.core().release_reveal(1);
     assert!(named(&acts(&world), "setPaneLoading").is_empty());
 }
 
