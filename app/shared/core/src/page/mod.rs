@@ -25,7 +25,9 @@
 pub mod area;
 pub mod fill;
 pub mod front;
+pub mod hello;
 pub mod holes;
+pub mod said;
 
 use crate::geometry::{Rect, cg};
 use crate::host::layout::Placement;
@@ -191,6 +193,8 @@ pub struct Page {
     rects: Vec<Rect>,
     pieces: Vec<Piece>,
     scratch: [Vec<Rect>; 2],
+    /// The rects the last op said read (said.rs).
+    said_rects: Vec<Rect>,
 }
 
 impl Default for Page {
@@ -243,6 +247,7 @@ impl Page {
             rects: Vec::new(),
             pieces: Vec::new(),
             scratch: [Vec::new(), Vec::new()],
+            said_rects: Vec::new(),
         }
     }
 

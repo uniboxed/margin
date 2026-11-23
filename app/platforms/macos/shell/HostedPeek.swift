@@ -97,13 +97,6 @@ extension HostedSession {
         return out
     }
 
-    // The engine's slow step for a card's window (its first open): the card's own loader (it says `loading` until it's
-    // in place), never the page card's over main. True: a card's, taken here. (The loading bar's, part 8.)
-    func cardLoadingStep(_ id: HostID?) -> Bool {
-        if let id, id.safariRole == .card { cardLoading = id; return true }
-        if id == nil, cardLoading != nil { cardLoading = nil; return true }
-        return false
-    }
 
     // The card a Margin window shows (one open card in a window: the core's).
     func openCard(in windowId: Int) -> PeekCard? { cards.values.first { $0.window == windowId && $0.open } }

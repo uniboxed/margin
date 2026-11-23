@@ -66,6 +66,90 @@ final class PageCore {
         return (bits & 1 != 0, bits & 2 != 0)
     }
 
+    // ---- what its page says, and its hello (core/page/said.rs, hello.rs) ----
+
+    // An op's route (`Said`): what the window's mechanism does with it; the Page's own (its layout, the theme's hits,
+    // the pointer's wants) kept in the core already.
+    enum Said {
+        case none, ready, want, fullScreen, haptic
+        case layout(taken: Bool, panesChanged: Bool)
+        case peekRect(CGRect?)
+        case hits([CGRect], all: Bool)
+        case chrome(controls: CGRect?, drags: [CGRect])
+        case focus(Bool)
+        case counts(spaces: Int, items: Int)
+        case resizing(on: Bool, divider: Bool)
+        case slide(item: String, side: PaneSide)
+        case ask(String, JSONObject)
+        case log(warn: Bool, String)
+    }
+
+    // An op and its body's JSON (a layout's: its report) as the page sent it; `content`: the window's content rect.
+    func said(_ op: String, _ body: UnsafeBufferPointer<UInt8>, content: CGRect) -> Said {
+        var out = MarginSaid()
+        var op = op
+        let kind = op.withUTF8 { margin_page_said(page, $0.baseAddress, $0.count, body.baseAddress, body.count, content.raw, &out) }
+        let text = out.text.map { p -> String in
+            defer { margin_buffer_free(p, out.text_len) }
+            return String(decoding: UnsafeBufferPointer(start: p, count: out.text_len), as: UTF8.self)
+        }
+        func listed() -> [CGRect] {
+            guard out.rects > 0 else { return [] }
+            var list = [MarginRect](repeating: MarginRect(), count: out.rects)
+            let n = list.withUnsafeMutableBufferPointer { margin_page_said_rects(page, $0.baseAddress, $0.count) }
+            return list.prefix(n).map(CGRect.init)
+        }
+        let rect = out.has_rect ? CGRect(out.rect) : nil
+        switch kind {
+        case 1: return .ready
+        case 2:
+            if out.flag { layoutRev += 1 }
+            return .layout(taken: out.flag, panesChanged: out.flag2)
+        case 3: return .peekRect(rect)
+        case 4: return .hits(listed(), all: out.flag)
+        case 5: return .chrome(controls: rect, drags: listed())
+        case 6: return .focus(out.flag)
+        case 7: return .counts(spaces: Int(out.a), items: Int(out.b))
+        case 8: return .want
+        case 9: return .fullScreen
+        case 10: return .resizing(on: out.flag, divider: out.flag2)
+        case 11: return .haptic
+        case 12: return .slide(item: text ?? "", side: [PaneSide.left, .right, .up, .down][Int(out.a) & 3])
+        case 13:
+            let o = text.flatMap { (try? JSONSerialization.jsonObject(with: Data($0.utf8))) as? JSONObject } ?? [:]
+            return .ask(o["name"] as? String ?? "", o["arg"] as? JSONObject ?? [:])
+        case 14: return .log(warn: out.flag, text ?? "")
+        default: return .none
+        }
+    }
+
+    // The page's hello (the core's: its fields, their order, its card's state and words): `texts` in
+    // MarginHelloFacts' order (browser, mode, state, windows, themes, apps, marginPage, paneMin, appMin, paneLoading,
+    // paneCut, picture, hostedFrame, hostedFrames, theme; nil: none).
+    func hello(windowId: Int, pageMinimum: CGFloat?, texts: [String?]) -> String {
+        var all: [UInt8] = [0]
+        var spans: [(Int, Int)?] = []
+        for t in texts {
+            guard let t else { spans.append(nil); continue }
+            spans.append((all.count, t.utf8.count))
+            all.append(contentsOf: t.utf8)
+        }
+        return all.withUnsafeBufferPointer { base -> String in
+            let b = { (i: Int) -> MarginBytes in
+                guard i < spans.count, let (at, n) = spans[i], let p = base.baseAddress else { return MarginBytes(ptr: nil, len: 0) }
+                return MarginBytes(ptr: p + at, len: n)
+            }
+            var f = MarginHelloFacts(window_id: Int64(windowId), page_minimum: pageMinimum.map(Double.init) ?? .nan,
+                                     browser: b(0), mode: b(1), state: b(2), windows: b(3), themes: b(4), apps: b(5), margin_page: b(6),
+                                     pane_min: b(7), app_min: b(8), pane_loading: b(9), pane_cut: b(10), picture: b(11),
+                                     hosted_frame: b(12), hosted_frames: b(13), theme: b(14))
+            var len = 0
+            guard let p = margin_page_hello(page, &f, &len) else { return "null" }
+            defer { margin_buffer_free(p, len) }
+            return String(decoding: UnsafeBufferPointer(start: p, count: len), as: UTF8.self)
+        }
+    }
+
     // The layout kept, as Margin's window and the tests read it (made when it's asked for after a change).
     var layout: PageLayout? {
         guard layoutBuilt != layoutRev else { return layoutValue }

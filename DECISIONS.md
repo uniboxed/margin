@@ -8456,3 +8456,76 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   card's rect through the facade's cached field (a revision a frame, typed).
 - T/peek-session-tests.swift, T/peek-split-tests.swift and T/screen-card-tests.swift unchanged and passing; the app's
   checks 2150 pass, its end-to-end ones 321 (off screen).
+## Core refactor step 3, commit 9: the loading bar, the copies' pushes, `drawn`, the page's hello and ops, the UI's requests and rows in the core (2026-11-23)
+
+- Moved (their Swift deleted): the loading bar (session/loading.rs: `loading`, a split's pane's own loader and its
+  reveal held and let go, the copy's `loading` push for the window Margin hosts, `refreshLoading` with what each window
+  was told; the UI's numbers given in order of first use and back, an open item's row); the copies' messages
+  (session/route.rs: a push routed by its type, the UI's to the Margin window it belongs in with the mini player's
+  pick and the standing push taken back, `uiNumber` with the address cut as NSRegularExpression's `#.*$` and `/$` cut
+  it, the copy's tabs' sound, `drawn`'s rule); the UI's requests (session/ui.rs `ui_request`: an open item's row by its
+  number mapped back, the settings' route, the pasteboard's text, openApp and the history, a search's address with the
+  query trimmed of Foundation's `whitespacesAndNewlines`, `addFavorite`'s scope from the settings, ⌘W, the quiet ones;
+  answered as a route the Mac carries out; AppCatalog's bundle id check ported for `app.open`) and the rows the UI
+  draws (`live_plan`: which items, their numbers, their place, in front, visible, sound; `live` the Mac's shaping of
+  them into the library's snapshot until step 4); Margin's window's page (page/said.rs `Page::said`: every op read as
+  the Swift read WebKit's objects, a rect's list, the all-or-nothing list casts, Swift's `as? Int` and `as? Bool`,
+  PointerWant's reading: one reader now, the Mac's `PointerWant(body)` through it; page/hello.rs `Page::hello`).
+- No Swift dictionary on a push's way: the link object hands a push out with its message's JSON text (`msgText`, its
+  `type` beside it: ffi link.rs `wire`), Shell gives the text to the session (`margin_session_copy_message`), the core
+  reads, routes, checks and cuts it and gives the page its JSON as text through the `push` port. LinkMessage's `.push`
+  carries a `Push` (its text and type; an object only for the tests that read one). A copy's
+  `openTabs` goes as its JSON's bytes as the link's mirror keeps it (`StateMirror.data`).
+- `drawn`'s diff is kept by the link object per connection (`margin_link_drawn`, which sends each change itself), not
+  in the session as the design had it: a copy links, and its windows are told, before Margin's window (and so the
+  session) is made. The session answers only which windows it hosts for a copy (`drawn_windows`).
+- The page's ops come as their JSON's text (`saidText` in the hello, as commit 3's `layoutText`: overlay.ts's `post`
+  sends `{ op, json }` for every op but the hello, `send`, the appearance and the layout's own); a dictionary's body (the
+  tests', an older page) is made JSON first. The hello's head (`windowId` … `state`) was written in a Swift
+  dictionary's order, a new one each launch (its hash seed; probed: it differed within one run), so no byte order
+  existed for it: the core writes it in a fixed order, and everything after it is the same bytes (checked); strings
+  escaped as JSONSerialization does (`\/`, the short escapes, `\u00xx`).
+- Ports and inputs: typed `setLoading` 31, `setPaneLoading` 32, `setLoadingTabs` 33 (Margin's windows'); interim JSON
+  `swift` calls, each gone as its part moves: `uiSettings`, `startupRetry`, `startupSkip`, `openLauncher` (part 6).
+  The interim `refreshLoading` port (24) is deleted: the core's own now, and the Swift flows of later parts that change
+  what it reads call `margin_session_refresh_loading`. Fields 22 `panesLaying` and 23 `revealHeld` (applyLayout's,
+  Swift until part 3's flow moves). Inputs `ui`, `loadingForget`.
+- On commit 7's core (rebased onto it): the card has no Swift hop left in these parts. A copy's card pushes
+  (`peekOpen`, `peekCancel`, `cardPage`, `cardKey`) go straight from the push's routing to card.rs's flows; the UI's
+  `peek.*` and ⌘W to `close_card`, `expand_card`, `card_history`, `little_arc_opened`, `little_arc_go` and
+  `close_card_for_key` (`peek.go`'s address by card.rs's `web_address`, its query cut at 1,000 characters counted with
+  the marks that join one, as the Swift's `prefix` did for every query a person types); the card's own loader
+  (HostedPeek's `cardLoadingStep`) is loading.rs's; a window's layout's items for `visible` are commit 7's `layouts`.
+- One difference, accepted: the numbers a `refreshLoading` gives items it is the first to number go in their ids'
+  order; the Swift gave them in its Set's order (hash order, new each launch). In practice an item loading has its
+  number from its row, which the UI draws first. Two edges as commits 1 and 3 took them: a pushed text's cap counts
+  scalars; a NaN in a page's message is JSON's null (the page's own text says so), so a five-value rect list with a
+  NaN reads as its other four. The Rust map order where Swift took a dictionary's first: a tab several items claim is
+  the first item's by id.
+- Checked before the Swift went, two ways. The session: the old Swift (f78d6598) and the new over the core in commit
+  5's deterministic world, extended (the copies' pushes of every kind with tabs known and not, items named by another
+  profile, addresses with fragments, slashes and line ends, `loading` pushes, the copy's tabs' sound with every kind
+  of flag, the engine's slow steps with panes laid out, the UI's requests of every route with numbers given and not,
+  the rows drawn; inputs through JSON as the link and WebKit hand them): 150 vectors over six seeds, 8,871 steps, 1,216
+  copy pushes, 397 slow steps, 387 UI requests, 370 draws, 1,117 calls to Margin's windows: the same to the line but
+  one line in one seed, the accepted numbering (two new items numbered by one refresh), with the library's items
+  numbered first; without that, the same difference and only it. The pure parts (the deleted Swift verbatim against
+  the core through the new Swift: `drawn`'s diff, every op's reading and route on generated bodies with every kind of
+  value, PointerWant, the hello over pages in every state with odd strings): 560,413 checks over five seeds (60,000
+  hellos: every one parsed equal, every one the same bytes after its head), no difference once the harness gave the
+  old Swift WebKit's NSNumbers rather than Swift's own Ints. The harnesses caught each of 31 deliberate breaks of the
+  core (20 by the session's vectors: the logged form, the icon, the main window's loading push, the other windows told
+  none, the shown item's host, the same numbers, the pane's title, the mini player's two picks, the standing push, an
+  item of another profile, the tab kept, the address's cut, muted, nextTo, the scope, the trimming, visible, muted
+  from the copy, the quiet ones; 11 by the pure ones: the hits' cap, the list casts, the bool zone, Swift's Int, the
+  card's rounding, a rect's list, the slash, the stuck words, an empty pane cut, the minimum's truncation, `drawn`'s
+  forgetting), the hits' cap only once the generator made lists right at 64.
+- Cost. The push as the link hands it (1.8 KB, three sources), main thread CPU, Swift and core together: 16 µs (the
+  Swift at f78d6598, the same push through Shell's dictionary: 112 µs; commit 1's sanitiser alone was 31, the Swift's
+  before it 5.5); of it the Swift side is the wrapper and two typed port calls (the window, the push's text), the rest
+  the core's parse, check and cut and the page's JSON (release, ffi tests routing_cost.rs on this shared Mac, load
+  ~22: 18.9 µs; serde's `Value` and the workspace's `float_roundtrip`: a few a second while media plays). A draw's
+  `live` (10 open items) 35 µs (was 32: the plan's 3 µs, its callbacks, each kept tab read once); the engine's slow step
+  3.6 µs (was 2.8). The core alone: a loading push 0.9 µs, a slow step 0.65, a draw's plan 1.1, a UI request's route
+  2.1, a `pointerWant` 0.6, ten hits 1.6, a log line 0.4, a hello over a 42 KB state 2.5, a poll's drawn look 42 ns,
+  which allocates nothing (no_alloc.rs). Nothing per frame changed: a layout report still goes straight to the Page.

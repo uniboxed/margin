@@ -106,6 +106,13 @@ final class LinkConnection {
         return owner.send(self, message)
     }
 
+    // Which of its windows Margin draws (Shell.tellDrawn): `hosted` the session's, `windows` the copy's; each change
+    // told it (`drawn`), what it was told kept by the core per connection.
+    func drawn(hosted: [Int64], windows: [Int64]) {
+        guard isUp, let owner else { return }
+        owner.drawn(self, hosted: hosted, windows: windows)
+    }
+
     // A request (`req`), answered as a page's is: { ok, result } or { ok: false, error, stale? }. The core gives up
     // after 15 s.
     func request(type: String, payload: JSONObject, windowId: Int?) async throws -> JSONObject {
@@ -409,6 +416,20 @@ final class SocketLink {
     private func sayAppUp() {
         let runningFor: Any = safariSince().map { Date().timeIntervalSince($0) } ?? NSNull()
         perform(call(["type": "appUp", "runningFor": runningFor]))
+    }
+
+    fileprivate func drawn(_ link: LinkConnection, hosted: [Int64], windows: [Int64]) {
+        var epoch = link.epoch
+        let answer = epoch.withUTF8 { e in
+            hosted.withUnsafeBufferPointer { h in
+                windows.withUnsafeBufferPointer { w in
+                    LinkCore.answer { margin_link_drawn(core, link.conn, e.baseAddress, e.count, h.baseAddress, h.count, w.baseAddress, w.count, Diagnostics.now(), Date().timeIntervalSince1970, $0) }
+                }
+            }
+        } as? JSONObject
+        guard let answer else { return } // (nothing changed: nothing sent)
+        perform(answer)
+        if let refused = int(answer["refused"]) { link.refusedByCore = refused }
     }
 
     fileprivate func send(_ link: LinkConnection, _ message: AppMessage) -> Bool {

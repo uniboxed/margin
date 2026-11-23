@@ -28,6 +28,9 @@ final class StateMirror {
         if let list = state.windows { windows = list }
     }
 
+    // One stored key's JSON as the core keeps it (handed on as it is: HostedSession.copyTabs).
+    func data(_ key: String) -> Data? { read(key) }
+
     // One stored key, read (for the app's own use).
     func value(_ key: String) -> Any? {
         read(key).flatMap { try? JSONSerialization.jsonObject(with: $0, options: [.fragmentsAllowed]) }

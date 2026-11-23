@@ -123,7 +123,8 @@ fn a_show_request_drawn_in_front_at_once_then_an_app_hosted() {
     );
     let order: Vec<String> = a.iter().map(|v| v[1].as_str().or(v[0].as_str()).unwrap_or("").to_string()).collect();
     let at = |n: &str| order.iter().position(|o| o == n).unwrap_or(usize::MAX);
-    assert!(at("refreshLoading") < at("changed") && at("changed") < at("settleHosting"), "{order:?}");
+    // (The loading bar refreshed before them is the core's now: nothing loading, no window told.)
+    assert!(at("changed") < at("settleHosting") && at("setLoadingTabs") == usize::MAX, "{order:?}");
     assert!(s.idle());
 }
 

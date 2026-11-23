@@ -2,9 +2,11 @@
 // only the types the core passes on, and of each only its fields, each checked and cut to its size (never the copy's
 // JSON as it came): the core's rule (app/shared/core/src/session/push.rs, its table of types and fields). A copy's tab
 // is never named to the page by its own id: by the UI's number for the item it shows (HostedSession.number(ofItem:)),
-// and an entry whose tab isn't one of Margin's items is dropped. Which Margin window gets it: HostedSession.copyPush.
-// The preview's pushes (`peekOpen`, `peekCancel`, `cardPage`, `cardKey`) are not UI pushes: the session acts on them
-// (Shell.linkReceived → HostedPeek.swift), answers a click at once, and tells the page what the card is itself.
+// and an entry whose tab isn't one of Margin's items is dropped. A copy's push goes to the core as it came (its JSON's
+// text: HostedSession.copyMessage, core/session/route.rs), which checks and cuts it, names its tabs and picks the
+// Margin window it goes to; these are the same rule's reads for the tests. The preview's pushes (`peekOpen`,
+// `peekCancel`, `cardPage`, `cardKey`) are not UI pushes: the session acts on them (Shell.linkReceived →
+// HostedPeek.swift), answers a click at once, and tells the page what the card is itself.
 
 import Foundation
 import MarginCore

@@ -1221,6 +1221,11 @@ by the UI's numbers, sorted, said on change; other windows told none), `cardLoad
 order of first use: the same calls in the same order give the same numbers.
 
 **FFI.** Engine callback `{"type":"loading","host"}` (rare: a slow step's start and end); the copy's push as part 10.
+*As built (commit 9):* typed calls, answered as `input` is (`margin_session_loading`, `_refresh_loading` for the Swift
+flows of later parts that change what it reads, `_release_reveal`); applyLayout's `panesLaying` and `revealHeld` are
+fields (22, 23) its Swift writes until part 3's flow moves; the card's loader (HostedPeek's `cardLoadingStep`) is
+loading.rs's. The numbers a `refreshLoading` gives items first seen there are in their ids' order (the Swift's in its
+Set's order; an item loading is numbered by its row first in practice).
 
 **Pinned by:** T/hosted-tests.swift 763-801; the split's pane loader in T/split-real-use-tests.swift. **Windows:** the
 theme's bar from the Chrome copies' `loading` pushes, the same. ~60 Swift lines deleted.
@@ -1235,6 +1240,10 @@ The sanitiser: UP:25-52 (`forwarded`, `standing`, `page`, `empty`; images by
 `^data:image/(png|jpeg|webp|gif);base64,…$` up to 128 KB, UP:36-37).
 
 **Core.** core/session/push.rs: UP's table and `page`/`empty` (a rule: field caps), the pick, `ui_number`.
+*As built (commit 9):* the pick, `ui_number` and `copy_tabs` in route.rs, over push.rs's rule. The push comes in as its
+message's JSON text (the link object hands a push out with `msgText` and `type`, its `msg` never made a dictionary),
+`margin_session_copy_message` reads and routes it by type (the loading bar's, the card's back to the Mac, the UI's) and
+the page's JSON goes out through the `push` port as its text: no Swift dictionary either way.
 
 **Pinned by:** T/hosted-tests.swift 848-852, 880-926. **Windows:** the same pushes from Chrome's and Edge's copies.
 
@@ -1263,7 +1272,10 @@ settings (UserDefaults keepers, SH:17-63), the WKWebView's `callAsyncJavaScript`
 file reads are the Mac's.
 
 **Core.** core/session/route.rs: `pub fn drawn(&self, browser, profile, window_ids: &[i64]) -> Vec<(i64, bool)>` (the
-diff against `drawnSent` kept in the core), `push(link, window, msg)`; core/page/hello.rs: `Page::hello(&HelloFacts)
+diff against `drawnSent` kept in the core), `push(link, window, msg)`; *as built (commit 9): `drawn(hosted, windows,
+sent)` a rule whose `sent` the link object keeps per connection (`margin_link_drawn`, sending each change itself):
+a copy links before Margin's window, and so the session, is made, and its windows are told then too; the session
+answers only which windows it hosts (`drawn_windows`)*; core/page/hello.rs: `Page::hello(&HelloFacts)
 -> String` (the facts the Mac reads: windows, themes, apps, theme JSON as bytes, never re-parsed); `Page::said(op,
 body) -> Said` (an enum: each op's route); core/session/ui.rs: `ui_request(kind, payload) -> Ui { Answer(Value) |
 Perform(kind, Value) | Settings(Value) | Pasteboard(String) | Done }`, `search_url(query, template)`; `live_plan(&self)
@@ -1275,6 +1287,16 @@ decisions); after step 4 the snapshot is Rust and `live` joins it there (no JSON
 
 **FFI.** `{"type":"push",…}` per copy push (a media change: a few a second while playing, ~1 KB); `ui` per UI
 request (clicks); `live_plan` per draw (JSON, a few items); the hello once per page load.
+*As built (commit 9):* the push typed (above); `live_plan` typed, no JSON: a callback asks whether the snapshot keeps
+each listed item as a tab in a space (only those are numbered, as the Swift numbered them) and a sink takes the rows;
+a window's layout's items (`visible`) from commit 7's `layouts` in the core. The page's ops come as their
+JSON's text (the hello's `saidText`, as commit 3's `layoutText`: the page's `post` sends `{ op, json }`), read by
+`Page::said` (`margin_page_said`, PointerWant's reading with it: one reader); a dictionary's body (the tests', an older
+page) is made JSON first. The hello is `margin_page_hello` over the facts' texts; its head's keys (`windowId` …
+`state`) were the Swift dictionary's order, a new one each launch, and are fixed now: the rest is the same bytes. The
+UI's requests are a `ui` input whose reply is the route; the card's `peek.*` and ⌘W go to card.rs's flows (commit 7),
+as do a copy's card pushes; the Swift flows of later parts they ask for (the start screen's, the launcher) through the
+JSON `swift` port, interim.
 
 **Pinned by:** T/tests.swift:145-147 (the drawn message), T/hosted-tests.swift 824, 834-840 (`addFavorite`'s scope, the
 rows), 1909-1946 (`hostedShellTests`), T/margin-window-tests.swift (8-362); E/e2e-glue.swift `glueScenario`
@@ -1430,7 +1452,7 @@ until step 4 (open question 6).
 | 6 | Parts 3 and 7: layouts, splits, the page area moving, the drag's typed path | ~320 | ~1,000 | `live-resize` |
 | 7 | Part 4: the card and Quick Tab. **Done 2026-11-23** (step3/card, one commit: card.rs's flows and `web_host`, `Card`, `cards`, `littleArcs` and part 3's `layouts` the core's fields, HostedPeek.swift the facade; the interim card entries of the `swift` port gone; a peek open measured) | ~350 (+~200: the facade, the ports, the fields' rows) | ~1,580 (a quarter tests) | a peek open |
 | 8 | Parts 5 and 6: elsewhere, the start, `resumeLast`, `settleHosting`, the launcher, the preparation | ~300 | ~900 | `idle-cost` |
-| 9 | Parts 8, 9, 10: the loading bar, the pushes and the mini player, `drawn`, the hello and the ops' routing, the UI's requests, `live_plan` | ~380 | ~900 | |
+| 9 | Parts 8, 9, 10: the loading bar, the pushes and the mini player, `drawn`, the hello and the ops' routing, the UI's requests, `live_plan`. **Done 2026-11-23** (step3/routing, one commit: session/loading.rs, route.rs, ui.rs's requests and rows, page/said.rs, hello.rs; the push as its text from the link, `drawn`'s diff kept by the link object, the page's ops as their text; a push and a draw measured) | ~380 (~450 in: the typed facade, PageCore's said and hello) | ~2,600 (a third tests and measures) | a push, a draw |
 | 10 | Part 13 and the leftovers: `settingsAndIcons`, the facade trimmed to what T/ reads | ~40 | ~50 | a draw |
 
 About 2,400 Swift lines deleted (of HS's 2,620, HP's 438, ~450 of MWC's, PT's ~80, UP's ~90), ~700 Swift lines added

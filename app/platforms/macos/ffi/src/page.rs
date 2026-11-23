@@ -21,6 +21,7 @@ use margin_core::passthrough::{
     CatchBuf, CatchRef, Cg, Cut, Edges, PassThrough, Push, SlotInsets, SlotRef, Want, WantMode,
 };
 
+use crate::session::MarginBytes;
 use crate::session_rules::{MarginPageLayout, MarginText, write_layout};
 use crate::{MarginPlacement, MarginRect};
 
@@ -1586,4 +1587,260 @@ pub unsafe extern "C" fn margin_page_ground_holes(
         }
     }
     pieces.len()
+}
+
+// ---- what the page says, and its hello (core/page/said.rs, hello.rs: step 3, part 10) ----
+
+/// An op's route (page/said.rs `Said`): `kind` 0 nothing, 1 ready, 2 layout (`flag` taken, `flag2` a split's panes
+/// changed), 3 the card's rect (`has_rect`: `rect`, in the window), 4 hits (`flag`: all; the rects: `rects` of them,
+/// `margin_page_said_rects`), 5 chrome (`has_rect`: the controls' `rect`; the drag regions as the hits'), 6 focus
+/// (`flag`), 7 counts (`a` spaces, `b` items), 8 the pointer's wants (kept), 9 full screen, 10 resizing (`flag` on,
+/// `flag2` a divider), 11 the haptic tick, 12 a cut pane's slide (`a` the side: 0 left, 1 right, 2 up, 3 down; `text`
+/// its item), 13 a request of the source (`text`: `{ name, arg }`'s JSON), 14 a log line (`flag` a warning; `text`).
+/// `text` is allocated (free it with `margin_buffer_free`), null when there's none.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct MarginSaid {
+    pub kind: u8,
+    pub flag: bool,
+    pub flag2: bool,
+    pub has_rect: bool,
+    pub a: i64,
+    pub b: i64,
+    pub rect: MarginRect,
+    pub rects: usize,
+    pub text: *mut u8,
+    pub text_len: usize,
+}
+
+impl Default for MarginSaid {
+    fn default() -> Self {
+        MarginSaid {
+            kind: 0,
+            flag: false,
+            flag2: false,
+            has_rect: false,
+            a: 0,
+            b: 0,
+            rect: MarginRect::default(),
+            rects: 0,
+            text: std::ptr::null_mut(),
+            text_len: 0,
+        }
+    }
+}
+
+fn owned(text: String, out: &mut MarginSaid) {
+    let boxed = text.into_bytes().into_boxed_slice();
+    out.text_len = boxed.len();
+    out.text = Box::into_raw(boxed) as *mut u8;
+}
+
+/// An op the page said (`op`), its body's JSON (`body`; a layout's: its report), the window's content rect: its
+/// route in `out`. Its kind back.
+///
+/// # Safety
+/// `page` null or a live page (one thread at a time); `op` and `body` null or their lengths' readable bytes; `out`
+/// writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_said(
+    page: *mut MarginPage,
+    op: *const u8,
+    op_len: usize,
+    body: *const u8,
+    body_len: usize,
+    content: MarginRect,
+    out: *mut MarginSaid,
+) -> u8 {
+    use margin_core::page::said::Said;
+    // SAFETY: the contract above.
+    let (Some(p), Some(out)) = (unsafe { page.as_mut() }, unsafe { out.as_mut() }) else { return 0 };
+    *out = MarginSaid::default();
+    let Some(op) = crate::data::text(op, op_len) else { return 0 };
+    let body: &[u8] = if body.is_null() || body_len == 0 {
+        &[]
+    } else {
+        // SAFETY: the contract above.
+        unsafe { std::slice::from_raw_parts(body, body_len) }
+    };
+    let said = p.page.said(op, body, content.into());
+    let rects = p.page.said_rects().len();
+    out.kind = match said {
+        Said::None => 0,
+        Said::Ready => 1,
+        Said::Layout(l) => {
+            (out.flag, out.flag2) = (l.taken, l.panes_changed);
+            2
+        }
+        Said::PeekRect(r) => {
+            if let Some(r) = r {
+                (out.has_rect, out.rect) = (true, r.into());
+            }
+            3
+        }
+        Said::Hits { all } => {
+            (out.flag, out.rects) = (all, rects);
+            4
+        }
+        Said::Chrome { controls } => {
+            if let Some(r) = controls {
+                (out.has_rect, out.rect) = (true, r.into());
+            }
+            out.rects = rects;
+            5
+        }
+        Said::Focus(on) => {
+            out.flag = on;
+            6
+        }
+        Said::Counts { spaces, items } => {
+            (out.a, out.b) = (spaces, items);
+            7
+        }
+        Said::Want => 8,
+        Said::FullScreen => 9,
+        Said::Resizing { on, divider } => {
+            (out.flag, out.flag2) = (on, divider);
+            10
+        }
+        Said::Haptic => 11,
+        Said::Slide { item, side } => {
+            out.a = i64::from(side);
+            owned(item, out);
+            12
+        }
+        Said::Ask { name, arg } => {
+            owned(serde_json::json!({ "name": name, "arg": arg }).to_string(), out);
+            13
+        }
+        Said::Log { warn, text } => {
+            out.flag = warn;
+            owned(text, out);
+            14
+        }
+    };
+    out.kind
+}
+
+/// The rects the last op read (the hits kept, or the drag regions): the first `cap` into `out`; how many there are.
+///
+/// # Safety
+/// `page` null or a live page; `out` `cap` writable rects (or null with 0).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_said_rects(page: *const MarginPage, out: *mut MarginRect, cap: usize) -> usize {
+    // SAFETY: the contract above.
+    let Some(p) = (unsafe { page.as_ref() }) else { return 0 };
+    let list = p.page.said_rects();
+    if !out.is_null() {
+        for (i, r) in list.iter().take(cap).enumerate() {
+            // SAFETY: `cap` writable (the contract).
+            unsafe { *out.add(i) = (*r).into() };
+        }
+    }
+    list.len()
+}
+
+/// What the window reads for its page's hello (core/page/hello.rs `HelloFacts`: texts as bytes, a null pointer
+/// none; `page_minimum` NaN: none).
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct MarginHelloFacts {
+    pub window_id: i64,
+    pub page_minimum: f64,
+    pub browser: MarginBytes,
+    pub mode: MarginBytes,
+    pub state: MarginBytes,
+    pub windows: MarginBytes,
+    pub themes: MarginBytes,
+    pub apps: MarginBytes,
+    pub margin_page: MarginBytes,
+    pub pane_min: MarginBytes,
+    pub app_min: MarginBytes,
+    pub pane_loading: MarginBytes,
+    pub pane_cut: MarginBytes,
+    pub picture: MarginBytes,
+    pub hosted_frame: MarginBytes,
+    pub hosted_frames: MarginBytes,
+    pub theme: MarginBytes,
+}
+
+/// The page's hello: its JSON text (freed with `margin_buffer_free`); null for a null page or facts.
+///
+/// # Safety
+/// `page` null or a live page; `facts` null or readable, each text its length's readable bytes; `out_len` writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_hello(
+    page: *const MarginPage,
+    facts: *const MarginHelloFacts,
+    out_len: *mut usize,
+) -> *mut u8 {
+    // SAFETY: the contract above.
+    let (Some(p), Some(f)) = (unsafe { page.as_ref() }, unsafe { facts.as_ref() }) else {
+        return std::ptr::null_mut();
+    };
+    if out_len.is_null() {
+        return std::ptr::null_mut();
+    }
+    let facts = margin_core::page::hello::HelloFacts {
+        window_id: f.window_id,
+        browser: f.browser.text().unwrap_or(""),
+        mode: f.mode.text().unwrap_or(""),
+        state: f.state.text().unwrap_or("null"),
+        windows: f.windows.text().unwrap_or("[]"),
+        themes: f.themes.text().unwrap_or("[]"),
+        apps: f.apps.text().unwrap_or("[]"),
+        margin_page: f.margin_page.text(),
+        page_minimum: (!f.page_minimum.is_nan()).then_some(f.page_minimum),
+        pane_min: f.pane_min.text().unwrap_or(""),
+        app_min: f.app_min.text().unwrap_or(""),
+        pane_loading: f.pane_loading.text().unwrap_or(""),
+        pane_cut: f.pane_cut.text().unwrap_or(""),
+        picture: f.picture.text(),
+        hosted_frame: f.hosted_frame.text().unwrap_or("null"),
+        hosted_frames: f.hosted_frames.text().unwrap_or("[]"),
+        theme: f.theme.text(),
+    };
+    let text = p.page.hello(&facts).into_bytes().into_boxed_slice();
+    // SAFETY: writable (the contract).
+    unsafe { *out_len = text.len() };
+    Box::into_raw(text) as *mut u8
+}
+
+/// The positions a page wants, read from its `pointerWant` body's JSON as the Mac reads it (page/said.rs
+/// `pointer_want`): its mode (0 none, 1 edges, 2 all), its edges' bits, its zone.
+///
+/// # Safety
+/// `body` null or `len` readable bytes; the outs writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_pointer_want(
+    body: *const u8,
+    len: usize,
+    mode: *mut u8,
+    bits: *mut u8,
+    zone: *mut f64,
+) {
+    let o = if body.is_null() {
+        None
+    } else {
+        // SAFETY: the contract above.
+        serde_json::from_slice::<serde_json::Value>(unsafe { std::slice::from_raw_parts(body, len) }).ok()
+    };
+    let empty = margin_core::json::Object::new();
+    let want = margin_core::page::said::pointer_want(o.as_ref().and_then(|v| v.as_object()).unwrap_or(&empty)).want();
+    // SAFETY: writable (the contract).
+    unsafe {
+        if let Some(m) = mode.as_mut() {
+            *m = match want.mode {
+                WantMode::None => 0,
+                WantMode::Edges => 1,
+                WantMode::All => 2,
+            };
+        }
+        if let Some(b) = bits.as_mut() {
+            *b = want.edges;
+        }
+        if let Some(z) = zone.as_mut() {
+            *z = want.zone;
+        }
+    }
 }

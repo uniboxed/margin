@@ -31,9 +31,11 @@ pub mod host_id;
 mod hosting;
 mod items;
 pub mod layout;
+mod loading;
 mod navigate;
 pub mod push;
 mod requests;
+pub mod route;
 pub mod start;
 pub mod state;
 pub mod target;
@@ -57,6 +59,7 @@ pub use items::Split;
 pub use requests::{By, Request};
 pub use state::{Card, Field, Layout, OpenItem, Row, State};
 pub use target::Target;
+pub use ui::LiveRow;
 
 /// The log lines kept (HostedSession `done`).
 pub const DONE_KEPT: usize = 200;
@@ -98,6 +101,12 @@ pub trait Ports {
     fn set_margin_page(&self, window: i64, page: Option<&str>);
     /// A message for a Margin window's page (`HostedWindow.push`).
     fn push(&self, window: i64, json: &str);
+    /// The page card's loader (`HostedWindow.setLoading`: the label and the app's icon; None: none), a split's pane's
+    /// own (`setPaneLoading`: its item, label and icon; None: none), the items loading by the UI's numbers
+    /// (`setLoadingTabs`).
+    fn set_loading(&self, window: i64, label: Option<&str>, app: Option<&str>);
+    fn set_pane_loading(&self, window: i64, item: Option<&str>, label: Option<&str>, app: Option<&str>);
+    fn set_loading_tabs(&self, window: i64, numbers: &[i64]);
     /// What the windows draw changed (HostedSession `onChange`).
     fn changed(&self);
     /// The Safari waker's: a profile woken through Safari's menu (`wokenByMenu[p] != nil`), and one its menu has no
@@ -107,8 +116,9 @@ pub trait Ports {
     /// A line for the app's log (Diagnostics), said at once.
     fn log(&self, warn: bool, text: &str);
     /// The Swift flows of the parts not moved yet (step 3's later commits), called synchronously by name, gone as each
-    /// part moves: `settleHosting`, `refreshLoading`, `leaveMarginPage` `{ window }`, `clearElsewhere` `{ window }`,
-    /// `forgetElsewhere` `{ item }`, `paneFor` `{ profile, role }` → `{ address, item }`.
+    /// part moves: `settleHosting`, `leaveMarginPage` `{ window }`, `clearElsewhere` `{ window }`,
+    /// `forgetElsewhere` `{ item }`, `paneFor` `{ profile, role }` → `{ address, item }`; commit 9's: `uiSettings` → the
+    /// settings object (the profile source's), `startupRetry`, `startupSkip`, `openLauncher` `{ window, settings }`.
     fn swift(&self, call: &str, args: Value) -> Value;
     /// Where a Margin window's page draws the preview card's page (the theme's `<m-preview-page>`,
     /// `HostedWindow.cardRect`), None: none drawn. The window as the flow had it.
@@ -329,6 +339,11 @@ pub enum Input {
     /// The preview card's and Quick Tab's word (the copy's pushes, the page's `peek.*`, ⌘W, a host gone, the poll):
     /// card.rs `peek_input`, its reply for the ones that answer.
     Peek { kind: String, args: Object },
+    /// A request the UI makes (`LibraryWindowSource.perform`), its route in `reply`.
+    Ui { kind: String, payload: Object },
+    /// What the loading bar kept for a Margin window gone (`standing`: its standing pushes' window; `said`: what it
+    /// was told), or for a profile's copy whose main window went.
+    LoadingForget { window: Option<i64>, standing: bool, said: bool, profile: Option<String> },
 }
 
 impl Input {
@@ -361,6 +376,16 @@ impl Input {
             }),
             "cycled" => Ok(Input::Cycled { window: swift_int(o.get("window")).ok_or("no window")? }),
             "peek" => Ok(Input::Peek { kind: s("kind").ok_or("no kind")?.to_string(), args: o.clone() }),
+            "ui" => Ok(Input::Ui {
+                kind: s("kind").ok_or("no kind")?.to_string(),
+                payload: json::object(o.get("payload")).cloned().unwrap_or_default(),
+            }),
+            "loadingForget" => Ok(Input::LoadingForget {
+                window: json::int(o.get("window")),
+                standing: o.get("standing").and_then(Value::as_bool) == Some(true),
+                said: o.get("said").and_then(Value::as_bool) == Some(true),
+                profile: s("profile").map(str::to_string),
+            }),
             other => Err(format!("{other:?} isn't an input")),
         }
     }
@@ -371,7 +396,7 @@ impl Input {
 
     /// What it makes ready runs in the call: a flow Swift called (its first part ran at once, as a Swift call).
     fn runs_now(&self) -> bool {
-        matches!(self, Input::Call { .. })
+        matches!(self, Input::Call { .. }) || matches!(self, Input::Ui { kind, .. } if kind == "app.open")
     }
 }
 
@@ -468,6 +493,76 @@ impl Session {
     /// `wanted`): no other item asked for there since, and the window still there.
     pub fn open_wanted(&self, window: i64, item: &str) -> bool {
         !self.0.superseded(window, item) && self.0.ports.window(Some(window)).is_some()
+    }
+
+    // ---- commit 9's typed entries (the loading bar, the copies' messages, the UI's numbers and rows) ----
+
+    /// The engine's slow step for a host started (None: over): the page card's loader, a split's pane's, the bar.
+    pub fn loading(&self, host: Option<&str>) -> Out {
+        self.0.call(false, |c| {
+            c.loading(host);
+            (None, None)
+        })
+    }
+
+    /// The loading bar told again (a Swift flow of a later part changed what it reads).
+    pub fn refresh_loading(&self) -> Out {
+        self.0.call(false, |c| {
+            c.refresh_loading();
+            (None, None)
+        })
+    }
+
+    /// A Margin window's new pane's loader let go (applyLayout's).
+    pub fn release_reveal(&self, window: i64) -> Out {
+        self.0.call(false, |c| {
+            c.release_reveal(window);
+            (None, None)
+        })
+    }
+
+    /// A copy's push as it came (`msg`: its JSON), routed (the loading bar's, the preview card's, the UI's).
+    pub fn copy_message(&self, browser: &str, profile: &str, window: Option<i64>, msg: &[u8]) -> Out {
+        self.0.call(false, |c| {
+            match serde_json::from_slice::<Value>(msg) {
+                Ok(Value::Object(m)) => c.copy_message(browser, profile, window, &m),
+                _ => c.refused("push", "a push that isn't an object"),
+            }
+            (None, None)
+        })
+    }
+
+    /// A Safari copy's `openTabs` as its state has it (`state`: that key's JSON): its items' tabs' sound.
+    pub fn copy_tabs(&self, profile: &str, state: &[u8]) -> Out {
+        self.0.call(false, |c| {
+            if let Ok(Value::Object(open)) = serde_json::from_slice::<Value>(state)
+                && let Some(tabs) = json::object(open.get("tabs"))
+            {
+                c.copy_tabs(profile, tabs);
+            }
+            (None, None)
+        })
+    }
+
+    /// The UI's number for an item (given now if it has none), the item of a number, an open item's row.
+    pub fn number(&self, item: &str) -> i64 {
+        self.0.number(item)
+    }
+    pub fn item_of_tab(&self, n: i64) -> Option<String> {
+        self.0.item_of_tab(n)
+    }
+    pub fn open_row(&self, item: &str) -> Option<i64> {
+        self.0.open_row(item)
+    }
+
+    /// The open items the UI draws (`kept`: the library's snapshot keeps it as a tab in a space).
+    pub fn live_plan(&self, kept: &mut dyn FnMut(&str) -> bool) -> Option<(i64, Vec<LiveRow>)> {
+        self.0.live_plan(kept)
+    }
+
+    /// The windows of a copy's Margin draws (`drawn`'s `hosted`).
+    pub fn drawn_windows(&self, browser: &str, profile: &str) -> Vec<i64> {
+        self.0.drawn_windows(browser, profile)
     }
 
     /// A command's answer (its id from `start`): its task goes on. One no task waits for is let go.
@@ -614,6 +709,10 @@ impl Core {
                     return (None, Some(format!("bad input: {why}")));
                 }
             },
+            Input::Ui { kind, payload } => return (Some(self.ui_request(&kind, payload)), None),
+            Input::LoadingForget { window, standing, said, profile } => {
+                self.loading_forget(window, standing, said, profile.as_deref());
+            }
         }
         (None, None)
     }

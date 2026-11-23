@@ -750,3 +750,44 @@ fn the_wakers_look_allocates_nothing() {
     // SAFETY: from margin_session_new, freed once.
     unsafe { margin_session_free(s) };
 }
+
+#[test]
+fn a_polls_drawn_look_with_nothing_changed_allocates_nothing() {
+    // (Shell.tellDrawn at every poll, for each link: what the copy was told, kept per connection; nothing sent.)
+    let config = br#"{"version":"t"}"#;
+    // SAFETY: the config's bytes; no ctx, no write callback.
+    let link = unsafe { margin_link_new(config.as_ptr(), config.len(), std::ptr::null_mut(), None) };
+    let (hosted, windows) = ([90_i64, 92], [89_i64, 90, 91, 92]);
+    let epoch = "e1";
+    let mut len = 0;
+    let look = |len: &mut usize| {
+        // SAFETY: the live link; the texts and lists as their lengths say.
+        unsafe {
+            margin_link_drawn(
+                link,
+                7,
+                epoch.as_ptr(),
+                epoch.len(),
+                hosted.as_ptr(),
+                hosted.len(),
+                windows.as_ptr(),
+                windows.len(),
+                1.0,
+                1_800_000_000.0,
+                len,
+            )
+        }
+    };
+    let first = look(&mut len);
+    assert!(!first.is_null(), "the first look tells each window");
+    // SAFETY: the answer's buffer, freed once.
+    unsafe { margin_buffer_free(first, len) };
+    let n = allocations(|| {
+        for _ in 0..3 {
+            assert!(look(&mut len).is_null(), "nothing changed: nothing sent");
+        }
+    });
+    assert_eq!(n, 0, "a poll's drawn look allocated {n} times");
+    // SAFETY: from margin_link_new, freed once.
+    unsafe { margin_link_free(link) };
+}

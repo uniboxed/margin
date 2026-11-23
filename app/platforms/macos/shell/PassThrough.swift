@@ -151,10 +151,15 @@ struct PointerWant: Equatable {
 
     init(mode: Mode, edges: Set<String> = [], zone: CGFloat = 24) { (self.mode, self.edges, self.zone) = (mode, edges, zone) }
 
+    // The page's `pointerWant` message as the core reads it (core/page/said.rs `pointer_want`: the one reader).
     init(_ body: JSONObject) {
-        mode = Mode(rawValue: body["mode"] as? String ?? "") ?? .all
-        edges = Set((body["edges"] as? [Any] ?? []).compactMap { $0 as? String })
-        zone = CGFloat((body["zone"] as? NSNumber)?.doubleValue ?? 24)
+        var m: UInt8 = 2, bits: UInt8 = 0, z = 24.0
+        if let data = jsonText(SessionRules.json(body)) {
+            data.withUnsafeBytes { margin_page_pointer_want($0.bindMemory(to: UInt8.self).baseAddress, $0.count, &m, &bits, &z) }
+        }
+        mode = [Mode.none, .edges, .all][Int(min(m, 2))]
+        edges = Set([("left", 1), ("right", 2), ("top", 4), ("bottom", 8)].compactMap { bits & UInt8($0.1) != 0 ? $0.0 : nil })
+        zone = CGFloat(z)
     }
 
     // As the core has it: the mode's number, the edges' bits (1 left, 2 right, 4 top, 8 bottom).

@@ -173,10 +173,14 @@ pub enum Field {
     /// Each card's address and whether it's a new page (`cards`' own, typed: what Swift's layout reads of a card; read
     /// only, its revision moving with `cards`').
     CardPages = 21,
+    /// Commit 9's (the loading bar): a split's panes being laid out in each Margin window, by their hosts; the windows
+    /// whose new pane keeps its loader after the engine's slow step (written by applyLayout, still Swift).
+    PanesLaying = 22,
+    RevealHeld = 23,
 }
 
 impl Field {
-    pub const COUNT: usize = 22;
+    pub const COUNT: usize = 24;
     const ALL: [Field; Field::COUNT] = [
         Field::Shown,
         Field::Open,
@@ -200,6 +204,8 @@ impl Field {
         Field::LittleArcs,
         Field::Layouts,
         Field::CardPages,
+        Field::PanesLaying,
+        Field::RevealHeld,
     ];
     pub fn from_index(i: u32) -> Option<Field> {
         Self::ALL.get(i as usize).copied()
@@ -229,6 +235,8 @@ impl Field {
             Field::LittleArcs => "littleArcs",
             Field::Layouts => "layouts",
             Field::CardPages => "cardPages",
+            Field::PanesLaying => "panesLaying",
+            Field::RevealHeld => "revealHeld",
         }
     }
     pub fn of(name: &str) -> Option<Field> {
@@ -270,6 +278,26 @@ pub struct State {
     pub little_arcs: BTreeMap<i64, String>,
     /// Each Margin window's layout of several (part 3's, written by Swift's applyLayout until it moves).
     pub layouts: BTreeMap<i64, Layout>,
+    /// The split's panes being laid out in each Margin window now, by their hosts (applyLayout, around the engine's
+    /// setLayout), the pane whose slow step is under way (its window, its host), and the windows whose new pane keeps
+    /// its loader after the engine's slow step is over (until its tab is shown and its toolbar rests).
+    pub panes_laying: BTreeMap<i64, BTreeMap<String, String>>,
+    pub reveal_held: BTreeSet<i64>,
+    pub pane_loading_at: Option<(i64, String)>,
+    /// The card whose window's first open is under way (its own loader, never the page card's).
+    pub card_loading: Option<String>,
+    /// The loading bar: the engine's slow step now (its host), the tabs each profile's copy says are loading in its
+    /// hosted window, and what each Margin window was told last.
+    pub app_loading: Option<String>,
+    pub copy_loading: BTreeMap<String, BTreeSet<i64>>,
+    pub loading_said: BTreeMap<i64, Vec<i64>>,
+    /// The Margin window each standing push was last given to (with something in it).
+    pub standing_to: BTreeMap<String, i64>,
+    /// The UI's numbers for open items (it takes only numbers for open tabs), this session's, given in order of first
+    /// use, and back.
+    pub numbers: BTreeMap<String, i64>,
+    pub items: BTreeMap<i64, String>,
+    pub next_number: i64,
 }
 
 /// One part of a row (an int as `json::int` reads it, a string, a number, a bool).
@@ -541,6 +569,10 @@ impl State {
             Field::LittleArcs => map_json(&self.little_arcs),
             Field::Layouts => map_json(&self.layouts),
             Field::CardPages => Value::Array(self.cards.iter().map(|(p, c)| json!([p, c.url, c.fresh])).collect()),
+            Field::PanesLaying => Value::Array(
+                self.panes_laying.iter().flat_map(|(w, m)| m.iter().map(move |(h, i)| json!([w, h, i]))).collect(),
+            ),
+            Field::RevealHeld => set_json(&self.reveal_held),
         }
     }
 
@@ -573,6 +605,8 @@ impl State {
             Field::LittleArcs => Some(map_edit(&mut self.little_arcs, edit)),
             Field::Layouts => Some(map_edit(&mut self.layouts, edit)),
             Field::CardPages => Some(1),
+            Field::RevealHeld => Some(set_edit(&mut self.reveal_held, edit)),
+            Field::PanesLaying => Some(panes_edit(&mut self.panes_laying, edit)),
             Field::Shown | Field::Open | Field::SafariWindows | Field::Done => None,
         };
         if let Some(bad) = bad {
@@ -701,6 +735,12 @@ impl State {
             Field::CardPages => {
                 self.cards.iter().for_each(|(p, c)| emit(&Row { s0: Some(p), s1: Some(&c.url), b0: c.fresh, ..d }))
             }
+            Field::PanesLaying => {
+                for (w, m) in &self.panes_laying {
+                    m.iter().for_each(|(h, i)| emit(&Row { i0: *w, s0: Some(h), s1: Some(i), ..d }));
+                }
+            }
+            Field::RevealHeld => self.reveal_held.iter().for_each(|w| emit(&Row { i0: *w, ..d })),
         }
     }
 
@@ -729,6 +769,22 @@ impl State {
             Field::SafariMuted => edit_set(&mut self.safari_muted, need(s0.clone())?, del),
             Field::Requesting => edit_set(&mut self.requesting, need(s0.clone())?, del),
             Field::Made => edit_set(&mut self.made, r.i0, del),
+            Field::RevealHeld => edit_set(&mut self.reveal_held, r.i0, del),
+            Field::PanesLaying => {
+                let host = need(s0.clone())?;
+                if del {
+                    if let Some(m) = self.panes_laying.get_mut(&r.i0) {
+                        m.remove(&host);
+                        if m.is_empty() {
+                            self.panes_laying.remove(&r.i0);
+                        }
+                    }
+                } else {
+                    let item = need(r.s1.map(str::to_string))?;
+                    self.panes_laying.entry(r.i0).or_default().insert(host, item);
+                }
+                Ok(())
+            }
             Field::HostingWindow => {
                 self.hosting_window = (!del).then_some(r.i0);
                 Ok(())
@@ -756,6 +812,34 @@ impl State {
         })();
         done.is_ok()
     }
+}
+
+/// `panesLaying`'s edit: its deletions (`[window, host]`), then its puts (`[window, host, item]`); a window with no
+/// pane left is gone.
+fn panes_edit(m: &mut BTreeMap<i64, BTreeMap<String, String>>, edit: &Value) -> usize {
+    let mut bad = 0;
+    for d in list(edit.get("del")) {
+        match (json::int(d.get(0)), d.get(1).and_then(Value::as_str)) {
+            (Some(w), Some(h)) => {
+                if let Some(panes) = m.get_mut(&w) {
+                    panes.remove(h);
+                    if panes.is_empty() {
+                        m.remove(&w);
+                    }
+                }
+            }
+            _ => bad += 1,
+        }
+    }
+    for e in list(edit.get("put")) {
+        match (json::int(e.get(0)), e.get(1).and_then(Value::as_str), e.get(2).and_then(Value::as_str)) {
+            (Some(w), Some(h), Some(i)) => {
+                m.entry(w).or_default().insert(h.to_string(), i.to_string());
+            }
+            _ => bad += 1,
+        }
+    }
+    bad
 }
 
 fn edit_map<K: Ord, V>(m: &mut BTreeMap<K, V>, k: K, del: bool, v: impl FnOnce() -> Result<V, ()>) -> Result<(), ()> {

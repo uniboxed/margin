@@ -169,10 +169,6 @@ impl Core {
         self.swift("settleHosting", Value::Null);
     }
 
-    fn refresh_loading(&self) {
-        self.swift("refreshLoading", Value::Null);
-    }
-
     fn has_layout(&self, w: i64) -> bool {
         self.read(|s| s.layouts.contains_key(&w))
     }

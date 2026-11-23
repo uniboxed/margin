@@ -65,6 +65,19 @@ fn rule(req: &Object) -> Value {
             json!({ "line": layout::drag_line(b("divider"), n("window"), b("following"), n("follow"), n("visible")) })
         }
         "pushEmpty" => json!({ "push": json::string(req.get("type")).and_then(push::empty) }),
+        "drawn" => {
+            // (The rule margin_link_drawn keeps per connection, as the tests read it: `sent` `[[window, on]]` in and out.)
+            let ids = |k: &str| -> Vec<i64> {
+                json::array(req.get(k))
+                    .map(|l| l.iter().filter_map(|v| json::int(Some(v))).collect())
+                    .unwrap_or_default()
+            };
+            let mut sent: std::collections::BTreeMap<i64, bool> = json::array(req.get("sent"))
+                .map(|l| l.iter().filter_map(|r| Some((json::int(r.get(0))?, r.get(1)?.as_bool()?))).collect())
+                .unwrap_or_default();
+            let changes = margin_core::session::route::drawn(&ids("hosted"), &ids("windows"), &mut sent);
+            json!({ "changes": changes, "sent": sent.into_iter().collect::<Vec<_>>() })
+        }
         "target" => json!({ "target": req.get("target").and_then(Target::read).map(|t| t.json()) }),
         "defaultBrowser" => {
             let (name, bundle, supported) = choice::default_browser(json::string(req.get("setting")));

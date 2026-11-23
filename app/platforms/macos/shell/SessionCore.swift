@@ -31,15 +31,16 @@ final class SessionCore {
     // The fields with a revision (session/state.rs `Field`), by their names in a `state` input.
     enum Field: UInt32 {
         case shown = 0, open, safariWindows, done, requested, hostingWindow, labels, showing, marginPages, marginOpen, cycledAt
-        case safariTabs, safariMuted, safariAudio, preparingWindow, preparingProfile, requesting, made, cards, littleArcs, layouts, cardPages
+        case safariTabs, safariMuted, safariAudio, preparingWindow, preparingProfile, requesting, made, cards, littleArcs, layouts, cardPages, panesLaying, revealHeld
     }
 
     // The typed ports by their numbers (margin-ffi session.rs `PortKind`).
     enum PortKind: UInt32 {
         case window = 0, windowIds, engineShown, isHosted, safariProfiles, linkEpoch, appName, appRuns, showsAlone, stopHidingWoken
         case windowIdsOf, setShowing, setMarginPage, push, changed, wokenByMenu, unopenable, log, wall, cardRect
-        case settleHosting = 23, refreshLoading, leaveMarginPage
-        case clearElsewhere = 28, forgetElsewhere, hostedPage
+        case settleHosting = 23
+        case leaveMarginPage = 25
+        case clearElsewhere = 28, forgetElsewhere, hostedPage, setLoading, setPaneLoading, setLoadingTabs
     }
     // A typed port's "none".
     static let none = Int64.min
@@ -160,9 +161,84 @@ final class SessionCore {
         }
         return rev
     }
-    private static func with(_ s: String?, _ body: (MarginBytes) -> Void) {
+    private static func with<T>(_ s: String?, _ body: (MarginBytes) -> T) -> T {
         guard var s else { return body(MarginBytes(ptr: nil, len: 0)) }
-        s.withUTF8 { body(MarginBytes(ptr: $0.baseAddress ?? UnsafePointer(bitPattern: 1), len: $0.count)) }
+        return s.withUTF8 { body(MarginBytes(ptr: $0.baseAddress ?? UnsafePointer(bitPattern: 1), len: $0.count)) }
+    }
+
+    // ---- commit 9's (core/session/loading.rs, route.rs, ui.rs): typed, answered as `input` is ----
+
+    func loading(_ host: String?) -> JSONObject {
+        Self.with(host) { h in call { margin_session_loading(core, h.ptr, h.len, $0, $1) } }
+    }
+    func refreshLoading() -> JSONObject { call { margin_session_refresh_loading(core, $0, $1) } }
+    func releaseReveal(_ window: Int) -> JSONObject { call { margin_session_release_reveal(core, Int64(window), $0, $1) } }
+
+    // A copy's push as it came (its JSON's bytes), routed by the core: its answer.
+    func copyMessage(browser: String, profile: String, window: Int?, _ msg: UnsafeBufferPointer<UInt8>) -> JSONObject {
+        Self.with(browser) { b in
+            Self.with(profile) { p in
+                call { margin_session_copy_message(core, b, p, window != nil, Int64(window ?? 0), msg.baseAddress, msg.count, $0, $1) }
+            }
+        }
+    }
+    func copyTabs(profile: String, _ state: UnsafeBufferPointer<UInt8>) -> JSONObject {
+        Self.with(profile) { p in call { margin_session_copy_tabs(core, p, state.baseAddress, state.count, $0, $1) } }
+    }
+
+    // The UI's numbers: an item's (given now if it has none), an open item's row (nil: none), a number's item.
+    func number(_ item: String) -> Int {
+        var s = item
+        return Int(s.withUTF8 { margin_session_number(core, $0.baseAddress ?? UnsafePointer(bitPattern: 1), $0.count) })
+    }
+    func openRow(_ item: String) -> Int? {
+        var s = item
+        let n = s.withUTF8 { margin_session_open_row(core, $0.baseAddress ?? UnsafePointer(bitPattern: 1), $0.count) }
+        return n == Self.none ? nil : Int(n)
+    }
+    func item(ofTab n: Int) -> String? {
+        var buf = [UInt8](repeating: 0, count: 64)
+        var len = buf.withUnsafeMutableBufferPointer { margin_session_item_of_tab(core, Int64(n), $0.baseAddress, $0.count) }
+        if len > buf.count {
+            buf = [UInt8](repeating: 0, count: len)
+            len = buf.withUnsafeMutableBufferPointer { margin_session_item_of_tab(core, Int64(n), $0.baseAddress, $0.count) }
+        }
+        return len < 0 ? nil : String(decoding: buf.prefix(len), as: UTF8.self)
+    }
+
+    // What the UI draws: the rows (each listed item `kept` is asked of), and the window they're drawn in.
+    struct LiveRow { let item: String; let number: Int; let index: Int; let active, visible, audible, muted: Bool }
+    private final class LiveSink {
+        let kept: (String) -> Bool
+        var rows: [LiveRow] = []
+        init(_ kept: @escaping (String) -> Bool) { self.kept = kept }
+    }
+    func livePlan(kept: @escaping (String) -> Bool) -> (window: Int, rows: [LiveRow])? {
+        let sink = LiveSink(kept)
+        var window: Int64 = 0
+        let listed = withExtendedLifetime(sink) {
+            margin_session_live_plan(core, Unmanaged.passUnretained(sink).toOpaque(), { ctx, p, n in
+                guard let ctx, let p else { return false }
+                let item = String(decoding: UnsafeBufferPointer(start: p, count: n), as: UTF8.self)
+                return MainActor.assumeIsolated { Unmanaged<LiveSink>.fromOpaque(ctx).takeUnretainedValue().kept(item) }
+            }, { ctx, row in
+                guard let ctx, let r = row?.pointee else { return }
+                let row = LiveRow(item: SessionCore.text(r.item) ?? "", number: Int(r.number), index: Int(r.index), active: r.active, visible: r.visible, audible: r.audible, muted: r.muted)
+                MainActor.assumeIsolated { Unmanaged<LiveSink>.fromOpaque(ctx).takeUnretainedValue().rows.append(row) }
+            }, &window)
+        }
+        return listed ? (Int(window), sink.rows) : nil
+    }
+
+    // The windows of a copy's Margin draws (a Safari copy's hosted ones for its profile).
+    func drawnWindows(browser: String, profile: String) -> [Int64] {
+        var out = [Int64](repeating: 0, count: 8)
+        var n = Self.with(browser) { b in Self.with(profile) { p in out.withUnsafeMutableBufferPointer { margin_session_drawn_windows(core, b, p, $0.baseAddress, $0.count) } } }
+        if n > out.count {
+            out = [Int64](repeating: 0, count: n)
+            n = Self.with(browser) { b in Self.with(profile) { p in out.withUnsafeMutableBufferPointer { margin_session_drawn_windows(core, b, p, $0.baseAddress, $0.count) } } }
+        }
+        return Array(out.prefix(n))
     }
 
     var done: [String] { KeysCore.answer { margin_session_done(core, $0) } as? [String] ?? [] }

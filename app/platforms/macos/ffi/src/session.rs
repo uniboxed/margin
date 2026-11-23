@@ -50,10 +50,10 @@ pub struct MarginBytes {
 }
 
 impl MarginBytes {
-    fn of(s: Option<&str>) -> Self {
+    pub(crate) fn of(s: Option<&str>) -> Self {
         s.map_or(MarginBytes { ptr: std::ptr::null(), len: 0 }, |s| MarginBytes { ptr: s.as_ptr(), len: s.len() })
     }
-    fn text<'a>(self) -> Option<&'a str> {
+    pub(crate) fn text<'a>(self) -> Option<&'a str> {
         if self.ptr.is_null() { None } else { text(self.ptr, self.len) }
     }
 }
@@ -132,10 +132,13 @@ enum PortKind {
     CardRect = 19,
     HostedPage = 30,
     SettleHosting = 23,
-    RefreshLoading = 24,
     LeaveMarginPage = 25,
     ClearElsewhere = 28,
     ForgetElsewhere = 29,
+    // (Commit 9's: the loading bar's three.)
+    SetLoading = 31,
+    SetPaneLoading = 32,
+    SetLoadingTabs = 33,
 }
 
 const NONE: i64 = i64::MIN;
@@ -322,6 +325,35 @@ impl Ports for SwiftPorts {
         }
         self.ask(json!({ "port": "push", "window": window, "json": json }));
     }
+    fn set_loading(&self, window: i64, label: Option<&str>, app: Option<&str>) {
+        if let Some(c) = self.call {
+            self.number(c, PortKind::SetLoading, Some(window), false, [label, app, None]);
+            return;
+        }
+        self.ask(json!({ "port": "setLoading", "window": window, "label": label, "app": app }));
+    }
+    fn set_pane_loading(&self, window: i64, item: Option<&str>, label: Option<&str>, app: Option<&str>) {
+        if let Some(c) = self.call {
+            self.number(c, PortKind::SetPaneLoading, Some(window), false, [item, label, app]);
+            return;
+        }
+        self.ask(json!({ "port": "setPaneLoading", "window": window, "item": item, "label": label, "app": app }));
+    }
+    fn set_loading_tabs(&self, window: i64, numbers: &[i64]) {
+        if let Some(c) = self.call {
+            // (The numbers as their decimal text, comma-separated: a typed port has texts only.)
+            let mut text = String::with_capacity(numbers.len() * 4);
+            for (i, n) in numbers.iter().enumerate() {
+                if i > 0 {
+                    text.push(',');
+                }
+                text.push_str(&n.to_string());
+            }
+            self.number(c, PortKind::SetLoadingTabs, Some(window), false, [Some(&text), None, None]);
+            return;
+        }
+        self.ask(json!({ "port": "setLoadingTabs", "window": window, "numbers": numbers }));
+    }
     fn changed(&self) {
         if let Some(c) = self.call {
             self.number(c, PortKind::Changed, None, false, [None; 3]);
@@ -357,7 +389,6 @@ impl Ports for SwiftPorts {
             let item = args.get("item").and_then(Value::as_str);
             let kind = match call {
                 "settleHosting" => Some(PortKind::SettleHosting),
-                "refreshLoading" => Some(PortKind::RefreshLoading),
                 "leaveMarginPage" => Some(PortKind::LeaveMarginPage),
                 "clearElsewhere" => Some(PortKind::ClearElsewhere),
                 "forgetElsewhere" => Some(PortKind::ForgetElsewhere),
@@ -723,6 +754,222 @@ pub unsafe extern "C" fn margin_session_open_wanted(
         (Some(s), Some(i)) => s.open_wanted(window, i),
         _ => false,
     }
+}
+
+fn bytes<'a>(ptr: *const u8, len: usize) -> &'a [u8] {
+    if ptr.is_null() || len == 0 {
+        return &[];
+    }
+    // SAFETY: the callers' contract: `len` readable bytes.
+    unsafe { std::slice::from_raw_parts(ptr, len) }
+}
+
+/// The engine's slow step for a host (`host`: `len` bytes; null: over): the loaders and the bar (Out as `input`'s).
+///
+/// # Safety
+/// `s` from [`margin_session_new`], not freed; `host` null or `len` readable bytes; `status`, `out_len` as `input`'s.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_session_loading(
+    s: *const MarginSession,
+    host: *const u8,
+    len: usize,
+    status: *mut MarginSessionStatus,
+    out_len: *mut usize,
+) -> *mut u8 {
+    let Some(s) = session(s) else { return answer(&json!({ "error": "no session" }), out_len) };
+    let host = if host.is_null() { None } else { text(host, len) };
+    give(&s.loading(host), status, out_len)
+}
+
+/// The loading bar told again (a Swift flow of a later part changed what it reads).
+///
+/// # Safety
+/// As [`margin_session_tick`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_session_refresh_loading(
+    s: *const MarginSession,
+    status: *mut MarginSessionStatus,
+    out_len: *mut usize,
+) -> *mut u8 {
+    let Some(s) = session(s) else { return answer(&json!({ "error": "no session" }), out_len) };
+    give(&s.refresh_loading(), status, out_len)
+}
+
+/// A Margin window's new pane's loader let go (applyLayout's `releaseReveal`).
+///
+/// # Safety
+/// As [`margin_session_tick`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_session_release_reveal(
+    s: *const MarginSession,
+    window: i64,
+    status: *mut MarginSessionStatus,
+    out_len: *mut usize,
+) -> *mut u8 {
+    let Some(s) = session(s) else { return answer(&json!({ "error": "no session" }), out_len) };
+    give(&s.release_reveal(window), status, out_len)
+}
+
+/// A copy's push as it came: its browser and profile (texts), its window (`has_window`), its message's JSON bytes;
+/// routed by the core (the loading bar's, the preview card's, the UI's).
+///
+/// # Safety
+/// `s` from [`margin_session_new`], not freed; each text `len` readable bytes; `status`, `out_len` as `input`'s.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn margin_session_copy_message(
+    s: *const MarginSession,
+    browser: MarginBytes,
+    profile: MarginBytes,
+    has_window: bool,
+    window: i64,
+    msg: *const u8,
+    len: usize,
+    status: *mut MarginSessionStatus,
+    out_len: *mut usize,
+) -> *mut u8 {
+    let Some(s) = session(s) else { return answer(&json!({ "error": "no session" }), out_len) };
+    let (Some(browser), Some(profile)) = (browser.text(), profile.text()) else {
+        return give(&Out::default(), status, out_len);
+    };
+    give(&s.copy_message(browser, profile, has_window.then_some(window), bytes(msg, len)), status, out_len)
+}
+
+/// A Safari copy's `openTabs` (its state's value, `len` bytes of JSON): its items' tabs' sound.
+///
+/// # Safety
+/// As [`margin_session_copy_message`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_session_copy_tabs(
+    s: *const MarginSession,
+    profile: MarginBytes,
+    state: *const u8,
+    len: usize,
+    status: *mut MarginSessionStatus,
+    out_len: *mut usize,
+) -> *mut u8 {
+    let Some(s) = session(s) else { return answer(&json!({ "error": "no session" }), out_len) };
+    let Some(profile) = profile.text() else { return give(&Out::default(), status, out_len) };
+    give(&s.copy_tabs(profile, bytes(state, len)), status, out_len)
+}
+
+/// The UI's number for an item (given now if it has none); 0 for a null session or an item that isn't text.
+///
+/// # Safety
+/// `s` from [`margin_session_new`] (or null), not freed; `item` `len` readable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_session_number(s: *const MarginSession, item: *const u8, len: usize) -> i64 {
+    match (session(s), text(item, len)) {
+        (Some(s), Some(i)) => s.number(i),
+        _ => 0,
+    }
+}
+
+/// An open item's row number (INT64_MIN: not open, or never numbered).
+///
+/// # Safety
+/// As [`margin_session_number`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_session_open_row(s: *const MarginSession, item: *const u8, len: usize) -> i64 {
+    match (session(s), text(item, len)) {
+        (Some(s), Some(i)) => s.open_row(i).unwrap_or(NONE),
+        _ => NONE,
+    }
+}
+
+/// The item a UI number is for, into `buf`: its length (more than `cap`: nothing written, ask again), -1: none.
+///
+/// # Safety
+/// `s` from [`margin_session_new`] (or null), not freed; `buf` `cap` writable bytes (or null with `cap` 0).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_session_item_of_tab(
+    s: *const MarginSession,
+    n: i64,
+    buf: *mut u8,
+    cap: usize,
+) -> isize {
+    let Some(item) = session(s).and_then(|s| s.item_of_tab(n)) else { return -1 };
+    if item.len() <= cap && !buf.is_null() {
+        // SAFETY: `cap` writable bytes (the contract).
+        unsafe { std::ptr::copy_nonoverlapping(item.as_ptr(), buf, item.len()) };
+    }
+    item.len() as isize
+}
+
+/// One row of what the UI draws (session/ui.rs `LiveRow`; its item's text valid during the sink's call).
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct MarginLiveRow {
+    pub item: MarginBytes,
+    pub number: i64,
+    pub index: i64,
+    pub active: bool,
+    pub visible: bool,
+    pub audible: bool,
+    pub muted: bool,
+}
+
+/// Whether the library's snapshot keeps an item as a tab in a space (the caller's: `live`'s `kept`).
+pub type MarginLiveKept = extern "C" fn(ctx: *mut c_void, item: *const u8, len: usize) -> bool;
+pub type MarginLiveSink = extern "C" fn(ctx: *mut c_void, row: *const MarginLiveRow);
+
+/// The open items the UI draws: each listed one `kept` asks for, the rows to `sink` in order; the window they're
+/// drawn in (`window`). False: none listed (the snapshot drawn as it is), or a null session. Neither callback may
+/// call into the session.
+///
+/// # Safety
+/// `s` from [`margin_session_new`] (or null), not freed; `ctx` passed to both; `window` writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_session_live_plan(
+    s: *const MarginSession,
+    ctx: *mut c_void,
+    kept: Option<MarginLiveKept>,
+    sink: Option<MarginLiveSink>,
+    window: *mut i64,
+) -> bool {
+    let (Some(s), Some(kept), Some(sink)) = (session(s), kept, sink) else { return false };
+    let Some((w, rows)) = s.live_plan(&mut |item| kept(ctx, item.as_ptr(), item.len())) else { return false };
+    if !window.is_null() {
+        // SAFETY: writable (the contract).
+        unsafe { *window = w };
+    }
+    for r in &rows {
+        let row = MarginLiveRow {
+            item: MarginBytes::of(Some(&r.item)),
+            number: r.number,
+            index: r.index,
+            active: r.active,
+            visible: r.visible,
+            audible: r.audible,
+            muted: r.muted,
+        };
+        sink(ctx, &row);
+    }
+    true
+}
+
+/// The windows of a copy's that Margin draws (`drawn`'s hosted ones): into `out`, how many there are (more than
+/// `cap`: the first `cap` written).
+///
+/// # Safety
+/// `s` from [`margin_session_new`] (or null), not freed; texts as said; `out` `cap` writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_session_drawn_windows(
+    s: *const MarginSession,
+    browser: MarginBytes,
+    profile: MarginBytes,
+    out: *mut i64,
+    cap: usize,
+) -> usize {
+    let (Some(s), Some(b), Some(p)) = (session(s), browser.text(), profile.text()) else { return 0 };
+    let ids = s.drawn_windows(b, p);
+    if !out.is_null() {
+        for (i, id) in ids.iter().take(cap).enumerate() {
+            // SAFETY: `cap` writable (the contract).
+            unsafe { *out.add(i) = *id };
+        }
+    }
+    ids.len()
 }
 
 #[cfg(test)]

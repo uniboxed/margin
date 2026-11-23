@@ -486,10 +486,8 @@ final class HostedSession: LibraryDelegate {
         get { field(.labels) { Self.hostText($0) } }
         set { setMap(.labels, old: labels, newValue) { CoreRow(s0: $0.raw, s1: $1) } }
     }
-    // The loading bar (setLoadingTabs): the engine's slow step now (its host), the item each host is being shown for,
-    // each web item's tab in its Safari window (the copy's id, from hostShow), the tabs each profile's copy says are
-    // loading in its hosted window (its `loading` push), and what each Margin window was told last.
-    private var appLoading: HostID?
+    // The item each host is being shown for, each web item's tab in its Safari window (the copy's id, from hostShow).
+    // (The loading bar's own, the core's: core/session/loading.rs.)
     private var showing: [HostID: String] {
         get { field(.showing) { Self.hostText($0) } }
         set { setMap(.showing, old: showing, newValue) { CoreRow(s0: $0.raw, s1: $1) } }
@@ -519,8 +517,6 @@ final class HostedSession: LibraryDelegate {
             write(.safariAudio, newValue, puts: put, dels: old.keys.filter { newValue[$0] == nil }.map { CoreRow(s0: $0) })
         }
     }
-    private var copyLoading: [String: Set<Int>] = [:]
-    private(set) var loadingSaid: [Int: [Int]] = [:]
     // Each Margin window's item asked to be shown and not shown yet (the newest): drawn in front at once.
     var requested: [Int: String] {
         get { field(.requested) { Self.intText($0) } }
@@ -528,10 +524,6 @@ final class HostedSession: LibraryDelegate {
     }
     // The first run's space (the library was empty), for the UI's editor once a window's page is drawn.
     var firstSpace: String?
-    // The UI's numbers for open items (it takes only numbers for open tabs), this session's.
-    private var numbers: [String: Int] = [:]
-    private var items: [Int: String] = [:]
-    private var nextNumber = 1
     // What was done, newest last (the tests read it; numbers, item ids and bundle ids only): the core's, the last 200.
     var done: [String] {
         let rev = core.rev(.done)
@@ -552,7 +544,6 @@ final class HostedSession: LibraryDelegate {
     var cardPages: [String: (url: String, fresh: Bool)] {
         field(.cardPages) { rows in Dictionary(rows.compactMap { r in r.s0.flatMap { p in r.s1.map { (p, (url: $0, fresh: r.b0)) } } }, uniquingKeysWith: { a, _ in a }) }
     }
-    var cardLoading: HostID?
 
     init(library: Library, engine: HostedEngine, links: HostedLinks, options: Options = Options()) {
         self.library = library
@@ -881,10 +872,12 @@ final class HostedSession: LibraryDelegate {
         case .cardRect?: return SessionCore.give(held(w)?.cardRect, out)
         case .hostedPage?: return SessionCore.give(held(w)?.hostedPlacement?.page, out)
         case .settleHosting?: settleHosting()
-        case .refreshLoading?: refreshLoading()
         case .leaveMarginPage?: if let win = held(w) { leaveMarginPage(win) }
         case .clearElsewhere?: if let win = held(w), elsewhere[win.id] != nil { elsewhere[win.id] = nil; win.setElsewhere(nil, app: nil) }
         case .forgetElsewhere?: forgetElsewhere(item: text())
+        case .setLoading?: held(w)?.setLoading(text(), app: SessionCore.text(a.b))
+        case .setPaneLoading?: held(w)?.setPaneLoading(text(), label: SessionCore.text(a.b), app: SessionCore.text(a.c))
+        case .setLoadingTabs?: held(w)?.setLoadingTabs((text() ?? "").split(separator: ",").compactMap { Int($0) })
         case nil: Diagnostics.warn("hosted: the core asked for port \(kind), which isn't one")
         }
         return 0
@@ -903,7 +896,10 @@ final class HostedSession: LibraryDelegate {
         let w = held(int(a["window"]))
         switch call {
         case "settleHosting": settleHosting()
-        case "refreshLoading": refreshLoading()
+        case "uiSettings": return uiSettings() ?? NSNull()
+        case "startupRetry": startupRetry()
+        case "startupSkip": startupSkip()
+        case "openLauncher": openLauncher(windowId: int(a["window"]), settings: a["settings"] as? Bool == true)
         case "leaveMarginPage": if let w { leaveMarginPage(w) }
         case "clearElsewhere": if let w, elsewhere[w.id] != nil { elsewhere[w.id] = nil; w.setElsewhere(nil, app: nil) }
         case "forgetElsewhere": forgetElsewhere(item: a["item"] as? String)
@@ -1393,131 +1389,68 @@ final class HostedSession: LibraryDelegate {
     }
 
     // The engine's slow step for a host started (its first open, its placing again: nil when it's over): the hosting
-    // window's page card is opaque, with the theme's loader and the app's name.
-    func loading(_ id: HostID?) {
-        if cardLoadingStep(id) { return }
-        appLoading = id
-        defer { refreshLoading() }
-        guard let wid = hostingWindow, let w = window(wid) else { return }
-        if paneLoadingStep(id) { w.setLoading(nil); return }
-        w.setLoading(id.map { labels[$0] ?? $0.description }, app: id?.iconApp)
-    }
+    // window's page card is opaque, with the theme's loader and the app's name; a split's pane's own loader; the bar
+    // (the core's, core/session/loading.rs).
+    func loading(_ id: HostID?) { drive(core.loading(id?.raw)) }
 
     // The split's panes being laid out in each Margin window now, by their hosts (applyLayout, around the engine's
-    // setLayout), and the pane whose slow step is under way (its window, its host).
-    var panesLaying: [Int: [HostID: String]] = [:]
-    private var paneLoadingAt: (window: Int, host: HostID)?
-    // Margin windows whose new pane keeps its loader after the engine's slow step is over (applyLayout: until its tab is
-    // shown and its toolbar rests), and the hold let go.
-    private var revealHeld: Set<Int> = []
-    private func releaseReveal(_ wid: Int) {
-        guard revealHeld.remove(wid) != nil, let had = paneLoadingAt, had.window == wid, appLoading != had.host else { return }
-        window(wid)?.setPaneLoading(nil, label: nil, app: nil)
-        paneLoadingAt = nil
-    }
-    // The engine's slow step for a split's pane opening (or placed again) beside the panes shown (docs/PEEK-SPLIT.md
-    // §4): its loader over its own box (the window's `setPaneLoading`: its item, a web page's title or the app's name,
-    // its icon), the other panes shown and usable; never the page area's loader over all of them (2026-11-21: Notes
-    // added covered the whole page with "Opening Notes…" for 2.2 s). True: it was a pane's (or one just over).
-    func paneLoadingStep(_ id: HostID?) -> Bool {
-        let wid = hostingWindow
-        let item = id.flatMap { id in wid.flatMap { panesLaying[$0]?[id] } }
-        var was = false
-        if let had = paneLoadingAt, item == nil || had.window != wid || had.host != id {
-            if id == nil, revealHeld.contains(had.window) { return true } // (kept: `releaseReveal`)
-            window(had.window)?.setPaneLoading(nil, label: nil, app: nil)
-            paneLoadingAt = nil
-            was = id == nil
-        }
-        guard let id, let item, let wid, let w = window(wid) else { return was }
-        paneLoadingAt = (wid, id)
-        let title = (library.items().first { $0.id == item }?.value["title"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-        let label = id.raw.hasPrefix("app:") ? labels[id] ?? id.description : title ?? labels[id] ?? "Safari"
-        w.setPaneLoading(item, label: label, app: id.iconApp)
-        return true
-    }
-
-    // A Safari profile's copy's `loading` push (background/page-loads.ts: its tabs loading in one of its windows): kept
-    // for the window Margin hosts for that profile, the bar drawn for its items' tabs.
-    func copyLoading(profile: String, windowId: Int?, tabIds: [Int]) {
-        guard let windowId, safariWindows[SafariKey(profile)] == windowId else { return }
-        let next = Set(tabIds)
-        guard next != copyLoading[profile] ?? [] else { return }
-        copyLoading[profile] = next
-        refreshLoading()
-    }
-
-    // A push of a Safari profile's copy for its UI (UIPush.swift: only the types passed on, checked and cut there), for
-    // a window Margin hosts for that profile, any role (the person's own windows: not Margin's), to the Margin window it
-    // belongs in. Its tabs named by the UI's numbers for their items (`uiNumber`); one that isn't an item open in
-    // Margin is left out. Which window (DECISIONS.md, the mini player): the Margin window showing the space of the
-    // item it's about (the first source: the copy lists playing ones first, the newest first), the hosting one or
-    // the one in front first among several; none showing it: the hosting window, else the one in front. A standing
-    // push (`media`) is taken back from the window that had it when another gets it (its empty one).
-    func copyPush(profile: String, windowId: Int?, msg: JSONObject) {
-        guard let windowId, safariWindows.contains(where: { $0.key.profile == profile && $0.value == windowId }), let type = msg["type"] as? String else { return }
-        var items: [String] = []
-        guard let page = UIPush.page(msg, tab: { entry in
-            guard let (item, n) = self.uiNumber(profile: profile, entry: entry) else { return nil }
-            items.append(item)
-            return n
-        }) else { return }
-        let ids = windowIds()
-        let showing = items.first.flatMap { library.space(ofItem: $0) }.map { space in ids.filter { library.space(ofWindow: $0) == space } } ?? []
-        let front = window(nil)?.id
-        let pick = showing.first { $0 == hostingWindow } ?? showing.first { $0 == front } ?? showing.min() ?? hostingWindow ?? front
-        guard let pick, let target = window(pick), let json = jsonString(page) else { return }
-        if UIPush.standing.contains(type) {
-            if let had = standingTo[type], had != pick, let empty = UIPush.empty(type).flatMap({ jsonString($0) }) { window(had)?.push(empty) }
-            let isEmpty = (page.values.compactMap { $0 as? [Any] }.allSatisfy { $0.isEmpty })
-            standingTo[type] = isEmpty ? nil : pick
-        }
-        target.push(json)
-    }
-    // The Margin window each standing push was last given to (with something in it).
-    private var standingTo: [String: Int] = [:]
-
-    // The item a copy's tab shows, and the UI's number for it: the item the copy names (its tag: background/hosted.ts),
-    // else the item whose tab it is (hostShow's answer), else the open item of that profile at its address (a copy
-    // started again knows no tags until the next hostShow, and Safari's tab ids change as it restarts). The tab is
-    // kept as that item's (`hostMedia` names it). Nil: not one of Margin's items open in that profile.
-    private func uiNumber(profile: String, entry: JSONObject) -> (String, Int)? {
-        let tab = int(entry["tabId"])
-        let ofProfile = { (item: String) in self.open[item]?.profile == profile }
-        var item = (entry["itemId"] as? String).flatMap { ofProfile($0) ? $0 : nil }
-        if item == nil, let tab { item = safariTabs.first { $0.value == tab && ofProfile($0.key) }?.key }
-        if item == nil, let url = entry["url"] as? String, !url.isEmpty {
-            let plain = { (u: String) in u.replacingOccurrences(of: #"#.*$"#, with: "", options: .regularExpression).replacingOccurrences(of: #"/$"#, with: "", options: .regularExpression) }
-            let values = Dictionary(library.items().map { ($0.id, $0.value) }, uniquingKeysWith: { a, _ in a })
-            item = open.keys.sorted().first { ofProfile($0) && (values[$0]?["url"] as? String).map(plain) == plain(url) }
-        }
-        guard let item else { return nil }
-        if let tab { safariTabs[item] = tab }
-        return (item, number(ofItem: item))
-    }
-
-    // The items loading now, by the UI's numbers, told to the hosting Margin window when they change: the item an app is
-    // being opened (or placed again) for while the engine's slow step runs, and every web item whose tab its copy says
-    // is loading. Nothing hosted: none.
-    private func refreshLoading() {
-        var items: Set<String> = []
-        if let wid = hostingWindow {
-            if let id = appLoading, let item = showing[id] ?? shown[wid].flatMap({ open[$0]?.host == id ? $0 : nil }) { items.insert(item) }
-            for (item, o) in open {
-                guard let p = o.profile, let tab = safariTabs[item], copyLoading[p]?.contains(tab) == true else { continue }
-                items.insert(item)
+    // setLayout), and the Margin windows whose new pane keeps its loader after the engine's slow step is over
+    // (applyLayout: until its tab is shown and its toolbar rests), let go by `releaseReveal`. (The core's.)
+    var panesLaying: [Int: [HostID: String]] {
+        get {
+            field(.panesLaying) { rows in
+                var m: [Int: [HostID: String]] = [:]
+                for r in rows { if let h = r.s0, let i = r.s1 { m[r.i0, default: [:]][HostID(raw: h)] = i } }
+                return m
             }
         }
-        for (wid, said) in loadingSaid where wid != hostingWindow && !said.isEmpty {
-            loadingSaid[wid] = []
-            window(wid)?.setLoadingTabs([])
+        set {
+            let old = panesLaying
+            func flat(_ m: [Int: [HostID: String]]) -> [String: (Int, String, String)] {
+                var out: [String: (Int, String, String)] = [:]
+                for (w, panes) in m { for (h, i) in panes { out["\(w) \(h.raw)"] = (w, h.raw, i) } }
+                return out
+            }
+            let (was, now) = (flat(old), flat(newValue))
+            write(.panesLaying, newValue,
+                  puts: now.filter { was[$0.key]?.2 != $0.value.2 }.map { CoreRow(i0: $0.value.0, s0: $0.value.1, s1: $0.value.2) },
+                  dels: was.filter { now[$0.key] == nil }.map { CoreRow(i0: $0.value.0, s0: $0.value.1) })
         }
-        guard let wid = hostingWindow, let w = window(wid) else { return }
-        let numbers = items.map { number(ofItem: $0) }.sorted()
-        guard numbers != loadingSaid[wid] ?? [] else { return }
-        loadingSaid[wid] = numbers
-        w.setLoadingTabs(numbers)
     }
+    private var revealHeld: Set<Int> {
+        get { field(.revealHeld) { Set($0.map(\.i0)) } }
+        set {
+            let old = revealHeld
+            write(.revealHeld, newValue, puts: newValue.subtracting(old).map { CoreRow(i0: $0) }, dels: old.subtracting(newValue).map { CoreRow(i0: $0) })
+        }
+    }
+    private func releaseReveal(_ wid: Int) { drive(core.releaseReveal(wid)) }
+
+    // A Safari profile's copy's `loading` push (background/page-loads.ts: its tabs loading in one of its windows), as
+    // the tests give it: the core's, as the copy's push comes (`copyMessage`).
+    func copyLoading(profile: String, windowId: Int?, tabIds: [Int]) {
+        guard let json = jsonString(["type": "loading", "tabIds": tabIds]) else { return }
+        copyMessage(browser: "safari", profile: profile, windowId: windowId, text: json)
+    }
+
+    // A push of a Safari profile's copy for its UI (UIPush.swift's types), as the tests give it: the core's, as the
+    // copy's push comes (`copyMessage`); any other type isn't the page's.
+    func copyPush(profile: String, windowId: Int?, msg: JSONObject) {
+        guard let type = msg["type"] as? String, UIPush.forwarded.contains(type), let json = jsonString(SessionRules.json(msg)) else { return }
+        copyMessage(browser: "safari", profile: profile, windowId: windowId, text: json)
+    }
+
+    // A copy's push as it came (its message's JSON text, never a dictionary: Shell.linkReceived): the core's
+    // (core/session/route.rs): the loading bar's, the UI's to the Margin window it belongs in (the mini player's
+    // window, the standing push taken back), its tabs named by the UI's numbers, and the preview card's (card.rs: a
+    // page's click answered at once, the copy giving up on one, the card's page, Esc and ⌘↩ in it).
+    func copyMessage(browser: String, profile: String, windowId: Int?, text: String) {
+        var text = text
+        drive(text.withUTF8 { core.copyMessage(browser: browser, profile: profile, window: windowId, $0) })
+    }
+
+    // The items loading now, by the UI's numbers, told to the hosting Margin window when they change (the core's).
+    private func refreshLoading() { drive(core.refreshLoading()) }
 
     // A window of the engine's in Margin's Space that isn't shown yet (HostEngine `cover`: a new app's, read; a
     // browser's made ready out of sight): told to the Margin window it's under.
@@ -1757,13 +1690,13 @@ final class HostedSession: LibraryDelegate {
         marginPages[id] = nil
         resume[id] = nil
         cycledAt[id] = nil
-        standingTo = standingTo.filter { $0.value != id }
+        drive(core.input(["type": "loadingForget", "window": id, "standing": true]))
         if hostingWindow == id {
             hostingWindow = nil
             if engine.shown != nil { Task { await self.engine.parkShown(why: "its Margin window closed") } }
         }
         refreshLoading()
-        loadingSaid[id] = nil
+        drive(core.input(["type": "loadingForget", "window": id, "said": true]))
         onChange?()
     }
 
@@ -2217,7 +2150,7 @@ final class HostedSession: LibraryDelegate {
             let items = open.filter { $0.value.host == id }.map(\.key)
             for item in items { open[item] = nil; safariTabs[item] = nil; safariAudio[item] = nil }
             for (w, i) in shown where items.contains(i) { shown[w] = nil }
-            for k in safariWindows.keys where HostTarget.safariWindow(k.profile, k.role).id == id { safariWindows[k] = nil; if k.role == .main { copyLoading[k.profile] = nil } }
+            for k in safariWindows.keys where HostTarget.safariWindow(k.profile, k.role).id == id { safariWindows[k] = nil; if k.role == .main { drive(core.input(["type": "loadingForget", "profile": k.profile])) } }
             cardHostGone(id)
             refreshLoading()
         default:
@@ -2340,45 +2273,49 @@ final class HostedSession: LibraryDelegate {
         drive(core.input(["type": "navigate", "kind": type, "window": windowId ?? NSNull()]))
     }
 
+    // ---- what the UI asks ----
+
+    // The settings the UI's requests read (the profile source's: a search's engine, the favorites' scope).
+    var uiSettings: () -> JSONObject? = { nil }
+
+    // A request the UI makes: its route, the core's (core/session/ui.rs `ui_request`; LibraryWindowSource carries it out).
+    func uiRequest(_ type: String, _ payload: JSONObject) -> JSONObject {
+        drive(core.input(["type": "ui", "kind": type, "payload": SessionRules.json(payload)]))["reply"] as? JSONObject ?? [:]
+    }
+
     // ---- what the UI draws ----
 
-    // The UI's number for an item with a page, and back.
-    func number(ofItem item: String) -> Int {
-        if let n = numbers[item] { return n }
-        let n = nextNumber
-        nextNumber += 1
-        numbers[item] = n
-        items[n] = item
-        return n
-    }
-    func item(ofTab number: Int) -> String? { items[number] }
+    // The windows of a copy's that Margin draws (Shell.tellDrawn's `drawn`): a Safari copy's every role's for its profile.
+    func drawnWindows(browser: String, profile: String) -> [Int64] { core.drawnWindows(browser: browser, profile: profile) }
+
+    // The UI's number for an item with a page, and back (the core's: given in order of first use).
+    func number(ofItem item: String) -> Int { core.number(item) }
+    func item(ofTab number: Int) -> String? { core.item(ofTab: number) }
     // An open item's row number, as the UI has it (nil: not open, or never numbered). DEV-HOOK: the dev hook's `ui`.
-    func openRow(ofItem item: String) -> Int? { open[item] != nil || marginOpen.contains(item) ? numbers[item] : nil }
+    func openRow(ofItem item: String) -> Int? { core.openRow(item) }
 
     // The library's snapshot (stored values' shape) with the items that have a page as open tabs of the Margin
-    // window hosting them, the one shown active there.
+    // window hosting them, the one shown active there: which, their numbers, in front, visible, their sound the core's
+    // (`live_plan`), shaped here into the snapshot's kept tabs until step 4.
     func live(_ snapshot: JSONObject) -> JSONObject {
-        let windowId = hostingWindow ?? shown.keys.min() ?? requested.keys.min() ?? 1
-        // In front: the item asked for (not shown yet), else the one shown.
-        let front = requested[windowId] ?? shown[windowId]
-        let listed = Set(open.keys).union(marginOpen).union(front.map { [$0] } ?? [])
-        guard var openTabs = snapshot["openTabs"] as? JSONObject, !listed.isEmpty else { return snapshot }
+        guard var openTabs = snapshot["openTabs"] as? JSONObject else { return snapshot }
         var kept = openTabs["keptTabs"] as? JSONObject ?? [:]
+        // (Each listed item's kept tab read once: the core asks whether there's one, the shaping takes it.)
+        var found: [String: (tab: JSONObject, space: String)] = [:]
+        let had = kept
+        guard let plan = core.livePlan(kept: { item in
+            guard let k = had[item] as? JSONObject, let space = k["spaceId"] as? String else { return false }
+            found[item] = (k, space)
+            return true
+        }) else { return snapshot }
         var tabs: JSONObject = [:], tabSpace: JSONObject = [:]
-        var index = 0
-        for item in listed.sorted() {
-            guard let k = kept[item] as? JSONObject, let space = k["spaceId"] as? String else { continue }
-            let n = number(ofItem: item)
-            let audio = safariAudio[item]
-            tabs[String(n)] = Self.liveTab(k, number: n, item: item, windowId: windowId, index: index, active: front == item,
-                                           audible: audio?.audible ?? false, muted: audio?.muted ?? safariMuted.contains(item))
-            tabSpace[String(n)] = space
-            kept[item] = nil
-            index += 1
-        }
-        // (Several visible in that window, docs/PEEK-SPLIT.md §1: the others marked `visible`, the focused one `active`.)
-        for item in layout[windowId]?.items ?? [] where item != front {
-            if let n = numbers[item], var t = tabs[String(n)] as? JSONObject { t["visible"] = true; tabs[String(n)] = t }
+        for r in plan.rows {
+            guard let (k, space) = found[r.item] else { continue }
+            var tab = Self.liveTab(k, number: r.number, item: r.item, windowId: plan.window, index: r.index, active: r.active, audible: r.audible, muted: r.muted)
+            if r.visible { tab["visible"] = true }
+            tabs[String(r.number)] = tab
+            tabSpace[String(r.number)] = space
+            kept[r.item] = nil
         }
         openTabs["tabs"] = tabs
         openTabs["tabSpace"] = tabSpace
@@ -2405,20 +2342,14 @@ final class HostedSession: LibraryDelegate {
         return tab
     }
 
-    // A Safari copy's tabs, as its state says them now (`openTabs.tabs`, the shell's mirror of it: Shell.linkReceived):
-    // for each item with a tab in that profile's hosted window (`safariTabs`), whether it plays sound and is muted. The
-    // windows draw again when that changed.
+    // A Safari copy's tabs, as its state says them now (`openTabs`, its JSON's bytes as the link's mirror keeps it:
+    // Shell.linkReceived): each item's tab's sound (the core's, core/session/route.rs `copy_tabs`); the windows draw
+    // again when that changed.
+    func copyTabs(profile: String, openTabs: UnsafeBufferPointer<UInt8>) { drive(core.copyTabs(profile: profile, openTabs)) }
+    // (As the tests give it: the copy's `openTabs.tabs`.)
     func copyTabs(profile: String, tabs: JSONObject) {
-        var changed = false
-        for (item, tab) in safariTabs where open[item]?.profile == profile {
-            let record = tabs[String(tab)] as? JSONObject
-            let now = record.map { (audible: $0["audible"] as? Bool == true, muted: $0["muted"] as? Bool == true) }
-            if now?.audible != safariAudio[item]?.audible || now?.muted != safariAudio[item]?.muted {
-                safariAudio[item] = now
-                changed = true
-            }
-        }
-        if changed { onChange?() }
+        guard let data = jsonText(["tabs": SessionRules.json(tabs)]) else { return }
+        data.withUnsafeBytes { copyTabs(profile: profile, openTabs: $0.bindMemory(to: UInt8.self)) }
     }
 
     // ---- helpers ----
@@ -2449,8 +2380,6 @@ final class LibraryWindowSource: MarginWindowSource {
     let session: HostedSession
     let profileSource: DataSetWindowSource
     var onChange: (() -> Void)?
-    // Requests the UI makes that need nothing here (its scroll, the copy's own waking).
-    static let quiet: Set<String> = ["sidebarScroll", "setSidebarScroll", "wakeSleeping", "windowState", "cancelNewTab", "noticeAction"]
 
     init(library: Library, session: HostedSession, profileSource: DataSetWindowSource) {
         self.library = library
@@ -2460,6 +2389,7 @@ final class LibraryWindowSource: MarginWindowSource {
         profileSource.onChange = { [weak self] in self?.onChange?() }
         let before = session.onChange
         session.onChange = { [weak self] in before?(); self?.onChange?() }
+        session.uiSettings = { [weak profileSource] in profileSource?.snapshot()["settings"] as? JSONObject }
     }
 
     func snapshot() -> JSONObject {
@@ -2470,80 +2400,26 @@ final class LibraryWindowSource: MarginWindowSource {
         return session.live(s)
     }
 
+    // A request the UI makes, routed by the core (core/session/ui.rs `ui_request`: an open item's row by the UI's number
+    // mapped back to its item, the settings' own, the pasteboard's, the session's flows, `addFavorite`'s scope from the
+    // settings, ⌘W, the requests that need nothing): carried out here as it says.
     @discardableResult func perform(_ type: String, _ payload: JSONObject) -> JSONObject? {
-        var payload = payload
-        payload["hint"] = nil
-        let windowId = int(payload["windowId"])
-        // An open item's row: the UI's number for it, the item's id here.
-        if let n = int(payload["tabId"]), let item = session.item(ofTab: n) { payload["tabId"] = item }
-        if let n = int(payload["nextTo"]), let item = session.item(ofTab: n) { payload["nextTo"] = item }
-        switch type {
-        case "updateSettings", "updateThemeSettings":
-            return profileSource.perform(type, payload)
-        case "copyUrl":
-            if let url = payload["url"] as? String, !url.isEmpty {
+        let reply = session.uiRequest(type, payload)
+        switch reply["route"] as? String {
+        case "answer":
+            if let url = reply["pasteboard"] as? String {
                 let pb = NSPasteboard.general
                 pb.clearContents()
                 pb.setString(url, forType: .string)
             }
-            return ["ok": true, "result": true]
-        case "app.open":
-            guard let id = payload["bundleId"] as? String, AppCatalog.isBundleId(id) else { return ["ok": false, "error": "not a bundle id"] }
-            session.openApp(id, windowId: windowId)
-            return nil
-        case "search":
-            let query = (payload["query"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !query.isEmpty else { return nil }
-            let settings = profileSource.snapshot()["settings"] as? JSONObject
-            return answer(library.perform("newTab", ["windowId": windowId ?? NSNull(), "url": Self.searchUrl(query, settings: settings), "title": query]))
-        case "goBack", "goForward", "reload":
-            session.navigate(type, windowId: windowId)
-            return nil
-        case "startup.retry":
-            session.startupRetry()
-            return nil
-        case "startup.skip":
-            session.startupSkip()
-            return nil
-        case "openLauncher":
-            session.openLauncher(windowId: windowId, settings: payload["settings"] as? Bool == true)
-            return nil
-        case "addFavorite":
-            // Which favorites it joins: the person's setting (the profile's settings), whatever the page sent; the library
-            // takes the scope from it and the window's space (library.ts addFavorite), never a scope a page names.
-            let settings = profileSource.snapshot()["settings"] as? JSONObject
-            payload["favoritesScope"] = settings?["favoritesScope"] as? String == "profile" ? "profile" : "global"
-            payload["scope"] = nil
-        // The preview card and Quick Tab (ui/behaviors/card.ts → HostedPeek.swift).
-        case "peek.close":
-            session.closeCard(windowId: windowId, why: "its close", tellPage: false)
-            return ["ok": true, "result": true]
-        case "peek.expand":
-            session.expandCard(windowId: windowId, spaceId: payload["spaceId"] as? String)
-            return ["ok": true, "result": true]
-        case "peek.back", "peek.forward":
-            session.cardHistory(windowId: windowId, back: type == "peek.back")
-            return ["ok": true, "result": true]
-        case "peek.littleArc":
-            session.littleArcOpened(windowId: windowId, spaceId: payload["spaceId"] as? String)
-            return ["ok": true, "result": true]
-        case "peek.go":
-            // An address as it was typed, or a search: its address from the engine Safari searches with (the palette's).
-            let query = (payload["query"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            let url = (payload["url"] as? String).flatMap { HostedSession.webAddress($0) ? $0 : nil }
-                ?? (query.isEmpty ? nil : Self.searchUrl(String(query.prefix(1000)), settings: profileSource.snapshot()["settings"] as? JSONObject))
-            guard let url else { return ["ok": false, "error": "no address"] }
-            session.littleArcGo(windowId: windowId, url: url, spaceId: payload["spaceId"] as? String)
-            return ["ok": true, "result": true]
-        case "closeTab" where payload["tabId"] == nil:
-            // ⌘W: the card in that window (or Quick Tab's field), never the item under it; else the item shown there.
-            if session.closeCardForKey(windowId: windowId) { return ["ok": true, "result": true] }
-            guard let w = windowId, let item = session.shown[w] else { return nil }
-            payload["tabId"] = item
+            return reply["value"] as? JSONObject
+        case "perform":
+            return answer(library.perform(reply["action"] as? String ?? type, reply["payload"] as? JSONObject ?? [:]))
+        case "settings":
+            return profileSource.perform(reply["kind"] as? String ?? type, reply["payload"] as? JSONObject ?? [:])
         default:
-            if Self.quiet.contains(type) { return ["ok": true, "result": NSNull()] }
+            return nil
         }
-        return answer(library.perform(type, payload))
     }
 
     private func answer(_ out: LibraryOutcome) -> JSONObject {

@@ -1622,39 +1622,21 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         asked = true
         sidebarResizing(false) // (a page loaded again mid-drag never says it's over)
         guard let owner else { return "null" }
+        // (The facts this window reads, in the order the Swift read them; the hello itself the core's: its fields, their
+        // order, the card's state and words, core/page/hello.rs.)
         let snapshot = owner.source.snapshot()
-        let head: JSONObject = [
-            "windowId": id, "profile": "", "browser": owner.browser, "mode": mode, "host": "app-window",
-            "platform": ["browser": owner.browser, "os": "mac", "app": true],
-            "state": snapshot,
-        ]
-        var json = String((jsonString(head) ?? "{}").dropLast())
-        json += #","windows":"# + windowsJSON
-        json += #","themes":"# + owner.themes()
-        json += #","apps":"# + owner.apps()
-        json += #","pageHosted":"# + (hosting ? "true" : "false")
-        json += #","layoutText":true"# // (its layout reports as their JSON: the core reads them as they come)
-        json += #","marginPage":"# + (marginPage.flatMap { jsonString($0) } ?? "null")
-        json += #","pageMinWidth":"# + (pageMinimum.map { String(Int($0)) } ?? "null")
-        if !paneMinimums.isEmpty { json += #","paneMin":"# + paneMinimumsJSON }
-        if !appMinimums.isEmpty { json += #","appMin":"# + minimumsJSON(appMinimums) }
-        if paneLoading != nil { json += #","paneLoading":"# + paneLoadingJSON }
-        if paneCuts != "{}" { json += #","paneCut":"# + paneCuts }
-        json += #","pageState":""# + pageState.rawValue + #"","pageOpening":"# + (loaderLabel.flatMap { jsonString($0) } ?? "null")
-        json += #","pageOpeningBundleId":"# + (loaderApp.flatMap { jsonString($0) } ?? "null")
-        if starting { json += #","pageStarting":true"# }
-        if starting, let why = startupStuck.flatMap({ jsonString($0) }) { json += #","pageStuck":"# + why }
-        if pageState == .elsewhere, let picture = elsewherePicture, let data = jsonString(picture) { json += #","pagePicture":"# + data }
+        let state = jsonString(snapshot) ?? "null"
+        let windows = windowsJSON, themes = owner.themes(), apps = owner.apps()
         let theme = owner.theme(id, snapshot)
         themeSent = theme
         hostedFrameSent = hostedFrameJSON
-        json += #","hostedFrame":"# + hostedFrameSent!
         // (Every visible host's window while several are: the same as the `hostedFrames` push, kept as said.)
         let frames = hostedFramesJSON
         if !visibleHosts.isEmpty { hostedFramesSent = frames }
-        json += #","hostedFrames":"# + frames
-        json += #","theme":"# + (theme ?? "null") + "}"
-        return json
+        return core.hello(windowId: id, pageMinimum: pageMinimum, texts: [
+            owner.browser, mode, state, windows, themes, apps, marginPage, paneMinimumsJSON, minimumsJSON(appMinimums), paneLoadingJSON,
+            paneCuts, elsewherePicture, hostedFrameSent, frames, theme,
+        ])
     }
 
     func pageSend(type: String, payload: JSONObject) async throws -> JSONObject {
@@ -1697,24 +1679,26 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
     }
 
+    // What the page said (`op`): its body's JSON as the page sent it (`json`: Margin.app's window's page, its hello's
+    // `layoutText` and `saidText`), to the core as it comes; a body as an object (a test's, an older page) made JSON
+    // first (a layout's report as `geometry`). Each op read and routed by the core (core/page/said.rs), carried out here.
     func pageSaid(_ op: String, _ body: JSONObject) {
-        switch op {
-        case "ready":
+        if var text = body["json"] as? String { return text.withUTF8 { said(op, $0) } }
+        let data = op == "layout" ? (body["geometry"] as? JSONObject).flatMap { PageLayout.bytes($0) } : jsonText(SessionRules.json(body))
+        guard let data else { return }
+        data.withUnsafeBytes { said(op, $0.bindMemory(to: UInt8.self)) }
+    }
+
+    private func said(_ op: String, _ body: UnsafeBufferPointer<UInt8>) {
+        switch core.said(op, body, content: contentFrame) {
+        case .ready:
             guard !isReady else { return }
             isReady = true
             Diagnostics.note("Margin's window \(id): its page drawn")
             show()
             owner?.onReady?(self)
-        case "layout":
-            // (Its JSON as the page sent it (`json`, the app window's page: the hello's `layoutText`), to the core as it
-            // comes; a report as an object (`geometry`: a test's, an older page) made into JSON first.)
-            let said: (taken: Bool, panesChanged: Bool)
-            if var text = body["json"] as? String {
-                said = text.withUTF8 { core.setLayout($0) }
-            } else if let geometry = body["geometry"] as? JSONObject, let bytes = PageLayout.bytes(geometry) {
-                said = bytes.withUnsafeBytes { core.setLayout($0.bindMemory(to: UInt8.self)) }
-            } else { return }
-            guard said.taken else { return }
+        case .layout(let taken, let panesChanged):
+            guard taken else { return }
             // (Not each frame of a drag of the sidebar's edge: its last layout, once it's let go.)
             if hosting, !pageResizing, let layout {
                 let said = "\(layout.mode) \(Int(layout.left))/\(Int(layout.top))/\(Int(layout.right))/\(Int(layout.bottom)) in \(Int(layout.width))×\(Int(layout.height))"
@@ -1726,30 +1710,23 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             updatePage()
             // (A split's panes laid out again with the page area where it was: a divider dragged, the axis or the order
             // changed. The session places the panes' windows, docs/PEEK-SPLIT.md §4.)
-            if hosting, said.panesChanged { owner?.onPanes?(self) }
-        case "peekRect":
-            // Where the theme draws the preview card page (overlay.ts reportPeekPage), in its page: the card's window goes there.
-            let next = (body["rect"] as? [Any]).flatMap { Self.rect($0) }.flatMap { r -> CGRect? in
-                guard r.width >= 1, r.height >= 1 else { return nil }
-                let c = contentFrame
-                return CGRect(x: (c.minX + r.minX).rounded(), y: (c.minY + r.minY).rounded(), width: r.width.rounded(), height: r.height.rounded())
-            }
+            if hosting, panesChanged { owner?.onPanes?(self) }
+        case .peekRect(let next):
+            // Where the theme draws the preview card page (overlay.ts reportPeekPage), in the window: the card's window goes there.
             guard next != cardRect else { return }
             cardRect = next
             owner?.onCardRect?(self)
-        case "hits":
-            let rects = (body["rects"] as? [[Any]] ?? []).compactMap { Self.rect($0) }
-            hits = Array(rects.prefix(64))
-            captureAll = body["all"] as? Bool == true || rects.count > 64
-            core.setHits(hits, captureAll: captureAll)
+        case .hits(let rects, let all):
+            hits = rects
+            captureAll = all
             updatePage()
-        case "chrome":
-            controls = (body["controls"] as? [Any]).flatMap { Self.rect($0) }
-            panel.dragRegions = (body["drags"] as? [[Any]] ?? []).compactMap { Self.rect($0) }
+        case .chrome(let controls, let drags):
+            self.controls = controls
+            panel.dragRegions = drags
             placeButtons()
-        case "focus":
+        case .focus(let on):
             let had = pageWantsKeyboard
-            pageWantsKeyboard = body["on"] as? Bool == true
+            pageWantsKeyboard = on
             if had != pageWantsKeyboard { owner?.paneSceneChanged() }
             // A field of Margin's wants the keys (the palette, ⌘T or the menu's New Tab; a rename, an editor): the panel
             // takes them, Margin isn't made active (before 2026-11-17 it was, and the hosted app went to its inactive
@@ -1759,36 +1736,28 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             // It let go (the palette closed, Escape): the panel lets go of them, the keys back to the hosted app shown.
             letGoKeys()
             keysBack("a field of Margin's let go")
-        case "counts":
-            guard let spaces = body["spaces"] as? Int, let items = body["items"] as? Int, spaces >= 0, items >= 0 else { return }
+        case .counts(let spaces, let items):
             guard rowCounts?.spaces != spaces || rowCounts?.items != items else { return }
             rowCounts = (spaces, items)
             owner?.onCounts?(self)
-        case "pointerWant":
-            core.setWant(PointerWant(body))
-        case "perform":
-            let name = body["name"] as? String ?? ""
-            if name == "window.fullscreen" { return toggleFullScreen() }
-            // The sidebar's width being dragged, or let go (ui/behaviors/resize.ts): the session's (it holds the hosted
-            // window's placing until it's over).
-            if name == "sidebar.resizing" { return sidebarResizing((body["arg"] as? JSONObject)?["on"] as? Bool == true) }
-            // (A split's divider dragged, or let go (ui/behaviors/split.ts): the same hold or live follow as the sidebar's
-            // edge, every pane's window following its rect.)
-            if name == "split.resizing" { return sidebarResizing((body["arg"] as? JSONObject)?["on"] as? Bool == true, divider: true) }
-            if name == "haptic.alignment" { return alignmentTick() }
-            // (A cut pane's arrow (ui/behaviors/split.ts): the session's, docs/PEEK-SPLIT.md §4b.)
-            if name == "split.slide" {
-                let a = body["arg"] as? JSONObject
-                guard let item = a?["item"] as? String, let side = a?["side"] as? String, PaneSide(rawValue: side) != nil else { return }
-                return owner?.onPaneSlide?(self, item, side) ?? ()
-            }
-            guard !name.isEmpty else { return }
-            ask(name, body["arg"] as? JSONObject ?? [:])
-        case "log":
-            let text = "Margin's window \(id): \(body["text"] as? String ?? "")"
-            if ["error", "warn"].contains(body["level"] as? String ?? "") { Diagnostics.warn(text) } else { Diagnostics.note(text) }
-        default:
+        case .want, .none:
             break
+        case .fullScreen:
+            toggleFullScreen()
+        case .resizing(let on, let divider):
+            // The sidebar's width being dragged, or let go (ui/behaviors/resize.ts), or a split's divider
+            // (ui/behaviors/split.ts): the session's (it holds the hosted window's placing, or every pane's follows).
+            sidebarResizing(on, divider: divider)
+        case .haptic:
+            alignmentTick()
+        case .slide(let item, let side):
+            // (A cut pane's arrow (ui/behaviors/split.ts): the session's, docs/PEEK-SPLIT.md §4b.)
+            owner?.onPaneSlide?(self, item, side.rawValue)
+        case .ask(let name, let arg):
+            ask(name, arg)
+        case .log(let warn, let text):
+            let line = "Margin's window \(id): \(text)"
+            if warn { Diagnostics.warn(line) } else { Diagnostics.note(line) }
         }
     }
 
@@ -1799,11 +1768,6 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         guard on != pageResizing else { return }
         pageResizing = on
         owner?.onSidebarResizing?(self, on, divider)
-    }
-
-    static func rect(_ r: [Any]) -> CGRect? {
-        let n = r.compactMap(num)
-        return n.count == 4 && n.allSatisfy(\.isFinite) && n[2] >= 0 && n[3] >= 0 ? CGRect(x: n[0], y: n[1], width: n[2], height: n[3]) : nil
     }
 
     // ---- navigation: only overlay.html ----

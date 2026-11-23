@@ -320,6 +320,18 @@ impl Ports for Reentrant {
         self.reenter("push");
         self.0.act(json!(["push", window, json]));
     }
+    fn set_loading(&self, window: i64, label: Option<&str>, app: Option<&str>) {
+        self.reenter("setLoading");
+        self.0.act(json!(["setLoading", window, label, app]));
+    }
+    fn set_pane_loading(&self, window: i64, item: Option<&str>, label: Option<&str>, app: Option<&str>) {
+        self.reenter("setPaneLoading");
+        self.0.act(json!(["setPaneLoading", window, item, label, app]));
+    }
+    fn set_loading_tabs(&self, window: i64, numbers: &[i64]) {
+        self.reenter("setLoadingTabs");
+        self.0.act(json!(["setLoadingTabs", window, numbers]));
+    }
     fn changed(&self) {
         self.reenter("changed");
         self.0.act(json!(["changed"]));
@@ -637,3 +649,5 @@ mod requests_tests;
 
 #[path = "card_tests.rs"]
 mod card_tests;
+#[path = "routing_tests.rs"]
+mod routing_tests;

@@ -39,7 +39,15 @@ import { nextSplitPane } from '../ui/behaviors/split.ts';
 
 // WebKit's handler on the Mac, WebView2's on Windows (ui/overlay-bridge.ts).
 const bridge = pickBridge(globalThis);
-const post = (op: string, body: Record<string, any> = {}): Promise<any> => (bridge ? bridge({ op, ...body }) : Promise.reject(new Error('no app')));
+// Margin.app's window reads what its page says as the JSON it is (its hello's `saidText`: margin-core reads each op
+// as it comes, no object made of it first): each op's body as its text then, but the hello's, a request's (`send`,
+// answered), the appearance's and a layout report's (its own text already: `layoutText`).
+let saidText = false;
+const OWN_BODY = new Set(['hello', 'send', 'appearance', 'layout']);
+const post = (op: string, body: Record<string, any> = {}): Promise<any> => {
+  if (!bridge) return Promise.reject(new Error('no app'));
+  return bridge(saidText && !OWN_BODY.has(op) ? { op, json: JSON.stringify(body) } : { op, ...body });
+};
 const log = (level: 'note' | 'warn' | 'error', ...args: any[]) => { void post('log', { level, text: args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ') }).catch(() => {}); };
 
 let host: ReturnType<typeof createAppHost> | null = null;
@@ -1102,6 +1110,7 @@ async function start() {
   const text = await post('hello');
   const hello = typeof text === 'string' ? JSON.parse(text) : text;
   if (!hello) return log('warn', 'no window for this overlay');
+  saidText = hello.host === 'app-window' && hello.saidText === true;
   host = createAppHost({ hello, post, onMessage, onNotice: (arg) => notices.run(arg), warn: (...args) => log('warn', ...args), note: (...args) => log('note', ...args) });
   hostedFrameSaid(hello?.hostedFrame);
   // (Several visible as it starts: the preview card, a split's panes. `hostedFrames` pushes keep it as they change.)
