@@ -334,6 +334,9 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   let pageOutside = appWindow && hello?.pageOutside === true;
   // A hosted app's window in the page area: no launcher there.
   let pageHosted = appWindow && hello?.pageHosted === true;
+  // The app reads each layout report as the JSON it is (its hello's `layoutText`: Margin.app's window, whose core parses
+  // the report as it comes, every frame of a drag, with no object made of it first): sent as its text then.
+  const layoutText = appWindow && hello?.layoutText === true;
   // One of Margin's own pages in the page area while nothing's hosted there (Settings: its tab, margin://settings,
   // HostedSession.swift ItemTarget.margin), null: the launcher.
   const marginPageOf = (v: unknown) => (appWindow && v === 'settings' ? v : null);
@@ -549,7 +552,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
       const key = (g: any) => JSON.stringify([g.insets, g.radius, g.radii ?? null, g.container, g.mode ?? null, !!g.pageOutside, !!g.pageHosted, g.fills ?? null, g.split ?? null, g.panes ?? null]);
       if (layout && key(layout) === key(next)) return;
       layout = next;
-      void post('layout', { geometry: next }).catch(() => {});
+      void post('layout', layoutText ? { json: JSON.stringify(next) } : { geometry: next }).catch(() => {});
     },
     get layout() { return layout; },
     get windows() { return windows; },

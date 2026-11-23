@@ -30,12 +30,32 @@ fn the_pointers_calls_cost() {
     let holes = [left, right];
     let cuts = [MarginCut { window: 41, rect: left, cut: false }, MarginCut { window: 42, rect: right, cut: true }];
     let page = margin_page_new();
+    let geometry = br#"{"insets":{"left":276,"top":8,"right":8,"bottom":8},"radius":12,"container":{"width":1512,"height":949},"mode":"fullscreen","pageHosted":true}"#;
+    let shown = [
+        MarginShown { window: 41, rect: holes[0], z: 0, role: 0, focused: false },
+        MarginShown { window: 42, rect: holes[1], z: 1, role: 1, focused: true },
+    ];
+    let mut settled = MarginSettled::default();
+    // SAFETY: a live page, valid buffers.
+    unsafe {
+        margin_page_set_full_screen(page, true);
+        margin_page_set_layout(page, geometry.as_ptr(), geometry.len());
+        margin_page_set_hits(page, hits.as_ptr(), 3, false);
+        margin_page_set_hosting(page, true);
+        margin_page_set_hosted(page, true, 41);
+        margin_page_settle(page, 0.0, &mut settled);
+        margin_page_set_visible(page, shown.as_ptr(), 2);
+    }
+    let _ = layout;
     let place = |dx: f64| {
         let c = MarginRect { x: content.x + dx, ..content };
+        let (mut rect, mut radius, mut placed) = (MarginRect::default(), 0.0, MarginHolePlaced::default());
         // SAFETY: a live page, valid buffers.
         unsafe {
-            margin_page_place_slot(page, c, &layout, hits.as_ptr(), 3, false, std::ptr::null(), holes.as_ptr(), 2, true)
+            margin_page_update(page, c, &c, &mut rect, &mut radius);
+            margin_page_place_hole(page, c, &mut placed);
         }
+        placed.slot
     };
     // SAFETY: a live page, valid buffers.
     unsafe {

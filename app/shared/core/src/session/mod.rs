@@ -40,7 +40,7 @@ pub mod target;
 #[cfg(test)]
 mod tests;
 pub mod ui;
-mod unicode;
+pub(crate) mod unicode;
 
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeSet, VecDeque};

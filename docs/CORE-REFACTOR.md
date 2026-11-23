@@ -1179,6 +1179,14 @@ never drops the item (HS:2256-2261).
 typed `margin_page_layout_read` (the report's JSON in, numbers and the texts' places out, the texts in the caller's
 buffer): 14 µs a report on the Swift side, was 10. Commit 6 keeps it in the window's Page.
 
+*Commit 3 did:* the window's Page keeps it (`margin_page_set_layout(page, bytes, len) -> uint8_t`: bit 1 a report,
+bit 2 a split's panes changed), and the page sends its report as its JSON text when its hello says `layoutText`
+(host-app.ts; Margin.app's window only, the extension's overlay, Windows and the tests' dictionaries as before): the
+bytes as WebKit hands them, no object made of them on either side, the Swift value built only when read. 2.5 µs a
+report on the Swift side (3.7 with a split), was 6.6 (12.0) before commit 1 and 10.7 (15.0) after it, on this Mac's
+same run; WebKit no longer builds an NSDictionary for it either. The parse is still serde's `Value` (it allocates,
+4 µs in the core): commit 6's typed follow path can make it allocation-free.
+
 **Risks.** Two FFI hops a frame where there were none: measured against step 2's `live-resize` numbers (followed
 median and p95 no worse). ~70 Swift lines deleted.
 
@@ -1320,6 +1328,21 @@ colours, the front watch with a simulated clock.
 **Risks.** The grace timer's restart and invalidation order (MWC:996-1005) becomes a deadline the session's wake
 covers: one timer on the Mac side for both. ~450 Swift lines deleted (MWC's decisions; ~1,900 of mechanism stay).
 
+*As built (commit 3), where the design above was wrong or changed:* core/page/ (mod.rs, area.rs, holes.rs, fill.rs,
+front.rs), margin-ffi page.rs's `MarginPage` the core's `Page` (with its `pointer: PagePointer`), Swift's wrapper
+PageCore.swift. No `PageOut` callback: MWC's setters re-enter the session through the window's own page rect
+(`setPageRect` → `onPageRect`), so each decision is a typed call at the Swift's own point, answered with what to carry
+out, and MWC carries it out in the Swift's order before its next call (nothing read of the Page while a call is under
+way). The hosted window's bounds are read by MWC where the Swift read them (`readHosted`, `readVisible`, the same
+count) and handed in before the decision that needs them: no port callback. The grace's deadline is the core's
+(`settle(now)`), kept by MWC's own timer, one a window as before (the session doesn't own the Pages); its restart and
+invalidation in the Swift's order. The front watch's clock is MWC's `now`, read through a C callback at each of the
+Swift's points; its log lines stay MWC's, the core answering codes and numbers. Two Mac facts found by the comparison:
+NSColor's `==` compares each component as a 32-bit float (so the ground's "most of the corners" does), and Swift's
+`Double(_:)` takes `snan`, a NaN's payload only as none, `0x` hex, `0` octal or decimal, and no NUL anywhere.
+`margin_page_place_slot` is gone: the Page places its slot at `margin_page_place_hole`. ~180 lines of MWC's decisions
+net out (346 out, 169 in), PassThrough.swift's PageCore moved into PageCore.swift with the Page's calls (323 lines).
+
 #### Part 12: pointer pass-through for several holes
 
 **Today.** PT: `Slot` 20-30 (rect, radius, hits, `captureAll`, `holes`), `pageGets` 34-46 (no slot, capture-all, out
@@ -1346,7 +1369,8 @@ the core's. The slot's mirror (`slot`, read by the tap, the tests, `cardHole`) i
 **FFI.** Typed, per pointer event (≤ ~120 a second, the main thread): `margin_page_pointer(page, MarginPoint at,
 MarginRect content, bool buttons_down, double now, MarginPointer *out)`: no lock, nothing allocated (as built; the
 design had `x, y, buttons` only). Beside it, typed and allocation-free once warm: `margin_page_place_slot` (each
-change of the holes, a drag's frames; commit 3's Page calls it itself), `_pointer_again`, `_gets`, `_ignoring`,
+change of the holes, a drag's frames; commit 3's Page places it itself at `margin_page_place_hole`, and the call
+went), `_pointer_again`, `_gets`, `_ignoring`,
 `_slot`, `_catch`, `_set_buttons`, `_set_want`, `_set_cuts`; and `margin_pass_*`, pure, for a slot the caller holds
 (the pane click tap's thread, the facade the tests read).
 
@@ -1381,7 +1405,7 @@ until step 4 (open question 6).
 | 0 | Baseline (`idle-cost`, `idle-profile`, `live-resize`, `page-frames`, a switch's time) and tests added against the Swift: the four pin/favourite paths, `noRoom`'s edges, `lastItem`'s tie, `webAddress`, `searchUrl`, UP's caps, HostID's logged form, holes with zero-size and touching rects, pass-through with holes. **Tests done 2026-11-23** (c0b09ce4); the baseline is the screen suite's | 0 | 0 | the baseline |
 | 1 | The pure rules into the core, Swift switched, its copies deleted: `noRoom`/`paneLeast`/`isNoRoom`, `defaultCardRect`, `webAddress`, `searchUrl`, `resolve`, `loaderApp`, `dragLine`, `lastItem`, UP's sanitiser, `PageLayout`'s parse. **Done 2026-11-23** (3ed9208a; searchUrl: Tirth's question 8 was the behaviour already, its own entry) | ~180 | ~600 | |
 | 2 | passthrough.rs with several holes; the pointer typed; PT's rules deleted. **Done 2026-11-23** (step3/passthrough: one commit; MWC's pointer decisions, the one-host rule and the tap's read are the core's; PointerWant's message reading, the hole lists' choice (part 11) and the mechanism stay Swift; `pane-clicks` not measured: no screen suite on that branch) | ~95 (+~220 of facade and the page object's wrapper) | ~1,000 (half tests) | `pane-clicks` |
-| 3 | The Page (part 11, and the page area's placement of part 7): MWC's decisions deleted, its mechanism over the Page | ~450 | ~1,100 | `page-frames`, `idle-cost` |
+| 3 | The Page (part 11, and the page area's placement of part 7): MWC's decisions deleted, its mechanism over the Page. **Done 2026-11-23** (step3/page, one commit: core/page/, ffi page.rs's `MarginPage` the core's `Page`, PageCore.swift; the layout report as its JSON text, the hello's `layoutText`; each decision a typed call at the Swift's point, no out-callback; the grace a deadline on the window's own timer; `page-frames` and `idle-cost` not measured: no screen suite on that branch) | ~480 (~530 in: PageCore.swift's wrapper and MWC's glue) | ~3,400 (a fifth tests and measures) | `page-frames`, `idle-cost` |
 | 4 | The session's skeleton: executor, ports, commands, the facade, the re-entrance test adapter; `navigate` (HS:2378-2385) the first flow moved, as the proof; `SafariWaker` split out in Swift (no behaviour moved). **Done 2026-11-23** (step3/skeleton, three commits: SafariWaker.swift, a move only; navigate's checks against the Swift; core/session/ with exec.rs, state.rs, host_id.rs, navigate.rs, ffi session.rs and the facade, `shown`, `open`, `safariWindows` and `done` the core's, Swift's `enqueue` in the core's queue. Inputs run nothing in their call, the one finding; nothing per frame) | ~10 | ~700 | |
 | 5 | Parts 1 and 2: the library's requests, `show`, `close`, `host`, the choices, the engine's window asks. **Done 2026-11-23** (step3/requests, two commits: the move, then Tirth's change 3; session/requests.rs, hosting.rs, items.rs, `ItemTarget(json:)` into target.rs, `DefaultBrowser` into choice.rs; 14 more fields the core's; the Swift of later parts through one `swift` port and a `Swift` command, interim; the notes through a `log` port; the comparison on generated sequences with overtaking, failures and re-entrance; a switch measured) | ~455 (+~335 of facade) | ~2,300 (a third tests) | a switch |
 | 6 | Parts 3 and 7: layouts, splits, the page area moving, the drag's typed path | ~320 | ~1,000 | `live-resize` |

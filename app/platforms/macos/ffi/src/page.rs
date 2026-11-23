@@ -1,20 +1,28 @@
 //! Margin's own window's page (docs/CORE-REFACTOR.md step 3 parts 11-12) for the Mac's MarginWindowController: one
-//! object per Margin window (`margin_page_new`/`_free`), used on the main thread only. For now it holds the window's
-//! pointer (margin-core's `PagePointer`, passthrough.rs): its slot and catch region placed as its holes change, the
-//! theme's window buttons, the positions its page wants, the cut panes, and the way each pointer event goes. From
-//! step 3's commit 3 the object is margin-core's `page::Page`, which owns a `PagePointer`: every call here keeps its
-//! signature (the C type stays `MarginPage`), and the Page places the slot from its own holes.
+//! object per Margin window (`margin_page_new`/`_free`), used on the main thread only: margin-core's `page::Page`
+//! (core/page/), with its pointer (`PagePointer`, passthrough.rs). Its page card's state and the loader's grace (a
+//! deadline the caller's timer keeps), the holes, the ground and its colour, the slot and catch region placed from
+//! its own holes, in front of what it hosts, the page area and the placements; the pointer's calls as before.
 //!
-//! Typed throughout, nothing allocated per pointer event nor per placing once its buffers have grown (ffi tests
-//! no_alloc.rs). The `margin_pass_*` calls are pure, on no object (any thread: the pane click tap reads a slot on its
-//! own): the same rules over a slot the caller holds. Null pointers and bad input do no harm.
+//! Typed throughout. Nothing allocated per pointer event nor per placing of the holes once its buffers have grown, nor
+//! by a read (ffi tests no_alloc.rs); a layout report's parse is its one JSON. The `margin_pass_*` and the pure
+//! `margin_page_*` rules are on no object (any thread: the pane click tap reads a slot on its own). Null pointers and
+//! bad input do no harm.
+
+use std::ffi::c_void;
 
 use margin_core::geometry::{Point, Rect};
+use margin_core::host::layout::Placement;
+use margin_core::page::fill::{self, Rgba};
+use margin_core::page::front::{FrontCounts, FrontOp, Mechanism};
+use margin_core::page::holes::{self, Piece};
+use margin_core::page::{Ground, GroundHole, HostedSaid, Page, PageState, Settled, Shown, area};
 use margin_core::passthrough::{
-    CatchBuf, CatchRef, Cg, Cut, Edges, Holes, PagePointer, PassThrough, Push, SlotInsets, SlotRef, Want, WantMode,
+    CatchBuf, CatchRef, Cg, Cut, Edges, PassThrough, Push, SlotInsets, SlotRef, Want, WantMode,
 };
 
-use crate::MarginRect;
+use crate::session_rules::{MarginPageLayout, MarginText, write_layout};
+use crate::{MarginPlacement, MarginRect};
 
 // (MarginRect and margin-core's Rect have one layout, both repr(C): a C array of one is read as the other in place.)
 // (So do MarginCut and Cut.)
@@ -143,10 +151,10 @@ pub struct MarginPointer {
     pub y: f64,
 }
 
-/// One Margin window's page (for now its pointer; margin-core's `page::Page` from step 3's commit 3).
+/// One Margin window's page: margin-core's `page::Page`.
 #[derive(Default)]
 pub struct MarginPage {
-    pointer: PagePointer,
+    page: Page,
 }
 
 /// # Safety
@@ -270,43 +278,8 @@ pub unsafe extern "C" fn margin_page_free(page: *mut MarginPage) {
 pub unsafe extern "C" fn margin_page_set_pointer_every(page: *mut MarginPage, every: f64) {
     // SAFETY: the contract above.
     if let Some(p) = unsafe { page.as_mut() } {
-        p.pointer.set_every(every);
+        p.page.pointer.set_every(every);
     }
-}
-
-/// Its slot and catch region placed for its content at `content` (top left) and its page's `layout` (null: none
-/// yet), `hits` (in the content) and `capture_all`: one host's `hole` (null: none) or, `several`, these `holes`.
-/// Answers what changed: bit 1 the slot (the pointer's way looked at again), bit 2 the catch region.
-///
-/// # Safety
-/// `page` null or a live page (one thread at a time); `layout` and `hole` null or readable; `hits` and `holes` null
-/// or as long as said.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn margin_page_place_slot(
-    page: *mut MarginPage,
-    content: MarginRect,
-    layout: *const MarginInsets,
-    hits: *const MarginRect,
-    hits_len: usize,
-    capture_all: bool,
-    hole: *const MarginRect,
-    holes: *const MarginRect,
-    holes_len: usize,
-    several: bool,
-) -> u8 {
-    // SAFETY: the contract above.
-    let Some(p) = (unsafe { page.as_mut() }) else { return 0 };
-    // SAFETY: the contract above.
-    let (layout, hits) = (unsafe { layout.as_ref() }.map(|l| (*l).into()), unsafe { rects(hits, hits_len) });
-    let holes = if several {
-        // SAFETY: the contract above.
-        Holes::Several(unsafe { rects(holes, holes_len) })
-    } else {
-        // SAFETY: the contract above.
-        Holes::One(unsafe { hole.as_ref() }.map(|h| (*h).into()))
-    };
-    let placed = p.pointer.place(content.into(), layout, hits, capture_all, holes);
-    u8::from(placed.slot) | (u8::from(placed.region) << 1)
 }
 
 /// Its slot into `out` (its rects the page's own, valid until its next placing); false: none.
@@ -316,7 +289,7 @@ pub unsafe extern "C" fn margin_page_place_slot(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn margin_page_slot(page: *const MarginPage, out: *mut MarginSlotView) -> bool {
     // SAFETY: the contract above.
-    let Some(s) = (unsafe { page.as_ref() }).and_then(|p| p.pointer.slot()) else { return false };
+    let Some(s) = (unsafe { page.as_ref() }).and_then(|p| p.page.pointer.slot()) else { return false };
     // SAFETY: the contract above.
     unsafe { put(out, slot_view(s)) };
     true
@@ -331,7 +304,7 @@ pub unsafe extern "C" fn margin_page_catch(page: *const MarginPage, out: *mut Ma
     // SAFETY: the contract above.
     let Some(p) = (unsafe { page.as_ref() }) else { return };
     // SAFETY: the contract above.
-    unsafe { put(out, catch_view(p.pointer.region())) };
+    unsafe { put(out, catch_view(p.page.pointer.region())) };
 }
 
 /// The theme's window controls (`controls` in the content, null: none drawn) and whether the window is in full
@@ -348,7 +321,7 @@ pub unsafe extern "C" fn margin_page_set_buttons(
     // SAFETY: the contract above.
     let Some(p) = (unsafe { page.as_mut() }) else { return };
     // SAFETY: the contract above.
-    p.pointer.set_buttons(unsafe { controls.as_ref() }.map(|c| (*c).into()), full_screen);
+    p.page.pointer.set_buttons(unsafe { controls.as_ref() }.map(|c| (*c).into()), full_screen);
 }
 
 /// Which positions its page wants: `mode` 0 none, 1 within `zone` of `edges` (bits: 1 left, 2 right, 4 top, 8
@@ -360,7 +333,7 @@ pub unsafe extern "C" fn margin_page_set_buttons(
 pub unsafe extern "C" fn margin_page_set_want(page: *mut MarginPage, mode: u8, edges: u8, zone: f64) {
     // SAFETY: the contract above.
     if let Some(p) = unsafe { page.as_mut() } {
-        p.pointer.set_want(want(mode, edges, zone));
+        p.page.pointer.set_want(want(mode, edges, zone));
     }
 }
 
@@ -379,7 +352,7 @@ pub unsafe extern "C" fn margin_page_set_cuts(
     // SAFETY: the contract above.
     let Some(p) = (unsafe { page.as_mut() }) else { return false };
     // SAFETY: the contract above.
-    p.pointer.set_cuts(cutting, unsafe { cuts(list, len) })
+    p.page.pointer.set_cuts(cutting, unsafe { cuts(list, len) })
 }
 
 /// A pointer event at `at` (the window server's coordinates, top left; `buttons_down` a button held) over a window
@@ -398,7 +371,7 @@ pub unsafe extern "C" fn margin_page_pointer(
 ) {
     // SAFETY: the contract above.
     let Some(p) = (unsafe { page.as_mut() }) else { return };
-    let d = p.pointer.moved(at.into(), content.into(), buttons_down, now);
+    let d = p.page.pointer.moved(at.into(), content.into(), buttons_down, now);
     let (push, local) = match d.push {
         Push::None => (0, Point::default()),
         Push::At(l) => (1, l),
@@ -429,7 +402,7 @@ pub unsafe extern "C" fn margin_page_pointer_again(
     content: MarginRect,
 ) -> bool {
     // SAFETY: the contract above.
-    unsafe { page.as_mut() }.is_some_and(|p| p.pointer.again(at.into(), content.into()))
+    unsafe { page.as_mut() }.is_some_and(|p| p.page.pointer.again(at.into(), content.into()))
 }
 
 /// Whether the hosted window gets the pointer at `at` (its slot's answer).
@@ -439,7 +412,7 @@ pub unsafe extern "C" fn margin_page_pointer_again(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn margin_page_gets(page: *const MarginPage, at: MarginPoint) -> bool {
     // SAFETY: the contract above.
-    unsafe { page.as_ref() }.is_some_and(|p| p.pointer.gets(at.into()))
+    unsafe { page.as_ref() }.is_some_and(|p| p.page.pointer.gets(at.into()))
 }
 
 /// Whether the panel lets the pointer through now.
@@ -449,7 +422,7 @@ pub unsafe extern "C" fn margin_page_gets(page: *const MarginPage, at: MarginPoi
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn margin_page_ignoring(page: *const MarginPage) -> bool {
     // SAFETY: the contract above.
-    unsafe { page.as_ref() }.is_some_and(|p| p.pointer.ignoring())
+    unsafe { page.as_ref() }.is_some_and(|p| p.page.pointer.ignoring())
 }
 
 /// Whether the page gets the pointer at `at` with this slot (null: none), CGRect's edges.
@@ -565,4 +538,1052 @@ pub unsafe extern "C" fn margin_pass_catch_contains(
 #[unsafe(no_mangle)]
 pub extern "C" fn margin_pass_wants(mode: u8, edges: u8, zone: f64, p: MarginPoint, width: f64, height: f64) -> bool {
     want(mode, edges, zone).wants(p.into(), width, height)
+}
+
+// ---- the page (margin-core's page::Page: docs/CORE-REFACTOR.md step 3 part 11 and part 7's page area) ----
+
+/// A colour, sRGB components 0…1.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct MarginRgba {
+    pub r: f64,
+    pub g: f64,
+    pub b: f64,
+    pub a: f64,
+}
+
+impl From<Rgba> for MarginRgba {
+    fn from(c: Rgba) -> Self {
+        MarginRgba { r: c.r, g: c.g, b: c.b, a: c.a }
+    }
+}
+
+/// One cut-out of the ground, in the content (top left): its corners (`has_radii` false: square).
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct MarginGroundHole {
+    pub rect: MarginRect,
+    pub radii: [f64; 4],
+    pub has_radii: bool,
+}
+
+// (MarginGroundHole and the core's GroundHole have one layout: the page's list is handed out in place. So do
+// MarginShown and Shown.)
+const _: () = assert!(
+    std::mem::size_of::<MarginGroundHole>() == std::mem::size_of::<GroundHole>()
+        && std::mem::align_of::<MarginGroundHole>() == std::mem::align_of::<GroundHole>()
+        && std::mem::offset_of!(MarginGroundHole, radii) == std::mem::offset_of!(GroundHole, radii)
+        && std::mem::offset_of!(MarginGroundHole, has_radii) == std::mem::offset_of!(GroundHole, has_radii)
+        && std::mem::size_of::<MarginShown>() == std::mem::size_of::<Shown>()
+        && std::mem::align_of::<MarginShown>() == std::mem::align_of::<Shown>()
+        && std::mem::offset_of!(MarginShown, rect) == std::mem::offset_of!(Shown, rect)
+        && std::mem::offset_of!(MarginShown, z) == std::mem::offset_of!(Shown, z)
+        && std::mem::offset_of!(MarginShown, role) == std::mem::offset_of!(Shown, role)
+        && std::mem::offset_of!(MarginShown, focused) == std::mem::offset_of!(Shown, focused)
+);
+
+/// A visible host's window while several are: its window, its rect, its place back to front, its role (0 main, 1 a
+/// pane, 2 the card), whether it's focused.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct MarginShown {
+    pub window: i64,
+    pub rect: MarginRect,
+    pub z: i64,
+    pub role: u8,
+    pub focused: bool,
+}
+
+/// A window's bounds as the window server read them.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct MarginFrame {
+    pub window: i64,
+    pub rect: MarginRect,
+}
+
+/// A hole the pointer goes through to while several hosts are visible, its window (the pane click tap's).
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct MarginPaneHole {
+    pub rect: MarginRect,
+    pub window: i64,
+    pub card: bool,
+}
+
+/// What a placing of the holes did: `slot` and `region` changed (the pointer looked at again, the catch fill drawn
+/// again); the ground: 0 no hole (the panel's background the fill), 1 around `hole`, 2 around `holes` (the page's
+/// own, valid until its next placing); its fill the ground's colour (`has_fill`), else the window's own.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct MarginHolePlaced {
+    pub slot: bool,
+    pub region: bool,
+    pub ground: u8,
+    pub has_fill: bool,
+    pub fill: MarginRgba,
+    pub hole: MarginGroundHole,
+    pub holes: *const MarginGroundHole,
+    pub holes_len: usize,
+}
+
+impl Default for MarginHolePlaced {
+    fn default() -> Self {
+        MarginHolePlaced {
+            slot: false,
+            region: false,
+            ground: 0,
+            has_fill: false,
+            fill: MarginRgba::default(),
+            hole: MarginGroundHole::default(),
+            holes: std::ptr::null(),
+            holes_len: 0,
+        }
+    }
+}
+
+/// What a settling of the page card's state did: `grace` the loader's grace began (until `deadline`; `hole_again`:
+/// its hole placed again meanwhile); else applied: `changed` (its page told), `shown`.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct MarginSettled {
+    pub grace: bool,
+    pub hole_again: bool,
+    pub deadline: f64,
+    pub changed: bool,
+    pub shown: bool,
+}
+
+/// What was done to keep it in front, counted.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct MarginFrontCounts {
+    pub level_sets: u64,
+    pub front_orders: u64,
+    pub yield_orders: u64,
+    pub front_restores: u64,
+    pub level_probes: u64,
+    pub level_backs: u64,
+}
+
+impl From<FrontCounts> for MarginFrontCounts {
+    fn from(c: FrontCounts) -> Self {
+        MarginFrontCounts {
+            level_sets: c.level_sets,
+            front_orders: c.front_orders,
+            yield_orders: c.yield_orders,
+            front_restores: c.front_restores,
+            level_probes: c.level_probes,
+            level_backs: c.level_backs,
+        }
+    }
+}
+
+/// What the page holds, read at once: its state (0 empty, 1 loading, 2 shown, 3 elsewhere), hosting, the hosted
+/// window and its bounds, the hole and how many holes, the visible hosts, whether it follows a drag, its start's look,
+/// whether an engine's slow step or a show is under way, the ground's colour, how it's kept in front (0 level, 1
+/// order), what it lets in front and covers, the grace's deadline, and the counts.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct MarginPageRead {
+    pub state: u8,
+    pub hosting: bool,
+    pub has_hosted: bool,
+    pub hosted: i64,
+    pub has_frame: bool,
+    pub frame: MarginRect,
+    pub has_hole: bool,
+    pub hole: MarginRect,
+    pub holes: usize,
+    pub visible: usize,
+    pub following: bool,
+    pub starting: bool,
+    pub has_loading: bool,
+    pub has_showing: bool,
+    pub has_ground: bool,
+    pub ground: MarginRgba,
+    pub mechanism: u8,
+    pub has_yielding: bool,
+    pub yielding: i64,
+    pub has_covering: bool,
+    pub covering: i64,
+    pub has_grace: bool,
+    pub grace_until: f64,
+    pub counts: MarginFrontCounts,
+}
+
+/// `keepFront`'s asks, in this order: `level` 0 none, 1 normal, 2 raised; ordered right above `above`; ordered right
+/// below `below` (another app's window let in front).
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct MarginKeepFront {
+    pub level: u8,
+    pub has_above: bool,
+    pub above: i64,
+    pub has_below: bool,
+    pub below: i64,
+}
+
+/// One step of a read at rest: `kind` 1 the normal level, 2 the raised level, 3 ordered right above `arg`; said: 4
+/// the hosted window above it (`arg` its mechanism, 0 level, 1 order), 5 in front by its level, 6 by its order instead
+/// (`arg` the ms between the misses), 7 by its level again.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct MarginFrontOp {
+    pub kind: u8,
+    pub arg: i64,
+}
+
+/// A read at rest's steps, in order.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct MarginFrontOps {
+    pub ops: [MarginFrontOp; 8],
+    pub len: u8,
+}
+
+/// A split's panes on the screen: its id and each pane's item (texts in the caller's buffer) and box.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct MarginPagePanes {
+    pub split: MarginText,
+    pub count: u8,
+    pub items: [MarginText; 4],
+    pub rects: [MarginRect; 4],
+}
+
+/// The caller's clock, read where the decision reads it.
+pub type MarginClock = Option<unsafe extern "C" fn(ctx: *mut c_void) -> f64>;
+
+/// # Safety
+/// `ptr` null or `len` readable bytes.
+unsafe fn opt_text<'a>(ptr: *const u8, len: usize, has: bool) -> Option<&'a str> {
+    if !has {
+        return None;
+    }
+    if ptr.is_null() || len == 0 {
+        return Some("");
+    }
+    // SAFETY: the caller's contract.
+    std::str::from_utf8(unsafe { std::slice::from_raw_parts(ptr, len) }).ok()
+}
+
+fn clock(ctx: *mut c_void, now: MarginClock) -> impl FnMut() -> f64 {
+    move || match now {
+        // SAFETY: the caller's clock, with its own context.
+        Some(f) => unsafe { f(ctx) },
+        None => 0.0,
+    }
+}
+
+fn mechanism(m: Mechanism) -> u8 {
+    match m {
+        Mechanism::Level => 0,
+        Mechanism::Order => 1,
+    }
+}
+
+/// The loader's grace (seconds; 0: none), the start's loader label, the mechanism asked for (`order`: the order's way,
+/// kept) and the OS's raised and normal window levels.
+///
+/// # Safety
+/// `page` null or a live page (one thread at a time); `label` null or `len` readable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_configure(
+    page: *mut MarginPage,
+    grace: f64,
+    label: *const u8,
+    len: usize,
+    order: bool,
+    raised: i64,
+    normal: i64,
+) {
+    // SAFETY: the contract above.
+    let Some(p) = (unsafe { page.as_mut() }) else { return };
+    // SAFETY: the contract above.
+    let label = unsafe { opt_text(label, len, true) }.unwrap_or("");
+    let asked = if order { Mechanism::Order } else { Mechanism::Level };
+    p.page.configure(grace, label, asked, raised, normal);
+}
+
+/// The page's layout report: its JSON (the `geometry` object, as the page sent it) parsed and kept. Bits: 1 it was
+/// one (kept), 2 a split's panes changed with it.
+///
+/// # Safety
+/// `page` null or a live page (one thread at a time); `bytes` null or `len` readable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_set_layout(page: *mut MarginPage, bytes: *const u8, len: usize) -> u8 {
+    // SAFETY: the contract above.
+    let Some(p) = (unsafe { page.as_mut() }) else { return 0 };
+    if bytes.is_null() {
+        return 0;
+    }
+    // SAFETY: the contract above.
+    let said = p.page.set_layout_bytes(unsafe { std::slice::from_raw_parts(bytes, len) });
+    u8::from(said.taken) | (u8::from(said.panes_changed) << 1)
+}
+
+/// The layout kept, as `margin_page_layout_read` writes one: the bytes its texts take (more than `cap`: nothing
+/// written), -1: none yet.
+///
+/// # Safety
+/// `page` null or a live page; `out` writable; `text` `cap` writable bytes (or null with `cap` 0).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_layout_get(
+    page: *const MarginPage,
+    out: *mut MarginPageLayout,
+    text: *mut u8,
+    cap: usize,
+) -> isize {
+    // SAFETY: the contract above.
+    let Some(l) = (unsafe { page.as_ref() }).and_then(|p| p.page.layout()) else { return -1 };
+    if out.is_null() {
+        return -1;
+    }
+    // SAFETY: the contract above.
+    unsafe { write_layout(l, out, text, cap) }
+}
+
+/// What the theme draws over the page area that takes the pointer (`hits`, in the content) and whether it asked for
+/// the whole window.
+///
+/// # Safety
+/// `page` null or a live page; `hits` null or `len` readable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_set_hits(
+    page: *mut MarginPage,
+    hits: *const MarginRect,
+    len: usize,
+    capture_all: bool,
+) {
+    // SAFETY: the contract above.
+    let Some(p) = (unsafe { page.as_mut() }) else { return };
+    // SAFETY: the contract above.
+    p.page.set_hits(unsafe { rects(hits, len) }, capture_all);
+}
+
+/// Whether the window is in full screen.
+///
+/// # Safety
+/// `page` null or a live page.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_set_full_screen(page: *mut MarginPage, on: bool) {
+    // SAFETY: the contract above.
+    if let Some(p) = unsafe { page.as_mut() } {
+        p.page.set_full_screen(on);
+    }
+}
+
+/// The page area again for its content (top left) and its display's frame (null: none): 0 left as it is; 1 none, 2
+/// `out` (with `radius`): the window's page area set so.
+///
+/// # Safety
+/// `page` null or a live page; `display` null or readable; `out` and `radius` writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_update(
+    page: *mut MarginPage,
+    content: MarginRect,
+    display: *const MarginRect,
+    out: *mut MarginRect,
+    radius: *mut f64,
+) -> u8 {
+    // SAFETY: the contract above.
+    let Some(p) = (unsafe { page.as_mut() }) else { return 0 };
+    // SAFETY: the contract above.
+    let display = unsafe { display.as_ref() }.map(|d| (*d).into());
+    let Some((rect, r)) = p.page.update_page(content.into(), display) else { return 0 };
+    // SAFETY: the contract above.
+    unsafe { put(radius, r) };
+    match rect {
+        None => 1,
+        Some(rect) => {
+            // SAFETY: the contract above.
+            unsafe { put(out, rect.into()) };
+            2
+        }
+    }
+}
+
+fn placement(p: Placement) -> MarginPlacement {
+    MarginPlacement { page: p.page.into(), area: p.area.into(), display: p.display.into() }
+}
+
+/// Where the hosted window goes while hosting (its content and display as `margin_page_update`'s); false: none yet.
+///
+/// # Safety
+/// `page` null or a live page; `display` null or readable; `out` writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_hosted_placement(
+    page: *const MarginPage,
+    content: MarginRect,
+    display: *const MarginRect,
+    out: *mut MarginPlacement,
+) -> bool {
+    // SAFETY: the contract above.
+    let Some(p) = (unsafe { page.as_ref() }) else { return false };
+    // SAFETY: the contract above.
+    let display = unsafe { display.as_ref() }.map(|d| (*d).into());
+    let Some(pl) = p.page.hosted_placement(content.into(), display) else { return false };
+    // SAFETY: the contract above.
+    unsafe { put(out, placement(pl)) };
+    true
+}
+
+/// Where a browser's window made ready out of sight goes; false: none yet.
+///
+/// # Safety
+/// `page` null or a live page; `out` writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_idle_placement(
+    page: *const MarginPage,
+    content: MarginRect,
+    out: *mut MarginPlacement,
+) -> bool {
+    // SAFETY: the contract above.
+    let Some(pl) = (unsafe { page.as_ref() }).and_then(|p| p.page.idle_placement(content.into())) else { return false };
+    // SAFETY: the contract above.
+    unsafe { put(out, placement(pl)) };
+    true
+}
+
+/// A split's panes on the screen (hosting, a split laid out): the bytes their texts take (more than `cap`: nothing
+/// written), -1: none.
+///
+/// # Safety
+/// `page` null or a live page; `out` writable; `text` `cap` writable bytes (or null with `cap` 0).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_panes(
+    page: *const MarginPage,
+    content: MarginRect,
+    out: *mut MarginPagePanes,
+    text: *mut u8,
+    cap: usize,
+) -> isize {
+    // SAFETY: the contract above.
+    let Some((split, panes)) = (unsafe { page.as_ref() }).and_then(|p| p.page.panes(content.into())) else { return -1 };
+    if out.is_null() {
+        return -1;
+    }
+    let mut o = MarginPagePanes::default();
+    let mut list = [("", Rect::ZERO); 4];
+    let mut n = 0;
+    for (item, rect) in panes.take(4) {
+        list[n] = (item, rect);
+        n += 1;
+    }
+    let need = split.len() + list[..n].iter().map(|(i, _)| i.len()).sum::<usize>();
+    if need > cap || (need > 0 && text.is_null()) {
+        return need as isize;
+    }
+    // SAFETY: `text` has `cap` writable bytes (the contract), `need` of them used.
+    let buffer = if need == 0 { &mut [][..] } else { unsafe { std::slice::from_raw_parts_mut(text, need) } };
+    let mut at = 0;
+    let mut put_text = |s: &str| {
+        buffer[at..at + s.len()].copy_from_slice(s.as_bytes());
+        at += s.len();
+        MarginText { at: at - s.len(), len: s.len() }
+    };
+    o.split = put_text(split);
+    o.count = n as u8;
+    for (i, (item, rect)) in list[..n].iter().enumerate() {
+        o.items[i] = put_text(item);
+        o.rects[i] = (*rect).into();
+    }
+    // SAFETY: the contract above.
+    unsafe { put(out, o) };
+    need as isize
+}
+
+/// Hosting another app's window in its page area, or not: 0 no change; bit 1 changed, bit 2 several hosts were
+/// visible (none now).
+///
+/// # Safety
+/// `page` null or a live page.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_set_hosting(page: *mut MarginPage, on: bool) -> u8 {
+    // SAFETY: the contract above.
+    let Some(p) = (unsafe { page.as_mut() }) else { return 0 };
+    match p.page.set_hosting(on) {
+        None => 0,
+        Some(had) => 1 | (u8::from(had) << 1),
+    }
+}
+
+/// The engine's slow step (its app's name; `has_label` false: over) and the app whose icon its loader shows. False:
+/// nothing new.
+///
+/// # Safety
+/// `page` null or a live page; the texts null or as long as said.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_set_loading(
+    page: *mut MarginPage,
+    label: *const u8,
+    label_len: usize,
+    has_label: bool,
+    app: *const u8,
+    app_len: usize,
+    has_app: bool,
+) -> bool {
+    // SAFETY: the contract above.
+    let Some(p) = (unsafe { page.as_mut() }) else { return false };
+    // SAFETY: the contract above.
+    let (label, app) = unsafe { (opt_text(label, label_len, has_label), opt_text(app, app_len, has_app)) };
+    p.page.set_loading(label, app)
+}
+
+/// An item being shown and not ready yet (`slow`: known to take a while). False: nothing new.
+///
+/// # Safety
+/// As `margin_page_set_loading`.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn margin_page_set_showing(
+    page: *mut MarginPage,
+    label: *const u8,
+    label_len: usize,
+    has_label: bool,
+    app: *const u8,
+    app_len: usize,
+    has_app: bool,
+    slow: bool,
+) -> bool {
+    // SAFETY: the contract above.
+    let Some(p) = (unsafe { page.as_mut() }) else { return false };
+    // SAFETY: the contract above.
+    let (label, app) = unsafe { (opt_text(label, label_len, has_label), opt_text(app, app_len, has_app)) };
+    p.page.set_showing(label, app, slow)
+}
+
+/// Its card while its item is in another Margin window or parked (none: no card). False: nothing new.
+///
+/// # Safety
+/// As `margin_page_set_loading`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_set_elsewhere(
+    page: *mut MarginPage,
+    label: *const u8,
+    label_len: usize,
+    has_label: bool,
+    app: *const u8,
+    app_len: usize,
+    has_app: bool,
+) -> bool {
+    // SAFETY: the contract above.
+    let Some(p) = (unsafe { page.as_mut() }) else { return false };
+    // SAFETY: the contract above.
+    let (label, app) = unsafe { (opt_text(label, label_len, has_label), opt_text(app, app_len, has_app)) };
+    p.page.set_elsewhere(label, app)
+}
+
+/// What holds Margin's start up (none: nothing). False: nothing new.
+///
+/// # Safety
+/// `page` null or a live page; `why` null or as long as said.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_set_stuck(page: *mut MarginPage, why: *const u8, len: usize, has: bool) -> bool {
+    // SAFETY: the contract above.
+    let Some(p) = (unsafe { page.as_mut() }) else { return false };
+    // SAFETY: the contract above.
+    p.page.set_stuck(unsafe { opt_text(why, len, has) })
+}
+
+/// The hosted window shown in its page area (`has` false: none): 0 the same none as before, 1 the same window
+/// (placed again: its bounds read again), 2 another.
+///
+/// # Safety
+/// `page` null or a live page.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_set_hosted(page: *mut MarginPage, has: bool, number: i64) -> u8 {
+    // SAFETY: the contract above.
+    let Some(p) = (unsafe { page.as_mut() }) else { return 0 };
+    match p.page.set_hosted(has.then_some(number)) {
+        HostedSaid::Same => 0,
+        HostedSaid::Moved => 1,
+        HostedSaid::Changed => 2,
+    }
+}
+
+/// The hosted window's bounds as the window server read them (null: unread, or none hosted).
+///
+/// # Safety
+/// `page` null or a live page; `frame` null or readable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_set_hosted_frame(page: *mut MarginPage, frame: *const MarginRect) {
+    // SAFETY: the contract above.
+    let Some(p) = (unsafe { page.as_mut() }) else { return };
+    // SAFETY: the contract above.
+    p.page.set_hosted_frame(unsafe { frame.as_ref() }.map(|f| (*f).into()));
+}
+
+/// Every visible host's window while several are (none: one host). True: more than their rects changed.
+///
+/// # Safety
+/// `page` null or a live page; `list` null or `len` readable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_set_visible(page: *mut MarginPage, list: *const MarginShown, len: usize) -> bool {
+    // SAFETY: the contract above.
+    let Some(p) = (unsafe { page.as_mut() }) else { return false };
+    let list: &[Shown] = if list.is_null() || len == 0 {
+        &[]
+    } else {
+        // SAFETY: the contract above; MarginShown and Shown have one layout (the assert above).
+        unsafe { std::slice::from_raw_parts(list.cast::<Shown>(), len) }
+    };
+    p.page.set_visible(list)
+}
+
+/// The visible hosts' windows' bounds as the window server read them.
+///
+/// # Safety
+/// `page` null or a live page; `list` null or `len` readable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_set_frames(page: *mut MarginPage, list: *const MarginFrame, len: usize) {
+    // SAFETY: the contract above.
+    let Some(p) = (unsafe { page.as_mut() }) else { return };
+    let list: &[MarginFrame] = if list.is_null() || len == 0 {
+        &[]
+    } else {
+        // SAFETY: the contract above.
+        unsafe { std::slice::from_raw_parts(list, len) }
+    };
+    p.page.set_frames(list.iter().map(|f| (f.window, f.rect.into())));
+}
+
+/// The hosted window follows a drag live (the hole the page area meanwhile). False: no change.
+///
+/// # Safety
+/// `page` null or a live page.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_set_following(page: *mut MarginPage, on: bool) -> bool {
+    // SAFETY: the contract above.
+    unsafe { page.as_mut() }.is_some_and(|p| p.page.set_following(on))
+}
+
+fn settled(s: Settled, deadline: Option<f64>) -> MarginSettled {
+    match s {
+        Settled::Grace { hole_again } => {
+            MarginSettled { grace: true, hole_again, deadline: deadline.unwrap_or(0.0), ..MarginSettled::default() }
+        }
+        Settled::Applied(a) => MarginSettled { changed: a.changed, shown: a.shown, ..MarginSettled::default() },
+    }
+}
+
+/// The page card's state settled at `now`: the grace begun (its deadline) or the state applied.
+///
+/// # Safety
+/// `page` null or a live page; `out` writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_settle(page: *mut MarginPage, now: f64, out: *mut MarginSettled) {
+    // SAFETY: the contract above.
+    let Some(p) = (unsafe { page.as_mut() }) else { return };
+    let s = p.page.settle(now);
+    // SAFETY: the contract above.
+    unsafe { put(out, settled(s, p.page.grace_until())) };
+}
+
+/// The grace over: the state applied.
+///
+/// # Safety
+/// `page` null or a live page; `out` writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_grace_over(page: *mut MarginPage, out: *mut MarginSettled) {
+    // SAFETY: the contract above.
+    let Some(p) = (unsafe { page.as_mut() }) else { return };
+    let a = p.page.grace_over();
+    // SAFETY: the contract above.
+    unsafe { put(out, settled(Settled::Applied(a), None)) };
+}
+
+/// The holes placed for its content (top left): the ground, the slot and catch region, the pane click tap's holes.
+///
+/// # Safety
+/// `page` null or a live page; `out` writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_place_hole(
+    page: *mut MarginPage,
+    content: MarginRect,
+    out: *mut MarginHolePlaced,
+) {
+    // SAFETY: the contract above.
+    let Some(p) = (unsafe { page.as_mut() }) else { return };
+    let placed = p.page.place_hole(content.into());
+    let g = p.page.ground_hole();
+    let list = p.page.ground_holes();
+    let o = MarginHolePlaced {
+        slot: placed.placed.slot,
+        region: placed.placed.region,
+        ground: match placed.ground {
+            Ground::None => 0,
+            Ground::One => 1,
+            Ground::Several => 2,
+        },
+        has_fill: placed.fill.is_some(),
+        fill: placed.fill.map(MarginRgba::from).unwrap_or_default(),
+        hole: MarginGroundHole { rect: g.rect.into(), radii: g.radii, has_radii: g.has_radii },
+        holes: list.as_ptr().cast(),
+        holes_len: list.len(),
+    };
+    // SAFETY: the contract above.
+    unsafe { put(out, o) };
+}
+
+/// What the page holds, at once.
+///
+/// # Safety
+/// `page` null or a live page; `out` writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_read(page: *const MarginPage, out: *mut MarginPageRead) {
+    // SAFETY: the contract above.
+    let Some(p) = (unsafe { page.as_ref() }).map(|p| &p.page) else { return };
+    let f = &p.front;
+    let r = MarginPageRead {
+        state: match p.state() {
+            PageState::Empty => 0,
+            PageState::Loading => 1,
+            PageState::Shown => 2,
+            PageState::Elsewhere => 3,
+        },
+        hosting: p.hosting(),
+        has_hosted: p.hosted().is_some(),
+        hosted: p.hosted().unwrap_or(0),
+        has_frame: p.hosted_frame().is_some(),
+        frame: p.hosted_frame().unwrap_or_default().into(),
+        has_hole: p.hole().is_some(),
+        hole: p.hole().unwrap_or_default().into(),
+        holes: p.holes().len(),
+        visible: p.visible().len(),
+        following: p.following(),
+        starting: p.starting(),
+        has_loading: p.loading().is_some(),
+        has_showing: p.showing().is_some(),
+        has_ground: p.ground().is_some(),
+        ground: p.ground().map(MarginRgba::from).unwrap_or_default(),
+        mechanism: mechanism(f.mechanism),
+        has_yielding: f.yielding.is_some(),
+        yielding: f.yielding.unwrap_or(0),
+        has_covering: f.covering.is_some(),
+        covering: f.covering.unwrap_or(0),
+        has_grace: p.grace_until().is_some(),
+        grace_until: p.grace_until().unwrap_or(0.0),
+        counts: f.counts.into(),
+    };
+    // SAFETY: the contract above.
+    unsafe { put(out, r) };
+}
+
+/// One of its texts into `buf` (`cap` bytes): `which` 0 the loader's label, 1 the loader's app, 2 the engine's slow
+/// step, 3 the show under way, 4 what holds the start up. Its length (more than `cap`: nothing written), -1: none.
+///
+/// # Safety
+/// `page` null or a live page; `buf` `cap` writable bytes (or null with `cap` 0).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_text(page: *const MarginPage, which: u8, buf: *mut u8, cap: usize) -> isize {
+    // SAFETY: the contract above.
+    let Some(p) = (unsafe { page.as_ref() }).map(|p| &p.page) else { return -1 };
+    let t = match which {
+        0 => p.loader(),
+        1 => p.loader_app(),
+        2 => p.loading(),
+        3 => p.showing(),
+        4 => p.stuck(),
+        _ => None,
+    };
+    let Some(t) = t else { return -1 };
+    if t.len() <= cap && !buf.is_null() {
+        // SAFETY: the contract above.
+        unsafe { std::ptr::copy_nonoverlapping(t.as_ptr(), buf, t.len()) };
+    }
+    t.len() as isize
+}
+
+/// Its holes into `out` (room for `cap`): how many there are.
+///
+/// # Safety
+/// `page` null or a live page; `out` null or `cap` writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_holes(page: *const MarginPage, out: *mut MarginRect, cap: usize) -> usize {
+    // SAFETY: the contract above.
+    let Some(p) = (unsafe { page.as_ref() }) else { return 0 };
+    let list = p.page.holes();
+    if !out.is_null() {
+        for (i, h) in list.iter().take(cap).enumerate() {
+            // SAFETY: the contract above.
+            unsafe { *out.add(i) = (*h).into() };
+        }
+    }
+    list.len()
+}
+
+/// The pane click tap's holes into `out` (room for `cap`): how many there are.
+///
+/// # Safety
+/// `page` null or a live page; `out` null or `cap` writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_pane_holes(
+    page: *const MarginPage,
+    out: *mut MarginPaneHole,
+    cap: usize,
+) -> usize {
+    // SAFETY: the contract above.
+    let Some(p) = (unsafe { page.as_ref() }) else { return 0 };
+    let list = p.page.pane_holes();
+    if !out.is_null() {
+        for (i, h) in list.iter().take(cap).enumerate() {
+            // SAFETY: the contract above.
+            unsafe { *out.add(i) = MarginPaneHole { rect: h.rect.into(), window: h.window, card: h.card } };
+        }
+    }
+    list.len()
+}
+
+/// A visible host's window's bounds as read (false: unread).
+///
+/// # Safety
+/// `page` null or a live page; `out` writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_frame(page: *const MarginPage, window: i64, out: *mut MarginRect) -> bool {
+    // SAFETY: the contract above.
+    let Some(f) = (unsafe { page.as_ref() }).and_then(|p| p.page.frame(window)) else { return false };
+    // SAFETY: the contract above.
+    unsafe { put(out, f.into()) };
+    true
+}
+
+/// Another app's window let in front (`has` false: none any more). False: the same as before.
+///
+/// # Safety
+/// `page` null or a live page.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_set_yielding(page: *mut MarginPage, has: bool, number: i64) -> bool {
+    // SAFETY: the contract above.
+    unsafe { page.as_mut() }.is_some_and(|p| p.page.front.set_yielding(has.then_some(number)))
+}
+
+/// A window of the engine's not shown yet (`has` false: none). False: the same as before.
+///
+/// # Safety
+/// `page` null or a live page.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_set_covering(page: *mut MarginPage, has: bool, number: i64) -> bool {
+    // SAFETY: the contract above.
+    unsafe { page.as_mut() }.is_some_and(|p| p.page.front.set_covering(has.then_some(number)))
+}
+
+/// The current Space changed, at `now`.
+///
+/// # Safety
+/// `page` null or a live page.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_space_changed(page: *mut MarginPage, now: f64) {
+    // SAFETY: the contract above.
+    if let Some(p) = unsafe { page.as_mut() } {
+        p.page.front.space_changed(now);
+    }
+}
+
+/// `keepFront` (the caller checked its window is open and on the current Space): the window's level now `level`, the
+/// clock read at each change.
+///
+/// # Safety
+/// `page` null or a live page; `now` null or a function taking `ctx`; `out` writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_keep_front(
+    page: *mut MarginPage,
+    level: i64,
+    ctx: *mut c_void,
+    now: MarginClock,
+    out: *mut MarginKeepFront,
+) {
+    // SAFETY: the contract above.
+    let Some(p) = (unsafe { page.as_mut() }) else { return };
+    let k = p.page.keep_front(level, &mut clock(ctx, now));
+    let o = MarginKeepFront {
+        level: match k.level {
+            None => 0,
+            Some(false) => 1,
+            Some(true) => 2,
+        },
+        has_above: k.above.is_some(),
+        above: k.above.unwrap_or(0),
+        has_below: k.below.is_some(),
+        below: k.below.unwrap_or(0),
+    };
+    // SAFETY: the contract above.
+    unsafe { put(out, o) };
+}
+
+/// Whether the poll's read of `hosted` is this window's to look at (in full screen, nothing let in front, its hosted
+/// window or a visible host's).
+///
+/// # Safety
+/// `page` null or a live page.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_front_reads(page: *const MarginPage, hosted: i64) -> bool {
+    // SAFETY: the contract above.
+    unsafe { page.as_ref() }.is_some_and(|p| p.page.front_reads(hosted))
+}
+
+/// The poll's read at rest of this window (its `layer`, `above` the hosted window `hosted`; its window level now
+/// `level`), the clock read once: the steps, in order.
+///
+/// # Safety
+/// `page` null or a live page; `now` null or a function taking `ctx`; `out` writable.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn margin_page_front_read(
+    page: *mut MarginPage,
+    hosted: i64,
+    layer: i64,
+    above: bool,
+    level: i64,
+    ctx: *mut c_void,
+    now: MarginClock,
+    out: *mut MarginFrontOps,
+) {
+    // SAFETY: the contract above.
+    let Some(p) = (unsafe { page.as_mut() }) else { return };
+    let ops = p.page.front_read(hosted, layer, above, level, &mut clock(ctx, now));
+    let mut o = MarginFrontOps::default();
+    for op in ops.iter() {
+        let (kind, arg) = match op {
+            FrontOp::Level(false) => (1, 0),
+            FrontOp::Level(true) => (2, 0),
+            FrontOp::Above(w) => (3, w),
+            FrontOp::Wrong(m) => (4, i64::from(mechanism(m))),
+            FrontOp::Held => (5, 0),
+            FrontOp::FellBack(ms) => (6, ms),
+            FrontOp::Back => (7, 0),
+        };
+        o.ops[usize::from(o.len)] = MarginFrontOp { kind, arg };
+        o.len += 1;
+    }
+    // SAFETY: the contract above.
+    unsafe { put(out, o) };
+}
+
+// ---- the pure rules (any thread, no object) ----
+
+/// The page area on the screen for a layout's insets, measured at `width` × `height`, and the window's content (top
+/// left); false: none (not measured at its size, or no area left).
+///
+/// # Safety
+/// `out` writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_rect(
+    insets: MarginInsets,
+    width: f64,
+    height: f64,
+    content: MarginRect,
+    out: *mut MarginRect,
+) -> bool {
+    let Some(r) = area::page_rect(SlotInsets::from(insets), width, height, content.into()) else { return false };
+    // SAFETY: the contract above.
+    unsafe { put(out, r.into()) };
+    true
+}
+
+/// In full screen and narrower than its display (null: none) by more than 2 pt: laid out as a split's half for a
+/// moment by a tile change in its Space.
+///
+/// # Safety
+/// `display` null or readable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_narrowed(
+    full_screen: bool,
+    content: MarginRect,
+    display: *const MarginRect,
+) -> bool {
+    // SAFETY: the contract above.
+    let display: Option<Rect> = unsafe { display.as_ref() }.map(|d| (*d).into());
+    area::narrowed(full_screen, &content.into(), display.as_ref())
+}
+
+/// Whether a layout measured at `width` × `height` was measured at the content's size (within a point each way).
+#[unsafe(no_mangle)]
+pub extern "C" fn margin_page_measured_at(width: f64, height: f64, content: MarginRect) -> bool {
+    area::measured_at(width, height, &content.into())
+}
+
+/// A CSS colour as the page computes it, read (false: none, or see-through).
+///
+/// # Safety
+/// `css` null or `len` readable bytes; `out` writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_fill_color(css: *const u8, len: usize, out: *mut MarginRgba) -> bool {
+    // SAFETY: the contract above.
+    let Some(c) = (unsafe { opt_text(css, len, true) }).and_then(fill::color) else { return false };
+    // SAFETY: the contract above.
+    unsafe { put(out, c.into()) };
+    true
+}
+
+/// The colour most of these have, the first on a tie (false: none).
+///
+/// # Safety
+/// `list` null or `len` readable; `out` writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_fill_common(list: *const MarginRgba, len: usize, out: *mut MarginRgba) -> bool {
+    let list: Vec<Rgba> = if list.is_null() || len == 0 {
+        Vec::new()
+    } else {
+        // SAFETY: the contract above.
+        unsafe { std::slice::from_raw_parts(list, len) }
+            .iter()
+            .map(|c| Rgba { r: c.r, g: c.g, b: c.b, a: c.a })
+            .collect()
+    };
+    let Some(c) = fill::common(&list) else { return false };
+    // SAFETY: the contract above.
+    unsafe { put(out, c.into()) };
+    true
+}
+
+/// `r` less `cut` into `out` (room for 4): how many rects.
+///
+/// # Safety
+/// `out` null or 4 writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_subtract(r: MarginRect, cut: MarginRect, out: *mut MarginRect) -> usize {
+    let mut v = Vec::with_capacity(4);
+    holes::subtract(&r.into(), &cut.into(), &mut v);
+    if !out.is_null() {
+        for (i, x) in v.iter().enumerate() {
+            // SAFETY: the contract above (at most 4).
+            unsafe { *out.add(i) = (*x).into() };
+        }
+    }
+    v.len()
+}
+
+/// A piece of the ground's cut-outs: its rect, the hole it's of, whether it's that hole whole.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct MarginPiece {
+    pub rect: MarginRect,
+    pub from: usize,
+    pub whole: bool,
+}
+
+/// The ground's cut-outs for holes that may overlap, into `out` (room for `cap`): how many pieces (more than `cap`:
+/// nothing written).
+///
+/// # Safety
+/// `list` null or `len` readable; `out` null or `cap` writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_ground_holes(
+    list: *const MarginRect,
+    len: usize,
+    out: *mut MarginPiece,
+    cap: usize,
+) -> usize {
+    let mut pieces: Vec<Piece> = Vec::new();
+    // SAFETY: the contract above.
+    holes::ground_holes(unsafe { rects(list, len) }, &mut pieces, &mut [Vec::new(), Vec::new()]);
+    if pieces.len() <= cap && !out.is_null() {
+        for (i, p) in pieces.iter().enumerate() {
+            // SAFETY: the contract above.
+            unsafe { *out.add(i) = MarginPiece { rect: p.rect.into(), from: p.from, whole: p.whole } };
+        }
+    }
+    pieces.len()
 }

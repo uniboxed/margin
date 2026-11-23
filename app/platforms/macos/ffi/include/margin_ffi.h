@@ -215,11 +215,11 @@ int64_t margin_order_server(const int64_t *windows, size_t n, const int64_t *scr
 bool margin_order_top_behind(const int64_t *windows, size_t n, const uint32_t *below, size_t k, const int64_t *screen, size_t m);
 uint8_t margin_model_slide_step(MarginHostCore *core, MarginRect from, MarginRect to, double elapsed, double time, const MarginRect *home, MarginRect *page, MarginRect *tile); // bits: 1 last, 2 tile written
 
-// Margin's own window's page (passthrough.rs PagePointer, ffi page.rs; docs/CORE-REFACTOR.md step 3 parts 11-12): one
-// object per Margin window, the main thread's. Its pointer: the slot and catch region placed as the holes change, the
-// theme's window buttons, the positions its page wants, the cut panes, each pointer event's way; typed, nothing
-// allocated. The views' rects are the page's own until its next placing. margin_pass_*: the same rules (CGRect's
-// edges) over a slot the caller holds, no object, any thread (the pane click tap's).
+// Margin's own window's page (core/page/, passthrough.rs PagePointer, ffi page.rs; docs/CORE-REFACTOR.md step 3 parts
+// 11-12): one object per Margin window, the main thread's. Its pointer: the slot and catch region (placed from its own
+// holes, margin_page_place_hole), the theme's window buttons, the positions its page wants, the cut panes, each pointer
+// event's way; typed, nothing allocated. The views' rects are the page's own until its next placing. margin_pass_*:
+// the same rules (CGRect's edges) over a slot the caller holds, no object, any thread (the pane click tap's).
 typedef struct MarginPoint {
     double x;
     double y;
@@ -277,8 +277,6 @@ typedef struct MarginPage MarginPage;
 MarginPage *margin_page_new(void);
 void margin_page_free(MarginPage *page);
 void margin_page_set_pointer_every(MarginPage *page, double every);
-// layout NULL: none yet; one host's hole (NULL: none), or several's holes. Bits: 1 the slot changed, 2 the catch region.
-uint8_t margin_page_place_slot(MarginPage *page, MarginRect content, const MarginInsets *layout, const MarginRect *hits, size_t hits_len, bool capture_all, const MarginRect *hole, const MarginRect *holes, size_t holes_len, bool several);
 bool margin_page_slot(const MarginPage *page, MarginSlotView *out); // false: none
 void margin_page_catch(const MarginPage *page, MarginCatchView *out);
 void margin_page_set_buttons(MarginPage *page, const MarginRect *controls, bool full_screen); // controls in the content, NULL: none
@@ -511,5 +509,141 @@ uint8_t margin_web_address(const uint8_t *s, size_t len, size_t *host_at, size_t
 uint8_t *margin_push_page(const uint8_t *msg, size_t len, void *ctx, MarginPushTab tab, size_t *out_len);
 // The layout report read: the bytes its texts take (more than cap: nothing written), -1: not one.
 ptrdiff_t margin_page_layout_read(const uint8_t *geometry, size_t len, MarginPageLayout *out, uint8_t *text, size_t cap);
+
+// The page (core/page/): its page card's state (0 empty, 1 loading, 2 shown, 3 elsewhere) and the loader's grace (a
+// deadline: the caller's timer calls margin_page_grace_over then), the holes and the ground, in front of what it hosts,
+// the page area from its layout report, the placements. The window server's reads are the caller's, made where it
+// made them and handed in first; the outs carried out by the caller in their order. Typed; nothing allocated but a
+// layout report's parse (its one JSON). Texts: has false is none; a text's length back (more than cap: not written).
+typedef struct MarginRgba {
+    double r, g, b, a; // sRGB, 0…1
+} MarginRgba;
+typedef struct MarginGroundHole {
+    MarginRect rect; // in the content
+    double radii[4]; // top-left, top-right, bottom-right, bottom-left
+    bool has_radii;  // false: square
+} MarginGroundHole;
+typedef struct MarginShown {
+    int64_t window;
+    MarginRect rect;
+    int64_t z;
+    uint8_t role; // 0 main, 1 a pane, 2 the card
+    bool focused;
+} MarginShown;
+typedef struct MarginFrame {
+    int64_t window;
+    MarginRect rect;
+} MarginFrame;
+typedef struct MarginPaneHole {
+    MarginRect rect;
+    int64_t window;
+    bool card;
+} MarginPaneHole;
+typedef struct MarginHolePlaced {
+    bool slot, region; // changed: the pointer looked at again, the catch fill drawn again
+    uint8_t ground;    // 0 no hole (the panel's background the fill), 1 around hole, 2 around holes
+    bool has_fill;     // false: the window's own background
+    MarginRgba fill;
+    MarginGroundHole hole;
+    const MarginGroundHole *holes; // the page's own, until its next placing
+    size_t holes_len;
+} MarginHolePlaced;
+typedef struct MarginSettled {
+    bool grace, hole_again; // the grace began (until deadline), its hole placed again meanwhile
+    double deadline;
+    bool changed, shown;    // else applied: its page told, shown
+} MarginSettled;
+typedef struct MarginFrontCounts {
+    uint64_t level_sets, front_orders, yield_orders, front_restores, level_probes, level_backs;
+} MarginFrontCounts;
+typedef struct MarginPageRead {
+    uint8_t state;
+    bool hosting;
+    bool has_hosted;
+    int64_t hosted;
+    bool has_frame;
+    MarginRect frame; // the hosted window's bounds as read
+    bool has_hole;
+    MarginRect hole;
+    size_t holes, visible;
+    bool following, starting, has_loading, has_showing;
+    bool has_ground;
+    MarginRgba ground;
+    uint8_t mechanism; // 0 its level, 1 its order
+    bool has_yielding;
+    int64_t yielding;
+    bool has_covering;
+    int64_t covering;
+    bool has_grace;
+    double grace_until;
+    MarginFrontCounts counts;
+} MarginPageRead;
+typedef struct MarginKeepFront {
+    uint8_t level; // 0 none, 1 normal, 2 raised; then ordered above, then below (in this order)
+    bool has_above;
+    int64_t above;
+    bool has_below;
+    int64_t below;
+} MarginKeepFront;
+typedef struct MarginFrontOp {
+    uint8_t kind; // 1 normal level, 2 raised level, 3 above arg; said: 4 hosted above it (arg its mechanism), 5 held, 6 by its order (arg ms), 7 by its level again
+    int64_t arg;
+} MarginFrontOp;
+typedef struct MarginFrontOps {
+    MarginFrontOp ops[8];
+    uint8_t len;
+} MarginFrontOps;
+typedef struct MarginPagePanes {
+    MarginText split; // texts in the caller's buffer
+    uint8_t count;
+    MarginText items[4];
+    MarginRect rects[4];
+} MarginPagePanes;
+typedef double (*MarginClock)(void *ctx);
+void margin_page_configure(MarginPage *page, double grace, const uint8_t *label, size_t len, bool order, int64_t raised, int64_t normal);
+uint8_t margin_page_set_layout(MarginPage *page, const uint8_t *bytes, size_t len); // bits: 1 taken, 2 a split's panes changed
+ptrdiff_t margin_page_layout_get(const MarginPage *page, MarginPageLayout *out, uint8_t *text, size_t cap); // -1: none
+void margin_page_set_hits(MarginPage *page, const MarginRect *hits, size_t len, bool capture_all);
+void margin_page_set_full_screen(MarginPage *page, bool on);
+uint8_t margin_page_update(MarginPage *page, MarginRect content, const MarginRect *display, MarginRect *out, double *radius); // 0 as it is, 1 none, 2 out
+bool margin_page_hosted_placement(const MarginPage *page, MarginRect content, const MarginRect *display, MarginPlacement *out);
+bool margin_page_idle_placement(const MarginPage *page, MarginRect content, MarginPlacement *out);
+ptrdiff_t margin_page_panes(const MarginPage *page, MarginRect content, MarginPagePanes *out, uint8_t *text, size_t cap); // -1: none
+uint8_t margin_page_set_hosting(MarginPage *page, bool on); // 0 no change; bits 1 changed, 2 several were visible
+bool margin_page_set_loading(MarginPage *page, const uint8_t *label, size_t label_len, bool has_label, const uint8_t *app, size_t app_len, bool has_app);
+bool margin_page_set_showing(MarginPage *page, const uint8_t *label, size_t label_len, bool has_label, const uint8_t *app, size_t app_len, bool has_app, bool slow);
+bool margin_page_set_elsewhere(MarginPage *page, const uint8_t *label, size_t label_len, bool has_label, const uint8_t *app, size_t app_len, bool has_app);
+bool margin_page_set_stuck(MarginPage *page, const uint8_t *why, size_t len, bool has);
+uint8_t margin_page_set_hosted(MarginPage *page, bool has, int64_t number); // 0 the same none, 1 the same window, 2 another
+void margin_page_set_hosted_frame(MarginPage *page, const MarginRect *frame); // NULL: unread
+bool margin_page_set_visible(MarginPage *page, const MarginShown *list, size_t len); // true: more than their rects changed
+void margin_page_set_frames(MarginPage *page, const MarginFrame *list, size_t len);
+bool margin_page_set_following(MarginPage *page, bool on);
+void margin_page_settle(MarginPage *page, double now, MarginSettled *out);
+void margin_page_grace_over(MarginPage *page, MarginSettled *out);
+void margin_page_place_hole(MarginPage *page, MarginRect content, MarginHolePlaced *out);
+void margin_page_read(const MarginPage *page, MarginPageRead *out);
+ptrdiff_t margin_page_text(const MarginPage *page, uint8_t which, uint8_t *buf, size_t cap); // 0 loader, 1 loader's app, 2 slow step, 3 show, 4 stuck; -1: none
+size_t margin_page_holes(const MarginPage *page, MarginRect *out, size_t cap);
+size_t margin_page_pane_holes(const MarginPage *page, MarginPaneHole *out, size_t cap);
+bool margin_page_frame(const MarginPage *page, int64_t window, MarginRect *out);
+bool margin_page_set_yielding(MarginPage *page, bool has, int64_t number);
+bool margin_page_set_covering(MarginPage *page, bool has, int64_t number);
+void margin_page_space_changed(MarginPage *page, double now);
+void margin_page_keep_front(MarginPage *page, int64_t level, void *ctx, MarginClock now, MarginKeepFront *out);
+bool margin_page_front_reads(const MarginPage *page, int64_t hosted);
+void margin_page_front_read(MarginPage *page, int64_t hosted, int64_t layer, bool above, int64_t level, void *ctx, MarginClock now, MarginFrontOps *out);
+bool margin_page_rect(MarginInsets insets, double width, double height, MarginRect content, MarginRect *out);
+bool margin_page_measured_at(double width, double height, MarginRect content);
+bool margin_page_narrowed(bool full_screen, MarginRect content, const MarginRect *display); // display NULL: none
+bool margin_page_fill_color(const uint8_t *css, size_t len, MarginRgba *out);
+bool margin_page_fill_common(const MarginRgba *list, size_t len, MarginRgba *out);
+size_t margin_page_subtract(MarginRect r, MarginRect cut, MarginRect *out); // room for 4
+typedef struct MarginPiece {
+    MarginRect rect;
+    size_t from; // the hole it's of
+    bool whole;
+} MarginPiece;
+size_t margin_page_ground_holes(const MarginRect *list, size_t len, MarginPiece *out, size_t cap); // more than cap: none written
 
 #endif

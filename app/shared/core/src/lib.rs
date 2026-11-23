@@ -45,3 +45,7 @@ pub mod hosted_browser;
 // The session (HostedSession.swift's flows as async steps, docs/CORE-REFACTOR.md step 3): the library's items shown in
 // Margin's windows, its executor, ports and commands.
 pub mod session;
+
+// Margin's own window's page (MarginWindowController.swift's decisions, docs/CORE-REFACTOR.md step 3 part 11): its
+// page card's state, the holes and the ground, in front of what it hosts, the page area; one per Margin window.
+pub mod page;

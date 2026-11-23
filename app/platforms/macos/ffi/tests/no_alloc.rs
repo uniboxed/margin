@@ -510,7 +510,6 @@ fn the_live_pump_allocates_nothing() {
 /// step 3 part 12).
 struct PointerWorld {
     content: MarginRect,
-    layout: MarginInsets,
     hits: [MarginRect; 3],
     holes: [MarginRect; 3],
     cuts: [MarginCut; 3],
@@ -522,7 +521,6 @@ fn pointer_world() -> PointerWorld {
         (r(276.0, 41.0, 610.0, 933.0), r(894.0, 41.0, 610.0, 933.0), r(374.0, 106.0, 1032.0, 803.0));
     PointerWorld {
         content: r(0.0, 33.0, 1512.0, 949.0),
-        layout: MarginInsets { left: 276.0, top: 8.0, right: 8.0, bottom: 8.0, radius: 12.0 },
         hits: [r(886.0, 8.0, 8.0, 933.0), r(400.0, 100.0, 480.0, 300.0), r(1300.0, 20.0, 40.0, 40.0)],
         holes: [left, right, card],
         cuts: [
@@ -533,21 +531,57 @@ fn pointer_world() -> PointerWorld {
     }
 }
 
+/// A page hosting in full screen with the world's layout and hits, its hosted window shown (Margin's window's page,
+/// docs/CORE-REFACTOR.md step 3 part 11).
+fn world_page(w: &PointerWorld) -> *mut MarginPage {
+    let page = margin_page_new();
+    let label = "Getting you started";
+    let layout = br#"{"insets":{"left":276,"top":8,"right":8,"bottom":8},"radius":12,"radii":[12,12,12,12],"container":{"width":1512,"height":949},"mode":"fullscreen","pageHosted":true,"fills":["rgb(240, 236, 228)","rgb(240, 236, 228)","rgb(240, 236, 228)","rgb(240, 236, 228)"]}"#;
+    let mut settled = MarginSettled::default();
+    // SAFETY: a live page, valid buffers.
+    unsafe {
+        margin_page_configure(page, 0.12, label.as_ptr(), label.len(), false, 1, 0);
+        margin_page_set_full_screen(page, true);
+        margin_page_set_layout(page, layout.as_ptr(), layout.len());
+        margin_page_set_hits(page, w.hits.as_ptr(), 3, false);
+        margin_page_set_hosting(page, true);
+        margin_page_set_hosted(page, true, 41);
+        margin_page_settle(page, 0.0, &mut settled);
+    }
+    assert!(settled.shown, "shown: {settled:?}");
+    page
+}
+
+/// One host's hole (its window's bounds) or the split's two panes, the window `dx` along: the page area again, the
+/// holes placed (a drag's frame). The slot's and region's change bits.
+///
 /// # Safety
-/// `page` a live page.
+/// `page` a live page from `world_page`.
 unsafe fn place_world(page: *mut MarginPage, w: &PointerWorld, several: bool, dx: f64) -> u8 {
     let content = MarginRect { x: w.content.x + dx, ..w.content };
     let one = MarginRect { x: 276.0 + dx, y: 41.0, width: 1228.0, height: 933.0 };
+    let display = MarginRect { x: 0.0, y: 0.0, width: 1512.0, height: 982.0 };
+    let shown = [
+        MarginShown { window: 41, rect: w.holes[0], z: 0, role: 0, focused: false },
+        MarginShown { window: 42, rect: w.holes[1], z: 1, role: 1, focused: true },
+    ];
+    let frames = [MarginFrame { window: 41, rect: w.holes[0] }, MarginFrame { window: 42, rect: w.holes[1] }];
+    let (mut rect, mut radius, mut placed) = (MarginRect::default(), 0.0, MarginHolePlaced::default());
     // SAFETY: the caller's contract, valid buffers.
     unsafe {
-        margin_page_place_slot(page, content, &w.layout, w.hits.as_ptr(), 3, false, &one, w.holes.as_ptr(), 2, several)
+        margin_page_set_visible(page, shown.as_ptr(), if several { 2 } else { 0 });
+        margin_page_set_frames(page, frames.as_ptr(), if several { 2 } else { 0 });
+        margin_page_set_hosted_frame(page, &one);
+        margin_page_update(page, content, &display, &mut rect, &mut radius);
+        margin_page_place_hole(page, content, &mut placed);
     }
+    u8::from(placed.slot) | (u8::from(placed.region) << 1)
 }
 
 #[test]
 fn the_pointer_allocates_nothing() {
     let w = pointer_world();
-    let page = margin_page_new();
+    let page = world_page(&w);
     // (Rare, before the count: its options, its buttons and wants, its buffers grown by a placing of each kind.)
     // SAFETY: a live page, valid buffers.
     unsafe {
@@ -593,6 +627,64 @@ fn the_pointer_allocates_nothing() {
     });
     assert_eq!(n, 0, "the pointer's calls allocated {n} times");
     assert!(through > 50 && through < 350, "the pointer through the holes only: {through} of 400");
+    // SAFETY: the live page, freed once.
+    unsafe { margin_page_free(page) };
+}
+
+unsafe extern "C" fn test_clock(ctx: *mut std::ffi::c_void) -> f64 {
+    // SAFETY: the test's own clock, a live f64.
+    unsafe { *ctx.cast::<f64>() }
+}
+
+#[test]
+fn the_page_allocates_nothing() {
+    let w = pointer_world();
+    let page = world_page(&w);
+    let display = MarginRect { x: 0.0, y: 0.0, width: 1512.0, height: 982.0 };
+    let mut now = 10.0f64;
+    let ctx = (&raw mut now).cast::<std::ffi::c_void>();
+    // (Its buffers grown by a placing of each kind first: twice each, the slot's two buffers taking turns.)
+    // SAFETY: a live page, valid buffers.
+    unsafe {
+        for several in [true, true, false, false] {
+            place_world(page, &w, several, 0.0);
+        }
+    }
+    let mut read = MarginPageRead::default();
+    let mut placement = MarginPlacement::default();
+    let mut keep = MarginKeepFront::default();
+    let mut ops = MarginFrontOps::default();
+    let mut text = [0u8; 64];
+    let mut holes = [MarginRect::default(); 8];
+    let mut panes = [MarginPaneHole::default(); 8];
+    let mut layout = MarginPageLayout::default();
+    let mut shown = 0;
+    let n = allocations(|| {
+        // SAFETY: a live page, valid buffers.
+        unsafe {
+            for i in 0..400 {
+                // (A drag's frame: the page area again, the holes placed, the placement read; the window's reads.)
+                std::hint::black_box(place_world(page, &w, i % 3 == 0, f64::from(i % 3)));
+                std::hint::black_box(margin_page_hosted_placement(page, w.content, &display, &mut placement));
+                std::hint::black_box(margin_page_idle_placement(page, w.content, &mut placement));
+                std::hint::black_box(margin_page_set_following(page, i % 2 == 0));
+                margin_page_read(page, &mut read);
+                shown += usize::from(read.state == 2);
+                std::hint::black_box(margin_page_text(page, 1, text.as_mut_ptr(), text.len()));
+                std::hint::black_box(margin_page_holes(page, holes.as_mut_ptr(), holes.len()));
+                std::hint::black_box(margin_page_pane_holes(page, panes.as_mut_ptr(), panes.len()));
+                std::hint::black_box(margin_page_layout_get(page, &mut layout, text.as_mut_ptr(), text.len()));
+                // (In front: kept so at each event, the poll's read at rest every 1.5-2 s.)
+                now += 0.3;
+                margin_page_keep_front(page, 1, ctx, Some(test_clock), &mut keep);
+                if margin_page_front_reads(page, 41) {
+                    margin_page_front_read(page, 41, i64::from(i % 2), i % 5 != 0, 1, ctx, Some(test_clock), &mut ops);
+                }
+            }
+        }
+    });
+    assert_eq!(n, 0, "the page's calls allocated {n} times");
+    assert!(shown == 400, "shown all along: {shown}");
     // SAFETY: the live page, freed once.
     unsafe { margin_page_free(page) };
 }

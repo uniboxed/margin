@@ -15,8 +15,8 @@
 //
 // The rules are margin-core's (app/shared/core/src/passthrough.rs, with CGRect's edges: docs/CORE-REFACTOR.md step 3
 // part 12): who gets the pointer, the slot, the catch region, the positions a page wants, and Margin's window's
-// pointer (`PageCore`, each pointer event one typed call). Here: the values Margin's window and the pane click tap
-// hold, read through the core, and the mechanism (the mouse monitors, the catch fill's drawing).
+// pointer (its page's, PageCore.swift: each pointer event one typed call). Here: the values Margin's window and the
+// pane click tap hold, read through the core, and the mechanism (the mouse monitors, the catch fill's drawing).
 
 import AppKit
 import MarginCore
@@ -35,24 +35,7 @@ nonisolated struct Slot: Equatable, Sendable {
     var holes: [CGRect]? = nil
 }
 
-// A rect as it is (CGRect's own `minX`, `width`… would standardize it: the core does, as CGRect does).
-nonisolated private extension CGRect {
-    var raw: MarginRect { MarginRect(x: Double(origin.x), y: Double(origin.y), width: Double(size.width), height: Double(size.height)) }
-}
-
-nonisolated private extension CGPoint {
-    var margin: MarginPoint { MarginPoint(x: Double(x), y: Double(y)) }
-}
-
-// CGRects as the core's rects, in place (one layout: four doubles), for the length of a call.
-nonisolated private func withRects<T>(_ list: [CGRect], _ body: (UnsafePointer<MarginRect>?, Int) -> T) -> T {
-    list.withUnsafeBufferPointer { b in b.withMemoryRebound(to: MarginRect.self) { body($0.baseAddress, $0.count) } }
-}
-
-nonisolated private func rects(_ p: UnsafePointer<MarginRect>?, _ n: Int) -> [CGRect] {
-    guard let p, n > 0 else { return [] }
-    return UnsafeBufferPointer(start: p, count: n).map(CGRect.init)
-}
+// (Its rects to and from the core's: PageCore.swift's `raw`, `withRects`, `rects`.)
 
 nonisolated extension Slot {
     // The slot as the core reads it, its rects borrowed for the call.
@@ -184,86 +167,6 @@ struct PointerWant: Equatable {
     func wants(_ p: CGPoint, in size: CGSize) -> Bool {
         margin_pass_wants(code, bits, Double(zone), p.margin, Double(size.width), Double(size.height))
     }
-}
-
-// One Margin window's page in the core (margin-ffi page.rs: margin-core's PagePointer, the Page of
-// docs/CORE-REFACTOR.md step 3 part 11 from its commit 3): for now its pointer. Its slot and catch region placed as its
-// holes change, what its page wants, its buttons, the cut panes, and each pointer event's way. The main thread's.
-final class PageCore {
-    private let page: OpaquePointer?
-
-    init(pointerEvery: TimeInterval) {
-        page = margin_page_new()
-        margin_page_set_pointer_every(page, pointerEvery)
-    }
-
-    deinit { margin_page_free(page) }
-
-    // The slot and catch region for its content at `content`: one host's `hole` (nil: none), or several's `holes`.
-    // What changed: the slot, the region.
-    func place(content: CGRect, layout: PageLayout?, hits: [CGRect], captureAll: Bool, hole: CGRect?) -> (slot: Bool, region: Bool) {
-        place(content: content, layout: layout, hits: hits, captureAll: captureAll, hole: hole, holes: [], several: false)
-    }
-    func place(content: CGRect, layout: PageLayout?, hits: [CGRect], captureAll: Bool, holes: [CGRect]) -> (slot: Bool, region: Bool) {
-        place(content: content, layout: layout, hits: hits, captureAll: captureAll, hole: nil, holes: holes, several: true)
-    }
-    private func place(content: CGRect, layout: PageLayout?, hits: [CGRect], captureAll: Bool, hole: CGRect?, holes: [CGRect], several: Bool) -> (slot: Bool, region: Bool) {
-        var insets = layout?.insets ?? MarginInsets()
-        var one = hole?.raw ?? MarginRect()
-        let bits = withRects(hits) { h, hn in
-            withRects(holes) { o, on in
-                withUnsafePointer(to: &insets) { i in
-                    withUnsafePointer(to: &one) { r in
-                        margin_page_place_slot(page, content.raw, layout == nil ? nil : i, h, hn, captureAll, hole == nil ? nil : r, o, on, several)
-                    }
-                }
-            }
-        }
-        return (bits & 1 != 0, bits & 2 != 0)
-    }
-
-    var slot: Slot? {
-        var v = MarginSlotView()
-        return margin_page_slot(page, &v) ? Slot(v) : nil
-    }
-    var region: CatchRegion {
-        var v = MarginCatchView()
-        margin_page_catch(page, &v)
-        return CatchRegion(v)
-    }
-
-    func setButtons(_ controls: CGRect?, fullScreen: Bool) {
-        guard var c = controls?.raw else { return margin_page_set_buttons(page, nil, fullScreen) }
-        margin_page_set_buttons(page, &c, fullScreen)
-    }
-
-    func setWant(_ want: PointerWant) { margin_page_set_want(page, want.code, want.bits, Double(want.zone)) }
-
-    // The visible hosts' windows (back to front), each marked when it's a cut pane, and whether any is cut. True: the
-    // cut pane the pointer was over is forgotten, to be said.
-    func setCuts(cutting: Bool, _ list: [(window: Int, rect: CGRect, cut: Bool)]) -> Bool {
-        let cuts = list.map { MarginCut(window: Int64($0.window), rect: $0.rect.raw, cut: $0.cut) }
-        return cuts.withUnsafeBufferPointer { margin_page_set_cuts(page, cutting, $0.baseAddress, $0.count) }
-    }
-
-    // What a pointer event decided: its way (`pass`: the panel lets it through), whether it's over the content, the
-    // cut pane it's over when that changed (`hover`: .some(nil) none now), the position its page is told.
-    struct Moved {
-        enum Push: Equatable { case at(Double, Double), left(Double, Double) }
-        var pass: Bool
-        var inside: Bool
-        var hover: Int??
-        var push: Push?
-    }
-    func moved(_ at: CGPoint, content: CGRect, buttonsDown: Bool, now: TimeInterval) -> Moved {
-        var out = MarginPointer()
-        margin_page_pointer(page, at.margin, content.raw, buttonsDown, now, &out)
-        let push: Moved.Push? = out.push == 1 ? .at(out.x, out.y) : out.push == 2 ? .left(out.x, out.y) : nil
-        return Moved(pass: out.pass, inside: out.inside, hover: out.hover_said ? .some(out.has_hover ? Int(out.hover) : nil) : nil, push: push)
-    }
-    func again(_ at: CGPoint, content: CGRect) -> Bool { margin_page_pointer_again(page, at.margin, content.raw) }
-    func gets(_ at: CGPoint) -> Bool { margin_page_gets(page, at.margin) }
-    var ignoring: Bool { margin_page_ignoring(page) }
 }
 
 // The pointer, wherever it is (no Accessibility): every move and drag, and

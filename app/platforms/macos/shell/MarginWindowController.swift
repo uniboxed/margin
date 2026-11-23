@@ -64,6 +64,7 @@
 //   and the source's changes passed to each.
 
 import AppKit
+import MarginCore
 import WebKit
 
 // Where Margin's windows get their spaces (until the app owns them: the library phase's store, with the same
@@ -112,14 +113,17 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     private(set) var isReady = false
     private(set) var isShown = false
     private var asked = false // its page asked for its hello: pushes reach it
-    private(set) var isFullScreen = false { didSet { pointer.setButtons(controls, fullScreen: isFullScreen) } }
-    private(set) var layout: PageLayout?
+    private(set) var isFullScreen = false { didSet { core.setButtons(controls, fullScreen: isFullScreen); core.setFullScreen(isFullScreen) } }
+    // Its page's layout, as the core keeps it (PageCore.swift: its report parsed there).
+    var layout: PageLayout? { core.layout }
     private(set) var hits: [CGRect] = []
     private(set) var captureAll = false
-    private(set) var controls: CGRect? { didSet { pointer.setButtons(controls, fullScreen: isFullScreen) } }
-    // Its pointer in the core (PassThrough.swift `PageCore`): the slot, the catch region, the way each pointer event goes.
-    private let pointer: PageCore
-    var ignoring: Bool { pointer.ignoring }
+    private(set) var controls: CGRect? { didSet { core.setButtons(controls, fullScreen: isFullScreen) } }
+    // Its page in the core (PageCore.swift, margin-core's page::Page): the page card's state and the loader's grace, the
+    // holes and the ground, in front of what it hosts, the page area, and its pointer (the slot, the catch region, the
+    // way each pointer event goes). What's decided is the core's; here, the window's mechanism carrying it out.
+    private let core: PageCore
+    var ignoring: Bool { core.ignoring }
     // What its sidebar has behind the numbered keys (overlay.ts reportCounts): its spaces, and its rows ⌘1–9 reach
     // (favorites, pins, today's). Nil until its page says: then every numbered key is held (Shell.updateHostedKeys).
     private(set) var rowCounts: (spaces: Int, items: Int)?
@@ -130,30 +134,30 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     private(set) var pushes = 0
     // The source's requests from this window (the tests read it).
     private(set) var asks: [String] = []
-    // Hosting another app's window in its page area (setHosting): the display's full-screen area (top left).
-    private(set) var hosting = false
+    // Hosting another app's window in its page area (setHosting), and the display's full-screen area (top left).
+    var hosting: Bool { core.read.hosting }
     private(set) var hostDisplay: CGRect?
     private var hostingLayoutSaid: String? // the last layout logged while hosting (numbers only)
     // The hosted window shown in the page area (the engine's host in this window's Space), this window in front of it.
-    private(set) var hosted: Int?
+    var hosted: Int? { let r = core.read; return r.has_hosted ? Int(r.hosted) : nil }
     // Its bounds by the window server (top left; nil: unread), read when it's shown or placed. A test's stand-in reads its own.
     var hostedBounds: (Int) -> CGRect? = { MarginWindowController.serverBounds($0) }
-    private var hostedFrame: CGRect?
+    private var hostedFrame: CGRect? { let r = core.read; return r.has_frame ? CGRect(r.frame) : nil }
     // The preview card page as its page draws it (the theme's <m-preview-page>, top-left screen points), nil: none drawn.
     private(set) var cardRect: CGRect?
     // The engine's slow step (a first open, a placing again): the app's name; an item the session is showing that
-    // isn't ready yet: its name. Either: the page card is `loading` (the second only after `loaderGrace`).
-    private(set) var loadingLabel: String?
-    private(set) var showingLabel: String?
-    // The app whose icon the loader shows with each (a bundle id: the app's, or the browser's for a web item): the page
-    // looks the icon up in its list of installed apps (`bundleId` in `pageState`, the hello's `pageOpeningBundleId`).
-    private(set) var loadingApp: String?
-    private(set) var showingApp: String?
-    private var showingSlow = false // the session's show is known to take a while (the last item at launch): the loader at once
+    // isn't ready yet: its name. Either: the page card is `loading` (the second only after `loaderGrace`). Each with the
+    // app whose icon the loader shows (a bundle id: the page looks it up in its list of installed apps), and whether the
+    // show is known to take a while (the last item at launch: the loader at once). The core's.
+    var loadingLabel: String? { core.text(.loading) }
+    var showingLabel: String? { core.text(.showing) }
     // The page card's state as the page was told (`m-page-state` on the theme's root), and the loader's name.
     // `elsewhere`: not hosting, its item in another Margin window or parked (one window hosts at a time): its card, faded
     // ("… is in another window. Click to show it here."); focused, the item comes back here (HostedSession `focused`).
-    enum PageState: String { case empty, loading, shown, elsewhere }
+    enum PageState: String {
+        case empty, loading, shown, elsewhere
+        init(code: UInt8) { self = code == 1 ? .loading : code == 2 ? .shown : code == 3 ? .elsewhere : .empty }
+    }
     // One of Margin's own pages in the page area while nothing's hosted there (HostedSession: ItemTarget.margin), nil:
     // the launcher. The page draws it (ui/host-app.ts `marginPage`); hosting covers it as it covers the launcher.
     private(set) var marginPage: String?
@@ -164,8 +168,6 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         Diagnostics.note("Margin's window \(id): \(page.map { "Margin's \($0) page" } ?? "no page of Margin's") in its page area")
         push(#"{"type":"marginPage","page":"# + (page.flatMap { jsonString($0) } ?? "null") + "}")
     }
-    private var elsewhereLabel: String?
-    private var elsewhereApp: String?
     // A web item's page, as Safari showed it before it left for the other window (a data URL): the page draws it faded
     // under the card's words (`pagePicture`, sent apart from `pageState`: it's large). In memory only, never logged.
     private(set) var elsewherePicture: String?
@@ -175,42 +177,42 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             elsewherePicture = picture
             push(pagePictureJSON, kept: false)
         }
-        guard label != elsewhereLabel || app != elsewhereApp else { return }
-        elsewhereLabel = label
-        elsewhereApp = label == nil ? nil : app
+        guard core.setElsewhere(label, app: app) else { return }
         settlePage()
     }
     private var pagePictureJSON: String {
         #"{"type":"pagePicture","data":"# + (elsewherePicture.flatMap { jsonString($0) } ?? "null") + "}"
     }
-    private(set) var pageState = PageState.empty
-    private(set) var loaderLabel: String?
-    private(set) var loaderApp: String?
-    private var graceTimer: Timer?
+    var pageState: PageState { PageState(code: core.read.state) }
+    var loaderLabel: String? { core.text(.loader) }
+    var loaderApp: String? { core.text(.loaderApp) }
+    private var graceTimer: Timer? // (the loader's grace: the core's deadline)
     private(set) var pageStates: [String] = [] // each state the page was told, in order, the last 200 (the tests read it)
     // Where the hosted window shows through (the window server's coordinates, top left): the hole. Nil: nothing does.
-    private(set) var hole: CGRect?
+    var hole: CGRect? { let r = core.read; return r.has_hole ? CGRect(r.hole) : nil }
     // Where the pointer goes through to the hosted window (PassThrough.swift), made with the hole (updateHole); nil
     // while nothing shows through (the launcher, the loader: the pointer is Margin's everywhere).
     private(set) var slot: Slot?
     // The items loading as the page was last told (the UI's numbers), and a window of the engine's not shown yet (cover).
     private(set) var loadingTabs: [Int] = []
-    private(set) var covering: Int?
+    var covering: Int? { let r = core.read; return r.has_covering ? Int(r.covering) : nil }
     // The ground's colour while hosting: the colour around the page card (the theme's frame), around the hosted window
-    // and under the loader; nil: the window's own background (nothing hosted, a theme that says no colour).
-    private(set) var pageGround: NSColor?
+    // and under the loader; nil: the window's own background (nothing hosted, a theme that says no colour). The core's,
+    // as its last placing of the holes left it.
+    var pageGround: NSColor? { let r = core.read; return r.has_ground ? NSColor(r.ground) : nil }
     let ground = WindowGroundView(frame: .zero)
     // In front of what it hosts (keepFront, frontRead): how, another app's window it lets in front, and what was done
     // (the tests read the counts). The window server's word on a window's level (the dev hook's line); a test's stand-in
     // answers its own. Whether its window is on the current Space, and the clock (a test's stand-ins for both).
-    private(set) var mechanism: FrontMechanism
-    private(set) var yieldingTo: Int?
-    private(set) var levelSets = 0
-    private(set) var frontOrders = 0
-    private(set) var yieldOrders = 0
-    private(set) var frontRestores = 0 // the poll found the hosted window above it: put right at once
-    private(set) var levelProbes = 0 // kept in front by its order, the raised level tried again
-    private(set) var levelBacks = 0 // ...and held: back to the raised level
+    // (The core's: core/page/front.rs.)
+    var mechanism: FrontMechanism { core.read.mechanism == 1 ? .order : .level }
+    var yieldingTo: Int? { let r = core.read; return r.has_yielding ? Int(r.yielding) : nil }
+    var levelSets: Int { Int(core.read.counts.level_sets) }
+    var frontOrders: Int { Int(core.read.counts.front_orders) }
+    var yieldOrders: Int { Int(core.read.counts.yield_orders) }
+    var frontRestores: Int { Int(core.read.counts.front_restores) } // the poll found the hosted window above it: put right at once
+    var levelProbes: Int { Int(core.read.counts.level_probes) } // kept in front by its order, the raised level tried again
+    var levelBacks: Int { Int(core.read.counts.level_backs) } // ...and held: back to the raised level
     var serverLevel: (Int) -> Int? = { MarginWindowController.serverLayer($0) }
     lazy var onCurrentSpace: () -> Bool = { [weak self] in self.map { $0.options.harness || $0.window.isOnActiveSpace } ?? false }
     var now: () -> Double = { Diagnostics.now() }
@@ -225,14 +227,6 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     private(set) var hasKeys = false // the panel has the keys (asked to be key for a field of Margin's: nothing else)
     private(set) var panelAttached = 0 // times the panel was made this window's child (once, unless macOS lost it)
     private(set) var lastResorts = 0 // the panel not key a moment after it asked: Margin made frontmost instead
-    private var changedAt = -Double.infinity // when it last changed its own level or order
-    private var spaceChangedAt = -Double.infinity // when the current Space last changed
-    private var missAt: Double? // the first read at rest, since the last one that held, of the raised level not held
-    private var probing = false // kept in front by its order, the raised level set again: the next read at rest says
-    private var probedAt = -Double.infinity
-    private var reorder = false // a yield just ended: ordered above the hosted window again, beside its level
-    private var levelSaid = false
-    private var wrongSaid = false
     private var pageResizing = false // its page said a change of the sidebar's width began, and not yet that it's over
     // Always full screen: its first entry (the window see-through until it's in), and the times it went back in.
     private var enteringFirst = false
@@ -257,10 +251,11 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         self.id = id
         self.pages = pages
         self.options = options
-        pointer = PageCore(pointerEvery: options.pointerEvery)
+        core = PageCore(pointerEvery: options.pointerEvery)
+        core.configure(grace: options.loaderGrace, startupLabel: HostedSession.startupLabel, order: options.front == .order,
+                       raised: FrontMechanism.raised.rawValue, normal: NSWindow.Level.normal.rawValue)
         let frame = options.harness ? (options.frame ?? Self.harnessFrame) : (options.frame ?? Self.centred())
         window = MarginWindow(frame: frame, harness: options.harness)
-        mechanism = options.front
         webView = pages.makeWebView(size: frame.size)
         panel = MarginPanel(frame: frame, harness: options.harness)
         super.init()
@@ -472,18 +467,16 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // The content's frame, top left.
     var contentFrame: CGRect { MarginWindowGeometry.content(of: window.frame) }
 
-    // The page area again (the layout, the window's frame or what's over the page changed), and the hole with it.
+    // The page area again (the layout, the window's frame or what's over the page changed), and the hole with it. (The
+    // core's: none without a layout; left as it was while laid out as a split's half for a moment by a tile change in
+    // its Space, and for a layout from before a resize; hosting, the hosted window's placement.)
     func updatePage() {
-        let content = contentFrame
         defer { updateHole() }
-        guard let layout else { return window.setPageRect(nil, radius: 0) }
-        // (Laid out as a split's half for a moment by a tile change in its Space: the page area left as it was.)
-        if hosting, narrowed { return }
-        if hosting { return window.setPageRect(hostedPlacement?.page, radius: CGFloat(layout.radius)) }
-        // (A layout from before a resize changes nothing: the page's next one, at the new size, does.)
-        guard MarginWindowGeometry.measuredAt(layout, content.size) else { return }
-        window.setPageRect(MarginWindowGeometry.pageRect(layout: layout, content: content), radius: CGFloat(layout.radius))
+        guard let next = core.update(content: contentFrame, display: displayFrame) else { return }
+        window.setPageRect(next.rect, radius: next.radius)
     }
+    // Its display's frame (top left), nil: none.
+    private var displayFrame: CGRect? { window.screen.map { ScreenGeometry.appKitRect($0.frame) } }
 
     // ---- hosting another app's window in its page area (HostedSession.swift) ----
 
@@ -491,22 +484,15 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // page area the hosted window's placement. Off: the theme's launcher there again. Its width and its size
     // constraints never change for it (the hosted window is a member of its Space under it, not a tile).
     func setHosting(_ on: Bool) {
-        guard on != hosting else { return }
-        hosting = on
+        guard let hadVisible = core.setHosting(on) else { return }
         if on {
             hostDisplay = window.screen.map { MarginWindowGeometry.fullScreenArea($0) } ?? contentFrame
             Diagnostics.note("Margin's window \(id): hosting in its page area\(hostDisplay.map { " (the display's full-screen area \(Int($0.width))×\(Int($0.height)))" } ?? "")")
         } else {
-            hosted = nil
-            hostedFrame = nil
+            // (What it hosted and its loaders forgotten by the core.)
             sayHostedFrame()
-            if !visibleHosts.isEmpty { visibleHosts = []; visibleFrames = [:]; sayHostedFrames() }
+            if hadVisible { visibleHosts = []; sayHostedFrames() }
             setPageMinimum(nil)
-            loadingLabel = nil
-            showingLabel = nil
-            loadingApp = nil
-            showingApp = nil
-            showingSlow = false
             hostDisplay = nil
             Diagnostics.note("Margin's window \(id): hosting nothing: its launcher in the page area again")
         }
@@ -518,9 +504,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // A host's first open, or its placing again (the app's name; nil: over): the page card opaque with the loader at
     // once (`loading`), and the theme's loading bar for the item it's opened for (setLoadingTabs).
     func setLoading(_ label: String?, app: String?) {
-        guard label != loadingLabel || (label != nil && app != loadingApp) else { return }
-        loadingLabel = label
-        loadingApp = label == nil ? nil : app
+        guard core.setLoading(label, app: app) else { return }
         Diagnostics.note("Margin's window \(id): \(label == nil ? "loading done" : "loading an app in the page area")")
         if label == nil { readHosted() }
         settlePage()
@@ -531,10 +515,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // only if it isn't ready by then. `slow`: known to take a while (the item the window showed last, at launch,
     // before its window is even in full screen): the loader at once, from the page's first frame (its hello has it).
     func setShowing(_ label: String?, app: String?, slow: Bool) {
-        guard label != showingLabel || (label != nil && app != showingApp) else { return }
-        showingLabel = label
-        showingApp = label == nil ? nil : app
-        showingSlow = label != nil && slow
+        guard core.setShowing(label, app: app, slow: slow) else { return }
         if label == nil { readHosted() }
         settlePage()
     }
@@ -550,8 +531,11 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // The hosted window shown in the page area (the engine's host now in Margin's Space), nil: none.
     func setHosted(_ number: Int?) {
         // (Said again for the window it has: it was moved back where it belongs, HostEngine `bringBack`: its bounds again.)
-        guard number != hosted else { if number != nil { hostedMoved() }; return }
-        hosted = number
+        switch core.setHosted(number) {
+        case .same: return
+        case .moved: return hostedMoved()
+        case .changed: break
+        }
         Diagnostics.note("Margin's window \(id): \(number.map { "in front of the hosted window \($0)" } ?? "no hosted window under it")")
         readHosted()
         settlePage()
@@ -570,9 +554,9 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // Every visible host's window while more than one is (HostEngine `hostedWindows`), back to front, each at its rect;
     // empty: one host, `hosted` alone, as before.
     private(set) var visibleHosts: [HostShownWindow] = [] { didSet { sayCuts() } }
-    private var visibleFrames: [Int: CGRect] = [:] // their bounds by the window server, read as they're told or moved
-    // The holes: each visible host's frame inside its rect, once it's in place (one host: `hole` alone).
-    private(set) var holes: [CGRect] = []
+    // (Their bounds by the window server, read as they're told or moved: the core's, `readVisible`.)
+    // The holes: each visible host's frame inside its rect, once it's in place (one host: `hole` alone). The core's.
+    var holes: [CGRect] { core.holes }
     // A card open: the press's place each time one landed on the page area outside the card's content (the dimmed page
     // around it, caught: preview closes the card then, §2).
     private(set) var caughtPresses: [CGPoint] = []
@@ -580,8 +564,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     var catchRegion: CatchRegion { catcher.region } // (what the catch fill fills now: the tests read it)
     func setVisibleHosts(_ list: [HostShownWindow]) {
         // (Only their rects new, in a drag's frame: the holes follow, nothing read, said or reordered; docs/PEEK-SPLIT.md §4.)
-        func shape(_ l: [HostShownWindow]) -> [String] { l.map { "\($0.window) \($0.role.rawValue) \($0.z) \($0.focused)" } }
-        let changed = shape(list) != shape(visibleHosts)
+        let changed = core.setVisible(list)
         visibleHosts = list
         if !followingPage { readVisible() }
         if changed { Diagnostics.note("Margin's window \(id): \(list.isEmpty ? "one hosted window again" : "\(list.count) hosted windows visible (\(list.map { "\($0.window) \($0.role.rawValue)\($0.focused ? " focused" : "")" }.joined(separator: ", ")))")") }
@@ -604,7 +587,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // leaves one, nothing per move, nothing at all while none is cut), told the visible hosts as they change.
     private var cutWindows: Set<Int> = []
     private func sayCuts() {
-        let forgot = pointer.setCuts(cutting: !cutWindows.isEmpty, visibleHosts.map { ($0.window, $0.rect, cutWindows.contains($0.window)) })
+        let forgot = core.setCuts(cutting: !cutWindows.isEmpty, visibleHosts.map { ($0.window, $0.rect, cutWindows.contains($0.window)) })
         if forgot { sayHover(nil) }
     }
     private func sayHover(_ over: Int?) {
@@ -613,18 +596,10 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
 
     // ---- a split's panes (docs/PEEK-SPLIT.md §4) ----
 
-    // The split its page lays out now, each pane's box on the screen (top left), in the split's order; nil: none, or not
-    // hosting (the launcher's page area never has one).
-    var paneLayout: (split: String, panes: [PagePane])? {
-        guard hosting, let layout, let split = layout.split, !layout.panes.isEmpty else { return nil }
-        let c = contentFrame
-        // (Whole points, each edge rounded on its own: a window is placed at whole points, and the gap stays the gap.)
-        func whole(_ r: CGRect) -> CGRect {
-            let x0 = r.minX.rounded(), y0 = r.minY.rounded()
-            return CGRect(x: x0, y: y0, width: r.maxX.rounded() - x0, height: r.maxY.rounded() - y0)
-        }
-        return (split, layout.panes.map { PagePane(item: $0.item, rect: whole($0.rect.offsetBy(dx: c.minX, dy: c.minY))) })
-    }
+    // The split its page lays out now, each pane's box on the screen (top left, whole points, each edge rounded on its
+    // own: a window is placed at whole points, and the gap stays the gap), in the split's order; nil: none, or not
+    // hosting (the launcher's page area never has one). The core's.
+    var paneLayout: (split: String, panes: [PagePane])? { core.panes(content: contentFrame) }
     // Each pane's window's own minimum (its item's id: width, height; the engine's, as learnt): its page lays no pane
     // below it and its divider stops there. Said when it changes, and in each hello.
     private(set) var paneMinimums: [String: CGSize] = [:]
@@ -668,17 +643,15 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     private func readVisible() {
         var frames: [Int: CGRect] = [:]
         for v in visibleHosts { if let b = hostedBounds(v.window) { frames[v.window] = b } }
-        visibleFrames = frames
+        core.setFrames(frames)
     }
-    // The frontmost visible host's window (the focused one, fronted last): what this window is ordered above.
-    private var frontVisible: Int? { visibleHosts.first { $0.focused }?.window ?? visibleHosts.max { $0.z < $1.z }?.window }
     // ...said to the page as they change (`hostedFrames`, in its coordinates), and once ([]) when it's one again.
     private var hostedFramesSent: String?
     // (Also in each hello: a page that starts, or starts again, while several are visible knows them at once.)
     var hostedFramesJSON: String {
         let c = contentFrame
         let items = visibleHosts.map { v -> String in
-            let f = visibleFrames[v.window] ?? v.rect
+            let f = core.frame(of: v.window) ?? v.rect
             return #"{"role":"\#(v.role.rawValue)","focused":\#(v.focused),"z":\#(v.z),"rect":[\#(Int((f.minX - c.minX).rounded())),\#(Int((f.minY - c.minY).rounded())),\#(Int(f.width.rounded())),\#(Int(f.height.rounded()))]}"#
         }
         return "[" + items.joined(separator: ",") + "]"
@@ -689,91 +662,33 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         hostedFramesSent = json
         push(#"{"type":"hostedFrames","frames":"# + json + "}")
     }
-    // A hole's corners: rounded (as the theme rounds the page card) only where it meets the page card's.
-    private func holeRadii(_ r: CGRect, page: CGRect) -> [CGFloat] {
-        let corners = [CGPoint(x: page.minX, y: page.minY), CGPoint(x: page.maxX, y: page.minY), CGPoint(x: page.maxX, y: page.maxY), CGPoint(x: page.minX, y: page.maxY)]
-        let mine = [CGPoint(x: r.minX, y: r.minY), CGPoint(x: r.maxX, y: r.minY), CGPoint(x: r.maxX, y: r.maxY), CGPoint(x: r.minX, y: r.maxY)]
-        return (0..<4).map { i -> CGFloat in
-            guard abs(corners[i].x - mine[i].x) <= 2, abs(corners[i].y - mine[i].y) <= 2, let layout, i < layout.radii.count else { return 0 }
-            return CGFloat(layout.radii[i])
-        }
-    }
-    // `r` less `cut`: up to four rects (above, below, left, right of it).
+    // `r` less `cut`: up to four rects (above, below, left, right of it). (The core's: core/page/holes.rs.)
     nonisolated static func subtract(_ r: CGRect, _ cut: CGRect) -> [CGRect] {
-        let i = r.intersection(cut)
-        guard !i.isNull, i.width > 0, i.height > 0 else { return [r] }
-        return [CGRect(x: r.minX, y: r.minY, width: r.width, height: i.minY - r.minY), CGRect(x: r.minX, y: i.maxY, width: r.width, height: r.maxY - i.maxY),
-                CGRect(x: r.minX, y: i.minY, width: i.minX - r.minX, height: i.height), CGRect(x: i.maxX, y: i.minY, width: r.maxX - i.maxX, height: i.height)]
-            .filter { $0.width > 0.5 && $0.height > 0.5 }
+        var out = [MarginRect](repeating: MarginRect(), count: 4)
+        let n = out.withUnsafeMutableBufferPointer { margin_page_subtract(r.raw, cut.raw, $0.baseAddress) }
+        return out.prefix(n).map(CGRect.init)
     }
     // The ground's cut-outs for holes that may overlap (a card over panes): each one less the ones before it, so the
-    // even-odd fill never fills an overlap; a hole kept whole keeps its corners, a piece of one is square.
+    // even-odd fill never fills an overlap; a hole kept whole keeps its corners, a piece of one is square. (The core's.)
     nonisolated static func groundHoles(_ list: [(rect: CGRect, radii: [CGFloat])]) -> [WindowGroundView.Hole] {
-        var out: [WindowGroundView.Hole] = []
-        var before: [CGRect] = []
-        for h in list {
-            var pieces = [h.rect]
-            for b in before { pieces = pieces.flatMap { subtract($0, b) } }
-            out += pieces.map { WindowGroundView.Hole(rect: $0, radii: $0 == h.rect ? h.radii : []) }
-            before.append(h.rect)
-        }
-        return out
-    }
-    // updateHole with several visible hosts: each one's hole, the ground drawn around all of them, the pointer through
-    // them (only a card's content while a card is open, the rest of the page area caught).
-    private func updateHoles() -> Bool {
-        let content = contentFrame
-        var list: [(rect: CGRect, host: HostShownWindow)] = []
-        if pageState == .shown, let page = window.pageRect {
-            for v in visibleHosts {
-                let bounds = followingPage ? v.rect : visibleFrames[v.window] ?? v.rect
-                let r = bounds.intersection(v.rect).intersection(page)
-                if !r.isNull, r.width >= 1, r.height >= 1 { list.append((r, v)) }
-            }
-        }
-        let said = (0..<4).map { i in i < (layout?.fills.count ?? 0) ? PageFill.color(layout?.fills[i] ?? "") : nil }
-        pageGround = hosting ? PageFill.common(said.compactMap { $0 }) : nil
-        let fill = pageGround ?? .windowBackgroundColor
-        // (A card open: its whole page box cut out of the ground, whatever its window's frame reads and whatever is under
-        // it, a split's gap or a toolbar's band: Margin's ground is never drawn across the card's page. The real screen,
-        // 2026-11-21: a stacked split's gap drawn as a stripe through the card.)
-        var cuts = list.filter { $0.host.role != .card }
-        if pageState == .shown, let page = window.pageRect {
-            for v in visibleHosts where v.role == .card {
-                let r = v.rect.intersection(page)
-                if !r.isNull, r.width >= 1, r.height >= 1 { cuts.append((r, v)) }
-            }
-        }
-        holes = cuts.map(\.rect)
-        let next = list.first { $0.host.focused }?.rect ?? list.last?.rect
-        if !cuts.isEmpty, let page = window.pageRect {
-            let cut = Self.groundHoles(cuts.map { ($0.rect.offsetBy(dx: -content.minX, dy: -content.minY), holeRadii($0.rect, page: page)) })
-            ground.show(color: fill, holes: cut)
-            if panel.backgroundColor != .clear { panel.backgroundColor = .clear }
-        } else {
-            if panel.backgroundColor != fill { panel.backgroundColor = fill }
-            ground.clear()
-        }
-        hole = next
-        // (A card open: its content only; the dimmed page around it Margin's.)
-        let changed = placed(pointer.place(content: content, layout: layout, hits: hits, captureAll: captureAll,
-                                           holes: list.last { $0.host.role == .card }.map { [$0.rect] } ?? list.map(\.rect)))
-        // (The same holes for the pane click tap, each with its window: a card's alone while one is open.)
-        paneHoles = slot == nil ? [] : (list.last { $0.host.role == .card }.map { [$0] } ?? list).map { (rect: $0.rect, window: $0.host.window, card: $0.host.role == .card) }
-        return changed
+        let rects = list.map(\.rect)
+        let need = withRects(rects) { margin_page_ground_holes($0, $1, nil, 0) }
+        var out = [MarginPiece](repeating: MarginPiece(), count: need)
+        _ = withRects(rects) { r, n in out.withUnsafeMutableBufferPointer { margin_page_ground_holes(r, n, $0.baseAddress, $0.count) } }
+        return out.map { WindowGroundView.Hole(rect: CGRect($0.rect), radii: $0.whole ? list[$0.from].radii : []) }
     }
     // The pointer's slot and the catch fill as the core placed them (read back only when changed); whether the slot did.
-    private func placed(_ changed: (slot: Bool, region: Bool)) -> Bool {
-        if changed.slot { slot = pointer.slot }
-        if changed.region { catcher.region = pointer.region }
-        return changed.slot
+    private func placed(slot changedSlot: Bool, region changedRegion: Bool) -> Bool {
+        if changedSlot { slot = core.slot }
+        if changedRegion { catcher.region = core.region }
+        return changedSlot
     }
 
     // ---- the first click in another pane (PaneClickTap.swift) ----
 
     // The holes the pointer goes through to while several hosts are visible, each with its window (a card's alone while
-    // one is open); empty with one host.
-    private var paneHoles: [(rect: CGRect, window: Int, card: Bool)] = []
+    // one is open); empty with one host. The core's.
+    private var paneHoles: [(rect: CGRect, window: Int, card: Bool)] { core.paneHoles }
     private var paneOwners: [Int: pid_t] = [:] // each pane window's app (the window server's word, read once a window)
     // What the pane click tap decides with (MarginWindows keeps the tap): only while several hosted windows are visible
     // here, shown, this window on screen in the current Space; nil otherwise (no tap at all then, with no other window
@@ -799,7 +714,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
 
     // The hosted window follows a drag of the sidebar's edge live (the engine's tiles): the hole is the page area as it
     // is meanwhile (its window a frame behind at most), its bounds read again once it's over.
-    private var followingPage = false
+    private var followingPage: Bool { core.read.following }
     // The hosted window's own minimum width (nil: none): its page stops the sidebar's edge where the page area would be
     // narrower (ui/behaviors/resize.ts, host-app.ts `pageMinWidth`). Said once each change, and in each hello.
     private(set) var pageMinimum: CGFloat?
@@ -811,8 +726,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     }
 
     func followsPage(_ on: Bool) {
-        guard on != followingPage else { return }
-        followingPage = on
+        guard core.setFollowing(on) else { return }
         if !on {
             readHosted()
             // (A split's windows' bounds read again once the drag is over, and said to the page: none were meanwhile.)
@@ -825,8 +739,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // sight): what the `order` mechanism orders this window above meanwhile; nil: no more. (The `level` mechanism needs
     // no window: it's above every normal one.)
     func cover(_ number: Int?) {
-        guard number != covering else { return }
-        covering = number
+        guard core.setCovering(number) else { return }
         keepFront()
     }
 
@@ -834,9 +747,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // a second document: HostEngine `others`): it comes in front, this window right below it at the normal level until
     // it's gone (nil).
     func yield(to number: Int?) {
-        guard number != yieldingTo else { return }
-        yieldingTo = number
-        if number == nil { reorder = true }
+        guard core.setYielding(number) else { return }
         Diagnostics.note("Margin's window \(id): \(number.map { "another window (\($0)) in its Space: let in front of it" } ?? "no other window in its Space: in front again")")
         keepFront()
     }
@@ -852,24 +763,12 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // holds is never read here, right after a change: the poll's read at rest says (`frontRead`).
     func keepFront() {
         guard !isClosed, onCurrentSpace() else { return }
-        let up = isFullScreen && yieldingTo == nil
-        let level: NSWindow.Level = up && (mechanism == .level || probing) ? FrontMechanism.raised : .normal
-        if window.level != level {
-            setLevel(level)
-            levelSets += 1
-            changedAt = now()
-        }
-        if up, mechanism == .order || reorder, let target = frontVisible ?? hosted ?? covering {
-            orderAbove(target)
-            frontOrders += 1
-            changedAt = now()
-        }
-        if up { reorder = false }
-        if let other = yieldingTo {
-            window.order(.below, relativeTo: other)
+        let k = core.keepFront(level: window.level.rawValue, now: now)
+        if k.level != 0 { setLevel(k.level == 2 ? FrontMechanism.raised : .normal) }
+        if k.has_above { orderAbove(Int(k.above)) }
+        if k.has_below {
+            window.order(.below, relativeTo: Int(k.below))
             panelOnTop()
-            yieldOrders += 1
-            changedAt = now()
         }
     }
 
@@ -905,72 +804,20 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     //   (06:32:56.269: the read right after a yield's end, during his swipe, was taken as macOS refusing the level);
     // - the order's way, fallen back to (not asked for: `MarginFront`): the raised level tried again every `probeEvery`;
     //   held at the next read at rest, back to it (said once).
-    static let settle = 0.5, missApart = 1.0, probeEvery = 5.0
+    // (The rules and their times are the core's: core/page/front.rs, `SETTLE`, `MISS_APART`, `PROBE_EVERY`.)
     func frontRead(_ read: HostEngine.FrontRead) {
-        guard !isClosed, isFullScreen, yieldingTo == nil, hosted == read.hosted || visibleHosts.contains(where: { $0.window == read.hosted }), onCurrentSpace() else { return }
-        let t = now()
-        let atRest = t - changedAt >= Self.settle - 1e-9 && t - spaceChangedAt >= Self.settle - 1e-9
-        if !read.marginAbove {
-            if !wrongSaid {
-                wrongSaid = true
-                Diagnostics.warn("Margin's window \(id): the hosted window \(read.hosted) above it in the window server's order (its layer \(read.marginLayer), kept in front by its \(mechanism.rawValue)): in front of it again")
-            }
-            frontRestores += 1
-            if window.level == FrontMechanism.raised { setLevel(.normal); setLevel(FrontMechanism.raised); levelSets += 1 }
-            orderAbove(read.hosted)
-            frontOrders += 1
-            changedAt = t
-        } else if atRest {
-            wrongSaid = false
-        }
-        guard atRest else { return }
-        let held = read.marginLayer == FrontMechanism.raised.rawValue
-        switch mechanism {
-        case .level:
-            if held {
-                missAt = nil
-                if !levelSaid { levelSaid = true; Diagnostics.note("Margin's window \(id): in front by its level (\(read.marginLayer), held by the window server)") }
-            } else if let first = missAt, t - first >= Self.missApart - 1e-9 {
-                missAt = nil
-                mechanism = .order
-                setLevel(.normal)
-                levelSets += 1
-                orderAbove(read.hosted)
-                frontOrders += 1
-                changedAt = t
-                probedAt = t
-                Diagnostics.warn("Margin's window \(id): its raised level isn't held by the window server (it says \(read.marginLayer) at reads \(Int((t - first) * 1000)) ms apart, at rest): kept in front by its order instead, the level tried again every \(Int(Self.probeEvery)) s")
-            } else {
-                if missAt == nil { missAt = t }
-                // (Set again, as it may have been lost: the next read at rest says.)
-                setLevel(.normal)
-                setLevel(FrontMechanism.raised)
-                levelSets += 1
-                changedAt = t
-            }
-        case .order:
-            guard options.front != .order else { return } // (asked for: kept)
-            if probing {
-                probing = false
-                probedAt = t
-                if held {
-                    mechanism = .level
-                    levelBacks += 1
-                    levelSaid = true
-                    Diagnostics.note("Margin's window \(id): its raised level held by the window server again (\(read.marginLayer)): in front by its level again")
-                } else {
-                    setLevel(.normal)
-                    levelSets += 1
-                    orderAbove(read.hosted)
-                    frontOrders += 1
-                    changedAt = t
-                }
-            } else if t - probedAt >= Self.probeEvery - 1e-9 {
-                probing = true
-                levelProbes += 1
-                setLevel(FrontMechanism.raised)
-                levelSets += 1
-                changedAt = t
+        guard !isClosed, core.frontReads(read.hosted), onCurrentSpace() else { return }
+        let ops = core.frontRead(hosted: read.hosted, layer: read.marginLayer, above: read.marginAbove, level: window.level.rawValue, now: now)
+        for op in ops {
+            switch op.kind {
+            case 1: setLevel(.normal)
+            case 2: setLevel(FrontMechanism.raised)
+            case 3: orderAbove(Int(op.arg))
+            case 4: Diagnostics.warn("Margin's window \(id): the hosted window \(read.hosted) above it in the window server's order (its layer \(read.marginLayer), kept in front by its \((op.arg == 1 ? FrontMechanism.order : .level).rawValue)): in front of it again")
+            case 5: Diagnostics.note("Margin's window \(id): in front by its level (\(read.marginLayer), held by the window server)")
+            case 6: Diagnostics.warn("Margin's window \(id): its raised level isn't held by the window server (it says \(read.marginLayer) at reads \(op.arg) ms apart, at rest): kept in front by its order instead, the level tried again every 5 s")
+            case 7: Diagnostics.note("Margin's window \(id): its raised level held by the window server again (\(read.marginLayer)): in front by its level again")
+            default: break
             }
         }
     }
@@ -992,42 +839,34 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // at once: the card brightens and turns as its item comes back (Tirth, 2026-11-20: the launcher was drawn for the
     // grace in between).
     private func settlePage() {
-        let ready = hosting && hosted != nil && loadingLabel == nil && showingLabel == nil
-        let target: PageState = !hosting ? (elsewhereLabel != nil ? .elsewhere : .empty) : ready ? .shown : .loading
         graceTimer?.invalidate()
         graceTimer = nil
-        if target == .loading, pageState != .loading, pageState != .elsewhere, loadingLabel == nil, !showingSlow, options.loaderGrace > 0 {
-            graceTimer = Timer.scheduledTimer(withTimeInterval: options.loaderGrace, repeats: false) { [weak self] _ in
-                MainActor.assumeIsolated { self?.graceOver() }
-            }
-            // (The hole stays open meanwhile, and follows the window shown: the new one comes in before the old one leaves.)
-            if pageState == .shown { updateHole() }
-            return
+        let t = now()
+        let s = core.settle(now: t)
+        guard s.grace else { return applyPage(s) }
+        graceTimer = Timer.scheduledTimer(withTimeInterval: max(0, s.deadline - t), repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { self?.graceOver() }
         }
-        applyPage(target)
+        // (The hole stays open meanwhile, and follows the window shown: the new one comes in before the old one leaves.)
+        if s.hole_again { updateHole() }
     }
 
     // The grace is over and the item still isn't in place: the loader. (A test calls it for its own clock.)
     func graceOver() {
         graceTimer?.invalidate()
         graceTimer = nil
-        let ready = hosting && hosted != nil && loadingLabel == nil && showingLabel == nil
-        applyPage(!hosting ? (elsewhereLabel != nil ? .elsewhere : .empty) : ready ? .shown : .loading)
+        applyPage(core.graceOver())
     }
 
-    private func applyPage(_ state: PageState) {
-        let label = state == .loading ? loadingLabel ?? showingLabel : state == .elsewhere ? elsewhereLabel : nil
-        let app = state == .loading ? loadingLabel != nil ? loadingApp : showingApp : state == .elsewhere ? elsewhereApp : nil
-        let changed = state != pageState || label != loaderLabel || app != loaderApp
-        pageState = state
-        loaderLabel = label
-        loaderApp = app
+    // The state the core applied, carried out.
+    private func applyPage(_ s: MarginSettled) {
         // (The hole closed, or opened, before the page hears: leaving `shown`, the ground covers the page area at once;
         // into it, the theme's loader is still drawn over the hole until the page fades it.)
         updateHole()
         // (Shown with no field of Margin's wanting them: the panel never keeps the keys over the app shown.)
-        if state == .shown, !pageWantsKeyboard, hasKeys || panel.allowKey || (!options.harness && panel.isKeyWindow) { letGoKeys() }
-        if changed {
+        if s.shown, !pageWantsKeyboard, hasKeys || panel.allowKey || (!options.harness && panel.isKeyWindow) { letGoKeys() }
+        if s.changed {
+            let state = pageState, label = loaderLabel
             Diagnostics.note("Margin's window \(id): page \(state.rawValue)\(hole.map { " (the hole \(Int($0.minX)),\(Int($0.minY)) \(Int($0.width))×\(Int($0.height)))" } ?? "")")
             pageStates.append(state.rawValue + (label.map { " " + $0 } ?? ""))
             if pageStates.count > 200 { pageStates.removeFirst(pageStates.count - 200) }
@@ -1043,19 +882,18 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     }
 
     // Margin's start held up (HostedSession `holdStartup`): what's wrong, on the start screen with its two choices.
-    private(set) var startupStuck: String?
+    var startupStuck: String? { core.text(.stuck) }
     func setStartupStuck(_ why: String?) {
-        guard why != startupStuck else { return }
-        startupStuck = why
+        guard core.setStuck(why) else { return }
         Diagnostics.note("Margin's window \(id): the start screen \(why == nil ? "no longer held up" : "held up: what's wrong said, Try again and Continue without Safari")")
         push(pageStateJSON)
     }
     // Margin's start (HostedSession `startup`): its loader says "Getting you started…", not "Opening …" (the page's words).
-    private var starting: Bool { pageState == .loading && loaderLabel == HostedSession.startupLabel }
+    private var starting: Bool { core.read.starting }
 
     // The hosted window's bounds read from the window server (kept: a layout report, a pointer move never reads them).
     private func readHosted() {
-        hostedFrame = hosted.flatMap { hostedBounds($0) }
+        core.setHostedFrame(hosted.flatMap { hostedBounds($0) })
         sayHostedFrame()
     }
     // ...and said to the page as they change, in its coordinates (top left in the content; null: none hosted): a theme
@@ -1085,38 +923,24 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         owner?.paneSceneChanged()
     }
     private func placeHole() -> Bool {
-        if visibleHosts.count > 1 { return updateHoles() }
-        paneHoles = []
-        defer { holes = hole.map { [$0] } ?? [] }
-        let content = contentFrame
-        var next: CGRect?
-        if pageState == .shown, let page = window.pageRect {
-            // (Between two windows in a switch, the grace running: the hole as it was. The new one is under it already.)
-            let bounds = hosted != nil ? (followingPage ? page : hostedFrame ?? page) : graceTimer != nil ? hole : nil
-            if let r = bounds?.intersection(page), !r.isNull, r.width >= 1, r.height >= 1 { next = r }
-        }
-        let said = (0..<4).map { i in i < (layout?.fills.count ?? 0) ? PageFill.color(layout?.fills[i] ?? "") : nil }
-        pageGround = hosting ? PageFill.common(said.compactMap { $0 }) : nil
-        let fill = pageGround ?? .windowBackgroundColor
-        if let next, let page = window.pageRect {
-            // (A corner of the hole is the page card's where the two meet: rounded as the theme rounds it.)
-            let corners = [CGPoint(x: page.minX, y: page.minY), CGPoint(x: page.maxX, y: page.minY), CGPoint(x: page.maxX, y: page.maxY), CGPoint(x: page.minX, y: page.maxY)]
-            let mine = [CGPoint(x: next.minX, y: next.minY), CGPoint(x: next.maxX, y: next.minY), CGPoint(x: next.maxX, y: next.maxY), CGPoint(x: next.minX, y: next.maxY)]
-            let radii = (0..<4).map { i -> CGFloat in
-                guard abs(corners[i].x - mine[i].x) <= 2, abs(corners[i].y - mine[i].y) <= 2, let layout, i < layout.radii.count else { return 0 }
-                return CGFloat(layout.radii[i])
-            }
+        let out = core.placeHole(content: contentFrame)
+        let fill = out.fill.map { NSColor($0) } ?? .windowBackgroundColor
+        switch out.ground {
+        case .one(let hole, let radii):
             // (The ground drawn with its hole before the window's own background goes: no frame of it see-through elsewhere.)
-            ground.show(color: fill, hole: next.offsetBy(dx: -content.minX, dy: -content.minY), radii: radii)
+            ground.show(color: fill, hole: hole, radii: radii)
             if panel.backgroundColor != .clear { panel.backgroundColor = .clear }
-        } else {
+        case .several(let holes):
+            ground.show(color: fill, holes: holes)
+            if panel.backgroundColor != .clear { panel.backgroundColor = .clear }
+        case .none:
             if panel.backgroundColor != fill { panel.backgroundColor = fill }
             ground.clear()
         }
-        hole = next
         // The pointer's slot: the hole, less what the theme draws over it that takes the pointer (`hits`: the palette, a
-        // menu, a notice) and the page card's rounded corners where the hole's are its (the core's `PagePointer`).
-        return placed(pointer.place(content: content, layout: layout, hits: hits, captureAll: captureAll, hole: next))
+        // menu, a notice) and the page card's rounded corners where the hole's are its; several: each one's hole (a
+        // card's content alone while one is open). The core's (`PagePointer`).
+        return placed(slot: out.slot, region: out.region)
     }
 
     // Where the hosted window goes while hosting: the page area from its own layout, measured in full screen at its
@@ -1126,28 +950,19 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // 1512×950, both windows were at 0,33 1512×949, so the hosted window landed a point below the page area).
     // `display`: the screen's whole frame (a hosted window's tile in Margin's Space is laid out in it). Nil also while
     // this window isn't its screen's width: a tile added to or taken out of its Space lays it out as a split's half for a
-    // moment (under the freeze; the engine sets its rect back at once), never a page area to place anything at.
-    var hostedPlacement: HostPlacement? {
-        // (Only a layout its page measured hosting: the launcher's, from before, has the sidebar docked whatever Keep open
-        // says, and a hidden sidebar's page area is wider: placed by it, the window would be placed again at once.)
-        guard hosting, isFullScreen, let layout, layout.mode == "fullscreen", layout.hosted || layout.outside, hostDisplay != nil, !narrowed,
-              let page = MarginWindowGeometry.pageRect(layout: layout, content: contentFrame) else { return nil }
-        let display = window.screen.map { ScreenGeometry.appKitRect($0.frame) } ?? .zero
-        return HostPlacement(page: page, area: contentFrame, display: display)
-    }
-    // In full screen and narrower than its screen (laid out as a split's half by a tile change in its Space).
+    // moment (under the freeze; the engine sets its rect back at once), never a page area to place anything at. Only a
+    // layout its page measured hosting: the launcher's, from before, has the sidebar docked whatever Keep open says,
+    // and a hidden sidebar's page area is wider: placed by it, the window would be placed again at once. (The core's.)
+    var hostedPlacement: HostPlacement? { core.hostedPlacement(content: contentFrame, display: displayFrame) }
+    // In full screen and narrower than its screen (laid out as a split's half by a tile change in its Space). The core's.
     private var narrowed: Bool {
-        guard isFullScreen, let screen = window.screen else { return false }
-        return contentFrame.width < screen.frame.width - 2
+        withUnsafePointer(to: displayFrame?.raw ?? MarginRect()) { margin_page_narrowed(isFullScreen, contentFrame.raw, displayFrame == nil ? nil : $0) }
     }
 
     // The page area as its page draws it now, not hosting (its launcher's layout), in full screen at its size: where a
-    // browser's window made ready out of sight is placed (hosting's rect too while the sidebar is docked). Nil until measured.
-    var idlePlacement: HostPlacement? {
-        guard isFullScreen, let layout, layout.mode == "fullscreen", MarginWindowGeometry.measuredAt(layout, contentFrame.size),
-              let page = MarginWindowGeometry.pageRect(layout: layout, content: contentFrame) else { return nil }
-        return HostPlacement(page: page, area: contentFrame)
-    }
+    // browser's window made ready out of sight is placed (hosting's rect too while the sidebar is docked). Nil until
+    // measured. (The core's.)
+    var idlePlacement: HostPlacement? { core.idlePlacement(content: contentFrame) }
 
     // A window's bounds by the window server (CGWindowListCopyWindowInfo: no permission needed for bounds).
     nonisolated static func serverBounds(_ number: Int) -> CGRect? {
@@ -1195,14 +1010,14 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         guard !followingPage, window.isVisible || options.harness else { return }
         let now = options.harness ? lastPointer : (at: PointerWatch.location, buttonsDown: PointerWatch.buttonsDown)
         guard let now, !now.buttonsDown else { return }
-        setIgnoring(pointer.again(now.at, content: contentFrame))
+        setIgnoring(core.again(now.at, content: contentFrame))
     }
 
     // Each pointer event: its way, its hover, the cut pane it's over and the position its page wants (one typed call).
     func pointerMoved(_ at: CGPoint, buttonsDown: Bool = PointerWatch.buttonsDown) {
         guard window.isVisible || options.harness else { return }
         lastPointer = (at, buttonsDown)
-        let out = pointer.moved(at, content: contentFrame, buttonsDown: buttonsDown, now: Diagnostics.now())
+        let out = core.moved(at, content: contentFrame, buttonsDown: buttonsDown, now: Diagnostics.now())
         setIgnoring(out.pass)
         hover(at, inside: out.inside, buttonsDown: buttonsDown)
         if let over = out.hover { sayHover(over) }
@@ -1295,7 +1110,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         // (Kept in front by its order: a press on the hosted window raised it over this one; above it again, once the
         // window server has done that.)
         if mechanism == .order, hosted != nil { DispatchQueue.main.async { [weak self] in self?.keepFront() } }
-        guard pageWantsKeyboard, !contentFrame.contains(at) || pointer.gets(at) else { return }
+        guard pageWantsKeyboard, !contentFrame.contains(at) || core.gets(at) else { return }
         push(#"{"type":"pressOutside"}"#)
     }
 
@@ -1634,7 +1449,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // Margin became active (MarginWindows), or the current Space changed: macOS may take it now.
     func appBecameActive() { tryFullScreen("Margin active") }
     func spaceChanged() {
-        spaceChangedAt = now()
+        core.spaceChanged(now: now())
         tryFullScreen("the Space changed")
         if isFullScreen, !options.harness, window.isOnActiveSpace { attachPanel("the Space changed") }
         lookBack()
@@ -1818,6 +1633,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         json += #","themes":"# + owner.themes()
         json += #","apps":"# + owner.apps()
         json += #","pageHosted":"# + (hosting ? "true" : "false")
+        json += #","layoutText":true"# // (its layout reports as their JSON: the core reads them as they come)
         json += #","marginPage":"# + (marginPage.flatMap { jsonString($0) } ?? "null")
         json += #","pageMinWidth":"# + (pageMinimum.map { String(Int($0)) } ?? "null")
         if !paneMinimums.isEmpty { json += #","paneMin":"# + paneMinimumsJSON }
@@ -1890,21 +1706,27 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             show()
             owner?.onReady?(self)
         case "layout":
-            guard let geometry = body["geometry"] as? JSONObject, let layout = PageLayout(geometry: geometry) else { return }
-            if hosting {
+            // (Its JSON as the page sent it (`json`, the app window's page: the hello's `layoutText`), to the core as it
+            // comes; a report as an object (`geometry`: a test's, an older page) made into JSON first.)
+            let said: (taken: Bool, panesChanged: Bool)
+            if var text = body["json"] as? String {
+                said = text.withUTF8 { core.setLayout($0) }
+            } else if let geometry = body["geometry"] as? JSONObject, let bytes = PageLayout.bytes(geometry) {
+                said = bytes.withUnsafeBytes { core.setLayout($0.bindMemory(to: UInt8.self)) }
+            } else { return }
+            guard said.taken else { return }
+            // (Not each frame of a drag of the sidebar's edge: its last layout, once it's let go.)
+            if hosting, !pageResizing, let layout {
                 let said = "\(layout.mode) \(Int(layout.left))/\(Int(layout.top))/\(Int(layout.right))/\(Int(layout.bottom)) in \(Int(layout.width))×\(Int(layout.height))"
-                // (Not each frame of a drag of the sidebar's edge: its last layout, once it's let go.)
-                if said != hostingLayoutSaid, !pageResizing {
+                if said != hostingLayoutSaid {
                     hostingLayoutSaid = said
                     Diagnostics.note("Margin's window \(id): hosting, its page measured \(said) (window \(Int(window.frame.width))×\(Int(window.frame.height)), full screen \(window.styleMask.contains(.fullScreen)))")
                 }
             }
-            let panesWere = self.layout.map { ($0.split, $0.panes) }
-            self.layout = layout
             updatePage()
             // (A split's panes laid out again with the page area where it was: a divider dragged, the axis or the order
             // changed. The session places the panes' windows, docs/PEEK-SPLIT.md §4.)
-            if hosting, panesWere?.0 != layout.split || panesWere?.1 != layout.panes { owner?.onPanes?(self) }
+            if hosting, said.panesChanged { owner?.onPanes?(self) }
         case "peekRect":
             // Where the theme draws the preview card page (overlay.ts reportPeekPage), in its page: the card's window goes there.
             let next = (body["rect"] as? [Any]).flatMap { Self.rect($0) }.flatMap { r -> CGRect? in
@@ -1919,6 +1741,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             let rects = (body["rects"] as? [[Any]] ?? []).compactMap { Self.rect($0) }
             hits = Array(rects.prefix(64))
             captureAll = body["all"] as? Bool == true || rects.count > 64
+            core.setHits(hits, captureAll: captureAll)
             updatePage()
         case "chrome":
             controls = (body["controls"] as? [Any]).flatMap { Self.rect($0) }
@@ -1942,7 +1765,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             rowCounts = (spaces, items)
             owner?.onCounts?(self)
         case "pointerWant":
-            pointer.setWant(PointerWant(body))
+            core.setWant(PointerWant(body))
         case "perform":
             let name = body["name"] as? String ?? ""
             if name == "window.fullscreen" { return toggleFullScreen() }

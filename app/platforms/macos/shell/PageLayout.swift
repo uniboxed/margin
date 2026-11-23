@@ -1,6 +1,6 @@
 // Margin's own window's page layout as its page reports it (ui/host.ts Geometry): where the page area is, its corners,
-// a split's panes. Read by the core (protocol.rs `PageLayout::from_geometry`, through margin-ffi's
-// `margin_page_layout_parse`: docs/CORE-REFACTOR.md step 3, commit 1); this is what Margin's window keeps of it.
+// a split's panes. Read by the core (protocol.rs `PageLayout::from_geometry`: docs/CORE-REFACTOR.md step 3, commit 1),
+// kept by the window's page there (core/page/, commit 3); this is the value Margin's window and its tests read of it.
 
 import CoreGraphics
 import Foundation
@@ -32,10 +32,7 @@ struct PageLayout: Equatable {
     // From the page's report ({ insets, radius, radii, container, mode, pageOutside, pageHosted, fills, split, panes }),
     // as the core reads it; nil if it isn't one.
     init?(geometry g: JSONObject) {
-        // (Each report of a drag comes here: its JSON made once, without sorting, and without the walk for numbers
-        // that aren't finite unless it has one; the answer typed, its texts in a buffer.)
-        let valid = JSONSerialization.isValidJSONObject(g) ? g : SessionRules.json(g)
-        guard let data = try? JSONSerialization.data(withJSONObject: valid) else { return nil }
+        guard let data = Self.bytes(g) else { return nil }
         var l = MarginPageLayout()
         var text = [UInt8](repeating: 0, count: 1024)
         let read = { (text: inout [UInt8]) in
@@ -44,6 +41,18 @@ struct PageLayout: Equatable {
         var need = read(&text)
         if need > text.count { text = [UInt8](repeating: 0, count: need); need = read(&text) }
         guard need >= 0, need <= text.count else { return nil }
+        self.init(l, text: text)
+    }
+
+    // A report given as an object (a page's message WebKit read, a test's): its JSON, made once, without sorting, and
+    // without the walk for numbers that aren't finite unless it has one. (The page's own report comes as its JSON.)
+    static func bytes(_ g: JSONObject) -> Data? {
+        let valid = JSONSerialization.isValidJSONObject(g) ? g : SessionRules.json(g)
+        return try? JSONSerialization.data(withJSONObject: valid)
+    }
+
+    // A layout as the core wrote it, its texts in `text`.
+    init(_ l: MarginPageLayout, text: [UInt8]) {
         let s = { (m: MarginText) in String(decoding: text[m.at..<(m.at + m.len)], as: UTF8.self) }
         self.init(left: l.left, top: l.top, right: l.right, bottom: l.bottom, radius: l.radius,
                   radii: [l.radii.0, l.radii.1, l.radii.2, l.radii.3], width: l.width, height: l.height, mode: s(l.mode))

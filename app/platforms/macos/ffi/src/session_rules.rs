@@ -274,6 +274,16 @@ pub unsafe extern "C" fn margin_page_layout_read(
     }
     let parsed = crate::data::text(geometry, len).and_then(|t| serde_json::from_str::<Value>(t).ok());
     let Some(l) = parsed.as_ref().and_then(Value::as_object).and_then(PageLayout::from_geometry) else { return -1 };
+    // SAFETY: the contract above.
+    unsafe { write_layout(&l, out, text, cap) }
+}
+
+/// A layout written into `out`, its texts into `text` (`cap` bytes): the bytes its texts take (more than `cap`:
+/// nothing written).
+///
+/// # Safety
+/// `out` is writable; `text` points to `cap` writable bytes (or is null with `cap` 0).
+pub(crate) unsafe fn write_layout(l: &PageLayout, out: *mut MarginPageLayout, text: *mut u8, cap: usize) -> isize {
     let texts = std::iter::once(l.mode.as_str())
         .chain(l.fills.iter().map(String::as_str))
         .chain(l.split.as_deref())
@@ -319,7 +329,7 @@ pub unsafe extern "C" fn margin_page_layout_read(
         o.pane_items[i] = put(&p.item);
         o.pane_rects[i] = p.rect.into();
     }
-    // SAFETY: out writable (checked non-null; the contract).
+    // SAFETY: out writable (the contract).
     unsafe { *out = o };
     need as isize
 }

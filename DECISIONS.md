@@ -8282,3 +8282,76 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   A reset with no item (one made at its address) is shown as before: nothing could have been asked for it.
 - Pinned: the core's (requests_tests.rs, both resets: the navigate, then only the later pick's hostShow, the line)
   and the Swift's (T/session-rules-tests.swift: commit 0's check of the old behaviour turned into the new one).
+
+## Core refactor step 3, commit 3: Margin's window's page in the core (2026-11-23)
+
+- margin-core gains `page` (app/shared/core/src/page/): one `Page` per Margin window, MarginWindowController's
+  decisions. The page card's state (`empty`, `loading`, `shown`, `elsewhere`; the setters' sameness rules; the
+  loader's label and app; the start's look) and the loader's grace, now a deadline (`settle(now)`: dropped, then begun
+  or the state applied, in the Swift's order; `grace_over`); the holes (one host's: its window's bounds in the page
+  area, the page area while it follows a drag, the old hole while the grace runs; several: each visible host's
+  window in its rect, a card's whole rect a cut, the focused one's hole), their corners (the card's within 2 pt), the
+  ground's cut-outs and `subtract` (holes.rs), the pane click tap's holes, and the slot and catch region placed from
+  them (the Page owns the pointer, `PagePointer`); the ground's colour (fill.rs: `PageFill`'s CSS colours and the
+  most common, cached per layout); in front (front.rs: `keepFront`'s level and orders, the yield and the cover, the
+  poll's read at rest with `SETTLE`, `MISS_APART`, `PROBE_EVERY`); the page area (area.rs: `measuredAt`, `pageRect`,
+  `narrowed`, `hostedPlacement`, `idlePlacement`, `paneLayout`'s whole points) from the page's layout report, parsed
+  and kept there (`set_layout_bytes`: protocol.rs's `from_geometry`, a split's panes' change answered).
+- margin-ffi's `MarginPage` is now the core's `Page` (every pointer call as it was; `margin_page_place_slot` gone:
+  the Page places its slot at `margin_page_place_hole`). Typed calls only: each setter, the settle and the grace, the
+  holes' placing (its ground handed out in place), one read of everything the window shows (`margin_page_read`), its
+  texts into a buffer, the page area and the placements, `keepFront` and the poll's read (the clock through a C
+  callback, read at each of the Swift's points), the pure rules the tests read (`margin_page_rect`, `_measured_at`,
+  `_narrowed`, `_fill_color`, `_fill_common`, `_subtract`, `_ground_holes`).
+- Swift: MWC keeps its mechanism and its order. Each decision is a typed call at the Swift's own point (the design's
+  out-callback dropped: MWC re-enters the session through its page rect, so nothing reads the Page while a call is
+  under way), its answer carried out before the next call: the window's page rect, the ground's drawing and the
+  panel's background, the level and orders, the keys, the pushes, the log lines (word for word: the core answers
+  codes and numbers). The hosted window's bounds are read where the Swift read them (`readHosted`, `readVisible`, the
+  same reads) and handed in before the decision. The grace's deadline is kept by MWC's own timer (one a window, as
+  before: the session doesn't own the Pages). PageCore.swift is the Page's wrapper (PassThrough.swift's moved into
+  it); MWC's fields the session and tests read are computed over it (`pageState`, `hole`, `holes`, `pageGround`,
+  `mechanism`, the counts…). `PageFill`, `MarginWindowGeometry.pageRect`/`measuredAt` and MWC's `subtract`/`groundHoles`
+  stay as thin wrappers the tests read. The HostedWindow contract is unchanged. Swift: 482 lines out, 527 in (323 of
+  them PageCore.swift, 90 of which moved from PassThrough.swift).
+- The layout report comes as its JSON text: Margin.app's window says `layoutText` in its hello and its page
+  (host-app.ts) sends the report it built as `JSON.stringify` makes it; the bytes go to the core as WebKit hands them
+  (no NSDictionary made by WebKit, none walked or re-serialized by Swift), the Swift `PageLayout` built only when
+  read. The same report: JSON.stringify writes numbers exactly (commit 1's path made them JSON from WebKit's numbers
+  again; a -0 was already read as 0 there). The overlay over a browser, Windows and the tests' dictionaries send
+  `geometry` as before, which MWC makes JSON as commit 1 did.
+- Two Mac facts the comparison found, now the core's: NSColor's `==` compares each component as a 32-bit float (the
+  ground's "most of the corners" counts so); Swift's `Double(_:)` (its runtime's strtod) takes `snan`, a NaN's
+  payload only as none, `0x` and hex digits, `0` and octal ones, or a decimal number, and nothing with a NUL in it.
+- Checked before the Swift went (scratch harness, two processes: the old MWC's members verbatim over 53ffc75f's core,
+  the new over this branch's, each writing every call of the window's mechanism and every value it holds after each
+  step, doubles to the bit): 50,000 generated sequences (setters, layout reports as text and as dictionaries, hits,
+  hosting, the hosted window and its bounds, visible hosts and their frames with zero-size, touching, negative and
+  sub-point rects, following, cover, yield, full screen, resizes and displays, elsewhere, the start held up, the
+  poll's reads at rest over a while, keepFront, Space changes, the keys, a simulated clock firing the grace):
+  100,388,607 lines, no difference; the pure rules with NaN and odd texts (subtract, the cut-outs, 50,000 seeds of CSS
+  colours with marks, prepended marks, hex floats past 53 bits and their ties, NaN payloads, NULs, colours alike as
+  floats, the page area): 14,000,000 lines, no difference (after the two facts above). The harness caught 34 of 35
+  deliberate breaks of the core (the grace's conditions, the hole kept in a grace, the loader's label, a point's hole,
+  the 2 pt corners, the card's cut, the focused hole, the cut-outs' corners and slivers, the colours' alpha, tie and
+  float compare, strtod's octal payload, marks at separators, hex rounding, the reorder, the misses' gap, the probe's
+  time, the warning said once, narrowed, measured within a point, the sidebar-alone layout, the panes' rounding, the
+  setters' sameness, slow off hosting, the start's look, the ground per layout, the FFI's two mappings, the top place,
+  the holes and the pane holes): three only once the generator had a point-wide hole, exact 2 pt corners and colours
+  alike as floats, one once the poll was read over a while, and two once the harness's copy was rebuilt from scratch
+  each time (rsync kept the branch's file times and cargo a break). The one missed (the page rect compared raw, not
+  standardized) is no break: a page area's sizes are never negative. A NaN in a visible host's rect or a window's
+  bounds traps the old and the new alike (its `Int(...)` in the frames' pushes): never generated there. The app's
+  checks: 2150 unit and 321 end-to-end pass unchanged (two loop-guard timing checks failed once under the harness's
+  load, passed idle); T/margin-window-tests.swift and every `window.loadings`/`showings`/`hostings` check of
+  T/hosted-tests.swift unchanged.
+- Cost (release, ffi tests page_cost.rs): a setter 26 ns, the holes placed 38 ns (one host) and 109 ns (two panes
+  under a card), the page area again with the placement 14 ns, the poll's read at rest 12 ns, keepFront 6 ns, a read
+  of the page 7 ns, a layout report's parse 4.1 µs (serde's `Value`: it allocates; commit 6's typed follow path can
+  end that). MWC's calls, old against new (the harness, -O, the stand-ins writing nothing): a show's setter 6,961 → 505
+  ns, the hole placed (`updateHole`) 6,604 → 170 ns with one host and 9,506 → 348 ns with a split under a card (the
+  ground's colour no longer read from four CSS texts each placing), the poll's read at rest 74 → 182 ns (every 1.5-2
+  s), a layout report with its page area and hole 20,186 → 3,907 ns. The layout report
+  on the Swift side: 2.5 µs (3.7 with a split), was 6.6 (12.0) before commit 1 and 10.7 (15.0) after it. Nothing
+  allocated by the holes' placing, the setters of a drag's frame, the reads, keepFront or the poll's read once warm
+  (no_alloc.rs). `page-frames` and `idle-cost` not measured: no screen suite on this branch.
