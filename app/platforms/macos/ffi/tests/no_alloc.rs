@@ -344,3 +344,36 @@ fn the_polls_counts_and_looks_allocate_nothing() {
         margin_host_free(core);
     }
 }
+
+#[test]
+fn the_close_and_the_exits_reads_allocate_nothing() {
+    let core = margin_host_new();
+    let (bundle, id) = ("com.apple.Maps", "app:com.apple.Maps");
+    // (An app asked to quit: rare, its bundle and id kept, before the count.)
+    // SAFETY: a live core, valid buffers.
+    unsafe { margin_exits_asked(core, 501, bundle.as_ptr(), bundle.len(), 1000.5, id.as_ptr(), id.len(), 10.0) };
+    let mut out = [0i64; 4];
+    let n = allocations(|| {
+        // SAFETY: a live core, a writable buffer.
+        unsafe {
+            // (Every poll: the overdue ones; every keeper's step: whether one is ending.)
+            std::hint::black_box(margin_exits_overdue(core, 12.0, 4.0, std::ptr::null_mut(), 0));
+            std::hint::black_box(margin_exits_overdue(core, 15.0, 4.0, out.as_mut_ptr(), out.len()));
+            std::hint::black_box(margin_exits_has(core, 501) && !margin_exits_has(core, 502));
+            std::hint::black_box(margin_exits_count(core));
+            std::hint::black_box(margin_exits_asked_at(core, 501) + margin_exits_launched_at(core, 501));
+            std::hint::black_box(margin_exits_same_marked_launch(1000.0, f64::NAN));
+            for point in 0..=10u8 {
+                std::hint::black_box(margin_close_decide(point, point % 3, 0x1_5a5a, point % 2 == 0, point % 3 == 0));
+            }
+            std::hint::black_box(margin_exits_take_back(core, 502, false, std::ptr::null(), 0, f64::NAN));
+        }
+    });
+    assert_eq!(n, 0, "the close and the exits' reads allocated {n} times");
+    assert_eq!(out[0], 501);
+    // SAFETY: the live core, freed once.
+    unsafe {
+        assert!(margin_exits_exited(core, 501));
+        margin_host_free(core);
+    }
+}

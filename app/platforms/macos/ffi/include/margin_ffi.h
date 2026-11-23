@@ -118,6 +118,22 @@ bool margin_watch_poll_place(MarginHostCore *core, uint32_t handle, uint8_t plac
 uint8_t margin_watch_stray(MarginHostCore *core, uint32_t handle, double now, uint8_t place, bool margin_here, bool margin_now, uint32_t *count);
 bool margin_watch_still_off(bool margin_on, bool host_on, int8_t own_on); // own_on -1: not read yet
 uint8_t margin_watch_off_screen(MarginHostCore *core, uint32_t handle, double now, bool margin_on, bool host_on, bool current_is_margin, uint8_t place, bool guarded, uint32_t *count, double *until);
+// A host's close (host/close.rs): one decision by point with the host's facts as bits (host/close.rs `Facts`, in
+// order), exit 0 waited 1 watched 2 at quit, quits, and the point's own flag (closed: 5, 6, 8; in Margin's Space: 7, 10).
+// Points: 0 quit at once, 1 freeze, 2 give back (0 nothing, 1 frame, 2 out of full screen), 3 quits, 4 close button
+// asked, 5 home after, 6 before the quit matters, 7 before the quit (0, 1 home, 2 out of sight), 8 a copy's window to
+// the Desktop, 9 left to the person, 10 the marker keeps it (0, 1, 2 as a member). The apps a row's close asked to
+// quit (host/exits.rs): their reads typed, their changes JSON.
+uint8_t margin_close_decide(uint8_t point, uint8_t exit, uint32_t facts, bool quits, bool flag);
+bool margin_exits_same_marked_launch(double then, double now); // NaN: unknown
+bool margin_exits_asked(MarginHostCore *core, int64_t pid, const uint8_t *bundle, size_t bundle_len, double launched_at, const uint8_t *id, size_t id_len, double at); // launched_at NaN: unknown
+bool margin_exits_exited(MarginHostCore *core, int64_t pid); // false: none asked
+uint8_t margin_exits_take_back(MarginHostCore *core, int64_t pid, bool running, const uint8_t *bundle, size_t len, double launched_at); // 0 none, 1 exited unheard, 2 back
+bool margin_exits_has(MarginHostCore *core, int64_t pid);
+size_t margin_exits_count(MarginHostCore *core);
+double margin_exits_asked_at(MarginHostCore *core, int64_t pid); // NaN: none
+double margin_exits_launched_at(MarginHostCore *core, int64_t pid); // NaN: none, or unknown
+size_t margin_exits_overdue(MarginHostCore *core, double now, double quit_wait, int64_t *out, size_t cap);
 bool margin_minimums_has(MarginHostCore *core, const uint8_t *app, size_t len);
 bool margin_minimums_known(MarginHostCore *core, const uint8_t *app, size_t app_len, const uint8_t *version, size_t version_len, MarginSize *out); // version NULL: not known
 

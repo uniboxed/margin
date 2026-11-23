@@ -7864,3 +7864,38 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   Space" taken for unread, Margin's window now ignored, make-current without Margin's window, move-in inverted).
   Nothing allocated per poll (no_alloc.rs). The app's 2038 checks pass unchanged.
 
+## Core refactor step 2, part 7 (second commit): the close's decisions, the exits and the recovery's launch rule in the core (2026-11-23)
+
+- `closeNow`'s tree is the core's (host/close.rs, pure), asked at each of its points between the same waits, with
+  the host's facts as they are then (a step before may change them: its frame given back, a close button pressed):
+  asked to quit at once while its app asks something; under the freeze; what's given back first (its frame, out of
+  full screen, nothing); whether its app quits; whether its close button may be pressed first (its app's "keeps its
+  windows" read only when the core says so, as before); home after; whether where its window is before the quit
+  matters (Margin's Space read only then) and where it goes (home, out of sight); a copy's window to the Desktop;
+  a Safari window left to the person; and what the marker keeps of an unfinished close (`unfinished`: done, kept,
+  kept as a member). The facts go as bits, one typed call per point, nothing allocated (`margin_close_decide`).
+- The apps a row's close asked to quit are the core's (host/exits.rs `Exits`, on the engine's core): asked, heard
+  gone, overdue (every poll, typed into a buffer: nothing made when there are none), taken back (still that launch,
+  its bundle and launch time the same: Margin's again; else its exit unheard), the ones of an app still finishing,
+  whether one is ending (the panes-active keeper's every step, typed). An ask, its exit and a take-back are typed too,
+  so the launch and ask times are kept exactly: a first try sent them as JSON and the harness caught Foundation's
+  JSON writing a launch time 1 ulp off (1000002.123456789 came back 1000002.1234567888), which the marker would have
+  written. The list with its ids and bundles (the marker's save, the quit's line, the tests' `exitingPids`) is one
+  JSON call only when there's any, its times read typed.
+- The crash recovery's own launch rule (marked with its launch time, the running one's unread: not the same) is the
+  core's (`same_marked_launch`) beside the shared one; part 9 had left that difference in its caller.
+- Left in Swift: the marker's format and `recoverNow`'s sequence (Mac Space and tile ids, as the design says); who's
+  whose in the recovery (`ours`, `safariMade`): each reads a running app lazily inside `&&` and `||` (the same
+  Safari read up to twice, or not at all), so moving them would change the reads; the facts' reads themselves
+  (`asking`, `viaCopy`, the window server's), every step and wait of the close.
+- Checked before the Swift went: the deleted Swift (copied verbatim, the host's fields and each read given as facts,
+  fresh at each point as a step between may change them, its target fixed as a `let` is) against the engine's new
+  order over 1,285,901 checks: 200,000 closes of every exit kind and host (each point's decisions and every lazy read
+  in order), 200,000 unfinished closes, the recovery's rule on launch times at and around its 2 s edge and unknown,
+  and 10,000 runs of 40 exits steps (asks, asks again, exits heard, take-backs by the same launch, another or none,
+  overdue at its edge, the dying, every entry with its exact times after every step): no difference. The harness
+  caught each deliberate break (the freeze without its copy rule, the person's not going home, out of sight from a
+  private Space, every Safari left to the person, a member kept through its copy, the rule's unread case, a
+  take-back without its launch time, overdue half a second late). Rust tests pin each predicate and the exits.
+  Nothing allocated on the reads asked often (no_alloc.rs). The app's 2038 checks pass unchanged.
+

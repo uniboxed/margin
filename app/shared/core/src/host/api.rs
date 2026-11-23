@@ -245,6 +245,17 @@ pub enum Request {
     /// Nothing hosted (`FrontReset`); Margin's Space not at rest (`FrontUnsteady`).
     FrontReset,
     FrontUnsteady,
+    /// The apps a row's close asked to quit (exits.rs; asked, heard and taken back by typed calls, their times exact):
+    /// the pids of `bundle`'s instances still finishing, in pid order.
+    ExitsDying {
+        bundle: String,
+    },
+    /// Every one asked, in pid order.
+    Exits,
+}
+
+fn exiting_json(e: &super::exits::Exiting) -> Value {
+    json!({ "pid": e.pid, "bundle": e.bundle, "launchedAt": e.launched_at, "id": e.id, "askedAt": e.asked_at })
 }
 
 /// One of a layout's hosts other than main, as the caller sends it: its id, its role ("pane", "card"), its rect,
@@ -285,6 +296,8 @@ pub struct HostCore {
     pub causes: Causes,
     pub others: Others,
     pub model: super::model::HostModel,
+    /// The apps a row's close asked to quit (exits.rs).
+    pub exits: super::exits::Exits,
 }
 
 impl HostCore {
@@ -469,6 +482,8 @@ impl HostCore {
                 self.others.unsteady();
                 json!({})
             }
+            Request::ExitsDying { bundle } => json!({ "pids": self.exits.dying(&bundle).collect::<Vec<_>>() }),
+            Request::Exits => json!({ "exits": self.exits.iter().map(exiting_json).collect::<Vec<_>>() }),
             Request::Constants => {
                 use reconciler::{Correction as C, Forward};
                 let budgets: BTreeMap<String, u32> = [

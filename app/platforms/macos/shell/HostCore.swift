@@ -886,4 +886,141 @@ nonisolated extension HostCore {
 nonisolated enum HostExits {
     // Whether a running app (launched `now`) is the launch known (`then`): within 2 s; either one unknown: the same.
     static func sameLaunch(_ then: Double?, _ now: Double?) -> Bool { margin_exits_same_launch(then ?? .nan, now ?? .nan) }
+    // The crash recovery's rule for an app the marker kept: also not the same when it was marked with its launch time
+    // and the running one's is unread.
+    static func sameMarkedLaunch(_ then: Double?, _ now: Double?) -> Bool { margin_exits_same_marked_launch(then ?? .nan, now ?? .nan) }
+}
+
+// ---- a host's close (host/close.rs: docs/CORE-REFACTOR.md step 2 part 7): its decisions by point, the host's facts as
+// they are at that point (a step before may have changed them), as bits. Pure: no core, nothing allocated. ----
+
+nonisolated enum HostClose {
+    // The facts (host/close.rs `Facts`, in its order).
+    struct Facts: OptionSet {
+        let rawValue: UInt32
+        static let launchedByMargin = Facts(rawValue: 1 << 0), copyWindow = Facts(rawValue: 1 << 1), asking = Facts(rawValue: 1 << 2)
+        static let sharesApp = Facts(rawValue: 1 << 3), anApp = Facts(rawValue: 1 << 4), shown = Facts(rawValue: 1 << 5)
+        static let windowMode = Facts(rawValue: 1 << 6), frameChanged = Facts(rawValue: 1 << 7), member = Facts(rawValue: 1 << 8)
+        static let viaCopy = Facts(rawValue: 1 << 9), ownSpace = Facts(rawValue: 1 << 10), person = Facts(rawValue: 1 << 11)
+        static let privateSpace = Facts(rawValue: 1 << 12), madeByMargin = Facts(rawValue: 1 << 13), safari = Facts(rawValue: 1 << 14)
+        static let axRefused = Facts(rawValue: 1 << 15), exitUnconfirmed = Facts(rawValue: 1 << 16)
+    }
+    // How the close waits: a failed open (waited), a row closed (watched), Margin's quit.
+    enum Exit: UInt8 { case waited = 0, watched, atQuit }
+    private static func ask(_ point: UInt8, _ exit: Exit = .waited, _ f: Facts, quits: Bool = false, flag: Bool = false) -> UInt8 {
+        margin_close_decide(point, exit.rawValue, f.rawValue, quits, flag)
+    }
+    // A row closed while its app is asking something: asked to quit at once, its window where it is.
+    static func quitAtOnce(_ exit: Exit, _ f: Facts) -> Bool { ask(0, exit, f) == 1 }
+    // Its giving back is seen: under the freeze.
+    static func freeze(_ f: Facts) -> Bool { ask(1, .waited, f) == 1 }
+    enum GiveBack { case nothing, frame, outOfFullScreen }
+    static func giveBack(_ f: Facts) -> GiveBack { switch ask(2, .waited, f) { case 1: return .frame; case 2: return .outOfFullScreen; default: return .nothing } }
+    // Its app quits: one Margin started that no other host shares.
+    static func quits(_ f: Facts) -> Bool { ask(3, .waited, f) == 1 }
+    // Its close button maybe pressed before the quit: asked of its app (does it keep its windows across a quit).
+    static func closeFirstAsks(quits: Bool, _ f: Facts) -> Bool { ask(4, .waited, f, quits: quits) == 1 }
+    static func homeAfter(closed: Bool, _ f: Facts) -> Bool { ask(5, .waited, f, flag: closed) == 1 }
+    // Where its window is before the quit matters (read whether it's in Margin's Space then).
+    static func beforeQuitAsks(quits: Bool, closed: Bool, _ f: Facts) -> Bool { ask(6, .waited, f, quits: quits, flag: closed) == 1 }
+    enum BeforeQuit { case nothing, home, outOfSight }
+    static func beforeQuit(_ exit: Exit, inMargin: Bool, _ f: Facts) -> BeforeQuit {
+        switch ask(7, exit, f, flag: inMargin) { case 1: return .home; case 2: return .outOfSight; default: return .nothing }
+    }
+    // A copy's window its copy didn't close: on the Desktop meanwhile.
+    static func copyWindowToDesktop(closed: Bool, quits: Bool, _ exit: Exit, _ f: Facts) -> Bool { ask(8, exit, f, quits: quits, flag: closed) == 1 }
+    // A Safari window not a copy's for Margin: left to the person on the Desktop.
+    static func leftToThePerson(_ f: Facts) -> Bool { ask(9, .waited, f) == 1 }
+    // What Margin's quit couldn't finish, for the marker: nil done; else kept (`asMember`: its exit not confirmed).
+    struct Kept { let asMember: Bool }
+    static func unfinished(inMargin: Bool, _ f: Facts) -> Kept? {
+        switch ask(10, .waited, f, flag: inMargin) { case 1: return Kept(asMember: false); case 2: return Kept(asMember: true); default: return nil }
+    }
+}
+
+// ---- the apps a row's close asked to quit (host/exits.rs), in the engine's core: read typed (the poll's overdue, the
+// panes-active keeper's), changed by JSON (rare: an ask, its exit heard, a take back). ----
+
+nonisolated extension HostCore {
+    struct Exiting: Equatable { let app: HostApp; let id: HostID; let askedAt: Double }
+    enum TakeBack: Equatable { case none, exited(Exiting), back(Exiting) }
+
+    private func exiting(_ e: Any?) -> Exiting? {
+        guard let e = e as? [String: Any], let pid = (e["pid"] as? NSNumber)?.int32Value, let bundle = e["bundle"] as? String,
+              let id = e["id"] as? String, let at = (e["askedAt"] as? NSNumber)?.doubleValue else { return nil }
+        return Exiting(app: HostApp(pid: pid, bundleId: bundle, launchedAt: (e["launchedAt"] as? NSNumber)?.doubleValue), id: HostID(raw: id), askedAt: at)
+    }
+    // Asked to quit (typed: its times kept exactly, as the Swift's were).
+    func exitsAsked(_ e: Exiting) {
+        var bundle = e.app.bundleId, id = e.id.raw
+        lock.lock()
+        defer { lock.unlock() }
+        _ = bundle.withUTF8 { b in id.withUTF8 { i in margin_exits_asked(core, Int64(e.app.pid), b.baseAddress, b.count, e.app.launchedAt ?? .nan, i.baseAddress, i.count, e.askedAt) } }
+    }
+    // The one asked as that pid (nil: none).
+    func exitsEntry(_ pid: pid_t) -> Exiting? {
+        guard exitsHas(pid) else { return nil }
+        return exitsAll().first { $0.app.pid == pid }
+    }
+    // Its exit heard: forgotten (nil: none asked as that pid).
+    func exitsExited(_ pid: pid_t) -> Exiting? {
+        guard let e = exitsEntry(pid) else { return nil }
+        lock.lock()
+        defer { lock.unlock() }
+        return margin_exits_exited(core, Int64(pid)) ? e : nil
+    }
+    // `quitWait` after its ask: the app running as that pid now (nil: none) still that launch (its bundle and launch
+    // time the same): Margin's again (`back`); else its exit unheard (`exited`). Forgotten either way.
+    func exitsTakeBack(_ pid: pid_t, now: HostApp?) -> TakeBack {
+        guard let e = exitsEntry(pid) else { return .none }
+        var bundle = now?.bundleId ?? ""
+        lock.lock()
+        defer { lock.unlock() }
+        let a = bundle.withUTF8 { margin_exits_take_back(core, Int64(pid), now != nil, $0.baseAddress, $0.count, now?.launchedAt ?? .nan) }
+        return a == 2 ? .back(e) : a == 1 ? .exited(e) : .none
+    }
+    // The pids of `bundle`'s instances still finishing, in pid order.
+    func exitsDying(_ bundle: String) -> [pid_t] {
+        guard exitsCount() > 0 else { return [] }
+        return (call(["type": "exitsDying", "bundle": bundle])["pids"] as? [NSNumber] ?? []).map { $0.int32Value }
+    }
+    // Every one asked, in pid order (their times read typed: exact).
+    func exitsAll() -> [Exiting] {
+        guard exitsCount() > 0 else { return [] }
+        return (call(["type": "exits"])["exits"] as? [Any] ?? []).compactMap(exiting).map { e in
+            Exiting(app: HostApp(pid: e.app.pid, bundleId: e.app.bundleId, launchedAt: exitsLaunchedAt(e.app.pid)), id: e.id, askedAt: exitsAskedAt(e.app.pid) ?? e.askedAt)
+        }
+    }
+    func exitsHas(_ pid: pid_t) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return margin_exits_has(core, Int64(pid))
+    }
+    func exitsCount() -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return margin_exits_count(core)
+    }
+    func exitsAskedAt(_ pid: pid_t) -> Double? {
+        lock.lock()
+        defer { lock.unlock() }
+        let t = margin_exits_asked_at(core, Int64(pid))
+        return t.isNaN ? nil : t
+    }
+    func exitsLaunchedAt(_ pid: pid_t) -> Double? {
+        lock.lock()
+        defer { lock.unlock() }
+        let t = margin_exits_launched_at(core, Int64(pid))
+        return t.isNaN ? nil : t
+    }
+    // The pids asked `quitWait` or longer ago, in pid order (every poll: nothing made when there are none).
+    func exitsOverdue(now: Double, quitWait: Double) -> [pid_t] {
+        lock.lock()
+        defer { lock.unlock() }
+        let n = margin_exits_overdue(core, now, quitWait, nil, 0)
+        guard n > 0 else { return [] }
+        var out = [Int64](repeating: 0, count: n)
+        let m = out.withUnsafeMutableBufferPointer { margin_exits_overdue(core, now, quitWait, $0.baseAddress, n) }
+        return out.prefix(min(n, m)).map { pid_t($0) }
+    }
 }

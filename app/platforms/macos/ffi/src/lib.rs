@@ -10,6 +10,7 @@
 //! caller (a panic aborts, as `panic = "abort"`), and keeps no global state: each core is its own.
 
 mod budget;
+mod close;
 mod data;
 mod keys;
 mod link;
@@ -21,6 +22,7 @@ mod themes;
 mod visible;
 mod watch;
 pub use budget::*;
+pub use close::*;
 pub use data::*;
 pub use keys::*;
 pub use link::*;
