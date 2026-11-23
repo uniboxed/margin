@@ -7515,3 +7515,8 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   (headless Chromium), margin-core's and margin-windows' Rust tests (the adapter against a simulated Windows), clippy
   clean for `x86_64-pc-windows-msvc` and `aarch64-pc-windows-msvc`. **Not run on Windows**, nor with real Chrome or Edge
   hosted on the Mac.
+- **One setWindowState builder** (the merge of feat/hosted-windows-chromium, 2026-11-22): step 1 had added `land` to
+  protocol.rs's `HandoffRequest::SetWindowState` for the Mac's hosted windows, while the Windows branch built the same
+  request in `hosted_browser::Ask::SetWindowState`. The Mac's FFI (`margin_link_protocol`'s `setWindowState`) now uses
+  the hosted one, and `HandoffRequest` is the old handoff's only again. Its times are whole milliseconds written as
+  integers (`protocol::number`), as every other request's are: it had sent `1800000002000.0`.

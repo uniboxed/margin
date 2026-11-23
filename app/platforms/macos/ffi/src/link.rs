@@ -20,13 +20,13 @@
 
 use std::ffi::c_void;
 
+use margin_core::hosted_browser::{Ask, State};
 use margin_core::json::{self, Object};
 use margin_core::link::{Level, LinkError, Timing};
 use margin_core::link_hub::{HubOut, LinkHub, StateApplied, Which};
 use margin_core::mirror::Outcome;
 use margin_core::protocol::{
-    AppMessage, HandoffRequest, LinkMessage, MAX_APP_MESSAGE, SpaceWindowAnswer, VERSION, WindowCallAnswer,
-    WindowState, number,
+    AppMessage, LinkMessage, MAX_APP_MESSAGE, SpaceWindowAnswer, VERSION, WindowCallAnswer, number,
 };
 use margin_core::socket::SocketLink;
 use serde_json::{Value, json};
@@ -420,21 +420,25 @@ pub extern "C" fn margin_link_protocol(request: *const u8, len: usize, out_len: 
     let out = match json::string(o.get("type")).unwrap_or("") {
         "setWindowState" => {
             let state = match json::string(o.get("state")) {
-                Some("fullscreen") => WindowState::Fullscreen,
-                Some("normal") => WindowState::Normal,
+                Some("fullscreen") => State::Fullscreen,
+                Some("normal") => State::Normal,
                 _ => return answer(&json!({ "error": "bad request: a state is fullscreen or normal" }), out_len),
             };
             let (Some(window_id), Some(not_after)) = (json::int(o.get("windowId")), f(o, "notAfter")) else {
                 return answer(&json!({ "error": "bad request: a window and a notAfter" }), out_len);
             };
-            let request = HandoffRequest::SetWindowState {
+            // (hosted_browser's: the same request the Windows shell sends, checked as the copy checks it.)
+            let request = Ask::SetWindowState {
                 window_id,
                 state,
                 focused: json::flag(o.get("focused")) == Some(true),
-                not_after,
+                not_after: Some(not_after),
                 land: json::flag(o.get("land")) != Some(false),
             };
-            json!({ "type": request.type_name(), "payload": request.payload() })
+            match request.payload() {
+                Ok(payload) => json!({ "type": request.kind(), "payload": payload }),
+                Err(why) => json!({ "error": format!("refused: {why:?}") }),
+            }
         }
         "windowCall" => {
             let a = WindowCallAnswer::from_result(result);

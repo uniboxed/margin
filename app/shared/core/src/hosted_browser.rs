@@ -229,7 +229,7 @@ impl Ask {
         let item = |id: &str| if valid_item(id) { Ok(Value::from(id)) } else { Err(Refused::Item) };
         let url = |u: &str| if valid_shown_url(u) { Ok(Value::from(u)) } else { Err(Refused::Url) };
         let window = |w: i64| if w >= 0 { Ok(Value::from(w)) } else { Err(Refused::Window) };
-        let time = |t: f64| if t.is_finite() { Ok(Value::from(t.round())) } else { Err(Refused::Time) };
+        let time = |t: f64| crate::protocol::number(t.round()).ok_or(Refused::Time); // (whole milliseconds: as every request's times)
         match self {
             Ask::NewWindow { fullscreen, hosted, mark, url: address, item: of } => {
                 p.insert("fullscreen".into(), (*fullscreen).into());
@@ -556,7 +556,7 @@ mod tests {
         };
         assert_eq!(
             Value::Object(state.payload().unwrap()),
-            json!({ "windowId": 4, "state": "fullscreen", "focused": true, "notAfter": 1000.0, "land": false })
+            json!({ "windowId": 4, "state": "fullscreen", "focused": true, "notAfter": 1000, "land": false })
         );
         let never = Ask::SetWindowState {
             window_id: 4,

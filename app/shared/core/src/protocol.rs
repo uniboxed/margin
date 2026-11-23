@@ -791,14 +791,12 @@ impl WindowState {
 #[derive(Clone, Debug, PartialEq)]
 pub enum HandoffRequest {
     /// B to full screen and focused, or A to normal without taking focus (not focusWindow, which always focuses).
-    /// `land` false (Margin.app, for a window it hosts): answered as soon as the browser took the ask
-    /// ([`WindowCallAnswer::Asked`]), with no wait for the state: what the window did is read from the window server.
+    /// (A window the app hosts: hosted_browser's `Ask::SetWindowState` with `land` false.)
     SetWindowState {
         window_id: i64,
         state: WindowState,
         focused: bool,
         not_after: f64,
-        land: bool,
     },
     /// Six frames of the window's tab in front at the full-screen size, after a short nudge (R3, gate G2).
     FrameProbe {
@@ -864,13 +862,10 @@ impl HandoffRequest {
     pub fn payload(&self) -> Option<Object> {
         let mut p = Object::new();
         match self {
-            Self::SetWindowState { window_id, state, focused, not_after, land } => {
+            Self::SetWindowState { window_id, state, focused, not_after } => {
                 p.insert("windowId".into(), (*window_id).into());
                 p.insert("state".into(), state.as_str().into());
                 p.insert("notAfter".into(), number(not_after.round())?);
-                if !*land {
-                    p.insert("land".into(), false.into());
-                }
                 if *focused {
                     p.insert("focused".into(), true.into());
                 }
@@ -1551,7 +1546,6 @@ mod tests {
             state: WindowState::Fullscreen,
             focused: true,
             not_after: 1_800_000_000_123.4,
-            land: true,
         };
         let req = AppMessage::Req {
             id: 1,
@@ -1567,37 +1561,34 @@ mod tests {
             r.get("payload"),
             Some(&json!({"windowId":4,"state":"fullscreen","notAfter":1_800_000_000_123_i64,"focused":true}))
         );
-        let normal = HandoffRequest::SetWindowState {
-            window_id: 4,
-            state: WindowState::Normal,
-            focused: false,
-            not_after: 1.0,
-            land: true,
-        };
+        let normal =
+            HandoffRequest::SetWindowState { window_id: 4, state: WindowState::Normal, focused: false, not_after: 1.0 };
         assert_eq!(normal.payload().map(Value::Object), Some(json!({"windowId":4,"state":"normal","notAfter":1})));
-        // (hosted-tests.swift's setWindowState: Margin.app's, for a window it hosts: `land: false`.)
-        let hosted = HandoffRequest::SetWindowState {
+        // (hosted-tests.swift's setWindowState: Margin.app's, for a window it hosts: `land: false`, hosted_browser's
+        // Ask, the whole milliseconds as here.)
+        use crate::hosted_browser::{Ask, State};
+        let hosted = Ask::SetWindowState {
             window_id: 90,
-            state: WindowState::Fullscreen,
+            state: State::Fullscreen,
             focused: true,
-            not_after: 1_800_000_002_000.6,
+            not_after: Some(1_800_000_002_000.6),
             land: false,
         };
         assert_eq!(
-            hosted.payload().map(Value::Object),
+            hosted.payload().ok().map(Value::Object),
             Some(
                 json!({"windowId":90,"state":"fullscreen","notAfter":1_800_000_002_001_i64,"land":false,"focused":true})
             )
         );
-        let out = HandoffRequest::SetWindowState {
+        let out = Ask::SetWindowState {
             window_id: 90,
-            state: WindowState::Normal,
+            state: State::Normal,
             focused: false,
-            not_after: 3.0,
+            not_after: Some(3.0),
             land: false,
         };
         assert_eq!(
-            out.payload().map(Value::Object),
+            out.payload().ok().map(Value::Object),
             Some(json!({"windowId":90,"state":"normal","notAfter":3,"land":false})),
             "normal: never focused"
         );
