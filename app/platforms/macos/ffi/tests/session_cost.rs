@@ -1,7 +1,8 @@
 //! What the session's calls cost (docs/CORE-REFACTOR.md step 3, commit 4): an input that does nothing but its JSON (a
 //! note), the facade's read of a field, a tick with nothing due, and a whole navigate (its input, its two requests
-//! handed out and answered, its window read through the port). None is per frame: the skeleton adds nothing to a
-//! drag. A measure, not a check: `cargo test --release -p margin-ffi --test session_cost -- --ignored --nocapture`.
+//! handed out and answered, its window read through the port); commit 5's: a whole switch to a web item of the
+//! profile shown (its library request, the show in the queue, the copy's hostShow answered: a tab switch, every port
+//! its JSON). None is per frame: the session adds nothing to a drag. A measure, not a check: `cargo test --release -p margin-ffi --test session_cost -- --ignored --nocapture`.
 
 use std::ffi::c_void;
 use std::time::Instant;
@@ -18,7 +19,9 @@ extern "C" fn now(_: *mut c_void) -> f64 {
 }
 
 extern "C" fn port(_: *mut c_void, _: *const u8, _: usize, out_len: *mut usize) -> *mut u8 {
-    let a = br#"{"id":1}"#;
+    // (One answer for every port: window 1, the profile linked, its window hosted and shown alone, the Swift flows'
+    // reads false.)
+    let a = br#"{"id":1,"profiles":["p"],"hosted":true,"host":"safari:p","alone":true,"value":false}"#;
     // SAFETY: malloc'd here, freed by the session with free.
     unsafe {
         let p = malloc(a.len()) as *mut u8;
@@ -53,7 +56,12 @@ fn the_sessions_calls_cost() {
     let root = dir.path().to_string_lossy().to_string();
     // SAFETY: the root's bytes; the library outlives the session below.
     let lib = unsafe { margin_library_new(root.as_ptr(), root.len(), false, std::ptr::null_mut(), None) };
-    let apply = json!({ "type": "apply", "at": 1, "entries": [{ "collection": "tabs", "id": "t1", "value": { "url": "https://a.example/" } }] }).to_string();
+    let web = json!({ "kind": "web", "browser": "safari", "profile": "p" });
+    let apply = json!({ "type": "apply", "at": 1, "entries": [
+        { "collection": "tabs", "id": "t1", "value": { "url": "https://a.example/", "target": web } },
+        { "collection": "tabs", "id": "t2", "value": { "url": "https://b.example/", "title": "B", "target": web } },
+    ] })
+    .to_string();
     let mut n = 0;
     // SAFETY: the library, the request's bytes.
     take(unsafe { margin_library_call(lib, apply.as_ptr(), apply.len(), &mut n) }, n);
@@ -100,6 +108,23 @@ fn the_sessions_calls_cost() {
     });
     // SAFETY: the live session.
     assert!(unsafe { margin_session_idle(s) });
+    input(r#"{"type":"state","set":{"hostingWindow":{"put":[[1]]}}}"#);
+    let shown = br#"{"result":{"tabId":502,"created":false},"error":null}"#;
+    let mut flip = false;
+    let switch = per_call(20_000, || {
+        flip = !flip;
+        let item = if flip { "t2" } else { "t1" };
+        input(&format!(r#"{{"type":"library","request":{{"type":"activateTab","item":"{item}","windowId":1}}}}"#));
+        let mut n = 0;
+        // SAFETY: the live session; the reply's bytes.
+        let out = take(unsafe { margin_session_tick(s, 0.0, &mut n) }, n);
+        let id = out["start"][0]["id"].as_u64().unwrap_or(0);
+        take(unsafe { margin_session_tick(s, 0.0, &mut n) }, n);
+        take(unsafe { margin_session_answer(s, id, shown.as_ptr(), shown.len(), &mut n) }, n);
+    });
+    // SAFETY: the live session.
+    assert!(unsafe { margin_session_idle(s) }, "each switch over");
+    println!("a web tab switch (a library request, the show, the copy's hostShow, every port its JSON) {switch:.0} ns");
     println!(
         "session calls (release): a note {note:.0} ns, a field read {read:.0} ns, a tick with nothing due {tick:.0} ns, \
          a revision {rev:.1} ns, a whole navigate (an input, four ticks, two answers, one port) {navigate:.0} ns"

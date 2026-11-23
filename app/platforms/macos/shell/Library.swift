@@ -27,15 +27,20 @@ enum ItemTarget: Hashable {
 
     static let marginPages: Set<String> = ["settings"]
 
+    // Read with the core's rules (session/target.rs: the default browser, an empty profile, the pages there are), from
+    // the shape it writes back.
     init?(json: Any?) {
-        guard let o = json as? JSONObject else { return nil }
-        switch o["kind"] as? String {
-        case "web": self = .web(browser: o["browser"] as? String ?? "safari", profile: (o["profile"] as? String).flatMap { $0.isEmpty ? nil : $0 })
+        guard let o = json as? JSONObject, JSONSerialization.isValidJSONObject(o),
+              let t = SessionRules.call(["rule": "target", "target": o])["target"] as? JSONObject else { return nil }
+        switch t["kind"] as? String {
+        case "web":
+            guard let browser = t["browser"] as? String else { return nil }
+            self = .web(browser: browser, profile: t["profile"] as? String)
         case "app":
-            guard let id = o["bundleId"] as? String, !id.isEmpty else { return nil }
-            self = .app(bundleId: id, name: o["name"] as? String ?? id)
+            guard let id = t["bundleId"] as? String, let name = t["name"] as? String else { return nil }
+            self = .app(bundleId: id, name: name)
         case "margin":
-            guard let page = o["page"] as? String, Self.marginPages.contains(page) else { return nil }
+            guard let page = t["page"] as? String else { return nil }
             self = .margin(page: page)
         default: return nil
         }

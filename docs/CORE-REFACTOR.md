@@ -900,6 +900,15 @@ impl Session {
 ```
 
 `Target` is L:23-51's `ItemTarget` (web/app/margin) with its JSON rules (`marginPages`, L:28).
+*As built (commit 5):* `Request` is a struct (its type and body, the Swift's `LibraryRequest`), matched by type in
+`handle`, not an enum read up front; `By` and `open_by(r, by, reset)` as above. `ItemTarget(json:)`'s rules are
+target.rs's (the Swift enum built from the core's answer). The design's sketch left out what the moved flows still
+ask of the Swift of later parts: one `swift` port by name (the card's leaving and returning, `pinnedOrFavorite`,
+`settleHosting`, `refreshLoading`, the layout's reads and clearing, the elsewhere card's) and a `Swift` command for
+the async ones (`prepare`, `showSplit`), each gone as its part moves; the engine's operations are an `Engine` command,
+a flow Swift calls a `call` input answered by a `Reply`. The notes go out through a `log` port as they're made (in
+the answer they came after what the flow did meanwhile), and the facade holds a window the core named until nothing
+is under way (the Swift flows held theirs).
 
 **FFI.** `{"type":"library","requests":[…]}`, one per `perform` that asked something (a click: rare). `show`'s copy
 requests are `Ask` commands (one or two a switch).
@@ -946,7 +955,7 @@ predicate at each look through a typed call.
 
 ```rust
 pub fn resolve(profile: Option<&str>, linked: &[&str]) -> String;                          // HS:2471
-pub fn default_browser(setting: Option<&str>) -> (&'static str, &'static str);              // HS:202
+pub fn default_browser(setting: Option<&str>) -> (&'static str, &'static str, bool);        // HS:202 (bool: supported)
 pub enum Linked { Yes, No, Unopenable }                                                     // the waker's answer
 impl Session {
     async fn profile_fallback(&self, p: &str, space: Option<&str>) -> String;              // HS:2031-2044
@@ -962,6 +971,11 @@ impl Session {
 (`{"type":"engineAsk","id","ask":"newWindow","profile","role"}` → `engineAnswer`): rare (a window made). The waker's
 `EnsureLinked { browser, profile, prepare }` is a command answered `Linked`; while it runs the waker calls the typed
 `margin_session_link_wanted(s, profile, len, bool) -> bool` every `every` (0.05 s): no allocation.
+*As built (commit 5):* `margin_session_link_wanted(s, profile, len)` (HS:1994's; the preparation's own `wanted`,
+HS:1793, stays Swift with `prepareBrowser` until part 6) and `margin_session_open_wanted(s, window, item, len)` (a new
+app's open, read by the engine while its window is awaited). The engine's asks are `call` inputs (`requestWindow`,
+`closeWindow`, `safariFullScreen`, `safariFocus`) answered by a `Reply` command; `cycle_held` is inline in `show`,
+`role_for` and `request_window` as the design says, `RoleUse` part 3's.
 
 **Must not change:** "evidence decides, time only paces" (HS:1904-1912), the at-most-two stale retries waited on the
 link's epoch (HS:2122-2138), a fourth pane refused (HS:852), the default profile's fallback note (HS:2036-2042), a
@@ -1369,7 +1383,7 @@ until step 4 (open question 6).
 | 2 | passthrough.rs with several holes; the pointer typed; PT's rules deleted. **Done 2026-11-23** (step3/passthrough: one commit; MWC's pointer decisions, the one-host rule and the tap's read are the core's; PointerWant's message reading, the hole lists' choice (part 11) and the mechanism stay Swift; `pane-clicks` not measured: no screen suite on that branch) | ~95 (+~220 of facade and the page object's wrapper) | ~1,000 (half tests) | `pane-clicks` |
 | 3 | The Page (part 11, and the page area's placement of part 7): MWC's decisions deleted, its mechanism over the Page | ~450 | ~1,100 | `page-frames`, `idle-cost` |
 | 4 | The session's skeleton: executor, ports, commands, the facade, the re-entrance test adapter; `navigate` (HS:2378-2385) the first flow moved, as the proof; `SafariWaker` split out in Swift (no behaviour moved). **Done 2026-11-23** (step3/skeleton, three commits: SafariWaker.swift, a move only; navigate's checks against the Swift; core/session/ with exec.rs, state.rs, host_id.rs, navigate.rs, ffi session.rs and the facade, `shown`, `open`, `safariWindows` and `done` the core's, Swift's `enqueue` in the core's queue. Inputs run nothing in their call, the one finding; nothing per frame) | ~10 | ~700 | |
-| 5 | Parts 1 and 2: the library's requests, `show`, `close`, `host`, the choices, the engine's window asks | ~350 | ~1,300 | a switch |
+| 5 | Parts 1 and 2: the library's requests, `show`, `close`, `host`, the choices, the engine's window asks. **Done 2026-11-23** (step3/requests, two commits: the move, then Tirth's change 3; session/requests.rs, hosting.rs, items.rs, `ItemTarget(json:)` into target.rs, `DefaultBrowser` into choice.rs; 14 more fields the core's; the Swift of later parts through one `swift` port and a `Swift` command, interim; the notes through a `log` port; the comparison on generated sequences with overtaking, failures and re-entrance; a switch measured) | ~455 (+~335 of facade) | ~2,300 (a third tests) | a switch |
 | 6 | Parts 3 and 7: layouts, splits, the page area moving, the drag's typed path | ~320 | ~1,000 | `live-resize` |
 | 7 | Part 4: the card and Quick Tab | ~330 | ~900 | |
 | 8 | Parts 5 and 6: elsewhere, the start, `resumeLast`, `settleHosting`, the launcher, the preparation | ~300 | ~900 | `idle-cost` |

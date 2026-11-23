@@ -618,3 +618,25 @@ fn a_web_address_and_the_card_rect_allocate_nothing() {
     });
     assert_eq!(n, 0, "a web address and the card rect allocated {n} times");
 }
+
+#[test]
+fn the_wakers_look_allocates_nothing() {
+    // (The session's `link_wanted`, step 3 commit 5: the Safari waker reads it every 0.05 s while a profile links.)
+    // SAFETY: a session over no library, with no ports; freed once.
+    let s = unsafe { margin_session_new(std::ptr::null_mut(), std::ptr::null(), 0, std::ptr::null_mut(), None, None) };
+    let set = br#"{"type":"state","set":{"showing":{"put":[["safari:s-default","t1"],["app:com.a","t2"]]},"requested":{"put":[[1,"t1"],[2,"t1"]]},"preparingProfile":{"put":[["s-prep"]]}}}"#;
+    let mut len = 0;
+    // SAFETY: the live session, the input's bytes; its answer freed.
+    unsafe { margin_buffer_free(margin_session_input(s, set.as_ptr(), set.len(), &mut len), len) };
+    let mut wanted = 0;
+    let n = allocations(|| {
+        for p in ["s-default", "s-prep", "s-other", "app:com.a"] {
+            // SAFETY: the live session, the profile's bytes.
+            wanted += usize::from(unsafe { margin_session_link_wanted(s, p.as_ptr(), p.len()) });
+        }
+    });
+    assert_eq!(n, 0, "the waker's look allocated {n} times");
+    assert_eq!(wanted, 3, "t1 the only one asked for; the preparation's: something is; none shown: wanted");
+    // SAFETY: from margin_session_new, freed once.
+    unsafe { margin_session_free(s) };
+}

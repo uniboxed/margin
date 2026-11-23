@@ -204,6 +204,27 @@ struct World {
     core: RefCell<Weak<Core>>,
     reentries: Cell<u32>,
     ports: RefCell<Vec<String>>,
+    // (The engine's, the links' and the waker's answers; what was done to Margin's windows and the Swift flows asked,
+    // in order: `acts`.)
+    shown: RefCell<Option<String>>,
+    hosted: RefCell<Vec<String>>,
+    runs: RefCell<BTreeMap<String, bool>>,
+    not_alone: RefCell<Vec<String>>,
+    profiles: RefCell<Vec<String>>,
+    epochs: RefCell<BTreeMap<String, String>>,
+    windows_of: RefCell<BTreeMap<String, Vec<i64>>>,
+    names: RefCell<BTreeMap<String, String>>,
+    woken: RefCell<Vec<String>>,
+    unopenable: RefCell<Vec<String>>,
+    swift: RefCell<BTreeMap<String, Value>>,
+    acts: RefCell<Vec<Value>>,
+    lines: RefCell<Vec<Line>>,
+}
+
+impl World {
+    fn act(&self, v: Value) {
+        self.acts.borrow_mut().push(v);
+    }
 }
 
 /// Ports that call back into the session on every call: a state read and edit, a log line's take, an answer no task
@@ -244,23 +265,77 @@ impl Ports for Reentrant {
     }
     fn engine_shown(&self) -> Option<String> {
         self.reenter("engineShown");
-        None
+        self.0.shown.borrow().clone()
     }
-    fn is_hosted(&self, _: &str) -> bool {
+    fn is_hosted(&self, host: &str) -> bool {
         self.reenter("isHosted");
-        false
+        self.0.hosted.borrow().iter().any(|h| h == host)
     }
     fn safari_profiles(&self) -> Vec<String> {
         self.reenter("safariProfiles");
-        vec![]
+        self.0.profiles.borrow().clone()
     }
-    fn link_epoch(&self, _: &str) -> Option<String> {
+    fn link_epoch(&self, p: &str) -> Option<String> {
         self.reenter("linkEpoch");
-        None
+        let linked = self.0.profiles.borrow().iter().any(|l| l == p);
+        linked.then(|| self.0.epochs.borrow().get(p).cloned().unwrap_or_else(|| "e1".into()))
     }
-    fn app_name(&self, _: &str) -> Option<String> {
+    fn app_name(&self, bundle: &str) -> Option<String> {
         self.reenter("appName");
-        None
+        self.0.names.borrow().get(bundle).cloned()
+    }
+    fn app_runs(&self, bundle: &str) -> Option<bool> {
+        self.reenter("appRuns");
+        self.0.runs.borrow().get(bundle).copied()
+    }
+    fn shows_alone(&self, host: &str) -> bool {
+        self.reenter("showsAlone");
+        !self.0.not_alone.borrow().iter().any(|h| h == host)
+    }
+    fn stop_hiding_woken(&self, bundle: &str) {
+        self.reenter("stopHidingWoken");
+        self.0.act(json!(["stopHidingWoken", bundle]));
+    }
+    fn window_ids_of(&self, p: &str) -> Vec<i64> {
+        self.reenter("windowIdsOf");
+        self.0.windows_of.borrow().get(p).cloned().unwrap_or_default()
+    }
+    fn wall(&self) -> f64 {
+        self.reenter("wall");
+        1_800_000_000.0
+    }
+    fn set_showing(&self, window: i64, label: Option<&str>, app: Option<&str>, slow: bool) {
+        self.reenter("setShowing");
+        self.0.act(json!(["setShowing", window, label, app, slow]));
+    }
+    fn set_margin_page(&self, window: i64, page: Option<&str>) {
+        self.reenter("setMarginPage");
+        self.0.act(json!(["setMarginPage", window, page]));
+    }
+    fn push(&self, window: i64, json: &str) {
+        self.reenter("push");
+        self.0.act(json!(["push", window, json]));
+    }
+    fn changed(&self) {
+        self.reenter("changed");
+        self.0.act(json!(["changed"]));
+    }
+    fn woken_by_menu(&self, p: &str) -> bool {
+        self.reenter("wokenByMenu");
+        self.0.woken.borrow().iter().any(|w| w == p)
+    }
+    fn unopenable(&self, p: &str) -> bool {
+        self.reenter("unopenable");
+        self.0.unopenable.borrow().iter().any(|w| w == p)
+    }
+    fn log(&self, warn: bool, text: &str) {
+        self.reenter("log");
+        self.0.lines.borrow_mut().push(Line { warn, text: text.to_string() });
+    }
+    fn swift(&self, call: &str, args: Value) -> Value {
+        self.reenter("swift");
+        self.0.act(json!(["swift", call, args]));
+        self.0.swift.borrow().get(call).cloned().unwrap_or(Value::Null)
     }
 }
 
@@ -270,6 +345,14 @@ struct Shelf(RefCell<BTreeMap<(String, String), Value>>);
 impl LibraryView for Rc<Shelf> {
     fn item(&self, collection: &str, id: &str) -> Option<Value> {
         self.0.borrow().get(&(collection.to_string(), id.to_string())).cloned()
+    }
+    fn collection(&self, collection: &str) -> serde_json::Map<String, Value> {
+        self.0
+            .borrow()
+            .iter()
+            .filter(|((c, _), _)| c == collection)
+            .map(|((_, id), v)| (id.clone(), v.clone()))
+            .collect()
     }
 }
 
@@ -325,7 +408,7 @@ fn navigate_its_tab_by_host_show_then_the_copys_own_request() {
     s.tick(0.0);
     s.answer(b[0].0, json!({ "result": {} }));
     assert!(s.idle(), "its turn over");
-    assert!(world.reentries.get() > 0 && world.ports.borrow().iter().all(|p| p == "window"));
+    assert!(world.reentries.get() > 0 && world.ports.borrow().iter().all(|p| p == "window" || p == "log"));
 
     // The front window's, with no window named; a pane's window by its role; no address: about:blank; no window of
     // that role: -1.
@@ -439,10 +522,11 @@ fn wait_looks_as_many_times_as_the_swift() {
 
 #[test]
 fn notes_kept_the_last_two_hundred_and_logged_bad_inputs_said_once() {
-    let (s, _, _) = session();
+    let (s, world, _) = session();
     for i in 0..205 {
         let out = s.input(&json!({ "type": "note", "line": format!("line {i}") }));
-        assert_eq!(out.log, [Line { warn: false, text: format!("hosted: line {i}") }]);
+        assert!(out.log.is_empty(), "logged at once, through the port");
+        assert_eq!(world.lines.borrow_mut().pop(), Some(Line { warn: false, text: format!("hosted: line {i}") }));
     }
     let done = s.done();
     assert_eq!((done.len(), done[0].as_str(), done[199].as_str()), (200, "line 5", "line 204"));
@@ -463,7 +547,9 @@ fn the_state_read_and_edited_by_revision() {
     set(&s, json!({ "shown": { "put": [[1, "a"]] } }));
     assert_eq!((s.rev(Field::Shown), s.rev(Field::Open)), (1, 0));
     let out = s.input(&json!({ "type": "state", "get": ["shown", "open", "safariWindows"] }));
-    assert_eq!(out.reply, Some(json!({ "shown": [[1, "a"]], "open": [], "safariWindows": [], "revs": [1, 0, 0, 0] })));
+    let mut revs = vec![0; Field::COUNT];
+    revs[0] = 1;
+    assert_eq!(out.reply, Some(json!({ "shown": [[1, "a"]], "open": [], "safariWindows": [], "revs": revs })));
 }
 
 #[test]
@@ -508,3 +594,6 @@ fn a_library_edit_answered_in_the_same_turn() {
     assert_eq!(*got.borrow(), Some(Performed { ok: true, result: json!({ "tabId": "t9" }), error: None }));
     assert_eq!(s.done(), ["the delegate", "after the edit"]);
 }
+
+#[path = "requests_tests.rs"]
+mod requests_tests;

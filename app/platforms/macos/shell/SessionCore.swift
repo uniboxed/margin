@@ -15,8 +15,12 @@ final class SessionCore {
         set { box.owner = newValue }
     }
 
-    // The fields with a revision (session/state.rs `Field`).
-    enum Field: UInt32 { case shown = 0, open, safariWindows, done }
+    // The fields with a revision (session/state.rs `Field`), by their names in a `state` input.
+    enum Field: UInt32 {
+        case shown = 0, open, safariWindows, done, requested, hostingWindow, labels, showing, marginPages, marginOpen, cycledAt
+        case safariTabs, safariMuted, safariAudio, preparingWindow, preparingProfile, requesting, made
+        var name: String { self == .done ? "done" : String(describing: self) }
+    }
 
     init(library: Library, options: JSONObject) {
         self.library = library
@@ -58,4 +62,8 @@ final class SessionCore {
     var done: [String] { KeysCore.answer { margin_session_done(core, $0) } as? [String] ?? [] }
     var idle: Bool { margin_session_idle(core) }
     func rev(_ field: Field) -> UInt64 { margin_session_rev(core, field.rawValue) }
+    // A show waiting on a profile's link still wanted (the Safari waker's look), a new app's open still wanted (the
+    // engine's): typed, nothing allocated.
+    func linkWanted(_ profile: String) -> Bool { KeysCore.bytes(profile) { margin_session_link_wanted(core, $0, $1) } }
+    func openWanted(window: Int, item: String) -> Bool { KeysCore.bytes(item) { margin_session_open_wanted(core, Int64(window), $0, $1) } }
 }

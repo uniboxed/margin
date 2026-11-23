@@ -451,7 +451,10 @@ uint8_t *margin_themes_protocol(const uint8_t *request, size_t len, size_t *out_
 // `port` (JSON in, JSON out allocated with malloc or NULL, freed by the session with free). `input`, `answer` (a
 // command's, by its id) and `tick` (the commands handed out are started, the deadlines up to `due` over) each answer
 // `{ start?, deadline, log?, reply?, error? }`: start each command at once, in order, then call `tick`. Answers freed
-// with margin_buffer_free. `rev`: a field's revision (0 shown, 1 open, 2 safariWindows, 3 done).
+// with margin_buffer_free. `rev`: a field's revision (session/state.rs `Field`: 0 shown, 1 open, 2 safariWindows,
+// 3 done, 4 requested ... 17 made). Typed, nothing allocated: `link_wanted` (a show waiting on a profile's link still
+// wanted: the Safari waker's look) and `open_wanted` (a new app's open for an item in a Margin window still wanted:
+// the engine's).
 typedef struct MarginSession MarginSession;
 typedef double (*MarginSessionNow)(void *ctx);
 typedef uint8_t *(*MarginSessionPort)(void *ctx, const uint8_t *ask, size_t len, size_t *out_len);
@@ -464,6 +467,8 @@ uint8_t *margin_session_tick(const MarginSession *session, double due, size_t *o
 uint8_t *margin_session_done(const MarginSession *session, size_t *out_len);
 bool margin_session_idle(const MarginSession *session);
 uint64_t margin_session_rev(const MarginSession *session, uint32_t field);
+bool margin_session_link_wanted(const MarginSession *session, const uint8_t *profile, size_t len);
+bool margin_session_open_wanted(const MarginSession *session, int64_t window, const uint8_t *item, size_t len);
 
 // The session's pure rules (margin-core's session: ffi session_rules.rs), no object: the rare ones by one JSON call
 // (`{ rule, … }`: constants, resolve, loaderApp, lastItem, searchUrl, dragLine, pushEmpty), a split's room, the card's

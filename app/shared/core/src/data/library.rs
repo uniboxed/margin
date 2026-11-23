@@ -95,6 +95,11 @@ impl LibraryStore {
         self.store.load(&key())?.set.item(collection, id)?.value.clone()
     }
 
+    /// A collection's live values (`{ id: value }`; none for a library never stored).
+    pub fn live(&mut self, collection: &str) -> Map<String, Value> {
+        self.store.load(&key()).map(|s| s.set.live_values(collection)).unwrap_or_default()
+    }
+
     /// The store's log since the last call.
     pub fn take_log(&mut self) -> Vec<Note> {
         self.store.take_log()
@@ -129,6 +134,8 @@ mod tests {
         assert_eq!(set.item("spaces", "s1").map(|i| i.updated_at), Some(51.0));
         assert_eq!(lib.item("spaces", "s1"), Some(json!({ "name": "Work" })), "one item read by its id");
         assert_eq!(lib.item("spaces", "none"), None);
+        assert_eq!(lib.live("spaces").get("s1"), Some(&json!({ "name": "Work" })), "a collection read");
+        assert!(lib.live("pins").is_empty());
         // A deletion, and entries that aren't one.
         let c = lib.apply(
             &[

@@ -8205,3 +8205,67 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   ASCII's letters and digits and `-_.!~*'()`, every other byte its `%XX`.
 - Pinned in both: the Swift's checks (T/session-rules-tests.swift: café, a combining mark, CJK, Arabic digits, ½ and
   Ⅻ, ß, all encoded) and the core's (ui.rs `a_search_address`). The design's question 8 and part 10's risk say so.
+
+
+## Core refactor step 3, commit 5: the library's requests, the show, the choice of host and the engine's window asks in the core (2026-11-23)
+
+- Moved (session/requests.rs, hosting.rs, items.rs, target.rs, choice.rs; their Swift deleted): the Library's delegate
+  (`library(_:wants:)`: a show request's item drawn in front at once, its preview card hidden, the request queued),
+  `overtaken`, `handle` (every request type), the four pin and favourite near-copies made one (`open_by`, the
+  differences as `reset`), `show` with its six after-steps in Swift's reverse order (each `defer` an inner flow whose
+  every return comes back through them), `cycled` and the cycle's hold, `host` (its five results), `close`, `openApp`,
+  `profileFallback`, `linkWanted`, `requestSafariWindow` with its stale-copy retries on the link's epoch, `askAgain`,
+  `closeSafariWindow`, `safariFullScreen` (hosted_browser's `SetWindowState`), `safariFocus`; `ItemTarget(json:)`'s
+  rules (target.rs, the Swift enum built from the core's answer) and `DefaultBrowser`'s table (choice.rs
+  `default_browser`, Foundation's `.whitespaces` to the scalar, U+200B among them). `resolve` is choice.rs's
+  (step3/pure's), the private copy gone.
+- State moved to the core as commit 4's three fields were (a revision each, the facade reading again only on a change,
+  writing the difference): `requested`, `hostingWindow`, `labels`, `showing`, `marginPages`, `marginOpen`, `cycledAt`,
+  `safariTabs`, `safariMuted`, `safariAudio`, `preparingWindow`/`preparingProfile` (written by the preparation, still
+  Swift), `requesting` and `made_` (read by the waker). The facade's fields keep their names and types, so T/ and
+  the Swift flows of later parts are unchanged; the generic cache (`field`, `setMap`, `setSet`) is ~40 lines.
+- The ports gained what the moved flows read and do: the engine's `appRuns`, `showsAlone`, `stopHidingWoken`; the
+  links' `windowIds`; the wall clock (`notAfter`); Margin's windows' `setShowing`, `setMarginPage`, `push`; `changed`
+  (onChange); the waker's `wokenByMenu`, `unopenable`; `log`; and one `swift` port for the Swift flows of parts not
+  moved yet, by name (`cardLeaving`, `cardReturning`, `pinnedOrFavorite`, `cardUrl`, `settleHosting`,
+  `refreshLoading`, `leaveMarginPage`, `hasLayout`, `clearLayout`, `layoutsWith`, `clearElsewhere`,
+  `forgetElsewhere`, `paneFor`): each goes as its part moves. Commands: `Engine` (open, parkShown, close), `Waker`
+  (ensureLinked, the design's `EnsureLinked`, read through the typed `margin_session_link_wanted`; closeWoken),
+  `Swift` (interim: `prepare`, `showSplit`, part 3's), `Reply`.
+- A flow Swift calls (the engine's asks, `show`/`close`/`profileFallback` from the Swift flows still there, the
+  palette's `openApp`) is a `call` input that runs at once (its task first: a Swift call ran its first part at once),
+  answered with a `Reply` command; the facade resumes the caller's continuation and lets the core's run go on in the
+  next turn, so the caller goes on first, as a Swift return did. A new app's open asks `margin_session_open_wanted`
+  (typed) while its window is awaited.
+- Two findings the design didn't have:
+  - The notes go out through a `log` port as they're made, not in the answer: in the answer, a flow's lines came
+    after what it did to Margin's windows meanwhile (the comparison's first difference), and a Swift line logged during
+    a port call came before them. The app's log is in the Swift's order again; `done` was always.
+  - A window the core named is held by the facade until nothing is under way (the queue idle and no call
+    outstanding): the Swift flows held the window they were for, so one closed mid-show was still told
+    (`setShowing(nil)`); held weakly, its calls were dropped (the comparison's second).
+- Tirth's change 3 is its own commit (next entry); nothing else changes behaviour.
+- Checked before the Swift went: the old Swift (refactor/core-session at 53ffc75f) and the new over the core, both
+  built whole with the unit tests' stand-ins and one scratch driver, on generated sequences in a deterministic world:
+  a real library, an engine, copies and two Margin windows whose every async operation waits at a gate the driver
+  opens in a generated order with generated answers (refusals, stale copies, links down, busy and late window calls,
+  tab ids that aren't whole, superseded opens, an engine open that asks for its window first: re-entrance), virtual
+  sleeps, requests through the library and straight to the delegate with every field missing or wrong, palette
+  picks of every kind, cycles, engine asks of every role, links and windows coming and going: 450 vectors over nine
+  seeds, 26,469 steps, 19,034 requests and asks, 11,311 engine opens and copy requests. 446 the same to the line; the
+  4 others differ only where the driver makes no order: two sleepers due at the same virtual instant, one the core's,
+  one the Swift's (the waker's presses against `requestSafariWindow`'s wait on the link, 3: the core's one timer is
+  armed after the Swift's sleep, so at an exact tie the Swift's resumes first; real deadlines never tie, and the
+  driver's answers take a random moment so its timers rarely do), and the order two Margin windows are told of a
+  closed Margin page (Swift's dictionary order against the core's window order, 1; each window's calls the same).
+  The driver caught 17 of 21 deliberate breaks of the core; of the 4 it missed, three can't happen in its world (a
+  third stale retry, the launch's preparation's window, a pane's address: part 3's Swift never asked) and are caught
+  by the core's tests (requests_tests.rs), and one isn't a break (the next item of a closed one shown in the last of
+  the windows showing it rather than the first: one window shows an item at a time, the design's risk).
+- Cost: a web tab switch (a library request, the show, the copy's hostShow) 35 µs in the core (release, ffi
+  tests/session_cost.rs, every port its JSON); a note 2.1 µs (1.7: its line now through the `log` port). Through the
+  facade with the stand-ins (a scratch bench of 2,000 switches through the deterministic world's answers given at
+  once, -O): a web tab switch 244 µs against the Swift's 124 (best 163 against 91), an app switch 236 against 100:
+  +120 to +135 µs a switch, the ports' and fields' JSON on the Swift side (a dozen ports a show); well inside the
+  16 ms budget, and nothing per frame. The waker's look (`link_wanted`) allocates nothing (no_alloc.rs). The app's
+  checks: 2150 pass.

@@ -122,10 +122,17 @@ impl Exec {
     }
 
     /// A detached task (Swift's `Task {}`): polled after what's ready now, the task that spawned it first.
-    #[allow(dead_code)] // (the first flows with detached tasks come with parts 1, 4 and 6)
+    #[allow(dead_code)] // (the first flows with detached tasks come with parts 4 and 6)
     pub(crate) fn spawn(&self, fut: impl Future<Output = ()> + 'static) {
         let id = self.add(Box::pin(fut));
         self.wake(id, false);
+    }
+
+    /// A flow Swift called and awaits (an engine's ask, a Swift flow's call): polled before what's ready, as the
+    /// Swift call ran its first part at once.
+    pub(crate) fn spawn_now(&self, fut: impl Future<Output = ()> + 'static) {
+        let id = self.add(Box::pin(fut));
+        self.wake(id, true);
     }
 
     /// A task of the serial queue (HostedSession's `enqueue`): its turn after every one enqueued before it.

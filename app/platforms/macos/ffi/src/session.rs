@@ -8,7 +8,9 @@
 //!   `{ start?, deadline, log?, reply?, error? }`: the commands to start at once, in order, before calling `tick`; the
 //!   earliest deadline (null: none); the log lines since; a read's reply; a bad input's error, logged once a kind.
 //! - Typed reads: `margin_session_done` (the last 200 lines, JSON), `margin_session_idle`,
-//!   `margin_session_rev` (a field's revision: the facade reads it again only when it changed).
+//!   `margin_session_rev` (a field's revision: the facade reads it again only when it changed),
+//!   `margin_session_link_wanted` (the Safari waker's look, every 0.05 s while it waits: nothing allocated),
+//!   `margin_session_open_wanted` (the engine's, while a new app's window is awaited).
 //!
 //! Every function takes the object as a shared pointer: a call made inside another (a port's callback calling back
 //! in) only changes state and queues tasks. Nothing here panics on what it's given.
@@ -18,7 +20,7 @@ use std::ffi::c_void;
 use margin_core::data::library::LibraryStore;
 use margin_core::json;
 use margin_core::session::{Field, LibraryView, Ports, Session};
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
 use crate::data::{MarginLibrary, answer, text};
 
@@ -95,6 +97,48 @@ impl Ports for SwiftPorts {
     fn app_name(&self, bundle: &str) -> Option<String> {
         Self::string(&self.ask(json!({ "port": "appName", "bundle": bundle })), "name")
     }
+    fn app_runs(&self, bundle: &str) -> Option<bool> {
+        self.ask(json!({ "port": "appRuns", "bundle": bundle })).get("runs").and_then(Value::as_bool)
+    }
+    fn shows_alone(&self, host: &str) -> bool {
+        self.ask(json!({ "port": "showsAlone", "host": host })).get("alone").and_then(Value::as_bool) != Some(false)
+    }
+    fn stop_hiding_woken(&self, bundle: &str) {
+        self.ask(json!({ "port": "stopHidingWoken", "bundle": bundle }));
+    }
+    fn window_ids_of(&self, profile: &str) -> Vec<i64> {
+        let v = self.ask(json!({ "port": "windowIdsOf", "profile": profile }));
+        json::array(v.get("ids")).map(|l| l.iter().filter_map(|i| json::int(Some(i))).collect()).unwrap_or_default()
+    }
+    fn wall(&self) -> f64 {
+        json::num(self.ask(json!({ "port": "wall" })).get("now")).unwrap_or(0.0)
+    }
+    fn set_showing(&self, window: i64, label: Option<&str>, app: Option<&str>, slow: bool) {
+        self.ask(json!({ "port": "setShowing", "window": window, "label": label, "app": app, "slow": slow }));
+    }
+    fn set_margin_page(&self, window: i64, page: Option<&str>) {
+        self.ask(json!({ "port": "setMarginPage", "window": window, "page": page }));
+    }
+    fn push(&self, window: i64, json: &str) {
+        self.ask(json!({ "port": "push", "window": window, "json": json }));
+    }
+    fn changed(&self) {
+        self.ask(json!({ "port": "changed" }));
+    }
+    fn woken_by_menu(&self, profile: &str) -> bool {
+        self.ask(json!({ "port": "wokenByMenu", "profile": profile })).get("woken").and_then(Value::as_bool)
+            == Some(true)
+    }
+    fn unopenable(&self, profile: &str) -> bool {
+        self.ask(json!({ "port": "unopenable", "profile": profile })).get("unopenable").and_then(Value::as_bool)
+            == Some(true)
+    }
+    fn log(&self, warn: bool, text: &str) {
+        self.ask(json!({ "port": "log", "warn": warn, "text": text }));
+    }
+    fn swift(&self, call: &str, args: Value) -> Value {
+        self.ask(json!({ "port": "swift", "call": call, "args": args })).get("value").cloned().unwrap_or(Value::Null)
+    }
 }
 
 /// The library object's set, read in place (the Swift side's `Library` outlives the session: its contract).
@@ -109,6 +153,14 @@ impl LibraryView for LibraryRef {
         // never while a library call is under way (the library calls nothing back), and only for this read.
         let store: &mut LibraryStore = unsafe { &mut (*self.0).library };
         store.item(collection, id)
+    }
+    fn collection(&self, collection: &str) -> Map<String, Value> {
+        if self.0.is_null() {
+            return Map::new();
+        }
+        // SAFETY: as `item`.
+        let store: &mut LibraryStore = unsafe { &mut (*self.0).library };
+        store.live(collection)
     }
 }
 
@@ -219,6 +271,36 @@ pub unsafe extern "C" fn margin_session_rev(s: *const MarginSession, field: u32)
     match (session(s), Field::from_index(field)) {
         (Some(s), Some(f)) => s.rev(f),
         _ => 0,
+    }
+}
+
+/// Whether a show waiting on `profile`'s link (`len` bytes of UTF-8) is still wanted (false for a null session or a
+/// profile that isn't text). Nothing allocated.
+///
+/// # Safety
+/// `s` from [`margin_session_new`] (or null), not freed; `profile` points at `len` readable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_session_link_wanted(s: *const MarginSession, profile: *const u8, len: usize) -> bool {
+    match (session(s), text(profile, len)) {
+        (Some(s), Some(p)) => s.link_wanted(p),
+        _ => false,
+    }
+}
+
+/// Whether a new app's open for `item` in Margin window `window` is still wanted (false for a null session).
+///
+/// # Safety
+/// As [`margin_session_link_wanted`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_session_open_wanted(
+    s: *const MarginSession,
+    window: i64,
+    item: *const u8,
+    len: usize,
+) -> bool {
+    match (session(s), text(item, len)) {
+        (Some(s), Some(i)) => s.open_wanted(window, i),
+        _ => false,
     }
 }
 
@@ -334,8 +416,11 @@ mod tests {
         assert_eq!(out["start"][0]["payload"], json!({ "tabId": 7 }));
         let bad = call(s, json!({ "type": "nonsense" }));
         assert!(bad["error"].is_string() && bad["log"][0]["warn"] == json!(true));
-        let note = call(s, json!({ "type": "note", "line": "hello" }));
-        assert_eq!(note["log"], json!([{ "warn": false, "text": "hosted: hello" }]));
+        call(s, json!({ "type": "note", "line": "hello" }));
+        assert_eq!(
+            swift.asked.borrow().last(),
+            Some(&json!({ "port": "log", "warn": false, "text": "hosted: hello" }))
+        );
         // SAFETY: the live session.
         assert_eq!(read(unsafe { margin_session_done(s, &mut n) }, n), json!(["hello"]));
         // SAFETY: from margin_session_new / margin_library_new, freed once, the session first.

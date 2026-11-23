@@ -65,13 +65,20 @@ fn rule(req: &Object) -> Value {
             json!({ "line": layout::drag_line(b("divider"), n("window"), b("following"), n("follow"), n("visible")) })
         }
         "pushEmpty" => json!({ "push": json::string(req.get("type")).and_then(push::empty) }),
+        "target" => json!({ "target": req.get("target").and_then(Target::read).map(|t| t.json()) }),
+        "defaultBrowser" => {
+            let (name, bundle, supported) = choice::default_browser(json::string(req.get("setting")));
+            json!({ "name": name, "bundleId": bundle, "supported": supported })
+        }
         other => json!({ "error": format!("no such rule: {other}") }),
     }
 }
 
 /// One of the session's rare rules: `{ rule, … }` → its answer (JSON, freed with `margin_buffer_free`): `constants`,
 /// `resolve { profile, linked }`, `loaderApp { target }`, `lastItem { items: [{ id, value, target }] }`, `searchUrl
-/// { query, template }`, `dragLine { divider, window, following, follow, visible }`, `pushEmpty { type }`.
+/// { query, template }`, `dragLine { divider, window, following, follow, visible }`, `pushEmpty { type }`, `target
+/// { target }` (ItemTarget's JSON read with its rules, written back as it writes it, or null), `defaultBrowser
+/// { setting }`.
 ///
 /// # Safety
 /// `request` points to `len` readable bytes; `out_len` is writable.

@@ -28,9 +28,12 @@ pub mod card;
 pub mod choice;
 mod exec;
 pub mod host_id;
+mod hosting;
+mod items;
 pub mod layout;
 mod navigate;
 pub mod push;
+mod requests;
 pub mod start;
 pub mod state;
 pub mod target;
@@ -48,7 +51,11 @@ use serde_json::{Map, Value, json};
 use crate::hosted_browser::Role;
 use crate::json::{self, Object};
 use exec::Exec;
+pub use hosting::HostTarget;
+pub use items::Split;
+pub use requests::{By, Request};
 pub use state::{Field, OpenItem, State};
+pub use target::Target;
 
 /// The log lines kept (HostedSession `done`).
 pub const DONE_KEPT: usize = 200;
@@ -73,12 +80,46 @@ pub trait Ports {
     fn link_epoch(&self, profile: &str) -> Option<String>;
     /// An installed app's name, the catalog's (`HostedSession.appName`).
     fn app_name(&self, bundle: &str) -> Option<String>;
+    /// Whether an app runs at all (`HostedEngine.appRuns`), None: not known.
+    fn app_runs(&self, bundle: &str) -> Option<bool>;
+    /// The host would be shown today's one-host way (`HostedEngine.showsAlone`).
+    fn shows_alone(&self, host: &str) -> bool;
+    /// The windows an app opens to wake a profile no longer parked (`HostedEngine.stopHidingWoken`).
+    fn stop_hiding_woken(&self, bundle: &str);
+    /// A profile's windows as its copy lists them (`HostedLinks.windowIds`).
+    fn window_ids_of(&self, profile: &str) -> Vec<i64>;
+    /// The wall clock, seconds since 1970 (a request's `notAfter`).
+    fn wall(&self) -> f64;
+    /// A Margin window told an item is being shown and not ready yet (`HostedWindow.setShowing`; None: it is).
+    /// The window as the flow had it: one closed since is still told (Swift's flows held the window).
+    fn set_showing(&self, window: i64, label: Option<&str>, app: Option<&str>, slow: bool);
+    /// One of Margin's own pages in a Margin window's page area, None: the launcher (`HostedWindow.setMarginPage`).
+    fn set_margin_page(&self, window: i64, page: Option<&str>);
+    /// A message for a Margin window's page (`HostedWindow.push`).
+    fn push(&self, window: i64, json: &str);
+    /// What the windows draw changed (HostedSession `onChange`).
+    fn changed(&self);
+    /// The Safari waker's: a profile woken through Safari's menu (`wokenByMenu[p] != nil`), and one its menu has no
+    /// item for (`unopenable`).
+    fn woken_by_menu(&self, profile: &str) -> bool;
+    fn unopenable(&self, profile: &str) -> bool;
+    /// A line for the app's log (Diagnostics), said at once.
+    fn log(&self, warn: bool, text: &str);
+    /// The Swift flows of the parts not moved yet (step 3's later commits), called synchronously by name, gone as each
+    /// part moves: `cardLeaving`/`cardReturning` `{ window, item }`, `pinnedOrFavorite` `{ item }` → bool,
+    /// `cardUrl` `{ profile }` → its card's address if it's a web one, `settleHosting`, `refreshLoading`,
+    /// `leaveMarginPage` `{ window }`, `hasLayout`/`clearLayout` `{ window }`, `layoutsWith` `{ item }` → windows,
+    /// `clearElsewhere` `{ window }`, `forgetElsewhere` `{ item }`, `paneFor` `{ profile, role }` → `{ address, item }`.
+    fn swift(&self, call: &str, args: Value) -> Value;
 }
 
 /// The library's values as its set has them now (Library.swift's reads over margin-core's `LibraryStore`).
 pub trait LibraryView {
     /// A live item of a collection by its id (`liveValues(collection)[id]`); None: none, or deleted.
     fn item(&self, collection: &str, id: &str) -> Option<Value>;
+    /// A collection's live values (`liveValues(collection)`): for the reads that look through one (the splits, the
+    /// spaces, a space's items), never per frame.
+    fn collection(&self, collection: &str) -> Map<String, Value>;
 }
 
 /// What a flow awaits, handed out by id.
@@ -92,6 +133,19 @@ pub enum Command {
     Perform { action: String, payload: Object },
     /// A Swift job of the session's queue (HostedSession `enqueue`'s body), its turn come: answered when it's over.
     Run { job: u64 },
+    /// An engine operation (`open` `{ target, placement, space, window, item }` → `{ shown, placed }` or
+    /// `{ failed, why }`, `parkShown` `{ why }`, `close` `{ host }`): answered when it's over.
+    Engine { op: String, args: Object },
+    /// The Safari waker's (Safari's own window mechanics, the Mac's): `ensureLinked` `{ profile }` → `{ linked }`
+    /// (woken through Safari's menu if it has no window, `margin_session_link_wanted` read at each look),
+    /// `closeWoken` `{ profile, except, why }`.
+    Waker { op: String, args: Object },
+    /// A Swift flow of a part not moved yet (interim): `prepare` `{ window, target }` → `{ placement, space }` or
+    /// `{}`, `showSplit` `{ split, focus, window }` → `{ shown }`.
+    Swift { call: String, args: Object },
+    /// The answer to a Swift caller (an engine's ask, a Swift flow's call of one of these): its continuation resumed,
+    /// and the run goes on once that caller had its turn (the next main-actor turn).
+    Reply { to: u64, value: Value },
 }
 
 impl Command {
@@ -104,6 +158,10 @@ impl Command {
                 json!({ "op": "perform", "id": id, "action": action, "payload": payload })
             }
             Command::Run { job } => json!({ "op": "run", "id": id, "job": job }),
+            Command::Engine { op, args } => json!({ "op": "engine", "id": id, "name": op, "args": args }),
+            Command::Waker { op, args } => json!({ "op": "waker", "id": id, "name": op, "args": args }),
+            Command::Swift { call, args } => json!({ "op": "swift", "id": id, "name": call, "args": args }),
+            Command::Reply { to, value } => json!({ "op": "reply", "id": id, "to": to, "value": value }),
         }
     }
 }
@@ -151,8 +209,8 @@ pub struct Line {
 
 /// A call's answer: the commands its run handed out (start each at once, in order, then `tick`), whether tasks are
 /// ready to run (an input's: `tick` once the caller's code that made them is over, as a main-actor `Task` starts after
-/// the code that made it), the earliest deadline, the log lines since the last answer, and a read's reply or a bad
-/// input's error.
+/// the code that made it), the earliest deadline, the warnings since the last answer (a bad input's: the notes go out
+/// through the `log` port as they're made), and a read's reply or a bad input's error.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Out {
     pub start: Vec<(u64, Command)>,
@@ -192,19 +250,45 @@ impl Out {
 pub struct Options {
     /// A wait's step (`every`).
     pub every: f64,
+    /// A profile's copy still not linked: said this often.
+    pub link_say_every: f64,
+    /// A pick this soon after the next/previous-tab key in its window is a cycle's; an app not running yet is held
+    /// this long before it's started.
+    pub cycle_window: f64,
+    pub cycle_hold: f64,
+    /// Safari's bundle ids (an app picked that is one: a new web item).
+    pub safari_bundles: Vec<String>,
 }
 
 impl Default for Options {
     fn default() -> Self {
-        Options { every: 0.05 }
+        Options {
+            every: 0.05,
+            link_say_every: 5.0,
+            cycle_window: 1.0,
+            cycle_hold: 0.35,
+            safari_bundles: vec![SAFARI_BUNDLE.into(), "com.apple.SafariTechnologyPreview".into()],
+        }
     }
 }
 
 impl Options {
     fn read(v: &Value, was: &Options) -> Options {
-        Options { every: json::num(v.get("every")).unwrap_or(was.every) }
+        let n = |k: &str, was: f64| json::num(v.get(k)).unwrap_or(was);
+        Options {
+            every: n("every", was.every),
+            link_say_every: n("linkSayEvery", was.link_say_every),
+            cycle_window: n("cycleWindow", was.cycle_window),
+            cycle_hold: n("cycleHold", was.cycle_hold),
+            safari_bundles: json::array(v.get("safariBundles"))
+                .map(|l| l.iter().filter_map(Value::as_str).map(str::to_string).collect())
+                .unwrap_or_else(|| was.safari_bundles.clone()),
+        }
     }
 }
+
+/// Safari's bundle id (`safariIdentifier`).
+pub const SAFARI_BUNDLE: &str = "com.apple.Safari";
 
 /// What happens outside, and the facade's reads and writes.
 #[derive(Clone, Debug, PartialEq)]
@@ -219,6 +303,16 @@ pub enum Input {
     Enqueue { job: u64 },
     /// The page's history for the item shown in a Margin window (`goBack`, `goForward`, `reload`).
     Navigate { kind: String, window: Option<i64> },
+    /// A library request (the Library's delegate, inside its `perform`): its item drawn in front at once, then handled
+    /// in the session's queue.
+    Library(Object),
+    /// A flow called by Swift (an engine's ask, a Swift flow's call; `openApp` from the palette): run now, as Swift's
+    /// call ran its first part at once, its answer (`id`: a caller that awaits it) a `Reply`.
+    Call { id: Option<u64>, flow: String, args: Object },
+    /// A show overtaken before it started (a Swift flow's check), answered in `reply`.
+    Overtaken { item: String, window: Option<i64> },
+    /// The next/previous-tab key pressed in a Margin window (each press and repeat).
+    Cycled { window: i64 },
 }
 
 impl Input {
@@ -239,12 +333,36 @@ impl Input {
                 kind: s("kind").ok_or("no kind")?.to_string(),
                 window: json::int(o.get("window")),
             }),
+            "library" => Ok(Input::Library(json::object(o.get("request")).ok_or("no request")?.clone())),
+            "call" => Ok(Input::Call {
+                id: o.get("id").and_then(Value::as_u64),
+                flow: s("flow").ok_or("no flow")?.to_string(),
+                args: json::object(o.get("args")).cloned().unwrap_or_default(),
+            }),
+            "overtaken" => Ok(Input::Overtaken {
+                item: s("item").ok_or("no item")?.to_string(),
+                window: swift_int(o.get("window")),
+            }),
+            "cycled" => Ok(Input::Cycled { window: swift_int(o.get("window")).ok_or("no window")? }),
             other => Err(format!("{other:?} isn't an input")),
         }
     }
 
     fn kind(v: &Value) -> String {
         v.get("type").and_then(Value::as_str).unwrap_or("?").to_string()
+    }
+
+    /// What it makes ready runs in the call: a flow Swift called (its first part ran at once, as a Swift call).
+    fn runs_now(&self) -> bool {
+        matches!(self, Input::Call { .. })
+    }
+}
+
+/// A JSON object's fields (none for another value).
+pub(crate) fn object(v: Value) -> Object {
+    match v {
+        Value::Object(o) => o,
+        _ => Object::new(),
     }
 }
 
@@ -300,13 +418,25 @@ impl Session {
     /// An input (`{ type, … }`); a bad one is an `error`, logged once a kind. What it makes ready doesn't run in
     /// the call (`ready`: the caller ticks once its own code is over).
     pub fn input(&self, input: &Value) -> Out {
-        self.0.call(false, |c| match Input::read(input) {
-            Ok(i) => c.input(i),
-            Err(why) => {
+        match Input::read(input) {
+            Ok(i) => self.0.call(i.runs_now(), |c| c.input(i)),
+            Err(why) => self.0.call(false, |c| {
                 c.refused(&Input::kind(input), &why);
                 (None, Some(format!("bad input: {why}")))
-            }
-        })
+            }),
+        }
+    }
+
+    /// Whether a show waiting on profile `p`'s link is still wanted (HostedSession `linkWanted`; the Safari waker
+    /// reads it at each look: typed, nothing allocated).
+    pub fn link_wanted(&self, profile: &str) -> bool {
+        self.0.link_wanted(profile)
+    }
+
+    /// A new app's open, awaiting its window, still wanted for `item` in Margin window `window` (the engine's
+    /// `wanted`): no other item asked for there since, and the window still there.
+    pub fn open_wanted(&self, window: i64, item: &str) -> bool {
+        !self.0.superseded(window, item) && self.0.ports.window(Some(window)).is_some()
     }
 
     /// A command's answer (its id from `start`): its task goes on. One no task waits for is let go.
@@ -396,12 +526,7 @@ impl Core {
                 let mut reply = Map::new();
                 let state = self.state.borrow();
                 for name in &get {
-                    let f = match name.as_str() {
-                        "shown" => Field::Shown,
-                        "open" => Field::Open,
-                        "safariWindows" => Field::SafariWindows,
-                        _ => continue,
-                    };
+                    let Some(f) = Field::of(name) else { continue };
                     reply.insert(name.clone(), state.field_json(f));
                 }
                 drop(state);
@@ -417,8 +542,27 @@ impl Core {
                 }
             }
             Input::Navigate { kind, window } => self.navigate(&kind, window),
+            Input::Library(request) => self.library_request(&request),
+            Input::Call { id, flow, args } => self.call_flow(id, &flow, args),
+            Input::Overtaken { item, window } => return (Some(json!(self.overtaken(&item, window))), None),
+            Input::Cycled { window } => {
+                let now = self.ports.now();
+                self.edit(Field::CycledAt, |s| s.cycled_at.insert(window, now));
+            }
         }
         (None, None)
+    }
+
+    /// A field changed by a flow: its revision bumped (the facade reads it again).
+    pub(crate) fn edit<R>(&self, f: Field, change: impl FnOnce(&mut State) -> R) -> R {
+        let r = change(&mut self.state.borrow_mut());
+        self.bump(f);
+        r
+    }
+
+    /// A read of the state (the borrow dropped before it returns).
+    pub(crate) fn read<R>(&self, f: impl FnOnce(&State) -> R) -> R {
+        f(&self.state.borrow())
     }
 
     fn bump(&self, f: Field) {
@@ -434,9 +578,10 @@ impl Core {
         }
     }
 
-    /// A line of what was done (HostedSession `note`): kept (the last 200) and logged.
+    /// A line of what was done (HostedSession `note`): kept (the last 200) and logged at once, so it's in the app's
+    /// log among the lines of what the flow called meanwhile, in the Swift's order.
     pub(crate) fn note(&self, line: String) {
-        self.log.borrow_mut().push(Line { warn: false, text: format!("hosted: {line}") });
+        let text = format!("hosted: {line}");
         let mut done = self.done.borrow_mut();
         done.push_back(line);
         while done.len() > DONE_KEPT {
@@ -444,6 +589,7 @@ impl Core {
         }
         drop(done);
         self.bump(Field::Done);
+        self.ports.log(false, &text);
     }
 
     // ---- the state's reads (each borrow dropped before it returns) ----
@@ -475,21 +621,39 @@ impl Core {
     }
 
     /// A library edit, answered in the same turn (its requests reach the session before the flow goes on).
-    #[allow(dead_code)] // (the first flows that edit come with parts 1 and 3)
     pub(crate) async fn perform(&self, action: &str, payload: Object) -> Performed {
         let command = Command::Perform { action: action.to_string(), payload };
         Performed::read(&self.exec.command(command, true).await)
     }
 
+    /// An engine operation, the Safari waker's or a Swift flow's (interim), answered when it's over.
+    pub(crate) async fn engine(&self, op: &str, args: Value) -> Value {
+        let command = Command::Engine { op: op.to_string(), args: object(args) };
+        self.exec.command(command, false).await
+    }
+
+    pub(crate) async fn waker(&self, op: &str, args: Value) -> Value {
+        let command = Command::Waker { op: op.to_string(), args: object(args) };
+        self.exec.command(command, false).await
+    }
+
+    pub(crate) async fn swift_flow(&self, call: &str, args: Value) -> Value {
+        let command = Command::Swift { call: call.to_string(), args: object(args) };
+        self.exec.command(command, false).await
+    }
+
+    /// A Swift flow of a part not moved yet, synchronous (`Ports::swift`).
+    pub(crate) fn swift(&self, call: &str, args: Value) -> Value {
+        self.ports.swift(call, args)
+    }
+
     /// A sleep (HostedSession `sleep`): a deadline the caller's timer ticks.
-    #[allow(dead_code)]
     pub(crate) fn sleep(&self, seconds: f64) -> exec::Sleep<'_> {
         self.exec.sleep(self.ports.now(), seconds)
     }
 
     /// HostedSession `wait`: `done` read at each step of `every` until true (true) or `seconds` are used up (false),
     /// the steps counted, not the clock read: the same number of looks as the Swift.
-    #[allow(dead_code)]
     pub(crate) async fn wait(&self, seconds: f64, mut done: impl FnMut() -> bool) -> bool {
         let every = self.options.borrow().every;
         let mut left = seconds;
