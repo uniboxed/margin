@@ -9532,3 +9532,80 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   results and breaks, what's open), the order table's rows 7, 7a and 8 done.
 - Not run here: the screen suite, an install, `npm run gate` (Tirth's). `tools/app-tests/run.sh all`,
   `scripts/rust-test.sh`, `npm test` and the quick tests green.
+
+## Link resilience, part 1: a request ends on evidence, the copy acks and dedupes, its waits advanced by events (2026-11-24)
+
+- **The rule** (docs/LINK-RESILIENCE.md §1 rules 1–6 and 11–14, §2 rules 5–7; Tirth approved the design with its
+  defaults, "please work on this properly. make no mistakes"): a request to a copy has no time of its own. It ends on
+  its reply, the link going down (closed, replaced, or the 40 s silence rule: `Down`), the session's cancel (no answer
+  at all), or lost (`Lost`). The rules are margin-core's and the extension's; Swift lost its duplicate 15 s and gained no
+  rule. Part 2 (the session: `ask_until`, `Command::Cancel`, the loader's progress, the start-up's gate) is
+  fix/link-resilience-session's.
+- **margin-core** (`link.rs`): `Timing.request` and `LinkError::TimedOut` gone, `LinkError::Lost` new. Each waiting
+  request keeps its kind, when it was sent, the last tick's number sent before it, whether it's acked, whether it was
+  sent again, and its text. Ticks are numbered per link (`tick { seq }` from 1). `ack { id }` marks it taken; a
+  numbered `tock` later than its tick with no ack: sent once more with the same id (logged), lost the second time
+  (logged, `Answer Err(Lost)`). A tock without a number (an older copy, the copy's own probe after a pause) is life only.
+  `Link::cancel(conn, id) -> Option<Action>` (the `cancel { id }` to send; none: nothing waited for it), and
+  `Link::slow(conn, now) -> Option<Secs>` (the oldest unacked request's age; `now` added: the core is sans-IO), passed
+  through `SocketLink`, `LinkHub` and margin-ffi's `cancel` (answers `cancelled`) and `slow` (answers `slow`). Alive
+  (any bytes) still feeds only the 40 s rule; nothing new decides from it. `next_deadline` has no requests in it now.
+- **Protocol** (`protocol.rs`): `AppMessage::Tick { seq }`, `AppMessage::Cancel { id }`, `LinkMessage::Ack { id }`,
+  `LinkMessage::Tock { seq: Option<i64> }` (a `seq` that isn't a whole number: none). Backward compatible both ways: an
+  older copy leaves `cancel` and the tick's `seq` (unknown kinds and fields), and its requests are answered as before; an
+  older app's tick has no `seq`, so the copy's tock has none, and it ignores `ack`. No version bump (design risk 4).
+- **Relays** (`relay.rs`): unchanged. They only find the app (their header: "nothing of the link goes through them");
+  Chrome's and Edge's links are WebSockets on the same `Link`, so the same rules hold there with nothing to add.
+- **Swift** (`ExtensionLink.swift`): `SocketLink.Timing.request` and its `timing.request` to the core deleted.
+  `LinkError` is `down`, `lost`, `cancelled` (this side's own call ended by `cancel`) and `notJSON`. Mechanism only, for
+  part 2's glue: `LinkConnection.request(…, asked:)` says the id as it's sent, `cancel(id)` (the core's cancel; the call
+  ends `cancelled`), `slow` (the core's `slow`). The Windows shell (`shell/mod.rs`) only names `Lost` (it has no timing
+  of its own).
+- **The extension** (`background/link.ts`): each `req` acked as it's read, before anything runs (even one refused). The
+  epoch's last 64 ids: one running or held is left (its reply comes), one answered gets its reply again, unless it was
+  over 64 KB (a picture's): then `ok: false`, "answered before; that answer is no longer kept" (64 kept pictures could be
+  64 MB). Another epoch's `req` is refused and not remembered. `cancel { id }`: held, dropped; running, its `stopped()`
+  says stop; neither answered. The newest `hostShow` per window wins: `sender.stopped()` (not enumerable: the sender
+  keeps a page's shape) is true once a newer show for its window starts, and `hosted.ts show` checks it before each
+  Safari call, throwing `overtaken` (answered `ok: false, error: 'overtaken'`: the app's request must end on evidence,
+  and a show the copy stops says so unless the app cancelled it). After a detected pause the `req`s read are held one
+  turn (`setTimeout 0`, as the judge), then of several shows for one window only the newest runs, the older answered
+  `overtaken`. The pause is seen by the link check or by the app's first message after it, whichever runs first (the
+  late timer and the socket's queued messages come in either order); the same note and probe as before.
+- **The extension's waits** (`after`/`due` in link.ts): the ask's pacing, the reconnect's, the handler's answer, the
+  app's `link` and the welcome each have a due time, run by their timer or by `due()`: the windows and tabs events (focus,
+  created, closed, bounds, a tab shown, `tabs.onUpdated`), a page's `runtime.onMessage` (background.ts) and every
+  native port message. `due()` runs a microtask after the event, so a `link` that came on the port ends its wait first.
+  A wait that judges and ran over 1.5× late is armed again for its whole time from then (logged), so a welcome or an
+  answer that came during the pause is seen first; only one on time gives up. Rule 7 read as: a try in which a judging
+  wait ran late isn't counted in the doubling (`askMs` kept, not doubled). Waits aren't dropped at `stop` (a `within`
+  left unsettled would hold its try for good), as the timers before them weren't.
+- **What follows from no time-out** (design risk 1's default): every `request` (the waker's `closeWindow`s, the themes'
+  `updateSettings`, the Windows shell's switch requests, which keep their own time-outs) waits until evidence; a copy
+  that keeps reading but never answers one is only logged, never given up on.
+- **Tests, each written failing first** (evidence: the same tests against 6919c854 in a copy of the tree):
+  - core `link.rs`: alive but not reading, still waiting at 15, 60 and 600 s (was `TimedOut` at 16); `Down` on 40 s of
+    silence and nothing before it (was `TimedOut`); an older copy's tocks life only (was `TimedOut`); cancel (no answer,
+    `cancel { id }` sent, a later reply left, once); read past, sent again with its id, then `Lost`; an acked request
+    through later tocks; `slow`; each link's ticks numbered (the last five didn't build: no `cancel`, `slow`, `Lost`,
+    `seq`). `link_hub.rs`: no time-out, `slow`, the ack, `cancel`'s frame and its late reply left (was `TimedOut` at 18).
+    margin-ffi: `slow` and `cancel` calls (answered null: no such call). `protocol.rs`: ack, cancel, the numbered tick
+    and tock, and the shared vectors (didn't build).
+  - shared vectors `tests/fixtures/link-protocol.json`, read by protocol.rs, the Mac's unit checks (tests.swift, through
+    the core; `MARGIN_LINK_VECTORS` in run.sh) and tests/link.test.ts (the copy's answers: failed, no `seq`, no `ack`).
+    There were no protocol vectors before; this is the first such file, as `hosted-browser.json` is for the hosted checks.
+  - tests/link.test.ts: acked before its handler resolves and a repeated id run once (no ack); cancel before start and
+    under way; two shows for one window, only the newer reaching the tabs API (both did); after a pause only the newer
+    show of a window; an extension event running the due ask (only at the timer); a late welcome wait not giving up (gave
+    up). All six failed on today's link.ts.
+  - app e2e (`e2e-link.swift`, `MARGIN_E2E_ONLY=link`) over fake-extension.mts's new `stall { ms }` (each message held
+    `ms` after it's read, in order, the host's window reports still going at once; acks and tocks late with the rest;
+    `drained` once caught up) and `lose { n }` modes, the fake now a current copy (acks, dedupes, echoes `seq`, honours
+    `cancel`): a 7 s stall waited for and answered after it (was `timedOut` at the suite's 5 s); read past once, sent
+    again and answered; twice, `lost` (both `timedOut`); slow and cancel (didn't build); the silence rule `down` (passes
+    on both: kept behaviour). The design's other e2e checks (an app picked meanwhile shown at once, the show after the
+    reconnect, no start screen for an app) are the session's (part 2), with this `stall` mode.
+- Not run here: the screen suite, an install, `npm run gate`. `scripts/rust-test.sh` and `npm run test:quick -- --base
+  fix/link-resilience` green; `tools/app-tests/run.sh all` green (2154 unit checks; e2e 328 of 329, the one a timing
+  check under load, "glue: back to the app … under the loader's 120 ms grace" at 148 ms, which passed run alone twice,
+  47 and 49 ms: no link request is in that switch).
