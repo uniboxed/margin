@@ -99,7 +99,7 @@ if [ "$WHAT" = unit ] || [ "$WHAT" = all ]; then
     "$NODE" ../../scripts/build.ts >/dev/null || exit 1
   fi
   build tests "${UNIT_TESTS[@]}" "$CHAMELEON_SWITCHES" "${SHELL_SOURCES[@]}"
-  MARGIN_DATA_VECTORS="$PWD/../../tests/fixtures/data-merge" MARGIN_CONNECTOR_BIN="$CONNECTOR" MARGIN_LIBRARY_JS="$LIBRARY_JS" "$BUILD/tests" || status=1
+  MARGIN_DATA_VECTORS="$PWD/../../tests/fixtures/data-merge" MARGIN_LIBRARY_VECTORS="$PWD/../../tests/fixtures/library" MARGIN_CONNECTOR_BIN="$CONNECTOR" MARGIN_LIBRARY_JS="$LIBRARY_JS" "$BUILD/tests" || status=1
 fi
 if [ "$WHAT" = e2e ] || [ "$WHAT" = all ]; then
   [ -f ../../dist/app/overlay.js ] || { echo "dist/app/ is missing: run npm run build" >&2; exit 1; }

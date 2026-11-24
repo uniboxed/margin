@@ -8895,3 +8895,49 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   code point's space, the cuts less the broken half, the sort, 41 numbers' strings, rounds, max and min, ratios, 24
   values' strings, keys and truthiness, 17 fingerprints, 6 import ids, the id check, 23 addresses' regexes, the
   lowercase, the no-URL answers, and all 9,025 ASCII pairs and 22 id pairs through today's collation).
+
+## Core refactor step 4, commit 0: the vectors through the app's rules, the shadow, today's costs (2026-11-23)
+
+- The hand-written edges (tests/library-vectors/edges.ts → cases/edges.json, 14 cases): the ties the generator rarely
+  makes (two Settings items used at once, a favorite's two items, a pin's unbound items, the front item, spaces and
+  link rules at equal orders, the archive at equal times, a clear of five items, equal places beside each other), cuts
+  at every limit, JS's spaces, addresses with no URL, numbers (`0.1 + 0.2`, 2^53 + 1, -0, a window id as a string and
+  with a fraction), payload keys (an array as a tab id, names of the object prototype as actions). In all 361 cases,
+  9,385 steps.
+- The vectors catch the reference broken: 17 deliberate breaks of library.ts, model.ts, front-item.ts,
+  pinned-rules.ts and air-traffic.ts, each alone (the cut, the changes' id order, settleSplits after a success, the
+  ratios' rounding, three tie-breaks, a refusal's words, the name's trim, the archive's and favorites' caps, a folder's
+  depth, the pattern's lowercase, the no-URL address, the selected item's tie), 16 caught; the one missed is
+  equivalent (clearToday's `.sort()` of `t-` ids given in code-point order: UTF-16 order is the same for them).
+- T/library-vectors-tests.swift (`npm run test:app`) runs every perform, snapshot and import step through
+  LibraryRules (dist/app/library.js, JavaScriptCore): 8,800 performs, 295 snapshots, 2 imports the same, 288 steps it
+  can't ask (normal, target); the 403 `cut` steps fail there as the app does today (no answer). And a check of the
+  Mac's own outcome: a title of 1,999 units and an emoji fails `addItem` with nothing kept; 1,998 and the emoji whole,
+  2,000 units kept. Two broken copies of library.js (a refusal's words, the cut at 1,999) fail it (21 and 85 steps).
+- The shadow (the same file, `LibraryShadow`): for the run, JSValue's `call(withArguments:)` is exchanged, so every
+  LibraryRules call of the whole Swift suite (9,442: 9,122 performs, 314 snapshots, 6 imports) is seen with no change
+  to the app's Swift; each is given to both engines as the same text (each collection's ids in code-point order, the
+  core's store's; the env's ids made ones the rules take, then 48 more) and the answers compared: 0 differ. Its second
+  engine is a second JSContext (MARGIN_LIBRARY_SHADOW_JS gives it another script: both broken copies are caught, 20+
+  calls each) until commit 5 makes it margin-core's library. Found by it: some Swift tests' ids (`q1x`, three letters)
+  are refused by library.ts (`^[A-Za-z0-9]{4,30}$`), so those actions drew Math.random's ids; the shadow gives ten
+  letters in their place, as Math.random's would be.
+- Found: library.ts's import compares the stored values' **text** (LT:934 `diff(current, normal)`, `JSON.stringify` of
+  each), not their normal form as `perform` does: a value whose keys come in another order than `valuesOf` writes them
+  is written again, the same value. In the app the values cross Swift dictionaries, so the first import rewrites the
+  library's own values (same values, a new time); harmless, and noted in part 5 for the core's import. The vectors'
+  imports keep the order the TS tests gave; the Swift run leaves those rewrites out on both sides.
+- Baselines (`MARGIN_LIBRARY_BASELINE=<items>`: a process each, off screen; 2 KB icons, 200 archived, two spaces; each
+  the median of 25, two rounds on a shared Mac, the quieter kept):
+
+  | Items | A perform (activateTab, all of L.perform) | The rules' call alone | A snapshot | A draw's library part (snapshot + its text) | State | Footprint, library open → after the 125 calls |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | 50 | 2.7 ms | 1.7 ms | 2.2 ms | 2.8 ms | 147 KB | 13 → 22 MB |
+  | 500 | 16.2 ms | 7.6 ms | 11.0 ms | 13.9 ms | 1.2 MB | 20 → 53 MB |
+  | 2,000 | 62.0 ms | 28.0 ms | 40.7 ms | 52.3 ms | 4.6 MB | 72 → 354 MB |
+
+  (A perform's rest is the values through JSONSerialization both ways and the store's apply; the footprint after is
+  JavaScriptCore's heap before it collects.) The app: Margin.app built from this commit (`npm run safari --
+  --no-install --unsigned`): its binary 19,150,304 bytes (arm64 9,041,376, x86_64 10,084,320), the bundle 22.9 MB,
+  library.js 68,103 bytes, JavaScriptCore linked. The running app's footprint isn't measured here (it would open
+  windows on the screen); the library's part of it is the table's.

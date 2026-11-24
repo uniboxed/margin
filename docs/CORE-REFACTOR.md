@@ -1931,7 +1931,11 @@ filter), `ns_id`, `ns_tab_id`; LT:933-934 (`valuesOf(stateOf(next))` and `diff`)
 String, String)], now: f64) -> (Vec<Change>, Counts)` (LT:875), and `Library::import_once(&self, data: &DataSync) ->
 bool` (L:249-276 whole: the sets read from the core's data object, the order from `profiles.rs`, the log line in its
 words). The import reads the copies' sets by their fields (`spaces`, `pins`, `folders`, `tabs`, `archive`) as LT does
-and writes nothing in them (they're the copies' own files: data/<browser>/<profile>/).
+and writes nothing in them (they're the copies' own files: data/<browser>/<profile>/). LT:934's `diff(current, normal)`
+compares the stored values **as given** (`JSON.stringify` of each: their key order counts), not their normal form as
+`perform`'s `before` does: a stored value whose keys come in another order than `valuesOf` writes them is written again,
+the same value (found by commit 0: in the app today the values cross Swift dictionaries, so the first import rewrites
+the library's own values; the vectors' `import` steps keep the order the TS tests gave).
 
 **FFI.** `margin_library_import(library, data) -> answer` (typed: the `MarginData` pointer; once a launch).
 
@@ -2054,7 +2058,7 @@ from L (the cache, `apply`, `importOnce`'s body, the rules' calls), ~74 of LR, ~
 #### Part 8: the shared vectors
 
 **Format** (commit 0, stable: tests/fixtures/library/README.md has it whole). `tests/fixtures/library/`:
-`cases/*.json` (the steps: `recorded-<test>.json` per TS test file, `generated-00…11.json`, `survey.json`), `throws.json`
+`cases/*.json` (the steps: `recorded-<test>.json` per TS test file, `generated-00…11.json`, `edges.json`, `survey.json`), `throws.json`
 (the throw survey: site → `jsc` and `node` words, `where`, a payload that does it) and `js.json` (part 1's cases, JSC's
 answers). A case file is `{ about, from, cases: [{ about, values, steps }] }` (a file holds many cases: the design's one
 case a file would be ~350 files):
@@ -2091,7 +2095,9 @@ order.
 the ten TS files' imports of LT to wrap.ts (the same module, its `perform`, `snapshot`, `importValues`, `stateOf`,
 `targetOf` and `call` recorded with their inputs made the vectors' first: plain JSON, ids sorted, ids padded) and of
 node:test to node-test.ts (the test's name kept); each file runs and must pass. The TS tests stay as they are.
-(2) **Generated** (generate.ts, seeded): 300 random libraries and sequences of 30 steps (every action and 6 names that
+(2) **Written by hand** (edges.ts → `cases/edges.json`): the ties (a Settings item, a favorite's items, a pin's, the
+front item, spaces and link rules at equal orders, the archive at equal times, a clear of more items than the app's 4
+ids), the cuts, JS's spaces, addresses with no URL, numbers, payload keys. **Generated** (generate.ts, seeded): 300 random libraries and sequences of 30 steps (every action and 6 names that
 aren't, payloads of right and wrong types, ids that exist and don't, emoji at every cut, JS's odd spaces, equal places
 and times, addresses that differ by a slash or a fragment), and the **survey**: every action with each payload field as
 each of 12 wrong JSON types. (3) **js.json**: tests/library-vectors/js-cases.js over LT's own functions (bundled as the
@@ -2114,7 +2120,10 @@ change.
 
 **No window where both run.** Commits 1–5 add Rust beside the JSC rules without the app using it; the only place both
 run is the test run (T/: a shadow check that sends every perform, snapshot and import of the whole Swift suite through
-both and fails on the first difference; T/ only, never in the app). Commit 6 switches in one change: `Library.open`
+both and fails on the first difference; T/ only, never in the app: built in commit 0 as T/library-vectors-tests.swift's
+`LibraryShadow`, which exchanges JSValue's `call(withArguments:)` for the run, so every LibraryRules call is seen with
+no change to the app's Swift, gives both engines the same text (the values' ids in code-point order, the env's ids
+valid and enough), and compares; its second engine is a second JSContext until commit 5 makes it the core). Commit 6 switches in one change: `Library.open`
 makes the core's library, LR and `JSContext` go, `library.js` leaves `APP_FILES` (scripts/build.ts:148; tests/ui-host-
 app.test.ts:724 follows), `MARGIN_LIBRARY_JS` leaves the 11 Swift test files, `Command::Perform` goes. No runtime flag,
 no fallback: a build has one copy or the other.
@@ -2125,9 +2134,11 @@ no fallback: a build has one copy or the other.
 - The values Rust writes are LT's values: same keys, same types, same numbers (integral as integers, as JS writes them;
   a fraction as its shortest round-trip digits; past 1e21 or under 1e-6 the exponent's spelling may differ, `1e21` vs
   `1e+21`, the same number). The vectors compare every change's value.
-- An older Margin (JSC rules) reading what Rust wrote: the same shapes, so the same state; a vector run feeds Rust's
-  output back through LT's `stateOf` and expects no change from `valuesOf(stateOf(…))` (`perform`'s "no change on
-  the next action", LT:932).
+- An older Margin (JSC rules) reading what Rust wrote: the same shapes, so the same state, because every vector checks
+  that Rust writes exactly LT's changes. (Corrected by commit 0: "Rust's output fed back through LT's `stateOf` gives
+  no change from `valuesOf(stateOf(…))`" doesn't hold for LT itself: a change writes only what moved, so a space's
+  `order` read back can differ, and a value of an odd type is written as given and read as `''`. LT:932's "no change
+  on the next action" is the import's, whose values it normalises whole.)
 - The marker `imports.done` keeps its shape, so neither an older Margin nor the new one imports again.
 - The extension's copies never read data/app; the import reads their sets read-only (part 5). Their own data and its
   sync (data-merge, DS) are untouched by step 4.
@@ -2153,7 +2164,7 @@ commit 7 only).
 
 | # | Commit | Swift / TS deleted | Rust in (with tests) | Measured after |
 | --- | --- | --- | --- | --- |
-| 0 | The vectors and the edges, against the TS (Node and JSC) before any Rust: the recorder and its ~70 tests' vectors, the generated sequences, `js.json` from JSC on this Mac, the throw survey (every throw site and JSC's words), the Mac's outcome for a 2000-unit cut through an emoji (LT:43 → JSON → `JSONSerialization` → the store), the shadow harness in T/ (JSC only for now). Baselines (off screen, T/ timings): a perform, a draw's snapshot over 50/500/2,000 items, the app's binary size and footprint | 0 | 0 (~400 TS and JSON, ~150 Swift test lines) | the baselines |
+| 0 | **Done** (step4/vectors): the vectors and the edges, against the TS (Node and JSC) before any Rust: the recorder and its ~70 tests' vectors, the generated sequences, `js.json` from JSC on this Mac, the throw survey (every throw site and JSC's words), the Mac's outcome for a 2000-unit cut through an emoji (LT:43 → JSON → `JSONSerialization` → the store), the shadow harness in T/ (JSC only for now). Baselines (off screen, T/ timings): a perform, a draw's snapshot over 50/500/2,000 items, the app's binary size and footprint | 0 | 0 (~400 TS and JSON, ~150 Swift test lines) | the baselines |
 | 1 | **Done** (step4/js, da34b9b4): part 1: `js.rs`, the `url` and collation dependencies (open questions 1, 2), and part 5's `import_values` up to its normalising (import.rs) | 0 | ~450 + ~300 tests | binary size: +1.26 MB a architecture (collation), +0.22 MB (URL) |
 | 2 | **Done** (step4/state): part 2: the typed state, `state_of`, `values_of`, `diff`, `target_of`, the snapshot's text, the import's normalising (`import_changes`), part 3's shared rules and files; the snapshot vectors pass once commit 0's are merged (until then: 5,000 generated libraries and 5,000 imports against library.ts) | 0 | ~2,000 + ~1,000 tests | a snapshot's text 0.26 ms at 500 items (JSC 4.7 ms), a perform's diff 1-22 µs |
 | 3 | Part 3: M's rules, PR, AT, FI (parallel: spaces + order; kept + archive + favorites; splits + link rules) | 0 | ~1,400 | |

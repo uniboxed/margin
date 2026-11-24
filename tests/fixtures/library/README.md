@@ -13,6 +13,8 @@ same commit as both copies' change.
     `importValues`, `stateOf`, `targetOf`), grouped into cases by test.
   - `generated-NN.json`: 300 seeded random sequences of 30 steps over random libraries (tests/library-vectors/
     generate.ts), 25 a file.
+  - `edges.json`: written by hand (tests/library-vectors/edges.ts): ties (the ids' order, localeCompare's
+    tie-breaks), cuts, JS's spaces, addresses with no URL, numbers, payload keys.
   - `survey.json`: the throw survey: every action with each payload field as each wrong JSON type, the steps that
     threw.
 - `throws.json`: every place an action throws (a TypeError on a payload value of the wrong type, caught by `perform`
@@ -83,4 +85,7 @@ step's `error` `{ "failed": site }` is `failed: ` and throws.json's `jsc` words 
   changes between steps and returns a `Report` (checked and skipped by kind, failures with the file, case and step):
   `report.assert_ok()`. `vectors::data_set(&values)` gives the values as a `DataSet`; `vectors::js()` is js.json.
 - app/platforms/macos/shell/tests/library-vectors-tests.swift (`npm run test:app`): dist/app/library.js through
-  LibraryRules (JavaScriptCore), the perform, snapshot and import steps, until the switch (step 4 commit 6).
+  LibraryRules (JavaScriptCore), the perform, snapshot and import steps, until the switch (step 4 commit 6). A `cut`
+  step there fails as the app does today (no answer). An `import` step leaves out, on both sides, the changes that
+  write a value again unchanged: library.ts's import compares the stored values' text, and Swift's dictionaries give
+  their keys in their own order.

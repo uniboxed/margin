@@ -27,6 +27,7 @@ import * as L from '../../app/shared/library/library.ts';
 import { buildApp, CONDITIONS } from '../../scripts/build.ts';
 import { dropLoneSurrogates, hasLoneSurrogate, padEnv, plain, sortValues, byCodePoint, type Call } from './log.ts';
 import { random, library, payload, action, FIELDS, WRONG, field } from './generate.ts';
+import { edges } from './edges.ts';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const OUT = join(ROOT, 'tests/fixtures/library');
@@ -186,6 +187,21 @@ function generated(): Case[] {
     if (made) out.push(c);
   }
   return out;
+}
+
+// The hand-written edges (edges.ts): each step given its env, answered as the others.
+function handEdges(): Case[] {
+  return edges().map((e, n) => {
+    let cur = sortValues(clean(e.values));
+    const c: Case = { about: `edges: ${e.about}`, values: cur, steps: [] };
+    for (const [i, raw] of e.steps.entries()) {
+      const step: Step = 'perform' in raw ? { perform: raw.perform, payload: clean(raw.payload ?? {}), env: padEnv({ now: 4000 + n * 100 + i, ids: [] }) } : { ...raw };
+      if (!finish(step, cur)) throw new Error(`edges: ${e.about}, step ${i}: drew Math.random`);
+      c.steps.push(step);
+      cur = merge(cur, changesOf(step));
+    }
+    return c;
+  });
 }
 
 // The throw survey: every action, on a library that has one of everything, each of its fields as each wrong type
@@ -393,6 +409,7 @@ const PER_FILE = 25;
 for (let i = 0; i * PER_FILE < gen.length; i++) {
   groups.push({ file: `generated-${String(i).padStart(2, '0')}.json`, about: `Generated sequences ${i * PER_FILE}-${Math.min(gen.length, (i + 1) * PER_FILE) - 1} of ${SEQUENCES} (tests/library-vectors/generate.ts, seed ${SEED.toString(16)}).`, from: 'generated', cases: gen.slice(i * PER_FILE, (i + 1) * PER_FILE) });
 }
+groups.push({ file: 'edges.json', about: 'The hand-written edges (tests/library-vectors/edges.ts): ties, cuts, JS\'s spaces, addresses with no URL, numbers, payload keys.', from: 'edges', cases: handEdges() });
 groups.push({ file: 'survey.json', about: 'The throw survey: every action, each payload field as each wrong JSON type, the steps that threw (their words: throws.json).', from: 'survey', cases: survey() });
 
 const bin = jscTool();
@@ -403,7 +420,7 @@ checkJsc(all, answers);
 const js = jsJson(bin);
 
 mkdirSync(join(OUT, 'cases'), { recursive: true });
-for (const f of readdirSync(join(OUT, 'cases'))) if (/^(recorded|generated)-.*\.json$|^survey\.json$/.test(f)) rmSync(join(OUT, 'cases', f));
+for (const f of readdirSync(join(OUT, 'cases'))) if (/^(recorded|generated)-.*\.json$|^(survey|edges)\.json$/.test(f)) rmSync(join(OUT, 'cases', f));
 for (const g of groups) writeFileSync(join(OUT, 'cases', g.file), caseFile(g.about, g.from, g.cases));
 const siteList = Object.fromEntries([...sites.entries()].sort(([a], [b]) => byCodePoint(a, b)).map(([k, s]) => [k, { action: s.action, where: s.where, jsc: s.jsc, node: s.node, payload: s.payload }]));
 writeFileSync(join(OUT, 'throws.json'), `{\n  "about": "Every place an action of library.ts throws (a TypeError on a payload of the wrong type), caught by perform as \`failed: <the engine's words>\`: JavaScriptCore's words (Margin.app's, and the core's) and Node's. Vectors name a site (\`\\"error\\": { \\"failed\\": \\"<site>\\" }\`).",\n  "sites": {\n${Object.entries(siteList).map(([k, v]) => `    ${JSON.stringify(k)}: ${JSON.stringify(v)}`).join(',\n')}\n  }\n}\n`);

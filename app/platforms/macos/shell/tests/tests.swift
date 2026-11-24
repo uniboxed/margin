@@ -47,6 +47,9 @@ final class FakeRegistrar: HotKeyRegistrar {
 @main enum Tests {
   static func main() {
     let started = Date()
+    // (Step 4's baselines, a process each: MARGIN_LIBRARY_BASELINE=<items>, library-vectors-tests.swift.)
+    if let n = ProcessInfo.processInfo.environment["MARGIN_LIBRARY_BASELINE"].flatMap({ Int($0) }) { libraryBaseline(items: n); exit(failures == 0 ? 0 : 1) }
+    LibraryShadow.install() // library-vectors-tests.swift: every call of the library's rules through two engines
     linkMessages()
     appMessages()
     stateMessages()
@@ -61,6 +64,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     dataSync()
     dataCarry() // data-tests.swift (the merge's vectors and the files: margin-core's tests)
     libraryTests() // library-tests.swift: the app's own spaces, its rules in JavaScriptCore
+    libraryVectorsTests() // library-vectors-tests.swift: the library's shared vectors through the app's rules (tests/fixtures/library)
     profilesTests()
     safariProfilesTests() // safari-profiles-tests.swift
     oneMargin()
@@ -91,6 +95,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     loopGuardTests() // loop-guard-tests.swift: the hosting core's loop guard against Weather's loop (docs/ARCHITECTURE-PLAN.md)
     paneClickTests() // pane-click-tests.swift: the first click in another pane goes through (the tap's decision, its hold, the engine's bookkeeping)
     panesActiveTests() // panes-active-tests.swift: every pane of a split draws active (the records, their launch check, the keeper, the engine's exits)
+    LibraryShadow.report()
     print(failures == 0 ? "all \(passed) checks passed" : "\(failures) of \(passed + failures) checks failed", String(format: "(%.2f s)", Date().timeIntervalSince(started)))
     exit(failures == 0 ? 0 : 1)
   }
