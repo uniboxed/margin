@@ -1,6 +1,6 @@
 // What the recorder keeps while a test file runs (hooks.ts writes it out), and how a call's inputs are made the
 // vectors' (the same for the recorded calls, the generated sequences and the survey):
-// - plain JSON (the app gives library.js JSON text, LibraryRules.swift), each collection's ids in code-point order
+// - plain JSON (the app gave library.js JSON text, LibraryRules.swift, until step 4's switch), each collection's ids in code-point order
 //   (the order margin-core's store reads them in: DataSet's BTreeMap; docs/CORE-REFACTOR.md step 4, part 4's "first of
 //   several");
 // - every env's ids given, valid, and enough (never library.ts's Math.random fallback): the test's own first, then

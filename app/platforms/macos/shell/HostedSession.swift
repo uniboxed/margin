@@ -2,7 +2,8 @@
 // library's items shown in Margin's window by the host engine.
 //
 // - The library (Library.swift) says what needs a browser or an app (its requests: activateTab, newTab, closeTab,
-//   setSpace, openPin, clearToday, restoreArchive); this is its delegate, and does each one, one at a time, in order.
+//   setSpace, openPin, clearToday, restoreArchive); the core's session made here is its sink (inside each perform),
+//   and does each one, one at a time, in order.
 // - An app item: its app opened by the engine the first time (`.app(bundleId)`: started with no Dock icon, its
 //   window full screen and sized to the page area in a Space of its own, then a member of Margin's full-screen Space;
 //   Margin's page area shows a loading animation meanwhile), shown again by the engine after (an instant switch);
@@ -384,7 +385,7 @@ protocol HostedLinks: AnyObject {
     func linkEpoch(of profile: String) -> String?
 }
 
-final class HostedSession: LibraryDelegate {
+final class HostedSession {
     struct Options {
         var firstCopiesPace = 10.0 // a Safari with no copy linked yet: its own copies' turn before its menu is pressed for a profile
         var pressPace = 2.0 // Safari's menu pressed again after this (times the presses so far) while no window came of one
@@ -525,6 +526,15 @@ final class HostedSession: LibraryDelegate {
         self.options = options
         core = SessionCore(library: library, options: options.json)
         core.owner = self
+        takeLibraryRequests()
+    }
+
+    // The session the library's requests' sink in the core (from its start; again, of several sessions over one
+    // library: the tests' rigs): a perform's requests reach it inside the perform, and one Swift makes itself, outside
+    // the session's calls, then has what they left answered here.
+    func takeLibraryRequests() {
+        core.takeRequests()
+        library.onRequests = { [weak self] in self?.edited() }
     }
 
     // ---- the core (core/session/, SessionCore.swift: docs/CORE-REFACTOR.md step 3) ----
@@ -619,8 +629,7 @@ final class HostedSession: LibraryDelegate {
         }
     }
 
-    // A command started (session/mod.rs `Command`): a copy's request, a library edit (answered now, in the same turn: its
-    // requests reach this delegate first, as when a flow here performed it), a Swift job's turn.
+    // A command started (session/mod.rs `Command`): a copy's request, a Swift job's turn, an engine's operation.
     private func start(_ c: JSONObject) {
         guard let id = (c["id"] as? NSNumber)?.uint64Value else { return }
         switch c["op"] as? String {
@@ -630,10 +639,6 @@ final class HostedSession: LibraryDelegate {
                 let (result, error) = await self.links.request(profile: profile, kind, payload)
                 self.drive(self.core.answer(id, ["result": result ?? NSNull(), "error": error ?? NSNull()]))
             }
-        case "perform":
-            let out = library.perform(c["action"] as? String ?? "", c["payload"] as? JSONObject ?? [:])
-            let result = out.result.flatMap { JSONSerialization.isValidJSONObject([$0]) ? $0 : nil } ?? NSNull()
-            drive(core.answer(id, ["ok": out.ok, "result": result, "error": out.error ?? NSNull()]))
         case "run":
             let body = (c["job"] as? NSNumber).flatMap { jobs.removeValue(forKey: $0.uint64Value) }
             startNow {
@@ -810,11 +815,6 @@ final class HostedSession: LibraryDelegate {
         case "settings": return ["settings": uiSettings() ?? NSNull()]
         case "idna": return ["ok": (ask["host"] as? String).map(SessionRules.idna) ?? false]
         case "urlHost": return (ask["url"] as? String).flatMap { URL(string: $0)?.host }.map { ["host": $0] } ?? [:]
-        case "perform":
-            // (A library edit a synchronous flow makes now: its requests reach this delegate first, re-entrantly.)
-            let out = library.perform(ask["action"] as? String ?? "", ask["payload"] as? JSONObject ?? [:])
-            let result = out.result.flatMap { JSONSerialization.isValidJSONObject([$0]) ? $0 : nil } ?? NSNull()
-            return ["ok": out.ok, "result": result, "error": out.error ?? NSNull()]
         default: return [:]
         }
     }
@@ -1014,10 +1014,18 @@ final class HostedSession: LibraryDelegate {
 
     // ---- the library's requests ----
 
-    func library(_ library: Library, wants request: LibraryRequest) {
-        // (The core's, core/session/requests.rs: the item in front in its window at once, then handled in the queue.)
-        guard JSONSerialization.isValidJSONObject(request.body) else { return Diagnostics.warn("hosted: a library request that isn't JSON") }
-        drive(core.input(["type": "library", "request": request.body]))
+    // A library request given to the session as an input (`library`: handled as the sink's are), for one the rules
+    // don't make (the tests' odd shapes); the library's own reach the session inside its perform.
+    func request(_ body: JSONObject) {
+        guard JSONSerialization.isValidJSONObject(body) else { return Diagnostics.warn("hosted: a library request that isn't JSON") }
+        drive(core.input(["type": "library", "request": body]))
+    }
+
+    // A library edit Swift made itself (a UI request, the first run's space, a test): its requests reached the core's
+    // session inside it (the item in front at once, its handling queued: core/session/requests.rs); what they left
+    // answered now (their lines, what they made ready run in the next turn), as their input did for the delegate.
+    func edited() {
+        drive(core.input(["type": "edited"]))
     }
 
     // A show overtaken before it started by a newer one for its window (fast clicks): skipped (the core's).

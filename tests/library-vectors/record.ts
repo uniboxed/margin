@@ -1,6 +1,6 @@
 // npm run library:vectors: the library's shared vectors (docs/CORE-REFACTOR.md step 4, part 8;
-// tests/fixtures/library/README.md), recorded from library.ts as Margin.app runs it in JavaScriptCore (a bare JSContext,
-// LibraryRules.swift), but for addresses: those are parsed as the browsers' copies parse them (Tirth's answer 11; a bare
+// tests/fixtures/library/README.md), recorded from library.ts as Margin.app ran it in JavaScriptCore until step 4's
+// switch (a bare JSContext, the deleted LibraryRules.swift), but for addresses: those are parsed as the browsers' copies parse them (Tirth's answer 11; a bare
 // JSContext has no `URL`, DECISIONS.md 2026-11-23).
 //
 // 1. The ten TS test files that use the library run under hooks.ts: every perform, snapshot, importValues, stateOf
@@ -10,8 +10,8 @@
 // 3. Each step's answer is library.ts's in Node with `URL` and with it taken away (as JSC has none): a step whose
 //    answers differ is marked `"url": true` and keeps the one with `URL` (the browsers', Tirth's answer 11); the next
 //    steps start from its changes. Half an emoji left by a cut is dropped (Tirth's answer 3: `"cut": true`).
-// 4. Every case runs again in JavaScriptCore (tools/library-vectors/jsc.swift: dist/app/library.js as the app builds
-//    it, LibraryRules.swift's way): a step JSC answers differently keeps JSC's answer (`"engine": "jsc"`); a throw's
+// 4. Every case runs again in JavaScriptCore (tools/library-vectors/jsc.swift: library.js as scripts/build.ts
+//    buildLibraryScript bundles it, run as LibraryRules.swift ran it): a step JSC answers differently keeps JSC's answer (`"engine": "jsc"`); a throw's
 //    words are JSC's (throws.json), the vectors name its site. A `url` step's JSC answer must be Node's without `URL`.
 // 5. js.json: the JavaScript semantics' cases (js-cases.js) as JSC answers them, checked against Node's; its `url`
 //    group Node's with `URL` (the browsers'), `jscUrl` JSC's.
@@ -26,7 +26,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { runInNewContext } from 'node:vm';
 import { buildSync } from 'esbuild';
 import * as L from '../../app/shared/library/library.ts';
-import { buildApp, CONDITIONS } from '../../scripts/build.ts';
+import { buildLibraryScript, CONDITIONS } from '../../scripts/build.ts';
 import { dropLoneSurrogates, hasLoneSurrogate, padEnv, plain, sortValues, byCodePoint, type Call } from './log.ts';
 import { random, library, payload, action, FIELDS, WRONG, field } from './generate.ts';
 import { edges } from './edges.ts';
@@ -279,7 +279,7 @@ function jscTool() {
   return bin;
 }
 // library.ts's own functions for the steps library.js's entry doesn't take (normal, target) and for js.json, built as
-// the app's library.js is (scripts/build.ts buildApp's options).
+// library.js is (scripts/build.ts buildLibraryScript's options).
 function extraBundle() {
   const entry = [
     "import { stateOf, valuesOf, targetOf, nsId, nsTabId } from './app/shared/library/library.ts';",
@@ -296,8 +296,7 @@ function extraBundle() {
 }
 const EXTRA = extraBundle();
 function jscScript() {
-  const app = join(tmp, 'app');
-  buildApp(app);
+  const script = buildLibraryScript(join(tmp, 'app'));
   const runner = `
 ;(() => {
   const call = (name, args) => { const o = JSON.parse(marginLibrary.call(name, JSON.stringify(args))); if (o.error) throw new Error(o.error); return o.value; };
@@ -317,7 +316,7 @@ function jscScript() {
   }); }));
 })()`;
   // The vectors' bundle first: library.js's own marginLibrary is the one called.
-  return `${EXTRA}\n${readFileSync(join(app, 'library.js'), 'utf8')}\n${runner}`;
+  return `${EXTRA}\n${readFileSync(script, 'utf8')}\n${runner}`;
 }
 function runJsc(bin: string, script: string, cases: Case[]): any[][] {
   const s = join(tmp, 'run.js'), i = join(tmp, 'in.json'), o = join(tmp, 'out.json');

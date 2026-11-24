@@ -25,12 +25,9 @@ func sessionRulesTests() {
 // ---- the library's pin and favourite requests (HostedSession.handle: openPin, resetPin, openFavorite, resetFavorite) ----
 
 private func libraryPinRequestTests() {
-    let scriptPath = ProcessInfo.processInfo.environment["MARGIN_LIBRARY_JS"] ?? "../../dist/app/library.js"
     let dataRoot = tempFolder("pin-requests")
     defer { try? FileManager.default.removeItem(at: dataRoot) }
-    guard let library = Library.open(dataRoot: dataRoot, script: URL(fileURLWithPath: scriptPath), background: false) else {
-        return check("pin requests: the library opens (\(scriptPath): npm run build)", false)
-    }
+    let library = Library.open(dataRoot: dataRoot, background: false)
     var n = 0
     library.randomIds = { (0..<4).map { _ in n += 1; return "q\(n)x" } }
     let w = FakeHostWorld()
@@ -49,7 +46,6 @@ private func libraryPinRequestTests() {
     engine.onEvent = { session.hostEvent($0) }
     engine.loading = { session.loading($0) }
     engine.hostedWindow = { session.hosted($0) }
-    library.delegate = session
     var copyWindows: [Int: Int] = [:]
     links.onNewWindow = { id, _ in
         guard let pid = w.running(bundleId: "com.apple.Safari").first?.pid else { return }
@@ -82,7 +78,7 @@ private func libraryPinRequestTests() {
     let faved = item("https://fav.example/")
     let fav = library.perform("addFavorite", ["windowId": 1, "tabId": faved]).result as? String ?? ""
     check("pin requests: set up: a pin and a favourite", !pin.isEmpty && !fav.isEmpty, "\(pin) \(fav)")
-    func ask(_ type: String, _ body: JSONObject) { session.library(library, wants: LibraryRequest(type: type, body: body)) }
+    func ask(_ type: String, _ body: JSONObject) { session.request(body) }
     func shows(since mark: Int) -> [String] { links.asked.dropFirst(mark).filter { $0.type == "hostShow" }.compactMap { $0.payload["itemId"] as? String } }
     func navigates(since mark: Int) -> [JSONObject] { links.asked.dropFirst(mark).filter { $0.type == "hostNavigate" }.map(\.payload) }
     let kinds: [(open: String, reset: String, key: String, bound: String, id: String)] = [("openPin", "resetPin", "pin", "pinnedBy", pin), ("openFavorite", "resetFavorite", "favorite", "favoriteId", fav)]
@@ -202,7 +198,6 @@ private func noRoomEdgeTests() {
 // ---- the item a Margin window showed last (HostedSession.lastItem) and its loader's app ----
 
 private func lastItemTests() {
-    let scriptPath = ProcessInfo.processInfo.environment["MARGIN_LIBRARY_JS"] ?? "../../dist/app/library.js"
     let dataRoot = tempFolder("last-item")
     defer { try? FileManager.default.removeItem(at: dataRoot) }
     let web = ItemTarget.web(browser: "safari", profile: nil).json
@@ -237,11 +232,8 @@ private func lastItemTests() {
         ["collection": "tabs", "id": "w-a", "value": tab("s4", true, 3, target: ItemTarget.web(browser: "chrome", profile: nil).json)],
         ["collection": "tabs", "id": "x-a", "value": tab("s5", true, 3, "", target: ItemTarget.margin(page: "settings").json)],
     ]
-    let core = LibraryCore(root: Library.folder(in: dataRoot), background: false)
-    _ = core.apply(entries, at: 1000)
-    guard let library = Library.open(dataRoot: dataRoot, script: URL(fileURLWithPath: scriptPath), background: false) else {
-        return check("last item: the library opens", false)
-    }
+    let library = Library.open(dataRoot: dataRoot, background: false)
+    library.store(entries, at: 1000)
     let session = HostedSession(library: library, engine: StubLaunchEngine(), links: FakeHostedLinks())
     session.appName = { _ in nil }
     let last = { (w: Int) in session.lastItem(ofWindow: w).map { "\($0.item) \($0.name)" } }

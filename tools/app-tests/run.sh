@@ -8,8 +8,7 @@
 #         check and wrappers against a fake resolver
 #         (private-calls-tests.swift); the dev-only test hook against a fake world (devhooks-tests.swift); the user
 #         themes' store and what the picker chose, read (theme-tests.swift, in a temporary folder); the app's own
-#         spaces (library-tests.swift: its rules from dist/app/library.js in JavaScriptCore, its files and the import
-#         in temporary folders); the host engine on a stand-in window manager (host-tests.swift), the library, the
+#         spaces (library-tests.swift: margin-core's library object, its files and the import in temporary folders); the host engine on a stand-in window manager (host-tests.swift), the library, the
 #         engine and the Safari copies joined (hosted-tests.swift), Margin's own window (margin-window-tests.swift),
 #         installed apps (apps-tests.swift), Chrome's and Edge's relay (relay-tests.swift)
 #   e2e:  e2e.swift, the harness (a stand-in for the extension: fake-extension.mts, Node; scripted apps and keys);
@@ -93,13 +92,14 @@ if [ "$WHAT" = unit ] || [ "$WHAT" = all ]; then
   CARGO="${CARGO:-$(command -v cargo || echo "$HOME/.cargo/bin/cargo")}"
   "$CARGO" build -q --release -p margin-connector --manifest-path ../../Cargo.toml || exit 1
   CONNECTOR="$(cd ../.. && pwd)/target/release/margin-connector"
-  # The library's rules (dist/app/library.js, scripts/build.ts) for library-tests.swift: built when missing or older than its sources.
-  LIBRARY_JS="$PWD/../../dist/app/library.js"
-  if [ ! -f "$LIBRARY_JS" ] || [ -n "$(find ../../app/shared/library ../../extension -name '*.ts' -newer "$LIBRARY_JS" 2>/dev/null | head -1)" ]; then
+  # dist/app (scripts/build.ts) for the checks that read it (the built-in themes' packages): built when missing or
+  # older than its sources.
+  APP_PAGE="$PWD/../../dist/app/overlay.js"
+  if [ ! -f "$APP_PAGE" ] || [ -n "$(find ../../app/shared ../../extension -name '*.ts' -newer "$APP_PAGE" 2>/dev/null | head -1)" ]; then
     "$NODE" ../../scripts/build.ts >/dev/null || exit 1
   fi
   build tests "${UNIT_TESTS[@]}" "$CHAMELEON_SWITCHES" "${SHELL_SOURCES[@]}"
-  MARGIN_DATA_VECTORS="$PWD/../../tests/fixtures/data-merge" MARGIN_LIBRARY_VECTORS="$PWD/../../tests/fixtures/library" MARGIN_CONNECTOR_BIN="$CONNECTOR" MARGIN_LIBRARY_JS="$LIBRARY_JS" "$BUILD/tests" || status=1
+  MARGIN_DATA_VECTORS="$PWD/../../tests/fixtures/data-merge" MARGIN_LIBRARY_VECTORS="$PWD/../../tests/fixtures/library" MARGIN_CONNECTOR_BIN="$CONNECTOR" "$BUILD/tests" || status=1
 fi
 if [ "$WHAT" = e2e ] || [ "$WHAT" = all ]; then
   [ -f ../../dist/app/overlay.js ] || { echo "dist/app/ is missing: run npm run build" >&2; exit 1; }

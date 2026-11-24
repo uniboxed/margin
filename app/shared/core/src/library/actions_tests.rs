@@ -375,10 +375,7 @@ fn url_costs() {
             let parsed = median(41, |k| {
                 std::hint::black_box(go(k));
             });
-            let jsc = median(41, |k| {
-                std::hint::black_box(js::without_urls(|| go(k)));
-            });
-            line.push(format!("{name} {:.1} µs (no URL {:.1})", parsed * 1000.0, jsc * 1000.0));
+            line.push(format!("{name} {:.1} µs", parsed * 1000.0));
         }
         eprintln!("{n} items (+200 archived, 50 pins, 12 favorites, 99 rules): {}", line.join(", "));
     }

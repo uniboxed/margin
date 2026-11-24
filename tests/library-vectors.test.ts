@@ -1,10 +1,10 @@
 // The library's shared vectors (tests/fixtures/library/, docs/CORE-REFACTOR.md step 4, part 8) against library.ts:
 // every case's steps, in order, each from the case's values with the earlier steps' expected changes merged in. As
-// JavaScriptCore runs it (Margin.app's today), with no `URL`, but a `url` step: that one with Node's `URL`, the browsers'
+// JavaScriptCore ran it (Margin.app's until step 4's switch), with no `URL`, but a `url` step: that one with Node's `URL`, the browsers'
 // answer (Tirth's answer 11), and it must differ without. A throw's words are Node's for its site (throws.json); half an
 // emoji left by a cut is dropped before comparing (Tirth's answer 3). margin-core runs the same files
-// (app/shared/core/src/library/vectors.rs), and the app's tests through JavaScriptCore
-// (app/platforms/macos/shell/tests/library-vectors-tests.swift). Re-recorded with `npm run library:vectors`, only
+// (app/shared/core/src/library/vectors.rs; with the Mac's sorter, margin-ffi's library_tests.rs), which Margin.app runs
+// since the switch. Re-recorded with `npm run library:vectors`, only
 // with a rule changed on purpose.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

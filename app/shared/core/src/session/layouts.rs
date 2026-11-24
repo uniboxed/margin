@@ -675,7 +675,7 @@ impl Core {
             names.push(title.unwrap_or_else(|| if no_room { "that pane" } else { "a pane" }.into()));
             let how = if no_room { "no room for it" } else { "it didn't open" };
             self.note(format!("split {split}: {item}: out of the split ({how}: {why}); the rest laid out again"));
-            self.perform("removeFromSplit", object(json!({ "windowId": w, "tabId": item, "focus": focus }))).await;
+            self.perform("removeFromSplit", object(json!({ "windowId": w, "tabId": item, "focus": focus })));
         }
         // (Its 60 Characters counted as Unicode scalars, as step 1's caps.)
         let name = if names.len() == 1 {

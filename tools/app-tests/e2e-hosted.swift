@@ -50,7 +50,17 @@ func hostedScenario() async {
     "tabs": ["t-aaaaaaaaaa": ["spaceId": "home", "url": "https://kept.example/", "title": "Kept Page", "order": 3, "lastUsed": 100]],
     "settings": ["sidebarPinnedOpen": true],
   ]
-  let source = FakeWindowSource(DataSetWindowSource.state(values: { values[$0] ?? [:] }, active: [:]))
+  // (What Margin's window draws of them: the library's snapshot of them as stored, the profile's settings over it.)
+  let stored = FileManager.default.temporaryDirectory.appendingPathComponent("margin-e2e-hosted-\(UUID().uuidString)", isDirectory: true)
+  defer { try? FileManager.default.removeItem(at: stored) }
+  let library = Library.open(dataRoot: stored, background: false)
+  var entries: [Any] = []
+  for (c, list) in values where c != "settings" { for (id, v) in list { entries.append(["collection": c, "id": id, "value": v] as JSONObject) } }
+  library.store(entries, at: 1)
+  var drawn = library.snapshot()
+  drawn["settings"] = (values["settings"] ?? [:]).merging(["themes": JSONObject()]) { a, _ in a }
+  drawn["favicons"] = JSONObject()
+  let source = FakeWindowSource(drawn)
   let pages = OverlayPages(root: URL(fileURLWithPath: env["MARGIN_APP_ROOT"]!))
   // Every warning said meanwhile (the page's own come as "Margin's window N: …"), passed on as before.
   var warned: [String] = []

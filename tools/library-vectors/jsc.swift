@@ -1,6 +1,6 @@
 // The library's vectors as JavaScriptCore answers them (tests/library-vectors/record.ts, npm run library:vectors):
-// a script run in a bare JSContext, as app/platforms/macos/shell/LibraryRules.swift runs library.js (no URL, no
-// window, nothing of WebKit's), so its answers are Margin.app's today.
+// a script run in a bare JSContext, as app/platforms/macos/shell/LibraryRules.swift ran library.js until step 4's
+// switch (no URL, no window, nothing of WebKit's), so its answers are what Margin.app's were then.
 //
 //   jsc <script.js> <input> <output>
 //

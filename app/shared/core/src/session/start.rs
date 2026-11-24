@@ -460,8 +460,7 @@ impl Core {
             return self.note("the launcher asked for: no Margin window".into());
         };
         if settings {
-            let out =
-                self.perform("openMarginPage", super::object(json!({ "windowId": id, "page": "settings" }))).await;
+            let out = self.perform("openMarginPage", super::object(json!({ "windowId": id, "page": "settings" })));
             let refused =
                 if out.ok { String::new() } else { format!(", refused ({})", out.error.as_deref().unwrap_or("?")) };
             return self.note(format!("Margin's window {id}: Settings asked for{refused}"));
@@ -523,10 +522,9 @@ impl Core {
             return skip("the early full screen isn't available, so it can't be made ready out of sight".into());
         }
         // 1. the browser started at once, beside Margin's own window going full screen, not after it.
-        let mut starting = self.exec.command(
-            super::Command::Engine { op: "start".into(), args: super::object(json!({ "bundle": bundle })) },
-            false,
-        );
+        let mut starting = self
+            .exec
+            .command(super::Command::Engine { op: "start".into(), args: super::object(json!({ "bundle": bundle })) });
         begin(&mut starting).await;
         // 2. a Margin window in full screen, its page area measured.
         let wait = self.options.borrow().prepare_window_wait;

@@ -74,6 +74,9 @@ final class SessionCore {
 
     deinit { margin_session_free(core) }
 
+    // This session the library's requests' sink again (of several over one library: the tests' rigs).
+    func takeRequests() { margin_session_take_requests(core) }
+
     // The object, for the typed hot calls (`margin_session_page_rect`).
     var pointer: OpaquePointer? { core }
 

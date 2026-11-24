@@ -9268,3 +9268,136 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   `url` crate now reachable (commit 1 measured +0.22 MB).
 - Still differs from the browsers: an IDNA edge commit 1 found (`https://xn--a.com`: Node and WebKit take it, the `url`
   crate refuses it, so there it matches as given and `https://xn--a.com` and `https://xn--a.com/` stay two).
+
+## Core refactor step 4, commit 6: the switch: Margin.app's library is margin-core's (2026-11-24)
+
+- **Margin.app runs the core's library.** Library.swift is a facade over margin-core's library object (library/
+  object.rs through margin-ffi's `margin_library_*`), the same API the app and the tests read (`perform`, `snapshot`,
+  `spaces()`, `items()`, `target(ofItem:)`, `split(…)`, `space(ofWindow:)`, `liveValues`, `values`, `observe`,
+  `importOnce`, `requests`, `isImported`, `actions`), each one call of the core's; its cache of every collection, its
+  `apply`, the import's Swift body and the rules' calls are gone. Its `now` and `randomIds` closures answer the core's
+  env callback (Swift's 4 SecRandom ids per action, as before), its observers the core's `changed` callback, called
+  during the core's call and free to read the library again. LibraryRules.swift is deleted; nothing of the app imports
+  JavaScriptCore any more (`otool -L` of the built app: WebKit and libicucore, no JavaScriptCore.framework; WebKit's own
+  stays, the page needs it). library.js is no longer built into the app (scripts/build.ts `buildApp`;
+  `buildLibraryScript` builds it for the vectors' recorder only, which still runs it in JavaScriptCore), so dist/app and
+  the app's Resources/app have no library.js; tools/app-tests/run.sh no longer builds or passes it.
+- **The session is the library's sink.** `margin_session_new` registers it (`Library::set_sink`, weak): a perform's
+  requests reach the session inside the perform, after its observers, as the delegate had them. `Command::Perform` (a
+  flow's edit handed to Swift and answered in the same turn), the executor's `same_turn`, `Ports::perform` (the card's
+  Quick Tab and Expand), HostedSession's `LibraryDelegate` conformance, its `library(_:wants:)`, its `perform` command
+  and port are gone: the session's flows call the library directly (`LibraryEdit`, `LibraryView`'s subtrait), the edit
+  made in the flow's turn and its requests queued behind it. A perform Swift makes itself (a UI request, the first run's
+  space, the tests) is followed by the session's `edited` input, which answers what the requests left in the session
+  (their lines, `ready`) without running anything, so their handling runs in the next main-actor turn, as the `library`
+  input's did for the delegate (not a tick: that would run it at once). Of several sessions over one library (the Swift
+  tests' rigs, where `library.delegate = session` chose one), `margin_session_take_requests` (HostedSession
+  `takeLibraryRequests`) makes one the sink again. The facade's `LibraryDelegate` stays for a library with no session
+  (library-tests.swift's recorder); the `library` input stays for requests of shapes the rules don't make (the session's
+  tests, HostedSession `request(_:)` for the Swift tests').
+- **The no-rules fallback is gone** (Tirth's answer 9): `Library.open` can't fail, `Shell.library` isn't optional,
+  ShellHostedGlue's "no library (its rules didn't load)" branch, ShellLibrary's "the library's rules didn't load" line,
+  `DataSetWindowSource.state` (the third copy of the snapshot), its `snapshot`, the window's chosen space and its
+  `unhandled` count, `defaultSpace`, and `spaceTheme`'s top-level `activeSpaceByWindow` are deleted. DataSetWindowSource
+  stays as the profile's settings and site icons, no longer a `MarginWindowSource`.
+- **What changes for Tirth** (every user-visible difference; each one of his decided answers, now in effect):
+  - **Link rules route** (answer 11): a new tab opened with an address and no space (the palette, a link Margin opens)
+    goes to the space of the first enabled rule it matches, in that space's browser and profile, and the window shows
+    that space; until now no rule ever matched in the app.
+  - **Addresses match as the browsers match them** (answer 11): opening a pin or a favorite finds its item at the same
+    address with or without the bare trailing slash, with any fragment, in another case of scheme or host, with the
+    scheme's default port, dot segments, `\` for `/`, an empty query, an IDN host or its punycode, IPv4's other
+    spellings; a favorite added where its scope has one at such an address is refused (no duplicate); a tab pinned where
+    a pin at such an address is isn't pinned twice; the pins moved when a space goes drop one at such an address the
+    other space has; closing an item drops the older archive entries at such an address (one an address). Nothing stored
+    is rewritten: duplicates already stored stay until an edit meets them.
+  - **A title cut through an emoji** (answer 3): an item's title (2,000 units), a space's name (200), a folder's name, a
+    custom title, an icon or a profile cut through an emoji now keeps the text with the broken half dropped (1,999
+    units). Until now the whole action failed with nothing changed (the rules' answer held half the pair, which the app
+    couldn't read): adding the item, renaming it, saving the page's title. A folder named through an emoji beside one
+    with that name's whole first half is named `… 2` (the found case of the URL commit).
+  - **Ties go by the ids' order** (answer 10): of several equal candidates (two items at a pin's or a favorite's
+    address, items, spaces or link rules at equal places, archive entries at equal times, the first kept tab the UI's
+    `nextFront` takes) the pick is the same every launch, the lowest id; until now the values crossed Swift
+    dictionaries, so it was a per-launch hash order.
+  - **The system's sorter** (answer 1): the same libicucore collator JavaScriptCore used, for the person's first
+    preferred language: no visible difference.
+  - **The fallback** (answer 9): Margin's window never draws a profile's spaces read only any more; it can't happen.
+  - Not visible, for the record: ids an action makes beyond Swift's 4 come from the core's random, not `Math.random`
+    (answer 6), so a clear of 5+ items names its archive entries otherwise (and of entries at the same time the cap
+    keeps others: found on Tirth's copy); an id named like JavaScript's object prototype (`constructor`) is "no such
+    item" (answer 4; no id Margin makes is one); `createSpace` given a truthy emoji or colour that's no string stores
+    `""` (piece 1's gap; the UI sends strings); a payload that isn't JSON is refused with the old words; the log lines
+    "hosted: the library's rules didn't load…" and "Margin's window: no library…" can't be said; "library: imported N
+    profile set(s): …" is the core's, the same words.
+- **Faster** (off screen, through the app's own path: Library.swift over the core, `MARGIN_LIBRARY_BASELINE`, commit 0's
+  library: 2 KB icons, 200 archived, two spaces; the median of 25; commit 0's JavaScriptCore figures beside):
+
+  | Items | A perform (activateTab, all of Library.perform) | A rename | A snapshot | A draw's library part (snapshot + its text) | A rename and the draw after it | Footprint, library open → after the 125 calls |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | 50 | 0.64 ms (2.7) | 0.61 | 0.61 ms (2.2) | 1.14 ms (2.8) | 1.83 | 9 → 20 MB (13 → 22) |
+  | 500 | 3.6 ms (16.2) | 3.6 | 3.9 ms (11.0) | 6.8 ms (13.9) | 10.9 | 12 → 75 MB (20 → 53) |
+  | 2,000 | 15.0 ms (62.0) | 15.2 | 15.3 ms (40.7) | 25.7 ms (52.3) | 42.5 | 62 → 330 MB (72 → 354) |
+
+  Two rounds, the quieter kept (the two within 3%). The footprint after counts the store's writer's backlog: these
+  125 edits come far faster than their saves are written (each save the changed collection's file, ~1 MB at 500
+  items): with the store writing at once (`background: false`) 200 edits and draws at 500 items stay flat at ~30 MB,
+  in the background it grows ~0.6 MB an edit while the writer is behind. The store is step 1's and unchanged; the
+  JSC figures' after was JavaScriptCore's heap before it collected, so the two afters aren't the same measure. What's
+  left of a perform is still the store's apply (the set cloned, the changed file made), as commit 5 found; the draw's
+  own typed text is commit 7's.
+- **Data, both ways** (the scratch harness step4-switch/compat: margin-ffi's library object over real folders, JSC over
+  library.js as LibraryRules ran it, each given the store's values with each collection's ids in the store's order):
+  - Every shared vector (360 cases, 8,798 perform steps): each case's values stored, then each step performed by the
+    core's object and, on a second store, by JSC with its changes stored as Library.swift stored them: what each wrote
+    read back by both, JSC's snapshot of the stored values against the core's: **the same for all 360 starts and all
+    8,798 × 2 writes**. The two wrote the same values for 8,716 steps; 64 differ only where an address is parsed
+    (Tirth's answer 11: the vectors' `url` steps) and 18 are piece 1's known `createSpace` gap (a truthy emoji or colour
+    that's no string: JSC stores it as given, the core `""`); none other.
+  - A copy of Tirth's profile set (data/app of 2026-11-20: 6 spaces, 27 items, 88 archived, 2 windows; read from the
+    scratch backup, never his folder): drawn the same by JSC and the core; 32 edits of a day (activate, rename with an
+    emoji, pin, move, favorite, a new tab, a folder, a space chosen and renamed, a close, a restore, a link rule, a
+    route, a clear) made by each and read back by both: all read the same; 31 wrote the same values, the clear of the
+    space's items differs only in the archive entries' ids past Swift's 4 (the core's random, JSC's `Math.random`:
+    answer 6), so of entries at the same time the cap kept other ones. set.json keeps its keys and `format` 1.
+  - The import of that copy's five Safari profile sets into an empty library (the core's `sources` and `import_once`):
+    178 items, 90 archived, 6 spaces, its line in the old words; every file under data/safari (149) byte for byte as it
+    was (the extension's copies' sets are only read); JSC's `importValues` of the same sets over what the core imported
+    changes nothing (275 the same value again in another key order, as the import compares text); the marker in
+    library.ts's shape, so neither an older Margin nor this one imports again.
+  - The store's files are step 1's (unchanged): an older Margin reads the set this one writes, and the values in it are
+    library.ts's shapes (above).
+- **Tests.** The Swift suite runs on the core: the 11 files' `MARGIN_LIBRARY_JS` and `Library.open(script:)` gone,
+  `library.delegate = session` gone (the session registers itself; hosted-tests' main session takes the requests back
+  after its rigs' sessions and preparedBrowserTests' rig takes them), library-tests.swift's rules-loading checks
+  replaced by the core's (57 actions, an observer reading the library again inside the call, a payload that isn't JSON),
+  library-vectors-tests.swift's runs through LibraryRules and the shadow gone with JSC (the vectors with the Mac's
+  sorter are margin-ffi's library_tests.rs, every kind through the same entry the app links), keeping the Mac's outcome
+  of the cut (now kept, 1,999 units) and the costs; margin-window-tests' fallback-state checks gone; e2e-hosted's
+  stand-in source draws the library's snapshot of its values. The session's Rust tests run over the real library object
+  (session/tests.rs `TestLibrary`: the core's `Library` over a store in a temporary folder, its env, clock and observers
+  re-entering the session): the stand-in shelf and its canned edits are gone from every session test file (requests,
+  card, layouts, routing, start); the tests that answered `Command::Perform` check the real edits and what their
+  requests did. margin-ffi: the session is the sink from `margin_session_new` (a perform through `margin_library_call`
+  leaves its request's handling ready in the session). js.rs `without_urls`, its thread-local and
+  `margin_library_rules_without_urls` are deleted with the shadow; the tests that pinned JSC's no-URL answers through
+  them go (js.json's `jscUrl` stays as recorded). `tools/app-tests/run.sh all`: 2,140 unit checks and 321 end-to-end
+  checks pass; `scripts/rust-test.sh` green; `npm test` green.
+- 26 deliberate breaks, each alone (scratch step4-switch/breaks.py and swift_breaks.py): 21 caught. Rust (15, 12
+  caught): the sink not registered by `margin_session_new`, `take_requests` doing nothing, the session's edit refused,
+  the card's Quick Tab and Expand edits dropped, the edit's outcome with no result or no refusal's words, the `edited`
+  input refused or running what's ready, the snapshot's fast path empty, `values` ignoring its collection (caught by a
+  check added for it), the sink told before the observers. Swift (11, 9 caught): the facade not answering what the
+  requests left, the session not taking the requests at its start, `takeLibraryRequests` leaving the sink as it was, the
+  env's ids ignored, the observers or the delegate never told, the snapshot empty, a refusal's words lost, the import
+  not reading the profiles. Missed, and why: `LibraryRef`'s edit refusing (margin-ffi's tests make no session flow that
+  edits; the Swift suite's do, through the same entry), the sink told outside a call with no depth (no port of the
+  stand-ins runs the queue there: commit 5's same miss), the snapshot's fast path dropping its log (no call here writes
+  a store line), the env's clock ignored (the stored times are the second clock's, which the tests read; the env's
+  stamps only `lastUsed`), `edited` ticking at once instead of the next turn (the Swift tests await the session's idle,
+  which hides the turn).
+- Size: Margin.app's binary (`npm run safari -- --no-install --unsigned`, universal) 21,388,928 bytes (arm64 10,051,200,
+  x86_64 11,319,632), at its base (d979dfe2, built the same way from an export of it) 21,336,688 (arm64 10,031,728,
+  x86_64 11,283,360): +52 KB (the facade's callbacks, the session's sink and edit now reachable; the rules were linked
+  since commit 5); the bundle 25,028 KB against 25,048 (library.js's 68,103 bytes gone from Resources/app). The running
+  app's footprint isn't measured (it would open windows on the screen); the library's part is the table's.

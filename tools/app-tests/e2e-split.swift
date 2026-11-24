@@ -47,7 +47,8 @@ func glueSplitScenario() async {
   }
   made.paneTapTrusted = { true }
   made.paneTapGrace = 0
-  guard let library = shell.library, let session = shell.hosted, let engine = shell.host else { return check("the library, the session and the engine", false) }
+  let library = shell.library
+  guard let session = shell.hosted, let engine = shell.host else { return check("the library, the session and the engine", false) }
   // (All panes active: on in the stand-in world, a pane gone let go after its grace, as in the app.)
   world.panesActive = true
   let space = library.spaces().first?.id ?? ""

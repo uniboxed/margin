@@ -1,5 +1,5 @@
-// The hosted parts joined (HostedSession.swift, ShellHostedGlue.swift), part of tests.swift's run: the library (its
-// rules from dist/app/library.js, its files in a temporary folder) and the real host engine on the stand-in window
+// The hosted parts joined (HostedSession.swift, ShellHostedGlue.swift), part of tests.swift's run: the library
+// (margin-core's, its files in a temporary folder, the session its requests' sink) and the real host engine on the stand-in window
 // manager (host-tests.swift FakeHostWorld), with a stand-in Margin window and stand-in Safari copies. What follows:
 // a library request becomes the engine's open or show and the copy's hostShow; two web items of one profile are a
 // tab switch only; a palette pick is an item added and opened; Safari picked is a web item, Chrome nothing; closing;
@@ -346,8 +346,7 @@ func preparedBrowserTests(_ library: Library) {
         // ---- the first web item: a switch-in, then its tab ----
         let mark = r.links.asked.count, freezes = r.w.freezes
         if library.space(ofWindow: 1) == nil { _ = library.perform("createSpace", ["windowId": 1, "name": "Prepared", "emoji": "⚡"]) }
-        library.delegate = r.session
-        defer { library.delegate = nil }
+        r.session.takeLibraryRequests()
         let t0 = r.w.clock
         hostRun { _ = library.perform("newTab", ["windowId": 1, "url": "https://first.example/"]); await r.session.idle() }
         check("prepared: the first web item a switch-in (no new window, no full screen), then its tab",
@@ -703,11 +702,9 @@ func hostedTests() {
     Diagnostics.echo = { _ in }
     defer { Diagnostics.echo = echo }
     hostedGeometryTests()
-    let scriptPath = ProcessInfo.processInfo.environment["MARGIN_LIBRARY_JS"] ?? "../../dist/app/library.js"
-    let script = URL(fileURLWithPath: scriptPath)
     let dataRoot = tempFolder("hosted")
     defer { try? FileManager.default.removeItem(at: dataRoot) }
-    guard let library = Library.open(dataRoot: dataRoot, script: script, background: false) else { return check("hosted: the library opens (\(scriptPath): npm run build)", false) }
+    let library = Library.open(dataRoot: dataRoot, background: false)
     restoredSweepTests(library)
     preparedBrowserTests(library)
     var n = 0
@@ -729,7 +726,6 @@ func hostedTests() {
     engine.onEvent = { session.hostEvent($0) }
     engine.loading = { session.loading($0) }
     engine.hostedWindow = { session.hosted($0) }
-    library.delegate = session
     var changes = 0
     session.onChange = { changes += 1 }
     // A Safari Margin starts links its copy (the default profile's), and the copy's newWindow makes a window, on the
@@ -1099,6 +1095,8 @@ func hostedTests() {
               madeAgain != nil && stale.asked.filter { $0.type == "newWindow" }.count == 2, "\(stale.asked.map(\.type))")
     }
     safariWakeTests(library)
+    // (The sessions made since over the same library had its requests: this one takes them again.)
+    session.takeLibraryRequests()
     // ---- an app that can't go full screen (window mode): above Margin's own layout, kept below its window ----
     do {
         let ftId = HostTarget.app("com.apple.FaceTime").id, editId = HostTarget.app("com.apple.TextEdit").id
@@ -1173,22 +1171,22 @@ func hostedTests() {
     window.goesFullScreen = true
     window.isFullScreen = true
 
-    hostedShellTests(script: script)
-    sidebarResizeTests(script: script)
-    liveSidebarResizeTests(script: script)
-    hostedFrontTests(script: script)
-    hostedResumeTests(script: script)
-    hostedSupersedeTests(script: script)
+    hostedShellTests()
+    sidebarResizeTests()
+    liveSidebarResizeTests()
+    hostedFrontTests()
+    hostedResumeTests()
+    hostedSupersedeTests()
 }
 
 // At launch, the item the window showed last (HostedSession.resumeLast): the library, with an item selected in the
 // window's space, a new session and engine as after a relaunch, and a stand-in Margin window not yet in full screen.
 // Hosting and the loader are said as the window is made (before its page's hello); the show itself waits for the
 // window; nothing selected, or a second window: the launcher as before; a show that fails: the launcher.
-func hostedResumeTests(script: URL) {
+func hostedResumeTests() {
     let root = tempFolder("hosted-resume")
     defer { try? FileManager.default.removeItem(at: root) }
-    guard let library = Library.open(dataRoot: root, script: script, background: false) else { return check("resume: the library opens", false) }
+    let library = Library.open(dataRoot: root, background: false)
     func launch(fails: Set<String> = [], links: FakeHostedLinks = FakeHostedLinks()) -> (FakeHostWorld, HostEngine, HostedSession, FakeHostedWindow, (@escaping () async -> Void) -> Void) {
         let w = FakeHostWorld()
         w.fail = fails
@@ -1222,7 +1220,6 @@ func hostedResumeTests(script: URL) {
         engine.onEvent = { session.hostEvent($0) }
         engine.loading = { session.loading($0) }
         engine.hostedWindow = { session.hosted($0) }
-        library.delegate = session
         return (w, engine, session, window, { body in hostRun { await body(); await session.idle() } })
     }
     _ = library.perform("createSpace", ["windowId": 1, "name": "Home", "emoji": "🏠"])
@@ -1613,10 +1610,10 @@ func hostedResumeTests(script: URL) {
 // a placing again that fails never drops the item (shown again once after a pause, behind the loader; failing that
 // too, the launcher with the item kept and its window still hosted, out of sight); a field of Margin's letting go of
 // the keys gives them back to the app shown; another app's window in Margin's Space told to Margin's window.
-func hostedFrontTests(script: URL) {
+func hostedFrontTests() {
     let root = tempFolder("hosted-front")
     defer { try? FileManager.default.removeItem(at: root) }
-    guard let library = Library.open(dataRoot: root, script: script, background: false) else { return check("front: the library opens", false) }
+    let library = Library.open(dataRoot: root, background: false)
     let w = FakeHostWorld()
     let engine = HostEngine(system: w, marker: nil, pid: 1)
     engine.options.privateRetire = 0
@@ -1633,7 +1630,6 @@ func hostedFrontTests(script: URL) {
     engine.loading = { session.loading($0) }
     engine.hostedWindow = { session.hosted($0) }
     engine.others = { session.others($0) }
-    library.delegate = session
     links.profiles = ["s-default"]
     var copyWindows: [Int: Int] = [:]
     var ignoredEntries = 0 // asks into full screen its copy answers and Safari doesn't do (mid-change)
@@ -1732,10 +1728,10 @@ func hostedFrontTests(script: URL) {
 // Live resize (docs/HOSTING-CORE.md "Live resize: tiles in Margin's Space"): the same drag with the stand-in world's
 // tiles on: the one shown follows each page area of the drag (nothing held, no loader), the parked one sized once it's
 // over, nothing out of or into full screen.
-func liveSidebarResizeTests(script: URL) {
+func liveSidebarResizeTests() {
     let root = tempFolder("hosted-live-resize")
     defer { try? FileManager.default.removeItem(at: root) }
-    guard let library = Library.open(dataRoot: root, script: script, background: false) else { return check("live resize (session): the library opens", false) }
+    let library = Library.open(dataRoot: root, background: false)
     let w = FakeHostWorld()
     w.tilesOn = true
     w.minSize["com.apple.Notes"] = CGSize(width: 1100, height: 500) // (its tile says so: the page area's floor while it's shown)
@@ -1749,7 +1745,6 @@ func liveSidebarResizeTests(script: URL) {
     engine.loading = { session.loading($0) }
     engine.hostedWindow = { session.hosted($0) }
     engine.onMinimum = { session.minimum($0) } // (as ShellHostedGlue wires it)
-    library.delegate = session
     func run(_ body: @escaping () async -> Void = {}) { hostRun { await body(); await session.idle() } }
     _ = library.perform("createSpace", ["windowId": 1, "name": "Home", "emoji": "🏠"])
     func windowOf(_ bundle: String) -> Int { w.running(bundleId: bundle).first.flatMap { w.apps[$0.pid]?.windows.first } ?? 0 }
@@ -1783,10 +1778,10 @@ func liveSidebarResizeTests(script: URL) {
           && count("fullScreen", since: mark) == 0 && !session.following && !window.followingPage && window.hosted == notes && w.listsMarginOnly, "\(w.calls.dropFirst(mark)) \(window.loadings.dropFirst(loadings))")
 }
 
-func sidebarResizeTests(script: URL) {
+func sidebarResizeTests() {
     let root = tempFolder("hosted-resize")
     defer { try? FileManager.default.removeItem(at: root) }
-    guard let library = Library.open(dataRoot: root, script: script, background: false) else { return check("resize: the library opens", false) }
+    let library = Library.open(dataRoot: root, background: false)
     let w = FakeHostWorld()
     let engine = HostEngine(system: w, marker: nil, pid: 1)
     engine.options.privateRetire = 0
@@ -1797,7 +1792,6 @@ func sidebarResizeTests(script: URL) {
     engine.onEvent = { session.hostEvent($0) }
     engine.loading = { session.loading($0) }
     engine.hostedWindow = { session.hosted($0) }
-    library.delegate = session
     func run(_ body: @escaping () async -> Void = {}) { hostRun { await body(); await session.idle() } }
     _ = library.perform("createSpace", ["windowId": 1, "name": "Home", "emoji": "🏠"])
     func windowOf(_ bundle: String) -> Int { w.running(bundleId: bundle).first.flatMap { w.apps[$0.pid]?.windows.first } ?? 0 }
@@ -1945,22 +1939,22 @@ func hostedGeometryTests() {
 }
 
 // The shell: the library is the windows' source, the first run's space, the engine wired to the session.
-func hostedShellTests(script: URL) {
+func hostedShellTests() {
     let root = tempFolder("hosted-shell")
     defer { try? FileManager.default.removeItem(at: root) }
     var options = Shell.Options()
     options.harness = true
-    options.root = script.deletingLastPathComponent()
+    options.root = URL(fileURLWithPath: "../../dist/app")
     options.dataRoot = root
     let w = FakeHostWorld()
     options.hostSystem = w
     let shell = Shell(link: SocketLink(), apps: StubApps(), hotKeys: FakeRegistrar(), options: options)
     defer { shell.stop {} }
-    check("hosted shell: the host engine made on the harness's system", shell.host != nil && shell.library != nil)
+    check("hosted shell: the host engine made on the harness's system", shell.host != nil)
     let source = shell.makeHostedSource()
-    check("hosted shell: Margin's windows draw the library", source is LibraryWindowSource && shell.hosted != nil && shell.library?.delegate === shell.hosted)
+    check("hosted shell: Margin's windows draw the library, the session its requests' sink", source is LibraryWindowSource && shell.hosted != nil && shell.library.onRequests != nil)
     check("hosted shell: the first run with nothing to import: one space made, for the person to name in the editor",
-          shell.library?.spaces().count == 1 && shell.hosted?.firstSpace == shell.library?.spaces().first?.id)
+          shell.library.spaces().count == 1 && shell.hosted?.firstSpace == shell.library.spaces().first?.id)
     check("hosted shell: the engine's Safari windows are the copies'", shell.host?.requestSafariWindow != nil && shell.host?.closeSafariWindow != nil && shell.host?.safariFullScreen != nil && shell.host?.safariLinked != nil && shell.host?.loading != nil)
     check("hosted shell: Margin's window told the hosted window, and another app's window in its Space", shell.host?.hostedWindow != nil && shell.host?.others != nil)
     check("hosted shell: a palette pick goes to the session", shell.openApp != nil)
@@ -1983,10 +1977,10 @@ func hostedShellTests(script: URL) {
 // first one's open given up (an app it started asked to quit, not waited for: no memory held for an app passed over; its
 // loading bar gone), Margin's window hosting all along (no launcher between them). Picked by the tab keys, an app not
 // running yet is held a moment first: one only passed over is never started.
-func hostedSupersedeTests(script: URL) {
+func hostedSupersedeTests() {
     let root = tempFolder("hosted-supersede")
     defer { try? FileManager.default.removeItem(at: root) }
-    guard let library = Library.open(dataRoot: root, script: script, background: false) else { return check("supersede: the library opens", false) }
+    let library = Library.open(dataRoot: root, background: false)
     let w = FakeHostWorld()
     let engine = HostEngine(system: w, marker: nil, pid: 1)
     engine.options.privateRetire = 0
@@ -2000,7 +1994,6 @@ func hostedSupersedeTests(script: URL) {
     engine.onEvent = { session.hostEvent($0) }
     engine.loading = { session.loading($0) }
     engine.hostedWindow = { session.hosted($0) }
-    library.delegate = session
     func run(_ body: @escaping () async -> Void = {}) { hostRun { await body(); await session.idle() } }
     let launches = { (bundle: String) in w.calls.filter { $0 == "launch \(bundle)" }.count }
     _ = library.perform("createSpace", ["windowId": 1, "name": "Home", "emoji": "🏠"])

@@ -189,36 +189,8 @@ func marginWindowTests() {
           && MarginBackdrop.frame(window: NSRect(x: -20000, y: -20000, width: 1200, height: 800), screen: nil) == NSRect(x: -20000, y: -20000, width: 1200, height: 800))
     check("hosted: New Window makes a window", MarginMenuAction.newWindow.effect == .newWindow)
 
-    // ---- the stand-in source: a data set as the state pages draw ----
-    var values: [String: [String: Any]] = [
-        "spaces": ["work": ["name": "Work", "emoji": "💼", "color": "#00f", "order": 1], "home": ["name": "Home", "emoji": "🏠", "color": "#f00", "order": 0]],
-        "pins": ["p1": ["spaceId": "home", "url": "https://a.example/", "title": "A", "folderId": "f1", "pos": 2], "p2": ["spaceId": "work", "url": "https://b.example/", "title": "B", "folderId": NSNull(), "pos": 0]],
-        "folders": ["f1": ["spaceId": "home", "name": "Reading", "open": false, "pos": 1]],
-        "tabs": ["t-aaaaaaaaaa": ["spaceId": "work", "url": "https://c.example/", "title": "C", "icon": "", "order": 5, "lastUsed": 1000, "selected": true],
-                 "t-bbbbbbbbbb": ["spaceId": "gone", "url": "https://d.example/", "title": "D", "order": 1, "lastUsed": 10]],
-        "archive": ["a1": ["url": "https://old.example/", "title": "Old", "spaceId": "home", "closedAt": 5], "a2": ["url": "https://new.example/", "title": "New", "spaceId": "home", "closedAt": 9]],
-        "settings": ["theme": "arcadia", "sidebarPinnedOpen": true],
-        "themeSettings": ["arcadia": ["sidebarWidth": 280]],
-    ]
-    let state = DataSetWindowSource.state(values: { values[$0] ?? [:] }, active: [1: "work", 2: "gone"])
-    check("hosted source: spaces in their order", (state["spaces"] as? [JSONObject])?.compactMap { $0["id"] as? String } == ["home", "work"])
-    let pins = (state["pins"] as? [JSONObject]) ?? []
-    check("hosted source: pins, a folder's kept and none for none", pins.first { $0["id"] as? String == "p1" }?["folderId"] as? String == "f1" && pins.first { $0["id"] as? String == "p2" }?["folderId"] == nil)
-    check("hosted source: folders", (state["folders"] as? [JSONObject])?.first?["open"] as? Bool == false)
-    let kept = state["keptTabs"] as? JSONObject ?? [:]
-    check("hosted source: Margin's tabs are kept tabs (nothing open in its window yet), only of known spaces",
-          kept.keys.sorted() == ["t-aaaaaaaaaa"] && (kept["t-aaaaaaaaaa"] as? JSONObject)?["wasActive"] as? Bool == true && (kept["t-aaaaaaaaaa"] as? JSONObject)?["lastActive"] as? Double == 1000)
-    check("hosted source: no open tabs", (state["tabs"] as? JSONObject)?.isEmpty == true)
-    check("hosted source: the archive newest first", (state["archive"] as? [JSONObject])?.compactMap { $0["id"] as? String } == ["a2", "a1"])
-    check("hosted source: settings, each theme's own under themes", (state["settings"] as? JSONObject)?["theme"] as? String == "arcadia"
-          && ((state["settings"] as? JSONObject)?["themes"] as? JSONObject)?["arcadia"] != nil)
-    check("hosted source: each window's space, one that's gone left out", same(state["activeSpaceByWindow"], ["1": "work"]))
-    values = [:]
-    let empty = DataSetWindowSource.state(values: { values[$0] ?? [:] }, active: [:])
-    check("hosted source: no data set yet: Personal, empty", (empty["spaces"] as? [JSONObject])?.first?["id"] as? String == "personal" && (empty["pins"] as? [Any])?.isEmpty == true)
-    check("hosted source: as JSON", jsonString(state) != nil)
-
-    // Choosing a space in a window is kept by the source, and drawn again; what it can't do changes nothing.
+    // The profile's settings source (the no-rules fallback's spaces gone at step 4's switch): a setting changed in the
+    // UI kept and drawn again; nothing else asked of it does anything.
     let folder = FileManager.default.temporaryDirectory.appendingPathComponent("margin-hosted-tests-\(UUID().uuidString)")
     defer { try? FileManager.default.removeItem(at: folder) }
     let sync = DataSync(root: folder, background: false)
@@ -231,19 +203,16 @@ func marginWindowTests() {
     Diagnostics.echo = { _ in }
     source.perform("setSpace", ["spaceId": "personal", "windowId": 3])
     source.perform("pinTab", ["tabId": 4, "windowId": 3])
-    source.perform("pinTab", ["tabId": 5, "windowId": 3])
     Diagnostics.echo = echo
-    check("hosted source: a space chosen: drawn again, that window shows it", changed == 1 && same(source.snapshot()["activeSpaceByWindow"], ["3": "personal"]))
-    check("hosted source: a request it can't do yet is counted, nothing drawn", source.unhandled["pinTab"] == 2 && changed == 1)
+    check("hosted source: what isn't a setting changes nothing, draws nothing", changed == 0)
     source.perform("updateSettings", ["patch": ["sidebarPinnedOpen": false], "windowId": 3])
     source.perform("updateThemeSettings", ["themeId": "arcadia", "patch": ["sidebarWidth": 300], "windowId": 3])
-    let settings = source.snapshot()["settings"] as? JSONObject
+    let settings = source.drawnSettings
     check("hosted source: the sidebar kept open or not, and its width, kept in memory and drawn",
-          changed == 3 && settings?["sidebarPinnedOpen"] as? Bool == false && ((settings?["themes"] as? JSONObject)?["arcadia"] as? JSONObject)?["sidebarWidth"] as? Int == 300)
+          changed == 2 && settings["sidebarPinnedOpen"] as? Bool == false && ((settings["themes"] as? JSONObject)?["arcadia"] as? JSONObject)?["sidebarWidth"] as? Int == 300)
     let drawn = source.settingsAndIcons()
-    check("hosted source: what the library's draw takes (settingsAndIcons, no State built): the same settings and site icons",
-          NSDictionary(dictionary: drawn.settings).isEqual(to: settings ?? [:]) && NSDictionary(dictionary: drawn.icons).isEqual(to: source.snapshot()["favicons"] as? JSONObject ?? ["x": 1])
-          && NSDictionary(dictionary: source.drawnSettings).isEqual(to: drawn.settings))
+    check("hosted source: what the library's draw takes (settingsAndIcons): the same settings, the site icons (none here)",
+          NSDictionary(dictionary: drawn.settings).isEqual(to: settings) && drawn.icons.isEmpty)
     sync.onChange?(DataProfile(browser: "safari", profile: "P"), ["spaces"])
     check("hosted source: the shell still hears the data set's changes (the source's comes after)", shellHeard == 1)
 
@@ -255,14 +224,9 @@ func marginWindowTests() {
         check("space theme: a space with none: none (the profile's)", MarginWindowController.spaceTheme(window: 2, state: lib) == nil)
         check("space theme: a window with no space of its own, or one gone: the first space's (the one it shows)",
               MarginWindowController.spaceTheme(window: 9, state: lib) == "pixel" && MarginWindowController.spaceTheme(window: 3, state: lib) == "pixel")
-        let set: JSONObject = ["spaces": spaces, "activeSpaceByWindow": ["1": "a"] as JSONObject]
-        check("space theme: a profile's set (its windows at the top)", MarginWindowController.spaceTheme(window: 1, state: set) == "pixel")
         check("space theme: no spaces, or an odd value: none", MarginWindowController.spaceTheme(window: 1, state: [:]) == nil
               && MarginWindowController.spaceTheme(window: 1, state: ["spaces": [["id": "a", "theme": String(repeating: "x", count: 60)]]]) == nil
               && MarginWindowController.spaceTheme(window: 1, state: ["spaces": [["id": "a", "theme": 3]]]) == nil)
-        let drawn = DataSetWindowSource.state(values: { $0 == "spaces" ? ["a": ["name": "A", "order": 0, "theme": "pixel"], "b": ["name": "B", "order": 1]] : [:] }, active: [:])
-        check("space theme: a profile's set as Margin's window draws it keeps each space's theme",
-              ((drawn["spaces"] as? [JSONObject])?.map { $0["theme"] as? String ?? "-" }) == ["pixel", "-"])
     }
 
     // ---- a theme's settings changed in Margin's window (the sidebar's width, dragged) last across launches ----
@@ -271,7 +235,7 @@ func marginWindowTests() {
         var writes = 0
         let keeper = ThemeSettingsKeeper(read: { stored }, write: { stored = $0; writes += 1 })
         func source() -> DataSetWindowSource { DataSetWindowSource(data: DataSync(root: tempFolder("window-theme-settings")), pick: { nil }, keeper: keeper) }
-        func width(_ s: DataSetWindowSource, _ theme: String) -> Any? { (((s.snapshot()["settings"] as? JSONObject)?["themes"] as? JSONObject)?[theme] as? JSONObject)?["sidebarWidth"] }
+        func width(_ s: DataSetWindowSource, _ theme: String) -> Any? { ((s.drawnSettings["themes"] as? JSONObject)?[theme] as? JSONObject)?["sidebarWidth"] }
         let first = source()
         check("theme settings: what was kept is the theme's setting from the start", int(width(first, "arcadia")) == 300 && writes == 0)
         first.perform("updateThemeSettings", ["themeId": "arcadia", "patch": ["sidebarWidth": 342], "windowId": 1])
@@ -296,9 +260,9 @@ func marginWindowTests() {
         check("settings: none chosen in Margin's Settings yet: no theme of its own (the profile's set says)", first.chosenTheme == nil && writes == 0)
         first.perform("updateSettings", ["patch": ["theme": "pixel", "archiveAfterHours": 6, "themes": ["x": 1]], "windowId": 1])
         check("settings: a change is written as it's made (never a theme's own settings with it)", writes == 1 && stored["theme"] as? String == "pixel" && int(stored["archiveAfterHours"]) == 6 && stored["themes"] == nil, "\(stored)")
-        check("settings: the theme chosen there is the window's theme", first.chosenTheme == "pixel" && (first.snapshot()["settings"] as? JSONObject)?["theme"] as? String == "pixel")
+        check("settings: the theme chosen there is the window's theme", first.chosenTheme == "pixel" && first.drawnSettings["theme"] as? String == "pixel")
         let next = source()
-        check("settings: the next launch has what was chosen", next.chosenTheme == "pixel" && int((next.snapshot()["settings"] as? JSONObject)?["archiveAfterHours"]) == 6)
+        check("settings: the next launch has what was chosen", next.chosenTheme == "pixel" && int(next.drawnSettings["archiveAfterHours"]) == 6)
         let cleaned = SettingsKeeper.clean(["theme": "arcadia", "on": true, "n": 3, "sites": ["a.com", "b.com"], "mixed": ["a", 1], "nested": ["a": 1], "themes": ["x": 1], "long": String(repeating: "x", count: 501)])
         check("settings: only numbers, switches, short strings and lists of strings are kept, never `themes`", Set(cleaned.keys) == ["theme", "on", "n", "sites"], "\(cleaned)")
 

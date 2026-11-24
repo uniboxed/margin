@@ -37,7 +37,7 @@ fn pump(
         for (id, c) in starts {
             seen.push(c.clone());
             let a = answer(&c);
-            if matches!(c, Command::Perform { .. } | Command::Done { .. }) {
+            if matches!(c, Command::Done { .. }) {
                 s.answer(id, a);
             } else {
                 later.push((id, a));
@@ -91,7 +91,6 @@ fn kinds(cs: &[Command]) -> Vec<String> {
     cs.iter()
         .map(|c| match c {
             Command::Ask { kind, .. } => format!("ask {kind}"),
-            Command::Perform { action, .. } => format!("perform {action}"),
             Command::Run { .. } => "run".into(),
             Command::Engine { op, .. } => format!("engine {op}"),
             Command::Waker { op, .. } => format!("waker {op}"),
@@ -109,8 +108,8 @@ fn named(acts: &[Value], name: &str) -> Vec<Value> {
     acts.iter().filter(|a| a[0] == json!(name)).cloned().collect()
 }
 
-fn put(shelf: &Shelf, collection: &str, id: &str, v: Value) {
-    shelf.0.borrow_mut().insert((collection.into(), id.into()), v);
+fn put(lib: &TestLibrary, collection: &str, id: &str, v: Value) {
+    lib.put(collection, id, v);
 }
 
 fn input(s: &Session, v: Value) -> Out {
@@ -123,13 +122,13 @@ fn input(s: &Session, v: Value) -> Out {
 
 #[test]
 fn a_card_named_by_the_app_else_the_title_else_the_address_120_at_most() {
-    let (s, world, shelf) = session();
+    let (s, world, lib) = session();
     world.names.borrow_mut().insert("com.apple.Notes".into(), "Notes".into());
-    put(&shelf, "tabs", "a", json!({ "target": { "kind": "app", "bundleId": "com.apple.Notes", "name": "N" } }));
-    put(&shelf, "tabs", "b", json!({ "target": { "kind": "app", "bundleId": "com.x", "name": "X app" } }));
-    put(&shelf, "tabs", "t", json!({ "title": "T".repeat(130), "url": "https://t/" }));
-    put(&shelf, "tabs", "u", json!({ "title": "", "url": "https://u/" }));
-    put(&shelf, "tabs", "p", json!({ "title": "" }));
+    put(&lib, "tabs", "a", json!({ "target": { "kind": "app", "bundleId": "com.apple.Notes", "name": "N" } }));
+    put(&lib, "tabs", "b", json!({ "target": { "kind": "app", "bundleId": "com.x", "name": "X app" } }));
+    put(&lib, "tabs", "t", json!({ "title": "T".repeat(130), "url": "https://t/" }));
+    put(&lib, "tabs", "u", json!({ "title": "", "url": "https://u/" }));
+    put(&lib, "tabs", "p", json!({ "title": "" }));
     for (item, picture) in [("a", None), ("b", None), ("t", Some("data:image/png;base64,QQ")), ("u", None), ("p", None)]
     {
         s.core().show_elsewhere(item, 2, picture);
@@ -169,7 +168,7 @@ fn pictured(s: &Session, wait: f64, item: &str) -> Out {
     let item = item.to_string();
     s.core().exec.spawn_now(async move {
         let picture = c.page_picture(&item).await.map_or(Value::Null, Value::String);
-        c.exec.command(Command::Reply { to: 7, value: picture }, false).await;
+        c.exec.command(Command::Reply { to: 7, value: picture }).await;
     });
     s.tick(0.0)
 }
@@ -219,9 +218,9 @@ fn a_web_items_picture_raced_against_its_wait() {
 
 #[test]
 fn a_window_in_front_takes_its_item_back() {
-    let (s, world, shelf) = session();
+    let (s, world, lib) = session();
     world.windows.borrow_mut().push(2);
-    put(&shelf, "tabs", "a", json!({ "target": { "kind": "app", "bundleId": "com.a", "name": "A" } }));
+    put(&lib, "tabs", "a", json!({ "target": { "kind": "app", "bundleId": "com.a", "name": "A" } }));
     set(&s, json!({ "elsewhere": { "put": [[1, "a"], [2, "gone"]] }, "hostingWindow": { "put": [[2]] } }));
     acts(&world);
     // (Its item gone from the library: its card goes, nothing shown.)
@@ -310,15 +309,10 @@ fn a_window_closed_forgets_what_was_kept_for_it() {
 
 // ---- the start ----
 
-fn selected(shelf: &Shelf, id: &str, target: Value, title: &str) {
-    put(shelf, "spaces", "s1", json!({ "name": "Home", "order": 0 }));
-    put(shelf, "windows", "1", json!({ "spaceId": "s1" }));
-    put(
-        shelf,
-        "tabs",
-        id,
-        json!({ "spaceId": "s1", "selected": true, "lastUsed": 5, "title": title, "target": target }),
-    );
+fn selected(lib: &TestLibrary, id: &str, target: Value, title: &str) {
+    put(lib, "spaces", "s1", json!({ "name": "Home", "order": 0 }));
+    put(lib, "windows", "1", json!({ "spaceId": "s1" }));
+    put(lib, "tabs", id, json!({ "spaceId": "s1", "selected": true, "lastUsed": 5, "title": title, "target": target }));
 }
 
 fn notes() -> Value {
@@ -327,8 +321,8 @@ fn notes() -> Value {
 
 #[test]
 fn the_last_item_behind_the_loader_then_shown_once_the_window_is_up() {
-    let (s, world, shelf) = session();
-    selected(&shelf, "n", notes(), "");
+    let (s, world, lib) = session();
+    selected(&lib, "n", notes(), "");
     input(&s, json!({ "type": "options", "options": { "preparesBrowser": false, "prepareWindowWait": 0.2 } }));
     world.not_full_screen.borrow_mut().push(1);
     let out = input(&s, json!({ "type": "windowOpened", "window": 1 }));
@@ -358,8 +352,8 @@ fn the_last_item_behind_the_loader_then_shown_once_the_window_is_up() {
     let a = acts(&world);
     assert_eq!(named(&a, "setHosting"), [json!(["setHosting", 1, false])], "settled: the launcher");
     // Up in time: shown as any pick.
-    let (s, world, shelf) = session();
-    selected(&shelf, "n", notes(), "");
+    let (s, world, lib) = session();
+    selected(&lib, "n", notes(), "");
     input(&s, json!({ "type": "options", "options": { "preparesBrowser": false } }));
     let out = input(&s, json!({ "type": "windowOpened", "window": 1 }));
     assert_eq!(kinds(&pump(&s, &world, out, 100, &mut shows(&world))), ["engine open"]);
@@ -373,8 +367,8 @@ fn the_last_item_behind_the_loader_then_shown_once_the_window_is_up() {
 
 #[test]
 fn settings_last_drawn_at_once_with_nothing_hosted() {
-    let (s, world, shelf) = session();
-    selected(&shelf, "m", json!({ "kind": "margin", "page": "settings" }), "");
+    let (s, world, lib) = session();
+    selected(&lib, "m", json!({ "kind": "margin", "page": "settings" }), "");
     input(&s, json!({ "type": "options", "options": { "preparesBrowser": false } }));
     let out = input(&s, json!({ "type": "windowOpened", "window": 1 }));
     assert!(!out.ready);
@@ -385,8 +379,8 @@ fn settings_last_drawn_at_once_with_nothing_hosted() {
 
 /// The start screen up over window 1 with Notes last; the preparation not over.
 fn start_screen(wait: f64) -> (Session, Rc<World>, Out) {
-    let (s, world, shelf) = session();
-    selected(&shelf, "n", notes(), "");
+    let (s, world, lib) = session();
+    selected(&lib, "n", notes(), "");
     input(&s, json!({ "type": "options", "options": { "startupWait": wait } }));
     let out = input(&s, json!({ "type": "windowOpened", "window": 1 }));
     assert!(s.start_screen());
@@ -471,9 +465,9 @@ fn prepare(s: &Session, setting: Value) -> Out {
 
 #[test]
 fn the_browser_made_ready_its_four_steps() {
-    let (s, world, shelf) = session();
+    let (s, world, lib) = session();
     world.out_of_sight.set(true);
-    put(&shelf, "spaces", "s1", json!({ "name": "Home", "order": 0, "profile": "" }));
+    put(&lib, "spaces", "s1", json!({ "name": "Home", "order": 0, "profile": "" }));
     let out = prepare(&s, json!(" Safari "));
     assert_eq!(
         kinds(&out.start.iter().map(|(_, c)| c.clone()).collect::<Vec<_>>()),
@@ -590,15 +584,16 @@ fn hosting_settled_and_the_launcher() {
     assert_eq!(acts(&world).iter().filter(|v| v[0] != json!("swift") && v[0] != json!("changed")).count(), 0);
     // The launcher asked for: Settings performed at once, said; Archive parks, settles, leaves Margin's page.
     world.windows.borrow_mut().push(1);
+    acts(&world);
     let out = input(&s, json!({ "type": "call", "flow": "openLauncher", "args": { "window": 1, "settings": true } }));
+    assert!(out.start.is_empty());
     assert_eq!(
-        kinds(&out.start.iter().map(|(_, c)| c.clone()).collect::<Vec<_>>()),
-        ["perform openMarginPage"],
+        named(&acts(&world), "perform"),
+        [json!(["perform", "openMarginPage", { "windowId": 1, "page": "settings" }])],
         "at once, as Swift's call did"
     );
-    s.answer(out.start[0].0, json!({ "ok": false, "result": null, "error": "nope" }));
     s.tick(0.0);
-    assert_eq!(s.done().last().map(String::as_str), Some("Margin's window 1: Settings asked for, refused (nope)"));
+    assert_eq!(s.done().last().map(String::as_str), Some("Margin's window 1: Settings asked for, refused (no space)"));
     set(&s, json!({ "hostingWindow": { "put": [[1]] } }));
     *world.shown.borrow_mut() = Some("app:com.a".into());
     let out = input(&s, json!({ "type": "call", "flow": "openLauncher", "args": { "window": 1, "settings": false } }));

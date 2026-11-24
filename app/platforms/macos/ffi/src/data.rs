@@ -363,7 +363,8 @@ pub(crate) fn library<'a>(library: *const MarginLibrary) -> Option<&'a Library> 
     (!library.is_null()).then(|| unsafe { &(*library).library })
 }
 
-/// One request → its answer, each with the log since (`log`): `values` (`{ values: { collection: { id: value } } }`),
+/// One request → its answer, each with the log since (`log`): `values` (`{ values: { collection: { id: value } } }`;
+/// with `collection`, that one's `{ id: value }`),
 /// `apply` (`entries`, `at` ms: `{ changed, values }`, stored as given, no rule run, no observer), `written`, `rev`
 /// (`{ rev }`, the set's, or null); the rules: `perform` (`action`, `payload`: `{ ok, result, error?, changed,
 /// requests }`, its observers and the sink inside the call), `snapshot` (`{ snapshot }`, what the UI draws), `actions`,
@@ -387,7 +388,10 @@ pub unsafe extern "C" fn margin_library_call(
     let Some(o) = req.as_object() else { return answer(&json!({ "error": "bad request: not an object" }), out_len) };
     let mut log: Vec<Note> = Vec::new();
     let mut out = match s(o, "type") {
-        "values" => json!({ "values": lib.values() }),
+        "values" => match o.get("collection").and_then(Value::as_str) {
+            Some(c) => json!({ "values": lib.live(c) }),
+            None => json!({ "values": lib.values() }),
+        },
         "apply" => {
             let entries = o.get("entries").and_then(Value::as_array).cloned().unwrap_or_default();
             let at = o.get("at").and_then(Value::as_f64).unwrap_or(0.0);
@@ -403,7 +407,12 @@ pub unsafe extern "C" fn margin_library_call(
             let payload = o.get("payload").cloned().unwrap_or_else(|| Value::Object(Map::new()));
             lib.perform(s(o, "action"), &payload).to_json()
         }
-        "snapshot" => json!({ "snapshot": serde_json::from_str::<Value>(&lib.snapshot_text()).unwrap_or(Value::Null) }),
+        "snapshot" => {
+            // (The kept text as it is, not parsed and written again: a draw's.)
+            let text = lib.snapshot_text();
+            log.extend(lib.take_log());
+            return bytes(format!("{{\"snapshot\":{text},\"log\":{}}}", log_json(&log)), out_len);
+        }
         "actions" => json!({ "actions": Library::actions() }),
         "item" => json!({ "value": lib.item(s(o, "collection"), s(o, "id")) }),
         "requests" => json!({ "requests": lib.requests() }),
@@ -455,8 +464,8 @@ pub unsafe extern "C" fn margin_library_import(
 
 /// library.js's entry (`marginLibrary.call(name, argsJSON)`, LT:939) answered by the core: `name`'s function
 /// (`perform`, `snapshot`, `importValues`, `actions`) on the arguments' JSON text, LT's answer's text (`{ value }` or
-/// `{ error }`). With the library's sorter, or (null) the person's made for the call. For the Mac's tests: the shadow
-/// of every call the Swift suite makes to the JavaScriptCore rules.
+/// `{ error }`). With the library's sorter, or (null) the person's made for the call. For the tests: the shared vectors
+/// with the Mac's sorter (library_tests.rs).
 ///
 /// # Safety
 /// `library` null or from [`margin_library_new`], not freed; `name` and `args` point at their lengths' readable bytes.
@@ -475,26 +484,6 @@ pub unsafe extern "C" fn margin_library_rules(
         None => library::object::call(name, args, &SystemCollation::preferred()),
     };
     bytes(out, out_len)
-}
-
-/// [`margin_library_rules`] answered as Margin.app's JavaScriptCore rules answer it, with no `URL` (`js::without_urls`:
-/// an address matched as given, no link rule matching). For the Mac's shadow only: a call where JSC and the core
-/// differ is the parsing's alone (Tirth's answer 11) when this answers as JSC does. Goes with the shadow (step 4
-/// commit 6).
-///
-/// # Safety
-/// As [`margin_library_rules`].
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn margin_library_rules_without_urls(
-    library: *const MarginLibrary,
-    name: *const u8,
-    name_len: usize,
-    args: *const u8,
-    args_len: usize,
-    out_len: *mut usize,
-) -> *mut u8 {
-    // SAFETY: the caller's contract, margin_library_rules's.
-    library::js::without_urls(|| unsafe { margin_library_rules(library, name, name_len, args, args_len, out_len) })
 }
 
 /// A text answer's bytes (freed with `margin_buffer_free`).

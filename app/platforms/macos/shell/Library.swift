@@ -9,11 +9,15 @@
 // imported is namespaced by its browser and profile (app/shared/library/library.ts nsId), so two profiles' spaces
 // never meet.
 //
-// Every edit goes through perform(action, payload): the rules are the extension's (LibraryRules.swift runs them),
-// which answer with the values that changed; the library times them (now, or just after the item's own time),
-// merges them as any change (margin-core's data/library.rs), stores them and tells its observers. What needs a browser or an app
-// (showing an item, opening an address, closing a page) is a request for the hosting phase: recorded (`requests`)
-// and given to the delegate if there is one. Nothing here opens, shows or closes anything.
+// The library is margin-core's (library/object.rs, through margin-ffi's `margin_library_*`: docs/CORE-REFACTOR.md
+// step 4): its rules, its store and its state are the core's, and this is its facade, the same API the app and the tests
+// read. Every edit goes through perform(action, payload): the core's rules (the extension's model.ts's, moved; the
+// shared vectors keep them one rule) answer with the values that changed; the core times them (now, or just after the
+// item's own time), merges them as any change (data/library.rs), stores them and tells the observers here (a callback,
+// during the call). What needs a browser or an app (showing an item, opening an address, closing a page) is a request
+// for the hosting: recorded (`requests`, the core's last 100), given to the session inside the perform (the session
+// made over this library is its sink: margin_session_new), then to the delegate here if there is one (a library with
+// no session: the tests'). Nothing here opens, shows or closes anything.
 
 import Foundation
 import MarginCore
@@ -67,7 +71,8 @@ struct LibraryRequest {
     var target: ItemTarget? { ItemTarget(json: body["target"]) }
 }
 
-// The hosting phase's end: it shows, opens and closes what the library's requests name.
+// What a library with no session hands its requests to (a test's recorder): the session is the library's sink in the
+// core, given each request inside the perform.
 protocol LibraryDelegate: AnyObject {
     func library(_ library: Library, wants request: LibraryRequest)
 }
@@ -91,19 +96,17 @@ final class Library {
     // The set's key in its store (the store is flat: the key names no folder).
     static let key = DataProfile(browser: "app", profile: "library")
     static let requestsKept = 100
-    static let scriptName = "library.js"
 
-    // The library's set as margin-core keeps it (its flat store, the entries' times, the merge: data/library.rs), and
-    // every collection's live values as the core last gave them (refreshed for what a change of its own touched: the
-    // reads below never ask the core).
+    // margin-core's library object: its flat store (written in the background), its rules, its state.
     private let core: LibraryCore
-    private var cache: [String: JSONObject] = [:]
-    let rules: LibraryRules
+    // A library with no session's (the tests'): given each request after the perform.
     weak var delegate: LibraryDelegate?
-    // The requests made, oldest first, the last requestsKept of them.
-    private(set) var requests: [LibraryRequest] = []
+    // The session's (HostedSession): after a perform of Swift's own that asked something of the hosting, what its
+    // requests left in the session answered (they reached it inside the perform).
+    var onRequests: (() -> Void)?
+    // The time an action and its changes take (ms), asked by the core during a perform.
     var now: () -> Double = { (Date().timeIntervalSince1970 * 1000).rounded() }
-    // Random letters for the ids an action makes (a test gives its own).
+    // Random letters for the ids an action makes (a test gives its own), asked by the core during a perform.
     var randomIds: () -> [String] = { (0..<4).map { _ in Library.randomLetters() } }
     private var observers: [Int: (Set<String>) -> Void] = [:]
     private var nextObserver = 0
@@ -111,44 +114,39 @@ final class Library {
     // data/app under the lasting data's root (DataSync.appRoot, or a test's folder).
     static func folder(in dataRoot: URL) -> URL { dataRoot.appendingPathComponent("app", isDirectory: true) }
 
-    // margin-core's library object, for the session's reads of it (SessionCore: it lives as long as this library).
+    // margin-core's library object, for the session made over it (SessionCore: it lives as long as this library).
     var corePointer: OpaquePointer? { core.pointer }
 
     // The library in `root` (its flat store's folder), written in the background (false: at once, the unit tests).
-    init(root: URL, background: Bool = true, rules: LibraryRules) {
+    init(root: URL, background: Bool = true) {
         core = LibraryCore(root: root, background: background)
-        self.rules = rules
-        cache = core.values()
+        core.owner = self
     }
 
-    // The library in `dataRoot`/app with the rules from `script`; nil if the rules can't run.
-    static func open(dataRoot: URL, script: URL, background: Bool = true) -> Library? {
-        guard let rules = LibraryRules.load(from: script) else { return nil }
-        return Library(root: folder(in: dataRoot), background: background, rules: rules)
+    // The library in `dataRoot`/app.
+    static func open(dataRoot: URL, background: Bool = true) -> Library {
+        Library(root: folder(in: dataRoot), background: background)
     }
 
-    // ---- reading ----
+    // ---- reading (each one call of the core's: the start's lines, the tests; never per frame) ----
 
     // A collection's live values: { id: value }.
-    func liveValues(_ collection: String) -> JSONObject { cache[collection] ?? [:] }
+    func liveValues(_ collection: String) -> JSONObject { core.call(["type": "values", "collection": collection])["values"] as? JSONObject ?? [:] }
 
     // Every collection's live values: { collection: { id: value } }.
-    var values: JSONObject { Dictionary(uniqueKeysWithValues: Self.collections.map { ($0, liveValues($0) as Any) }) }
+    var values: JSONObject { core.call(["type": "values"])["values"] as? JSONObject ?? [:] }
 
-    var isImported: Bool { liveValues("imports")["done"] != nil }
+    var isImported: Bool { core.call(["type": "imported"])["imported"] as? Bool == true }
 
     // What the UI draws (library.ts snapshot): its stored values' shape (app/shared/ui/host-app.ts, shared/stored.ts
     // fromStorage), the items as kept tabs with their targets, and `library: { v, imported }`.
-    func snapshot() -> JSONObject {
-        guard let o = rules.call("snapshot", [values]) as? JSONObject else {
-            Diagnostics.warn("library: no snapshot: \(rules.lastError ?? "?")")
-            return [:]
-        }
-        return o
-    }
+    func snapshot() -> JSONObject { core.call(["type": "snapshot"])["snapshot"] as? JSONObject ?? [:] }
 
     // The actions perform() takes.
-    var actions: [String] { rules.call("actions", []) as? [String] ?? [] }
+    var actions: [String] { core.call(["type": "actions"])["actions"] as? [String] ?? [] }
+
+    // The requests made, oldest first, the last requestsKept of them.
+    var requests: [LibraryRequest] { Self.requests(core.call(["type": "requests"])["requests"]) }
 
     // The spaces in their order.
     func spaces() -> [(id: String, value: JSONObject)] {
@@ -161,36 +159,48 @@ final class Library {
             .filter { space == nil || $0.value["spaceId"] as? String == space }
     }
 
-    func target(ofItem id: String) -> ItemTarget? { ItemTarget(json: (liveValues("tabs")[id] as? JSONObject)?["target"]) }
-    func space(ofItem id: String) -> String? { (liveValues("tabs")[id] as? JSONObject)?["spaceId"] as? String }
+    private func item(_ collection: String, _ id: String) -> JSONObject? {
+        core.call(["type": "item", "collection": collection, "id": id])["value"] as? JSONObject
+    }
+
+    func target(ofItem id: String) -> ItemTarget? { ItemTarget(json: item("tabs", id)?["target"]) }
+    func space(ofItem id: String) -> String? { item("tabs", id)?["spaceId"] as? String }
 
     // A split (docs/PEEK-SPLIT.md §4): its panes (items, in its order: those still there) and its axis; nil: none, or
     // fewer than two panes left.
     struct Split: Equatable { let id: String; let panes: [String]; let vertical: Bool }
-    func split(_ id: String) -> Split? {
-        guard let g = liveValues("splits")[id] as? JSONObject else { return nil }
-        let items = liveValues("tabs")
-        let panes = (g["panes"] as? [Any] ?? []).compactMap { $0 as? String }.filter { items[$0] != nil }
-        return panes.count >= 2 ? Split(id: id, panes: panes, vertical: g["axis"] as? String == "vertical") : nil
-    }
+    func split(_ id: String) -> Split? { split(id, liveValues("splits")[id], items: liveValues("tabs")) }
     func split(ofItem item: String) -> Split? {
-        let all = liveValues("splits")
+        let all = liveValues("splits"), items = liveValues("tabs")
         for id in all.keys.sorted() where ((all[id] as? JSONObject)?["panes"] as? [Any])?.contains(where: { $0 as? String == item }) == true {
-            if let s = split(id), s.panes.contains(item) { return s }
+            if let s = split(id, all[id], items: items), s.panes.contains(item) { return s }
         }
         return nil
     }
+    private func split(_ id: String, _ value: Any?, items: JSONObject) -> Split? {
+        guard let g = value as? JSONObject else { return nil }
+        let panes = (g["panes"] as? [Any] ?? []).compactMap { $0 as? String }.filter { items[$0] != nil }
+        return panes.count >= 2 ? Split(id: id, panes: panes, vertical: g["axis"] as? String == "vertical") : nil
+    }
 
     // The space a Margin window shows (nil: none chosen yet).
-    func space(ofWindow windowId: Int) -> String? { (liveValues("windows")[String(windowId)] as? JSONObject)?["spaceId"] as? String }
+    func space(ofWindow windowId: Int) -> String? { item("windows", String(windowId))?["spaceId"] as? String }
 
     private func sortedValues(_ collection: String, by order: ((id: String, value: JSONObject), (id: String, value: JSONObject)) -> Bool) -> [(id: String, value: JSONObject)] {
         liveValues(collection).compactMap { id, v -> (id: String, value: JSONObject)? in (v as? JSONObject).map { (id, $0) } }.sorted(by: order)
     }
 
+    private static func requests(_ raw: Any?) -> [LibraryRequest] {
+        (raw as? [Any] ?? []).compactMap { raw -> LibraryRequest? in
+            guard let o = raw as? JSONObject, let type = o["type"] as? String else { return nil }
+            return LibraryRequest(type: type, body: o)
+        }
+    }
+
     // ---- watching ----
 
-    // Called with the collections that changed, after each change (an action's, the import's). Its token, for stop.
+    // Called with the collections that changed, after each change (an action's, the import's): during the core's call,
+    // free to read the library again. Its token, for stop.
     @discardableResult func observe(_ f: @escaping (Set<String>) -> Void) -> Int {
         nextObserver += 1
         observers[nextObserver] = f
@@ -199,80 +209,46 @@ final class Library {
 
     func stopObserving(_ token: Int) { observers[token] = nil }
 
+    // The core's `changed`: every observer, in the order they came.
+    fileprivate func changed(_ collections: Set<String>) {
+        for f in observers.sorted(by: { $0.key < $1.key }).map(\.value) { f(collections) }
+    }
+
     // ---- editing ----
 
     // One of the UI's actions (or the hosting's: library.ts ACTIONS), with its payload as the UI sends it.
     @discardableResult func perform(_ action: String, _ payload: JSONObject = [:]) -> LibraryOutcome {
-        let env: JSONObject = ["now": now(), "ids": randomIds()]
-        guard let out = rules.call("perform", [values, action, payload, env]) as? JSONObject else {
-            let why = rules.lastError ?? "no answer"
-            Diagnostics.warn("library: \(action) failed: \(why)")
-            return LibraryOutcome(ok: false, result: nil, error: why, changed: [], requests: [])
+        guard JSONSerialization.isValidJSONObject(payload) else {
+            Diagnostics.warn("library: \(action) failed: perform: arguments aren't JSON")
+            return LibraryOutcome(ok: false, result: nil, error: "perform: arguments aren't JSON", changed: [], requests: [])
         }
+        let out = core.call(["type": "perform", "action": action, "payload": payload], refusals: true)
         guard isTrue(out["ok"]) else {
             return LibraryOutcome(ok: false, result: nil, error: out["error"] as? String ?? "refused", changed: [], requests: [])
         }
-        let changed = apply(out["changes"])
-        let asked = (out["requests"] as? [Any] ?? []).compactMap { raw -> LibraryRequest? in
-            guard let o = raw as? JSONObject, let type = o["type"] as? String else { return nil }
-            return LibraryRequest(type: type, body: o)
-        }
-        for request in asked {
-            requests.append(request)
-            if requests.count > Self.requestsKept { requests.removeFirst(requests.count - Self.requestsKept) }
-        }
-        let outcome = LibraryOutcome(ok: true, result: out["result"], error: nil, changed: changed, requests: asked)
+        let asked = Self.requests(out["requests"])
+        let outcome = LibraryOutcome(ok: true, result: out["result"], error: nil, changed: Set(out["changed"] as? [String] ?? []), requests: asked)
+        guard !asked.isEmpty else { return outcome }
         for request in asked { delegate?.library(self, wants: request) }
+        onRequests?()
         return outcome
     }
 
-    // The rules' changes (values, untimed) as the set's: each at now, or just after the item's own time (a clock
-    // that went back still makes a newer item), merged, stored, and the observers told. The collections changed.
-    @discardableResult private func apply(_ raw: Any?) -> Set<String> {
-        let entries = raw as? [Any] ?? []
-        guard !entries.isEmpty else { return [] }
-        let answer = core.apply(entries, at: now())
-        let changed = Set(answer.changed)
-        guard !changed.isEmpty else { return [] }
-        for (collection, values) in answer.values { cache[collection] = values }
-        for f in observers.sorted(by: { $0.key < $1.key }).map(\.value) { f(changed) }
-        return changed
+    // Entries (`{ collection, id, value }` or `{ …, deleted: true }`) stored as given at `at` (ms): no rule run, no
+    // observer told (the store's own apply: a library made for a check or a measure; the app's edits are performs).
+    func store(_ entries: [Any], at: Double) {
+        _ = core.call(["type": "apply", "entries": entries, "at": at])
     }
 
     // ---- the import (decided by Tirth, 2026-11-15) ----
 
     // Once: every profile's data set the app keeps (`profiles`: the shell's store) into the library, each browser's
-    // spaces in the person's order (data/<browser>/browser.json, read only: BrowserProfiles.resolve, the slots
-    // rule), a forgotten profile's too (after the others: its data was never deleted). Its marker (`imports.done`)
-    // goes in the same save as what it brought, and set.json is written last, so a crash before then runs it again,
-    // which gives the same ids. Nothing in the profiles' files is written. False if it had run already or failed.
+    // spaces in the person's order (data/<browser>/browser.json, read only: the slots rule), a forgotten profile's too
+    // (after the others: its data was never deleted); the core's (library/import.rs `sources`, `import_once`). Its marker
+    // (`imports.done`) goes in the same save as what it brought, and set.json is written last, so a crash before then
+    // runs it again, which gives the same ids. Nothing in the profiles' files is written. False if it had run already.
     @discardableResult func importOnce(from profiles: DataSync) -> Bool {
-        guard !isImported else { return false }
-        let all = profiles.profiles()
-        let browsers = Set(all.map(\.browser)).sorted { ($0 == "safari" ? 0 : 1, $0) < ($1 == "safari" ? 0 : 1, $1) }
-        var sets: [JSONObject] = []
-        var order: [[String]] = []
-        for browser in browsers {
-            var spaces: [String: [String]] = [:]
-            for p in all where p.browser == browser {
-                guard profiles.set(of: p) != nil else { continue }
-                let own = ["spaces", "pins", "folders", "tabs", "archive"]
-                sets.append(["browser": browser, "profile": p.profile, "values": Dictionary(uniqueKeysWithValues: own.map { ($0, profiles.values($0, of: p) as Any) })])
-                spaces[p.profile] = profiles.values("spaces", of: p).sorted {
-                    (num(($0.value as? JSONObject)?["order"]) ?? 0, $0.key) < (num(($1.value as? JSONObject)?["order"]) ?? 0, $1.key)
-                }.map(\.key)
-            }
-            let known = BrowserProfiles(browser: browser, root: profiles.root)
-            order += BrowserProfiles.resolve(stored: known.stored, spaces: spaces, profiles: known.profiles).map { [browser, $0.profile, $0.space] }
-        }
-        guard let out = rules.call("importValues", [values, sets, order, ["now": now()]]) as? JSONObject else {
-            Diagnostics.warn("library: the import failed: \(rules.lastError ?? "?")")
-            return false
-        }
-        apply(out["changes"])
-        let counts = (out["counts"] as? JSONObject ?? [:]).sorted { $0.key < $1.key }.map { "\($0.key) \($0.value)" }.joined(separator: ", ")
-        Diagnostics.note("library: imported \(sets.count) profile set(s): \(counts)")
-        return true
+        core.importOnce(profiles.corePointer)
     }
 
     // ---- ids ----
@@ -283,14 +259,26 @@ final class Library {
         _ = SecRandomCopyBytes(kSecRandomDefault, count, &bytes)
         return String(bytes.map { letters[Int($0) % letters.count] })
     }
+
+    // (The core's callbacks, during its calls on the main thread: the env, the clock, the observers.)
+    fileprivate func env(_ out: OpaquePointer?) -> Double {
+        let at = now()
+        for id in randomIds() { KeysCore.bytes(id) { p, n in margin_library_env_id(out, p, n) } }
+        return at
+    }
 }
 
 // margin-core's library object (margin-ffi's `margin_library_*`): its store writes on a thread of its own and wakes the
-// main thread, which drains what's written (a failed save said in the log).
+// main thread, which drains what's written (a failed save said in the log); its env, clock and observers are the
+// owner's, called during a call.
 final class LibraryCore {
     private var core: OpaquePointer?
     private let box = Box()
-    private final class Box { weak var library: LibraryCore? }
+    private final class Box { weak var library: LibraryCore?; weak var owner: Library? }
+    weak var owner: Library? {
+        get { box.owner }
+        set { box.owner = newValue }
+    }
 
     init(root: URL, background: Bool) {
         box.library = self
@@ -300,7 +288,24 @@ final class LibraryCore {
                 guard let ctx else { return }
                 let box = Unmanaged<Box>.fromOpaque(ctx).retain()
                 DispatchQueue.main.async { MainActor.assumeIsolated { box.takeRetainedValue().library?.written() } }
-            }, nil, nil, nil)
+            }, { ctx, out in
+                guard let ctx else { return 0 }
+                return MainActor.assumeIsolated {
+                    let box = Unmanaged<Box>.fromOpaque(ctx).takeUnretainedValue()
+                    guard let owner = box.owner else {
+                        for _ in 0..<4 { KeysCore.bytes(Library.randomLetters()) { p, n in margin_library_env_id(out, p, n) } }
+                        return (Date().timeIntervalSince1970 * 1000).rounded()
+                    }
+                    return owner.env(out)
+                }
+            }, { ctx in
+                guard let ctx else { return 0 }
+                return MainActor.assumeIsolated { Unmanaged<Box>.fromOpaque(ctx).takeUnretainedValue().owner?.now() ?? (Date().timeIntervalSince1970 * 1000).rounded() }
+            }, { ctx, names, len in
+                guard let ctx, let names else { return }
+                let changed = Set((try? JSONSerialization.jsonObject(with: Data(bytes: names, count: len))) as? [String] ?? [])
+                MainActor.assumeIsolated { Unmanaged<Box>.fromOpaque(ctx).takeUnretainedValue().owner?.changed(changed) }
+            })
         }
     }
 
@@ -308,21 +313,27 @@ final class LibraryCore {
 
     var pointer: OpaquePointer? { core }
 
-    private func call(_ request: JSONObject) -> JSONObject {
+    // One request → its answer, its log said. `refusals`: a perform's, whose `error` is the action's refusal (said by
+    // the caller, if at all), not the call's.
+    func call(_ request: JSONObject, refusals: Bool = false) -> JSONObject {
         let answer = KeysCore.bytes(KeysCore.json(request)) { p, n in KeysCore.answer { margin_library_call(core, p, n, $0) } } as? JSONObject ?? [:]
-        if let error = answer["error"] as? String { Diagnostics.warn("library: \(error)") }
-        for line in answer["log"] as? [JSONObject] ?? [] {
-            guard let text = line["text"] as? String else { continue }
-            if line["warn"] as? Bool == true { Diagnostics.warn(text) } else { Diagnostics.note(text) }
-        }
+        if !refusals, let error = answer["error"] as? String { Diagnostics.warn("library: \(error)") }
+        say(answer["log"])
         return answer
     }
 
-    func values() -> [String: JSONObject] { call(["type": "values"])["values"] as? [String: JSONObject] ?? [:] }
+    func importOnce(_ data: OpaquePointer?) -> Bool {
+        let answer = KeysCore.answer { margin_library_import(core, data, $0) } as? JSONObject ?? [:]
+        if let error = answer["error"] as? String { Diagnostics.warn("library: \(error)") }
+        say(answer["log"])
+        return answer["imported"] as? Bool == true
+    }
 
-    func apply(_ entries: [Any], at: Double) -> (changed: [String], values: [String: JSONObject]) {
-        let answer = call(["type": "apply", "entries": entries, "at": at])
-        return (answer["changed"] as? [String] ?? [], answer["values"] as? [String: JSONObject] ?? [:])
+    private func say(_ log: Any?) {
+        for line in log as? [JSONObject] ?? [] {
+            guard let text = line["text"] as? String else { continue }
+            if line["warn"] as? Bool == true { Diagnostics.warn(text) } else { Diagnostics.note(text) }
+        }
     }
 
     func written() { _ = call(["type": "written"]) }

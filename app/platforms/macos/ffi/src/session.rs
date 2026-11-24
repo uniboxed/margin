@@ -30,7 +30,7 @@ use margin_core::geometry::Rect;
 use margin_core::host::layout::{Placement, Size};
 use margin_core::json;
 use margin_core::session::state::rect_read;
-use margin_core::session::{Field, Frame, LibraryView, Out, Performed, Ports, Row, Session};
+use margin_core::session::{Field, Frame, LibraryEdit, LibraryView, Out, Performed, Ports, Row, Session};
 use serde_json::{Map, Value, json};
 
 use crate::data::{MarginLibrary, answer, text};
@@ -194,6 +194,7 @@ pub type MarginSessionFollow =
 pub struct MarginSession {
     session: Session,
     follow: std::rc::Rc<std::cell::Cell<Option<MarginSessionFollow>>>,
+    library: *const MarginLibrary,
 }
 
 struct SwiftPorts {
@@ -518,9 +519,6 @@ impl Ports for SwiftPorts {
     fn url_host(&self, url: &str) -> Option<String> {
         Self::string(&self.ask(json!({ "port": "urlHost", "url": url })), "host")
     }
-    fn perform(&self, action: &str, payload: &Map<String, Value>) -> Performed {
-        Performed::read(&self.ask(json!({ "port": "perform", "action": action, "payload": payload })))
-    }
     fn window_number(&self, window: i64) -> i64 {
         if let Some(c) = self.call {
             let n = self.number(c, PortKind::WindowNumber, Some(window), false, [None; 3]);
@@ -760,6 +758,17 @@ impl LibraryView for LibraryRef {
     }
 }
 
+impl LibraryEdit for LibraryRef {
+    // SAFETY: as the reads'. The perform calls out (the env, its observers: Swift's, which draw Margin's windows again
+    // and may call the session and the library back; then its requests to the sink, this session), holding nothing.
+    fn perform(&self, action: &str, payload: &Map<String, Value>) -> Performed {
+        match crate::data::library(self.0) {
+            Some(l) => LibraryEdit::perform(l, action, payload),
+            None => Performed { ok: false, result: Value::Null, error: Some("no library".into()) },
+        }
+    }
+}
+
 fn session<'a>(s: *const MarginSession) -> Option<&'a Session> {
     // SAFETY: from margin_session_new and not freed (the caller's contract); shared, so a call inside another is safe.
     (!s.is_null()).then(|| unsafe { &(*s).session })
@@ -767,7 +776,7 @@ fn session<'a>(s: *const MarginSession) -> Option<&'a Session> {
 
 /// The session over `library` (alive as long as it), with `options` (`len` bytes of the Swift struct's JSON) and the
 /// Swift side's ports (`ctx` passed back to each; alive as long as the session): `call`, the typed ones (null: every
-/// port through `port`).
+/// port through `port`). It's the library's sink from then on: its requests reach this session inside its perform.
 ///
 /// # Safety
 /// `library` from `margin_library_new` (or null: an empty library); `options` points at `len` readable bytes.
@@ -785,7 +794,33 @@ pub unsafe extern "C" fn margin_session_new(
     let follow = std::rc::Rc::new(std::cell::Cell::new(None));
     let ports = SwiftPorts { ctx, now, port, call, follow: follow.clone() };
     let session = Session::new(Box::new(ports), Box::new(LibraryRef(library.cast_const())), &options);
-    Box::into_raw(Box::new(MarginSession { session, follow }))
+    // (The session is the library's requests' sink from now on: a perform's requests reach it inside the perform, the
+    // last session made over the library the one, or the last that took them since; held weakly, so one freed is no
+    // longer told.)
+    let s = MarginSession { session, follow, library: library.cast_const() };
+    s.take_requests();
+    Box::into_raw(Box::new(s))
+}
+
+impl MarginSession {
+    fn take_requests(&self) {
+        if let Some(l) = crate::data::library(self.library) {
+            l.set_sink(Some(self.session.sink()));
+        }
+    }
+}
+
+/// The session the library's requests' sink again (as `new` made it): of several sessions over one library (the tests'
+/// rigs), the one that takes them now.
+///
+/// # Safety
+/// `s` from [`margin_session_new`], not freed, its library alive.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_session_take_requests(s: *const MarginSession) {
+    // SAFETY: from margin_session_new and not freed (the caller's contract).
+    if let Some(s) = unsafe { s.as_ref() } {
+        s.take_requests();
+    }
 }
 
 /// # Safety

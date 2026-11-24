@@ -354,7 +354,7 @@ impl Core {
         if let Some(id) = r.string(asked) {
             payload.insert(binds.into(), json!(id));
         }
-        let out = self.perform("addItem", payload).await;
+        let out = self.perform("addItem", payload);
         let made = if out.ok { out.result.get("tabId").and_then(Value::as_str).map(str::to_string) } else { None };
         let Some(item) = made else {
             if !reset {
@@ -590,12 +590,12 @@ impl Core {
         let Some(w) = self.ports.window(window) else { return self.note(format!("{bundle}: no Margin window")) };
         if bundle.to_lowercase() == OWN_APP {
             // Margin picked inside Margin: never hosted in itself. A surprise instead, as a new web item.
-            self.perform("newTab", object(json!({ "windowId": w, "url": OWN_APP_SURPRISE, "title": "Margin" }))).await;
+            self.perform("newTab", object(json!({ "windowId": w, "url": OWN_APP_SURPRISE, "title": "Margin" })));
             return self.note("Margin picked in its own palette: the surprise".into());
         }
         if self.options.borrow().safari_bundles.iter().any(|b| b == bundle) {
             // Safari itself: a new web item, in the space's Safari profile.
-            self.perform("newTab", object(json!({ "windowId": w, "url": "about:blank", "title": "New Tab" }))).await;
+            self.perform("newTab", object(json!({ "windowId": w, "url": "about:blank", "title": "New Tab" })));
             return;
         }
         let space = self.space_of_window(w).or_else(|| self.spaces().into_iter().next().map(|(id, _)| id));
@@ -605,7 +605,7 @@ impl Core {
             .into_iter()
             .find(|(_, v)| v.get("url").and_then(Value::as_str) == Some(app.as_str()));
         if let Some((existing, _)) = existing {
-            self.perform("activateTab", object(json!({ "windowId": w, "tabId": existing }))).await;
+            self.perform("activateTab", object(json!({ "windowId": w, "tabId": existing })));
             return;
         }
         let name = self.ports.app_name(bundle).unwrap_or_else(|| bundle.to_string());
@@ -614,7 +614,7 @@ impl Core {
         if let Some(space) = &space {
             payload.insert("spaceId".into(), json!(space));
         }
-        let out = self.perform("addItem", payload).await;
+        let out = self.perform("addItem", payload);
         let made = if out.ok { out.result.get("tabId").and_then(Value::as_str).map(str::to_string) } else { None };
         let Some(item) = made else {
             return self.note(format!("{bundle}: no item made ({})", out.error.as_deref().unwrap_or("?")));

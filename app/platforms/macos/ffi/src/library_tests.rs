@@ -70,27 +70,9 @@ fn the_ffi_entry_is_library_js() {
 }
 
 #[test]
-fn the_ffi_entry_parses_addresses_and_answers_as_jsc_without() {
-    // Tirth's answer 11: a link rule routes and `https://a.com` is `https://a.com/`; the shadow's entry answers as
-    // JavaScriptCore, with no URL, did.
-    let without = |name: &str, args: &Value| {
-        let a = args.to_string();
-        let mut len = 0;
-        // SAFETY: null library; the name's and the arguments' bytes.
-        read(
-            unsafe {
-                margin_library_rules_without_urls(
-                    std::ptr::null(),
-                    name.as_ptr(),
-                    name.len(),
-                    a.as_ptr(),
-                    a.len(),
-                    &mut len,
-                )
-            },
-            len,
-        )
-    };
+fn the_ffi_entry_parses_addresses() {
+    // Tirth's answer 11: a link rule routes and `https://a.com` is `https://a.com/` (JavaScriptCore's rules, with no
+    // URL, did neither: gone at the switch).
     let values = json!({
         "spaces": { "a": { "name": "A", "order": 0 } },
         "airTraffic": { "atc-1": { "pattern": "github.com", "spaceId": "a", "order": 0 } },
@@ -98,15 +80,8 @@ fn the_ffi_entry_parses_addresses_and_answers_as_jsc_without() {
     });
     let route = json!([values, "routeUrl", { "url": "https://GitHub.com/x#y" }, { "now": 1, "ids": ["abcd"] }]);
     assert_eq!(rules(std::ptr::null(), "perform", &route)["value"]["result"]["ruleId"], json!("atc-1"));
-    assert_eq!(without("perform", &route)["value"]["result"], Value::Null);
     let fav = json!([values, "addFavorite", { "url": "https://a.com" }, { "now": 1, "ids": ["abcd"] }]);
     assert_eq!(rules(std::ptr::null(), "perform", &fav)["value"]["changes"], json!([]), "its scope has it");
-    assert_eq!(without("perform", &fav)["value"]["result"], json!("fav-abcd"), "JSC's: another address");
-    assert_eq!(
-        rules(std::ptr::null(), "perform", &route)["value"]["result"]["ruleId"],
-        json!("atc-1"),
-        "parsing again after it"
-    );
 }
 
 /// The Swift side as the callbacks see it: its clock and ids, the observers' calls, and the session over the library.
@@ -215,9 +190,15 @@ fn the_library_object_through_the_ffi_called_back_into() {
         json!({ "type": "perform", "action": "addItem", "payload": { "windowId": 1, "spaceId": space, "url": "https://a.example/" } }),
     );
     let item = added["result"]["tabId"].as_str().expect("an item").to_owned();
+    // SAFETY: the live session.
+    assert!(!unsafe { crate::margin_session_ready(session) }, "nothing asked of the session yet");
     let shown =
         lib_call(l, json!({ "type": "perform", "action": "activateTab", "payload": { "windowId": 1, "tabId": item } }));
     assert_eq!(shown["requests"][0]["type"], json!("activateTab"), "{shown}");
+    // (The session is the library's sink since margin_session_new: the request reached it inside the perform, its
+    // handling queued for the caller's tick.)
+    // SAFETY: as above.
+    assert!(unsafe { crate::margin_session_ready(session) }, "the request queued in the session");
     assert_eq!(
         lib_call(l, json!({ "type": "item", "collection": "tabs", "id": item }))["value"]["url"],
         json!("https://a.example/")
@@ -232,9 +213,11 @@ fn the_library_object_through_the_ffi_called_back_into() {
     assert_eq!(lib_call(l, json!({ "type": "actions" }))["actions"].as_array().map(Vec::len), Some(57));
     let refused = lib_call(l, json!({ "type": "perform", "action": "renameSpace", "payload": { "spaceId": "none" } }));
     assert_eq!((refused["ok"].clone(), refused["error"].clone()), (json!(false), json!("no such space")));
-    // The stored rev and the values as before (Library.swift's reads until the switch).
+    // The stored rev and the values (Library.swift's reads: all, or one collection's).
     assert!(lib_call(l, json!({ "type": "rev" }))["rev"].as_str().is_some());
     assert_eq!(lib_call(l, json!({ "type": "values" }))["values"]["spaces"][space]["name"], json!("Work"));
+    let one = lib_call(l, json!({ "type": "values", "collection": "spaces" }))["values"].clone();
+    assert_eq!((one[space]["name"].clone(), one.get("spaces")), (json!("Work"), None), "one collection's: {one}");
     assert!(lib_call(l, json!({ "type": "nonsense" }))["error"].is_string());
 
     // The import once, over a data object with a profile's set: its line in the answer's log; never twice.

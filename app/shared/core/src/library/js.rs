@@ -1,5 +1,5 @@
-//! The JavaScript semantics the library's rules rely on (docs/CORE-REFACTOR.md step 4 part 1), as JavaScriptCore runs
-//! them in Margin.app today (a bare `JSContext`, app/platforms/macos/shell/LibraryRules.swift): what app/shared/library/
+//! The JavaScript semantics the library's rules rely on (docs/CORE-REFACTOR.md step 4 part 1), as JavaScriptCore ran
+//! them in Margin.app until step 4's switch (a bare `JSContext`, the deleted LibraryRules.swift): what app/shared/library/
 //! library.ts and extension/state/model.ts get from the engine without saying so. Each function names the JS it stands
 //! for. Every edge below was run through JSC on the Mac (macOS 27.2, `en-US`) and through Node 25 (ICU 79.1) on
 //! 2026-11-23; where the two differ, this follows JSC.
@@ -15,7 +15,7 @@
 //!   ReferenceError, which model.ts's `normalizeUrl` and air-traffic.ts's `patternMatchesUrl` catch, so Margin.app's
 //!   JSC rules match an address as given and no link rule ever matches. The core parses addresses as the browsers'
 //!   copies do ([`RULES_PARSE_URLS`], Tirth's answer 11: [`url_parts`], [`normalize_url_whatwg`], WHATWG through the
-//!   `url` crate); [`without_urls`] answers as JSC does, for the Mac's shadow until the switch.
+//!   `url` crate), so since the switch (step 4 commit 6) Margin.app's link rules route and its addresses match as there.
 //! - The import's ids hash ([`fingerprint`]) and the ids an action makes ([`Ids`]).
 
 use std::borrow::Cow;
@@ -352,42 +352,16 @@ pub fn property_key(v: Option<&Value>) -> Cow<'_, str> {
 /// port, `.`/`..` segments and the like make no other address. Only matching changes: no stored address is rewritten.
 pub const RULES_PARSE_URLS: bool = true;
 
-thread_local! {
-    static WITHOUT_URLS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-}
-
-/// `f`'s answer as Margin.app's JavaScriptCore rules give it, with no `URL` (an address matched as given, no link rule
-/// matching), on this thread. For the Mac's shadow only (T/library-vectors-tests.swift through ffi data.rs
-/// `margin_library_rules_without_urls`), which compares JSC's answers with the core's until the switch (step 4 commit
-/// 6) and so names each call where the two differ by the parsing alone; it goes with the shadow.
-pub fn without_urls<T>(f: impl FnOnce() -> T) -> T {
-    struct Reset(bool);
-    impl Drop for Reset {
-        fn drop(&mut self) {
-            WITHOUT_URLS.with(|w| w.set(self.0));
-        }
-    }
-    let _reset = Reset(WITHOUT_URLS.with(|w| w.replace(true)));
-    f()
-}
-
-/// Whether the rules parse addresses on this thread: [`RULES_PARSE_URLS`], but inside [`without_urls`].
-#[inline]
-fn parses() -> bool {
-    RULES_PARSE_URLS && !WITHOUT_URLS.with(std::cell::Cell::get)
-}
-
 /// What `new URL(s)` gives the rules: a WHATWG URL's parts, or `None` where JS throws.
 #[inline]
 pub fn rules_url(s: &str) -> Option<UrlParts> {
-    if parses() { url_parts(s) } else { None }
+    if RULES_PARSE_URLS { url_parts(s) } else { None }
 }
 
-/// model.ts `normalizeUrl` (M:594) as the rules run it: [`normalize_url_whatwg`] (the browsers'; the address as given
-/// inside [`without_urls`], JSC's: `new URL` throws, `url ?? ''`).
+/// model.ts `normalizeUrl` (M:594) as the rules run it: [`normalize_url_whatwg`] (the browsers').
 #[inline]
 pub fn normalize_url(url: &str) -> Cow<'_, str> {
-    if parses() { normalize_url_whatwg(url) } else { Cow::Borrowed(url) }
+    if RULES_PARSE_URLS { normalize_url_whatwg(url) } else { Cow::Borrowed(url) }
 }
 
 /// A URL's parts as JS's `URL` getters give them (`protocol` with its colon, `host` with a port that isn't the scheme's

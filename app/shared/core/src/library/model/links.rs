@@ -7,7 +7,7 @@
 //! rules in a bare JSContext had no `URL`, so `patternMatchesUrl`'s `new URL(url)` threw, it answered false, and a link
 //! rule never routed a new tab or `routeUrl` in the app. Here [`pattern_matches_url`] and [`match_air_traffic_rule`]
 //! take the address through `js::rules_url` (WHATWG), then [`pattern_matches_parts`]: the link rules route as in Safari,
-//! Chrome and Edge (`js::without_urls` answers as JSC did, for the Mac's shadow until the switch).
+//! Chrome and Edge, and since the switch (step 4 commit 6) in Margin.app.
 
 use std::borrow::Cow;
 use std::rc::Rc;

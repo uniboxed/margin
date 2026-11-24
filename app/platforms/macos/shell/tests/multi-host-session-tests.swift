@@ -9,12 +9,9 @@ func multiHostSessionTests() {
     let echo = Diagnostics.echo
     Diagnostics.echo = { _ in }
     defer { Diagnostics.echo = echo }
-    let scriptPath = ProcessInfo.processInfo.environment["MARGIN_LIBRARY_JS"] ?? "../../dist/app/library.js"
     let dataRoot = tempFolder("multi-host")
     defer { try? FileManager.default.removeItem(at: dataRoot) }
-    guard let library = Library.open(dataRoot: dataRoot, script: URL(fileURLWithPath: scriptPath), background: false) else {
-        return check("multi-host session: the library opens (\(scriptPath): npm run build)", false)
-    }
+    let library = Library.open(dataRoot: dataRoot, background: false)
     var n = 0
     library.randomIds = { (0..<4).map { _ in n += 1; return "m\(n)x" } }
     let w = FakeHostWorld()
@@ -35,7 +32,6 @@ func multiHostSessionTests() {
     engine.hostedWindow = { session.hosted($0) }
     var told: [[HostShownWindow]] = []
     engine.hostedWindows = { told.append($0); session.hostedWindows($0) }
-    library.delegate = session
     var copyWindows: [Int: Int] = [:]
     links.onNewWindow = { id, _ in
         guard let pid = w.running(bundleId: "com.apple.Safari").first?.pid else { return }

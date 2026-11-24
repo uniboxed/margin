@@ -325,13 +325,6 @@ fn the_rules_parse_urls_as_the_browsers() {
     assert_eq!(normalize_url("not a url"), "not a url");
     assert!(matches!(normalize_url("not a url"), Cow::Borrowed(_)), "the address as given where it doesn't parse");
     assert_eq!(rules_url("https://github.com/x").map(|u| u.hostname), Some("github.com".into()));
-    // JSC's (the Mac's shadow until the switch): `new URL` throws, the address comes back as given, no URL.
-    let jsc = without_urls(|| {
-        let inner = without_urls(|| rules_url("https://a.com").is_none());
-        (normalize_url("https://A.com/#x").into_owned(), rules_url("https://github.com/x"), inner)
-    });
-    assert_eq!(jsc, ("https://A.com/#x".into(), None, true));
-    assert_eq!(normalize_url("https://A.com/#x"), "https://a.com", "parsing again after it, nested too");
 }
 
 #[test]

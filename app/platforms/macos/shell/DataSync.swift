@@ -87,6 +87,8 @@ final class DataSync {
     var partBytes = 900_000 { didSet { _ = call(["type": "configure", "partBytes": partBytes]) } }
 
     private var core: OpaquePointer?
+    // The core's data object, for the library's import (margin_library_import reads its sets, then lets it go).
+    var corePointer: OpaquePointer? { core }
     private let box = Box()
     private var peers: [String: WeakPeer] = [:]
     private var holdTimer: Timer?

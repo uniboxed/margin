@@ -201,7 +201,6 @@ final class DevHooks {
 // DEV-HOOK: the shell's side.
 extension Shell: DevHookWorld {
     func devForgetTestItems(also apps: [String]) -> String? {
-        guard let library else { return "no library" }
         let bundles = Set(["test.margin.pane"] + apps)
         let test: (JSONObject) -> Bool = { v in
             let target = v["target"] as? JSONObject

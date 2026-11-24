@@ -183,11 +183,6 @@ fn an_item_by_its_address() {
     }
     assert_eq!(kept_for_url(&s, "https://x/y#z", "a", None).map(|k| &*k.id), Some("t-5"));
     assert!(kept_for_url(&s, "http://x/", "a", None).is_none(), "another scheme");
-    assert_eq!(
-        js::without_urls(|| kept_for_url(&s, "https://x", "a", None).map(|k| k.id.to_string())),
-        None,
-        "JSC's (no URL): as given"
-    );
 }
 
 #[test]

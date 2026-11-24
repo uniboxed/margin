@@ -1,7 +1,7 @@
 # The library's vectors
 
-The library's edit rules (app/shared/library/library.ts over extension/state/model.ts) as Margin.app runs them today,
-in JavaScriptCore, a bare `JSContext` (app/platforms/macos/shell/LibraryRules.swift), but for addresses: the `url` steps
+The library's edit rules (app/shared/library/library.ts over extension/state/model.ts) as Margin.app ran them until
+step 4's switch, in JavaScriptCore, a bare `JSContext` (the deleted LibraryRules.swift), but for addresses: the `url` steps
 are the browsers' answers (library.ts in Node with its `URL`, as the browsers' copies parse addresses; Tirth's answer 11,
 2026-11-23), where JavaScriptCore, which has no `URL`, answers otherwise. library.ts is the reference; margin-core's port
 (docs/CORE-REFACTOR.md step 4) must answer every step the same. Recorded by
@@ -96,13 +96,7 @@ step's `error` `{ "failed": site }` is `failed: ` and throws.json's `jsc` words 
   recorded order), a stand-in for the system's sorter.
 - app/platforms/macos/ffi (`cargo test -p margin-ffi`, the `vectors` feature): every kind through the same entry with the
   Mac's sorter (libicucore, collation.rs), and js.json's `localeCompare` cases: the Mac's vectors pin the system one.
-- app/platforms/macos/shell/tests/library-vectors-tests.swift (`npm run test:app`): dist/app/library.js through
-  LibraryRules (JavaScriptCore), the perform, snapshot and import steps, until the switch (step 4 commit 6). A `cut`
-  step there fails as the app does today (no answer). A `url` step is the browsers' answer, not JSC's: left out there,
-  counted (the shadow compares JSC with the core on it). An `import` step leaves out, on both sides, the changes that
-  write a value again unchanged: library.ts's import compares the stored values' text, and Swift's dictionaries give
-  their keys in their own order. And the shadow there: every call the whole Swift suite makes to LibraryRules given to
-  margin-core as well (`margin_library_rules`, the same entry through the FFI) and compared: the same but a cut, where
-  JavaScriptCore's answer holds half an emoji and the core's drops it, the steps of the known `createSpace` gap, and
-  the calls answered otherwise because the core parses addresses (Tirth's answer 11): each such call the core answers
-  with no `URL` (`margin_library_rules_without_urls`, `js::without_urls`) as JavaScriptCore does, counted and named.
+- Until step 4's switch (commit 6), app/platforms/macos/shell/tests/library-vectors-tests.swift also ran the perform,
+  snapshot and import steps through LibraryRules (JavaScriptCore), and its shadow gave every call the whole Swift
+  suite made to the rules to margin-core as well. Both went with JavaScriptCore: the app runs the core, whose run with
+  the Mac's sorter is margin-ffi's above.

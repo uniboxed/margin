@@ -1,8 +1,8 @@
 // The hosted parts joined in the shell (HostedSession.swift; docs/MARGIN-APP.md).
 //
-// - Margin's windows draw the library (LibraryWindowSource) once it opened; the read-only stand-in
-//   (DataSetWindowSource) only when it didn't (its rules didn't load), and for the settings either way.
-// - The library's requests go to the session, which drives the host engine and the Safari copies' tabs; the engine's
+// - Margin's windows draw the library (LibraryWindowSource), with a profile's settings and site icons
+//   (DataSetWindowSource).
+// - The library's requests go to the session (its sink, in the core), which drives the host engine and the Safari copies' tabs; the engine's
 //   Safari window requests are the copies' (`newWindow`, `setWindowState`, `closeWindow`, after their link); its events tell the session
 //   what went outside Margin; a palette pick (`openApp`) is the session's.
 // - The copies stay linked as the tabs' drivers; the shell's read (Shell.track) polls the host.
@@ -173,10 +173,6 @@ extension Shell {
         let profiles = DataSetWindowSource(data: data, pick: { [weak self] in self?.hostedProfile() }, keeper: options.harness ? nil : .appDefaults,
                                            settingsKeeper: options.harness ? nil : .appDefaults)
         hostedSettings = profiles
-        guard let library else {
-            Diagnostics.note("Margin's window: no library (its rules didn't load): a profile's spaces, read only")
-            return profiles
-        }
         // The engine looked up at each call: Margin's window (and so this session) is made when Margin is opened by hand,
         // before the private calls are checked and the engine started (seen 2026-11-15: the session kept the stand-in).
         let engine = LateHostEngine { [weak self] in self?.host }
@@ -188,7 +184,6 @@ extension Shell {
             Diagnostics.note("hosted: the last item isn't shown at launch (\(HostedSession.resumeKey) is NO)")
         }
         session.appName = { [weak self] id in self?.installedAppName(id) }
-        library.delegate = session
         hosted = session
         session.marginActive = { NSApp.isActive }
         session.activateMargin = { NSApp.activate() }

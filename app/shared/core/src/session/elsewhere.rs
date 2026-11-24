@@ -75,7 +75,7 @@ impl Core {
         let window_id = self.safari_window(&p, Role::Main)?;
         let payload = object(json!({ "windowId": window_id, "itemId": item }));
         let command = Command::Ask { profile: p, kind: "hostPicture".into(), payload };
-        match first_of(self.exec.command(command, false), self.sleep(wait)).await {
+        match first_of(self.exec.command(command), self.sleep(wait)).await {
             Either::A(answer) => {
                 let data = answer.get("result").and_then(|r| r.get("data")).and_then(Value::as_str);
                 picture(data).map(str::to_string)
@@ -121,7 +121,7 @@ impl Core {
         let Some(c) = self.rc() else { return false };
         self.exec.spawn(async move {
             c.engine("parkShown", json!({ "why": "its Margin window closed" })).await;
-            c.exec.command(Command::Done { then }, false).await;
+            c.exec.command(Command::Done { then }).await;
         });
         true
     }

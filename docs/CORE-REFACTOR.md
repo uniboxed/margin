@@ -2146,6 +2146,33 @@ requests_tests.rs:33, 207, 225, 520: switched to the real library, the stand-in 
 from L (the cache, `apply`, `importOnce`'s body, the rules' calls), ~74 of LR, ~10 of HS; ~80 added (the callbacks);
 ~300 Rust lines (ffi), ~150 of tests.
 
+**Done (commit 6, step4/switch), with these lines of the design corrected.**
+- A perform Swift makes itself is **not** followed by a tick: a tick runs what's ready at once, where the delegate's
+  `library` input had left the requests' handling for the next main-actor turn. Instead the session's `edited` input
+  (`Input::Edited`, nothing done) answers what the requests left in the session during the perform (their lines, the
+  commands they started, `ready`), and HostedSession's `drive` runs what's ready in the next turn, as before. The
+  facade calls it through `Library.onRequests`, which the session sets, after a perform that asked something.
+- The sink is registered by `margin_session_new` (the app's one session); of several sessions over one library (the
+  Swift tests' rigs, where `library.delegate = session` chose), `margin_session_take_requests` makes one the sink
+  again (HostedSession `takeLibraryRequests`, which `init` calls). Held weakly: a freed session is told nothing.
+- `Ports::perform` (the card's Quick Tab and Expand, a synchronous edit through Swift) goes too: the card calls the
+  library directly, as the flows do. `LibraryEdit` is `LibraryView`'s subtrait (`perform`), the session holds one box.
+  `Session::perform` is synchronous (no await: the edit runs in the flow's turn, its requests queued behind the flow),
+  and the executor's `same_turn` (the edit's answer polled first) goes with `Command::Perform`.
+- The `library` input stays: the session's tests' (requests of shapes the rules don't make) and HostedSession
+  `request(_:)` for the Swift tests'; the app's requests come only through the sink.
+- `Library.open` can't fail (`Shell.library` isn't optional any more); `DataSetWindowSource` stays as the profile's
+  settings and site icons (not a `MarginWindowSource`: its `snapshot`, `state`, the window's chosen space and its
+  `unhandled` count gone), and `MarginWindowController.spaceTheme` reads the library's snapshot only.
+- library.js leaves `buildApp` itself (commit 8's `buildApp` half done here): `buildLibraryScript` builds it for the
+  vectors' recorder (tests/library-vectors/record.ts), which still runs it in JavaScriptCore; LT's header says it's the
+  vectors' reference.
+- T/library-vectors-tests.swift: the vectors through LR and the shadow go with JSC (the vectors with the Mac's sorter
+  are margin-ffi's library_tests.rs); it keeps the Mac's outcome of the cut (now kept, 1,999 units) and the costs.
+- The session's tests run over the real library object (session/tests.rs `TestLibrary`: the core's `Library` over a
+  store in a temporary folder, its env and observers re-entering the session); the stand-in shelf and its canned edits
+  are gone from every session test file (requests, card, layouts, routing, start), not only requests_tests.rs.
+
 #### Part 8: the shared vectors
 
 **Format** (commit 0, stable: tests/fixtures/library/README.md has it whole). `tests/fixtures/library/`:
@@ -2237,7 +2264,8 @@ no fallback: a build has one copy or the other.
   Swift's hash order), which no reader depends on.
 
 **Pinned by:** commit 6's gate and screen suite; a one-off check in commit 6 that Tirth's own library (read from a copy
-of data/app, off screen) gives the same snapshot through JSC and Rust.
+of data/app, off screen) gives the same snapshot through JSC and Rust. **Done** (commit 6: the scratch harness
+step4-switch/compat, over the real store through margin-ffi; DECISIONS.md "Core refactor step 4, commit 6").
 
 #### Part 10: Windows
 
@@ -2262,9 +2290,9 @@ commit 7 only).
 | 4 | Part 4: the 57 actions and `perform`; every perform vector and the generated sequences pass. **Done** (step4/actions) | 0 | ~1,560 + ~340 tests | a perform (Rust alone): 0.007 / 0.034 / 0.13 ms at 50 / 500 / 2,000 items on the kept state, 0.17 / 0.49 / 1.6 ms with the state read (JSC 2.7 / 16.2 / 62) |
 | 5 | Part 5 and part 7's object: `import_values`, `import_once`, `Library` with its callbacks, the FFI; the T/ shadow check runs JSC and Rust on the whole Swift suite. **Done** (step4/object: library/object.rs, `import::sources`, the session as the sink (registered at commit 6), ffi data.rs's object and collation.rs, the system's sorter: ICU4X removed, libicucore on the Mac, icu.dll on Windows compile-checked; the shadow's 9,442 calls the same but the decided cuts and gap) | 0 | ~1,050 + ~900 tests | a perform through the FFI 0.6 / 3.6 / 15.5 ms at 50 / 500 / 2,000 items (JSC 2.6 / 16 / 61); binary +0.59 MB arm64, +0.72 MB x86_64 (the rules now linked; no collation data: ICU4X would have been +1.26 MB more each) |
 | 5a | **Done** (step4/urls): Tirth's answer 11, its own commit: `RULES_PARSE_URLS` true (link rules route, addresses match as the browsers' copies match them), the tests that pinned the no-URL answers pinned to the browsers', the vectors re-recorded (the `url` steps library.ts's in Node with `URL`, every other step JSC's), the shadow's address-only differences named (`js::without_urls`, `margin_library_rules_without_urls`, T/ only, gone at commit 6) | 0 | ~60 + ~150 tests | a match 0.55 µs an address; `routeUrl` at the 99th rule 10 µs; `openPin` 13 / 107 / 420 µs at 50 / 500 / 2,000 items (no URL 2 / 5 / 13); binary +0.23 MB arm64, +0.24 MB x86_64 |
-| 6 | **The switch**: `Library.swift` over the core, LR and JavaScriptCore gone, `library.js` out of the app, `Command::Perform` and the Swift delegate path gone, the no-rules fallback gone, the Swift tests on the core, the stand-in shelf in requests_tests.rs replaced by the real library | ~250 Swift (LR 74, L ~120, HS ~10, SG ~5, SH ~60 of `state` and the fallback) (+~80 Swift of callbacks) | ~150 | a perform, a switch, `idle-cost` |
+| 6 | **The switch**: `Library.swift` over the core, LR and JavaScriptCore gone, `library.js` out of the app, `Command::Perform` and the Swift delegate path gone, the no-rules fallback gone, the Swift tests on the core, the stand-in shelf in requests_tests.rs replaced by the real library. **Done** (step4/switch, one commit: the sink registered by `margin_session_new` (`take_requests` for several sessions), a Swift perform followed by the `edited` input, not a tick; `Ports::perform` and the executor's `same_turn` gone too; `buildApp`'s half of commit 8 done; part 7's corrections there; the data check both ways on the vectors and Tirth's copy; `idle-cost` and a switch not measured: no screen suite here) | 330 app Swift out, 184 in (LR 74, L 116 → 127, SH 97 → 11, HS 17 → 25, SG 8 → 3, SL 11 → 7) | ~500 changed (~500 out: the shadow's, the stand-in's) | a perform 0.64 / 3.6 / 15.0 ms at 50 / 500 / 2,000 items (JSC 2.7 / 16.2 / 62.0), a draw's library part 1.1 / 6.8 / 25.7 (2.8 / 13.9 / 52.3) |
 | 7 | Part 6 per draw: `state_text` with `live` joined, `space_theme` typed, the settings' text spliced, `live`'s Swift and the snapshot's dictionaries gone | ~45 Swift | ~350 | a draw, `idle-cost`, footprint |
-| 8 | LT built into nothing (`buildApp`), its header saying it's the vectors' reference; DECISIONS.md "the library's rules are margin-core's" (replacing 2026-11-15's "one copy of the rules: the TypeScript model in JavaScriptCore"); this plan's step 4 marked done | ~5 TS (build) | 0 | |
+| 8 | LT built into nothing (`buildApp`), its header saying it's the vectors' reference (**both done in commit 6**: `buildLibraryScript` builds it for the recorder only); DECISIONS.md "the library's rules are margin-core's" (replacing 2026-11-15's "one copy of the rules: the TypeScript model in JavaScriptCore"); this plan's step 4 marked done | ~5 TS (build) | 0 | |
 
 About 300 Swift lines deleted (~80 added), JavaScriptCore no longer used by the app (check: `otool -L` and the
 project's frameworks; WebKit's own JSC stays, the page needs it), 0 TS deleted now (LT's 954 lines stay as the

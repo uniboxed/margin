@@ -492,7 +492,7 @@ impl Core {
                 _ => Value::Null,
             };
             if let Some(to) = id {
-                c.exec.command(Command::Reply { to, value }, false).await;
+                c.exec.command(Command::Reply { to, value }).await;
             }
         });
     }

@@ -401,11 +401,10 @@ uint8_t *margin_data_call(MarginData *data, const uint8_t *request, size_t len, 
 // collation for JSC's default locale). Its callbacks, called during a call and free to call back in: `env` (an action's
 // time in ms, answered, and its ids, each given through margin_library_env_id), `now` (its changes' time), `changed`
 // (the collections an edit changed, a JSON array); each NULL: the wall clock, 4 random ids, no observer. `call`:
-// values, apply, written, rev; perform, snapshot, actions, item, requests, imported (each with `log`). `import`: the
-// import once over the data object's sets (read first). `rules`: library.js's `marginLibrary.call(name, argsJSON)`
-// answered by the core (the library's sorter; NULL: the person's), for the tests' shadow; `rules_without_urls` the same
-// with no `URL`, as JavaScriptCore answers (an address as given, no link rule matching), for the shadow to name the calls
-// where only the parsing differs (Tirth's answer 11).
+// values (a `collection`'s, or all), apply, written, rev; perform (its requests to the session made over it, its sink,
+// inside the call), snapshot, actions, item, requests, imported (each with `log`). `import`: the import once over the
+// data object's sets (read first). `rules`: library.js's `marginLibrary.call(name, argsJSON)` answered by the core (the
+// library's sorter; NULL: the person's), for the tests: the shared vectors with the Mac's sorter.
 typedef struct MarginLibraryEnvOut MarginLibraryEnvOut;
 typedef double (*MarginLibraryEnv)(void *ctx, MarginLibraryEnvOut *out);
 typedef double (*MarginLibraryNow)(void *ctx);
@@ -416,7 +415,6 @@ void margin_library_env_id(MarginLibraryEnvOut *out, const uint8_t *id, size_t l
 uint8_t *margin_library_call(MarginLibrary *library, const uint8_t *request, size_t len, size_t *out_len);
 uint8_t *margin_library_import(MarginLibrary *library, MarginData *data, size_t *out_len);
 uint8_t *margin_library_rules(MarginLibrary *library, const uint8_t *name, size_t name_len, const uint8_t *args, size_t args_len, size_t *out_len);
-uint8_t *margin_library_rules_without_urls(MarginLibrary *library, const uint8_t *name, size_t name_len, const uint8_t *args, size_t args_len, size_t *out_len);
 
 // A browser's profiles (data/profiles.rs, ffi profiles.rs; the hosted file's shape): one object per browser over its
 // browser.json in `root` (NULL: in memory), one JSON call (`now` passed in, the log lines in each answer), and the
@@ -466,7 +464,9 @@ uint8_t *margin_builtin_themes_message(MarginBuiltinThemes *builtins, const uint
 uint8_t *margin_themes_protocol(const uint8_t *request, size_t len, size_t *out_len);
 
 // The session (session/, ffi session.rs: HostedSession's flows as async steps): one object per app over the library
-// object, with the Swift side's ports, called during a call and free to call back in: `now` (the monotonic clock) and
+// object (the library's requests' sink from `new` on, or from `take_requests`, of several over one library: they reach
+// it inside a perform; a perform Swift makes itself is followed by the `edited` input, which answers what they left),
+// with the Swift side's ports, called during a call and free to call back in: `now` (the monotonic clock) and
 // `port` (JSON in, JSON out allocated with malloc or NULL, freed by the session with free). `input`, `answer` (a
 // command's, by its id) and `tick` (the commands handed out are started, the deadlines up to `due` over) each answer
 // `{ start?, deadline, log?, reply?, error? }`: start each command at once, in order, then call `tick`. Answers freed
@@ -493,6 +493,7 @@ typedef void (*MarginRowSink)(void *ctx, const MarginRow *row);
 
 MarginSession *margin_session_new(MarginLibrary *library, const uint8_t *options, size_t len, void *ctx, MarginSessionNow now, MarginSessionPort port, MarginSessionCall call);
 void margin_session_free(MarginSession *session);
+void margin_session_take_requests(MarginSession *session);
 void margin_port_out_text(MarginPortOut *out, const uint8_t *ptr, size_t len);
 void margin_port_out_int(MarginPortOut *out, int64_t n);
 void margin_port_out_float(MarginPortOut *out, double n);

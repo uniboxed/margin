@@ -15,7 +15,8 @@
 //! - **The import** once (L:249-276, [`Library::import_once`]): the sets and the person's order read by the caller
 //!   ([`super::import::sources`]), the import's changes stored, its line said.
 //! - [`call`]: library.js's entry (LT:939-952, `marginLibrary.call(name, argsJSON)`) over values given whole, the same
-//!   functions with the same answers, for the Mac's tests (the shadow of every call the Swift suite makes).
+//!   functions with the same answers: the shared vectors run through it (with the platform's sorter in margin-ffi's
+//!   tests).
 
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeSet, VecDeque};
@@ -245,7 +246,7 @@ impl Library {
     }
 
     /// Entries (`{ collection, id, value }` or `{ …, deleted: true }`) stored at `at` as they are, no rule run and no
-    /// observer told (the store's own `apply`: the import's tests, the Swift facade until the switch).
+    /// observer told (the store's own `apply`: the tests' libraries made as given).
     pub fn apply(&self, entries: &[Value], at: f64) -> Applied {
         let applied = self.store.borrow_mut().apply(entries, at);
         if !applied.changed.is_empty() {
@@ -283,6 +284,26 @@ impl crate::session::LibraryView for Library {
     }
     fn collection(&self, collection: &str) -> Map<String, Value> {
         self.live(collection)
+    }
+}
+
+/// The session's edits (step 4 part 7): the perform, its requests given to the sink inside it, the outcome as the
+/// session reads it (a refusal with no words: "refused", as Library.swift's `LibraryOutcome` had it).
+impl crate::session::LibraryEdit for Library {
+    fn perform(&self, action: &str, payload: &Map<String, Value>) -> crate::session::Performed {
+        Library::perform(self, action, &Value::Object(payload.clone())).session()
+    }
+}
+
+impl Performed {
+    /// The outcome as the session reads it (`ok`, `result`, `error`).
+    pub fn session(&self) -> crate::session::Performed {
+        let o = &self.outcome;
+        crate::session::Performed {
+            ok: o.ok,
+            result: if o.ok { o.result.clone() } else { Value::Null },
+            error: (!o.ok).then(|| o.error.clone().unwrap_or_else(|| "refused".into())),
+        }
     }
 }
 

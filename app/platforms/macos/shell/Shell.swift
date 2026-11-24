@@ -69,8 +69,8 @@ final class Shell: ExtensionLinkDelegate {
     let link: SocketLink
     // The lasting data, one set per browser profile (DataSync.swift: the read API is there).
     let data: DataSync
-    // The app's own spaces, pins, folders and items (ShellLibrary.swift); nil only if its rules didn't load.
-    var library: Library?
+    // The app's own spaces, pins, folders and items (ShellLibrary.swift: margin-core's library object).
+    let library: Library
     let apps: AppWatch
     let shortcuts: AppShortcuts
     private(set) var options: Options
@@ -124,8 +124,8 @@ final class Shell: ExtensionLinkDelegate {
         let dataRoot = options.dataRoot
             ?? (options.harness ? FileManager.default.temporaryDirectory.appendingPathComponent("margin-harness-\(UUID().uuidString)", isDirectory: true) : DataSync.appRoot)
         data = DataSync(root: dataRoot)
+        library = Shell.openLibrary(dataRoot: dataRoot, data: data, harness: options.harness)
         link.delegate = self
-        startLibrary(dataRoot: dataRoot)
         if let system = options.hostSystem { host = HostEngine(system: system, marker: nil, options: options.hostOptions ?? HostEngine.Options()) }
         data.onChange = { [weak self] _, collections in
             if collections.contains("spaces") || collections.contains("tabs") { self?.profilesSoon() }

@@ -4,8 +4,8 @@
 //! (`CFLocaleCopyPreferredLanguages`), and sets its defaults: tertiary strength (sensitivity "variant"), no case level,
 //! case first off (`kf` "false", even for a locale whose data says upper), no numeric ordering, punctuation not
 //! ignored, normalization on; then `ucol_strcoll` over the two strings' UTF-16. The same here: 0 bytes of collation
-//! data in the app, exact on the Mac by construction (the shadow of every call the Swift suite makes compares it with
-//! JSC's), one OS call per compare (ties only).
+//! data in the app, exact on the Mac by construction (checked against JSC's under 18 preferred languages, step 4 commit
+//! 5), one OS call per compare (ties only).
 
 use std::cmp::Ordering;
 use std::ffi::{CString, c_char, c_void};

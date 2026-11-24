@@ -1602,11 +1602,11 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     }
 
     // The theme of the space window `window` shows in `state` (the library's snapshot: its spaces, `openTabs`'
-    // activeSpaceByWindow; a profile's set: activeSpaceByWindow at the top), nil: none of its own. A window with no space
-    // of its own (or one gone) shows the first (state/model.ts activeSpaceId).
+    // activeSpaceByWindow), nil: none of its own. A window with no space of its own (or one gone) shows the first
+    // (state/model.ts activeSpaceId).
     static func spaceTheme(window: Int, state: JSONObject) -> String? {
         guard let spaces = state["spaces"] as? [JSONObject], !spaces.isEmpty else { return nil }
-        let by = ((state["openTabs"] as? JSONObject)?["activeSpaceByWindow"] ?? state["activeSpaceByWindow"]) as? JSONObject
+        let by = (state["openTabs"] as? JSONObject)?["activeSpaceByWindow"] as? JSONObject
         let id = by?[String(window)] as? String
         let space = spaces.first { $0["id"] as? String == id } ?? spaces[0]
         guard let theme = space["theme"] as? String, !theme.isEmpty, theme.count <= 41 else { return nil }

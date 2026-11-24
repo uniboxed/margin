@@ -45,7 +45,6 @@ struct Slot {
 struct Wait {
     task: TaskId,
     answer: Option<(u64, Value)>,
-    same_turn: bool,
 }
 
 /// A deadline's time, ordered as f64's total order (the keys of the sleeps' map).
@@ -217,13 +216,13 @@ impl Exec {
         let woke = match self.waits.borrow_mut().get_mut(&id) {
             Some(w) if w.answer.is_none() => {
                 w.answer = Some((stamp, answer));
-                Some((w.task, w.same_turn))
+                Some(w.task)
             }
             _ => None,
         };
         match woke {
-            Some((task, front)) => {
-                self.wake(task, front);
+            Some(task) => {
+                self.wake(task, false);
                 true
             }
             None => false,
@@ -263,9 +262,9 @@ impl Exec {
         self.in_turn.set(None);
     }
 
-    /// A command, waited for: `same_turn` for one the caller answers before anything else runs (a library edit).
-    pub(crate) fn command(&self, command: Command, same_turn: bool) -> Answer<'_> {
-        Answer { exec: self, command: Some(command), id: None, same_turn, done: false }
+    /// A command, waited for.
+    pub(crate) fn command(&self, command: Command) -> Answer<'_> {
+        Answer { exec: self, command: Some(command), id: None, done: false }
     }
 
     /// A wait for the state a task reads to change (`notify`): no deadline, nothing looks meanwhile.
@@ -310,7 +309,6 @@ pub(crate) struct Answer<'a> {
     exec: &'a Exec,
     command: Option<Command>,
     id: Option<u64>,
-    same_turn: bool,
     done: bool,
 }
 
@@ -323,7 +321,7 @@ impl Future for Answer<'_> {
             let id = exec.id();
             this.id = Some(id);
             let task = exec.current.get().unwrap_or(0);
-            exec.waits.borrow_mut().insert(id, Wait { task, answer: None, same_turn: this.same_turn });
+            exec.waits.borrow_mut().insert(id, Wait { task, answer: None });
             if let Some(c) = this.command.take() {
                 exec.started.borrow_mut().push((id, c));
             }
