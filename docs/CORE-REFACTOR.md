@@ -1838,8 +1838,9 @@ functions (`state.tabs`, `tabSpace`: the extension's open tabs) aren't ported: t
 `bound_elsewhere`, `held_bindings`, `settle_bindings`, `FOLDER_NAME_MAX`, `MAX_FOLDER_DEPTH`, `FAVORITES_CAP`; with
 tests) and declares six files, each with its functions and M lines in its header; no piece calls another's: (1)
 `spaces.rs` + `order.rs` (deleteSpace's cascade uses `pinOrder`, `writeOrder`, `pinForUrl`, the same piece's, and
-`settle_bindings`); (2) `kept.rs` + `favorites.rs` (FI's `frontItemOf` in kept.rs; `favoriteScopeOf` answers
-`DEFAULT_SETTINGS.favoritesScope`'s, as the library's state has no settings); (3) `splits.rs` + `links.rs`. Each
+`settle_bindings`); (2) `kept.rs` + `favorites.rs` (FI's `frontItemOf` in kept.rs; `favoriteScopeOf` takes whether
+favorites are per profile from its caller, as LT:593 builds `settings.favoritesScope` from the payload: the library's
+state has no settings); (3) `splits.rs` + `links.rs`. Each
 piece adds only to its own two files and their tests (`model/<file>_tests.rs`).
 
 **Piece 1 done (step4/model-spaces), with these lines of the design corrected.** `spaces.rs` (`set_active_space`,
@@ -1863,6 +1864,31 @@ piece adds only to its own two files and their tests (`model/<file>_tests.rs`).
 - Checked: 39,200 generated steps against model.ts in Node and 35,000 in JSC, none differ; the shared vectors' 2,304
   perform steps of the 16 actions these rules answer alone, the same; 81 deliberate breaks, 78 caught, 3 equivalent
   (DECISIONS.md, 2026-11-23).
+
+**Piece 2 done (step4/model-kept): `kept.rs`, `favorites.rs`.** `kept.rs` (`place_of`, `last_place`, `tight`,
+`renumber`, `forget_kept`, `archive_kept`, `archive_tab`, `remove_archived`, `kept_for_url` with `ForWhom`,
+`place_beside`/`place_kept` with `Side`, `move_tab`, FI's `front_item_of`) and `favorites.rs` (`scope_of`,
+`favorite_scope_of`, `renumber_favorites`, `favorite_url_ok`, `kept_of_favorite`, `add_favorite` with `NewFavorite`,
+`remove_favorite`, `move_favorite`, `rename_favorite`, `bind_tab_to_favorite`, `unbind_favorite_tab`). Corrected or
+added here:
+- **A throw the survey can't find** (it's a state's, not a payload's): `archiveKept` reads `state.spaces[0].id` for an
+  item whose space is gone, so in a library with no spaces left `closeTab` and `itemClosed` of a web page's item fail
+  with `failed: undefined is not an object (evaluating 'state.spaces[0].id')` (JSC on dist/app/library.js, checked).
+  `archive_kept` answers `Result<LibState, &str>`, the error those words (`kept::NO_FIRST_SPACE`), for part 4 to fail
+  the action with as today.
+- `forget_kept` and `archive_kept` take the id as an `Arg`: LT:476, 481 pass `p.tabId` as it came and M looks it up as
+  a key (`["t-a"]` is `"t-a"`); `move_favorite` takes `p?.favoriteId` and `beforeId`, `rename_favorite` `p?.title`,
+  `NewFavorite::before_id` `p?.beforeId ?? null`, each an `Arg` (`===` only of a string; a falsy `beforeId`, `""` too,
+  is the end).
+- `rename_favorite` through an emoji: JS's cut name ends in half of it, which no stored name equals, so the TS renames
+  (`next !== s`) even to the name it has; the Rust does too (the half dropped, Tirth's answer 3). The typed diff then
+  finds no change in it where library.ts's recorded vector has the same value written again (generated-11 case 22
+  step 4, `cut`): the outcome is otherwise the same; the test names it.
+- `removeArchived` never answers the state itself (the TS's `filter` makes a new list); kept, though nothing reads it.
+- M's `favoriteForUrl` and `settleFavorite` aren't the library's (LT calls neither): not ported.
+- Checked: 119,810 generated ops (3,000 libraries, 40 ops each) against model.ts in Node and in JSC, none differ; the
+  shared vectors' 1,217 perform steps of the 8 actions these rules answer (with piece 1's `remove_pin` and piece 3's
+  `settle_splits` as LT calls them), the same but the one above; deliberate breaks in DECISIONS.md (2026-11-23).
 
 **FFI.** None.
 
@@ -2202,7 +2228,7 @@ commit 7 only).
 | 0 | **Done** (step4/vectors): the vectors and the edges, against the TS (Node and JSC) before any Rust: the recorder and its ~70 tests' vectors, the generated sequences, `js.json` from JSC on this Mac, the throw survey (every throw site and JSC's words), the Mac's outcome for a 2000-unit cut through an emoji (LT:43 → JSON → `JSONSerialization` → the store), the shadow harness in T/ (JSC only for now). Baselines (off screen, T/ timings): a perform, a draw's snapshot over 50/500/2,000 items, the app's binary size and footprint | 0 | 0 (~400 TS and JSON, ~150 Swift test lines) | the baselines |
 | 1 | **Done** (step4/js, da34b9b4): part 1: `js.rs`, the `url` and collation dependencies (open questions 1, 2), and part 5's `import_values` up to its normalising (import.rs) | 0 | ~450 + ~300 tests | binary size: +1.26 MB a architecture (collation), +0.22 MB (URL) |
 | 2 | **Done** (step4/state): part 2: the typed state, `state_of`, `values_of`, `diff`, `target_of`, the snapshot's text, the import's normalising (`import_changes`), part 3's shared rules and files; the snapshot vectors pass once commit 0's are merged (until then: 5,000 generated libraries and 5,000 imports against library.ts) | 0 | ~2,000 + ~1,000 tests | a snapshot's text 0.26 ms at 500 items (JSC 4.7 ms), a perform's diff 1-22 µs |
-| 3 | Part 3: M's rules, PR, AT, FI (parallel: spaces + order; kept + archive + favorites; splits + link rules). Piece 1 (spaces + order) **done** (step4/model-spaces); **splits + link rules done** (step4/model-splits) | 0 | ~1,400 | piece 1: a rule 0.2–140 µs, with perform's diff 1–920 µs (2,000 items; JSC's perform 62 ms) |; splits + links: `settle_splits` 0.4 µs with nothing to change |
+| 3 | Part 3: M's rules, PR, AT, FI (parallel: spaces + order; kept + archive + favorites; splits + link rules). Piece 1 (spaces + order) **done** (step4/model-spaces); **kept + archive + favorites done** (step4/model-kept); **splits + link rules done** (step4/model-splits) | 0 | ~1,400 | piece 1: a rule 0.2–140 µs, with perform's diff 1–920 µs (2,000 items; JSC's perform 62 ms) |; splits + links: `settle_splits` 0.4 µs with nothing to change; kept + favorites: a rule 0.2–27 µs at 2,000 items (JSC's same rules 10–620 µs) |
 | 4 | Part 4: the 57 actions and `perform`; every perform vector and the generated sequences pass | 0 | ~900 | a perform (Rust alone) |
 | 5 | Part 5 and part 7's object: `import_values`, `import_once`, `Library` with its callbacks, the FFI; the T/ shadow check runs JSC and Rust on the whole Swift suite | 0 | ~700 | |
 | 6 | **The switch**: `Library.swift` over the core, LR and JavaScriptCore gone, `library.js` out of the app, `Command::Perform` and the Swift delegate path gone, the no-rules fallback gone, the Swift tests on the core, the stand-in shelf in requests_tests.rs replaced by the real library | ~250 Swift (LR 74, L ~120, HS ~10, SG ~5, SH ~60 of `state` and the fallback) (+~80 Swift of callbacks) | ~150 | a perform, a switch, `idle-cost` |

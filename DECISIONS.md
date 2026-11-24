@@ -9020,3 +9020,41 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
 - Cost (release, a library of 500 items, 4 splits of 3, 99 rules): `settle_splits` with nothing to change 0.4 µs, a
   rule added at the cap's edge 8.7 µs, a match today 0 µs (no address parses), parsed and found at the 99th rule
   10 µs, a split made 0.7 µs, a pane added 0.4 µs (today's whole perform in JavaScriptCore is 2.5-18.6 ms).
+
+## Core refactor step 4, commit 3 piece 2: items' places, the archive and favorites in the core (2026-11-23)
+
+- margin-core's `library/model/kept.rs` (model.ts's `placeOf`, `lastPlace`, `tight`, `renumber`, `forgetKept`,
+  `archiveKept`, `archiveTab`, `removeArchived`, `keptForUrl`, `placeBeside`, `placeKept`, `moveTab`, and
+  front-item.ts's `frontItemOf`) and `model/favorites.rs` (pinned-rules.ts's `favoriteScopeOf`, `renumberFavorites`,
+  `favoriteUrlOk`, `keptOfFavorite`, `addFavorite`, `removeFavorite`, `moveFavorite`, `renameFavorite`,
+  `bindTabToFavorite`, `unbindFavoriteTab`), each with M's name and line, its kept half only. Nothing calls them in the
+  app yet (commit 6 switches); no behaviour changes.
+- A throw the payload survey can't find, as it's a state's: an item whose space is gone, archived (`closeTab`,
+  `itemClosed`) in a library with no spaces, reads `state.spaces[0].id`; JSC on dist/app/library.js fails the action
+  with `failed: undefined is not an object (evaluating 'state.spaces[0].id')`. `archive_kept` answers that as its
+  error (`NO_FIRST_SPACE`) for part 4 to fail the action with, as today.
+- `favoriteScopeOf` takes whether favorites are per profile from its caller (LT:593 builds the setting from the
+  payload), not `DEFAULT_SETTINGS` as the design said (corrected there).
+- Payload values go in as `model::Arg` (piece 1's): `p.tabId` for `forgetKept`/`archiveKept`, looked up as JS's key
+  (`["t-a"]` finds `t-a`); `favoriteId`, `beforeId` (a falsy one, `""` too, is the end; a truthy non-string none's) and
+  the new name as they came.
+- A rename through an emoji: JS's cut name keeps half of it, which no stored name equals, so it renames even to the
+  name it has; the Rust decides the same (`next !== s`) with the half dropped (Tirth's answer 3). The typed diff then
+  sees no change where library.ts's recorded vector writes the same value again (generated-11 case 22 step 4, a `cut`
+  step): the one vector step of these actions that differs, and only in that no-op rewrite; the test names it. Whether
+  the vector or the diff should give way is the step 4 lead's call.
+- Checked: 3,000 generated libraries with 40 ops each (119,810 ops) against model.ts in Node (no `URL`) and in
+  JavaScriptCore, the same (the throw's words JSC's, 624 of them); 14 renames of a name the chained TS state held half
+  of (no store between the ops, which the library never does) are counted apart. The shared vectors: all 1,217 perform
+  steps of the 8 actions these rules answer (`removeItem`, `moveTabToSpace`, `moveTab`, `itemClosed`, `addFavorite`,
+  `removeFavorite`, `renameFavorite`, `moveFavorite`, written in the test as LT does, with piece 1's `removePin` and
+  piece 3's `settleSplits`), the same but the step above. 51 deliberate breaks: the unit tests (with those vector
+  steps) catch 50, the one missed equivalent (`placeBeside`'s "beside itself", which the list without the moving item
+  already refuses); the generated run alone catches 41 of the first 47 (the rest: places that can't be non-finite,
+  `lastPlace` the library doesn't call, a scope or profile `stateOf` never leaves empty, the equivalent one, and the
+  rename's identity, which no value shows).
+- Cost, each rule alone from the state (Rust release against the same rule of model.ts in JSC, the median of 9 × 200;
+  JSC's timer is in ms, so its small ones read 0–20 µs): at 2,000 items `placeKept` 27 µs (JSC 620), `archiveKept` 16
+  (250), `keptForUrl` 9.5 (195), `frontItemOf` 5.8 (75), `keptOfFavorite` 1.6 (140), `addFavorite` 0.8 (20),
+  `moveFavorite` 0.8 (10), `removeFavorite` 14 (360), `bindTabToFavorite` 12 (70); at 500 items about a quarter of
+  those. What costs is the items' map copied (`{ ...keptTabs }` in the TS too).
