@@ -94,7 +94,7 @@ type Link = ReturnType<typeof createLink>;
 type DataSide = NonNullable<Parameters<typeof createLink>[0]['data']>;
 // (`emit`: the link's listener, set by its onChanges.)
 type FakeData = DataSide & { queue: Said[], adopted: Parameters<DataSide['adopt']>[], taken: unknown[], emit?: (changes: any[]) => void };
-function makeLink(api: FakeApi, { route = async (m: Said, sender: unknown) => ({ ok: true, result: { type: m.type, sender } }), data = null, owner = () => true, timing = FAST }: { route?: Parameters<Link['start']>[0]['route'], data?: FakeData | null, owner?: () => boolean, timing?: Parameters<typeof createLink>[0]['timing'] } = {}) {
+function makeLink(api: FakeApi, { route = async (m: Said, sender: unknown) => ({ ok: true, result: { type: m.type, sender } }), data = null, owner = () => true, timing = FAST, now = undefined, Socket = globalThis.WebSocket }: { route?: Parameters<Link['start']>[0]['route'], data?: FakeData | null, owner?: () => boolean, timing?: Parameters<typeof createLink>[0]['timing'], now?: () => number, Socket?: unknown } = {}) {
   const changed: string[] = [];
   const fakeData: FakeData = data ?? {
     queue: [{ collection: 'pins', id: 'p1', updatedAt: 5, value: { url: 'https://x.example' } }],
@@ -108,7 +108,7 @@ function makeLink(api: FakeApi, { route = async (m: Said, sender: unknown) => ({
   };
   const link = createLink({
     api: fakeBrowser(api), isOwner: owner, copy: () => ({ origin: 'safari-web-extension://test/', since: 1 }), instanceId: 'i1',
-    WebSocket: globalThis.WebSocket, enabled: () => true, canSocket: () => true, data: fakeData,
+    WebSocket: Socket, ...(now ? { now } : {}), enabled: () => true, canSocket: () => true, data: fakeData,
     theme: async () => THEME, commandKeys: () => ({ nextTab: 'Ctrl+Meta+ArrowDown' }), log: () => {}, timing,
   });
   link.onPageState((s) => changed.push(s));
@@ -1087,3 +1087,250 @@ test('link: the app\'s windows calls — its requests taken, the removed ones re
   }
 });
 
+
+// ---- requests end on evidence, a slow copy never sticks (docs/LINK-RESILIENCE.md §1 rules 11–14, §2 rules 5–7) ----
+
+const { createHostedTabs } = await import('../extension/background/hosted.ts');
+// The app's ticks every 100 ms (FAST's dead is 400 ms), for a test that waits on the copy.
+const ticks = (app: FakeApp) => setInterval(() => app.send({ k: 'tick', at: Date.now() }), 100);
+const replies = (app: FakeApp, from: number, id: number) => app.received.slice(from).filter((m) => m.k === 'reply' && m.id === id);
+const req = (epoch: string, id: number, type: string, payload: Said, windowId: number | null = 7) => ({ k: 'req', id, epoch, windowId, type, payload, at: Date.now() });
+
+test('link: a req is acked before its handler resolves; a repeated id runs once, and once answered gets its reply again; a tick\'s number is echoed', async () => {
+  const app = await startFakeApp();
+  const api = browser({ app, local: STATE });
+  const { link } = makeLink(api);
+  let release = () => {};
+  const gate = new Promise<void>((r) => { release = r; });
+  const routed: Said[] = [];
+  const ticking = ticks(app);
+  try {
+    await link.start({ route: async (m) => { routed.push(m); await gate; return { ok: true, result: { shown: m.itemId } }; } });
+    const hello = (await app.next('hello'))!;
+    await app.next('data.hello');
+    const from = app.received.length;
+    const show = req(hello.epoch, 1, 'hostShow', { windowId: 7, itemId: 'a', url: 'https://a.example/' });
+    app.send(show);
+    assert.deepEqual(await app.next('ack', { from }), { k: 'ack', id: 1 }, 'acked at once');
+    assert.equal(replies(app, from, 1).length, 0, 'before its handler resolved');
+    app.send(show); // the app sending it again (read past: §1 rule 4)
+    assert.ok(await until(() => app.received.slice(from).filter((m) => m.k === 'ack').length === 2), 'acked again');
+    await wait(50);
+    assert.equal(routed.length, 1, 'a repeated id that\'s running: left, its reply comes');
+    release();
+    assert.ok(await until(() => replies(app, from, 1).length === 1));
+    assert.deepEqual(replies(app, from, 1)[0], { k: 'reply', id: 1, ok: true, result: { shown: 'a' } });
+    app.send(show);
+    assert.ok(await until(() => replies(app, from, 1).length === 2), 'answered already: its reply again');
+    assert.deepEqual(replies(app, from, 1)[1], replies(app, from, 1)[0]);
+    assert.equal(routed.length, 1, 'run once');
+    app.send({ k: 'req', id: 2, epoch: 'old', windowId: 7, type: 'activateTab', payload: {} });
+    assert.ok(await app.next('ack', { from, test: (m) => m.id === 2 }), 'every req read is acked, even one refused');
+    app.send({ k: 'tick', at: 1, seq: 4 });
+    assert.equal((await app.next('tock', { from, test: (m) => m.seq != null }))!.seq, 4, 'the tick\'s number, echoed');
+    assert.ok(app.received.slice(from).some((m) => m.k === 'tock' && !('seq' in m)), 'an older app\'s tick: a tock with none');
+  } finally {
+    clearInterval(ticking);
+    link.stop();
+    await app.close();
+  }
+});
+
+test('link: cancel — a req not started yet (held after a pause) is dropped; one under way stops at its next check; neither is answered', async () => {
+  const app = await startFakeApp();
+  const api = browser({ app, local: STATE });
+  const { link } = makeLink(api);
+  let release = () => {};
+  const gate = new Promise<void>((r) => { release = r; });
+  const routed: number[] = [];
+  const checks: boolean[] = [];
+  const ticking = ticks(app);
+  try {
+    await link.start({ route: async (m, sender) => { routed.push(m.n); if (m.n === 1) { await gate; checks.push(sender.stopped()); } return { ok: true }; } });
+    const hello = (await app.next('hello'))!;
+    await app.next('data.hello');
+    const from = app.received.length;
+    app.send(req(hello.epoch, 1, 'hostShow', { n: 1, windowId: 7, itemId: 'a', url: 'https://a.example/' }));
+    await app.next('ack', { from });
+    app.send({ k: 'cancel', id: 1 });
+    await wait(60);
+    release();
+    await wait(100);
+    assert.deepEqual(checks, [true], 'under way: its check says stop');
+    assert.equal(replies(app, from, 1).length, 0, 'and it isn\'t answered');
+    app.send(req(hello.epoch, 2, 'hostShow', { n: 2, windowId: 7, itemId: 'b', url: 'https://b.example/' }));
+    app.send({ k: 'cancel', id: 2 });
+    pause(700); // both queued in the socket: read after the pause, the queue first
+    await wait(300);
+    assert.ok(app.received.slice(from).some((m) => m.k === 'ack' && m.id === 2), 'acked as it was read');
+    assert.deepEqual(routed, [1], 'not started: dropped');
+    assert.equal(replies(app, from, 2).length, 0, 'and answered nothing');
+    assert.ok(link.linked());
+  } finally {
+    clearInterval(ticking);
+    link.stop();
+    await app.close();
+  }
+});
+
+test('link: two hostShows for one window — only the newer reaches the tabs API; the older answers overtaken', async () => {
+  const app = await startFakeApp();
+  const api = browser({ app, local: STATE });
+  const { link } = makeLink(api);
+  const calls: string[] = [];
+  let release = () => {};
+  const gate = new Promise<void>((r) => { release = r; });
+  let gated = true;
+  let next = 100;
+  const tabs = [{ id: 1, windowId: 9, url: 'https://other.example/', active: true }];
+  const hosted = createHostedTabs(() => ({
+    async get(id: number) { const t = tabs.find((x) => x.id === id); if (!t) throw new Error('no tab'); return { ...t }; },
+    async query({ windowId }: { windowId?: number }) { if (gated) { gated = false; await gate; } return tabs.filter((t) => windowId == null || t.windowId === windowId); },
+    async create({ windowId, url }: { windowId: number, url: string, active: boolean }) { calls.push(`create ${url}`); const t = { id: next++, windowId, url, active: true }; tabs.push(t); return { ...t }; },
+    async update(id: number, { url }: { url?: string }) { calls.push(`update ${id}${url ? ` ${url}` : ''}`); return { ...tabs.find((t) => t.id === id)! }; },
+    async remove(id: number) { calls.push(`remove ${id}`); },
+  }));
+  const ticking = ticks(app);
+  try {
+    await link.start({ route: async (m, sender) => hosted.show(m, sender.stopped).then((result) => ({ ok: true, result }), (err) => ({ ok: false, error: String(err?.message ?? err) })) });
+    const hello = (await app.next('hello'))!;
+    await app.next('data.hello');
+    const from = app.received.length;
+    app.send(req(hello.epoch, 1, 'hostShow', { windowId: 9, itemId: 'a', url: 'https://a.example/' }, null));
+    await app.next('ack', { from, test: (m) => m.id === 1 });
+    app.send(req(hello.epoch, 2, 'hostShow', { windowId: 9, itemId: 'b', url: 'https://b.example/' }, null));
+    assert.ok(await until(() => replies(app, from, 2).length === 1), 'the newer shown');
+    release();
+    assert.ok(await until(() => replies(app, from, 1).length === 1));
+    assert.deepEqual(calls, ['create https://b.example/'], 'only the newer reached Safari');
+    assert.deepEqual(replies(app, from, 1)[0], { k: 'reply', id: 1, ok: false, error: 'overtaken' });
+    assert.equal(replies(app, from, 2)[0].ok, true);
+  } finally {
+    clearInterval(ticking);
+    link.stop();
+    await app.close();
+  }
+});
+
+test('link: after a detected pause, a show and a newer show for that window queued together: only the newer runs', async () => {
+  const app = await startFakeApp();
+  const api = browser({ app, local: STATE });
+  const { link } = makeLink(api);
+  const routed: Said[] = [];
+  const ticking = ticks(app);
+  try {
+    await link.start({ route: async (m) => { routed.push(m); return { ok: true, result: { tabId: 5 } }; } });
+    const hello = (await app.next('hello'))!;
+    await app.next('data.hello');
+    const from = app.received.length;
+    app.send(req(hello.epoch, 1, 'hostShow', { windowId: 7, itemId: 'a', url: 'https://a.example/' }));
+    app.send(req(hello.epoch, 2, 'hostShow', { windowId: 8, itemId: 'c', url: 'https://c.example/' }));
+    app.send(req(hello.epoch, 3, 'hostShow', { windowId: 7, itemId: 'b', url: 'https://b.example/' }));
+    pause(700);
+    assert.ok(await until(() => [1, 2, 3].every((id) => replies(app, from, id).length === 1)), 'each answered');
+    assert.deepEqual(routed.map((m) => m.itemId), ['c', 'b'], 'the newest of window 7, and window 8\'s');
+    assert.deepEqual(replies(app, from, 1)[0], { k: 'reply', id: 1, ok: false, error: 'overtaken' });
+    assert.ok(logLines(api).some((l) => /^paused 0\.\d s \(a link check ran late\)/.test(l)));
+  } finally {
+    clearInterval(ticking);
+    link.stop();
+    await app.close();
+  }
+});
+
+test('link: waits advanced by events — an extension event runs the ask that was due, not its late timer', async () => {
+  const api = browser({ app: null }); // Margin.app not running: each ask paced
+  let offset = 0;
+  const { link } = makeLink(api, { now: () => performance.now() + offset, timing: { ...FAST, ask: [5000, 60_000] } });
+  const asks = () => api.native.filter((m) => m.type === 'wantLink').length;
+  try {
+    await link.start({ route: async () => ({ ok: true }) });
+    assert.equal(asks(), 1);
+    link.windowFocused(7);
+    await wait(50);
+    assert.equal(asks(), 1, 'not due yet: an event changes nothing');
+    offset += 5000; // 5 s gone for the copy, its timer not run (the background's loop late)
+    link.windowFocused(7);
+    assert.ok(await until(() => asks() === 2, 300), 'asked at the event');
+    offset += 10_000;
+    link.due(); // (tabs.onUpdated, runtime.onMessage: background.ts)
+    assert.ok(await until(() => asks() === 3, 300), 'and at any other event');
+  } finally {
+    link.stop();
+  }
+});
+
+test('link: a welcome wait whose timer ran late doesn\'t give up (the welcome then taken); one on time does', async () => {
+  const app = await startFakeApp();
+  // A socket the test drives: it opens and says welcome when told.
+  class Sock {
+    static made: Sock[] = [];
+    readyState = 0;
+    sent: Said[] = [];
+    closed: string | null = null;
+    onopen: (() => void) | null = null;
+    onmessage: ((e: { data: string }) => void) | null = null;
+    onclose: ((e: { code: number, reason: string }) => void) | null = null;
+    onerror: (() => void) | null = null;
+    url: string;
+    constructor(url: string) { this.url = url; Sock.made.push(this); }
+    send(text: string) { this.sent.push(JSON.parse(text)); }
+    close(_code: number, reason: string) { this.closed = reason; this.readyState = 3; }
+    welcome() { this.readyState = 1; this.onopen?.(); this.onmessage?.({ data: JSON.stringify({ k: 'welcome', v: 2, key: app.key }) }); }
+  }
+  const links: Link[] = [];
+  try {
+    // Late: 1 s gone for the copy while its 500 ms wait ran (over 1.5×): re-armed, and the welcome that comes is taken.
+    let offset = 0;
+    const api = browser({ app, local: STATE });
+    const { link } = makeLink(api, { now: () => performance.now() + offset, Socket: Sock });
+    links.push(link);
+    void link.start({ route: async () => ({ ok: true }) });
+    assert.ok(await until(() => Sock.made.length === 1, 1000));
+    await wait(100);
+    offset += 1000;
+    await wait(550); // its timer ran (late)
+    Sock.made[0].welcome();
+    assert.ok(link.linked(), 'linked');
+    assert.equal(Sock.made[0].closed, null);
+    assert.ok(!logLines(api).some((l) => l.includes('no welcome within')), `${logLines(api)}`);
+    assert.equal(Sock.made[0].sent[0]?.k, 'hello');
+    link.stop();
+    // On time: given up.
+    const api2 = browser({ app, local: STATE });
+    const { link: l2 } = makeLink(api2, { Socket: Sock });
+    links.push(l2);
+    void l2.start({ route: async () => ({ ok: true }) });
+    assert.ok(await until(() => Sock.made.length === 2, 1000));
+    assert.ok(await until(() => Sock.made[1].closed != null, 1000), 'closed');
+    assert.ok(logLines(api2).some((l) => l.includes('no welcome within 500 ms (slow)')), `${logLines(api2)}`);
+    assert.ok(!l2.linked());
+  } finally {
+    for (const l of links) l.stop();
+    await app.close();
+  }
+});
+
+test('link: the copy\'s answers to the shared link vectors (tests/fixtures/link-protocol.json)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const v = JSON.parse(readFileSync(new URL('./fixtures/link-protocol.json', import.meta.url), 'utf8'));
+  const app = await startFakeApp();
+  const api = browser({ app, local: STATE });
+  const { link } = makeLink(api);
+  const ticking = ticks(app);
+  try {
+    await link.start({ route: async () => ({ ok: true }) });
+    const hello = (await app.next('hello'))!;
+    await app.next('data.hello');
+    for (const c of v.answers) {
+      const from = app.received.length;
+      app.send({ ...c.app, ...(c.app.k === 'req' ? { epoch: hello.epoch } : {}) });
+      const got = await app.next(c.copy.k, { from, test: (m) => Object.entries(c.copy).every(([k, x]) => m[k] === x) && !(c.none ?? []).some((k: string) => k in m) });
+      assert.ok(got, c.about);
+    }
+  } finally {
+    clearInterval(ticking);
+    link.stop();
+    await app.close();
+  }
+});

@@ -78,11 +78,11 @@ export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = asy
   // (One helper for every move, close and Expand that would empty one of Margin's windows: a split's pane window, the
   // card's, main's. Its creation heard by `tabCreated` is Margin's own: never taken for the card's page.)
   const blanking = new Map<number, number>();
-  async function leaveBlank(windowId: number) {
-    const left = await tabs().query({ windowId }).catch(() => [] as Tab[]);
+  async function leaveBlank(windowId: number, t = tabs) {
+    const left = await t().query({ windowId }).catch(() => [] as Tab[]);
     if (left.length > 1) return;
     blanking.set(windowId, (blanking.get(windowId) ?? 0) + 1);
-    await tabs().create({ windowId, url: 'about:blank', active: false }).catch(() => null);
+    await t().create({ windowId, url: 'about:blank', active: false }).catch(() => null);
     setTimeout(() => { const n = (blanking.get(windowId) ?? 1) - 1; if (n > 0) blanking.set(windowId, n); else blanking.delete(windowId); }, 1000);
   }
   const tagged = (tabId: number) => [...byItem.values()].includes(tabId);
@@ -91,21 +91,21 @@ export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = asy
   const shownIn = new Set<number>();
   // The item's tagged tab in another of those windows, moved into `win` (keeps its page: logins, scroll, history). A
   // tab alone in its window gets a blank one left behind first (a window with no tab closes, and it's Margin's).
-  async function moveHere(itemId: string, win: number): Promise<Tab | null> {
-    const move = tabs().move;
+  async function moveHere(itemId: string, win: number, t = tabs): Promise<Tab | null> {
+    const move = t().move;
     if (!move) return null;
-    const tab = await own(itemId, null);
+    const tab = await own(itemId, null, t);
     if (tab?.id == null || tab.windowId == null || tab.windowId === win || !shownIn.has(tab.windowId)) return null;
-    await leaveBlank(tab.windowId);
-    const moved = await move.call(tabs(), tab.id, { windowId: win, index: -1 }).catch(() => null);
+    await leaveBlank(tab.windowId, t);
+    const moved = await move.call(t(), tab.id, { windowId: win, index: -1 }).catch(() => null);
     if (moved?.id == null) return null;
     return { ...moved, windowId: moved.windowId ?? win };
   }
   // The item's tagged tab, if it's still open in `windowId` (any window when null).
-  async function own(itemId: string, windowId: number | null) {
+  async function own(itemId: string, windowId: number | null, t = tabs) {
     const id = byItem.get(itemId);
     if (id == null) return null;
-    const tab = await tabs().get(id).catch(() => null);
+    const tab = await t().get(id).catch(() => null);
     if (tab?.id === id && (windowId == null || tab.windowId === windowId)) return tab;
     byItem.delete(itemId);
     return null;
@@ -143,7 +143,13 @@ export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = asy
     /** Whether a tab shows a pin's or favorite's item in Margin.app (auto-preview). */
     isPinned: (tabId: number) => pinnedTabs.has(tabId),
     // `fresh` (the card's only): a new preview's page: the card's tab sent there if it shows another one.
-    async show({ windowId, itemId, url, role, fresh, pinned }: { windowId?: unknown, itemId?: unknown, url?: unknown, role?: unknown, fresh?: unknown, pinned?: unknown }) {
+    // `stopped` (the link's: docs/LINK-RESILIENCE.md §1 rules 12–13): the app cancelled it, or a newer show for its
+    // window started. Checked before each of its Safari calls: an overtaken show makes no more of them (`overtaken`).
+    async show({ windowId, itemId, url, role, fresh, pinned }: { windowId?: unknown, itemId?: unknown, url?: unknown, role?: unknown, fresh?: unknown, pinned?: unknown }, stopped: () => boolean = () => false) {
+      const tabsNow = () => {
+        if (stopped()) throw new Error('overtaken');
+        return tabs();
+      };
       if (!Number.isInteger(windowId)) throw new Error('no window');
       if (typeof itemId !== 'string' || !ITEM.test(itemId)) throw new Error('no item');
       if (typeof url !== 'string' || !SHOWN.test(url)) throw new Error('not an address');
@@ -152,16 +158,16 @@ export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = asy
       if ((itemId === CARD_ITEM) !== (role === 'card')) throw new Error('the card\'s page is shown in its window only');
       if (role === 'card') {
         cards.add(win);
-        const out = await this.showIn(win, itemId, url);
+        const out = await this.showIn(win, itemId, url, tabsNow);
         if (fresh === true && !out.created) {
-          const t = await tabs().get(out.tabId).catch(() => null);
-          if (t && plain(t.url || t.pendingUrl) !== plain(url)) await tabs().update(out.tabId, { url, active: true });
+          const t = await tabsNow().get(out.tabId).catch(() => null);
+          if (t && plain(t.url || t.pendingUrl) !== plain(url)) await tabsNow().update(out.tabId, { url, active: true });
         }
         tellPage(out.tabId, true);
         return out;
       }
       if (cards.has(win)) throw new Error('the card\'s window shows the card only');
-      const out = await this.showIn(win, itemId, url);
+      const out = await this.showIn(win, itemId, url, tabsNow);
       // (Said to its page when it changes: its clicks decide auto-preview at once, with no question asked.)
       if (typeof pinned === 'boolean' && pinned !== pinnedTabs.has(out.tabId)) {
         if (pinned) pinnedTabs.add(out.tabId); else pinnedTabs.delete(out.tabId);
@@ -169,43 +175,43 @@ export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = asy
       }
       return out;
     },
-    async showIn(win: number, itemId: string, url: string) {
+    async showIn(win: number, itemId: string, url: string, tabsNow = tabs) {
       // (Moved first: its tag found in another window is forgotten by `own`.)
-      let tab: Tab | null = await moveHere(itemId, win);
+      let tab: Tab | null = await moveHere(itemId, win, tabsNow);
       const moved = tab != null;
       // (Moved into a window Margin made that had only its first page (a blank page, the new-tab page): that page goes,
       // the moved tab alone there, the keys in its page: docs/PEEK-SPLIT.md §4.)
       if (tab?.id != null) {
         const movedId = tab.id;
-        const rest = (await tabs().query({ windowId: win }).catch(() => [] as Tab[])).filter((t) => t.id != null && t.id !== movedId);
+        const rest = (await tabsNow().query({ windowId: win }).catch(() => [] as Tab[])).filter((t) => t.id != null && t.id !== movedId);
         const blank = (t: Tab) => isNewTabPage(t.url || t.pendingUrl) || !(t.url || t.pendingUrl) || t.url === 'about:blank';
-        if (rest.length === 1 && !tagged(rest[0].id!) && blank(rest[0])) await tabs().remove(rest[0].id!).catch(() => {});
+        if (rest.length === 1 && !tagged(rest[0].id!) && blank(rest[0])) await tabsNow().remove(rest[0].id!).catch(() => {});
       }
-      tab ??= await own(itemId, win);
+      tab ??= await own(itemId, win, tabsNow);
       let created = false;
       shownIn.add(win);
       if (!tab) {
-        const list = await tabs().query({ windowId: win });
+        const list = await tabsNow().query({ windowId: win });
         tab = list.find((t) => t.id != null && !tagged(t.id) && plain(t.url || t.pendingUrl) === plain(url)) ?? null;
         const lone = list.length === 1 && list[0].id != null && !tagged(list[0].id) && (isNewTabPage(list[0].url || list[0].pendingUrl) || !(list[0].url || list[0].pendingUrl) || list[0].url === 'about:blank') ? list[0] : null;
         if (!tab && lone) {
-          if (/^about:blank$/i.test(url)) tab = await tabs().update(lone.id!, { url, active: true });
+          if (/^about:blank$/i.test(url)) tab = await tabsNow().update(lone.id!, { url, active: true });
           else {
             // (Made first, so the window never has no tab; one Safari refuses: the new-tab page sent there, as before.)
-            tab = await tabs().create({ windowId: win, url, active: true }).catch(() => null);
-            if (tab?.id != null) await tabs().remove(lone.id!).catch(() => {});
-            else tab = await tabs().update(lone.id!, { url, active: true });
+            tab = await tabsNow().create({ windowId: win, url, active: true }).catch(() => null);
+            if (tab?.id != null) await tabsNow().remove(lone.id!).catch(() => {});
+            else tab = await tabsNow().update(lone.id!, { url, active: true });
           }
           created = true;
         }
         if (!tab) {
-          tab = await tabs().create({ windowId: win, url, active: true });
+          tab = await tabsNow().create({ windowId: win, url, active: true });
           created = true;
         }
       }
       if (tab?.id == null) throw new Error('no tab');
       byItem.set(itemId, tab.id);
-      if (!created) await tabs().update(tab.id, { active: true }); // (one made or sent there is in front already)
+      if (!created) await tabsNow().update(tab.id, { active: true }); // (one made or sent there is in front already)
       return moved ? { tabId: tab.id, created, moved } : { tabId: tab.id, created };
     },
     async picture({ windowId, itemId }: { windowId?: unknown, itemId?: unknown }) {

@@ -346,6 +346,7 @@ const BEFORE_SYNC = new Set(['hello', 'owner', 'sidebarScroll', 'setSidebarScrol
 const TIMED = new Set(['activateTab', 'openPin', 'setSpace', 'newTab', 'search']);
 const REPLY_GUARD_MS = 500;
 api.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  appLink.due(); // (a page's message is an event heard: the link's waits that are due run: background/link.ts)
   const handler = (handlers as Record<string, (message: any, sender: any) => Promise<any>>)[message?.type]; // (an unknown type: none)
   if (!handler) return false;
   const deadline = TIMED.has(message.type) && Number.isFinite(message.deadline) ? message.deadline : Infinity;
@@ -427,6 +428,9 @@ api.windows?.onRemoved?.addListener((windowId) => hostedTabs.windowRemoved(windo
 api.windows?.onFocusChanged?.addListener((windowId) => appLink.windowFocused(windowId));
 api.windows?.onBoundsChanged?.addListener(() => appLink.windowsChanged());
 api.tabs.onActivated.addListener(() => appLink.tabActivated());
+// Safari's events come on time while a slowed background's timers don't: each one heard runs the link's waits that are
+// due (docs/LINK-RESILIENCE.md §2 rule 5; the windows events above and a page's message below do too).
+api.tabs.onUpdated.addListener(() => appLink.due());
 // A window closed: what the copy kept of its own windows calls for it goes (background/handoff.ts).
 api.windows?.onRemoved?.addListener((windowId) => handoff.windowClosed(windowId));
 // What's loading in each window, for its overlay (background/page-loads.ts):
