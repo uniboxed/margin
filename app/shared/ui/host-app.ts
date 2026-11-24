@@ -398,6 +398,9 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   // app's words; the start screen's Try again and Continue without Safari meanwhile (ui/runtime.ts followStartup).
   const stuckOf = (v: unknown) => (typeof v === 'string' && v ? v.slice(0, 300) : null);
   let pageStuck: string | null = pageStarting ? stuckOf(hello?.pageStuck) : null;
+  // The browser's copy asked to show the item is slow (Margin.app's, docs/LINK-RESILIENCE.md §1 rule 8): only while
+  // it's `loading` and not Margin's start; "Safari is slow…" under the loader (ui/runtime.ts followSlow).
+  let pageSlow = pageState === 'loading' && !pageStarting && hello?.pageSlow === true;
   // Its item's page as Safari last showed it (a web item in another Margin window): only a picture's data URL, kept
   // while the card shows (the app sends null as it goes), never stored.
   const pictureOf = (v: unknown) => (typeof v === 'string' && v.length <= PICTURE_MAX && /^data:image\/(jpeg|png);base64,[A-Za-z0-9+/=]+$/.test(v) ? v : null);
@@ -499,6 +502,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
     get pageOpeningBundleId() { return pageOpeningBundleId; },
     get pageStarting() { return pageStarting; },
     get pageStuck() { return pageStarting ? pageStuck : null; },
+    get pageSlow() { return pageSlow; },
     get pagePicture() { return pageState === 'elsewhere' ? pagePicture : null; },
     /**
      * The sidebar kept docked whatever its setting: only beside another app's window (`pageOutside`: Margin's window is
@@ -728,8 +732,10 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           const bundleId = named(next) && isBundleId(msg.bundleId) ? msg.bundleId : null;
           const starting = next === 'loading' && msg.starting === true;
           const stuck = starting ? stuckOf(msg.stuck) : null;
-          if (next === pageState && name === pageOpening && bundleId === pageOpeningBundleId && starting === pageStarting && stuck === pageStuck) return;
+          const slow = next === 'loading' && !starting && msg.slow === true;
+          if (next === pageState && name === pageOpening && bundleId === pageOpeningBundleId && starting === pageStarting && stuck === pageStuck && slow === pageSlow) return;
           pageStuck = stuck;
+          pageSlow = slow;
           pageState = next;
           pageOpening = name;
           pageOpeningBundleId = bundleId;

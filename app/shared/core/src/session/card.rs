@@ -678,7 +678,7 @@ impl Core {
                 core.apply_layout(Some(w), &main, base.main_rect, extras, Some(&under), split.map(|s| (s.id, s.panes)))
                     .await;
             }
-            core.ask(&p, "hostCardClose", Object::new()).await;
+            core.tell(&p, "hostCardClose", Object::new()).await;
         });
         true
     }
@@ -728,13 +728,13 @@ impl Core {
         self.exec.enqueue(async move {
             if let Some(main) = core.safari_window(&p, Role::Main) {
                 let payload = object(json!({ "fromItemId": CARD_TAG, "toWindowId": main, "toItemId": item }));
-                let moved = core.ask(&p, "hostPromotePeek", payload).await;
+                let moved = core.ask_aside(&p, "hostPromotePeek", payload).await;
                 if moved.result.as_ref().and_then(|r| json::flag(r.get("ok"))) != Some(true) {
                     let why = moved.error.as_deref().unwrap_or("refused");
                     core.note(format!(
                         "Preview: the card's tab not moved ({why}): opened at its address in the main window"
                     ));
-                    core.ask(&p, "hostCardClose", Object::new()).await;
+                    core.tell(&p, "hostCardClose", Object::new()).await;
                 }
             }
             // (Shown alone, as any item picked outside a split: a split under the card stays, for its next pick.)

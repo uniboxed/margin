@@ -146,6 +146,22 @@ impl Exec {
         }
     }
 
+    /// The running task, if it's the serial queue's turn, gives its turn up: the next task enqueued gets it (polled
+    /// once this one suspends), and this one goes on outside the queue until it `rejoin`s. True: it had the turn.
+    pub(crate) fn leave_turn(&self) -> bool {
+        let Some(id) = self.current.get() else { return false };
+        if self.in_turn.get() != Some(id) {
+            return false;
+        }
+        self.next_turn();
+        true
+    }
+
+    /// A wait for the running task's turn in the serial queue again, behind every task enqueued before it asks.
+    pub(crate) fn rejoin(&self) -> Rejoin<'_> {
+        Rejoin { exec: self, task: None }
+    }
+
     fn next_turn(&self) {
         let next = self.queue.borrow_mut().pop_front();
         self.in_turn.set(next);
@@ -398,6 +414,44 @@ impl Drop for Changed<'_> {
     fn drop(&mut self) {
         if let Some(key) = self.key {
             self.exec.watchers.borrow_mut().remove(&key);
+        }
+    }
+}
+
+/// A wait for the serial queue's turn again (`Exec::rejoin`).
+pub(crate) struct Rejoin<'a> {
+    exec: &'a Exec,
+    task: Option<TaskId>,
+}
+
+impl Future for Rejoin<'_> {
+    type Output = ();
+    fn poll(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<()> {
+        let this = self.get_mut();
+        let exec = this.exec;
+        let Some(task) = this.task else {
+            let task = exec.current.get().unwrap_or(0);
+            this.task = Some(task);
+            match exec.in_turn.get() {
+                None => {
+                    exec.in_turn.set(Some(task));
+                    return Poll::Ready(());
+                }
+                Some(t) if t == task => return Poll::Ready(()),
+                Some(_) => {
+                    exec.queue.borrow_mut().push_back(task);
+                    return Poll::Pending;
+                }
+            }
+        };
+        if exec.in_turn.get() == Some(task) { Poll::Ready(()) } else { Poll::Pending }
+    }
+}
+
+impl Drop for Rejoin<'_> {
+    fn drop(&mut self) {
+        if let Some(task) = self.task {
+            self.exec.queue.borrow_mut().retain(|t| *t != task);
         }
     }
 }

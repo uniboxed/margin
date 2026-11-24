@@ -172,6 +172,8 @@ pub struct Page {
     showing: Option<String>,
     showing_app: Option<String>,
     showing_slow: bool,
+    /// The browser's copy asked to show it is slow (the session's `set_copy_slow`): its loader says so.
+    copy_slow: bool,
     elsewhere: Option<String>,
     elsewhere_app: Option<String>,
     stuck: Option<String>,
@@ -228,6 +230,7 @@ impl Page {
             showing: None,
             showing_app: None,
             showing_slow: false,
+            copy_slow: false,
             elsewhere: None,
             elsewhere_app: None,
             stuck: None,
@@ -452,6 +455,7 @@ impl Page {
             self.loading_app = None;
             self.showing_app = None;
             self.showing_slow = false;
+            self.copy_slow = false;
         }
         Some(had)
     }
@@ -467,15 +471,40 @@ impl Page {
         true
     }
 
-    /// `setShowing`: an item being shown and not ready yet (`slow`: known to take a while). False: nothing new.
+    /// `setShowing`: an item being shown and not ready yet (`slow`: known to take a while: no grace). False: nothing
+    /// new. The same item said slow now (or no longer) is new: its grace, if it's running, is over at the next
+    /// settle. Another item, or none: the copy's slowness said for the one before goes.
     pub fn set_showing(&mut self, label: Option<&str>, app: Option<&str>, slow: bool) -> bool {
+        let slow = label.is_some() && slow;
         if label == self.showing.as_deref() && (label.is_none() || app == self.showing_app.as_deref()) {
-            return false;
+            if slow == self.showing_slow {
+                return false;
+            }
+            self.showing_slow = slow;
+            return true;
         }
         self.showing = label.map(str::to_owned);
         self.showing_app = label.and(app).map(str::to_owned);
-        self.showing_slow = label.is_some() && slow;
+        self.showing_slow = slow;
+        self.copy_slow = false;
         true
+    }
+
+    /// `setCopySlow`: the browser's copy asked for the item being shown is slow (its link says so), or no longer.
+    /// Only while an item is being shown. False: nothing new.
+    pub fn set_copy_slow(&mut self, on: bool) -> bool {
+        let on = on && self.showing.is_some();
+        if on == self.copy_slow {
+            return false;
+        }
+        self.copy_slow = on;
+        true
+    }
+
+    /// The loader says the browser's copy is slow: loading the item being shown (not an engine's slow step, not
+    /// Margin's start), its copy slow.
+    pub fn copy_slow(&self) -> bool {
+        self.copy_slow && self.state == PageState::Loading && self.loading.is_none() && !self.starting()
     }
 
     /// `setElsewhere`'s card (its item in another Margin window, or parked; None: none). False: nothing new.
@@ -561,6 +590,7 @@ impl Page {
             && self.state != PageState::Elsewhere
             && self.loading.is_none()
             && !self.showing_slow
+            && !self.copy_slow
             && self.grace > 0.0
         {
             self.grace_until = Some(now + self.grace);

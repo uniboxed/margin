@@ -116,6 +116,9 @@ pub trait Ports {
     /// A Margin window told an item is being shown and not ready yet (`HostedWindow.setShowing`; None: it is).
     /// The window as the flow had it: one closed since is still told (Swift's flows held the window).
     fn set_showing(&self, window: i64, label: Option<&str>, app: Option<&str>, slow: bool);
+    /// The browser's copy asked to show a Margin window's item is slow, or no longer (`HostedWindow.setCopySlow`: its
+    /// loader says so; the window forgets it with the item). Feedback only.
+    fn set_copy_slow(&self, window: i64, on: bool);
     /// One of Margin's own pages in a Margin window's page area, None: the launcher (`HostedWindow.setMarginPage`).
     fn set_margin_page(&self, window: i64, page: Option<&str>);
     /// A message for a Margin window's page (`HostedWindow.push`).
@@ -545,6 +548,14 @@ pub enum Input {
     LastItem {
         window: i64,
     },
+    /// A browser copy's link came up or went down (the shell's `linkUp`/`linkDown`): the waits for a profile's link
+    /// look again (a show waiting for its copy to come back: evidence, never a look on a timer).
+    Linked {
+        profile: String,
+    },
+    /// Margin quits (the engine's `quitAll` began): a copy's request made for it isn't waited for once its copy isn't
+    /// reading it (`ask_held`).
+    Quitting,
 }
 
 impl Input {
@@ -610,6 +621,8 @@ impl Input {
             "startupSkip" => Ok(Input::StartupSkip),
             "preparationOver" => Ok(Input::PreparationOver),
             "lastItem" => Ok(Input::LastItem { window: swift_int(o.get("window")).ok_or("no window")? }),
+            "linked" => Ok(Input::Linked { profile: s("profile").ok_or("no profile")?.to_string() }),
+            "quitting" => Ok(Input::Quitting),
             other => Err(format!("{other:?} isn't an input")),
         }
     }
@@ -658,6 +671,11 @@ pub(crate) struct Core {
     resizing: Cell<Option<i64>>,
     following: Cell<bool>,
     placing: Cell<bool>,
+    /// Hosts asked for (`host`, any window's), counted: a show that waited for its copy outside the queue reads
+    /// whether another window's show took the engine meanwhile.
+    hosts_asked: Cell<u64>,
+    /// Margin quits (`Input::Quitting`).
+    quitting: Cell<bool>,
 }
 
 /// The session: one per app. Every entry takes `&self` (re-entrant).
@@ -689,6 +707,8 @@ impl Session {
             resizing: Cell::new(None),
             following: Cell::new(false),
             placing: Cell::new(false),
+            hosts_asked: Cell::new(0),
+            quitting: Cell::new(false),
         }))
     }
 
@@ -1001,7 +1021,11 @@ impl Core {
             Input::PageRect { window } => {
                 self.page_rect_changed(window, &Frame::Ports);
             }
-            Input::ForgetInLayouts { host } => self.forget_in_layouts(&host),
+            Input::ForgetInLayouts { host } => {
+                self.forget_in_layouts(&host);
+                // (A host gone: a show waiting for its window's copy looks again.)
+                self.exec.notify();
+            }
             Input::RefreshPaneMinimums { window } => self.refresh_pane_minimums(window),
             Input::AppMinimumsChanged => self.app_minimums_changed(),
             Input::WindowOpened { window } => self.resume_last(window),
@@ -1016,6 +1040,11 @@ impl Core {
                     .last_item_of(window)
                     .map(|(item, target, name)| json!({ "item": item, "name": name, "target": target.json() }));
                 return (Some(last.unwrap_or(Value::Null)), None);
+            }
+            Input::Linked { profile: _ } => self.exec.notify(),
+            Input::Quitting => {
+                self.quitting.set(true);
+                self.exec.notify();
             }
         }
         (None, None)
@@ -1150,6 +1179,14 @@ impl Core {
                     return Until::Overtaken { asked: true };
                 }
                 Woke::Changed => {}
+                Woke::Look if overtaken() => {
+                    let id = answer.id();
+                    drop(answer);
+                    if let Some(id) = id {
+                        self.exec.command(Command::Cancel { profile: profile.to_string(), id }).await;
+                    }
+                    return Until::Overtaken { asked: true };
+                }
                 Woke::Look => {
                     let age = self.ports.link_slow(profile);
                     let now = age.is_some_and(|a| a >= say);
@@ -1167,6 +1204,46 @@ impl Core {
         }
     }
 
+    /// A copy's request whose answer nothing needs: handed out now, in order with what the flow asks next on the same
+    /// link (the socket keeps it), waited for by nothing (its answer, when it comes, let go). It ends on the link's own
+    /// evidence (its reply, the link down, lost).
+    pub(crate) async fn tell(&self, profile: &str, kind: &str, payload: Object) {
+        let mut answer =
+            self.exec.command(Command::Ask { profile: profile.to_string(), kind: kind.to_string(), payload });
+        exec::begin(&mut answer).await;
+    }
+
+    /// A copy's request made from the session's queue whose answer only its own flow needs: the queue's turn given up
+    /// while the copy works on it (what's queued behind goes on), taken again for what the flow does with the answer.
+    pub(crate) async fn ask_aside(&self, profile: &str, kind: &str, payload: Object) -> Asked {
+        let left = self.exec.leave_turn();
+        let answer = self.ask(profile, kind, payload).await;
+        if left {
+            self.exec.rejoin().await;
+        }
+        answer
+    }
+
+    /// A copy's request an engine operation waits for (a window made, put in full screen, brought in front, closed):
+    /// given up (cancelled, a `given up` error) once it's no longer `wanted`, or once Margin quits and its copy isn't
+    /// reading it (the link's `slow`: not acked), looked at when what the flows read changes and at the feedback's pace.
+    pub(crate) async fn ask_held(
+        &self,
+        profile: &str,
+        kind: &str,
+        payload: Object,
+        wanted: impl Fn() -> bool,
+    ) -> Asked {
+        let gone = || !wanted() || (self.quitting.get() && self.ports.link_slow(profile).is_some());
+        match self.ask_until(profile, kind, payload, gone, |_| {}).await {
+            Until::Answered(a) => a,
+            Until::Overtaken { .. } => {
+                let why = if wanted() { "not read by its copy as Margin quits" } else { "no longer wanted" };
+                Asked { result: None, error: Some(format!("given up ({why})")) }
+            }
+        }
+    }
+
     /// A library edit, made now (its requests reach the session, the library's sink, before the flow goes on).
     pub(crate) fn perform(&self, action: &str, payload: Object) -> Performed {
         self.library.perform(action, &payload)
@@ -1176,6 +1253,13 @@ impl Core {
     pub(crate) async fn engine(&self, op: &str, args: Value) -> Value {
         let command = Command::Engine { op: op.to_string(), args: object(args) };
         self.exec.command(command).await
+    }
+
+    /// The Safari waker's operation handed out now and waited for by nothing (`closeWoken`: its own closes end on their
+    /// links' evidence; one left is tried again by its poll): nothing of the session's held for a copy's answer.
+    pub(crate) async fn waker_tell(&self, op: &str, args: Value) {
+        let mut command = self.exec.command(Command::Waker { op: op.to_string(), args: object(args) });
+        exec::begin(&mut command).await;
     }
 
     pub(crate) async fn waker(&self, op: &str, args: Value) -> Value {

@@ -51,6 +51,8 @@ final class FakeHostedWindow: HostedWindow {
     var stuck: String? // what the start screen says is wrong now (HostedSession `holdStartup`)
     var stucks: [String?] = [] // each setStartupStuck, in order
     func setStartupStuck(_ why: String?) { stuck = why; stucks.append(why) }
+    var copySlows: [Bool] = [] // each setCopySlow, in order
+    func setCopySlow(_ on: Bool) { copySlows.append(on) }
     func setShowing(_ label: String?, app: String?, slow: Bool) { guard label != showing else { return }; showing = label; showings.append(label); showingApps.append(app); if slow, let label { slowShowings.append(label) } }
     var moves = 0 // hostedMoved: the hosted window's bounds read again
     func hostedMoved() { moves += 1 }
@@ -453,8 +455,9 @@ func preparedBrowserTests(_ library: Library) {
         r.engine.options.earlyFullScreen = true
         hostRun { _ = await r.engine.open(app: .app("com.apple.TextEdit"), in: r.window.idlePlacement!, marginWindow: FakeHostWorld.marginWindow, marginSpace: FakeHostWorld.marginSpace) }
         let lines = prepare(r)
-        check("prepared: something shown in Margin's window: not prepared, it stays shown", r.engine.shown == HostTarget.app("com.apple.TextEdit").id && r.engine.hosts[safari] == nil
-              && lines.contains { $0.contains("browser not prepared") }, "\(lines.filter { $0.contains("prepared") })")
+        // (docs/LINK-RESILIENCE.md §2: its window kept for when nothing is shown, never dropped; nothing parked for it.)
+        check("prepared: something shown in Margin's window: its window not made now, kept for later; it stays shown", r.engine.shown == HostTarget.app("com.apple.TextEdit").id && r.engine.hosts[safari] == nil
+              && lines.contains { $0.contains("its window made ready once nothing is") } && !lines.contains { $0.contains("browser not prepared") }, "\(lines.filter { $0.contains("prepared") || $0.contains("made ready") })")
         hostRun { await r.engine.quitAll() }
     }
     // ---- the start screen (2026-11-19): the extension never links: said at once; Try again once it's on: prepared ----

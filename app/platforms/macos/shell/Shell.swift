@@ -223,7 +223,7 @@ final class Shell: ExtensionLinkDelegate {
         options.sawBrowser?(connection.hello.browser)
         data.linkUp(connection)
         apps.start()
-        if connection.hello.browser == "safari" { safariCopyLinked() }
+        if connection.hello.browser == "safari" { safariCopyLinked(); hosted?.linkChanged(profile: connection.hello.profile) }
         profilesSoon()
         soon()
     }
@@ -281,6 +281,7 @@ final class Shell: ExtensionLinkDelegate {
         guard links[connection.key]?.connection === connection else { return }
         links[connection.key] = nil
         data.linkDown(connection)
+        if connection.hello.browser == "safari" { hosted?.linkChanged(profile: connection.hello.profile) }
         profilesSoon()
         soon()
     }

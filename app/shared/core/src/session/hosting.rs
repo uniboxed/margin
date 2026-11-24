@@ -144,6 +144,7 @@ impl Core {
     /// The engine's open (the first time) or show, into `w`'s page area, for `item`; Margin's window made ready first.
     /// False: not shown.
     pub(crate) async fn host(&self, target: &HostTarget, w: i64, item: &str) -> bool {
+        self.hosts_asked.set(self.hosts_asked.get() + 1);
         let Some((placement, token, space)) = self.prepare(w, target).await else {
             self.settle_hosting();
             return false;
@@ -278,7 +279,7 @@ impl Core {
         }
         // (The link the ask went on: one replaced while it was answered counts as back.)
         let mut asked_epoch = self.ports.link_epoch(p);
-        let mut answer = self.ask(p, "newWindow", payload.clone()).await;
+        let mut answer = self.ask_held(p, "newWindow", payload.clone(), || self.link_wanted(p)).await;
         let made = |a: &super::Asked| {
             a.result
                 .as_ref()
@@ -322,7 +323,7 @@ impl Core {
             match self.ports.link_epoch(p) {
                 Some(back) if Some(&back) != epoch.as_ref() => {
                     asked_epoch = Some(back);
-                    answer = self.ask(p, "newWindow", payload.clone()).await;
+                    answer = self.ask_held(p, "newWindow", payload.clone(), || self.link_wanted(p)).await;
                 }
                 _ => break,
             }
@@ -340,7 +341,7 @@ impl Core {
         self.note(format!("Safari window {} made for hosting{its}", m.window_id));
         // The window opened only to wake the profile's copy: closed again (Margin opened it; it has no page of the
         // person's).
-        self.waker("closeWoken", json!({ "profile": p, "except": m.window_id, "why": "" })).await;
+        self.waker_tell("closeWoken", json!({ "profile": p, "except": m.window_id, "why": "" })).await;
         Some((m.window_id, m.bounds))
     }
 
@@ -349,7 +350,7 @@ impl Core {
     pub(crate) async fn close_window(&self, profile: Option<&str>, window_id: i64) -> bool {
         let p = self.resolve(profile);
         self.edit(Field::SafariWindows, |s| s.safari_windows.retain(|(k, _), id| !(k == &p && *id == window_id)));
-        let answer = self.ask(&p, "closeWindow", object(json!({ "windowId": window_id }))).await;
+        let answer = self.ask_held(&p, "closeWindow", object(json!({ "windowId": window_id })), || true).await;
         let called = answer.result.as_ref().is_some_and(|r| WindowCallAnswer::from_result(r).called());
         if !called {
             let why = answer.error.as_deref().unwrap_or("busy");
@@ -377,7 +378,7 @@ impl Core {
         };
         // (A request the copy's checks refuse goes as Swift built it then: no payload.)
         let payload = request.payload().unwrap_or_default();
-        let answer = self.ask(&p, request.kind(), payload).await;
+        let answer = self.ask_held(&p, request.kind(), payload, || self.link_wanted(&p)).await;
         let Some(result) = answer.result else {
             let how = if on { "full screen" } else { "normal" };
             let why = answer.error.as_deref().unwrap_or("no answer");
@@ -394,8 +395,11 @@ impl Core {
     pub(crate) async fn safari_focus(&self, profile: Option<&str>, window_id: i64) -> bool {
         let p = self.resolve(profile);
         let not_after = (self.ports.wall() + 2.0) * 1000.0;
-        let answer =
-            self.ask(&p, "hostFocusWindow", object(json!({ "windowId": window_id, "notAfter": not_after }))).await;
+        let answer = self
+            .ask_held(&p, "hostFocusWindow", object(json!({ "windowId": window_id, "notAfter": not_after })), || {
+                self.link_wanted(&p)
+            })
+            .await;
         let how = if answer.result.is_some() { "done" } else { answer.error.as_deref().unwrap_or("no answer") };
         self.note(format!("Safari window {window_id} brought in front by its copy: {how}"));
         answer.result.as_ref().and_then(|r| json::flag(r.get("focused"))) == Some(true)

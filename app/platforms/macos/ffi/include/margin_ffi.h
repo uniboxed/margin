@@ -698,6 +698,8 @@ bool margin_page_set_loading(MarginPage *page, const uint8_t *label, size_t labe
 bool margin_page_set_showing(MarginPage *page, const uint8_t *label, size_t label_len, bool has_label, const uint8_t *app, size_t app_len, bool has_app, bool slow);
 bool margin_page_set_elsewhere(MarginPage *page, const uint8_t *label, size_t label_len, bool has_label, const uint8_t *app, size_t app_len, bool has_app);
 bool margin_page_set_stuck(MarginPage *page, const uint8_t *why, size_t len, bool has);
+bool margin_page_set_copy_slow(MarginPage *page, bool on); // the browser's copy slow for the item shown, or no longer
+bool margin_page_copy_slow(const MarginPage *page); // the loader says so
 uint8_t margin_page_set_hosted(MarginPage *page, bool has, int64_t number); // 0 the same none, 1 the same window, 2 another
 void margin_page_set_hosted_frame(MarginPage *page, const MarginRect *frame); // NULL: unread
 bool margin_page_set_visible(MarginPage *page, const MarginShown *list, size_t len); // true: more than their rects changed

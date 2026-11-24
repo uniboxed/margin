@@ -309,3 +309,49 @@ for (const [engineName, engine] of ENGINES) {
     }
   });
 }
+
+// The browser's copy slow while an item opens (docs/LINK-RESILIENCE.md §1 rule 8; ui/runtime.ts followSlow,
+// ui/host-app.ts pageSlow): Margin's own `<m-page-slow>` over the page's place says "Safari is slow…", above whatever
+// loader the theme draws, the same in every theme; gone once it's no longer slow, and never at Margin's start.
+for (const [engineName, engine] of ENGINES) {
+  test(`"Safari is slow…" over the loader, in ${engineName}`, async (t) => {
+    const browser = await engine.launch({ headless: true });
+    try {
+      for (const [id, dir] of THEMES) {
+        await t.test(`${id}: said over the page's place, on top, while the copy is slow; gone after; never at the start`, async () => {
+          const context = await browser.newContext({ viewport: { width: W, height: H } });
+          const page = await context.newPage();
+          await context.route('**/*', (route) => route.abort());
+          await page.setContent('<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0"></body></html>');
+          await page.addScriptTag({ content: script });
+          const ev = <R, const A>(fn: (arg: A) => R | Promise<R>, arg?: A) => page.evaluate(fn as (arg: unknown) => R | Promise<R>, arg);
+          assert.equal((await ev(([p, i]) => T.loadBuiltin(p, i, []), [themeForPage(dir), id] as const)).ok, true);
+          await ev(() => T.mountRuntime({ width: 1440, height: 900, container: 'document', platform: { browser: 'safari', os: 'mac' }, hosted: true }));
+          await page.waitForFunction(() => T.rtLayouts().length > 0);
+          const l = (await ev(() => T.rtLayouts())).at(-1)!;
+
+          const quiet = await ev(() => T.rtPageSlow(false));
+          assert.equal(quiet.el, null, `${id}: loading, its copy not slow: nothing said`);
+          const slow = await ev(() => T.rtPageSlow(true));
+          assert.ok(slow.el, `${id}: said`);
+          assert.equal(slow.text, 'Safari is slow…', `${id}: Margin's words`);
+          assert.equal(slow.attr, true, `${id}: the root says m-page-slow`);
+          assert.equal(slow.role, 'status', `${id}: read out as a status`);
+          assert.ok(slow.shown && slow.onTop, `${id}: its words drawn, on top of the theme's loader`);
+          assert.equal(slow.pointer, 'none', `${id}: it never takes the pointer`);
+          const box = slow.el!;
+          assert.ok(Math.abs(box.left - l.left) <= 1 && Math.abs(box.top - l.top) <= 1 && Math.abs(box.left + box.width - (W - l.right)) <= 1 && Math.abs(box.top + box.height - (H - l.bottom)) <= 1,
+            `${id}: over the page's place (${JSON.stringify(box)} vs ${JSON.stringify(l)})`);
+          const after = await ev(() => T.rtPageSlow(false));
+          assert.equal(after.el, null, `${id}: no longer slow: gone`);
+          assert.equal(after.attr, false, `${id}: the root's attribute too`);
+          const start = await ev(() => T.rtPageSlow(true, true));
+          assert.equal(start.el, null, `${id}: Margin's start: never the copy's slowness`);
+          await context.close();
+        });
+      }
+    } finally {
+      await browser.close();
+    }
+  });
+}

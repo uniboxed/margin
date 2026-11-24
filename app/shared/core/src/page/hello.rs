@@ -115,6 +115,9 @@ impl Page {
         opt(&mut o, self.loader());
         o.push_str(",\"pageOpeningBundleId\":");
         opt(&mut o, self.loader_app());
+        if self.copy_slow() {
+            o.push_str(",\"pageSlow\":true");
+        }
         if self.starting() {
             o.push_str(",\"pageStarting\":true");
             if let Some(why) = self.stuck() {

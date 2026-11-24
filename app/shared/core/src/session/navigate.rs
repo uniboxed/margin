@@ -28,9 +28,9 @@ impl Core {
             let window_id = c.safari_window(&p, role).unwrap_or(-1);
             let url = c.item_url(&item).unwrap_or_else(|| "about:blank".into());
             let shown =
-                c.ask(&p, "hostShow", object(json!({ "windowId": window_id, "itemId": item, "url": url }))).await;
+                c.ask_aside(&p, "hostShow", object(json!({ "windowId": window_id, "itemId": item, "url": url }))).await;
             let Some(tab) = swift_int(shown.result.as_ref().and_then(|r| r.get("tabId"))) else { return };
-            c.ask(&p, &kind, object(json!({ "tabId": tab }))).await;
+            c.tell(&p, &kind, object(json!({ "tabId": tab }))).await;
         });
     }
 }

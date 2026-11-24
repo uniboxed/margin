@@ -766,3 +766,38 @@ fn a_web_item_shown_last_its_own_profile_made_ready_and_waited_for_not_the_space
     assert_eq!(args["target"], json!({ "kind": "safari", "profile": "s-p", "role": "main" }));
     assert!(!s.start_screen(), "lifted once its profile was made ready");
 }
+
+#[test]
+fn an_app_shown_first_the_browser_still_made_ready_its_window_once_nothing_is_shown() {
+    let (s, world, lib) = session();
+    world.out_of_sight.set(true);
+    selected(&lib, "n", notes(), "");
+    let out = input(&s, json!({ "type": "windowOpened", "window": 1 }));
+    assert!(!s.start_screen());
+    assert_eq!(kinds(&pump(&s, &world, out, 100, &mut shows(&world))), ["engine open"]);
+    assert!(s.prepare_wanted(), "the item shown first is nothing picked since: the preparation still wanted");
+    // Its profile linked (the waker may wake it: `prepare_wanted`), then its window: not while the app is shown.
+    let seen: Vec<String> = kinds(&pump(&s, &world, prepare(&s, Value::Null), 10, &mut usual));
+    assert_eq!(seen, ["engine start", "waker ensureLinked", "reply"], "no engine prepare while something is shown");
+    assert!(
+        s.done()
+            .contains(&"browser: something is shown in Margin's window: its window made ready once nothing is".into()),
+        "{:?}",
+        s.done()
+    );
+    assert!(!s.done().iter().any(|l| l.starts_with("browser not prepared")), "not given up");
+    // Something else picked: no longer wanted.
+    set(&s, json!({ "requested": { "put": [[1, "other"]] } }));
+    assert!(!s.prepare_wanted());
+    set(&s, json!({ "requested": { "del": [1] } }));
+    // Nothing shown any more (the app parked): its window made ready, out of sight.
+    *world.shown.borrow_mut() = None;
+    let out = s.settle();
+    let seen = pump(&s, &world, out, 10, &mut usual);
+    assert_eq!(kinds(&seen), ["engine prepare"]);
+    let Command::Engine { args, .. } = &seen[0] else { panic!() };
+    assert_eq!(args["target"], json!({ "kind": "safari", "profile": "s-default", "role": "main" }));
+    assert!(s.done().last().is_some_and(|l| l.starts_with("browser prepared in")), "{:?}", s.done());
+    // Kept once only.
+    assert!(pump(&s, &world, s.settle(), 10, &mut usual).is_empty());
+}

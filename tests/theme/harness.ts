@@ -524,6 +524,37 @@ const withRuntime = Object.assign(T, {
       after: draws('::after'),
     };
   },
+  // The page `loading` an item whose browser copy is slow (host.pageSlow, ui/runtime.ts followSlow; `on` false: not,
+  // `starting`: Margin's start instead), drawn again. Answers Margin's <m-page-slow>: its box, its words, whether its
+  // words' middle is on top there (nothing of the theme's over it), and the root's `m-page-slow`; null for the element
+  // when there's none.
+  rtPageSlow(on: boolean, starting = false) {
+    Object.assign(rt.host, { pageState: 'loading', pageOpening: starting ? 'Getting you started' : 'Docs', pageOpeningBundleId: 'com.apple.Safari', pageStarting: starting, pageStuck: null, pageSlow: on, pageHosted: true, sidebarDocked: true, launcher: false });
+    rt.runtime!.render();
+    const root = rt.runtime!.view.rootElement() as HTMLElement | null;
+    const el = root?.querySelector(':scope > m-page-slow') as HTMLElement | null;
+    if (!el) return { el: null, attr: root?.hasAttribute('m-page-slow') ?? null };
+    const r = el.getBoundingClientRect();
+    const words = el.querySelector('[m-slow-label]') as HTMLElement | null;
+    const wr = words?.getBoundingClientRect();
+    // (It never takes the pointer: hit-tested with it taken for the look, to see what's drawn on top there.)
+    const was = el.style.pointerEvents;
+    el.style.pointerEvents = 'auto';
+    if (words) words.style.pointerEvents = 'auto';
+    const top = wr ? el.ownerDocument.elementFromPoint(wr.left + wr.width / 2, wr.top + wr.height / 2) : null;
+    el.style.pointerEvents = was;
+    if (words) words.style.pointerEvents = '';
+    const takes = getComputedStyle(el).pointerEvents;
+    return {
+      el: { left: r.left, top: r.top, width: r.width, height: r.height },
+      attr: root?.hasAttribute('m-page-slow') ?? null,
+      text: (words?.textContent ?? '').trim(),
+      shown: !!wr && wr.width > 0 && wr.height > 0 && getComputedStyle(words!).visibility !== 'hidden' && getComputedStyle(words!).display !== 'none',
+      onTop: !!top && (top === words || !!words?.contains(top)),
+      role: el.getAttribute('role'),
+      pointer: takes,
+    };
+  },
   // `elsewhere` with a web item's picture (host.pagePicture, ui/host-app.ts): a solid red picture (made here, a PNG
   // data URL; null: none), drawn again. Answers Margin's <m-page-picture>: its box, how it's drawn, its image's and its
   // words', and whether the root says `m-page-picture`; null for the element when there's none.

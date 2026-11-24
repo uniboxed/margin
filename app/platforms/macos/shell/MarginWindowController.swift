@@ -880,7 +880,15 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     var pageStateJSON: String {
         #"{"type":"pageState","state":"\#(pageState.rawValue)","label":"# + (loaderLabel.flatMap { jsonString($0) } ?? "null")
             + (loaderApp.flatMap { jsonString($0) }.map { #","bundleId":"# + $0 } ?? "") + (starting ? #","starting":true"# : "")
-            + (starting ? startupStuck.flatMap { jsonString($0) }.map { #","stuck":"# + $0 } ?? "" : "") + "}"
+            + (starting ? startupStuck.flatMap { jsonString($0) }.map { #","stuck":"# + $0 } ?? "" : "") + (core.copySlow ? #","slow":true"# : "") + "}"
+    }
+
+    // The browser's copy asked to show the item is slow, or no longer (the session's, docs/LINK-RESILIENCE.md §1 rule
+    // 8): the loader at once, and its page told, which says "Safari is slow…" under it.
+    func setCopySlow(_ on: Bool) {
+        guard core.setCopySlow(on) else { return }
+        settlePage()
+        push(pageStateJSON)
     }
 
     // Margin's start held up (HostedSession `holdStartup`): what's wrong, on the start screen with its two choices.

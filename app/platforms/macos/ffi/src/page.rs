@@ -1055,6 +1055,28 @@ pub unsafe extern "C" fn margin_page_set_showing(
     p.page.set_showing(label, app, slow)
 }
 
+/// The browser's copy asked for the item being shown is slow, or no longer (only while one is shown). False: nothing
+/// new.
+///
+/// # Safety
+/// `page` null or a live page.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_set_copy_slow(page: *mut MarginPage, on: bool) -> bool {
+    // SAFETY: the contract above.
+    let Some(p) = (unsafe { page.as_mut() }) else { return false };
+    p.page.set_copy_slow(on)
+}
+
+/// The loader says the browser's copy is slow (`Page::copy_slow`).
+///
+/// # Safety
+/// `page` null or a live page.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_copy_slow(page: *const MarginPage) -> bool {
+    // SAFETY: the contract above.
+    unsafe { page.as_ref() }.is_some_and(|p| p.page.copy_slow())
+}
+
 /// Its card while its item is in another Margin window or parked (none: no card). False: nothing new.
 ///
 /// # Safety

@@ -9677,3 +9677,64 @@ docs/LINK-RESILIENCE.md §2 rules 1–4, Tirth's default: when the first item is
 docs/LINK-RESILIENCE.md §3: 94bd90ab's fix, pinned by a unit check (hosted-tests.swift `safariWakeTests`): a quit
 begun between two looks, and no count of the woken windows once it's begun (the stand-in engine counts them while
 quitting), one press only. Caught by counting before the check (`_ = engine.wokenWindows(…)` above it).
+
+## Link resilience joined: nothing waits behind a slow copy, "Safari is slow…", relinks on evidence (2026-11-24)
+
+Both parts merged (`fix/link-resilience-link` into the session's part): one cancel path (the link's
+`LinkConnection.cancel`, the core's `Link::cancel` behind margin_link_call `cancel`), one slow read (`Link::slow`,
+`slow`); the session's own stand-ins for them gone (HostedLinks' defaults: FakeHostedLinks implements them).
+
+- **A show waiting for its copy holds no other window's pick** (requests.rs `ask_show`, exec.rs `leave_turn`,
+  `rejoin`): once `hostShow` is asked, the show gives the serial queue's turn up; the answer taken, it waits for its
+  turn again (behind what was queued meanwhile) and looks again before doing anything with it: overtaken in its window,
+  its window closed, or its item closed since: nothing more; another window's show took the engine meanwhile (`host`
+  was asked since and its window doesn't host now): the later pick keeps it, this window keeps the item as its card
+  (`show_elsewhere`), its tab recorded. Ordering holds because nothing of the engine's is under way while it's out (it
+  asks only from in turn, and does nothing after the answer until in turn), a pick in its own window cancels it first
+  (its `cancel` goes before the newer `hostShow` on the same socket), and the after-steps of a superseded web show leave
+  the newer show's loader and host marker alone.
+- **A relink without Safari's menu** (requests.rs `relinked`): a show whose link went down while its Safari window is
+  still hosted waits for its copy's next link (a new epoch) on the links' own events (a new input, `linked`, from the
+  shell's `linkUp`/`linkDown`), while the pick is wanted; only with no window left is the waker asked (its own rules).
+- **"Safari is slow…"**: the session tells the window `setCopySlow` (a new port, JSON) beside `setShowing(…, slow)`;
+  the core Page keeps it (`copy_slow`, cleared with the item; a change of `slow` alone is now a change too, ending the
+  grace), its `pageState` push and hello say `slow`/`pageSlow`; ui/host-app.ts reads it (only while `loading`, never at
+  Margin's start), ui/runtime.ts draws Margin's own `<m-page-slow>` over the page's place with the words, BASE_CSS, the
+  same in every theme (a theme may restyle it). Theme tests in both engines for the five themes.
+- **The preparation when an app shows first** (start.rs): still wanted (`prepare_wanted`: the item shown first with
+  no start screen counts as nothing picked), so Safari starts and the needed profile links out of sight; its window is
+  kept (`later`) and made ready the first time nothing is shown in Margin's window (`settle_hosting`), since the
+  engine makes one out of sight only then (its `prepare` refuses while something is shown: making one while an app is
+  shown needs the engine's own change and a screen check, not done here).
+- **Every request to a copy, now that none times out** (each ends on its reply, the link down, or lost, and):
+  - `hostShow` of a show (`show_web`): raced against the pick (cancelled), out of the queue (above);
+  - `hostShow` + `goBack`/`goForward`/`reload` (navigate.rs): the show out of the queue (`ask_aside`), the history's
+    own told (`tell`: handed out in order, waited for by nothing);
+  - `hostMute`, `hostMedia` (requests.rs), `hostPromotePeek` (card.rs Expand): out of the queue (`ask_aside`);
+  - `hostClose` (close), `hostNavigate` (a pin's or favourite's reset), `hostCardClose` (card.rs): told;
+  - `newWindow` (hosting.rs, under the engine's open), `setWindowState`, `hostFocusWindow`: raced against
+    `link_wanted` (another item picked: cancelled, "given up"), and at Margin's quit against the copy not reading it;
+  - `closeWindow` (hosting.rs, the engine's, at quit too): raced at Margin's quit (`quitting` input, from the shell's
+    `stopHost`) against its copy not reading it (the link's `slow`: not acked), looked at with the feedback's pace; the
+    engine keeps a window not confirmed closed in its marker, closed later;
+  - `hostShow` of a layout's pane (layouts.rs `show_tab`): raced against another item (none of the layout's) asked for
+    in its window, and at quit;
+  - `hostPicture`: raced against `pictureWait` (as before); `peekAnswer`, the card's history: detached tasks, nothing
+    waits; the waker's `closeWoken` is now handed out and waited for by nothing (`waker_tell`), its own closes ending on
+    their links;
+  - Swift's own: SafariWaker's sweep `closeWindow`s and the themes' `updateSettings`/`userThemes` run in tasks nothing
+    waits for.
+- **Tests, each failing first**: requests_tests.rs (a pick in another window shown at once while a show waits, the
+  later pick keeping the engine; a relink on the next link with no waker while the window's there, the waker when it's
+  gone; the callers above holding nothing: a close, a mute, a `newWindow` given up when overtaken, a `closeWindow`
+  given up at quit when unread), start_tests.rs (an app first: the preparation wanted, its window kept and made once
+  nothing is shown), page/tests.rs (`copy_slow`, `slow` alone a change), tests/ui-host-app.test.ts (`pageSlow`),
+  tests/theme/page-state.test.ts ("Safari is slow…" in each theme, both engines), hosted-tests.swift (the prepared
+  check: kept, not given up). The app's end-to-end run, e2e-resilience.swift (MARGIN_E2E_ONLY=resilience): over the
+  fake copy's `stall`, a tab switch's loader, "Safari is slow…" after 3 s, an app picked at once and the switch
+  cancelled before the copy ran it, a show landing after its link closed and came back with no menu press, a pick in a
+  second window at once and the first keeping its card; its last three checks failed on the code before this, the first
+  ones need both parts.
+- **Not here**: the e2e for the preparation and for no start screen with an app last (the e2e world has no early full
+  screen, so no preparation can run there at all: the core's and the unit checks pin them); the engine preparing a
+  window out of sight while an app is shown.
