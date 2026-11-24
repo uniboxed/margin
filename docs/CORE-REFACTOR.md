@@ -1932,7 +1932,7 @@ L:93, 220-223), then the delegate per request L:225).
 ```rust
 pub struct Env { pub now: f64, pub ids: Vec<String> }
 pub struct Outcome { pub ok: bool, pub result: Value, pub error: Option<String>, pub changes: Vec<Change>, pub requests: Vec<Object> }
-pub fn perform(state: &LibState, imports: &Map<String, Value>, action: &str, payload: &Value, env: Env) -> Outcome; // LT:816, pure
+pub fn perform(state: &LibState, action: &str, payload: &Value, env: Env, compare: &dyn LocaleCompare) -> Outcome; // LT:816, pure
 pub const ACTION_NAMES: [&str; 57];                                                                                 // LT:810, sorted as JS sorts
 
 pub struct Library { store: RefCell<LibraryStore>, cache: RefCell<Option<Cached>>, requests: RefCell<VecDeque<Object>>,
@@ -1974,6 +1974,28 @@ peek-session, peek-split, split, split-real-use, pane-fronting, multi-host-sessi
 match LT:617, `keptForUrl`'s equal `lastActive`): a fixed id order where today's was a per-launch hash order; the
 vectors are recorded with the values in the Rust order (the recorder sorts each collection's ids by code point before
 calling LT, see part 8), so both copies pick the same. ~900 Rust lines.
+
+**Done (commit 4, step4/actions), with these lines of the design corrected.** `core/library/actions.rs` (~1,560
+lines, formatted): `ACTION_NAMES`, `Env`, `Outcome` (`to_json`), `Request` (a JSON object in LT's key order), `perform`,
+and the 57 actions with LT's helpers (`win`, `windowSpace`, `frontOf`, `spaceTarget`, `targetOfItem`, `used`,
+`pinOfItem`, `addItem`, `archiveItem`, `splitRefusal`, `splitShown`, `splitNext`), each named by its LT line. Corrected:
+- `perform(state, action, payload, env, compare)`: no `imports` (LT passes `values.imports` through both sides of its
+  diff, so it never changes), and the sorter handed in (`LocaleCompare`, the system's). The `Library` object, its
+  callbacks and `Performed` are part 7's (commit 5), not this file's.
+- A request's target is the object JS built: `targetOfItem(k)` and `targetOf(pin.target)` checked again, but
+  `spaceTarget` as the space holds it, so a space's profile longer than 256 units (which `createSpace` and a stored
+  space keep; only `setSpaceProfile` cuts) is named whole in a `newTab`'s request and stored cut in the item.
+- The two throws are the model's (`createSpace`'s name; `archiveKept`'s first space, by `closeTab`, `closeSplitPane`,
+  `itemClosed`: a clear has no space to fail on), answered `failed: <JSC's words>`; every other payload is checked
+  before it's used.
+- `kept.rs`'s `key_of` is `model::Arg::key()` (ToPropertyKey), the actions' `s.keptTabs[p?.tabId]` too.
+- Checked: every one of the shared vectors' 8,800 perform steps through one engine of the real actions
+  (actions_tests.rs; commit 3's three stand-ins deleted): the same but the 17 steps of piece 1's gap (skipped) and
+  piece 2's one no-op rewrite of a `cut`; 112,559 steps of 3,000 more generated sequences (other seeds, JSC's answers),
+  the same but 225 of the gap and 1 more no-op rewrite of a cut; 98 deliberate breaks, 90 caught, the 8 left
+  equivalent (DECISIONS.md). A perform (Rust alone, commit 0's library, `activateTab`): 0.007 / 0.034 / 0.13 ms at 50 /
+  500 / 2,000 items on the kept state, 0.17 / 0.49 / 1.6 ms with the state read first (JSC's whole perform 2.7 / 16.2 /
+  62 ms).
 
 #### Part 5: the import
 
@@ -2229,7 +2251,7 @@ commit 7 only).
 | 1 | **Done** (step4/js, da34b9b4): part 1: `js.rs`, the `url` and collation dependencies (open questions 1, 2), and part 5's `import_values` up to its normalising (import.rs) | 0 | ~450 + ~300 tests | binary size: +1.26 MB a architecture (collation), +0.22 MB (URL) |
 | 2 | **Done** (step4/state): part 2: the typed state, `state_of`, `values_of`, `diff`, `target_of`, the snapshot's text, the import's normalising (`import_changes`), part 3's shared rules and files; the snapshot vectors pass once commit 0's are merged (until then: 5,000 generated libraries and 5,000 imports against library.ts) | 0 | ~2,000 + ~1,000 tests | a snapshot's text 0.26 ms at 500 items (JSC 4.7 ms), a perform's diff 1-22 µs |
 | 3 | Part 3: M's rules, PR, AT, FI (parallel: spaces + order; kept + archive + favorites; splits + link rules). Piece 1 (spaces + order) **done** (step4/model-spaces); **kept + archive + favorites done** (step4/model-kept); **splits + link rules done** (step4/model-splits) | 0 | ~1,400 | piece 1: a rule 0.2–140 µs, with perform's diff 1–920 µs (2,000 items; JSC's perform 62 ms) |; splits + links: `settle_splits` 0.4 µs with nothing to change; kept + favorites: a rule 0.2–27 µs at 2,000 items (JSC's same rules 10–620 µs) |
-| 4 | Part 4: the 57 actions and `perform`; every perform vector and the generated sequences pass | 0 | ~900 | a perform (Rust alone) |
+| 4 | Part 4: the 57 actions and `perform`; every perform vector and the generated sequences pass. **Done** (step4/actions) | 0 | ~1,560 + ~340 tests | a perform (Rust alone): 0.007 / 0.034 / 0.13 ms at 50 / 500 / 2,000 items on the kept state, 0.17 / 0.49 / 1.6 ms with the state read (JSC 2.7 / 16.2 / 62) |
 | 5 | Part 5 and part 7's object: `import_values`, `import_once`, `Library` with its callbacks, the FFI; the T/ shadow check runs JSC and Rust on the whole Swift suite | 0 | ~700 | |
 | 6 | **The switch**: `Library.swift` over the core, LR and JavaScriptCore gone, `library.js` out of the app, `Command::Perform` and the Swift delegate path gone, the no-rules fallback gone, the Swift tests on the core, the stand-in shelf in requests_tests.rs replaced by the real library | ~250 Swift (LR 74, L ~120, HS ~10, SG ~5, SH ~60 of `state` and the fallback) (+~80 Swift of callbacks) | ~150 | a perform, a switch, `idle-cost` |
 | 7 | Part 6 per draw: `state_text` with `live` joined, `space_theme` typed, the settings' text spliced, `live`'s Swift and the snapshot's dictionaries gone | ~45 Swift | ~350 | a draw, `idle-cost`, footprint |

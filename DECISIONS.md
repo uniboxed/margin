@@ -9058,3 +9058,53 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   (250), `keptForUrl` 9.5 (195), `frontItemOf` 5.8 (75), `keptOfFavorite` 1.6 (140), `addFavorite` 0.8 (20),
   `moveFavorite` 0.8 (10), `removeFavorite` 14 (360), `bindTabToFavorite` 12 (70); at 500 items about a quarter of
   those. What costs is the items' map copied (`{ ...keptTabs }` in the TS too).
+
+## Core refactor step 4, commit 4: the library's 57 actions and perform in the core (2026-11-23)
+
+- margin-core's `library/actions.rs`: library.ts's 57 actions (LT:283-807), `ACTION_NAMES` (LT:810, sorted as JS
+  sorts) and `perform` (LT:816-832), with the helpers they share (`win`, `windowSpace`, `frontOf`, `spaceTarget`,
+  `targetOfItem`, `used`, `pinOfItem`, `addItem`, `archiveItem`, `splitRefusal`, `splitShown`, `splitNext`), one Rust
+  function each with LT's name and line, over the model's rules (commit 3). Nothing calls it in the app yet (commit 5
+  makes the library object, commit 6 switches); no behaviour changes.
+- `perform(state, action, payload, env, compare)`: on the state the caller read (`stateOf`; part 7's object keeps it
+  per revision of the set), the sorter handed in (the system's, Tirth's answer to question 1). `values.imports` isn't
+  taken: LT passes it through both sides of its diff, so it never changes. An unknown name, or one of the object
+  prototype's (`__proto__`, `constructor`, `toString`…), is `unsupported` (`Object.hasOwn`). A failure has no changes
+  and no requests (a composite's requests made before it failed are dropped, as LT drops them).
+- The model's two throws fail the action with JavaScriptCore's words, as LT:825 does: `createSpace`'s `name?.trim()`
+  (`spaces::CREATE_SPACE_NAME_THROWS`) and `archiveKept`'s `state.spaces[0].id` for an item of a gone space with no
+  space left (`kept::NO_FIRST_SPACE`: `closeTab`, `closeSplitPane`, `itemClosed`).
+- A request's target is the object JS built: `targetOfItem`'s and `targetOf(pin.target)`'s checked again,
+  `spaceTarget`'s as the space holds it (a profile longer than 256 units, which `createSpace` and a stored space keep,
+  is named whole in a `newTab`'s request and stored cut in the item: checked against library.ts in Node). A request's
+  `windowId` is the payload's as it came, its numbers through a double.
+- The ids: the env's first (Swift's 4 a perform; a given one that isn't 4–30 letters and digits used up all the same),
+  then the core's own 10 letters (`js::Ids`, open question 6): a clear of 6 items given 4 ids, checked.
+- `kept.rs`'s private `key_of` is `model::Arg::key()` (ToPropertyKey), which the actions' `s.keptTabs[p?.tabId]` use
+  too.
+- Commit 3's three stand-in engines (spaces_tests.rs `Piece1`, favorites_tests.rs `Piece2`, links_tests.rs `Rules`,
+  ~650 lines re-writing a few actions) are deleted: one engine of the real actions runs every perform step of the
+  shared vectors (actions_tests.rs).
+- Checked: the shared vectors' 8,800 perform steps, 8,783 the same as JavaScriptCore's; 17 skipped as piece 1's known
+  gap (a `createSpace` given an emoji or colour that's truthy and no string: JS stores it as given, the core `""`); the
+  one `cut` step of piece 2 (generated-11 case 22 step 4: a favorite renamed through an emoji, JS's no-op rewrite)
+  answered the same but without the rewrite. A scratch harness of 3,000 more generated sequences of 40 steps
+  (tests/library-vectors' generator with seeds 101, 202, 303; library.ts in Node without `URL`, then in
+  JavaScriptCore, whose answers are kept; 129 of its steps threw, all at createSpace's site): 112,559 perform steps,
+  112,334 the same, 225 of the gap, and 1 more no-op rewrite of a cut (a folder renamed through an emoji at 40), none
+  differ.
+- 98 deliberate breaks of actions.rs, each alone (every helper and every action: a check dropped, a fallback changed,
+  a request's field, an order, a cut, the throws' words, the names' order): 87 caught by the shared vectors and the
+  unit tests, 3 more by a unit test added for them (a pane given twice counts twice against the cap, `moveTabToSpace`
+  of an id a key finds, `openMarginPage`'s item used last, each checked against library.ts in Node); the 8 left change
+  nothing the vectors or the 112,334 harness steps can see: `?? ''` for a rename (the rules read nullish as empty),
+  `targetOfItem`'s check again (every target that reaches it was read by `stateOf`), a new item's `keptAt` (never
+  stored), an empty binding (`valuesOf` drops it), the link rule of a new tab and `routeUrl`'s target (no address
+  parses today: the URL commit), an app's title written again unchanged, `closeTab` leaving the pane to `settleSplits`
+  (the same split after), and a refusal's requests (no action asks before it refuses).
+- Cost (release, commit 0's baseline library: 2 KB icons, 200 archived, two spaces; the median of 25): a click's
+  perform (`activateTab`: the rules, `settleSplits` and the diff) at 50 / 500 / 2,000 items 0.007 / 0.034 / 0.13 ms on
+  the kept state, 0.17 / 0.49 / 1.6 ms with the state read from the store's set first (part 7's object reads it once a
+  revision); `renameTab` 0.005 / 0.029 / 0.12 ms, `closeTab` 0.031 / 0.057 / 0.16 ms. JSC's whole perform today 2.7 /
+  16.2 / 62 ms (its rules' call alone 1.7 / 7.6 / 28). What costs is the items' map copied by `used` (`{ ...keptTabs }`
+  in the TS too) and, with the read, the icons' text.

@@ -10,8 +10,6 @@
 use std::cmp::Ordering;
 use std::rc::Rc;
 
-use std::borrow::Cow;
-
 use super::{Arg, bound_elsewhere, has_space, held_bindings};
 use crate::library::js::{self, LocaleCompare};
 use crate::library::state::{ArchiveEntry, Item, LibState, Str};
@@ -78,19 +76,9 @@ pub fn renumber(s: &LibState) -> LibState {
     next
 }
 
-/// `state.keptTabs?.[keptId]`'s key for an id as library.ts passes it (`p.tabId` as it came, LT:476, 481): ToPropertyKey
-/// (`["t-a"]` looks up `"t-a"`, a missing one `"undefined"`).
-fn key_of(id: Arg<'_>) -> Cow<'_, str> {
-    match id {
-        Arg::Str(s) => Cow::Borrowed(s),
-        Arg::Value(v) => js::property_key(Some(v)),
-        Arg::Undefined => js::property_key(None),
-    }
-}
-
 /// M:324 `forgetKept(state, keptId)`: the item gone (not archived); the state itself when there's none.
 pub fn forget_kept(s: &LibState, kept_id: Arg<'_>) -> LibState {
-    let key = key_of(kept_id);
+    let key = kept_id.key();
     if !s.kept.contains_key(&key) {
         return s.clone();
     }
@@ -103,7 +91,7 @@ pub fn forget_kept(s: &LibState, kept_id: Arg<'_>) -> LibState {
 /// as entry `id` ([`archive_tab`]: its space, else the first space's). The state itself when there's no such item.
 /// `Err` where the TS throws: an item of a space that's gone, in a library with no spaces ([`NO_FIRST_SPACE`]).
 pub fn archive_kept(s: &LibState, kept_id: Arg<'_>, id: &str, closed_at: f64) -> Result<LibState, &'static str> {
-    let Some(k) = s.kept.get(&key_of(kept_id)) else {
+    let Some(k) = s.kept.get(&kept_id.key()) else {
         return Ok(s.clone());
     };
     let next = forget_kept(s, kept_id);

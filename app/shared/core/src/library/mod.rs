@@ -6,8 +6,10 @@
 //! - [`values`]: the state back to stored values (`valuesOf`) and the changes between two (`diff`).
 //! - [`snapshot`]: what the UI draws, as its text.
 //! - [`model`]: model.ts's rules on the typed state.
+//! - [`actions`]: the 57 actions and `perform` over them.
 //! - [`import`]: each profile's set into the library once.
 
+pub mod actions;
 pub mod import;
 pub mod js;
 pub mod model;

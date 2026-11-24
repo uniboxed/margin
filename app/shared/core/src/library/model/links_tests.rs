@@ -1,16 +1,13 @@
 // links.rs against air-traffic.ts and model.ts M:1594-1624: tests/air-traffic.test.ts's cases, js.json's `patterns` and
-// `url.matches` (JavaScriptCore's answers), the URL path (off today) against the browsers' answers, and the shared
-// vectors' steps of the actions these rules and splits.rs's carry alone (link rules, routeUrl, resizeSplit,
-// toggleSplitAxis, swapSplit) through a stand-in of their library.ts actions (LT:648-665, 755-777; part 4 writes the
-// real ones). The generated states and sequences against model.ts are the scratch harness's, counted in DECISIONS.md.
+// `url.matches` (JavaScriptCore's answers), the URL path (off today) against the browsers' answers. The shared vectors'
+// steps of the actions these rules carry run through the real actions (actions_tests.rs). The generated states and
+// sequences against model.ts are the scratch harness's, counted in DECISIONS.md.
 
-use serde_json::{Map, Value, json};
+use serde_json::{Value, json};
 
 use super::*;
-use crate::library::js::{CodePointOrder, Collation, Ids, url_parts};
-use crate::library::model::splits;
-use crate::library::state::{LibTarget, TEXT_MAX, state_of, str_of};
-use crate::library::values::diff;
+use crate::library::js::{CodePointOrder, url_parts};
+use crate::library::state::state_of;
 use crate::library::vectors;
 
 fn lib(rules: Value) -> LibState {
@@ -236,138 +233,4 @@ fn rules_removed_and_toggled() {
     let t2 = toggle_air_traffic_rule(&t, "r1", Some(false));
     assert!(!t2.air_traffic[0].enabled && !t2.same(&t), "as given, a new state even when equal (M spreads)");
     assert!(Rc::ptr_eq(&t2.air_traffic[2], &s.air_traffic[2]));
-}
-
-// ---- the shared vectors: library.ts's actions that are these rules alone -------------------------------------------
-
-/// LT:192 `win(p)`: a number's `String`, a string that isn't empty; else none.
-fn win(p: &Map<String, Value>) -> Option<String> {
-    match p.get("windowId") {
-        Some(Value::Number(n)) => Some(js::number_string(n.as_f64().unwrap_or(f64::NAN))),
-        Some(Value::String(w)) if !w.is_empty() => Some(w.clone()),
-        _ => None,
-    }
-}
-
-/// LT:193 `hasSpace(s, id)` for a payload's value.
-fn has_space_value(s: &LibState, id: Option<&Value>) -> Option<String> {
-    id.and_then(Value::as_str).filter(|id| has_space(s, id)).map(str::to_owned)
-}
-
-/// LT:196 `windowSpace(s, w)`.
-fn window_space(s: &LibState, w: Option<&str>) -> Option<String> {
-    w.and_then(|w| s.windows.get(w))
-        .filter(|id| has_space(s, id))
-        .map(|id| id.to_string())
-        .or_else(|| s.spaces.first().map(|sp| sp.id.to_string()))
-}
-
-/// LT:267 `splitShown(s, group, null, p)`.
-fn split_shown(s: &LibState, g: &crate::library::state::Split, p: &Map<String, Value>) -> Value {
-    let panes: Vec<Value> = g
-        .panes
-        .iter()
-        .filter_map(|id| s.kept.get(id))
-        .map(|k| json!({ "item": &*k.id, "url": &*k.url, "target": k.target.to_value() }))
-        .collect();
-    json!({
-        "type": "showSplit", "windowId": p.get("windowId").cloned().unwrap_or(Value::Null), "splitId": &*g.id,
-        "item": null, "axis": g.axis.as_str(), "ratios": g.ratios, "panes": panes,
-    })
-}
-
-struct Rules(Collation);
-
-impl vectors::Engine for Rules {
-    fn perform(
-        &mut self,
-        values: &Map<String, Value>,
-        action: &str,
-        payload: &Value,
-        env: &vectors::Env,
-    ) -> Option<Value> {
-        let empty = Map::new();
-        let p = payload.as_object().unwrap_or(&empty);
-        let s = state_of(values, &self.0);
-        let mut ids = Ids::new(env.ids.clone());
-        let mut requests: Vec<Value> = Vec::new();
-        let split_of = |id: Option<&Value>| {
-            id.and_then(Value::as_str).and_then(|id| s.splits.iter().find(|g| *g.id == *id)).cloned()
-        };
-        let outcome: Result<(LibState, Value), &str> = match action {
-            "addAirTrafficRule" => (|| {
-                let space = has_space_value(&s, p.get("spaceId")).or_else(|| window_space(&s, win(p).as_deref()));
-                let Some(space) = space else { return Err("no space") };
-                let id = ids.other("atc");
-                let enabled = p.get("enabled") != Some(&Value::Bool(false));
-                let next = add_air_traffic_rule(&s, &id, str_of(p.get("pattern"), 200), &space, enabled);
-                if next.same(&s) { Err("bad pattern") } else { Ok((next, json!(id))) }
-            })(),
-            "removeAirTrafficRule" => Ok((remove_air_traffic_rule(&s, str_of(p.get("ruleId"), 128)), Value::Null)),
-            "toggleAirTrafficRule" => Ok((
-                toggle_air_traffic_rule(&s, str_of(p.get("ruleId"), 128), p.get("enabled").and_then(Value::as_bool)),
-                Value::Null,
-            )),
-            "routeUrl" => {
-                let url = str_of(p.get("url"), TEXT_MAX);
-                let result = match match_air_traffic_rule(url, &s.air_traffic, Some(&s.spaces)) {
-                    None => Value::Null,
-                    Some(r) => {
-                        let sp = s.spaces.iter().find(|sp| sp.id == r.space_id);
-                        let target = LibTarget::web(
-                            sp.map_or("safari", |sp| &sp.browser),
-                            sp.and_then(|sp| sp.profile.as_deref()),
-                        );
-                        json!({ "ruleId": &*r.id, "pattern": &*r.pattern, "spaceId": &*r.space_id, "target": target.to_value() })
-                    }
-                };
-                Ok((s.clone(), result))
-            }
-            "resizeSplit" => match split_of(p.get("splitId")) {
-                None => Err("no such split"),
-                Some(g) => Ok((
-                    splits::resize_split(&s, &g.id, p.get("ratios").and_then(Value::as_array).map(Vec::as_slice)),
-                    Value::Null,
-                )),
-            },
-            "toggleSplitAxis" => match split_of(p.get("splitId")) {
-                None => Err("no such split"),
-                Some(g) => {
-                    let next = splits::toggle_split_axis(&s, &g.id);
-                    if let Some(after) = next.splits.iter().find(|x| x.id == g.id) {
-                        requests.push(split_shown(&next, after, p));
-                    }
-                    Ok((next, Value::Null))
-                }
-            },
-            "swapSplit" => match split_of(p.get("splitId")) {
-                None => Err("no such split"),
-                Some(g) => {
-                    let int = |v: Option<&Value>, or: f64| js::finite(v).filter(|n| n.fract() == 0.0).unwrap_or(or);
-                    let next = splits::swap_split_panes(&s, &g.id, int(p.get("a"), 0.0), int(p.get("b"), 1.0));
-                    if let Some(after) = next.splits.iter().find(|x| x.id == g.id).filter(|_| !next.same(&s)) {
-                        requests.push(split_shown(&next, after, p));
-                    }
-                    Ok((next, Value::Null))
-                }
-            },
-            _ => return None,
-        };
-        Some(match outcome {
-            Err(error) => json!({ "ok": false, "result": null, "error": error, "changes": [], "requests": [] }),
-            Ok((next, result)) => {
-                let after = splits::settle_splits(&next);
-                let changes: Vec<Value> = diff(&s, &after).iter().map(|c| c.to_json()).collect();
-                json!({ "ok": true, "result": result, "changes": changes, "requests": requests })
-            }
-        })
-    }
-}
-
-#[test]
-fn the_vectors_of_these_rules_actions() {
-    let report = vectors::run(&mut Rules(Collation::default()));
-    report.assert_ok();
-    let checked = report.checked.get("perform").copied().unwrap_or(0);
-    assert!(checked > 900, "{checked} perform steps checked");
 }

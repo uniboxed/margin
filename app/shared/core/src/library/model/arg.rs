@@ -67,6 +67,16 @@ impl<'a> Arg<'a> {
         }
     }
 
+    /// `obj[v]`'s key (ToPropertyKey): a string as it is, any other value as `String(v)` (`["t-a"]` looks up `"t-a"`, a
+    /// number `5` `"5"`, a missing one `"undefined"`).
+    pub fn key(self) -> Cow<'a, str> {
+        match self {
+            Arg::Str(s) => Cow::Borrowed(s),
+            Arg::Value(v) => js::property_key(Some(v)),
+            Arg::Undefined => js::property_key(None),
+        }
+    }
+
     /// `v ? v : null` for an id: the string when it's a string and not empty, `Err(())` when it's truthy but no string
     /// (an id no record has), `Ok(None)` when it's falsy.
     pub(crate) fn truthy_id(self) -> Result<Option<&'a str>, ()> {

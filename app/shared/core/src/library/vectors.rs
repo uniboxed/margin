@@ -169,10 +169,14 @@ impl Report {
 
 /// Every case file (cases/*.json), by name.
 pub fn groups() -> Vec<Group> {
+    groups_in(&dir().join("cases"))
+}
+
+/// Every case file of a folder (*.json), by name: cases/ or a harness's (throws.json's words for a throw).
+pub fn groups_in(cases: &std::path::Path) -> Vec<Group> {
     let throws = throw_words();
-    let cases = dir().join("cases");
-    let mut names: Vec<String> = std::fs::read_dir(&cases)
-        .expect("tests/fixtures/library/cases")
+    let mut names: Vec<String> = std::fs::read_dir(cases)
+        .unwrap_or_else(|e| panic!("{}: {e}", cases.display()))
         .filter_map(|e| e.ok()?.file_name().into_string().ok())
         .filter(|n| n.ends_with(".json"))
         .collect();
