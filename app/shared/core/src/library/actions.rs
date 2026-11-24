@@ -1341,8 +1341,8 @@ fn toggle_air_traffic_rule(s: &LibState, cx: &mut Cx) -> Done {
     done(links::toggle_air_traffic_rule(s, str_of(cx.get("ruleId"), 128), enabled))
 }
 
-/// LT:662 `routeUrl`: the link rule an address matches, and the target its space opens it in (today none: the app
-/// parses no address, `js::RULES_PARSE_URLS`).
+/// LT:662 `routeUrl`: the link rule an address matches (parsed as the browsers parse it, `js::RULES_PARSE_URLS`), and
+/// the target its space opens it in.
 fn route_url(s: &LibState, cx: &mut Cx) -> Done {
     let url = str_of(cx.get("url"), TEXT_MAX);
     let Some(rule) = links::match_air_traffic_rule(url, &s.air_traffic, Some(&s.spaces)) else {

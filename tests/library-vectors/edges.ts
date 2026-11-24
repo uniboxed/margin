@@ -1,6 +1,6 @@
 // The hand-written vectors (cases/edges.json): the edges the TS tests and the generator rarely reach, each a small
 // library and the steps that hit it. Ties first (part 4's "first of several equal": the ids' order, Tirth's answer
-// 10, and the localeCompare tie-breaks), then cuts, JS's spaces, addresses with no URL, numbers. record.ts gives each
+// 10, and the localeCompare tie-breaks), then cuts, JS's spaces, addresses (as the browsers parse them), numbers. record.ts gives each
 // step its env and records the answers as for the others.
 
 const web = (profile: string | null = null) => ({ kind: 'web', browser: 'safari', profile });
@@ -80,12 +80,24 @@ export function edges(): Edge[] {
       ],
     },
     {
-      about: 'addresses with no URL (Margin.app today): a trailing slash, a fragment and case are other addresses; no link rule routes',
+      about: 'addresses as the browsers parse them (Tirth\'s answer 11; Margin.app\'s JavaScriptCore had no URL): a trailing slash and a fragment make no other address; a link rule routes',
       values: { spaces: two, pins: { 'p-1': { spaceId: 'a', url: 'https://a.com', title: 'A', folderId: null, pos: 0, target: web() } }, favorites: { 'fav-1': { scope: 'global', url: 'https://b.com/', title: 'B', pos: 0, target: web() } }, tabs: { 't-1': item('a', 'https://a.com/'), 't-2': item('a', 'https://b.com/#top') }, airTraffic: { 'atc-1': { pattern: 'c.com', spaceId: 'b', order: 0 } } },
       steps: [
         { perform: 'openPin', payload: { windowId: 1, pinId: 'p-1' } }, { perform: 'openFavorite', payload: { windowId: 1, favoriteId: 'fav-1' } },
         { perform: 'addFavorite', payload: { windowId: 1, url: 'https://b.com' } }, { perform: 'routeUrl', payload: { url: 'https://c.com/' } },
         { perform: 'newTab', payload: { windowId: 1, url: 'https://c.com/' } }, { perform: 'closeTab', payload: { tabId: 't-1' } }, { perform: 'closeTab', payload: { tabId: 't-2' } },
+      ],
+    },
+    {
+      about: 'addresses as the browsers parse them: the host\'s case, the scheme\'s default port, dot segments and an empty query make no other address; the path\'s case and the scheme do; the archive keeps one entry an address; a *. rule routes its hosts only',
+      values: { spaces: two, windows: { 1: { spaceId: 'a' } }, pins: { 'p-1': { spaceId: 'a', url: 'HTTPS://A.COM:443/x/../y?', title: 'Y', folderId: null, pos: 0, target: web() } }, tabs: { 't-1': item('a', 'https://a.com/y#top'), 't-2': item('a', 'https://b.com/') }, archive: { 'a-1': { url: 'https://B.COM:443', title: 'B', spaceId: 'a', icon: '', closedAt: 5, target: web() } }, airTraffic: { 'atc-1': { pattern: '*.figma.com', spaceId: 'b', order: 0 } } },
+      steps: [
+        { perform: 'openPin', payload: { windowId: 1, pinId: 'p-1' } },
+        { perform: 'addFavorite', payload: { windowId: 1, url: 'https://a.com/y' } }, { perform: 'addFavorite', payload: { windowId: 1, url: 'HTTPS://a.com:443/y#x' } },
+        { perform: 'addFavorite', payload: { windowId: 1, url: 'https://a.com/Y' } }, { perform: 'addFavorite', payload: { windowId: 1, url: 'http://a.com/y' } },
+        { perform: 'closeTab', payload: { tabId: 't-2' } },
+        { perform: 'routeUrl', payload: { url: 'https://www.figma.com/file/1' } }, { perform: 'routeUrl', payload: { url: 'https://figma.com.evil.example/' } },
+        { perform: 'newTab', payload: { windowId: 1, url: 'https://FIGMA.com/' } }, { snapshot: true },
       ],
     },
     {

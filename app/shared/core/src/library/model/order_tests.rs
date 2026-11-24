@@ -87,7 +87,9 @@ fn lookups() {
     let s = tree();
     assert_eq!(pin_for_url(&s, "https://one/", None).map(|p| &*p.id), Some("p1"), "the first at the address");
     assert_eq!(pin_for_url(&s, "https://one/", Some("b")).map(|p| &*p.id), Some("p5"));
-    assert!(pin_for_url(&s, "https://one", Some("a")).is_none(), "today's rules match addresses as given");
+    assert_eq!(pin_for_url(&s, "https://one", Some("a")).map(|p| &*p.id), Some("p1"), "as the browsers parse it");
+    assert_eq!(pin_for_url(&s, "HTTPS://ONE:443/#x", Some("a")).map(|p| &*p.id), Some("p1"));
+    assert!(pin_for_url(&s, "https://one/x", Some("a")).is_none(), "another path");
     assert!(pin_for_url(&s, "", None).is_none());
     assert_eq!(folder_in(&s, "f1", "a").map(|f| &*f.id), Some("f1"));
     assert!(folder_in(&s, "f1", "b").is_none(), "another space's");

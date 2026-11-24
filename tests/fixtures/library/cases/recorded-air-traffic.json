@@ -17,24 +17,8 @@
       },
       "steps": [
       {"perform":"addAirTrafficRule","payload":{"pattern":"*.linear.app","spaceId":"work"},"env":{"now":1000,"ids":["r001","zq000001x","zq000002x"]},"expect":{"ok":true,"result":"atc-r001","changes":[{"collection":"airTraffic","id":"atc-r001","value":{"pattern":"*.linear.app","spaceId":"work","enabled":true,"order":0}}],"requests":[]}},
-      {"perform":"routeUrl","payload":{"url":"https://app.linear.app/issue/1"},"env":{"now":1000,"ids":["1111","2222","zq000049x","zq000050x"]},"url":true,"expect":{"ok":true,"result":null,"changes":[],"requests":[]}},
-      {"perform":"newTab","payload":{"windowId":1,"url":"https://app.linear.app/issue/1"},"env":{"now":1000,"ids":["t001","zq000097x","zq000098x"]},"url":true,"expect":{"ok":true,"result":{"tabId":"t-t001"},"changes":[{"collection":"tabs","id":"t-t001","value":{"url":"https://app.linear.app/issue/1","title":"https://app.linear.app/issue/1","icon":"","spaceId":"personal","order":0,"lastUsed":1000,"selected":true,"target":{"kind":"web","browser":"safari","profile":null}}}],"requests":[{"type":"newTab","windowId":1,"item":"t-t001","url":"https://app.linear.app/issue/1","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"personal"}]}}
-      ]
-    },
-    {
-      "about": "air-traffic.test.ts: M2.6 Link Rules: 1-click context menu, library persistence, newTab auto-routing, and space deletion cascade #2",
-      "values": {
-        "spaces": {"personal":{"name":"Personal","order":0,"profile":null},"work":{"name":"Work","order":1,"profile":"s-work"}},
-        "pins": {},
-        "favorites": {},
-        "airTraffic": {"atc-r001":{"pattern":"*.linear.app","spaceId":"work","enabled":true,"order":0}},
-        "folders": {},
-        "tabs": {"t-t001":{"url":"https://app.linear.app/issue/1","title":"https://app.linear.app/issue/1","icon":"","spaceId":"work","order":0,"lastUsed":1000,"selected":true,"target":{"kind":"web","browser":"safari","profile":"s-work"}}},
-        "archive": {},
-        "windows": {"1":{"spaceId":"work"}},
-        "imports": {}
-      },
-      "steps": [
+      {"perform":"routeUrl","payload":{"url":"https://app.linear.app/issue/1"},"env":{"now":1000,"ids":["1111","2222","zq000049x","zq000050x"]},"url":true,"expect":{"ok":true,"result":{"ruleId":"atc-r001","pattern":"*.linear.app","spaceId":"work","target":{"kind":"web","browser":"safari","profile":"s-work"}},"changes":[],"requests":[]}},
+      {"perform":"newTab","payload":{"windowId":1,"url":"https://app.linear.app/issue/1"},"env":{"now":1000,"ids":["t001","zq000097x","zq000098x"]},"url":true,"expect":{"ok":true,"result":{"tabId":"t-t001"},"changes":[{"collection":"tabs","id":"t-t001","value":{"url":"https://app.linear.app/issue/1","title":"https://app.linear.app/issue/1","icon":"","spaceId":"work","order":0,"lastUsed":1000,"selected":true,"target":{"kind":"web","browser":"safari","profile":"s-work"}}},{"collection":"windows","id":"1","value":{"spaceId":"work"}}],"requests":[{"type":"newTab","windowId":1,"item":"t-t001","url":"https://app.linear.app/issue/1","target":{"kind":"web","browser":"safari","profile":"s-work"},"spaceId":"work"}]}},
       {"perform":"deleteSpace","payload":{"spaceId":"work"},"env":{"now":1000,"ids":["1111","2222","zq000145x","zq000146x"]},"expect":{"ok":true,"result":{"into":"personal"},"changes":[{"collection":"spaces","id":"work","deleted":true},{"collection":"airTraffic","id":"atc-r001","deleted":true},{"collection":"tabs","id":"t-t001","value":{"url":"https://app.linear.app/issue/1","title":"https://app.linear.app/issue/1","icon":"","spaceId":"personal","order":0,"lastUsed":1000,"selected":true,"target":{"kind":"web","browser":"safari","profile":"s-work"}}},{"collection":"windows","id":"1","value":{"spaceId":"personal"}}],"requests":[]}}
       ]
     }

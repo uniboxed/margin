@@ -103,8 +103,9 @@ fn forgetting_and_archiving_an_item() {
         ("a-new", "https://x.com/", "a", "i.png", 9.0, true),
         "its title the address, its space gone: the first space's; no target (LT:239 gives it)"
     );
-    // The address as given (no URL in the app's rules today): `https://x.com` is another address.
-    assert_eq!(a.archive.iter().map(|e| &*e.id).collect::<Vec<_>>(), ["a-new", "a-other"], "one entry per address");
+    // Addresses as the browsers parse them (Tirth's answer 11): `https://x.com` is `https://x.com/`, both dropped.
+    assert_eq!(a.archive.iter().map(|e| &*e.id).collect::<Vec<_>>(), ["a-new"], "one entry per address");
+    assert_eq!(a.archive[0].url.as_ref(), "https://x.com/", "the address kept as it was given, not rewritten");
 
     let app = archive_kept(&s, "t-2".into(), "a-new", 9.0).unwrap();
     assert!(!app.kept.contains_key("t-2") && Rc::ptr_eq(&app.archive, &s.archive), "an app's item: forgotten only");
@@ -161,7 +162,7 @@ fn an_item_by_its_address() {
             "t-2": tab("https://x/", "a", 1.0, 7.0),
             "t-3": tab("https://x/", "a", 2.0, 7.0),
             "t-4": tab("https://x/", "b", 3.0, 9.0),
-            "t-5": tab("https://x", "a", 4.0, 9.0),
+            "t-5": tab("https://x/y", "a", 4.0, 9.0),
         },
     }));
     let found = |s: &LibState, w: Option<ForWhom>| kept_for_url(s, "https://x/", "a", w).map(|k| k.id.to_string());
@@ -175,6 +176,18 @@ fn an_item_by_its_address() {
     assert_eq!(found(&bound, Some(ForWhom { pin_id: Some("p-2"), favorite_id: None })).as_deref(), Some("t-2"));
     assert_eq!(found(&bound, None).as_deref(), Some("t-2"), "for no one: any");
     assert!(kept_for_url(&s, "https://y/", "a", None).is_none());
+    // Addresses as the browsers parse them (Tirth's answer 11): no trailing slash, the host's case, the scheme's default
+    // port and a fragment are the same address; a path isn't.
+    for same in ["https://x", "HTTPS://X:443/#top", "https://x/./"] {
+        assert_eq!(kept_for_url(&s, same, "a", None).map(|k| &*k.id), Some("t-2"), "{same}");
+    }
+    assert_eq!(kept_for_url(&s, "https://x/y#z", "a", None).map(|k| &*k.id), Some("t-5"));
+    assert!(kept_for_url(&s, "http://x/", "a", None).is_none(), "another scheme");
+    assert_eq!(
+        js::without_urls(|| kept_for_url(&s, "https://x", "a", None).map(|k| k.id.to_string())),
+        None,
+        "JSC's (no URL): as given"
+    );
 }
 
 #[test]

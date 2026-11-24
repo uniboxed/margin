@@ -1,6 +1,6 @@
 // links.rs against air-traffic.ts and model.ts M:1594-1624: tests/air-traffic.test.ts's cases, js.json's `patterns` and
-// `url.matches` (JavaScriptCore's answers), the URL path (off today) against the browsers' answers. The shared vectors'
-// steps of the actions these rules carry run through the real actions (actions_tests.rs). The generated states and
+// `url.matches` (the browsers' answers, Node with a URL; `jscUrl`, JavaScriptCore's, which had none). The shared
+// vectors' steps of the actions these rules carry run through the real actions (actions_tests.rs). The generated states and
 // sequences against model.ts are the scratch harness's, counted in DECISIONS.md.
 
 use serde_json::{Value, json};
@@ -25,7 +25,7 @@ fn patterns(s: &LibState) -> Vec<(String, String, bool, f64)> {
         .collect()
 }
 
-/// The URL path, as the commit that turns parsing on will run it.
+/// The URL path alone (`js::url_parts`), past the rules' switch.
 fn parsed(pattern: &str, url: &str) -> bool {
     url_parts(url).is_some_and(|u| pattern_matches_parts(pattern, &u))
 }
@@ -105,20 +105,33 @@ fn patterns_as_javascriptcore_normalises_them() {
 }
 
 #[test]
-fn no_address_matches_today() {
-    // Margin.app's JSContext has no URL (js.json `url.hasUrl`): no pattern matches any address. Flips with
-    // js::RULES_PARSE_URLS (Tirth's answer 11, its own commit): these become `parsed`'s answers below.
-    const { assert!(!js::RULES_PARSE_URLS) };
+fn addresses_match_as_the_browsers() {
+    // Tirth's answer 11 (js::RULES_PARSE_URLS): the rules parse addresses, so link rules route as in the browsers'
+    // copies (js.json `url`: Node with a URL). Margin.app's JSContext had none (js.json `jscUrl`): no pattern matched,
+    // which `js::without_urls` still answers for the Mac's shadow.
+    const { assert!(js::RULES_PARSE_URLS) };
     let js = vectors::js();
-    assert_eq!(js["url"]["hasUrl"], json!(false));
+    assert_eq!((&js["url"]["hasUrl"], &js["jscUrl"]["hasUrl"]), (&json!(true), &json!(false)));
     let matches = js["url"]["matches"].as_array().expect("js.json's url matches");
+    assert!(matches.iter().filter(|m| m[2] == json!(true)).count() >= 4, "some match");
     for m in matches {
         let (p, u, want) = (m[0].as_str().unwrap(), m[1].as_str().unwrap(), m[2].as_bool().unwrap());
         assert_eq!(pattern_matches_url(p, u), want, "{p} {u}");
+        assert_eq!(pattern_matches_url(p, u), parsed(p, u), "{p} {u}");
+        assert!(!js::without_urls(|| pattern_matches_url(p, u)), "JSC's: {p} {u}");
     }
-    assert!(!pattern_matches_url("linear.app", "https://linear.app/inbox"));
+    for m in js["jscUrl"]["matches"].as_array().expect("js.json's jscUrl matches") {
+        assert_eq!(m[2], json!(false), "{m:?}");
+    }
+    assert!(pattern_matches_url("linear.app", "https://linear.app/inbox"));
+    assert!(!pattern_matches_url("linear.app", "https://sub.linear.app/inbox"));
     let s = lib(json!({ "r1": { "pattern": "github.com", "spaceId": "work", "order": 0 } }));
-    assert!(match_air_traffic_rule("https://github.com/x", &s.air_traffic, Some(&s.spaces)).is_none());
+    let found = match_air_traffic_rule("https://github.com/x", &s.air_traffic, Some(&s.spaces));
+    assert_eq!(found.map(|r| &*r.id), Some("r1"));
+    assert!(match_air_traffic_rule("https://gitlab.com/x", &s.air_traffic, Some(&s.spaces)).is_none());
+    assert!(
+        js::without_urls(|| match_air_traffic_rule("https://github.com/x", &s.air_traffic, Some(&s.spaces))).is_none()
+    );
 }
 
 #[test]

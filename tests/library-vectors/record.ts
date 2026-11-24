@@ -1,18 +1,20 @@
 // npm run library:vectors: the library's shared vectors (docs/CORE-REFACTOR.md step 4, part 8;
-// tests/fixtures/library/README.md), recorded from library.ts as Margin.app runs it today: in JavaScriptCore, where a
-// bare JSContext has no `URL` (so no address is parsed: the URL finding, DECISIONS.md 2026-11-23).
+// tests/fixtures/library/README.md), recorded from library.ts as Margin.app runs it in JavaScriptCore (a bare JSContext,
+// LibraryRules.swift), but for addresses: those are parsed as the browsers' copies parse them (Tirth's answer 11; a bare
+// JSContext has no `URL`, DECISIONS.md 2026-11-23).
 //
 // 1. The ten TS test files that use the library run under hooks.ts: every perform, snapshot, importValues, stateOf
 //    and targetOf they make is recorded with its inputs as the vectors hold them (log.ts).
 // 2. 300 generated sequences of 30 steps (generate.ts, seeded) and the throw survey (each action's every field as
 //    each wrong JSON type) are made here.
-// 3. Each step's answer is library.ts's in Node with `URL` taken away (as JSC has none): a step whose answer differs
-//    with `URL` is marked `"url": true` (the URL commit re-records those). Half an emoji left by a cut is dropped
-//    (Tirth's answer 3: `"cut": true`).
+// 3. Each step's answer is library.ts's in Node with `URL` and with it taken away (as JSC has none): a step whose
+//    answers differ is marked `"url": true` and keeps the one with `URL` (the browsers', Tirth's answer 11); the next
+//    steps start from its changes. Half an emoji left by a cut is dropped (Tirth's answer 3: `"cut": true`).
 // 4. Every case runs again in JavaScriptCore (tools/library-vectors/jsc.swift: dist/app/library.js as the app builds
 //    it, LibraryRules.swift's way): a step JSC answers differently keeps JSC's answer (`"engine": "jsc"`); a throw's
-//    words are JSC's (throws.json), the vectors name its site.
-// 5. js.json: the JavaScript semantics' cases (js-cases.js) as JSC answers them, checked against Node's.
+//    words are JSC's (throws.json), the vectors name its site. A `url` step's JSC answer must be Node's without `URL`.
+// 5. js.json: the JavaScript semantics' cases (js-cases.js) as JSC answers them, checked against Node's; its `url`
+//    group Node's with `URL` (the browsers'), `jscUrl` JSC's.
 //
 // Re-made only on purpose: a rule changed in both copies, in the same commit (part 8, "must not change").
 import { spawnSync } from 'node:child_process';
@@ -59,7 +61,8 @@ const SITE = Symbol('site');
 /** library.ts's perform outcome as a vector's `expect`: `{ ok, result, error?, changes, requests }`. */
 const outcome = (o: any) => ({ ok: o.ok === true, result: o.ok ? (o.result ?? null) : null, ...(o.ok ? {} : { error: o.error }), changes: o.changes ?? [], requests: o.requests ?? [] });
 
-// A step's answer, computed from its inputs: the kind's library.ts call (no URL) → { expect, url, random }.
+// A step's answer, computed from its inputs: the kind's library.ts call with URL (the browsers') → { expect, url,
+// random, jsc }, `jsc` the answer with no URL (JavaScriptCore's) where it differs.
 function answer(step: Step, values: any) {
   const run = () => {
     if ('perform' in step) return outcome(L.perform(values, step.perform, step.payload, step.env));
@@ -72,8 +75,11 @@ function answer(step: Step, values: any) {
   const today = plain(withoutUrl(run));
   const drew = draws !== before;
   const parsed = plain(run());
-  return { expect: today, url: !isDeepStrictEqual(today, parsed), random: drew || draws !== before };
+  const url = !isDeepStrictEqual(today, parsed);
+  return { expect: parsed, url, random: drew || draws !== before, jsc: url ? today : undefined };
 }
+// A `url` step's answer with no URL, which JavaScriptCore must give (checkJsc), half an emoji dropped.
+const withoutUrlAnswer = new WeakMap<Step, any>();
 
 /** The changes a step merges into the values (a perform's, an import's), as the store merges them. */
 function merge(values: any, changes: any[] | undefined) {
@@ -90,9 +96,9 @@ const clean = (v: any) => (hasLoneSurrogate(v) ? dropLoneSurrogates(v) : v);
 
 // Finishes a step from its inputs: its answer, its flags. False: not a vector (an answer from Math.random).
 function finish(step: Step, values: any): boolean {
-  const { expect, url, random: drew } = answer(step, values);
+  const { expect, url, random: drew, jsc } = answer(step, values);
   if (drew) { count('dropped: drew Math.random'); return false; }
-  if (url) step.url = true;
+  if (url) { step.url = true; withoutUrlAnswer.set(step, clean(jsc)); }
   if (hasLoneSurrogate(expect)) { step.cut = true; step.expect = dropLoneSurrogates(expect); } else step.expect = expect;
   trimIds(step);
   return true;
@@ -154,7 +160,7 @@ function casesOf(file: string, calls: Call[]): Case[] {
       }
     }
     if (!finish(step, cur!.values)) { cur = null; continue; }
-    // (What the test saw with URL, against today's without: noted by `url`.)
+    // (What the test saw: with URL, as the vectors keep it; JSC's without it noted by `url`.)
     cur!.c.steps.push(step);
     cur!.values = merge(cur!.values, changesOf(step));
   }
@@ -252,7 +258,8 @@ const sites = new Map<string, Site>();
 // is `where`, for a reader).
 function siteOf(step: Step, values: any): string {
   (globalThis as any).__libraryThrow = undefined;
-  withoutUrl(() => I.perform(values, step.perform, step.payload, step.env));
+  const go = () => I.perform(values, step.perform, step.payload, step.env);
+  if (step.url) go(); else withoutUrl(go);
   const e = (globalThis as any).__libraryThrow as Error | undefined;
   const message = String(e?.message ?? e);
   const frame = String(e?.stack ?? '').split('\n').find((l) => /\.ts:\d+:\d+/.test(l)) ?? '';
@@ -331,7 +338,12 @@ function checkJsc(cases: Case[], answers: any[][]) {
       let got = answers[ci][si];
       if (hasLoneSurrogate(got)) got = dropLoneSurrogates(got);
       const threw = 'perform' in step && step.expect.ok === false && /^failed:/.test(step.expect.error ?? '');
-      if (threw) {
+      if (step.url) {
+        // The browsers' answer kept; JSC (no URL) must answer as Node with no URL.
+        if (threw || /^failed:/.test(withoutUrlAnswer.get(step)?.error ?? '')) throw new Error(`a url step that throws (not a vector the recorder makes): ${c.about}, step ${si}`);
+        if (!isDeepStrictEqual(got, withoutUrlAnswer.get(step))) throw new Error(`JSC differs from Node without URL on a url step: ${c.about}, step ${si}: ${firstDifference(got, withoutUrlAnswer.get(step), '$')}`);
+        count('steps: url (the browsers\' answer; JSC, with no URL, as Node without it)');
+      } else if (threw) {
         const key = siteOf(step, values);
         const jsc = typeof got?.error === 'string' && got.error.startsWith('failed: ') ? got.error.slice(8) : `(not a throw: ${JSON.stringify(got)})`;
         const site = sites.get(key)!;
@@ -369,10 +381,14 @@ function jsJson(bin: string) {
   const jsc = JSON.parse(readFileSync(o, 'utf8'));
   // Node in a context of its own: JavaScript's built-ins only, no URL (Node's, not the language's), as a bare JSContext.
   const node = JSON.parse(runInNewContext(script, { INPUT: '{}' }));
+  // And with Node's URL: the browsers' addresses (Tirth's answer 11), the `url` group.
+  const browsers = JSON.parse(runInNewContext(script, { INPUT: '{}', URL: savedURL }));
+  if (browsers.url.hasUrl !== true) throw new Error('js.json: Node\'s URL not seen');
   // Where Node differs, JSC's answer is kept and the difference named.
   const differs: string[] = [];
   for (const part of ['cases', 'url']) for (const k of Object.keys(jsc[part])) if (!isDeepStrictEqual(jsc[part][k], node[part][k])) differs.push(`${part}.${k}`);
-  return { ...jsc, engine: 'jsc', nodeDiffers: differs };
+  const { url: jscUrl, ...rest } = jsc;
+  return { ...rest, url: browsers.url, jscUrl, engine: 'jsc', urlEngine: 'node with URL', nodeDiffers: differs };
 }
 
 // ---- writing -----------------------------------------------------------------------------------------------------

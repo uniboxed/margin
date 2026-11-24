@@ -12,10 +12,10 @@
 //! - A payload's values as JS reads them: [`truthy`], [`nullish`], [`finite`], [`to_string`] (`String(x)`),
 //!   [`property_key`] (`obj[x]`).
 //! - `new URL`: **a bare JSContext has none** (`URL` is WebCore's, not JavaScriptCore's): `new URL(…)` throws a
-//!   ReferenceError, which model.ts's `normalizeUrl` and air-traffic.ts's `patternMatchesUrl` catch. So in Margin.app
-//!   today an address is matched as given (no fragment or trailing slash dropped) and a link rule never matches.
-//!   [`RULES_PARSE_URLS`] keeps that; [`url_parts`] and [`normalize_url_whatwg`] are the browsers' (WHATWG, the `url`
-//!   crate) for when Tirth decides the app's rules should parse addresses too.
+//!   ReferenceError, which model.ts's `normalizeUrl` and air-traffic.ts's `patternMatchesUrl` catch, so Margin.app's
+//!   JSC rules match an address as given and no link rule ever matches. The core parses addresses as the browsers'
+//!   copies do ([`RULES_PARSE_URLS`], Tirth's answer 11: [`url_parts`], [`normalize_url_whatwg`], WHATWG through the
+//!   `url` crate); [`without_urls`] answers as JSC does, for the Mac's shadow until the switch.
 //! - The import's ids hash ([`fingerprint`]) and the ids an action makes ([`Ids`]).
 
 use std::borrow::Cow;
@@ -343,24 +343,51 @@ pub fn property_key(v: Option<&Value>) -> Cow<'_, str> {
 
 // ---- addresses: `new URL` -------------------------------------------------------------------------------------------
 
-/// Whether the library's rules parse addresses (`new URL`). JSC's bare context has no `URL`, so today they don't: model.ts's
-/// `normalizeUrl` gives the address as it is and air-traffic.ts's `patternMatchesUrl` is false for every address (a
-/// link rule never routes in Margin.app; measured 2026-11-23 with dist/app/library.js in a `JSContext`: `routeUrl` of a
-/// matching address answers null, `addFavorite` of `https://a.com` beside `https://a.com/` adds a second). Changing it
-/// changes behaviour (the link rules start working, addresses match as the browsers' copies match them): Tirth's call.
-pub const RULES_PARSE_URLS: bool = false;
+/// Whether the library's rules parse addresses (`new URL`): yes, as the browsers' copies of model.ts and air-traffic.ts
+/// do (Tirth's answer 11, 2026-11-23, step 4 open question 11). Margin.app's rules in JavaScriptCore didn't (a bare
+/// JSContext has no `URL`): there `normalizeUrl` gave the address as it is and `patternMatchesUrl` was false for every
+/// address (measured 2026-11-23 with dist/app/library.js in a `JSContext`: `routeUrl` of a matching address answered
+/// null, `addFavorite` of `https://a.com` beside `https://a.com/` added a second). With it on, the link rules route and
+/// addresses match as WHATWG reads them: a bare trailing slash, the fragment, the host's case, the scheme's default
+/// port, `.`/`..` segments and the like make no other address. Only matching changes: no stored address is rewritten.
+pub const RULES_PARSE_URLS: bool = true;
 
-/// What `new URL(s)` gives the rules: a WHATWG URL's parts, or `None` where JS throws (never, today: [`RULES_PARSE_URLS`]).
-#[inline]
-pub fn rules_url(s: &str) -> Option<UrlParts> {
-    if RULES_PARSE_URLS { url_parts(s) } else { None }
+thread_local! {
+    static WITHOUT_URLS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
-/// model.ts `normalizeUrl` (M:594) as the library runs it: [`normalize_url_whatwg`] where the rules parse addresses,
-/// else the address as given (JSC today: `new URL` throws, `url ?? ''`).
+/// `f`'s answer as Margin.app's JavaScriptCore rules give it, with no `URL` (an address matched as given, no link rule
+/// matching), on this thread. For the Mac's shadow only (T/library-vectors-tests.swift through ffi data.rs
+/// `margin_library_rules_without_urls`), which compares JSC's answers with the core's until the switch (step 4 commit
+/// 6) and so names each call where the two differ by the parsing alone; it goes with the shadow.
+pub fn without_urls<T>(f: impl FnOnce() -> T) -> T {
+    struct Reset(bool);
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            WITHOUT_URLS.with(|w| w.set(self.0));
+        }
+    }
+    let _reset = Reset(WITHOUT_URLS.with(|w| w.replace(true)));
+    f()
+}
+
+/// Whether the rules parse addresses on this thread: [`RULES_PARSE_URLS`], but inside [`without_urls`].
+#[inline]
+fn parses() -> bool {
+    RULES_PARSE_URLS && !WITHOUT_URLS.with(std::cell::Cell::get)
+}
+
+/// What `new URL(s)` gives the rules: a WHATWG URL's parts, or `None` where JS throws.
+#[inline]
+pub fn rules_url(s: &str) -> Option<UrlParts> {
+    if parses() { url_parts(s) } else { None }
+}
+
+/// model.ts `normalizeUrl` (M:594) as the rules run it: [`normalize_url_whatwg`] (the browsers'; the address as given
+/// inside [`without_urls`], JSC's: `new URL` throws, `url ?? ''`).
 #[inline]
 pub fn normalize_url(url: &str) -> Cow<'_, str> {
-    if RULES_PARSE_URLS { normalize_url_whatwg(url) } else { Cow::Borrowed(url) }
+    if parses() { normalize_url_whatwg(url) } else { Cow::Borrowed(url) }
 }
 
 /// A URL's parts as JS's `URL` getters give them (`protocol` with its colon, `host` with a port that isn't the scheme's

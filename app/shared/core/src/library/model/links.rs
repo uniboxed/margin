@@ -3,12 +3,11 @@
 //! `order` then the ids' `localeCompare`), M:1594-1624 `addAirTrafficRule` (`AIR_TRAFFIC_CAP` 100, a same pattern
 //! replaced), `removeAirTrafficRule`, `toggleAirTrafficRule`.
 //!
-//! **Addresses aren't parsed today** (`js::RULES_PARSE_URLS` false): Margin.app's rules run in a bare JSContext, which has
-//! no `URL`, so `patternMatchesUrl`'s `new URL(url)` throws, it answers false, and a link rule never routes a new tab or
-//! `routeUrl` in the app (the browsers' copies parse). Kept exactly: [`pattern_matches_url`] and
-//! [`match_air_traffic_rule`] take the address through `js::rules_url`. What a parsed address does is written and tested
-//! too ([`pattern_matches_parts`], [`match_air_traffic_rule_with`] over `js::url_parts`), so turning parsing on (Tirth's
-//! answer 11, its own commit) is that one constant and its tests.
+//! **Addresses are parsed as the browsers' copies parse them** (`js::RULES_PARSE_URLS`, Tirth's answer 11): Margin.app's
+//! rules in a bare JSContext had no `URL`, so `patternMatchesUrl`'s `new URL(url)` threw, it answered false, and a link
+//! rule never routed a new tab or `routeUrl` in the app. Here [`pattern_matches_url`] and [`match_air_traffic_rule`]
+//! take the address through `js::rules_url` (WHATWG), then [`pattern_matches_parts`]: the link rules route as in Safari,
+//! Chrome and Edge (`js::without_urls` answers as JSC did, for the Mac's shadow until the switch).
 
 use std::borrow::Cow;
 use std::rc::Rc;
@@ -103,8 +102,8 @@ pub fn normalize_pattern(raw: &str) -> Option<Cow<'_, str>> {
     Some(Cow::Owned(out))
 }
 
-/// AT:37 `patternMatchesUrl(pattern, url)` as the library runs it: the address through `new URL` (`js::rules_url`:
-/// never parses today, so never a match), then [`pattern_matches_parts`].
+/// AT:37 `patternMatchesUrl(pattern, url)`: the address through `new URL` (`js::rules_url`; an address that doesn't
+/// parse never matches), then [`pattern_matches_parts`].
 pub fn pattern_matches_url(pattern: &str, url: &str) -> bool {
     js::rules_url(url).is_some_and(|u| pattern_matches_parts(pattern, &u))
 }
@@ -140,7 +139,7 @@ pub fn pattern_matches_parts(pattern: &str, u: &UrlParts) -> bool {
 }
 
 /// AT:68 `matchAirTrafficRule(url, rules, validSpaceIds)` as the library runs it (LT:340, 664: the state's rules, its
-/// spaces' ids): the address through `js::rules_url`, so today none.
+/// spaces' ids): the address through `js::rules_url`.
 pub fn match_air_traffic_rule<'r>(
     url: &str,
     rules: &'r [Rc<Rule>],

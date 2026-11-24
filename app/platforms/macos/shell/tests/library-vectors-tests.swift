@@ -2,7 +2,8 @@
 // rules: dist/app/library.js in JavaScriptCore by LibraryRules, as Margin.app runs them. And the shadow: every call the
 // whole suite makes to the rules (perform, snapshot, importValues), given to margin-core's library as well (through the
 // FFI: margin_library_rules, library.js's entry answered by the core with the Mac's sorter, libicucore's) and its
-// answer compared. And the baselines step 4 must not exceed (MARGIN_LIBRARY_BASELINE=<items>: a perform, a snapshot, a
+// answer compared. The core parses addresses as the browsers do (Tirth's answer 11) and JSC can't (no `URL`): a call
+// they differ on only by that is counted and named, the core's answer with no URL being JSC's. And the baselines step 4 must not exceed (MARGIN_LIBRARY_BASELINE=<items>: a perform, a snapshot, a
 // draw's library part, the footprint), with the core's perform through the FFI beside today's.
 import Foundation
 import JavaScriptCore
@@ -57,9 +58,10 @@ func valuesJSON(_ v: Any) -> String {
 // the vectors' (ids in code-point order, the env's ids padded so the rules never draw Math.random), the app's engine
 // (JavaScriptCore) answers, then margin-core's (the FFI), and the two answers must be the same, but for what Tirth
 // decided they differ in: a cut through an emoji (JSC keeps half the pair, which the app can't read; the core drops
-// it: Tirth's answer 3) and piece 1's known gap (a `createSpace` given an emoji or colour that's truthy and no string:
-// JSC stores it as given, the core `""`, what the next reading of it is), each counted. Test builds only; never in the
-// app.
+// it: Tirth's answer 3), piece 1's known gap (a `createSpace` given an emoji or colour that's truthy and no string:
+// JSC stores it as given, the core `""`, what the next reading of it is) and addresses (Tirth's answer 11: the core
+// parses them as the browsers do, JSC has no `URL`; such a call's core answer with no URL, margin_library_rules_without_
+// urls, must be JSC's), each counted. Test builds only; never in the app.
 enum LibraryShadow {
   static let shadowed: Set<String> = ["perform", "snapshot", "importValues"]
   private(set) static var installed = false
@@ -73,6 +75,8 @@ enum LibraryShadow {
   static var cuts = 0
   static var rewrites = 0
   static var gap = 0
+  // The calls answered otherwise only because the core parses addresses, by action (`perform`'s) or function.
+  static var urls: [String: Int] = [:]
 
   static func install() {
     guard !installed, let original = class_getInstanceMethod(JSValue.self, #selector(JSValue.call(withArguments:))),
@@ -81,12 +85,14 @@ enum LibraryShadow {
     installed = true
   }
 
-  // The second engine: margin-core's library.js entry (margin_library_rules), the person's sorter.
-  static func core(_ name: String, _ text: String) -> String? {
+  // The second engine: margin-core's library.js entry (margin_library_rules), the person's sorter; `parsing` false: the
+  // same with no URL, as JSC answers (margin_library_rules_without_urls).
+  static func core(_ name: String, _ text: String, parsing: Bool = true) -> String? {
     KeysCore.bytes(name) { np, nn in
       KeysCore.bytes(text) { ap, an in
         var len = 0
-        guard let out = margin_library_rules(nil, np, nn, ap, an, &len) else { return nil }
+        let rules = parsing ? margin_library_rules : margin_library_rules_without_urls
+        guard let out = rules(nil, np, nn, ap, an, &len) else { return nil }
         defer { margin_buffer_free(out, len) }
         return String(decoding: UnsafeBufferPointer(start: out, count: len), as: UTF8.self)
       }
@@ -161,6 +167,16 @@ enum LibraryShadow {
         if kept.count < changes.count, jsonSame(o, parse(b)) { rewrites += 1; return }
       }
     }
+    // Addresses (Tirth's answer 11): the core with no URL answers as JSC does, so the parsing alone differs.
+    if let a {
+      let c = parse(core(name, text, parsing: false))
+      if jsonSame(parse(a), c) || jsonSame(parse(dropped(a)), c) {
+        let list = (try? JSONSerialization.jsonObject(with: Data(text.utf8))) as? [Any]
+        let what = name == "perform" && (list?.count ?? 0) > 1 ? (list?[1] as? String ?? "?") : name
+        urls[what, default: 0] += 1
+        return
+      }
+    }
     differing += 1
     if differences.count < 20 { differences.append("\(name)(\(text.prefix(300))…): \(a?.prefix(300) ?? "nil") vs \(b?.prefix(300) ?? "nil")") }
   }
@@ -168,9 +184,13 @@ enum LibraryShadow {
   static func report() {
     guard installed else { return }
     let total = counts.values.reduce(0, +)
-    print("  (library shadow: \(total) calls of the rules through JavaScriptCore and margin-core: \(counts.sorted { $0.key < $1.key }.map { "\($0.key) \($0.value)" }.joined(separator: ", ")); \(cuts) the same once the half emoji is dropped, \(rewrites) the known cut rewrite, \(gap) of the known gap, \(differing) differ)")
-    check("library shadow: every call of the suite answered the same by JavaScriptCore and margin-core (\(total) calls: \(counts.sorted { $0.key < $1.key }.map { "\($0.key) \($0.value)" }.joined(separator: ", ")); \(cuts) cuts, \(rewrites) the known rewrite, \(gap) of the gap)",
+    let byUrl = urls.values.reduce(0, +)
+    let named = urls.sorted { $0.key < $1.key }.map { "\($0.key) \($0.value)" }.joined(separator: ", ")
+    print("  (library shadow: \(total) calls of the rules through JavaScriptCore and margin-core: \(counts.sorted { $0.key < $1.key }.map { "\($0.key) \($0.value)" }.joined(separator: ", ")); \(cuts) the same once the half emoji is dropped, \(rewrites) the known cut rewrite, \(gap) of the known gap, \(byUrl) otherwise only by the addresses the core parses (\(named)), \(differing) differ)")
+    check("library shadow: every call of the suite answered the same by JavaScriptCore and margin-core (\(total) calls: \(counts.sorted { $0.key < $1.key }.map { "\($0.key) \($0.value)" }.joined(separator: ", ")); \(cuts) cuts, \(rewrites) the known rewrite, \(gap) of the gap, \(byUrl) by addresses: \(named))",
           differing == 0, differences.prefix(3).joined(separator: "\n"))
+    // (The vectors' url steps go through here: the addresses' differences are seen, not none by accident.)
+    check("library shadow: calls answered otherwise by the addresses alone, seen and named", byUrl > 0, named)
     check("library shadow: the suite's calls went through it", total > 100, "\(total)")
   }
 }
@@ -234,7 +254,11 @@ extension Tests {
           }
           counts[kind, default: 0] += 1
           if kind != "skipped" {
-            if step["cut"] as? Bool == true {
+            if step["url"] as? Bool == true {
+              // The browsers' answer (Tirth's answer 11), not JSC's: JSC has no URL. The shadow compares JSC with the
+              // core with no URL on this call; the core's own vectors check the browsers' answer.
+              counts["url: the browsers' answer, not JSC's", default: 0] += 1
+            } else if step["cut"] as? Bool == true {
               // Half an emoji in the rules' answer: today's app can't read it (JSONSerialization), the whole call fails.
               if got != nil || rules.lastError?.hasSuffix("no answer") != true { failed.append("\(at) (\(kind), cut): the app read an answer with half an emoji") }
               counts["cut: the call fails today", default: 0] += 1

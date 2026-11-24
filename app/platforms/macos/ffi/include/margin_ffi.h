@@ -403,7 +403,9 @@ uint8_t *margin_data_call(MarginData *data, const uint8_t *request, size_t len, 
 // (the collections an edit changed, a JSON array); each NULL: the wall clock, 4 random ids, no observer. `call`:
 // values, apply, written, rev; perform, snapshot, actions, item, requests, imported (each with `log`). `import`: the
 // import once over the data object's sets (read first). `rules`: library.js's `marginLibrary.call(name, argsJSON)`
-// answered by the core (the library's sorter; NULL: the person's), for the tests' shadow.
+// answered by the core (the library's sorter; NULL: the person's), for the tests' shadow; `rules_without_urls` the same
+// with no `URL`, as JavaScriptCore answers (an address as given, no link rule matching), for the shadow to name the calls
+// where only the parsing differs (Tirth's answer 11).
 typedef struct MarginLibraryEnvOut MarginLibraryEnvOut;
 typedef double (*MarginLibraryEnv)(void *ctx, MarginLibraryEnvOut *out);
 typedef double (*MarginLibraryNow)(void *ctx);
@@ -414,6 +416,7 @@ void margin_library_env_id(MarginLibraryEnvOut *out, const uint8_t *id, size_t l
 uint8_t *margin_library_call(MarginLibrary *library, const uint8_t *request, size_t len, size_t *out_len);
 uint8_t *margin_library_import(MarginLibrary *library, MarginData *data, size_t *out_len);
 uint8_t *margin_library_rules(MarginLibrary *library, const uint8_t *name, size_t name_len, const uint8_t *args, size_t args_len, size_t *out_len);
+uint8_t *margin_library_rules_without_urls(MarginLibrary *library, const uint8_t *name, size_t name_len, const uint8_t *args, size_t args_len, size_t *out_len);
 
 // A browser's profiles (data/profiles.rs, ffi profiles.rs; the hosted file's shape): one object per browser over its
 // browser.json in `root` (NULL: in memory), one JSON call (`now` passed in, the log lines in each answer), and the

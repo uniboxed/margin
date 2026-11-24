@@ -96,7 +96,15 @@ fn adding_a_favorite() {
     assert!(add_favorite(&s, new("fav-n", "https://2/")).same(&s), "its scope has it");
     let other_scope = add_favorite(&s, NewFavorite { scope: "profile:Work", ..new("fav-n", "https://2/") });
     assert!(!other_scope.same(&s), "another scope's address");
-    let added = add_favorite(&s, new("fav-n", "https://2"));
+    assert!(
+        add_favorite(&s, new("fav-n", "https://2")).same(&s),
+        "its scope has it: `https://2/`, as the browsers parse it"
+    );
+    assert!(
+        add_favorite(&s, new("fav-n", "HTTPS://2:443/#x")).same(&s),
+        "the host's case, the default port, a fragment"
+    );
+    let added = add_favorite(&s, new("fav-n", "https://2/x"));
     assert_eq!(
         ids(&added),
         [
@@ -106,12 +114,12 @@ fn adding_a_favorite() {
             ("fav-4", "global", 2.0),
             ("fav-n", "global", 3.0)
         ],
-        "the others first, then the scope in its order, the new one last; no URL: `https://2` is another address"
+        "the others first, then the scope in its order, the new one last: `https://2/x` is another address"
     );
     let n = added.favorites.last().unwrap();
     assert_eq!(
         (&*n.title, n.custom_title.as_deref(), n.target.is_none()),
-        ("https://2", None, true),
+        ("https://2/x", None, true),
         "no title: the address"
     );
     let before = add_favorite(

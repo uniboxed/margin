@@ -51,7 +51,8 @@ pub struct Case {
 #[derive(Clone, Debug)]
 pub struct Step {
     pub kind: Kind,
-    /// Today's answer reads no address (a bare JSContext has no `URL`): the URL commit re-records this step.
+    /// The answer differs where addresses are parsed: this is the browsers' (library.ts in Node with `URL`, Tirth's
+    /// answer 11); Margin.app's JavaScriptCore (a bare JSContext, no `URL`) answers otherwise.
     pub url: bool,
     /// Node's answer differs; this is JavaScriptCore's (`"engine": "jsc"`).
     pub jsc_only: bool,
@@ -530,10 +531,10 @@ impl Engine for Entry<'_> {
 /// without library.ts's no-op rewrite (a favorite renamed through an emoji to the name it has, the half dropped: the
 /// stored value; favorites.rs `rename_favorite`, DECISIONS.md 2026-11-23 piece 2).
 pub const KNOWN: [&str; 1] =
-    ["generated-11.json › case 22 (sequence 297 (seed 11b7a5e)) › step 4 (perform): $.changes: 0 items where 1"];
+    ["generated-11.json › case 24 (sequence 299 (seed 11b7a5e)) › step 4 (perform): $.changes: 0 items where 1"];
 
 /// Every vector of every kind through library.js's entry with `compare`: all answered as JSC answered them but the
-/// known step and the gap (17 steps). The steps checked by kind, and the gap's.
+/// known step and the gap (19 steps). The steps checked by kind, and the gap's.
 pub fn run_entry(compare: &dyn crate::library::js::LocaleCompare) -> (BTreeMap<&'static str, usize>, usize) {
     let mut engine = Entry { compare, gap: 0 };
     let mut report = run(&mut engine);
@@ -542,7 +543,7 @@ pub fn run_entry(compare: &dyn crate::library::js::LocaleCompare) -> (BTreeMap<&
     report.failures = rest;
     report.assert_ok();
     assert_eq!(expected.len(), KNOWN.len(), "the known step: {expected:?}");
-    assert_eq!(engine.gap, 17, "the createSpace steps of the known gap");
+    assert_eq!(engine.gap, 19, "the createSpace steps of the known gap");
     for (kind, at_least) in [("perform", 8700), ("snapshot", 290), ("import", 2), ("normal", 1), ("target", 1)] {
         assert!(report.checked.get(kind).copied().unwrap_or(0) >= at_least, "{kind}: {:?}", report.checked);
     }

@@ -1,6 +1,7 @@
 // The library's shared vectors (tests/fixtures/library/, docs/CORE-REFACTOR.md step 4, part 8) against library.ts:
 // every case's steps, in order, each from the case's values with the earlier steps' expected changes merged in. As
-// JavaScriptCore runs it (Margin.app's today): no `URL`. A throw's words are Node's for its site (throws.json); half an
+// JavaScriptCore runs it (Margin.app's today), with no `URL`, but a `url` step: that one with Node's `URL`, the browsers'
+// answer (Tirth's answer 11), and it must differ without. A throw's words are Node's for its site (throws.json); half an
 // emoji left by a cut is dropped before comparing (Tirth's answer 3). margin-core runs the same files
 // (app/shared/core/src/library/vectors.rs), and the app's tests through JavaScriptCore
 // (app/platforms/macos/shell/tests/library-vectors-tests.swift). Re-recorded with `npm run library:vectors`, only
@@ -33,8 +34,8 @@ const merge = (values: any, changes: any[] = []) => {
 };
 const plain = (v: unknown) => (v === undefined ? null : JSON.parse(JSON.stringify(v)));
 
-function answer(step: any, values: any) {
-  return withoutUrl(() => {
+function answer(step: any, values: any, url = false) {
+  const run = () => {
     if ('perform' in step) {
       const o = L.perform(values, step.perform, step.payload, step.env);
       return plain({ ok: o.ok, result: o.ok ? (o.result ?? null) : null, ...(o.ok ? {} : { error: o.error }), changes: o.changes, requests: o.requests });
@@ -43,7 +44,8 @@ function answer(step: any, values: any) {
     if ('import' in step) return plain(L.importValues(values, step.import.sets, step.import.order, { now: step.import.now }));
     if ('normal' in step) return plain(L.valuesOf(L.stateOf(values), values?.imports ?? {}));
     return plain(L.targetOf(step.target));
-  });
+  };
+  return url ? run() : withoutUrl(run);
 }
 const expected = (step: any) => {
   const site = step.expect?.error?.failed;
@@ -61,7 +63,11 @@ for (const file of files) {
         const kind = KINDS.find((k) => k in step)!;
         seen[kind] = (seen[kind] ?? 0) + 1;
         const where = `${file} case ${ci} (${c.about}) step ${si} (${kind} ${step.perform ?? ''})`;
-        if (step.engine !== 'jsc') assert.deepEqual(dropLoneSurrogates(answer(step, values)), expected(step), where);
+        if (step.engine !== 'jsc') assert.deepEqual(dropLoneSurrogates(answer(step, values, step.url === true)), expected(step), where);
+        if (step.url) {
+          seen.url = (seen.url ?? 0) + 1;
+          assert.notDeepEqual(dropLoneSurrogates(answer(step, values)), expected(step), `${where}: a url step answers otherwise with no URL`);
+        }
         if (kind === 'perform' || kind === 'import') values = merge(values, step.expect.changes);
       }
     }
@@ -70,6 +76,7 @@ for (const file of files) {
 
 test('library vectors: every kind of step, every action, every throw site', () => {
   for (const kind of KINDS) assert.ok(seen[kind] > 0, `${kind} steps`);
+  assert.ok(seen.url >= 70, `the url steps: ${seen.url}`);
   const actions = new Set<string>();
   const sites = new Set<string>();
   for (const file of files) for (const c of read(`cases/${file}`).cases) for (const s of c.steps) {

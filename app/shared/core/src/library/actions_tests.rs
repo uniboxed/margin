@@ -69,7 +69,7 @@ fn every_perform_vector_answers_as_library_ts() {
     // but half an emoji (its cut), whose value, the half dropped (Tirth's answer 3), is the stored one; the core's diff
     // sees no change (favorites.rs `rename_favorite`, DECISIONS.md 2026-11-23 piece 2).
     let known =
-        ["generated-11.json › case 22 (sequence 297 (seed 11b7a5e)) › step 4 (perform): $.changes: 0 items where 1"];
+        ["generated-11.json › case 24 (sequence 299 (seed 11b7a5e)) › step 4 (perform): $.changes: 0 items where 1"];
     let (expected, rest): (Vec<String>, Vec<String>) =
         report.failures.drain(..).partition(|f| known.iter().any(|k| f.starts_with(k)));
     report.failures = rest;
@@ -81,7 +81,7 @@ fn every_perform_vector_answers_as_library_ts() {
         "the actions' vectors: {checked} perform steps checked, {skipped} skipped (the gap); by action {:?}",
         engine.by
     );
-    assert_eq!(engine.gap, 17, "the createSpace steps of the known gap");
+    assert_eq!(engine.gap, 19, "the createSpace steps of the known gap");
     assert_eq!(skipped, engine.gap, "every other perform step checked");
     assert!(checked > 8700, "{checked} perform steps");
     let names: Vec<&str> = engine.by.keys().map(String::as_str).filter(|n| ACTION_NAMES.contains(n)).collect();
@@ -98,7 +98,7 @@ fn more_generated_sequences() {
     let Ok(dir) = std::env::var("MARGIN_LIBRARY_MORE_VECTORS") else { return };
     let groups = vectors::groups_in(std::path::Path::new(&dir));
     let mut engine = Core { compare: AsciiCollation::new(), gap: 0, by: BTreeMap::new() };
-    let (mut checked, mut rewrites, mut failures) = (0, 0, Vec::new());
+    let (mut checked, mut urls, mut rewrites, mut failures) = (0, 0, 0, Vec::new());
     for g in &groups {
         for (ci, case) in g.cases.iter().enumerate() {
             let mut values = case.values.clone();
@@ -106,6 +106,7 @@ fn more_generated_sequences() {
                 if let vectors::Kind::Perform { action, payload, env, expect } = &step.kind {
                     if let Some(got) = engine.perform(&values, action, payload, env) {
                         checked += 1;
+                        urls += usize::from(step.url);
                         let mut want = expect.to_json();
                         if step.cut {
                             // (Against the values as perform reads them: `valuesOf(stateOf(values))`, LT:820.)
@@ -131,7 +132,7 @@ fn more_generated_sequences() {
         }
     }
     eprintln!(
-        "{checked} perform steps checked, {} of the gap, {rewrites} no-op rewrites of a cut, {} differ {:?}",
+        "{checked} perform steps checked ({urls} of them url steps: the browsers' answers), {} of the gap, {rewrites} no-op rewrites of a cut, {} differ {:?}",
         engine.gap,
         failures.len(),
         &failures[..failures.len().min(10)]
@@ -327,5 +328,58 @@ fn perform_costs() {
         eprintln!(
             "{n} items (+200 archived, 2 KB icons): activateTab {cached:.3} ms on the kept state, {read:.3} ms with the state read; renameTab {rename:.3} ms, closeTab {close:.3} ms; the state read alone {state:.3} ms"
         );
+    }
+}
+
+/// What parsing addresses costs (Tirth's answer 11): the actions that match an address, each on a library of `n` items
+/// in two spaces with 200 archived, 50 pins (`…/page/`: a trailing slash, so a match needs the parse), 12 favorites and
+/// 99 link rules (the last the one that matches), parsed and with no URL (JSC's), and one `normalize_url`. Ignored:
+/// `cargo test --release -p margin-core url_costs -- --ignored --nocapture`.
+#[test]
+#[ignore]
+fn url_costs() {
+    let compare = AsciiCollation::new();
+    let web = json!({ "kind": "web", "browser": "safari", "profile": null });
+    let addresses: Vec<String> = (0..7).map(|k| format!("https://Site{k}.example:443/page/#top")).collect();
+    let t = Instant::now();
+    for k in 0..100_000 {
+        std::hint::black_box(js::normalize_url(std::hint::black_box(&addresses[k % 7])));
+    }
+    eprintln!("normalize_url of an address: {:.0} ns", t.elapsed().as_secs_f64() * 1e9 / 100_000.0);
+    for n in [50, 500, 2000] {
+        let map = |list: Vec<(String, Value)>| Value::Object(list.into_iter().collect());
+        let values = json!({
+            "spaces": { "a": { "name": "A", "order": 0 }, "b": { "name": "B", "order": 1 } },
+            "windows": { "1": { "spaceId": "a" } },
+            "tabs": map((0..n).map(|i| (format!("t-i{i}"), json!({ "url": format!("https://site{i}.example/page"), "title": "T", "icon": "", "spaceId": if i % 2 == 0 { "a" } else { "b" }, "order": i, "lastUsed": 1000 + i, "target": web }))).collect()),
+            "archive": map((0..200).map(|i| (format!("a-{i}"), json!({ "url": format!("https://old{i}.example/"), "title": "O", "spaceId": "a", "icon": "", "closedAt": 500 + i, "target": web }))).collect()),
+            "pins": map((0..50).map(|k| (format!("p-{k:02}"), json!({ "spaceId": "a", "url": format!("https://site{}.example/page/", 2 * k), "title": "P", "folderId": null, "pos": k, "target": web }))).collect()),
+            "favorites": map((0..12).map(|k| (format!("fav-{k:02}"), json!({ "scope": "global", "url": format!("https://SITE{}.example/page", 2 * k + 1), "title": "F", "pos": k, "target": web }))).collect()),
+            "airTraffic": map((0..99).map(|k| (format!("atc-{k:02}"), json!({ "pattern": if k == 98 { "site0.example/page".to_string() } else { format!("other{k}.example") }, "spaceId": "b", "order": k }))).collect()),
+        });
+        let s = state_of(values.as_object().unwrap(), &compare);
+        let ids = |k: usize| vec![format!("url{k}x0"), format!("url{k}x1"), format!("url{k}x2"), format!("url{k}x3")];
+        type Payload = Box<dyn Fn(usize) -> Value>;
+        let calls: [(&str, Payload); 6] = [
+            ("openPin", Box::new(|k| json!({ "windowId": 1, "pinId": format!("p-{:02}", k % 50) }))),
+            ("openFavorite", Box::new(|k| json!({ "windowId": 1, "favoriteId": format!("fav-{:02}", k % 12) }))),
+            ("addFavorite", Box::new(|_| json!({ "windowId": 1, "url": "https://site1.example/page/#x" }))),
+            ("closeTab", Box::new(move |k| json!({ "tabId": format!("t-i{}", k % n) }))),
+            ("routeUrl", Box::new(|_| json!({ "url": "https://site0.example/page" }))),
+            ("newTab", Box::new(|_| json!({ "windowId": 1, "url": "https://site0.example/page" }))),
+        ];
+        let mut line = Vec::new();
+        for (name, payload) in &calls {
+            let go = |k: usize| perform(&s, name, &payload(k), Env { now: 9000.0 + k as f64, ids: ids(k) }, &compare);
+            assert!(go(0).ok, "{name}");
+            let parsed = median(41, |k| {
+                std::hint::black_box(go(k));
+            });
+            let jsc = median(41, |k| {
+                std::hint::black_box(js::without_urls(|| go(k)));
+            });
+            line.push(format!("{name} {:.1} µs (no URL {:.1})", parsed * 1000.0, jsc * 1000.0));
+        }
+        eprintln!("{n} items (+200 archived, 50 pins, 12 favorites, 99 rules): {}", line.join(", "));
     }
 }

@@ -477,6 +477,26 @@ pub unsafe extern "C" fn margin_library_rules(
     bytes(out, out_len)
 }
 
+/// [`margin_library_rules`] answered as Margin.app's JavaScriptCore rules answer it, with no `URL` (`js::without_urls`:
+/// an address matched as given, no link rule matching). For the Mac's shadow only: a call where JSC and the core
+/// differ is the parsing's alone (Tirth's answer 11) when this answers as JSC does. Goes with the shadow (step 4
+/// commit 6).
+///
+/// # Safety
+/// As [`margin_library_rules`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_library_rules_without_urls(
+    library: *const MarginLibrary,
+    name: *const u8,
+    name_len: usize,
+    args: *const u8,
+    args_len: usize,
+    out_len: *mut usize,
+) -> *mut u8 {
+    // SAFETY: the caller's contract, margin_library_rules's.
+    library::js::without_urls(|| unsafe { margin_library_rules(library, name, name_len, args, args_len, out_len) })
+}
+
 /// A text answer's bytes (freed with `margin_buffer_free`).
 fn bytes(text: String, out_len: *mut usize) -> *mut u8 {
     if out_len.is_null() {

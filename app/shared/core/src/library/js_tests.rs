@@ -317,12 +317,21 @@ fn lowercase_as_js() {
 }
 
 #[test]
-fn the_rules_have_no_url_today() {
-    // JSC's bare context: `new URL` throws, so normalizeUrl gives the address back and no link rule matches.
-    const { assert!(!RULES_PARSE_URLS) };
-    assert_eq!(normalize_url("https://A.com/#x"), "https://A.com/#x");
-    assert!(matches!(normalize_url("https://a.com/"), Cow::Borrowed(_)));
-    assert_eq!(rules_url("https://github.com/x"), None);
+fn the_rules_parse_urls_as_the_browsers() {
+    // Tirth's answer 11: the rules read addresses as the browsers' copies do (WHATWG), not as JSC's bare context did.
+    const { assert!(RULES_PARSE_URLS) };
+    assert_eq!(normalize_url("https://A.com/#x"), "https://a.com");
+    assert_eq!(normalize_url("https://a.com/"), normalize_url("https://a.com"));
+    assert_eq!(normalize_url("not a url"), "not a url");
+    assert!(matches!(normalize_url("not a url"), Cow::Borrowed(_)), "the address as given where it doesn't parse");
+    assert_eq!(rules_url("https://github.com/x").map(|u| u.hostname), Some("github.com".into()));
+    // JSC's (the Mac's shadow until the switch): `new URL` throws, the address comes back as given, no URL.
+    let jsc = without_urls(|| {
+        let inner = without_urls(|| rules_url("https://a.com").is_none());
+        (normalize_url("https://A.com/#x").into_owned(), rules_url("https://github.com/x"), inner)
+    });
+    assert_eq!(jsc, ("https://A.com/#x".into(), None, true));
+    assert_eq!(normalize_url("https://A.com/#x"), "https://a.com", "parsing again after it, nested too");
 }
 
 #[test]

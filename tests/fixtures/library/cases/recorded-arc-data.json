@@ -239,24 +239,7 @@
       {"perform":"toggleAirTrafficRule","payload":{"ruleId":"atc-id0001"},"env":{"now":1000001,"ids":["id0002","zq002785x","zq002786x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"airTraffic","id":"atc-id0001","value":{"pattern":"linear.example","spaceId":"b","enabled":false,"order":0}}],"requests":[]}},
       {"perform":"newTab","payload":{"windowId":1,"url":"https://linear.example/x"},"env":{"now":1000002,"ids":["id0003","zq002833x","zq002834x"]},"expect":{"ok":true,"result":{"tabId":"t-id0003"},"changes":[{"collection":"tabs","id":"t-id0003","value":{"url":"https://linear.example/x","title":"https://linear.example/x","icon":"","spaceId":"a","order":0,"lastUsed":1000002,"selected":true,"target":{"kind":"web","browser":"safari","profile":null}}}],"requests":[{"type":"newTab","windowId":1,"item":"t-id0003","url":"https://linear.example/x","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"a"}]}},
       {"perform":"toggleAirTrafficRule","payload":{"ruleId":"atc-id0001"},"env":{"now":1000003,"ids":["id0004","zq002881x","zq002882x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"airTraffic","id":"atc-id0001","value":{"pattern":"linear.example","spaceId":"b","enabled":true,"order":0}}],"requests":[]}},
-      {"perform":"newTab","payload":{"windowId":1,"url":"https://linear.example/y"},"env":{"now":1000004,"ids":["id0005","zq002929x","zq002930x"]},"url":true,"expect":{"ok":true,"result":{"tabId":"t-id0005"},"changes":[{"collection":"tabs","id":"t-id0003","value":{"url":"https://linear.example/x","title":"https://linear.example/x","icon":"","spaceId":"a","order":0,"lastUsed":1000002,"selected":false,"target":{"kind":"web","browser":"safari","profile":null}}},{"collection":"tabs","id":"t-id0005","value":{"url":"https://linear.example/y","title":"https://linear.example/y","icon":"","spaceId":"a","order":1,"lastUsed":1000004,"selected":true,"target":{"kind":"web","browser":"safari","profile":null}}}],"requests":[{"type":"newTab","windowId":1,"item":"t-id0005","url":"https://linear.example/y","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"a"}]}}
-      ]
-    },
-    {
-      "about": "arc-data.test.ts: arc data: linkRules.remove and linkRules.toggle: checked, sent, done by the library; the tab menu removes the rule routing it #2",
-      "values": {
-        "spaces": {"a":{"name":"A","order":0,"browser":"safari","profile":null},"b":{"name":"B","order":1,"browser":"safari","profile":"work"}},
-        "pins": {},
-        "favorites": {},
-        "airTraffic": {"atc-id0001":{"pattern":"linear.example","spaceId":"b","enabled":true,"order":0}},
-        "splits": {},
-        "folders": {},
-        "tabs": {"t-id0003":{"url":"https://linear.example/x","title":"https://linear.example/x","icon":"","spaceId":"a","order":0,"lastUsed":1000002,"selected":true,"target":{"kind":"web","browser":"safari","profile":null}},"t-id0005":{"url":"https://linear.example/y","title":"https://linear.example/y","icon":"","spaceId":"b","order":1,"lastUsed":1000004,"selected":true,"target":{"kind":"web","browser":"safari","profile":"work"}}},
-        "archive": {},
-        "windows": {"1":{"spaceId":"b"}},
-        "imports": {}
-      },
-      "steps": [
+      {"perform":"newTab","payload":{"windowId":1,"url":"https://linear.example/y"},"env":{"now":1000004,"ids":["id0005","zq002929x","zq002930x"]},"url":true,"expect":{"ok":true,"result":{"tabId":"t-id0005"},"changes":[{"collection":"tabs","id":"t-id0005","value":{"url":"https://linear.example/y","title":"https://linear.example/y","icon":"","spaceId":"b","order":1,"lastUsed":1000004,"selected":true,"target":{"kind":"web","browser":"safari","profile":"work"}}},{"collection":"windows","id":"1","value":{"spaceId":"b"}}],"requests":[{"type":"newTab","windowId":1,"item":"t-id0005","url":"https://linear.example/y","target":{"kind":"web","browser":"safari","profile":"work"},"spaceId":"b"}]}},
       {"perform":"removeAirTrafficRule","payload":{"ruleId":"atc-id0001"},"env":{"now":1000005,"ids":["id0006","zq002977x","zq002978x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"airTraffic","id":"atc-id0001","deleted":true}],"requests":[]}}
       ]
     }

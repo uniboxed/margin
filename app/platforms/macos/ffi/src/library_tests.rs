@@ -69,6 +69,46 @@ fn the_ffi_entry_is_library_js() {
     assert_eq!(out, json!({ "error": "no function " }));
 }
 
+#[test]
+fn the_ffi_entry_parses_addresses_and_answers_as_jsc_without() {
+    // Tirth's answer 11: a link rule routes and `https://a.com` is `https://a.com/`; the shadow's entry answers as
+    // JavaScriptCore, with no URL, did.
+    let without = |name: &str, args: &Value| {
+        let a = args.to_string();
+        let mut len = 0;
+        // SAFETY: null library; the name's and the arguments' bytes.
+        read(
+            unsafe {
+                margin_library_rules_without_urls(
+                    std::ptr::null(),
+                    name.as_ptr(),
+                    name.len(),
+                    a.as_ptr(),
+                    a.len(),
+                    &mut len,
+                )
+            },
+            len,
+        )
+    };
+    let values = json!({
+        "spaces": { "a": { "name": "A", "order": 0 } },
+        "airTraffic": { "atc-1": { "pattern": "github.com", "spaceId": "a", "order": 0 } },
+        "favorites": { "fav-1": { "scope": "global", "url": "https://a.com/", "title": "A", "pos": 0 } },
+    });
+    let route = json!([values, "routeUrl", { "url": "https://GitHub.com/x#y" }, { "now": 1, "ids": ["abcd"] }]);
+    assert_eq!(rules(std::ptr::null(), "perform", &route)["value"]["result"]["ruleId"], json!("atc-1"));
+    assert_eq!(without("perform", &route)["value"]["result"], Value::Null);
+    let fav = json!([values, "addFavorite", { "url": "https://a.com" }, { "now": 1, "ids": ["abcd"] }]);
+    assert_eq!(rules(std::ptr::null(), "perform", &fav)["value"]["changes"], json!([]), "its scope has it");
+    assert_eq!(without("perform", &fav)["value"]["result"], json!("fav-abcd"), "JSC's: another address");
+    assert_eq!(
+        rules(std::ptr::null(), "perform", &route)["value"]["result"]["ruleId"],
+        json!("atc-1"),
+        "parsing again after it"
+    );
+}
+
 /// The Swift side as the callbacks see it: its clock and ids, the observers' calls, and the session over the library.
 #[derive(Default)]
 struct Swift {

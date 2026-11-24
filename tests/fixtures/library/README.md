@@ -1,8 +1,10 @@
 # The library's vectors
 
-The library's edit rules (app/shared/library/library.ts over extension/state/model.ts) as Margin.app runs them today:
-in JavaScriptCore, a bare `JSContext` (app/platforms/macos/shell/LibraryRules.swift). library.ts is the reference;
-margin-core's port (docs/CORE-REFACTOR.md step 4) must answer every step the same. Recorded by
+The library's edit rules (app/shared/library/library.ts over extension/state/model.ts) as Margin.app runs them today,
+in JavaScriptCore, a bare `JSContext` (app/platforms/macos/shell/LibraryRules.swift), but for addresses: the `url` steps
+are the browsers' answers (library.ts in Node with its `URL`, as the browsers' copies parse addresses; Tirth's answer 11,
+2026-11-23), where JavaScriptCore, which has no `URL`, answers otherwise. library.ts is the reference; margin-core's port
+(docs/CORE-REFACTOR.md step 4) must answer every step the same. Recorded by
 `npm run library:vectors` (tests/library-vectors/record.ts), re-recorded only with a rule changed on purpose, in the
 same commit as both copies' change.
 
@@ -14,7 +16,7 @@ same commit as both copies' change.
   - `generated-NN.json`: 300 seeded random sequences of 30 steps over random libraries (tests/library-vectors/
     generate.ts), 25 a file.
   - `edges.json`: written by hand (tests/library-vectors/edges.ts): ties (the ids' order, localeCompare's
-    tie-breaks), cuts, JS's spaces, addresses with no URL, numbers, payload keys.
+    tie-breaks), cuts, JS's spaces, addresses as the browsers parse them, numbers, payload keys.
   - `survey.json`: the throw survey: every action with each payload field as each wrong JSON type, the steps that
     threw.
 - `throws.json`: every place an action throws (a TypeError on a payload value of the wrong type, caught by `perform`
@@ -22,9 +24,11 @@ same commit as both copies' change.
   where it is and a payload that does it.
 - `js.json`: the JavaScript the rules rely on (part 1: spaces, UTF-16 cuts and order, `localeCompare`, numbers' strings,
   `Math.round`/`max`/`min`, values as strings and keys, `fingerprint`, the import's ids, the address regexes,
-  `toLowerCase`, link-rule patterns; under `url`, today's no-URL answers), as JSC answers it on this Mac (`locale`
-  is the collation's locale JSC resolved), checked against Node (`nodeDiffers`: none today). Strings a cut can break
-  are given as UTF-16 units; numbers JSON can't hold as `"-0"`, `"NaN"`, `"Infinity"`, `"-Infinity"`.
+  `toLowerCase`, link-rule patterns), as JSC answers it on this Mac (`locale` is the collation's locale JSC resolved),
+  checked against Node (`nodeDiffers`: none today); under `url`, the addresses normalised and matched as Node with its
+  `URL` does (the browsers', `urlEngine`), under `jscUrl` as JSC did (no `URL`: each address as given, no match).
+  Strings a cut can break are given as UTF-16 units; numbers JSON can't hold as `"-0"`, `"NaN"`, `"Infinity"`,
+  `"-Infinity"`.
 
 ## A case file
 
@@ -62,9 +66,11 @@ same commit as both copies' change.
   - `normal`: `valuesOf(stateOf(values), values.imports)`, the values read and written again (part 2's round trip);
   - `target`: `targetOf(raw)` (null: not a target); reads no values.
 - Flags on a step:
-  - `"url": true`: the answer differs when addresses are parsed (WHATWG `URL`); today's has none (a bare JSContext has
-    no `URL`: `normalizeUrl` gives the address back, no link rule matches). The commit that turns URL parsing on
-    (Tirth's answer 11) re-records these.
+  - `"url": true`: **the browsers' answer**: the step answers otherwise where addresses aren't parsed. Its `expect` is
+    library.ts's in Node with `URL` (WHATWG, as Safari, Chrome and Edge parse addresses: Tirth's answer 11, the core's
+    `js::RULES_PARSE_URLS`), and the steps after it start from its changes. JavaScriptCore, a bare JSContext with no
+    `URL` (`normalizeUrl` gives the address back, no link rule matches), answers it as Node does with `URL` taken away,
+    which the recorder checks. Every other step is JavaScriptCore's answer.
   - `"cut": true`: library.ts's answer held half an emoji (`slice(0, max)` through a surrogate pair); the vector has the
     broken half dropped (Tirth's answer 3). Today's Mac refuses the whole answer (`JSONSerialization` can't read half a
     pair: the action fails with `perform: no answer`, a snapshot comes back empty).
@@ -78,7 +84,8 @@ step's `error` `{ "failed": site }` is `failed: ` and throws.json's `jsc` words 
 
 ## Who runs them
 
-- tests/library-vectors.test.ts (`npm test`): library.ts in Node, without `URL`.
+- tests/library-vectors.test.ts (`npm test`): library.ts in Node, without `URL`, but the `url` steps with it (and each
+  of them answered otherwise without).
 - app/shared/core/src/library/vectors.rs (`cargo test`): margin-core. A part's test implements `vectors::Engine` for
   the kinds it has (the others answer `None`: skipped and counted) and calls `vectors::run(&mut engine)`, which loads
   every file (`vectors::groups()`, or `groups_named("generated-")`), resolves each site's words, merges the expected
@@ -91,8 +98,11 @@ step's `error` `{ "failed": site }` is `failed: ` and throws.json's `jsc` words 
   Mac's sorter (libicucore, collation.rs), and js.json's `localeCompare` cases: the Mac's vectors pin the system one.
 - app/platforms/macos/shell/tests/library-vectors-tests.swift (`npm run test:app`): dist/app/library.js through
   LibraryRules (JavaScriptCore), the perform, snapshot and import steps, until the switch (step 4 commit 6). A `cut`
-  step there fails as the app does today (no answer). An `import` step leaves out, on both sides, the changes that
+  step there fails as the app does today (no answer). A `url` step is the browsers' answer, not JSC's: left out there,
+  counted (the shadow compares JSC with the core on it). An `import` step leaves out, on both sides, the changes that
   write a value again unchanged: library.ts's import compares the stored values' text, and Swift's dictionaries give
   their keys in their own order. And the shadow there: every call the whole Swift suite makes to LibraryRules given to
   margin-core as well (`margin_library_rules`, the same entry through the FFI) and compared: the same but a cut, where
-  JavaScriptCore's answer holds half an emoji and the core's drops it, and the 17 steps of the known `createSpace` gap.
+  JavaScriptCore's answer holds half an emoji and the core's drops it, the steps of the known `createSpace` gap, and
+  the calls answered otherwise because the core parses addresses (Tirth's answer 11): each such call the core answers
+  with no `URL` (`margin_library_rules_without_urls`, `js::without_urls`) as JavaScriptCore does, counted and named.

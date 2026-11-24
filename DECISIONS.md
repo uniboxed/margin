@@ -9191,3 +9191,80 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   from the FFI (until now the linker dropped them); no collation data (libicucore is the system's, linked dynamically:
   `otool -L`), where ICU4X's would have added 1.26 MB more per architecture (commit 1's measure). JavaScriptCore stays
   linked until the switch.
+
+## Margin.app's rules parse addresses as the browsers do (Tirth, 2026-11-23: step 4's open question 11)
+
+- Tirth's decision (answer 11, "fix it, as its own commit"): the library's rules read addresses as the browsers' copies
+  of model.ts and air-traffic.ts do (WHATWG `URL`), no longer as Margin.app's bare JSContext did (it has no `URL`, so
+  `normalizeUrl` gave every address back as given and `patternMatchesUrl` was false for every address). In margin-core:
+  `js::RULES_PARSE_URLS` true (step4/urls), over `js::url_parts`/`normalize_url_whatwg` (the `url` crate, written and
+  checked against Node and WebKit in commit 1). **Margin.app's behaviour changes only at step 4's switch (commit 6)**,
+  when the app runs the core's rules; until then it runs library.js in JavaScriptCore, as today.
+- What changes for him then:
+  - **Link rules route.** A new tab opened with an address and no space given (`newTab`: the palette, a link Margin
+    opens) goes to the space of the first enabled rule it matches, in that space's browser and profile, and the window
+    shows that space; `routeUrl` answers the rule and its space's target. Until now no rule ever matched in the app (the
+    extension's copies routed). Patterns as air-traffic.ts reads them: `linear.app` (that host, any path),
+    `*.figma.com` (the host and every subdomain), `github.com/my-org/*` (a path and under it), http and https only.
+  - **Addresses match as the browsers match them** wherever the rules compare two: a pin and its item (`openPin`), a
+    favorite and its item (`openFavorite`), a favorite added to a scope that has one at the address (refused), a tab
+    pinned where a pin at the address is (not pinned twice), the pins moved when a space goes (one at an address the
+    other space has is dropped), and the archive (closing an item drops older entries at its address: one an address).
+    The same address now: with or without the bare trailing slash (`https://a.com` = `https://a.com/`; not a path's,
+    `/x/` ≠ `/x`), with any fragment (`#top`), the scheme's and host's case (`HTTPS://A.COM`), the scheme's default
+    port (`:443`, `:80`), dot segments (`/x/../y` = `/y`), `\` for `/`, an empty query (`?`), spaces around it, an IDN
+    host and its punycode (`bücher.de` = `xn--bcher-kva.de`), IPv4's other spellings (`0x7f.1` = `127.0.0.1`). Still
+    other addresses: the scheme (`http` ≠ `https`), `www.`, a path's case, the query, another port, percent escapes
+    (`~`, `%7e` and `%7E` are three, as in the browsers). An address that doesn't parse matches as given.
+  - **Nothing stored is rewritten**: no address is normalised on disk, at load, at the import or in the snapshot; an
+    address is stored as given (pinned by kept_tests.rs and a break that rewrote the archive's, caught). Only what an
+    edit from now on matches changes, so duplicates already stored (two favorites at `https://a.com` and
+    `https://a.com/`) stay until an edit meets them.
+- The vectors (tests/fixtures/library, `npm run library:vectors`): the recorder keeps each step's answer with Node's
+  `URL` and marks `url` the steps whose answer without it differs; those 76 (75 before, one new hand-written case of
+  11 steps: the host's case, the default port, dot segments, the archive, a `*.` rule) are the browsers' answers, and
+  JavaScriptCore's answer of each is checked to be Node's without `URL`. Every other step is JSC's answer (JSC differs
+  from Node on none). Since the steps after a `url` step start from its changes, and the generator's one random stream
+  and the padded ids follow every earlier answer, the generated sequences after the first that met an address and the
+  ids of later edges and the survey were made again: 24 files, 360 cases, 9,395 steps (8,798 performs, 302 snapshots,
+  290 normals, 2 imports, 3 targets), 651 cuts, the one throw site. js.json's `url` group is Node's with `URL`
+  (`jscUrl`, JSC's). tests/library-vectors.test.ts runs the `url` steps with `URL` (and each must answer otherwise
+  without). The one known cut rewrite moved (generated-11 case 24 step 4) and the known `createSpace` gap is 19 steps.
+- Pinned answers moved to the browsers': links_tests.rs `addresses_match_as_the_browsers` (was
+  `no_address_matches_today`), js_tests.rs, kept_tests.rs (an item by its address, the archive one an address),
+  order_tests.rs (`pinForUrl`), favorites_tests.rs (a scope's address), vectors_tests.rs (js.json), and margin-ffi's
+  `the_ffi_entry_parses_addresses_and_answers_as_jsc_without`.
+- The Mac's shadow (T/library-vectors-tests.swift) compares JSC with the core until the switch, so it now differs
+  exactly on calls whose answer depends on parsing an address. Each such call is asked again of the core with no URL
+  (`js::without_urls`, through `margin_library_rules_without_urls`: test builds only, both gone with the shadow at
+  commit 6) and counted and named by action when that is JSC's answer; anything else still fails it. The whole Swift
+  suite: 9,447 calls, 440 cuts, the known rewrite, 19 of the gap, 76 by addresses alone (addFavorite 6, clearToday 22,
+  closeSplitPane 3, closeTab 3, createFolder 2, deleteSpace 1, itemClosed 1, newTab 6, openFavorite 3, openPin 6,
+  pinTab 8, resetPin 3, routeUrl 12: the vectors' 76 `url` steps; the rest of the suite makes none), 0 differ. The
+  vectors through LibraryRules leave the 76 out, counted (JSC can't give the browsers' answer). Broken (that entry
+  parsing too): all 76 differ, caught.
+- Checked: every vector through the core (8,779 performs and every other kind; through library.js's entry with the
+  core's stand-in sorter and, in margin-ffi, the Mac's); 3,000 more generated sequences of 40 steps (the scratch
+  harness, seeds 101, 202, 303, with `URL` for the url steps, JSC for the rest: 120,000 steps, 798 `url`): 112,295
+  performs, 112,294 the same, 219 of the gap, 1 no-op cut rewrite, and **1 that differs, not by an address**: a
+  `createFolder` named through an emoji (`cut`) beside a folder with that name's whole half (39 `a`). library.ts
+  compares the name holding half an emoji, finds no such folder and keeps it; the core drops the half first (Tirth's
+  answer 3), finds the folder and names the new one `… 2` (order.rs:457, `unique_name`). Today's Mac fails the whole
+  action there (no answer). Not an address; left as it is and reported, for Tirth to say which.
+- 26 deliberate breaks of the URL path, each alone (parsing off, `without_urls` doing nothing or never ending, the link
+  rules or the matching unparsed, the bare slash kept, every trailing slash dropped, the query, port or scheme dropped,
+  the fragment kept, the path lowercased, an unparsed address as empty, the host without its port, the search with
+  its fragment, the input not trimmed, the rules' match and pattern unparsed, each of the six matching sites on raw
+  text, the archive's address rewritten, the shadow's entry parsing): 26 caught (6 by the js.rs and js.json tests
+  alone: the vectors meet no other port and no query that differs).
+- Cost (release; a library of 50 / 500 / 2,000 items in two spaces, 200 archived, 50 pins, 12 favorites, 99 rules, the
+  last the one that matches; the median of 41; parsed, then with no URL): `normalize_url` of an address 0.55 µs;
+  `routeUrl` found at the 99th rule 10 µs (0.3); `openPin` 13 / 107 / 420 µs (2 / 5 / 13: `keptForUrl` parses each
+  item of the pin's space); `openFavorite` 12 / 39 / 150 µs (2 / 3 / 6); `closeTab` 100 / 128 / 221 µs (30 / 56 / 147:
+  the archive's 200 entries); `newTab` with an address 15 / 45 / 152 µs (6 / 36 / 143); `addFavorite` 0.8 (0.8).
+  Today's JSC perform is 2.6 / 16 / 61 ms, so a perform still ends far cheaper than today's. The lever if it's ever
+  needed: each item's normalised address kept with the state. Size (a release binary of library.js's entry, the
+  workspace's profile): +0.23 MB arm64 (1,049,888 → 1,284,720 bytes), +0.24 MB x86_64 (1,169,368 → 1,410,680): the
+  `url` crate now reachable (commit 1 measured +0.22 MB).
+- Still differs from the browsers: an IDNA edge commit 1 found (`https://xn--a.com`: Node and WebKit take it, the `url`
+  crate refuses it, so there it matches as given and `https://xn--a.com` and `https://xn--a.com/` stay two).

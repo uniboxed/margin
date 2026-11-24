@@ -8,6 +8,7 @@ use serde_json::json;
 
 use super::super::import::{ns_id, ns_tab_id};
 use super::super::js::*;
+use super::super::model::links::pattern_matches_url;
 use super::*;
 
 #[test]
@@ -225,13 +226,22 @@ fn js_json_is_js_rs() {
     for r in rows(&js, "lower") {
         assert_eq!(s(&r[0]).to_lowercase(), s(&r[1]));
     }
-    // The URL finding: JSC's bare context has no URL, so an address comes back as given and no pattern matches.
-    assert_eq!(js["url"]["hasUrl"], false);
-    for r in js["url"]["normalized"].as_array().unwrap() {
+    // Addresses as the browsers parse them (`url`: Node with a URL, Tirth's answer 11), and as JSC's bare context, with
+    // no URL, gave them back (`jscUrl`: the address as given, no pattern matching), which `without_urls` answers.
+    assert_eq!((&js["url"]["hasUrl"], &js["jscUrl"]["hasUrl"]), (&json!(true), &json!(false)));
+    let normalized = js["url"]["normalized"].as_array().unwrap();
+    assert!(normalized.iter().filter(|r| r[0] != r[1]).count() >= 10, "most of them normalised");
+    for r in normalized {
         assert_eq!(normalize_url(s(&r[0])), s(&r[1]));
     }
+    for r in js["jscUrl"]["normalized"].as_array().unwrap() {
+        assert_eq!(without_urls(|| normalize_url(s(&r[0])).into_owned()), s(&r[1]));
+    }
     for r in js["url"]["matches"].as_array().unwrap() {
-        assert!(!flag(&r[2]) && rules_url(s(&r[1])).is_none(), "{r:?}");
+        assert_eq!(pattern_matches_url(s(&r[0]), s(&r[1])), flag(&r[2]), "{r:?}");
+    }
+    for r in js["jscUrl"]["matches"].as_array().unwrap() {
+        assert!(!flag(&r[2]) && without_urls(|| rules_url(s(&r[1]))).is_none(), "{r:?}");
     }
 }
 

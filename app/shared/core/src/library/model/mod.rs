@@ -12,7 +12,7 @@
 //! - The open-tab halves of M's functions (`state.tabs`, `tabSpace`: the extension's open tabs) aren't ported: the
 //!   library's state has none (LT:136 `tabs: {}`); each port takes the kept half only, and its doc says so.
 //! - `localeCompare` is the caller's `&dyn LocaleCompare` (the system's sorter); `normalizeUrl` is `js::normalize_url`
-//!   (today's: the address as given, `RULES_PARSE_URLS`), every cut `js::slice16`, every `trim` `js::trim`, every
+//!   (WHATWG, as the browsers' copies: `RULES_PARSE_URLS`), every cut `js::slice16`, every `trim` `js::trim`, every
 //!   `Math.round`/`Math.max` `js::round`/`js::max`, every sort a stable `sort_by` over `js::num_cmp`.
 //! - `Object.values(s.keptTabs)` walks `s.kept` in its order (`JsObject`: the ids' order as stored; "the first of
 //!   several equal" is that one, Tirth's answer 10).

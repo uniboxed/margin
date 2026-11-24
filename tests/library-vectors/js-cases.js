@@ -1,7 +1,8 @@
 // js.json's cases (docs/CORE-REFACTOR.md step 4, part 1): the JavaScript the library's rules rely on, as an engine
 // answers it. record.ts runs this in JavaScriptCore (a bare JSContext, as Margin.app runs library.js) and in Node
-// (without `URL`, as JSC has none), after a bundle of library.ts's own functions (`marginVectors`: model.ts's
-// normalizeUrl, air-traffic.ts's patterns, data-set.ts's fingerprint, the import's ids), and keeps JSC's answers.
+// (without `URL`, as JSC has none; and with Node's, for the addresses), after a bundle of library.ts's own functions
+// (`marginVectors`: model.ts's normalizeUrl, air-traffic.ts's patterns, data-set.ts's fingerprint, the import's ids),
+// and keeps JSC's answers, but the addresses' (`url`): Node's with `URL`, the browsers' (Tirth's answer 11).
 // Strings that could hold half an emoji are given as UTF-16 units; numbers JSON can't hold as "-0", "NaN",
 // "Infinity", "-Infinity".
 (() => {
@@ -62,8 +63,9 @@
   const regexes = urls.map((u) => [u, /^(https?|file):/i.test(u), /^https?:/i.test(u), /^https?:\/\/[^\s/]/i.test(u)]);
   const lower = ['LINEAR.APP', '\u212aELVIN.com', '\u0130stanbul.com', 'ΣΑΣ.com', 'STRASSE', '\u1e9e'].map((s) => [s, s.toLowerCase()]);
 
-  // ---- addresses: model.ts normalizeUrl, air-traffic.ts's patterns and matches (the URL finding: a bare JSContext
-  // has no URL, so normalizeUrl gives its input back and no pattern matches; normalizePattern reads no URL) ----
+  // ---- addresses: model.ts normalizeUrl, air-traffic.ts's patterns and matches (run with a URL, the browsers'; in a
+  // bare JSContext, which has none, normalizeUrl gives its input back and no pattern matches; normalizePattern reads
+  // no URL) ----
   const hasUrl = typeof URL === 'function';
   const addrs = ['https://a.com/', 'https://a.com', 'https://a.com/#x', 'https://A.COM/Path/?q=1#h', 'https://a.com:443/x', 'http://a.com:8080/', 'https://a.com/b/../c', 'https://a.com\\b\\c', 'https://a.com/%7e', 'https://a.com/?', 'http://0x7f.1/', 'https://bücher.de/', 'file:///Users/a/b.html', '  https://a.com/x  ', 'https://[::1]:8000/', 'not a url', ''];
   const normalized = addrs.map((u) => [u, V.normalizeUrl(u)]);
@@ -73,7 +75,7 @@
   const matches = matchInputs.map(([p, u]) => [p, u, V.patternMatchesUrl(p, u)]);
 
   return JSON.stringify({
-    about: 'The JavaScript the library\'s rules rely on (docs/CORE-REFACTOR.md step 4, part 1), as JavaScriptCore answers it on this Mac in a bare JSContext (Margin.app\'s library.js), recorded by npm run library:vectors (tests/library-vectors/js-cases.js). Units: UTF-16 code units (a cut can leave half a pair; the core drops it, Tirth\'s answer 3). Numbers JSON can\'t hold: "-0", "NaN", "Infinity", "-Infinity". The groups under url: today\'s answers with no URL (re-recorded by the URL commit).',
+    about: 'The JavaScript the library\'s rules rely on (docs/CORE-REFACTOR.md step 4, part 1), as JavaScriptCore answers it on this Mac in a bare JSContext (Margin.app\'s library.js), recorded by npm run library:vectors (tests/library-vectors/js-cases.js). Units: UTF-16 code units (a cut can leave half a pair; the core drops it, Tirth\'s answer 3). Numbers JSON can\'t hold: "-0", "NaN", "Infinity", "-Infinity". The groups under url: the browsers\' answers (Node with its URL, Tirth\'s answer 11); under jscUrl, JavaScriptCore\'s (a bare JSContext has no URL: the address as given, no pattern matching).',
     locale,
     cases: { trimmed, regex, trims, squash, lengths, cuts, sortInput, sorted, asciiOrder, asciiSigns, pairs, numberStrings, parsed, rounds, maxes, ratios, values, fingerprints, ids, idLetters, regexes, lower, patterns },
     url: { hasUrl, normalized, matches },
