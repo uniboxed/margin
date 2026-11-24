@@ -312,6 +312,13 @@ pub(crate) struct Answer<'a> {
     done: bool,
 }
 
+impl Answer<'_> {
+    /// Its command's id, once its first poll handed it out.
+    pub(crate) fn id(&self) -> Option<u64> {
+        self.id
+    }
+}
+
 impl Future for Answer<'_> {
     type Output = Value;
     fn poll(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Value> {

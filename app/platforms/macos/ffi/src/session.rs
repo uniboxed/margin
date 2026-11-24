@@ -332,6 +332,10 @@ impl Ports for SwiftPorts {
         }
         Self::string(&self.ask(json!({ "port": "linkEpoch", "profile": profile })), "epoch")
     }
+    fn link_slow(&self, profile: &str) -> Option<f64> {
+        // (Read once a `slowSay` while a show waits: rare, JSON.)
+        json::num(self.ask(json!({ "port": "linkSlow", "profile": profile })).get("secs"))
+    }
     fn app_name(&self, bundle: &str) -> Option<String> {
         if let Some(c) = self.call {
             return self.text(c, PortKind::AppName, None, [Some(bundle), None, None]);

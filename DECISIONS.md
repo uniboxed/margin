@@ -9532,3 +9532,46 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   results and breaks, what's open), the order table's rows 7, 7a and 8 done.
 - Not run here: the screen suite, an install, `npm run gate` (Tirth's). `tools/app-tests/run.sh all`,
   `scripts/rust-test.sh`, `npm test` and the quick tests green.
+
+## Link resilience, the session's part: a show waits for a slow copy without holding anything up (2026-11-24)
+
+docs/LINK-RESILIENCE.md §1 rules 7–10, Tirth's defaults ("please work on this properly. make no mistakes"): `slowSay`
+3 s and feedback only; a request whose copy reads but never answers keeps waiting (logged, any other pick moves on).
+The link's part (acks, no fixed timeout, `Link::cancel`, `Link::slow`, `Down`/`Lost`) is on `fix/link-resilience-link`;
+this part codes against those names.
+
+- **`ask_until`** (session/mod.rs, beside `ask`): a copy's request raced against its pick being overtaken, with no time
+  limit of its own. The predicate is read only when what the flows read changes (`exec.changed()`: the start screen's
+  state and the windows' items asked for), never on a look. Overtaken: its wait let go first (an answer that comes now
+  is no task's: rule 10), then `Command::Cancel { profile, id }` (the ask's command id), awaited like any command, and
+  the flow stops. Overtaken already: not asked. Both the answer and a pick before the task's poll: the answer wins.
+- **`Command::Cancel`** carried out by the Swift facade (HostedSession `start`, `"cancel"`, answered at once) as
+  `HostedLinks.cancel(profile:asked:)`: ShellHostedLinks keeps each ask's link and request id by the command's id
+  (`LinkConnection.request(…, sent:)`), and `LinkConnection.cancel` ends the Swift wait (`LinkError.cancelled`) and asks
+  the core's link to cancel (`margin_link_call` `{ type: "cancel", conn, id }`). Mechanism only; the stand-in links
+  can't give a request up (the protocol's default), and the session lets their answer go.
+- **`show_web`** (requests.rs, `ask_show`): its `hostShow` through `ask_until`, overtaken by another item asked for in
+  its window or by the window gone (nothing can be picked in a closed window: without it, the queue would wait for a
+  copy that never answers). Logged "overtaken … the request cancelled", never "wasn't shown".
+- **The loader while it waits** (rule 8): set at once for a tab switch too (`set_showing(w, title, Safari, false)`), as
+  a switch-in already set it; the page's grace keeps a quick switch unseen, so nothing changes on a quiet Mac. The
+  copy's slowness is read through a new port, `Ports::link_slow` (JSON `linkSlow` → `HostedLinks.slow(of:)` →
+  `LinkConnection.slow` → `margin_link_call` `{ type: "slow", conn }` → `{ slow: secs }`), `slowSay` after the ask, then
+  each `slowSay` or when it would reach it; `slow` told on each change, both ways. A pace, never a decision.
+- **A show whose link went down** (rule 9: `down`, or `not linked` at the ask): still the pick, its profile linked
+  again through the waker (`ensure_linked_for`, its own wait `link_wanted`), then asked again, only on a new link (a new
+  epoch: "linked" on the same link isn't evidence it came back, and a `Lost` that Swift still maps to `down` can't
+  loop). Overtaken meanwhile: not asked again, said. Only `hostShow` is asked again.
+- **Tests, each failing first** (requests_tests.rs, on the stand-in ports; `pump_holding` keeps commands unanswered):
+  a `hostShow` never answered holds no pick up (an app picked after it: `cancel`, then shown; its late answer changes
+  nothing); one for a window closed is cancelled; the loader at the ask, `slow` once the link says slow for 3 s (looks
+  at 3, 6, 7 s), back when it doesn't; down or not linked and back on a new epoch: asked again and shown; the same epoch:
+  not, said; another error: as before; overtaken while its link is waited for: not asked again. Swift
+  (hosted-tests.swift): the facade carries the core's cancel out (a held `hostShow`, an app picked: one cancel, the app
+  shown; caught with the `"cancel"` case removed); the front tests' "a tab switch says nothing to Margin's window" is
+  now "says its item while its copy is asked, not as slow" (rule 8 replaces it).
+- **Not here**: the link's FFI arms (`cancel`, `slow` in app/platforms/macos/ffi/src/link.rs) need the link's
+  `cancel`/`slow`: until they land, a cancel ends the Swift wait and the core's link answers it as a call it doesn't
+  know (one warning a cancel), and `slow` is never reported. The page draws `slow` only as "no grace" (page/mod.rs
+  `set_showing` ignores a change of `slow` alone): words for "Safari is slow" are a UI piece of their own. A pick in
+  another Margin window still waits behind a show its copy never answers (overtaken is per window, as the design says).

@@ -193,6 +193,8 @@ struct World {
     not_alone: RefCell<Vec<String>>,
     profiles: RefCell<Vec<String>>,
     epochs: RefCell<BTreeMap<String, String>>,
+    // (How long each profile's copy has been slow, as its link says: `Link::slow`.)
+    slow: RefCell<BTreeMap<String, f64>>,
     windows_of: RefCell<BTreeMap<String, Vec<i64>>>,
     names: RefCell<BTreeMap<String, String>>,
     woken: RefCell<Vec<String>>,
@@ -280,6 +282,10 @@ impl Ports for Reentrant {
         self.reenter("linkEpoch");
         let linked = self.0.profiles.borrow().iter().any(|l| l == p);
         linked.then(|| self.0.epochs.borrow().get(p).cloned().unwrap_or_else(|| "e1".into()))
+    }
+    fn link_slow(&self, p: &str) -> Option<f64> {
+        self.reenter("linkSlow");
+        self.0.slow.borrow().get(p).copied()
     }
     fn app_name(&self, bundle: &str) -> Option<String> {
         self.reenter("appName");

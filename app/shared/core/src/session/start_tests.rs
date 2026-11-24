@@ -96,6 +96,7 @@ fn kinds(cs: &[Command]) -> Vec<String> {
             Command::Waker { op, .. } => format!("waker {op}"),
             Command::Reply { .. } => "reply".into(),
             Command::Done { then } => format!("done {then}"),
+            Command::Cancel { .. } => "cancel".into(),
         })
         .collect()
 }

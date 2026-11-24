@@ -37,14 +37,34 @@ final class ShellHostedLinks: HostedLinks {
     }
 
     func request(profile: String, _ type: String, _ payload: JSONObject) async -> (result: JSONObject?, error: String?) {
+        await request(profile: profile, type, payload, asked: nil)
+    }
+
+    // The session's asks under way, by their command's id: the link and the request's id there (what `cancel` takes).
+    private var asking: [UInt64: (connection: LinkConnection, id: Int)] = [:]
+
+    func request(profile: String, _ type: String, _ payload: JSONObject, asked: UInt64?) async -> (result: JSONObject?, error: String?) {
         guard let entry = shell?.links["safari:\(profile)"], entry.connection.isUp else { return (nil, "not linked") }
+        let connection = entry.connection
+        defer { if let asked { asking[asked] = nil } }
         do {
-            let reply = try await entry.connection.request(type: type, payload: payload, windowId: nil)
+            let reply = try await connection.request(type: type, payload: payload, windowId: nil, sent: { [weak self] id in
+                if let asked { self?.asking[asked] = (connection, id) }
+            })
             guard reply["ok"] as? Bool == true else { return (nil, Diagnostics.scrub(reply["error"] as? String ?? "refused", max: 160)) }
             return (reply["result"] as? JSONObject ?? [:], nil)
         } catch {
             return (nil, "\(error)")
         }
+    }
+
+    func cancel(profile: String, asked: UInt64) {
+        guard let (connection, id) = asking.removeValue(forKey: asked) else { return }
+        connection.cancel(id)
+    }
+
+    func slow(of profile: String) -> Double? {
+        shell?.links["safari:\(profile)"]?.connection.slow()
     }
 }
 

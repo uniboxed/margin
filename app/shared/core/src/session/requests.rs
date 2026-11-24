@@ -17,7 +17,7 @@ use serde_json::{Value, json};
 
 use super::hosting::HostTarget;
 use super::target::Target;
-use super::{Core, Field, OpenItem, SAFARI_BUNDLE, object, swift_int};
+use super::{Core, Field, OpenItem, SAFARI_BUNDLE, Until, object, swift_int};
 use crate::hosted_browser::Role;
 use crate::json::{self, Object};
 
@@ -29,6 +29,12 @@ pub const SHOW_REQUESTS: &[&str] =
 pub const OWN_APP: &str = "com.unibox.margin";
 /// Margin picked in its own palette: the official upload, played in Safari.
 pub const OWN_APP_SURPRISE: &str = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+
+/// A request's error that says its copy's link went down (the core's `Down`, Swift's `LinkError.down`) or wasn't
+/// there (`not linked`): a show still wanted is asked again once the profile links again.
+pub fn link_went_down(error: &str) -> bool {
+    error == "down" || error == "not linked"
+}
 
 /// Whose item a pin's or a favourite's open makes (the four near-copies made one).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -503,9 +509,9 @@ impl Core {
         let comes = self.ports.engine_shown().as_deref() != Some(id) || self.hosting() != Some(w) || laid_out;
         let there = self.safari_window(p, Role::Main).is_some() && self.ports.is_hosted(id);
         let target = HostTarget::Safari(p.to_string(), Role::Main);
+        let label = self.title_of(item).unwrap_or_else(|| "Safari".into());
         if comes {
-            let title = self.title_of(item);
-            self.ports.set_showing(w, Some(title.as_deref().unwrap_or("Safari")), Some(SAFARI_BUNDLE), false);
+            self.ports.set_showing(w, Some(&label), Some(SAFARI_BUNDLE), false);
             if !there && !self.host(&target, w, item).await {
                 return Go::Stop;
             }
@@ -517,11 +523,11 @@ impl Core {
         let url = if address.is_empty() { "about:blank" } else { address };
         let pinned = self.pinned_or_favorite(item);
         let payload = object(json!({ "windowId": window_id, "itemId": item, "url": url, "pinned": pinned }));
-        let shown = self.ask(p, "hostShow", payload).await;
-        let Some(result) = shown.result else {
-            self.note(format!("{item}: its tab wasn't shown ({})", shown.error.as_deref().unwrap_or("no answer")));
-            return Go::Stop;
-        };
+        // (A tab switch alone: its loader from the ask too, the page's grace keeping a quick one unseen.)
+        if !comes {
+            self.ports.set_showing(w, Some(&label), Some(SAFARI_BUNDLE), false);
+        }
+        let Some(result) = self.ask_show(w, item, p, payload, &label).await else { return Go::Stop };
         self.set_open(item, Some(OpenItem { host: id.to_string(), profile: Some(p.to_string()) }));
         if let Some(tab) = swift_int(result.get("tabId")) {
             self.set_safari_tab(item, Some(tab));
@@ -531,6 +537,80 @@ impl Core {
         }
         self.note(format!("{item}: shown in Safari window {window_id}"));
         Go::On
+    }
+
+    /// The copy's `hostShow` (docs/LINK-RESILIENCE.md §1 rules 7–10): asked with no time limit until it's answered, or
+    /// the pick is overtaken (cancelled: the queue goes on at once; a late answer does nothing), the window's loader
+    /// `slow` while the copy's link says so. Its link down meanwhile while it's still the pick: asked again once the
+    /// profile links again on a new link (only a show is: showing a tab that may be shown already is safe to repeat).
+    /// None: not shown, said.
+    async fn ask_show(&self, w: i64, item: &str, p: &str, payload: Object, label: &str) -> Option<Object> {
+        let mut epoch = self.ports.link_epoch(p);
+        loop {
+            let asked = self
+                .ask_until(
+                    p,
+                    "hostShow",
+                    payload.clone(),
+                    || self.show_overtaken(w, item).is_some(),
+                    |slow| self.ports.set_showing(w, Some(label), Some(SAFARI_BUNDLE), slow),
+                )
+                .await;
+            let shown = match asked {
+                Until::Answered(a) => a,
+                Until::Overtaken { asked } => {
+                    let why = self.show_overtaken(w, item).unwrap_or_default();
+                    self.note(if asked {
+                        format!("{item}: overtaken while its copy was asked for its tab ({why}): the request cancelled")
+                    } else {
+                        format!("{item}: overtaken before its copy was asked for its tab ({why}): not asked")
+                    });
+                    return None;
+                }
+            };
+            if let Some(result) = shown.result {
+                return Some(result);
+            }
+            let error = shown.error.unwrap_or_else(|| "no answer".into());
+            if !link_went_down(&error) {
+                self.note(format!("{item}: its tab wasn't shown ({error})"));
+                return None;
+            }
+            if let Some(why) = self.show_overtaken(w, item) {
+                self.note(format!(
+                    "{item}: its copy's link went down ({error}), and it's overtaken ({why}): not asked again"
+                ));
+                return None;
+            }
+            self.note(format!(
+                "{item}: its copy's link went down while it was asked for its tab ({error}): asked again once its profile links again"
+            ));
+            // (The waker's own wait: as long as a show waiting on the profile is wanted, `link_wanted`.)
+            let linked = self.ensure_linked_for(p, false).await;
+            if let Some(why) = self.show_overtaken(w, item) {
+                self.note(format!("{item}: overtaken while its copy's link was waited for ({why}): not asked again"));
+                return None;
+            }
+            // (Asked again only on a new link: one said linked on the same one isn't evidence it came back.)
+            let now = self.ports.link_epoch(p);
+            if !linked || now.is_none() || now == epoch {
+                self.note(format!("{item}: its tab wasn't shown ({error}: its profile's link not back)"));
+                return None;
+            }
+            epoch = now;
+        }
+    }
+
+    /// Why a show of `item` in Margin window `w` is overtaken: another item asked for there since, or the window gone
+    /// (nothing can be picked in it any more). None: still wanted.
+    fn show_overtaken(&self, w: i64, item: &str) -> Option<String> {
+        if let Some(next) = self.requested_in(w).filter(|next| next != item) {
+            return Some(format!("{next} asked for since"));
+        }
+        if self.ports.window(Some(w)).is_none() {
+            return Some(format!("Margin's window {w} closed"));
+        }
+        None
     }
 
     // ---- closing ----

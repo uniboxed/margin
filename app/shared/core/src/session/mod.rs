@@ -51,7 +51,10 @@ pub(crate) mod unicode;
 
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeSet, VecDeque};
+use std::future::Future;
+use std::pin::Pin;
 use std::rc::{Rc, Weak};
+use std::task::Poll;
 
 use serde_json::{Map, Value, json};
 
@@ -95,6 +98,9 @@ pub trait Ports {
     fn safari_profiles(&self) -> Vec<String>;
     /// The epoch of a profile's link now (`HostedLinks.linkEpoch`), None: not linked.
     fn link_epoch(&self, profile: &str) -> Option<String>;
+    /// How long a profile's copy has been slow (`Link::slow`: the age, in seconds, of its oldest request it hasn't
+    /// acked: alive but not reading), None: not slow, or not linked. Feedback only: nothing is decided by it.
+    fn link_slow(&self, profile: &str) -> Option<f64>;
     /// An installed app's name, the catalog's (`HostedSession.appName`).
     fn app_name(&self, bundle: &str) -> Option<String>;
     /// Whether an app runs at all (`HostedEngine.appRuns`), None: not known.
@@ -238,6 +244,9 @@ pub enum Command {
     /// `closeWoken` `{ profile, except, why }`. (The launch's preparation's `ensureLinked` says `prepare`: its look
     /// is `margin_session_prepare_wanted`.)
     Waker { op: String, args: Object },
+    /// An `Ask` given up (its pick overtaken): `id` is that ask's command id. Carried out like it (`HostedLinks.cancel`:
+    /// the link's `cancel`, the copy told), answered at once; the ask's own answer, if it still comes, is let go.
+    Cancel { profile: String, id: u64 },
     /// The answer to a Swift caller (an engine's ask, a Swift flow's call of one of these): its continuation resumed,
     /// and the run goes on once that caller had its turn (the next main-actor turn).
     Reply { to: u64, value: Value },
@@ -251,6 +260,7 @@ impl Command {
             Command::Ask { profile, kind, payload } => {
                 json!({ "op": "ask", "id": id, "profile": profile, "kind": kind, "payload": payload })
             }
+            Command::Cancel { profile, id: ask } => json!({ "op": "cancel", "id": id, "profile": profile, "ask": ask }),
             Command::Run { job } => json!({ "op": "run", "id": id, "job": job }),
             Command::Engine { op, args } => json!({ "op": "engine", "id": id, "name": op, "args": args }),
             Command::Waker { op, args } => json!({ "op": "waker", "id": id, "name": op, "args": args }),
@@ -274,6 +284,22 @@ impl Asked {
             error: v.get("error").and_then(Value::as_str).map(str::to_string),
         }
     }
+}
+
+/// How a request raced against its pick being overtaken ended (`Core::ask_until`).
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum Until {
+    /// The copy's answer.
+    Answered(Asked),
+    /// Overtaken first: the request cancelled, its answer let go (`asked`: false, overtaken already: never asked).
+    Overtaken { asked: bool },
+}
+
+/// What woke an `ask_until`.
+enum Woke {
+    Answer(Value),
+    Changed,
+    Look,
 }
 
 /// A library edit's outcome (`LibraryOutcome`: its `ok`, its `result`, its `error`: a refusal's words).
@@ -355,6 +381,9 @@ pub struct Options {
     pub prepares_browser: bool,
     pub startup_wait: f64,
     pub prepare_window_wait: f64,
+    /// A copy slow this long (`Ports::link_slow`) while a show waits for it: its loader says so (`slow`). Paces the
+    /// feedback only: nothing is decided by it.
+    pub slow_say: f64,
 }
 
 impl Default for Options {
@@ -373,6 +402,7 @@ impl Default for Options {
             prepares_browser: true,
             startup_wait: 15.0,
             prepare_window_wait: 30.0,
+            slow_say: 3.0,
         }
     }
 }
@@ -397,6 +427,7 @@ impl Options {
             prepares_browser: b("preparesBrowser", was.prepares_browser),
             startup_wait: n("startupWait", was.startup_wait),
             prepare_window_wait: n("prepareWindowWait", was.prepare_window_wait),
+            slow_say: n("slowSay", was.slow_say),
         }
     }
 }
@@ -1064,6 +1095,76 @@ impl Core {
     pub(crate) async fn ask(&self, profile: &str, kind: &str, payload: Object) -> Asked {
         let command = Command::Ask { profile: profile.to_string(), kind: kind.to_string(), payload };
         Asked::read(&self.exec.command(command).await)
+    }
+
+    /// A request of a profile's copy that ends on its answer, or once `overtaken` (docs/LINK-RESILIENCE.md §1 rule 7),
+    /// with no time limit of its own: the link ends it when it goes down. `overtaken` is read each time what the
+    /// session's flows read changes (`exec.changed()`, never on a look); true, the request is cancelled
+    /// (`Command::Cancel`) and its answer, if it still comes, does nothing (rule 10); true already, it isn't asked.
+    /// Meanwhile how slow the copy is (`Ports::link_slow`) is looked at `slowSay` after the ask, then once a `slowSay`
+    /// or when it would reach it, and `slow` told each change (true: slow for `slowSay` at least): feedback only,
+    /// nothing is decided by it (rule 8).
+    pub(crate) async fn ask_until(
+        &self,
+        profile: &str,
+        kind: &str,
+        payload: Object,
+        overtaken: impl Fn() -> bool,
+        slow: impl Fn(bool),
+    ) -> Until {
+        if overtaken() {
+            return Until::Overtaken { asked: false };
+        }
+        let mut answer =
+            self.exec.command(Command::Ask { profile: profile.to_string(), kind: kind.to_string(), payload });
+        let mut changed = self.exec.changed();
+        let say = self.options.borrow().slow_say;
+        let paced = say.is_finite() && say > 0.0;
+        let mut look = paced.then(|| self.sleep(say));
+        let mut said = false;
+        loop {
+            let woke = std::future::poll_fn(|cx| {
+                if let Poll::Ready(v) = Pin::new(&mut answer).poll(cx) {
+                    return Poll::Ready(Woke::Answer(v));
+                }
+                if Pin::new(&mut changed).poll(cx).is_ready() {
+                    return Poll::Ready(Woke::Changed);
+                }
+                if let Some(l) = look.as_mut()
+                    && Pin::new(l).poll(cx).is_ready()
+                {
+                    return Poll::Ready(Woke::Look);
+                }
+                Poll::Pending
+            })
+            .await;
+            match woke {
+                Woke::Answer(v) => return Until::Answered(Asked::read(&v)),
+                Woke::Changed if overtaken() => {
+                    // (Its wait let go first: an answer that comes now is no task's.)
+                    let id = answer.id();
+                    drop(answer);
+                    if let Some(id) = id {
+                        self.exec.command(Command::Cancel { profile: profile.to_string(), id }).await;
+                    }
+                    return Until::Overtaken { asked: true };
+                }
+                Woke::Changed => {}
+                Woke::Look => {
+                    let age = self.ports.link_slow(profile);
+                    let now = age.is_some_and(|a| a >= say);
+                    if now != said {
+                        said = now;
+                        slow(now);
+                    }
+                    let next = match age {
+                        Some(a) if a < say => say - a,
+                        _ => say,
+                    };
+                    look = Some(self.sleep(next));
+                }
+            }
+        }
     }
 
     /// A library edit, made now (its requests reach the session, the library's sink, before the flow goes on).

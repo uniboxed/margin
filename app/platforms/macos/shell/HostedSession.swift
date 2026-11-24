@@ -386,6 +386,23 @@ protocol HostedLinks: AnyObject {
     func restoredWindowIds(of profile: String) -> [Int]?
     // The epoch of that profile's link now (a new link: a new epoch), nil: not linked.
     func linkEpoch(of profile: String) -> String?
+    // A request the session may give up (`asked`: its command's id, session/mod.rs `Command::Ask`), else as `request`;
+    // `cancel` gives it up (the session's `Command::Cancel`, its pick overtaken): the link's `cancel`, the copy told, the
+    // request returning at once. Mechanism only: the core decides when.
+    func request(profile: String, _ type: String, _ payload: JSONObject, asked: UInt64?) async -> (result: JSONObject?, error: String?)
+    func cancel(profile: String, asked: UInt64)
+    // How long that profile's copy has been slow (the link's `slow`: its oldest request not acked, in seconds), nil: it
+    // isn't, or it's not linked. The session's feedback only.
+    func slow(of profile: String) -> Double?
+}
+
+extension HostedLinks {
+    // (A stand-in that can't give a request up: it runs to its answer, which the session lets go.)
+    func request(profile: String, _ type: String, _ payload: JSONObject, asked: UInt64?) async -> (result: JSONObject?, error: String?) {
+        await request(profile: profile, type, payload)
+    }
+    func cancel(profile: String, asked: UInt64) {}
+    func slow(of profile: String) -> Double? { nil }
 }
 
 final class HostedSession {
@@ -639,9 +656,13 @@ final class HostedSession {
         case "ask":
             let profile = c["profile"] as? String ?? "", kind = c["kind"] as? String ?? "", payload = c["payload"] as? JSONObject ?? [:]
             startNow {
-                let (result, error) = await self.links.request(profile: profile, kind, payload)
+                let (result, error) = await self.links.request(profile: profile, kind, payload, asked: id)
                 self.drive(self.core.answer(id, ["result": result ?? NSNull(), "error": error ?? NSNull()]))
             }
+        case "cancel":
+            // (An ask given up, its pick overtaken: the link's cancel. Its own answer, when it comes, is let go.)
+            if let ask = (c["ask"] as? NSNumber)?.uint64Value { links.cancel(profile: c["profile"] as? String ?? "", asked: ask) }
+            drive(core.answer(id, [:]))
         case "run":
             let body = (c["job"] as? NSNumber).flatMap { jobs.removeValue(forKey: $0.uint64Value) }
             startNow {
@@ -816,6 +837,7 @@ final class HostedSession {
         case "liveFollowers": let n = engine.liveFollowers(); return ["follow": n.follow, "visible": n.visible]
         case "swift": return ["value": swiftCall(ask["call"] as? String ?? "", ask["args"] as? JSONObject ?? [:]) ?? NSNull()]
         case "settings": return ["settings": uiSettings() ?? NSNull()]
+        case "linkSlow": return links.slow(of: ask["profile"] as? String ?? "").map { ["secs": $0] } ?? [:]
         case "idna": return ["ok": (ask["host"] as? String).map(SessionRules.idna) ?? false]
         case "urlHost": return (ask["url"] as? String).flatMap { URL(string: $0)?.host }.map { ["host": $0] } ?? [:]
         default: return [:]

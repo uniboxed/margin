@@ -32,6 +32,7 @@ enum LinkError: Error {
     case down
     case timedOut
     case notJSON
+    case cancelled // (given up by the app: `LinkConnection.cancel`)
 }
 
 // What the app says into the extension (its copies' native ports). `done`:
@@ -114,15 +115,32 @@ final class LinkConnection {
     }
 
     // A request (`req`), answered as a page's is: { ok, result } or { ok: false, error, stale? }. The core gives up
-    // after 15 s.
-    func request(type: String, payload: JSONObject, windowId: Int?) async throws -> JSONObject {
+    // after 15 s. `sent`: told its id as it's sent (what `cancel` takes).
+    func request(type: String, payload: JSONObject, windowId: Int?, sent: ((Int) -> Void)? = nil) async throws -> JSONObject {
         guard isUp, let owner else { throw LinkError.down }
         return try await withCheckedThrowingContinuation { continuation in
             switch owner.ask(self, type, payload, windowId) {
-            case .success(let id): waiting[id] = continuation
+            case .success(let id):
+                waiting[id] = continuation
+                sent?(id)
             case .failure(let error): continuation.resume(throwing: error)
             }
         }
+    }
+
+    // A request given up (the session's `Command::Cancel`): the core's link cancels it (the copy told, a later reply
+    // dropped), and its caller's wait ends now, `cancelled`. One answered already: nothing.
+    func cancel(_ id: Int) {
+        guard let continuation = waiting.removeValue(forKey: id) else { return }
+        owner?.cancel(self, id)
+        continuation.resume(throwing: LinkError.cancelled)
+    }
+
+    // How long the copy has been slow (the core's `Link::slow`: its oldest request not acked, in seconds), nil: it
+    // isn't, or the link is down.
+    func slow() -> Double? {
+        guard isUp, let owner else { return nil }
+        return owner.slow(self)
     }
 
     func close(_ code: UInt16 = 1000, _ why: String) {
@@ -449,6 +467,14 @@ final class SocketLink {
         perform(answer)
         if let id = int(answer["id"]) { return .success(id) }
         return .failure(Self.error(answer["error"] as? String))
+    }
+
+    fileprivate func cancel(_ link: LinkConnection, _ id: Int) {
+        perform(call(["type": "cancel", "conn": link.conn, "id": id]))
+    }
+
+    fileprivate func slow(_ link: LinkConnection) -> Double? {
+        num(call(["type": "slow", "conn": link.conn])?["slow"])
     }
 
     fileprivate func close(_ link: LinkConnection, _ code: UInt16, _ why: String) {

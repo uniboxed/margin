@@ -196,6 +196,24 @@ final class FakeHostedLinks: HostedLinks {
         }
     }
     func types(since: Int = 0) -> [String] { asked.dropFirst(since).map(\.type) }
+    // A copy that reads a hostShow but never answers it (docs/LINK-RESILIENCE.md §1): held until the session cancels it,
+    // `onHold` told as it's held; what was cancelled, by the ask's command id.
+    var holdShows = false
+    var onHold: (() -> Void)?
+    private(set) var cancelled: [UInt64] = []
+    private var held: [UInt64: CheckedContinuation<(result: JSONObject?, error: String?), Never>] = [:]
+    func request(profile: String, _ type: String, _ payload: JSONObject, asked: UInt64?) async -> (result: JSONObject?, error: String?) {
+        guard holdShows, type == "hostShow", let asked else { return await request(profile: profile, type, payload) }
+        self.asked.append((profile, type, payload))
+        return await withCheckedContinuation { k in
+            held[asked] = k
+            onHold?()
+        }
+    }
+    func cancel(profile: String, asked: UInt64) {
+        cancelled.append(asked)
+        held.removeValue(forKey: asked)?.resume(returning: (nil, "cancelled"))
+    }
 }
 
 // An engine that only says which app Margin started (the restored-window sweep's one question).
@@ -855,6 +873,22 @@ func hostedTests() {
         run { session.navigate("goForward", windowId: 1) }
         links.refuse = []
         check("hosted: its tab not found (hostShow refused): nothing else asked", links.types(since: mark3) == ["hostShow"], "\(links.types(since: mark3))")
+    }
+
+    // ---- a tab switch its copy never answers (docs/LINK-RESILIENCE.md §1): the app picked meanwhile shown at once,
+    // the switch's request cancelled through the link (the facade carrying out the core's `cancel`) ----
+    do {
+        links.holdShows = true
+        links.onHold = { DispatchQueue.main.async { _ = library.perform("activateTab", ["windowId": 1, "tabId": editItem]) } }
+        let mark = links.asked.count
+        run { _ = library.perform("activateTab", ["windowId": 1, "tabId": bItem]) }
+        links.holdShows = false
+        links.onHold = nil
+        check("hosted: a tab switch never answered: the app picked meanwhile shown, the switch's request cancelled (one cancel, the copy's)",
+              links.types(since: mark) == ["hostShow"] && links.cancelled.count == 1 && session.shown[1] == editItem && engine.shown == HostTarget.app("com.apple.TextEdit").id
+              && session.done.contains { $0.hasPrefix("\(bItem): overtaken while its copy was asked for its tab") } && !session.done.contains { $0.contains("wasn't shown") },
+              "\(links.types(since: mark)) \(links.cancelled) \(session.done.suffix(3))")
+        run { _ = library.perform("activateTab", ["windowId": 1, "tabId": aItem]) }
     }
 
     // ---- what the UI draws ----
@@ -1629,9 +1663,9 @@ func hostedResumeTests() {
 }
 
 // Margin's window in front of what it hosts, the session's side (DECISIONS.md, 2026-11-17): what Margin's window is
-// told as an item is shown (not ready until its tab is in front too; a tab switch in the window shown says nothing);
-// a placing again that fails never drops the item (shown again once after a pause, behind the loader; failing that
-// too, the launcher with the item kept and its window still hosted, out of sight); a field of Margin's letting go of
+// told as an item is shown (not ready until its tab is in front too; a tab switch in the window shown: its item while
+// its copy is asked); a placing again that fails never drops the item (shown again once after a pause, behind the
+// loader; failing that too, the launcher with the item kept and its window still hosted, out of sight); a field of Margin's letting go of
 // the keys gives them back to the app shown; another app's window in Margin's Space told to Margin's window.
 func hostedFrontTests() {
     let root = tempFolder("hosted-front")
@@ -1683,9 +1717,13 @@ func hostedFrontTests() {
     check("front: a web item's first show: Margin's window told it's being shown, with its title, until its tab is in front too; then nothing pending", window.showings == ["Example", nil] && window.hosted == mine
           && window.loading == nil, "\(window.showings)")
     check("front: … the loader's icon Safari's", window.showingApps.suffix(2) == ["com.apple.Safari", nil], "\(window.showingApps)")
-    let showings = window.showings.count
+    let showings = window.showings.count, slowShowings = window.slowShowings.count
     run { _ = library.perform("newTab", ["windowId": 1, "url": "https://second.example/", "title": "Second"]) }
-    check("front: a second web item of the profile (a tab switch in the window shown: Safari's own, in sight): nothing said to Margin's window, no loader", window.showings.count == showings && engine.shown == safari)
+    // (docs/LINK-RESILIENCE.md §1 rule 8, 2026-11-24: until then nothing was said for a tab switch, and one its copy was
+    // slow to make showed nothing of the pick.)
+    check("front: a second web item of the profile (a tab switch in the window shown): Margin's window told it while its copy is asked, not as slow (the page's grace keeps a quick one unseen), then nothing pending",
+          Array(window.showings.dropFirst(showings)) == ["Second", nil] && window.slowShowings.count == slowShowings && window.showing == nil && engine.shown == safari,
+          "\(window.showings.dropFirst(showings))")
     run { _ = library.perform("activateTab", ["windowId": 1, "tabId": item]) }
 
     // ---- from an app back to the web item: its tab in front while its window is still parked, then the window in ----
