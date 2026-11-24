@@ -674,8 +674,8 @@ pub(crate) struct Core {
     /// Hosts asked for (`host`, any window's), counted: a show that waited for its copy outside the queue reads
     /// whether another window's show took the engine meanwhile.
     hosts_asked: Cell<u64>,
-    /// Margin quits (`Input::Quitting`).
-    quitting: Cell<bool>,
+    /// When Margin began to quit (`Input::Quitting`), on the caller's clock.
+    quit_at: Cell<Option<f64>>,
 }
 
 /// The session: one per app. Every entry takes `&self` (re-entrant).
@@ -708,7 +708,7 @@ impl Session {
             following: Cell::new(false),
             placing: Cell::new(false),
             hosts_asked: Cell::new(0),
-            quitting: Cell::new(false),
+            quit_at: Cell::new(None),
         }))
     }
 
@@ -1043,7 +1043,10 @@ impl Core {
             }
             Input::Linked { profile: _ } => self.exec.notify(),
             Input::Quitting => {
-                self.quitting.set(true);
+                // (Every wait judged again at once: `ask_held`'s. And at each link event after it: `Linked`.)
+                if self.quit_at.get().is_none() {
+                    self.quit_at.set(Some(self.ports.now()));
+                }
                 self.exec.notify();
             }
         }
@@ -1179,14 +1182,6 @@ impl Core {
                     return Until::Overtaken { asked: true };
                 }
                 Woke::Changed => {}
-                Woke::Look if overtaken() => {
-                    let id = answer.id();
-                    drop(answer);
-                    if let Some(id) = id {
-                        self.exec.command(Command::Cancel { profile: profile.to_string(), id }).await;
-                    }
-                    return Until::Overtaken { asked: true };
-                }
                 Woke::Look => {
                     let age = self.ports.link_slow(profile);
                     let now = age.is_some_and(|a| a >= say);
@@ -1225,8 +1220,9 @@ impl Core {
     }
 
     /// A copy's request an engine operation waits for (a window made, put in full screen, brought in front, closed):
-    /// given up (cancelled, a `given up` error) once it's no longer `wanted`, or once Margin quits and its copy isn't
-    /// reading it (the link's `slow`: not acked), looked at when what the flows read changes and at the feedback's pace.
+    /// given up (cancelled, a `given up` error) once it's no longer `wanted`, or once Margin quits with its copy not
+    /// reading (`unread_at_quit`). Judged when what the flows read changes: a pick, Margin's quit, each of the link's
+    /// events (`Linked`: an ack, a tock, the link down); never on a timer (the feedback's pace only paces words).
     pub(crate) async fn ask_held(
         &self,
         profile: &str,
@@ -1234,7 +1230,7 @@ impl Core {
         payload: Object,
         wanted: impl Fn() -> bool,
     ) -> Asked {
-        let gone = || !wanted() || (self.quitting.get() && self.ports.link_slow(profile).is_some());
+        let gone = || !wanted() || self.unread_at_quit(profile);
         match self.ask_until(profile, kind, payload, gone, |_| {}).await {
             Until::Answered(a) => a,
             Until::Overtaken { .. } => {
@@ -1253,6 +1249,15 @@ impl Core {
     pub(crate) async fn engine(&self, op: &str, args: Value) -> Value {
         let command = Command::Engine { op: op.to_string(), args: object(args) };
         self.exec.command(command).await
+    }
+
+    /// Margin quits and the profile's copy hasn't read what it was sent before the quit (the link's `slow`: its oldest
+    /// request not acked, sent no later than the quit): evidence it isn't reading. A request sent since, not acked yet,
+    /// isn't that alone (its copy may be reading it now).
+    fn unread_at_quit(&self, profile: &str) -> bool {
+        let Some(at) = self.quit_at.get() else { return false };
+        let since = self.ports.now() - at;
+        self.ports.link_slow(profile).is_some_and(|age| age >= since)
     }
 
     /// The Safari waker's operation handed out now and waited for by nothing (`closeWoken`: its own closes end on their

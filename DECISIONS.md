@@ -9715,8 +9715,11 @@ Both parts merged (`fix/link-resilience-link` into the session's part): one canc
   - `newWindow` (hosting.rs, under the engine's open), `setWindowState`, `hostFocusWindow`: raced against
     `link_wanted` (another item picked: cancelled, "given up"), and at Margin's quit against the copy not reading it;
   - `closeWindow` (hosting.rs, the engine's, at quit too): raced at Margin's quit (`quitting` input, from the shell's
-    `stopHost`) against its copy not reading it (the link's `slow`: not acked), looked at with the feedback's pace; the
-    engine keeps a window not confirmed closed in its marker, closed later;
+    `stopHost`) against its copy not reading what it was sent before the quit (the link's `slow`: its oldest unacked
+    request no younger than the quit), judged as the input comes and at each read of its link after it (the shell's
+    `linkHeard` while it quits, as `linked`: an ack, a tock; the link down), never on a timer: `slowSay` paces the
+    words only. A request sent since the quit and not acked yet isn't unread by that alone. The engine keeps a window
+    not confirmed closed in its marker, closed later;
   - `hostShow` of a layout's pane (layouts.rs `show_tab`): raced against another item (none of the layout's) asked for
     in its window, and at quit;
   - `hostPicture`: raced against `pictureWait` (as before); `peekAnswer`, the card's history: detached tasks, nothing
