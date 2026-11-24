@@ -9532,3 +9532,236 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   results and breaks, what's open), the order table's rows 7, 7a and 8 done.
 - Not run here: the screen suite, an install, `npm run gate` (Tirth's). `tools/app-tests/run.sh all`,
   `scripts/rust-test.sh`, `npm test` and the quick tests green.
+
+## Link resilience, part 1: a request ends on evidence, the copy acks and dedupes, its waits advanced by events (2026-11-24)
+
+- **The rule** (docs/LINK-RESILIENCE.md §1 rules 1–6 and 11–14, §2 rules 5–7; Tirth approved the design with its
+  defaults, "please work on this properly. make no mistakes"): a request to a copy has no time of its own. It ends on
+  its reply, the link going down (closed, replaced, or the 40 s silence rule: `Down`), the session's cancel (no answer
+  at all), or lost (`Lost`). The rules are margin-core's and the extension's; Swift lost its duplicate 15 s and gained no
+  rule. Part 2 (the session: `ask_until`, `Command::Cancel`, the loader's progress, the start-up's gate) is
+  fix/link-resilience-session's.
+- **margin-core** (`link.rs`): `Timing.request` and `LinkError::TimedOut` gone, `LinkError::Lost` new. Each waiting
+  request keeps its kind, when it was sent, the last tick's number sent before it, whether it's acked, whether it was
+  sent again, and its text. Ticks are numbered per link (`tick { seq }` from 1). `ack { id }` marks it taken; a
+  numbered `tock` later than its tick with no ack: sent once more with the same id (logged), lost the second time
+  (logged, `Answer Err(Lost)`). A tock without a number (an older copy, the copy's own probe after a pause) is life only.
+  `Link::cancel(conn, id) -> Option<Action>` (the `cancel { id }` to send; none: nothing waited for it), and
+  `Link::slow(conn, now) -> Option<Secs>` (the oldest unacked request's age; `now` added: the core is sans-IO), passed
+  through `SocketLink`, `LinkHub` and margin-ffi's `cancel` (answers `cancelled`) and `slow` (answers `slow`). Alive
+  (any bytes) still feeds only the 40 s rule; nothing new decides from it. `next_deadline` has no requests in it now.
+- **Protocol** (`protocol.rs`): `AppMessage::Tick { seq }`, `AppMessage::Cancel { id }`, `LinkMessage::Ack { id }`,
+  `LinkMessage::Tock { seq: Option<i64> }` (a `seq` that isn't a whole number: none). Backward compatible both ways: an
+  older copy leaves `cancel` and the tick's `seq` (unknown kinds and fields), and its requests are answered as before; an
+  older app's tick has no `seq`, so the copy's tock has none, and it ignores `ack`. No version bump (design risk 4).
+- **Relays** (`relay.rs`): unchanged. They only find the app (their header: "nothing of the link goes through them");
+  Chrome's and Edge's links are WebSockets on the same `Link`, so the same rules hold there with nothing to add.
+- **Swift** (`ExtensionLink.swift`): `SocketLink.Timing.request` and its `timing.request` to the core deleted.
+  `LinkError` is `down`, `lost`, `cancelled` (this side's own call ended by `cancel`) and `notJSON`. Mechanism only, for
+  part 2's glue: `LinkConnection.request(…, asked:)` says the id as it's sent, `cancel(id)` (the core's cancel; the call
+  ends `cancelled`), `slow` (the core's `slow`). The Windows shell (`shell/mod.rs`) only names `Lost` (it has no timing
+  of its own).
+- **The extension** (`background/link.ts`): each `req` acked as it's read, before anything runs (even one refused). The
+  epoch's last 64 ids: one running or held is left (its reply comes), one answered gets its reply again, unless it was
+  over 64 KB (a picture's): then `ok: false`, "answered before; that answer is no longer kept" (64 kept pictures could be
+  64 MB). Another epoch's `req` is refused and not remembered. `cancel { id }`: held, dropped; running, its `stopped()`
+  says stop; neither answered. The newest `hostShow` per window wins: `sender.stopped()` (not enumerable: the sender
+  keeps a page's shape) is true once a newer show for its window starts, and `hosted.ts show` checks it before each
+  Safari call, throwing `overtaken` (answered `ok: false, error: 'overtaken'`: the app's request must end on evidence,
+  and a show the copy stops says so unless the app cancelled it). After a detected pause the `req`s read are held one
+  turn (`setTimeout 0`, as the judge), then of several shows for one window only the newest runs, the older answered
+  `overtaken`. The pause is seen by the link check or by the app's first message after it, whichever runs first (the
+  late timer and the socket's queued messages come in either order); the same note and probe as before.
+- **The extension's waits** (`after`/`due` in link.ts): the ask's pacing, the reconnect's, the handler's answer, the
+  app's `link` and the welcome each have a due time, run by their timer or by `due()`: the windows and tabs events (focus,
+  created, closed, bounds, a tab shown, `tabs.onUpdated`), a page's `runtime.onMessage` (background.ts) and every
+  native port message. `due()` runs a microtask after the event, so a `link` that came on the port ends its wait first.
+  A wait that judges and ran over 1.5× late is armed again for its whole time from then (logged), so a welcome or an
+  answer that came during the pause is seen first; only one on time gives up. Rule 7 read as: a try in which a judging
+  wait ran late isn't counted in the doubling (`askMs` kept, not doubled). Waits aren't dropped at `stop` (a `within`
+  left unsettled would hold its try for good), as the timers before them weren't.
+- **What follows from no time-out** (design risk 1's default): every `request` (the waker's `closeWindow`s, the themes'
+  `updateSettings`, the Windows shell's switch requests, which keep their own time-outs) waits until evidence; a copy
+  that keeps reading but never answers one is only logged, never given up on.
+- **Tests, each written failing first** (evidence: the same tests against 6919c854 in a copy of the tree):
+  - core `link.rs`: alive but not reading, still waiting at 15, 60 and 600 s (was `TimedOut` at 16); `Down` on 40 s of
+    silence and nothing before it (was `TimedOut`); an older copy's tocks life only (was `TimedOut`); cancel (no answer,
+    `cancel { id }` sent, a later reply left, once); read past, sent again with its id, then `Lost`; an acked request
+    through later tocks; `slow`; each link's ticks numbered (the last five didn't build: no `cancel`, `slow`, `Lost`,
+    `seq`). `link_hub.rs`: no time-out, `slow`, the ack, `cancel`'s frame and its late reply left (was `TimedOut` at 18).
+    margin-ffi: `slow` and `cancel` calls (answered null: no such call). `protocol.rs`: ack, cancel, the numbered tick
+    and tock, and the shared vectors (didn't build).
+  - shared vectors `tests/fixtures/link-protocol.json`, read by protocol.rs, the Mac's unit checks (tests.swift, through
+    the core; `MARGIN_LINK_VECTORS` in run.sh) and tests/link.test.ts (the copy's answers: failed, no `seq`, no `ack`).
+    There were no protocol vectors before; this is the first such file, as `hosted-browser.json` is for the hosted checks.
+  - tests/link.test.ts: acked before its handler resolves and a repeated id run once (no ack); cancel before start and
+    under way; two shows for one window, only the newer reaching the tabs API (both did); after a pause only the newer
+    show of a window; an extension event running the due ask (only at the timer); a late welcome wait not giving up (gave
+    up). All six failed on today's link.ts.
+  - app e2e (`e2e-link.swift`, `MARGIN_E2E_ONLY=link`) over fake-extension.mts's new `stall { ms }` (each message held
+    `ms` after it's read, in order, the host's window reports still going at once; acks and tocks late with the rest;
+    `drained` once caught up) and `lose { n }` modes, the fake now a current copy (acks, dedupes, echoes `seq`, honours
+    `cancel`): a 7 s stall waited for and answered after it (was `timedOut` at the suite's 5 s); read past once, sent
+    again and answered; twice, `lost` (both `timedOut`); slow and cancel (didn't build); the silence rule `down` (passes
+    on both: kept behaviour). The design's other e2e checks (an app picked meanwhile shown at once, the show after the
+    reconnect, no start screen for an app) are the session's (part 2), with this `stall` mode.
+- Not run here: the screen suite, an install, `npm run gate`. `scripts/rust-test.sh` and `npm run test:quick -- --base
+  fix/link-resilience` green; `tools/app-tests/run.sh all` green (2154 unit checks; e2e 328 of 329, the one a timing
+  check under load, "glue: back to the app … under the loader's 120 ms grace" at 148 ms, which passed run alone twice,
+  47 and 49 ms: no link request is in that switch).
+
+## Link resilience, the session's part: a show waits for a slow copy without holding anything up (2026-11-24)
+
+docs/LINK-RESILIENCE.md §1 rules 7–10, Tirth's defaults ("please work on this properly. make no mistakes"): `slowSay`
+3 s and feedback only; a request whose copy reads but never answers keeps waiting (logged, any other pick moves on).
+The link's part (acks, no fixed timeout, `Link::cancel`, `Link::slow`, `Down`/`Lost`) is on `fix/link-resilience-link`;
+this part codes against those names.
+
+- **`ask_until`** (session/mod.rs, beside `ask`): a copy's request raced against its pick being overtaken, with no time
+  limit of its own. The predicate is read only when what the flows read changes (`exec.changed()`: the start screen's
+  state and the windows' items asked for), never on a look. Overtaken: its wait let go first (an answer that comes now
+  is no task's: rule 10), then `Command::Cancel { profile, id }` (the ask's command id), awaited like any command, and
+  the flow stops. Overtaken already: not asked. Both the answer and a pick before the task's poll: the answer wins.
+- **`Command::Cancel`** carried out by the Swift facade (HostedSession `start`, `"cancel"`, answered at once) as
+  `HostedLinks.cancel(profile:asked:)`: ShellHostedLinks keeps each ask's link and request id by the command's id
+  (`LinkConnection.request(…, sent:)`), and `LinkConnection.cancel` ends the Swift wait (`LinkError.cancelled`) and asks
+  the core's link to cancel (`margin_link_call` `{ type: "cancel", conn, id }`). Mechanism only; the stand-in links
+  can't give a request up (the protocol's default), and the session lets their answer go.
+- **`show_web`** (requests.rs, `ask_show`): its `hostShow` through `ask_until`, overtaken by another item asked for in
+  its window or by the window gone (nothing can be picked in a closed window: without it, the queue would wait for a
+  copy that never answers). Logged "overtaken … the request cancelled", never "wasn't shown".
+- **The loader while it waits** (rule 8): set at once for a tab switch too (`set_showing(w, title, Safari, false)`), as
+  a switch-in already set it; the page's grace keeps a quick switch unseen, so nothing changes on a quiet Mac. The
+  copy's slowness is read through a new port, `Ports::link_slow` (JSON `linkSlow` → `HostedLinks.slow(of:)` →
+  `LinkConnection.slow` → `margin_link_call` `{ type: "slow", conn }` → `{ slow: secs }`), `slowSay` after the ask, then
+  each `slowSay` or when it would reach it; `slow` told on each change, both ways. A pace, never a decision.
+- **A show whose link went down** (rule 9: `down`, or `not linked` at the ask): still the pick, its profile linked
+  again through the waker (`ensure_linked_for`, its own wait `link_wanted`), then asked again, only on a new link (a new
+  epoch: "linked" on the same link isn't evidence it came back, and a `Lost` that Swift still maps to `down` can't
+  loop). Overtaken meanwhile: not asked again, said. Only `hostShow` is asked again.
+- **Tests, each failing first** (requests_tests.rs, on the stand-in ports; `pump_holding` keeps commands unanswered):
+  a `hostShow` never answered holds no pick up (an app picked after it: `cancel`, then shown; its late answer changes
+  nothing); one for a window closed is cancelled; the loader at the ask, `slow` once the link says slow for 3 s (looks
+  at 3, 6, 7 s), back when it doesn't; down or not linked and back on a new epoch: asked again and shown; the same epoch:
+  not, said; another error: as before; overtaken while its link is waited for: not asked again. Swift
+  (hosted-tests.swift): the facade carries the core's cancel out (a held `hostShow`, an app picked: one cancel, the app
+  shown; caught with the `"cancel"` case removed); the front tests' "a tab switch says nothing to Margin's window" is
+  now "says its item while its copy is asked, not as slow" (rule 8 replaces it).
+- **Not here**: the link's FFI arms (`cancel`, `slow` in app/platforms/macos/ffi/src/link.rs) need the link's
+  `cancel`/`slow`: until they land, a cancel ends the Swift wait and the core's link answers it as a call it doesn't
+  know (one warning a cancel), and `slow` is never reported. The page draws `slow` only as "no grace" (page/mod.rs
+  `set_showing` ignores a change of `slow` alone): words for "Safari is slow" are a UI piece of their own. A pick in
+  another Margin window still waits behind a show its copy never answers (overtaken is per window, as the design says).
+
+## Link resilience: the start waits only for what the first item shown needs (2026-11-24)
+
+docs/LINK-RESILIENCE.md §2 rules 1–4, Tirth's default: when the first item is an app, there's no start gate.
+
+- **The gate** (start.rs `resume_last`): only for a web item shown last, on its profile's preparation. An app, Margin's
+  own page or no item (the launcher; MarginResumeLast NO is no item): no start screen, shown at once, the browser's
+  preparation running out of sight with nothing waiting for it (it gives itself up once something's shown, as it did
+  when the person picked first).
+- **The profile prepared** (`prepare_browser`): the last item's own when it's a web item (`resolve` of its target's
+  profile, the one its show resolves), else the space's as before; the window made ready is the one the first show
+  uses. Other profiles link on first use (`show_web` → `host` → `ensure_linked_for`, unchanged).
+- **"Held up" stays feedback**: `hold_startup` unchanged; it ends the moment the preparation is over, whenever that is.
+- **Tests, each failing first** (start_tests.rs): an app last: no start screen, shown with the preparation not begun; no
+  item, or Settings: no start screen; a web item of s-p in a space of s-q: s-p woken for and made ready, not s-q. The
+  start screen's own tests now use a web item last (an app no longer gets one). Swift (hosted-tests.swift): Settings and
+  an app last with the browser not ready: no "Getting you started"; the held-up, Try again, Continue without Safari and
+  lifts-by-itself checks with a web item last; MarginResumeLast NO: the launcher at once; the extension that never
+  links: with a web item last (stored for the check, removed after).
+
+## Link resilience: the waker's quit check pinned before it counts windows (2026-11-24)
+
+docs/LINK-RESILIENCE.md §3: 94bd90ab's fix, pinned by a unit check (hosted-tests.swift `safariWakeTests`): a quit
+begun between two looks, and no count of the woken windows once it's begun (the stand-in engine counts them while
+quitting), one press only. Caught by counting before the check (`_ = engine.wokenWindows(…)` above it).
+
+## Link resilience joined: nothing waits behind a slow copy, "Safari is slow…", relinks on evidence (2026-11-24)
+
+Both parts merged (`fix/link-resilience-link` into the session's part): one cancel path (the link's
+`LinkConnection.cancel`, the core's `Link::cancel` behind margin_link_call `cancel`), one slow read (`Link::slow`,
+`slow`); the session's own stand-ins for them gone (HostedLinks' defaults: FakeHostedLinks implements them).
+
+- **A show waiting for its copy holds no other window's pick** (requests.rs `ask_show`, exec.rs `leave_turn`,
+  `rejoin`): once `hostShow` is asked, the show gives the serial queue's turn up; the answer taken, it waits for its
+  turn again (behind what was queued meanwhile) and looks again before doing anything with it: overtaken in its window,
+  its window closed, or its item closed since: nothing more; another window's show took the engine meanwhile (`host`
+  was asked since and its window doesn't host now): the later pick keeps it, this window keeps the item as its card
+  (`show_elsewhere`), its tab recorded. Ordering holds because nothing of the engine's is under way while it's out (it
+  asks only from in turn, and does nothing after the answer until in turn), a pick in its own window cancels it first
+  (its `cancel` goes before the newer `hostShow` on the same socket), and the after-steps of a superseded web show leave
+  the newer show's loader and host marker alone.
+- **A relink without Safari's menu** (requests.rs `relinked`): a show whose link went down while its Safari window is
+  still hosted waits for its copy's next link (a new epoch) on the links' own events (a new input, `linked`, from the
+  shell's `linkUp`/`linkDown`), while the pick is wanted; only with no window left is the waker asked (its own rules).
+- **"Safari is slow…"**: the session tells the window `setCopySlow` (a new port, JSON) beside `setShowing(…, slow)`;
+  the core Page keeps it (`copy_slow`, cleared with the item; a change of `slow` alone is now a change too, ending the
+  grace), its `pageState` push and hello say `slow`/`pageSlow`; ui/host-app.ts reads it (only while `loading`, never at
+  Margin's start), ui/runtime.ts draws Margin's own `<m-page-slow>` over the page's place with the words, BASE_CSS, the
+  same in every theme (a theme may restyle it). Theme tests in both engines for the five themes.
+- **The preparation when an app shows first** (start.rs): still wanted (`prepare_wanted`: the item shown first with
+  no start screen counts as nothing picked), so Safari starts and the needed profile links out of sight; its window is
+  kept (`later`) and made ready the first time nothing is shown in Margin's window (`settle_hosting`), since the
+  engine makes one out of sight only then (its `prepare` refuses while something is shown: making one while an app is
+  shown needs the engine's own change and a screen check, not done here).
+- **Every request to a copy, now that none times out** (each ends on its reply, the link down, or lost, and):
+  - `hostShow` of a show (`show_web`): raced against the pick (cancelled), out of the queue (above);
+  - `hostShow` + `goBack`/`goForward`/`reload` (navigate.rs): the show out of the queue (`ask_aside`), the history's
+    own told (`tell`: handed out in order, waited for by nothing);
+  - `hostMute`, `hostMedia` (requests.rs), `hostPromotePeek` (card.rs Expand): out of the queue (`ask_aside`);
+  - `hostClose` (close), `hostNavigate` (a pin's or favourite's reset), `hostCardClose` (card.rs): told;
+  - `newWindow` (hosting.rs, under the engine's open), `setWindowState`, `hostFocusWindow`: raced against
+    `link_wanted` (another item picked: cancelled, "given up"), and at Margin's quit against the copy not reading it;
+  - `closeWindow` (hosting.rs, the engine's, at quit too): raced at Margin's quit (`quitting` input, from the shell's
+    `stopHost`) against its copy not reading what it was sent before the quit (the link's `slow`: its oldest unacked
+    request no younger than the quit), judged as the input comes and at each read of its link after it (the shell's
+    `linkHeard` while it quits, as `linked`: an ack, a tock; the link down), never on a timer: `slowSay` paces the
+    words only. A request sent since the quit and not acked yet isn't unread by that alone. And, as the engine's own
+    quit decides (`quitWait`, sent to the session with its options: `quitWait`, never copied), no request an engine
+    operation waits for outlasts `quitWait` after the quit began (`ask_until`'s `limit`): given up, said ("at quit:
+    closeWindow for <profile> unanswered after quitWait (6.0 s): left in the marker"), cancelled. The engine keeps a
+    window not confirmed closed in its marker (`leftSafariWindows`), closed by its poll or the next launch. Tested
+    failing first: a copy that acks and never answers holds the quit `quitWait` and no longer (requests_tests.rs), and
+    e2e-resilience.swift's quit with the copy stalled ends within `quitWait`, the window kept in the marker (it waited
+    for the link's 40 s before);
+  - `hostShow` of a layout's pane (layouts.rs `show_tab`): raced against another item (none of the layout's) asked for
+    in its window, and at quit;
+  - `hostPicture`: raced against `pictureWait` (as before); `peekAnswer`, the card's history: detached tasks, nothing
+    waits; the waker's `closeWoken` is now handed out and waited for by nothing (`waker_tell`), its own closes ending on
+    their links;
+  - Swift's own: SafariWaker's sweep `closeWindow`s and the themes' `updateSettings`/`userThemes` run in tasks nothing
+    waits for.
+- **Tests, each failing first**: requests_tests.rs (a pick in another window shown at once while a show waits, the
+  later pick keeping the engine; a relink on the next link with no waker while the window's there, the waker when it's
+  gone; the callers above holding nothing: a close, a mute, a `newWindow` given up when overtaken, a `closeWindow`
+  given up at quit when unread), start_tests.rs (an app first: the preparation wanted, its window kept and made once
+  nothing is shown), page/tests.rs (`copy_slow`, `slow` alone a change), tests/ui-host-app.test.ts (`pageSlow`),
+  tests/theme/page-state.test.ts ("Safari is slow…" in each theme, both engines), hosted-tests.swift (the prepared
+  check: kept, not given up). The app's end-to-end run, e2e-resilience.swift (MARGIN_E2E_ONLY=resilience): over the
+  fake copy's `stall`, a tab switch's loader, "Safari is slow…" after 3 s, an app picked at once and the switch
+  cancelled before the copy ran it, a show landing after its link closed and came back with no menu press, a pick in a
+  second window at once and the first keeping its card; its last three checks failed on the code before this, the first
+  ones need both parts.
+- **Not here**: the e2e for the preparation and for no start screen with an app last (the e2e world has no early full
+  screen, so no preparation can run there at all: the core's and the unit checks pin them); the engine preparing a
+  window out of sight while an app is shown.
+
+## The WebKit host's `undrawn`: a race in the harness, not a regression (2026-11-24)
+
+- **Seen**: on fix/link-resilience-int the gate's `undrawn` failed 4 checks: `PASS A: linked` 2 ms after the copy's
+  hello, `appDrawn false` then `drawn kept: no copy linked`, the snapshot 2 ms later. The link server knows a copy's
+  window only from its first snapshot (link-server/main.swift `firstWindow`), and the scenario's `linked('A')` passes on
+  the page's `appLink` state, which the copy writes as it says hello (`linked()` → `setPageState('linked')`), a few ms
+  before its snapshot is read and sent (`snapshot()` reads storage and the windows first). That order is unchanged
+  since before link resilience.
+- **Measured**: the same scenario at 6919c854 (fix/waker-quit plus the design's doc only) failed 1 run in 10, and once
+  more passed with the check seeing `linked` before the snapshot; at 0e3fae3a 1 in 6. The check polls every 100 ms: it
+  fails when a poll lands in the 2–4 ms between hello and snapshot.
+- **Fix (the harness only, no change to Margin)**: a `drawn` asked while a copy is linked but its first snapshot hasn't
+  come is held ("drawn held: the copy's first snapshot not here yet") and sent as that snapshot names the window. 20 runs:
+  none failed, the hold taken in 5. Moving the copy's `linked` after its snapshot was not done: it would change what
+  pages see, which the link resilience design doesn't ask for.
+- `npm run test:webkit` (41 scenarios), `npm test` (1112), `tools/app-tests/run.sh all` (2156 unit, 339 e2e) and
+  `scripts/rust-test.sh` green.

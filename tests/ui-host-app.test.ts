@@ -808,6 +808,29 @@ test("the app host in Margin's own window: the opening item's app (its bundle id
   assert.equal(idle.pageOpeningBundleId, null, '… only while loading');
 });
 
+test("the app host in Margin's own window: the browser's copy slow (`slow` while `loading`): said, drawn again; never at the start or otherwise", () => {
+  // (docs/LINK-RESILIENCE.md §1 rule 8.)
+  const b = bridge();
+  const host = createAppHost({ hello: hello({ host: 'app-window', mode: 'fullscreen', pageHosted: true, pageState: 'loading', pageOpening: 'Docs', pageSlow: true }), post: b.post });
+  assert.equal(host.pageSlow, true, 'from the hello (a page loaded while it waits)');
+  let changes = 0;
+  host.onState(() => { changes += 1; });
+  host.receive({ type: 'pageState', state: 'loading', label: 'Docs', bundleId: 'com.apple.Safari' });
+  assert.equal(host.pageSlow, false);
+  assert.equal(changes, 1, 'drawn again: no longer slow');
+  host.receive({ type: 'pageState', state: 'loading', label: 'Docs', bundleId: 'com.apple.Safari', slow: true });
+  assert.equal(host.pageSlow, true);
+  assert.equal(changes, 2, 'drawn again: slow alone changed');
+  host.receive({ type: 'pageState', state: 'loading', label: 'Docs', bundleId: 'com.apple.Safari', slow: true });
+  assert.equal(changes, 2, 'the same: nothing');
+  host.receive({ type: 'pageState', state: 'shown', slow: true });
+  assert.equal(host.pageSlow, false, 'shown: never slow');
+  host.receive({ type: 'pageState', state: 'loading', label: 'Getting you started', starting: true, slow: true });
+  assert.equal(host.pageSlow, false, "Margin's start: never the copy's slowness");
+  host.receive({ type: 'pageState', state: 'loading', label: 'Docs', slow: 'yes' });
+  assert.equal(host.pageSlow, false, 'only a true');
+});
+
 test("the app host in Margin's own window: the start screen held up (`stuck` with `starting`), its two choices the app's to run; nothing held up otherwise", async () => {
   const b = bridge();
   const host = createAppHost({ hello: hello({ host: 'app-window', pageState: 'loading', pageOpening: 'Getting you started', pageStarting: true, pageStuck: 'Safari is taking longer than usual to start.' }), post: b.post });

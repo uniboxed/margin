@@ -67,6 +67,45 @@ fn the_states_and_the_grace() {
 }
 
 #[test]
+fn the_copy_slow_and_slow_alone_are_new_states() {
+    // (docs/LINK-RESILIENCE.md §1 rule 8: the loader while a show waits for a slow copy.)
+    let mut p = hosting();
+    p.set_hosted(Some(42));
+    p.set_showing(None, None, false);
+    p.settle(1.0);
+    assert!(!p.set_copy_slow(true), "nothing being shown: not slow");
+    // A quick tab switch: the grace, the hole as it was.
+    assert!(p.set_showing(Some("Docs"), Some("com.apple.Safari"), false));
+    assert_eq!(p.settle(2.0), Settled::Grace { hole_again: true });
+    // Its copy slow: new, the grace over at once, the loader, saying so.
+    assert!(p.set_copy_slow(true));
+    assert!(!p.set_copy_slow(true), "the same: nothing new");
+    assert_eq!(p.settle(2.05), Settled::Applied(Applied { changed: true, shown: false }));
+    assert!(p.copy_slow() && p.state() == PageState::Loading);
+    // Reading again: no longer said; the item shown: gone with it.
+    assert!(p.set_copy_slow(false));
+    assert!(!p.copy_slow());
+    p.set_copy_slow(true);
+    assert!(p.set_showing(Some("Other"), Some("com.apple.Safari"), false));
+    assert!(!p.copy_slow(), "another item: the slowness said for the one before goes");
+    p.set_copy_slow(true);
+    p.set_showing(None, None, false);
+    p.settle(3.0);
+    assert!(!p.copy_slow() && p.state() == PageState::Shown);
+    // `slow` alone changed for the same item: a change (known slow now: no grace).
+    assert!(p.set_showing(Some("Docs"), Some("com.apple.Safari"), false));
+    assert!(p.set_showing(Some("Docs"), Some("com.apple.Safari"), true), "slow alone: new");
+    assert!(!p.set_showing(Some("Docs"), Some("com.apple.Safari"), true));
+    assert!(matches!(p.settle(4.0), Settled::Applied(_)), "no grace once it's known slow");
+    // The engine's slow step or the start: never said as the copy's.
+    let mut q = hosting();
+    q.set_showing(Some("Getting you started"), None, true);
+    q.set_copy_slow(true);
+    q.settle(1.0);
+    assert!(q.starting() && !q.copy_slow());
+}
+
+#[test]
 fn one_hosts_hole() {
     let mut p = hosting();
     p.set_hosted(Some(42));

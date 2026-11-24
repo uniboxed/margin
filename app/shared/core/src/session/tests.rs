@@ -193,6 +193,8 @@ struct World {
     not_alone: RefCell<Vec<String>>,
     profiles: RefCell<Vec<String>>,
     epochs: RefCell<BTreeMap<String, String>>,
+    // (How long each profile's copy has been slow, as its link says: `Link::slow`.)
+    slow: RefCell<BTreeMap<String, f64>>,
     windows_of: RefCell<BTreeMap<String, Vec<i64>>>,
     names: RefCell<BTreeMap<String, String>>,
     woken: RefCell<Vec<String>>,
@@ -281,6 +283,10 @@ impl Ports for Reentrant {
         let linked = self.0.profiles.borrow().iter().any(|l| l == p);
         linked.then(|| self.0.epochs.borrow().get(p).cloned().unwrap_or_else(|| "e1".into()))
     }
+    fn link_slow(&self, p: &str) -> Option<f64> {
+        self.reenter("linkSlow");
+        self.0.slow.borrow().get(p).copied()
+    }
     fn app_name(&self, bundle: &str) -> Option<String> {
         self.reenter("appName");
         self.0.names.borrow().get(bundle).cloned()
@@ -308,6 +314,10 @@ impl Ports for Reentrant {
     fn set_showing(&self, window: i64, label: Option<&str>, app: Option<&str>, slow: bool) {
         self.reenter("setShowing");
         self.0.act(json!(["setShowing", window, label, app, slow]));
+    }
+    fn set_copy_slow(&self, window: i64, on: bool) {
+        self.reenter("setCopySlow");
+        self.0.act(json!(["setCopySlow", window, on]));
     }
     fn set_margin_page(&self, window: i64, page: Option<&str>) {
         self.reenter("setMarginPage");
@@ -648,14 +658,14 @@ fn navigate_its_tab_by_host_show_then_the_copys_own_request() {
         (a[0].1.as_str(), a[0].2.as_str(), &a[0].3),
         ("s-default", "hostShow", &json!({ "windowId": 90, "itemId": "t1", "url": "https://a.example/" }))
     );
-    assert!(!s.idle());
+    assert!(s.idle(), "its turn given up while its copy works (ask_aside)");
     assert!(s.tick(0.0).start.is_empty());
     let out = s.answer(a[0].0, json!({ "result": { "tabId": 501, "created": false }, "error": null }));
     let b = asks(&out);
     assert_eq!((b[0].2.as_str(), &b[0].3), ("goBack", &json!({ "tabId": 501 })));
     s.tick(0.0);
-    s.answer(b[0].0, json!({ "result": {} }));
-    assert!(s.idle(), "its turn over");
+    assert!(s.idle(), "its turn over: the history's own request waited for by nothing (tell)");
+    assert!(!s.answer(b[0].0, json!({ "result": {} })).ready, "its answer let go");
     assert!(world.reentries.get() > 0 && world.ports.borrow().iter().all(|p| p == "window" || p == "log"));
 
     // The front window's, with no window named; a pane's window by its role; no address: about:blank; no window of
@@ -667,15 +677,18 @@ fn navigate_its_tab_by_host_show_then_the_copys_own_request() {
     assert_eq!(asks(&out)[0].3, json!({ "windowId": -1, "itemId": "t1", "url": "about:blank" }));
     s.tick(0.0);
     set(&s, json!({ "safariWindows": { "put": [["s-default", "pane2", 93]] } }));
-    // (Its window read at its turn, not when it was asked: the first one still waits for its answer.)
+    // (Its window read at its turn, not when it was asked. The first one, still waiting for its copy, holds nothing
+    // up: its turn given up meanwhile.)
     let queued = s.input(&json!({ "type": "navigate", "kind": "reload", "window": 1 }));
-    assert!(queued.start.is_empty() && !queued.ready, "behind the one under way");
+    assert!(queued.ready, "its turn at once");
+    let second = s.tick(0.0);
+    assert_eq!(asks(&second)[0].3["windowId"], json!(93));
     let first = asks(&out)[0].0;
-    let out = s.answer(first, json!({ "result": { "tabId": 2.5 } }));
-    assert_eq!(asks(&out)[0].3["windowId"], json!(93), "a tab id that isn't whole: nothing more; the next one's turn");
+    let o = s.answer(first, json!({ "result": { "tabId": 2.5 } }));
+    assert!(asks(&o).is_empty(), "a tab id that isn't whole: nothing more");
     s.tick(0.0);
-    let out = s.answer(asks(&out)[0].0, json!({ "error": "not linked" }));
-    assert!(out.start.is_empty() && s.idle());
+    let o = s.answer(asks(&second)[0].0, json!({ "error": "not linked" }));
+    assert!(o.start.is_empty() && s.idle());
 
     // Nothing for: a window that isn't there, no item shown, an app's item (no profile).
     for (window, edit) in [

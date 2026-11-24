@@ -76,6 +76,11 @@ final class SafariWaker {
     func linked(_ profile: String?, wakeIf wanted: (() -> Bool)? = nil) async -> Bool {
         let p = session.resolve(profile)
         if links.safariProfiles().contains(p) { return true }
+        // (Margin quits: Safari isn't started nor its menu pressed for a profile any more.)
+        if engine.quitting {
+            note("a Safari profile not linked: Margin quits: not woken")
+            return false
+        }
         let wanted = wanted ?? { self.session.linkWanted(p) }
         let started = now()
         var ranAtStart = engine.appRuns(bundleId: safariIdentifier) == true
@@ -108,6 +113,12 @@ final class SafariWaker {
             guard wanted() else {
                 note(presses == 0 ? "a Safari profile with no window: not woken (what it was for isn't wanted any more)"
                                   : "a Safari profile woken: its copy no longer waited for (what it was for isn't wanted any more), \(secs(since: started)) s")
+                return false
+            }
+            // (Margin quits: its quit gives back every window a press opened, which a look would take for a press that
+            // opened nothing and press again: 2026-11-24 09:15:42, Safari's menu pressed 0.07 s after the quit.)
+            if engine.quitting {
+                note("a Safari profile's copy no longer waited for: Margin quits (\(presses) press\(presses == 1 ? "" : "es"), \(secs(since: started)) s)")
                 return false
             }
             if ranAtStart, engine.appRuns(bundleId: safariIdentifier) == false {

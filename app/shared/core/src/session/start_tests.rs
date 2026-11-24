@@ -96,6 +96,7 @@ fn kinds(cs: &[Command]) -> Vec<String> {
             Command::Waker { op, .. } => format!("waker {op}"),
             Command::Reply { .. } => "reply".into(),
             Command::Done { then } => format!("done {then}"),
+            Command::Cancel { .. } => "cancel".into(),
         })
         .collect()
 }
@@ -377,10 +378,16 @@ fn settings_last_drawn_at_once_with_nothing_hosted() {
     assert_eq!(s.done(), ["Margin's window 1: the item it showed last (m), Margin's settings page, shown again"]);
 }
 
-/// The start screen up over window 1 with Notes last; the preparation not over.
+/// A web item of the default profile (its window, 90, the copy's already: its show the engine's open, then the tab).
+fn docs() -> Value {
+    json!({ "kind": "web", "browser": "safari", "profile": null })
+}
+
+/// The start screen up over window 1 with a web item last (`n`, "Docs"); the preparation not over.
 fn start_screen(wait: f64) -> (Session, Rc<World>, Out) {
     let (s, world, lib) = session();
-    selected(&lib, "n", notes(), "");
+    selected(&lib, "n", docs(), "Docs");
+    set(&s, json!({ "safariWindows": { "put": [["s-default", "main", 90]] } }));
     input(&s, json!({ "type": "options", "options": { "startupWait": wait } }));
     let out = input(&s, json!({ "type": "windowOpened", "window": 1 }));
     assert!(s.start_screen());
@@ -417,7 +424,7 @@ fn the_start_screen_held_up_past_its_limit_retried_and_skipped() {
     // Continue without Safari: the start screen gone, the item shown last shown.
     let out = input(&s, json!({ "type": "startupSkip" }));
     let seen = pump(&s, &world, out, 3, &mut shows(&world));
-    assert_eq!(kinds(&seen), ["engine open"]);
+    assert_eq!(kinds(&seen), ["engine open", "ask hostShow"]);
     assert!(!s.start_screen());
     assert_eq!(s.core().shown_in(1).as_deref(), Some("n"));
     let tail = s.done()[3..].to_vec();
@@ -431,7 +438,7 @@ fn the_start_screen_held_up_past_its_limit_retried_and_skipped() {
     );
     let a = acts(&world);
     assert_eq!(named(&a, "setStartupStuck"), [json!(["setStartupStuck", 1, null])]);
-    assert_eq!(named(&a, "setShowing")[0], json!(["setShowing", 1, "Notes", "com.apple.Notes", true]));
+    assert_eq!(named(&a, "setShowing")[0], json!(["setShowing", 1, "Docs", SAFARI_BUNDLE, true]));
     // Gone: its choices do nothing.
     input(&s, json!({ "type": "startupRetry" }));
     input(&s, json!({ "type": "startupSkip" }));
@@ -444,7 +451,7 @@ fn the_start_screen_lifts_by_itself_once_the_browser_is_ready() {
     pump(&s, &world, out, 3, &mut usual);
     let out = input(&s, json!({ "type": "preparationOver" }));
     let seen = pump(&s, &world, out, 3, &mut shows(&world));
-    assert_eq!(kinds(&seen), ["engine open"]);
+    assert_eq!(kinds(&seen), ["engine open", "ask hostShow"]);
     assert!(!s.start_screen());
     assert_eq!(
         named(&acts(&world), "setStartupStuck"),
@@ -549,7 +556,7 @@ fn its_extension_never_linked_said_on_the_start_screen_then_try_again() {
     // Try again with it on: the preparation run again, prepared, the start screen lifted, the item shown.
     linked.set(true);
     let seen = pump(&s, &world, input(&s, json!({ "type": "startupRetry" })), 10, &mut answers);
-    assert_eq!(kinds(&seen), ["engine start", "waker ensureLinked", "engine prepare", "engine open"]);
+    assert_eq!(kinds(&seen), ["engine start", "waker ensureLinked", "engine prepare", "engine open", "ask hostShow"]);
     assert!(!s.start_screen());
     assert_eq!(s.core().shown_in(1).as_deref(), Some("n"));
 }
@@ -696,4 +703,101 @@ fn margins_own_page_left_keeps_the_item_shown_where_the_window_hosts() {
         named(&acts(&world), "setMarginPage"),
         [json!(["setMarginPage", 1, null]), json!(["setMarginPage", 1, null])]
     );
+}
+
+// ---- the start waits only for what the first item shown needs (docs/LINK-RESILIENCE.md §2, rules 1–4) ----
+
+#[test]
+fn an_app_shown_last_is_shown_at_once_with_no_start_screen() {
+    let (s, world, lib) = session();
+    selected(&lib, "n", notes(), "");
+    let out = input(&s, json!({ "type": "windowOpened", "window": 1 }));
+    assert!(!s.start_screen(), "nothing it shows needs the browser: no start screen");
+    assert_eq!(named(&acts(&world), "setShowing"), [json!(["setShowing", 1, "Notes", "com.apple.Notes", true])]);
+    assert_eq!(
+        s.done(),
+        ["Margin's window 1: the item it showed last (n) shown again, behind the loader from its first frame"]
+    );
+    let seen = pump(&s, &world, out, 100, &mut shows(&world));
+    assert_eq!(kinds(&seen), ["engine open"], "shown with the browser's preparation not over (not even begun here)");
+    assert_eq!(s.core().shown_in(1).as_deref(), Some("n"));
+    assert_eq!(s.core().read(|st| st.start.startup), Startup::Waiting);
+}
+
+#[test]
+fn no_item_or_margins_own_page_shown_last_no_start_screen() {
+    // No item: the launcher at once.
+    let (s, world, _) = session();
+    let out = input(&s, json!({ "type": "windowOpened", "window": 1 }));
+    assert!(!s.start_screen() && !out.ready);
+    assert!(acts(&world).is_empty() && s.done().is_empty());
+    // Margin's own page: drawn at once, nothing hosted.
+    let (s, world, lib) = session();
+    selected(&lib, "m", json!({ "kind": "margin", "page": "settings" }), "");
+    let out = input(&s, json!({ "type": "windowOpened", "window": 1 }));
+    assert!(!s.start_screen() && !out.ready);
+    assert_eq!(acts(&world), [json!(["setMarginPage", 1, "settings"]), json!(["changed"])]);
+    assert_eq!(s.core().shown_in(1).as_deref(), Some("m"));
+}
+
+#[test]
+fn a_web_item_shown_last_its_own_profile_made_ready_and_waited_for_not_the_spaces() {
+    let (s, world, lib) = session();
+    world.out_of_sight.set(true);
+    put(&lib, "spaces", "s1", json!({ "name": "Home", "order": 0, "profile": "s-q" }));
+    put(&lib, "windows", "1", json!({ "spaceId": "s1" }));
+    let web = json!({ "kind": "web", "browser": "safari", "profile": "s-p" });
+    put(&lib, "tabs", "w", json!({ "spaceId": "s1", "selected": true, "lastUsed": 5, "title": "P", "target": web }));
+    let out = input(&s, json!({ "type": "windowOpened", "window": 1 }));
+    assert!(s.start_screen(), "it needs its profile: waited for");
+    pump(&s, &world, out, 2, &mut usual);
+    let seen: Vec<Command> = pump(&s, &world, prepare(&s, Value::Null), 10, &mut usual)
+        .into_iter()
+        .filter(|c| !matches!(c, Command::Reply { .. }))
+        .collect();
+    assert_eq!(kinds(&seen[..3]), ["engine start", "waker ensureLinked", "engine prepare"]);
+    let Command::Waker { args, .. } = &seen[1] else { panic!() };
+    assert_eq!(
+        Value::Object(args.clone()),
+        json!({ "profile": "s-p", "prepare": true }),
+        "its profile, not the space's"
+    );
+    let Command::Engine { args, .. } = &seen[2] else { panic!() };
+    assert_eq!(args["target"], json!({ "kind": "safari", "profile": "s-p", "role": "main" }));
+    assert!(!s.start_screen(), "lifted once its profile was made ready");
+}
+
+#[test]
+fn an_app_shown_first_the_browser_still_made_ready_its_window_once_nothing_is_shown() {
+    let (s, world, lib) = session();
+    world.out_of_sight.set(true);
+    selected(&lib, "n", notes(), "");
+    let out = input(&s, json!({ "type": "windowOpened", "window": 1 }));
+    assert!(!s.start_screen());
+    assert_eq!(kinds(&pump(&s, &world, out, 100, &mut shows(&world))), ["engine open"]);
+    assert!(s.prepare_wanted(), "the item shown first is nothing picked since: the preparation still wanted");
+    // Its profile linked (the waker may wake it: `prepare_wanted`), then its window: not while the app is shown.
+    let seen: Vec<String> = kinds(&pump(&s, &world, prepare(&s, Value::Null), 10, &mut usual));
+    assert_eq!(seen, ["engine start", "waker ensureLinked", "reply"], "no engine prepare while something is shown");
+    assert!(
+        s.done()
+            .contains(&"browser: something is shown in Margin's window: its window made ready once nothing is".into()),
+        "{:?}",
+        s.done()
+    );
+    assert!(!s.done().iter().any(|l| l.starts_with("browser not prepared")), "not given up");
+    // Something else picked: no longer wanted.
+    set(&s, json!({ "requested": { "put": [[1, "other"]] } }));
+    assert!(!s.prepare_wanted());
+    set(&s, json!({ "requested": { "del": [1] } }));
+    // Nothing shown any more (the app parked): its window made ready, out of sight.
+    *world.shown.borrow_mut() = None;
+    let out = s.settle();
+    let seen = pump(&s, &world, out, 10, &mut usual);
+    assert_eq!(kinds(&seen), ["engine prepare"]);
+    let Command::Engine { args, .. } = &seen[0] else { panic!() };
+    assert_eq!(args["target"], json!({ "kind": "safari", "profile": "s-default", "role": "main" }));
+    assert!(s.done().last().is_some_and(|l| l.starts_with("browser prepared in")), "{:?}", s.done());
+    // Kept once only.
+    assert!(pump(&s, &world, s.settle(), 10, &mut usual).is_empty());
 }

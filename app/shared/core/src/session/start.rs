@@ -59,6 +59,13 @@ pub struct StartScreen {
     pub skipped: bool,
     pub retries: i64,
     pub prepared_setting: Option<String>,
+    /// The item shown first with no start screen (an app, Margin's own page: nothing it shows needs the browser):
+    /// while it's all that's shown and asked for, the browser's preparation is still wanted (docs/LINK-RESILIENCE.md
+    /// §2: it runs out of sight).
+    pub first: Option<String>,
+    /// The preparation's last step, its window, kept for when nothing is shown in Margin's window (the engine makes a
+    /// window ready out of sight only then): the Margin window, the profile, when it began.
+    pub later: Option<(i64, String, f64)>,
 }
 
 /// Safari's bundle id (ExtensionLink.swift `safariIdentifier`).
@@ -156,6 +163,16 @@ impl Core {
     /// The preparation's profile may still be woken for it: nothing shown, nothing on its way, nothing asked for (a
     /// window's last item waiting for it counts as nothing). Read by the Safari waker at each look: nothing allocated.
     pub(crate) fn prepare_wanted(&self) -> bool {
+        // (The item shown first with no start screen is nothing the person asked for since: still wanted.)
+        let first_only = |s: &super::State| {
+            s.start
+                .first
+                .as_ref()
+                .is_some_and(|f| s.requested.values().all(|r| r == f) && s.shown.values().all(|i| i == f))
+        };
+        if self.read(first_only) {
+            return true;
+        }
         !self.ports.engine_shows() && self.read(|s| s.start.waiting || (s.resuming.is_none() && s.requested.is_empty()))
     }
 
@@ -284,9 +301,17 @@ impl Core {
             return;
         }
         self.edit(Field::Resuming, |s| s.resumed = true);
-        // (MarginResumeLast NO: no item shown again, the start screen still: nothing's usable before the browser is.)
+        // (MarginResumeLast NO: no item shown again: the launcher, at once.)
         let last = if self.options.borrow().resumes_last { self.last_item_of(w) } else { None };
-        let gate = self.options.borrow().prepares_browser && self.start(|st| st.startup != Startup::Done);
+        // Only what the first item shown needs is waited for (docs/LINK-RESILIENCE.md §2 rule 1): a web item, the
+        // preparation of its profile (`prepare_browser`); an app, Margin's own page or no item (the launcher): nothing,
+        // the window shows it at once while the browser's preparation runs out of sight.
+        let needs_browser = matches!(&last, Some((_, Target::Web { .. }, _)));
+        let gate =
+            needs_browser && self.options.borrow().prepares_browser && self.start(|st| st.startup != Startup::Done);
+        if !gate && let Some((item, _, _)) = &last {
+            self.set_start(|st| st.first = Some(item.clone()));
+        }
         if let Some((item, Target::Margin { page }, _)) = &last
             && !gate
         {
@@ -429,6 +454,13 @@ impl Core {
             return;
         }
         self.set_hosting(None);
+        // (Nothing shown now: the browser's window kept for this, made ready out of sight.)
+        if let Some((w, p, started)) = self.start(|st| st.later.clone())
+            && let Some(c) = self.rc()
+        {
+            self.set_start(|st| st.later = None);
+            self.exec.enqueue(async move { c.prepare_window(w, p, started).await });
+        }
         if self.margin_page(id).is_none() {
             self.edit(Field::Shown, |s| s.shown.remove(&id)); // (Margin's own page shown there: still the one shown)
         }
@@ -494,9 +526,11 @@ impl Core {
     // ---- the default browser made ready at launch ----
 
     /// The person's default browser made ready out of sight at Margin's launch (Tirth, 2026-11-16): started with no
-    /// Dock icon if it isn't running, its copy for the profile web items will use linked, Margin's window asked of it
-    /// and taken to ready by the engine's early full screen, then parked out of sight. Not possible out of sight: not
-    /// prepared, said. Its four steps, the last in the session's queue; it never delays Margin's own window.
+    /// Dock icon if it isn't running, the copy of the profile the first item shown needs linked (the last item's when
+    /// it's a web item, else the space's: docs/LINK-RESILIENCE.md §2 rule 2), Margin's window asked of it and taken to
+    /// ready by the engine's early full screen, then parked out of sight: the window the first show uses. Other
+    /// profiles link when first shown. Not possible out of sight: not prepared, said. Its four steps, the last in the
+    /// session's queue; it never delays Margin's own window.
     pub(crate) async fn prepare_browser(&self, setting: Option<String>) {
         if !self.options.borrow().prepares_browser {
             return self.preparation_over();
@@ -547,7 +581,12 @@ impl Core {
         if json::flag(starting.await.get("started")) != Some(true) {
             return skip(format!("{bundle} couldn't be started with no Dock icon"));
         }
-        let mut p = self.resolve(space_profile.as_deref());
+        // (The last item's own profile when it's a web item: the one its show resolves, not the space's.)
+        let last = if self.options.borrow().resumes_last { self.last_item_of(w) } else { None };
+        let mut p = match last {
+            Some((_, Target::Web { profile, .. }, _)) => self.resolve(profile.as_deref()),
+            _ => self.resolve(space_profile.as_deref()),
+        };
         // (A profile with no window is woken through Safari's menu only for a preparation that can still happen:
         // nothing shown, nothing on its way, nothing asked for: `prepare_wanted`, the waker's look.)
         let mut linked = self.ensure_linked_for(&p, true).await;
@@ -585,7 +624,11 @@ impl Core {
             return self.prepare_given_up(&p, "its window is hosted already").await;
         }
         if self.ports.engine_shown().is_some() {
-            return self.prepare_given_up(&p, "something is shown in Margin's window").await;
+            // (The item shown first, an app: its window made ready the next time nothing is shown in Margin's window,
+            // out of sight as it must be, never parking what's shown; a web item of its profile shown first makes it.)
+            self.set_start(|st| st.later = Some((w, p.clone(), started)));
+            self.note("browser: something is shown in Margin's window: its window made ready once nothing is".into());
+            return self.preparation_over();
         }
         let space = self
             .ports
@@ -624,7 +667,8 @@ impl Core {
     }
 
     async fn close_woken(&self, p: &str) {
-        self.waker("closeWoken", json!({ "profile": p, "except": null, "why": " (its preparation given up)" })).await;
+        self.waker_tell("closeWoken", json!({ "profile": p, "except": null, "why": " (its preparation given up)" }))
+            .await;
     }
 }
 

@@ -95,6 +95,7 @@ pub(super) fn kinds(cs: &[Command]) -> Vec<String> {
             Command::Waker { op, .. } => format!("waker {op}"),
             Command::Reply { .. } => "reply".into(),
             Command::Done { .. } => "done".into(),
+            Command::Cancel { .. } => "cancel".into(),
         })
         .collect()
 }
@@ -484,7 +485,8 @@ fn a_window_asked_of_a_stale_copy_asked_again_once_its_link_is_back() {
         s.done().last().map(String::as_str),
         Some("Safari window for a profile: not made (a newer copy of Margin is running)")
     );
-    // A link that never comes back while nothing waits for it any more: given up at once, said.
+    // Nothing waits for it any more (another item asked for): not asked at all (docs/LINK-RESILIENCE.md: a copy's
+    // request made for an engine operation is raced against being wanted), said.
     let (s, world, _) = session();
     world.profiles.borrow_mut().push("s-default".into());
     s.core().edit(Field::Requested, |st| st.requested.insert(1, "other".into()));
@@ -494,8 +496,11 @@ fn a_window_asked_of_a_stale_copy_asked_again_once_its_link_is_back() {
         Command::Ask { .. } => json!({ "error": "not linked" }),
         c => usual(c),
     });
-    assert_eq!(kinds(&seen), ["ask newWindow", "reply"]);
-    assert_eq!(s.done().last().map(String::as_str), Some("Safari window for a profile: not made (not linked)"));
+    assert_eq!(kinds(&seen), ["reply"]);
+    assert_eq!(
+        s.done().last().map(String::as_str),
+        Some("Safari window for a profile: not made (given up (no longer wanted))")
+    );
 }
 
 #[test]
@@ -636,4 +641,483 @@ fn the_librarys_requests_reach_the_session_inside_its_perform() {
     let n = s.done().len();
     pump(&s, &world, left, &mut usual);
     assert_eq!(s.done()[n..], [format!("{item}: closed")], "{:?}", s.done());
+}
+
+// ---- a show waiting on a slow copy (docs/LINK-RESILIENCE.md §1, the session's rules 7–10) ----------------------------
+
+/// As `pump`, with commands held: `answer`'s None keeps one unanswered (the test answers it later by its id, or
+/// never); deadlines ticked on the world's clock `ticks` times at most. What was handed out, and the held ones.
+fn pump_holding(
+    s: &Session,
+    world: &World,
+    first: Out,
+    ticks: usize,
+    answer: &mut dyn FnMut(&Command) -> Option<Value>,
+) -> (Vec<Command>, Vec<(u64, Command)>) {
+    let (mut seen, mut held) = (Vec::new(), Vec::new());
+    let mut out = first;
+    let mut left = ticks;
+    for _ in 0..10_000 {
+        let starts = std::mem::take(&mut out.start);
+        if starts.is_empty() {
+            if out.ready {
+                out = s.tick(0.0);
+                continue;
+            }
+            match out.deadline {
+                Some(at) if left > 0 => {
+                    left -= 1;
+                    world.now.set(at);
+                    out = s.tick(at);
+                    continue;
+                }
+                _ => break,
+            }
+        }
+        let mut later = Vec::new();
+        for (id, c) in starts {
+            seen.push(c.clone());
+            match answer(&c) {
+                Some(a) => {
+                    engine_after(world, &c, &a);
+                    later.push((id, a));
+                }
+                None => held.push((id, c)),
+            }
+        }
+        let mut next = s.tick(0.0);
+        for (id, a) in later {
+            let o = s.answer(id, a);
+            next.start.extend(o.start);
+            next.ready |= o.ready;
+            next.deadline = o.deadline;
+        }
+        out = next;
+    }
+    (seen, held)
+}
+
+/// The copy never answers a `hostShow`; everything else as usual.
+fn host_show_held(c: &Command) -> Option<Value> {
+    match c {
+        Command::Ask { kind, .. } if kind == "hostShow" => None,
+        c => Some(usual(c)),
+    }
+}
+
+/// A web item `w1` of s-default whose Safari window (90) is the one window 1 shows: its show a tab switch alone; and
+/// an app item `a1`.
+fn tab_switch_world() -> (Session, Rc<World>, Rc<TestLibrary>) {
+    let (s, world, lib) = session();
+    world.profiles.borrow_mut().push("s-default".into());
+    item(
+        &lib,
+        "w1",
+        json!({ "target": { "kind": "web", "browser": "safari", "profile": "s-default" }, "url": "https://a/", "title": "A page" }),
+    );
+    item(&lib, "a1", json!({ "target": { "kind": "app", "bundleId": "com.a", "name": "A" } }));
+    s.core().edit(Field::SafariWindows, |st| st.safari_windows.insert(("s-default".into(), Role::Main), 90));
+    world.hosted.borrow_mut().push("safari:s-default".into());
+    *world.shown.borrow_mut() = Some("safari:s-default".into());
+    s.core().set_hosting(Some(1));
+    (s, world, lib)
+}
+
+fn pick(s: &Session, item: &str, window: i64) -> Out {
+    s.input(&json!({ "type": "library", "request": { "type": "activateTab", "item": item, "windowId": window } }))
+}
+
+#[test]
+fn a_host_show_never_answered_holds_no_pick_up_overtaken_it_is_cancelled_and_its_late_answer_does_nothing() {
+    let (s, world, _) = tab_switch_world();
+    let (seen, held) = pump_holding(&s, &world, pick(&s, "w1", 1), 0, &mut host_show_held);
+    assert_eq!(kinds(&seen), ["ask hostShow"]);
+    let ask = held[0].0;
+    // An app picked in the window meanwhile: the show waiting for the copy cancelled at once, the app shown (until now
+    // it waited behind it: 15 s, then "its tab wasn't shown (timedOut)").
+    let (seen, held) = pump_holding(&s, &world, pick(&s, "a1", 1), 0, &mut host_show_held);
+    assert_eq!(kinds(&seen), ["cancel", "engine open"]);
+    assert_eq!(seen[0], Command::Cancel { profile: "s-default".into(), id: ask }, "that ask, of its profile's copy");
+    assert!(held.is_empty());
+    assert_eq!(s.core().shown_in(1).as_deref(), Some("a1"));
+    let done = s.done();
+    assert!(
+        done.contains(
+            &"w1: overtaken while its copy was asked for its tab (a1 asked for since): the request cancelled".into()
+        ),
+        "{done:?}"
+    );
+    assert!(done.iter().all(|l| !l.contains("wasn't shown")), "{done:?}");
+    // Its answer after all: let go, nothing changes.
+    let n = s.done().len();
+    let out = s.answer(ask, json!({ "result": { "tabId": 777, "created": false } }));
+    assert!(out.start.is_empty() && !out.ready, "{out:?}");
+    assert_eq!(s.done().len(), n);
+    assert_eq!(s.core().read(|st| st.safari_tabs.get("w1").copied()), None);
+    assert_eq!((s.core().open_item("w1"), s.core().shown_in(1).as_deref()), (None, Some("a1")));
+    assert!(s.idle());
+}
+
+#[test]
+fn a_show_waiting_for_a_closed_windows_pick_is_cancelled() {
+    let (s, world, _) = tab_switch_world();
+    world.windows.borrow_mut().push(2);
+    let (_, held) = pump_holding(&s, &world, pick(&s, "w1", 1), 0, &mut host_show_held);
+    // (Nothing can be picked in a window gone: what's queued behind it gets its turn.)
+    world.windows.borrow_mut().retain(|w| *w != 1);
+    let out = s.input(&json!({ "type": "windowClosed", "window": 1 }));
+    let (seen, _) = pump_holding(&s, &world, out, 0, &mut host_show_held);
+    assert!(seen.contains(&Command::Cancel { profile: "s-default".into(), id: held[0].0 }), "{seen:?}");
+    assert!(
+        s.done().contains(
+            &"w1: overtaken while its copy was asked for its tab (Margin's window 1 closed): the request cancelled"
+                .into()
+        ),
+        "{:?}",
+        s.done()
+    );
+    assert!(s.idle());
+}
+
+#[test]
+fn its_loader_while_the_copy_is_asked_slow_once_its_link_says_so_for_slow_say() {
+    let (s, world, _) = tab_switch_world();
+    acts(&world);
+    let (_, held) = pump_holding(&s, &world, pick(&s, "w1", 1), 0, &mut host_show_held);
+    // (At once, not slow: the page's grace keeps a quick switch unseen.)
+    assert_eq!(named(&acts(&world), "setShowing"), [json!(["setShowing", 1, "A page", SAFARI_BUNDLE, false])]);
+    // Its link looked at `slowSay` (3 s) after the ask: not slow, nothing said; looked at again 3 s on.
+    assert_eq!(s.tick(0.0).deadline, Some(3.0));
+    world.now.set(3.0);
+    assert_eq!(s.tick(3.0).deadline, Some(6.0));
+    assert!(named(&acts(&world), "setShowing").is_empty());
+    // Slow for 2 s: not yet; looked at again once it would be (1 s on).
+    world.slow.borrow_mut().insert("s-default".into(), 2.0);
+    world.now.set(6.0);
+    assert_eq!(s.tick(6.0).deadline, Some(7.0));
+    assert!(named(&acts(&world), "setShowing").is_empty());
+    world.slow.borrow_mut().insert("s-default".into(), 3.0);
+    world.now.set(7.0);
+    s.tick(7.0);
+    let a = acts(&world);
+    assert_eq!(named(&a, "setShowing"), [json!(["setShowing", 1, "A page", SAFARI_BUNDLE, true])]);
+    assert_eq!(named(&a, "setCopySlow"), [json!(["setCopySlow", 1, true])], "its loader says the copy is slow");
+    // Reading again (its link no longer slow): said too.
+    world.slow.borrow_mut().clear();
+    world.now.set(10.0);
+    s.tick(10.0);
+    let a = acts(&world);
+    assert_eq!(named(&a, "setShowing"), [json!(["setShowing", 1, "A page", SAFARI_BUNDLE, false])]);
+    assert_eq!(named(&a, "setCopySlow"), [json!(["setCopySlow", 1, false])]);
+    // Its answer: shown, the loader gone, its look dropped (no deadline left).
+    let out = s.answer(held[0].0, json!({ "result": { "tabId": 501, "created": false } }));
+    assert_eq!(out.deadline, None);
+    assert_eq!(named(&acts(&world), "setShowing"), [json!(["setShowing", 1, null, null, false])]);
+    assert_eq!(s.done().last().map(String::as_str), Some("w1: shown in Safari window 90"));
+}
+
+#[test]
+fn a_show_whose_link_went_down_asked_again_on_its_copys_next_link_never_a_menu_press_while_its_window_is_there() {
+    for first in ["down", "not linked"] {
+        let (s, world, _) = tab_switch_world();
+        let mut asks = 0;
+        let mut answers = |c: &Command| match c {
+            Command::Ask { kind, .. } if kind == "hostShow" => {
+                asks += 1;
+                if asks == 1 {
+                    json!({ "error": first })
+                } else {
+                    json!({ "result": { "tabId": 502, "created": false } })
+                }
+            }
+            c => usual(c),
+        };
+        let seen = pump(&s, &world, pick(&s, "w1", 1), &mut answers);
+        assert_eq!(kinds(&seen), ["ask hostShow"], "{first}: its window still there: its copy's next link waited for");
+        // (A link event of the same link, or another profile's: nothing yet.)
+        let out = s.input(&json!({ "type": "linked", "profile": "s-default" }));
+        assert!(pump(&s, &world, out, &mut answers).is_empty(), "{first}");
+        // Its copy back on a new link: asked again, shown.
+        world.epochs.borrow_mut().insert("s-default".into(), "e2".into());
+        let out = s.input(&json!({ "type": "linked", "profile": "s-default" }));
+        let seen = pump(&s, &world, out, &mut answers);
+        assert_eq!(kinds(&seen), ["ask hostShow"], "{first}: no waker, no menu press");
+        assert_eq!(
+            s.done(),
+            [
+                format!(
+                    "w1: its copy's link went down while it was asked for its tab ({first}): asked again once its profile links again"
+                ),
+                "w1: shown in Safari window 90".into()
+            ]
+        );
+        assert_eq!(s.core().read(|st| st.safari_tabs.get("w1").copied()), Some(502));
+    }
+    // Its window gone too (Safari quit): the waker's, then asked again on the new link.
+    let (s, world, _) = tab_switch_world();
+    let mut asks = 0;
+    let seen = pump(&s, &world, pick(&s, "w1", 1), &mut |c| match c {
+        Command::Ask { kind, .. } if kind == "hostShow" => {
+            asks += 1;
+            if asks == 1 {
+                world.hosted.borrow_mut().clear();
+                json!({ "error": "down" })
+            } else {
+                json!({ "result": { "tabId": 502, "created": false } })
+            }
+        }
+        Command::Waker { op, .. } if op == "ensureLinked" => {
+            world.epochs.borrow_mut().insert("s-default".into(), "e2".into());
+            json!({ "linked": true })
+        }
+        c => usual(c),
+    });
+    assert_eq!(kinds(&seen), ["ask hostShow", "waker ensureLinked", "ask hostShow"]);
+    let Command::Waker { args, .. } = &seen[1] else { panic!() };
+    assert_eq!(Value::Object(args.clone()), json!({ "profile": "s-default" }), "the show's own wait (`linkWanted`)");
+    assert_eq!(seen[0], seen[2], "the same request again");
+    // ...the waker says linked on the same link (no new epoch: no evidence it came back): not asked again, said.
+    let (s, world, _) = tab_switch_world();
+    let seen = pump(&s, &world, pick(&s, "w1", 1), &mut |c| match c {
+        Command::Ask { kind, .. } if kind == "hostShow" => {
+            world.hosted.borrow_mut().clear();
+            json!({ "error": "down" })
+        }
+        c => usual(c),
+    });
+    assert_eq!(kinds(&seen), ["ask hostShow", "waker ensureLinked"]);
+    assert_eq!(
+        s.done().last().map(String::as_str),
+        Some("w1: its tab wasn't shown (down: its profile's link not back)")
+    );
+    // Another error: not asked again, as before.
+    let (s, world, _) = tab_switch_world();
+    let seen = pump(&s, &world, pick(&s, "w1", 1), &mut |c| match c {
+        Command::Ask { kind, .. } if kind == "hostShow" => json!({ "error": "refused" }),
+        c => usual(c),
+    });
+    assert_eq!(kinds(&seen), ["ask hostShow"]);
+    assert_eq!(s.done(), ["w1: its tab wasn't shown (refused)"]);
+}
+
+#[test]
+fn a_show_whose_link_went_down_overtaken_before_it_links_again_is_not_asked_again() {
+    let (s, world, _) = tab_switch_world();
+    let seen = pump(&s, &world, pick(&s, "w1", 1), &mut |c| match c {
+        Command::Ask { kind, .. } if kind == "hostShow" => json!({ "error": "down" }),
+        c => usual(c),
+    });
+    assert_eq!(kinds(&seen), ["ask hostShow"]);
+    // An app picked while its link is waited for: shown at once; its link back later: nothing asked.
+    let seen = pump(&s, &world, pick(&s, "a1", 1), &mut usual);
+    assert_eq!(kinds(&seen), ["engine open"], "never asked again: the app shown");
+    assert_eq!(s.core().shown_in(1).as_deref(), Some("a1"));
+    world.epochs.borrow_mut().insert("s-default".into(), "e2".into());
+    let out = s.input(&json!({ "type": "linked", "profile": "s-default" }));
+    assert!(pump(&s, &world, out, &mut usual).is_empty());
+    assert!(
+        s.done().contains(
+            &"w1: overtaken while its copy's link was waited for (a1 asked for since): not asked again".into()
+        ),
+        "{:?}",
+        s.done()
+    );
+    assert!(s.idle());
+}
+
+#[test]
+fn a_show_waiting_for_its_copy_holds_no_other_windows_pick_up_and_the_later_pick_keeps_the_engine() {
+    let (s, world, _) = tab_switch_world();
+    world.windows.borrow_mut().push(2);
+    let (seen, held) = pump_holding(&s, &world, pick(&s, "w1", 1), 0, &mut host_show_held);
+    assert_eq!(kinds(&seen), ["ask hostShow"]);
+    // An app picked in window 2 meanwhile: shown at once, nothing cancelled (window 1's pick is still wanted).
+    let (seen, _) = pump_holding(&s, &world, pick(&s, "a1", 2), 0, &mut host_show_held);
+    assert_eq!(kinds(&seen), ["engine parkShown", "engine open"], "window 1's shown parked, the app opened in 2");
+    assert_eq!((s.core().hosting(), s.core().shown_in(2).as_deref()), (Some(2), Some("a1")));
+    assert_eq!(s.core().requested_in(1).as_deref(), Some("w1"), "window 1's pick still wanted");
+    // Window 1's copy answers after: its tab is in front in Safari, but the later pick keeps the engine; window 1 keeps
+    // its item as its card.
+    let out = s.answer(held[0].0, json!({ "result": { "tabId": 501, "created": false } }));
+    let seen = pump(&s, &world, out, &mut usual);
+    assert!(seen.is_empty(), "nothing hosted again for it: {seen:?}");
+    assert_eq!((s.core().hosting(), s.core().elsewhere_in(1).as_deref()), (Some(2), Some("w1")));
+    assert_eq!(s.core().requested_in(1), None);
+    assert_eq!(s.core().read(|st| st.safari_tabs.get("w1").copied()), Some(501));
+    assert_eq!(
+        s.done().last().map(String::as_str),
+        Some("w1: its tab in front in Safari window 90, another Margin window hosting since: its card here")
+    );
+    assert!(s.idle());
+}
+
+#[test]
+fn no_request_to_a_copy_that_never_answers_holds_the_queue() {
+    // (docs/LINK-RESILIENCE.md §1: with no time limit, each ends on evidence or is raced; none holds a pick up.)
+    // A tab's close: told, waited for by nothing; the next pick shown at once.
+    let (s, world, _) = tab_switch_world();
+    s.core().edit(Field::Open, |st| {
+        st.open.insert("w1".into(), OpenItem { host: "safari:s-default".into(), profile: Some("s-default".into()) })
+    });
+    let held = |c: &Command| match c {
+        Command::Ask { .. } => None,
+        c => Some(usual(c)),
+    };
+    let out = s.input(&json!({ "type": "library", "request": { "type": "closeTab", "item": "w1", "windowId": 1 } }));
+    let (seen, _) = pump_holding(&s, &world, out, 0, &mut held.clone());
+    assert_eq!(kinds(&seen), ["ask hostClose"]);
+    let (seen, _) = pump_holding(&s, &world, pick(&s, "a1", 1), 0, &mut held.clone());
+    assert_eq!(kinds(&seen), ["engine open"], "the close's answer waited for by nothing");
+    assert!(s.idle());
+    // Mute: its copy works outside the queue; the next pick at once; its answer still applied after.
+    let (s, world, _) = tab_switch_world();
+    s.core().edit(Field::Open, |st| {
+        st.open.insert("w1".into(), OpenItem { host: "safari:s-default".into(), profile: Some("s-default".into()) })
+    });
+    let out = s.input(&json!({ "type": "library", "request": { "type": "muteTab", "item": "w1" } }));
+    let (seen, mute) = pump_holding(&s, &world, out, 0, &mut held.clone());
+    assert_eq!(kinds(&seen), ["ask hostMute"]);
+    let (seen, _) = pump_holding(&s, &world, pick(&s, "a1", 1), 0, &mut held.clone());
+    assert_eq!(kinds(&seen), ["engine open"]);
+    let out = s.answer(mute[0].0, json!({ "result": { "muted": true } }));
+    pump(&s, &world, out, &mut usual);
+    assert!(s.core().read(|st| st.safari_muted.contains("w1")) && s.idle());
+    // A window asked of the copy for a show (newWindow, under the engine's open): given up once another item is picked.
+    let (s, world, _) = session();
+    world.profiles.borrow_mut().push("s-default".into());
+    s.core().edit(Field::Requested, |st| st.requested.insert(1, "mine".into()));
+    s.core().edit(Field::Showing, |st| st.showing.insert("safari:s-default".into(), "mine".into()));
+    let out = s.input(&json!({ "type": "call", "id": 2, "flow": "requestWindow", "args": { "profile": "s-default", "role": "main" } }));
+    let (seen, asked) = pump_holding(&s, &world, out, 0, &mut held.clone());
+    assert_eq!(kinds(&seen), ["ask newWindow"]);
+    s.core().edit(Field::Requested, |st| st.requested.insert(1, "other".into()));
+    let seen = pump(&s, &world, s.tick(0.0), &mut usual);
+    assert_eq!(kinds(&seen), ["cancel", "reply"]);
+    assert_eq!(seen[0], Command::Cancel { profile: "s-default".into(), id: asked[0].0 });
+    assert_eq!(
+        s.done().last().map(String::as_str),
+        Some("Safari window for a profile: not made (given up (no longer wanted))")
+    );
+    // A window closed at Margin's quit (the engine's): judged when Margin quits and at each of its link's events after
+    // (an ack, a tock: `linked`), never on a timer: its copy reading it waited for.
+    let (s, world, _) = session();
+    world.profiles.borrow_mut().push("s-default".into());
+    let out = s
+        .input(&json!({ "type": "call", "id": 3, "flow": "closeWindow", "args": { "profile": null, "windowId": 91 } }));
+    let (seen, _) = pump_holding(&s, &world, out, 0, &mut held.clone());
+    assert_eq!(kinds(&seen), ["ask closeWindow"]);
+    let out = s.input(&json!({ "type": "quitting" }));
+    let (seen, _) = pump_holding(&s, &world, out, 0, &mut held.clone());
+    assert!(seen.is_empty(), "its copy reading it (nothing unacked): still waited for");
+    // (Its copy then not reading what it was sent before the quit, but no event of its link since: nothing judged at a
+    // look of the feedback's pace; `slowSay` paces the words only.)
+    world.slow.borrow_mut().insert("s-default".into(), 5.0);
+    let (seen, _) = pump_holding(&s, &world, s.tick(0.0), 3, &mut held.clone());
+    assert!(seen.is_empty(), "no time decides it: {seen:?}");
+    // An event of its link: judged then, given up in that turn (its oldest unacked request older than the quit).
+    let since = world.now.get();
+    world.slow.borrow_mut().insert("s-default".into(), since + 1.0);
+    let out = s.input(&json!({ "type": "linked", "profile": "s-default" }));
+    let seen = pump_holding(&s, &world, out, 0, &mut held.clone()).0;
+    assert_eq!(kinds(&seen), ["cancel", "reply"], "{seen:?}");
+    let Some(Command::Reply { value, .. }) = seen.last() else { panic!() };
+    assert_eq!(value, &json!(false));
+    assert!(
+        s.done().iter().any(|l| l.contains("not closed by its copy (given up (not read by its copy as Margin quits))")),
+        "{:?}",
+        s.done()
+    );
+}
+
+#[test]
+fn at_quit_an_unread_close_window_is_given_up_in_the_same_turn() {
+    // (No fixed delays: judged as the `quitting` input comes, not at the next look of the feedback's pace, 3 s on.)
+    let (s, world, _) = session();
+    world.profiles.borrow_mut().push("s-default".into());
+    world.now.set(10.0);
+    let mut held = |c: &Command| match c {
+        Command::Ask { .. } => None,
+        c => Some(usual(c)),
+    };
+    let out = s
+        .input(&json!({ "type": "call", "id": 3, "flow": "closeWindow", "args": { "profile": null, "windowId": 91 } }));
+    let (seen, asked) = pump_holding(&s, &world, out, 0, &mut held);
+    assert_eq!(kinds(&seen), ["ask closeWindow"]);
+    // Its copy hasn't read it (not acked, 1 s now): Margin quits. Given up in that turn, the clock never moved.
+    world.slow.borrow_mut().insert("s-default".into(), 1.0);
+    let out = s.input(&json!({ "type": "quitting" }));
+    let next = s.tick(0.0);
+    let started: Vec<Command> = out.start.iter().chain(next.start.iter()).map(|(_, c)| c.clone()).collect();
+    assert_eq!(started.first(), Some(&Command::Cancel { profile: "s-default".into(), id: asked[0].0 }), "{started:?}");
+    assert_eq!(world.now.get(), 10.0);
+    let seen = pump(&s, &world, next, &mut usual);
+    assert_eq!(kinds(&seen), ["cancel", "reply"]);
+    assert!(
+        s.done().iter().any(|l| l.contains("not closed by its copy (given up (not read by its copy as Margin quits))")),
+        "{:?}",
+        s.done()
+    );
+    // Asked once Margin quits, of a copy still not reading what it was sent before: not waited for, never asked.
+    let out = s
+        .input(&json!({ "type": "call", "id": 4, "flow": "closeWindow", "args": { "profile": null, "windowId": 92 } }));
+    let seen = pump(&s, &world, out, &mut usual);
+    assert_eq!(kinds(&seen), ["reply"], "{seen:?}");
+    // A request sent after the quit, not read yet: its own, never judged unread by that alone (its copy may be reading).
+    world.slow.borrow_mut().insert("s-default".into(), 0.0);
+    world.now.set(12.0);
+    let out = s
+        .input(&json!({ "type": "call", "id": 5, "flow": "closeWindow", "args": { "profile": null, "windowId": 93 } }));
+    let (seen, _) = pump_holding(&s, &world, out, 0, &mut held);
+    assert_eq!(kinds(&seen), ["ask closeWindow"]);
+    let out = s.input(&json!({ "type": "linked", "profile": "s-default" }));
+    assert!(pump_holding(&s, &world, out, 0, &mut held).0.is_empty(), "its own, sent since the quit: waited for");
+}
+
+#[test]
+fn at_quit_a_copy_that_acks_then_never_answers_holds_the_quit_no_longer_than_quit_wait() {
+    // (The engine's own quit pattern: `quitWait` after the quit began, the window not confirmed closed left in its
+    // marker, closed later.)
+    let (s, world, _) = session();
+    world.profiles.borrow_mut().push("s-default".into());
+    world.now.set(10.0);
+    s.input(&json!({ "type": "options", "options": { "quitWait": 6 } }));
+    let mut held = |c: &Command| match c {
+        Command::Ask { .. } => None,
+        c => Some(usual(c)),
+    };
+    // Its copy reading (acked: not slow), never answering.
+    let out = s
+        .input(&json!({ "type": "call", "id": 3, "flow": "closeWindow", "args": { "profile": null, "windowId": 91 } }));
+    let (seen, asked) = pump_holding(&s, &world, out, 0, &mut held);
+    assert_eq!(kinds(&seen), ["ask closeWindow"]);
+    let out = s.input(&json!({ "type": "quitting" }));
+    let (seen, _) = pump_holding(&s, &world, out, 0, &mut held);
+    assert!(seen.is_empty(), "read by its copy: waited for at the quit");
+    // Not before it (the slow words' look at 13 s decides nothing).
+    s.tick(0.0);
+    world.now.set(13.0);
+    let at13 = s.tick(13.0);
+    assert!(at13.start.is_empty());
+    assert_eq!(at13.deadline, Some(16.0), "no longer than quitWait after the quit began");
+    world.now.set(15.9);
+    assert!(s.tick(15.9).start.is_empty());
+    world.now.set(16.0);
+    let seen = pump(&s, &world, s.tick(16.0), &mut usual);
+    assert_eq!(kinds(&seen), ["cancel", "reply"], "{seen:?}");
+    assert_eq!(seen[0], Command::Cancel { profile: "s-default".into(), id: asked[0].0 });
+    let Some(Command::Reply { value, .. }) = seen.last() else { panic!() };
+    assert_eq!(value, &json!(false), "not confirmed closed: the engine keeps it in its marker");
+    assert!(
+        s.done().contains(
+            &"at quit: closeWindow for s-default unanswered after quitWait (6.0 s): left in the marker".into()
+        ),
+        "{:?}",
+        s.done()
+    );
+    // One asked later in the quit: the same bound, from the quit's start (none left here: sent, not waited for).
+    let out = s
+        .input(&json!({ "type": "call", "id": 4, "flow": "closeWindow", "args": { "profile": null, "windowId": 92 } }));
+    let (seen, _) = pump_holding(&s, &world, out, 0, &mut held);
+    assert_eq!(kinds(&seen), ["ask closeWindow", "cancel", "reply"], "{seen:?}");
+    assert_eq!(world.now.get(), 16.0);
 }

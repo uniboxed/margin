@@ -223,7 +223,7 @@ final class Shell: ExtensionLinkDelegate {
         options.sawBrowser?(connection.hello.browser)
         data.linkUp(connection)
         apps.start()
-        if connection.hello.browser == "safari" { safariCopyLinked() }
+        if connection.hello.browser == "safari" { safariCopyLinked(); hosted?.linkChanged(profile: connection.hello.profile) }
         profilesSoon()
         soon()
     }
@@ -277,10 +277,18 @@ final class Shell: ExtensionLinkDelegate {
         }
     }
 
+    // While Margin quits: each read of a Safari copy's link (an ack, a tock) told to the session, which judges then
+    // whether a request it waits for there is unread (docs/LINK-RESILIENCE.md: evidence, never a timer).
+    func linkHeard(_ connection: LinkConnection) {
+        guard hostQuitting, connection.hello.browser == "safari", links[connection.key]?.connection === connection else { return }
+        hosted?.linkChanged(profile: connection.hello.profile)
+    }
+
     func linkDown(_ connection: LinkConnection, _ why: String) {
         guard links[connection.key]?.connection === connection else { return }
         links[connection.key] = nil
         data.linkDown(connection)
+        if connection.hello.browser == "safari" { hosted?.linkChanged(profile: connection.hello.profile) }
         profilesSoon()
         soon()
     }

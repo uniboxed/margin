@@ -409,7 +409,16 @@ pub enum LinkMessage {
         id: i64,
         body: Object,
     },
-    Tock,
+    /// `ack { id }`: the copy read that `req` and takes it (docs/LINK-RESILIENCE.md §1 rule 2), said before it runs. An
+    /// older copy never sends one.
+    Ack {
+        id: i64,
+    },
+    /// The answer to `tick`, its `seq` echoed. None from an older copy, or from the copy's own probe after a pause: then
+    /// it says only that the copy is alive.
+    Tock {
+        seq: Option<i64>,
+    },
     Bye {
         why: String,
     },
@@ -519,7 +528,8 @@ impl LinkMessage {
                 body.remove("id");
                 Some(Self::Reply { id, body })
             }
-            "tock" => Some(Self::Tock),
+            "ack" => Some(Self::Ack { id: json::int(m.get("id"))? }),
+            "tock" => Some(Self::Tock { seq }),
             "bye" => Some(Self::Bye { why: json::string(m.get("why")).unwrap_or("").to_owned() }),
             other => Some(Self::Other(other.to_owned())),
         }
@@ -606,7 +616,16 @@ impl LinkMessage {
                 kind(&mut o, "reply");
                 o.insert("id".into(), (*id).into());
             }
-            Self::Tock => kind(&mut o, "tock"),
+            Self::Ack { id } => {
+                kind(&mut o, "ack");
+                o.insert("id".into(), (*id).into());
+            }
+            Self::Tock { seq } => {
+                kind(&mut o, "tock");
+                if let Some(seq) = seq {
+                    o.insert("seq".into(), (*seq).into());
+                }
+            }
             Self::Bye { why } => {
                 kind(&mut o, "bye");
                 o.insert("why".into(), why.clone().into());
@@ -638,8 +657,15 @@ pub enum AppMessage {
     Welcome {
         key: String,
     },
-    /// Every 5 s; the copy answers `tock`.
-    Tick,
+    /// Every 5 s; the copy answers `tock` with the same `seq` (counted from 1 on each link).
+    Tick {
+        seq: i64,
+    },
+    /// `cancel { id }`: the app no longer waits for that `req` (the pick it was for was overtaken). Not started yet, it
+    /// never is; under way, it stops at its next check. Neither is answered.
+    Cancel {
+        id: i64,
+    },
     /// An action from a window's UI, answered with `reply` (the same id).
     Req {
         id: i64,
@@ -700,9 +726,14 @@ impl AppMessage {
                 put("v", VERSION.into());
                 put("key", key.clone().into());
             }
-            Self::Tick => {
+            Self::Tick { seq } => {
                 put("k", "tick".into());
                 put("at", at);
+                put("seq", (*seq).into());
+            }
+            Self::Cancel { id } => {
+                put("k", "cancel".into());
+                put("id", (*id).into());
             }
             Self::Req { id, epoch, window_id, kind, payload } => {
                 put("k", "req".into());
@@ -1387,7 +1418,7 @@ mod tests {
         assert_eq!(id, 7);
         assert_eq!(Value::Object(body), json!({"ok":false,"error":"x","stale":true}), "the answer without k and id");
         assert_eq!(decode(json!({"k":"reply","ok":true})), None, "a reply needs its id");
-        assert_eq!(decode(json!({"k":"tock","at":1})), Some(LinkMessage::Tock));
+        assert_eq!(decode(json!({"k":"tock","at":1})), Some(LinkMessage::Tock { seq: None }));
         assert_eq!(decode(json!({"k":"bye","why":"turned off"})), Some(LinkMessage::Bye { why: "turned off".into() }));
         assert_eq!(decode(json!({"k":"bye"})), Some(LinkMessage::Bye { why: String::new() }));
         assert_eq!(decode(json!({"k":"later"})), Some(LinkMessage::Other("later".into())));
@@ -1415,6 +1446,53 @@ mod tests {
         let Some(LinkMessage::Data { kind, body }) = decode(json!({"k":"data.hello","format":1})) else { panic!() };
         assert_eq!(kind, "data.hello");
         assert_eq!(body.get("format"), Some(&json!(1)));
+    }
+
+    /// The link's words shared with the copy's tests and the Mac's (tests/fixtures/link-protocol.json).
+    #[test]
+    fn the_shared_link_vectors() {
+        let path =
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../tests/fixtures/link-protocol.json");
+        let text = std::fs::read_to_string(&path).unwrap_or_default();
+        let v: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
+        let app = v["app"].as_array().cloned().unwrap_or_default();
+        let copy = v["copy"].as_array().cloned().unwrap_or_default();
+        assert!(app.len() >= 2 && copy.len() >= 5, "the vectors read: {}", path.display());
+        for case in app {
+            let m = &case["message"];
+            let message = match m["k"].as_str() {
+                Some("tick") => AppMessage::Tick { seq: m["seq"].as_i64().unwrap_or(0) },
+                Some("cancel") => AppMessage::Cancel { id: m["id"].as_i64().unwrap_or(0) },
+                other => panic!("a message the vectors don't make: {other:?}"),
+            };
+            let at = case["at"].as_f64().unwrap_or(0.0);
+            let sent = message.encode(at).and_then(|t| serde_json::from_str::<Value>(&t).ok());
+            assert_eq!(sent.as_ref(), Some(&case["text"]), "{}", case["about"]);
+        }
+        for case in copy {
+            let read = decode(case["text"].clone()).map(|m| Value::Object(m.object()));
+            assert_eq!(read.unwrap_or(Value::Null), case["reads"], "{}", case["about"]);
+        }
+    }
+
+    #[test]
+    fn ack_cancel_and_the_numbered_tick_and_tock() {
+        assert_eq!(decode(json!({"k":"ack","id":7})), Some(LinkMessage::Ack { id: 7 }));
+        assert_eq!(decode(json!({"k":"ack"})), None, "an ack needs its id");
+        assert_eq!(decode(json!({"k":"ack","id":1.5})), None);
+        assert_eq!(decode(json!({"k":"tock","at":1,"seq":4})), Some(LinkMessage::Tock { seq: Some(4) }));
+        assert_eq!(decode(json!({"k":"tock","at":1})), Some(LinkMessage::Tock { seq: None }), "an older copy's");
+        assert_eq!(
+            decode(json!({"k":"tock","seq":"4"})),
+            Some(LinkMessage::Tock { seq: None }),
+            "not a number: life only"
+        );
+        assert_eq!(Value::Object(LinkMessage::Ack { id: 7 }.object()), json!({"k":"ack","id":7}));
+        assert_eq!(Value::Object(LinkMessage::Tock { seq: Some(4) }.object()), json!({"k":"tock","seq":4}));
+        assert_eq!(Value::Object(LinkMessage::Tock { seq: None }.object()), json!({"k":"tock"}));
+        let tick = sent(&AppMessage::Tick { seq: 3 });
+        assert_eq!(Value::Object(tick), json!({"k":"tick","at":1_800_000_000_000_i64,"seq":3}));
+        assert_eq!(Value::Object(sent(&AppMessage::Cancel { id: 5 })), json!({"k":"cancel","id":5}));
     }
 
     // ---- tests.swift appMessages() ----
@@ -1472,7 +1550,7 @@ mod tests {
         );
         assert_eq!(sent(&AppMessage::Resync { epoch: "e".into() }).get("epoch"), Some(&json!("e")));
         assert_eq!(sent(&AppMessage::Bye { why: "quit".into() }).get("why"), Some(&json!("quit")));
-        assert_eq!(sent(&AppMessage::Tick).get("k"), Some(&json!("tick")));
+        assert_eq!(sent(&AppMessage::Tick { seq: 1 }).get("k"), Some(&json!("tick")));
 
         let data = sent(&AppMessage::Data { kind: "data.ack".into(), body: obj(json!({"k":"x","upTo":4})) });
         assert_eq!(Value::Object(data), json!({"k":"data.ack","upTo":4}), "the kind wins over the body's k");
@@ -1517,7 +1595,7 @@ mod tests {
             ..PageLayout::default()
         };
         assert_eq!(AppMessage::SetLayout { epoch: "e".into(), window_id: 1, seq: 1, layout }.encode(AT), None);
-        assert_eq!(AppMessage::Tick.encode(f64::INFINITY), None);
+        assert_eq!(AppMessage::Tick { seq: 1 }.encode(f64::INFINITY), None);
         assert_eq!(HandoffRequest::frame_probe(1, f64::NAN, 1.0).payload(), None);
     }
 

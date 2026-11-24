@@ -136,6 +136,16 @@ final class FakeRegistrar: HotKeyRegistrar {
       check("reply: its id, the answer without k and id", id == 7 && body["ok"] as? Bool == false && body["stale"] as? Bool == true && body["k"] == nil && body["id"] == nil)
     } else { check("reply decodes", false) }
     if case .tock? = LinkMessage.decode(#"{"k":"tock","at":1}"#) { check("tock", true) } else { check("tock decodes", false) }
+    // The link's words shared with the core's and the copy's tests (tests/fixtures/link-protocol.json), as the core reads
+    // them for this side (an ack and a numbered tock are the core's link's own: never passed on as anything to act on).
+    if let path = ProcessInfo.processInfo.environment["MARGIN_LINK_VECTORS"], let data = FileManager.default.contents(atPath: path),
+       let vectors = (try? JSONSerialization.jsonObject(with: data)) as? JSONObject, let copy = vectors["copy"] as? [JSONObject], !copy.isEmpty {
+      for c in copy {
+        let read = (c["text"] as? JSONObject).flatMap { jsonString($0) }.flatMap { LinkMessage.read($0) }
+        check("link vector: \(c["about"] as? String ?? "?")", same(read, c["reads"] is NSNull ? nil : c["reads"]), "\(String(describing: read))")
+      }
+    } else { check("the link vectors read (MARGIN_LINK_VECTORS)", false) }
+    if case .tock? = LinkMessage.decode(#"{"k":"tock","at":1,"seq":3}"#) { check("a numbered tock: a tock", true) } else { check("a numbered tock decodes", false) }
     if case .bye(let why)? = LinkMessage.decode(#"{"k":"bye","why":"turned off"}"#) { check("bye", why == "turned off") } else { check("bye decodes", false) }
     if case .other(let k)? = LinkMessage.decode(#"{"k":"later"}"#) { check("a kind not known: other", k == "later") } else { check("unknown kind decodes", false) }
     if case .keys(let epoch, let bindings)? = LinkMessage.decode(#"{"k":"keys","epoch":"e","bindings":{"next-tab":["Alt+Meta+ArrowDown","Ctrl+Meta+ArrowDown",3],"palette":["Meta+KeyT"],"odd":"x"}}"#) {

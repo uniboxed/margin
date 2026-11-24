@@ -227,6 +227,8 @@ final class PageCore {
         withText(label) { l, ln, lh in withText(app) { a, an, ah in margin_page_set_elsewhere(page, l, ln, lh, a, an, ah) } }
     }
     func setStuck(_ why: String?) -> Bool { withText(why) { margin_page_set_stuck(page, $0, $1, $2) } }
+    func setCopySlow(_ on: Bool) -> Bool { margin_page_set_copy_slow(page, on) }
+    var copySlow: Bool { margin_page_copy_slow(page) }
     enum HostedSaid { case same, moved, changed }
     func setHosted(_ number: Int?) -> HostedSaid {
         switch margin_page_set_hosted(page, number != nil, Int64(number ?? 0)) {

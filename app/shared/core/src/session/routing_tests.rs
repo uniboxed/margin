@@ -257,7 +257,12 @@ fn the_uis_requests_routed() {
     assert!(out.ready && out.start.is_empty());
     s.tick(0.0);
     let out = s.input(&json!({ "type": "ui", "kind": "app.open", "payload": { "bundleId": "com.b", "windowId": 1 } }));
-    assert!(!out.start.is_empty() || !s.idle(), "openApp under way");
+    let next = s.tick(0.0);
+    assert!(
+        !out.start.is_empty() || !next.start.is_empty() || s.done().iter().any(|l| l.starts_with("com.b")),
+        "openApp run: {:?}",
+        s.done()
+    );
 }
 
 #[test]

@@ -73,12 +73,7 @@ fn timing(o: Option<&Object>) -> (Timing, f64, f64) {
     let Some(o) = o else { return (d, margin_core::socket::KEEP, margin_core::socket::SAFARI_SETTLED) };
     let pos = |k: &str, or: f64| f(o, k).filter(|v| *v > 0.0).unwrap_or(or);
     (
-        Timing {
-            tick: pos("tick", d.tick),
-            dead: pos("dead", d.dead),
-            hello: pos("hello", d.hello),
-            request: pos("request", d.request),
-        },
+        Timing { tick: pos("tick", d.tick), dead: pos("dead", d.dead), hello: pos("hello", d.hello) },
         pos("keep", margin_core::socket::KEEP),
         f(o, "safariSettled").filter(|v| *v >= 0.0).unwrap_or(margin_core::socket::SAFARI_SETTLED),
     )
@@ -87,7 +82,7 @@ fn timing(o: Option<&Object>) -> (Timing, f64, f64) {
 fn error_name(e: LinkError) -> &'static str {
     match e {
         LinkError::Down => "down",
-        LinkError::TimedOut => "timedOut",
+        LinkError::Lost => "lost",
         LinkError::NotJson => "notJSON",
     }
 }
@@ -221,6 +216,17 @@ impl MarginLink {
                 };
                 outs
             }
+            "cancel" => {
+                let id = json::int(o.get("id")).unwrap_or(0);
+                let (cancelled, outs) = self.hub.cancel(conn(o), id);
+                extra.insert("cancelled".into(), cancelled.into());
+                outs
+            }
+            "slow" => {
+                let slow = self.hub.slow(conn(o), now).and_then(number).unwrap_or(Value::Null);
+                extra.insert("slow".into(), slow);
+                Vec::new()
+            }
             "close" => {
                 let code = o.get("code").and_then(Value::as_u64).and_then(|c| u16::try_from(c).ok()).unwrap_or(1000);
                 self.hub.close(conn(o), code, s("why").unwrap_or(""), now)
@@ -297,7 +303,7 @@ fn app_message(m: &Object) -> Option<AppMessage> {
 }
 
 /// The link object (free it with `margin_link_free`). `config`: `{ version, pid?, timing?: { tick, dead, keep,
-/// hello, request, safariSettled }, origins? }` (`pid`: the link note written for this process; none, no notes).
+/// hello, safariSettled }, origins? }` (`pid`: the link note written for this process; none, no notes).
 /// `write`: each write, during the call that makes it.
 ///
 /// # Safety
@@ -339,7 +345,9 @@ pub unsafe extern "C" fn margin_link_free(link: *mut MarginLink) {
 /// notification's), `appUp` (runningFor: how long Safari has run, or null), `dispatched` (name, n, why or null),
 /// `accept` and `ended` (conn; error), `relayOpen` and `relayEnded` (conn), `tick`, `send` (conn, message: `drawn`,
 /// `resync` or a data message; answers `sent`, `error`, `refused`), `request` (conn, kind, payload, windowId; answers
-/// `id` or `error`), `close` (conn, code, why), `stop` (why), `heardPid` (pid; answers `heard`), `mirror` (conn;
+/// `id` or `error`; its answer comes on evidence only, never after a time), `cancel` (conn, id: answers `cancelled`,
+/// whether it still waited; no answer comes for it then), `slow` (conn: answers `slow`, the age in seconds of its
+/// oldest request the copy hasn't acked, or null), `close` (conn, code, why), `stop` (why), `heardPid` (pid; answers `heard`), `mirror` (conn;
 /// answers `mirror`: that link's state whole, for the tests), `state`.
 ///
 /// # Safety
@@ -613,7 +621,7 @@ mod tests {
 
     #[test]
     fn a_link_object_over_its_calls() {
-        let config = json!({"version":"1.2","pid":99,"timing":{"tick":5,"dead":40,"keep":30,"hello":5,"request":15,"safariSettled":2},"origins":["safari-web-extension://"]}).to_string();
+        let config = json!({"version":"1.2","pid":99,"timing":{"tick":5,"dead":40,"keep":30,"hello":5,"safariSettled":2},"origins":["safari-web-extension://"]}).to_string();
         // SAFETY: a valid buffer; ctx unused by `record`.
         let l = unsafe { margin_link_new(config.as_ptr(), config.len(), std::ptr::null_mut(), Some(record)) };
         assert!(!l.is_null());
@@ -725,7 +733,14 @@ mod tests {
         assert_eq!(a["id"], 1);
         assert_eq!(call(l, json!({"type":"request","conn":9,"kind":"x","now":2}))["error"], "down");
         let a = call(l, json!({"type":"tick","now":17.5}));
-        assert_eq!(did(&a, "answer")[0]["error"], "timedOut");
+        assert!(did(&a, "answer").is_empty(), "no time-out: request 1 still waits");
+        assert_eq!(call(l, json!({"type":"slow","conn":3,"now":17.5}))["slow"], 15.5, "not acked for 15.5 s");
+        assert_eq!(call(l, json!({"type":"slow","conn":9,"now":17.5}))["slow"], Value::Null);
+        let a = call(l, json!({"type":"cancel","conn":3,"id":1,"now":17.5}));
+        assert_eq!(a["cancelled"], true);
+        assert!(did(&a, "answer").is_empty(), "cancelled: never answered");
+        assert_eq!(call(l, json!({"type":"cancel","conn":3,"id":1,"now":17.5}))["cancelled"], false, "once");
+        assert_eq!(call(l, json!({"type":"slow","conn":3,"now":17.5}))["slow"], Value::Null);
         let a = call(l, json!({"type":"stop","why":"Margin.app quit","now":18}));
         assert!(did(&a, "end").iter().any(|d| d["which"] == "tcp" && d["conn"] == 3));
         assert_eq!(did(&a, "down")[0]["why"], "stopped: Margin.app quit");

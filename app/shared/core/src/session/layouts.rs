@@ -363,8 +363,12 @@ impl Core {
             return;
         }
         let mut tabbed: BTreeSet<String> = BTreeSet::new();
+        let items: Vec<String> = parts.iter().map(|p| p.item.clone()).collect();
         for part in parts.clone() {
-            if part.profile.is_some() && self.ports.is_hosted(&part.target.id()) && self.show_tab(&part).await {
+            if part.profile.is_some()
+                && self.ports.is_hosted(&part.target.id())
+                && self.show_tab(&part, w, &items).await
+            {
                 tabbed.insert(part.item.clone());
             }
         }
@@ -491,7 +495,7 @@ impl Core {
                 self.note(format!("layout: {}: not shown ({said})", part.item));
                 continue;
             }
-            if part.profile.is_some() && !tabbed.contains(&part.item) && !self.show_tab(part).await {
+            if part.profile.is_some() && !tabbed.contains(&part.item) && !self.show_tab(part, w, &items).await {
                 continue;
             }
             if part.profile.is_none() {
@@ -634,8 +638,10 @@ impl Core {
         Some(out)
     }
 
-    /// A web item whose window is there already: its tab in front, out of sight, as a show does (`showTab`).
-    async fn show_tab(&self, part: &Part) -> bool {
+    /// A web item whose window is there already: its tab in front, out of sight, as a show does (`showTab`). Its copy
+    /// asked until it answers, or another item (none of the layout's) is asked for in `w`, or Margin quits with its copy
+    /// not reading it (`ask_held`).
+    async fn show_tab(&self, part: &Part, w: i64, items: &[String]) -> bool {
         let (Some(p), HostTarget::Safari(_, role)) = (&part.profile, &part.target) else { return false };
         let Some(window_id) = self.safari_window(p, *role) else { return false };
         let payload = match self.card_show_payload(&part.item, window_id) {
@@ -646,7 +652,8 @@ impl Core {
                 object(json!({ "windowId": window_id, "itemId": part.item, "url": url, "pinned": pinned }))
             }
         };
-        let shown = self.ask(p, "hostShow", payload).await;
+        let wanted = || self.requested_in(w).is_none_or(|r| items.contains(&r)) && self.ports.window(Some(w)).is_some();
+        let shown = self.ask_held(p, "hostShow", payload, wanted).await;
         let Some(result) = shown.result else {
             let why = shown.error.as_deref().unwrap_or("no answer");
             self.note(format!("layout: {}: its tab wasn't shown ({why})", part.item));

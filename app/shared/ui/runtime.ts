@@ -46,6 +46,8 @@ import { createRowMotion } from './row-motion.ts';
 
 const CLOSED_PALETTE = Object.freeze({ open: false, query: '', selected: 0, newTab: false, selectAll: false });
 const TOAST_MS = 1800;
+// What the page card says while the browser's copy asked to show its item is slow (followSlow).
+const SLOW_WORDS = 'Safari is slow\u2026';
 // What's shown ahead of the state lasts this long at most (sidebar.js SHOWN_SPACE_MS).
 const PENDING_MS = 3000;
 // The page was shown this recently: its own tab's space until the state
@@ -403,6 +405,30 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     if (!root.hasAttribute('m-page-picture')) root.setAttribute('m-page-picture', '');
     if (picture.parentNode !== root) root.appendChild(picture);
   }
+  // The browser's copy asked to show the item is slow (host.pageSlow: Margin.app's, docs/LINK-RESILIENCE.md §1 rule
+  // 8): `<m-page-slow>`, Margin's own, over the page's place, says "Safari is slow…" under whatever loader the theme
+  // draws, the same in every theme (BASE_CSS; a theme may restyle it); `m-page-slow` on the root meanwhile. Gone with
+  // the slowness or the loading.
+  let slowNote: HTMLElement | null = null;
+  function followSlow(root: HTMLElement, state: string) {
+    const on = state === 'loading' && host.pageSlow === true && host.pageStarting !== true;
+    if (!on) {
+      if (slowNote) { slowNote.remove(); slowNote = null; }
+      if (root.hasAttribute('m-page-slow')) root.removeAttribute('m-page-slow');
+      return;
+    }
+    if (!slowNote) {
+      slowNote = doc.createElement('m-page-slow');
+      slowNote.setAttribute('role', 'status');
+      slowNote.setAttribute('aria-live', 'polite');
+      const label = doc.createElement('span');
+      label.setAttribute('m-slow-label', '');
+      label.textContent = SLOW_WORDS;
+      slowNote.append(label);
+    }
+    if (!root.hasAttribute('m-page-slow')) root.setAttribute('m-page-slow', '');
+    if (slowNote.parentNode !== root) root.appendChild(slowNote);
+  }
   // `m-startup` (Margin.app's own window, host.pageStarting: its default browser getting ready, HostedSession.swift
   // resumeLast): the start screen. `<m-startup>`, Margin's, over the whole window and everything in it, takes the
   // pointer (nothing under it can be pressed); a theme draws its loader's own marks in it, with no app's icon and no
@@ -477,6 +503,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     if (!state) return;
     if (root.getAttribute('m-page-state') !== state) root.setAttribute('m-page-state', state);
     followPicture(root, state);
+    followSlow(root, state);
     followStartup(root);
     const own = view.parts.has('page-loader') && !!root.querySelector('m-page-loader:not([m-default])');
     if (own) { defaultLoader?.remove(); defaultLoader = null; placeLoader(); return; }
@@ -511,7 +538,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   }
   // Margin's default loader over the page's place: `<m-page>`'s content box and its corners, as the view measures them.
   function placeLoader() {
-    const els = [defaultLoader, picture].filter((el): el is HTMLElement => !!el?.isConnected);
+    const els = [defaultLoader, picture, slowNote].filter((el): el is HTMLElement => !!el?.isConnected);
     const g = els.length ? view.measure() : null;
     if (g) for (const el of els) place(el, g);
   }

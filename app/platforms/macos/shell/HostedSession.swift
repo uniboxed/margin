@@ -93,6 +93,8 @@ protocol HostedEngine: AnyObject {
     // Those windows parked out of sight and still open (their private Space is kept until there are none).
     func wokenParked(bundleId: String) -> [Int]
     func appRuns(bundleId: String) -> Bool?
+    // Margin quits (HostEngine `quitAll`): nothing is woken, started or pressed any more.
+    var quitting: Bool { get }
     // A drag of the sidebar's edge began (true) or is over (false): true back, the one shown follows it live (HostEngine
     // `dragging`: its tile's rect, a window-mode window's frame); then each page area of the drag (`follow`), at most one
     // change a display frame. False: it doesn't (the page area's changes held until the drag is over, as before).
@@ -217,6 +219,7 @@ extension HostedEngine {
     func wokenWindows(bundleId: String) -> Int { 0 }
     func wokenParked(bundleId: String) -> [Int] { [] }
     func appRuns(bundleId: String) -> Bool? { nil }
+    var quitting: Bool { false }
     func dragging(_ on: Bool) -> Bool { false }
     func follow(_ placement: HostPlacement) {}
     var shownFillsPage: Bool { false }
@@ -298,6 +301,8 @@ protocol HostedWindow: AnyObject {
     // Margin's start held up (its default browser not ready within `startupWait`, or its extension didn't connect):
     // what's wrong, in Margin's words, drawn on the start screen with Try again and Continue without Safari; nil: not.
     func setStartupStuck(_ why: String?)
+    // The browser's copy asked to show its item is slow, or no longer (its loader says so; gone with the item). Mechanism.
+    func setCopySlow(_ on: Bool)
     func cover(_ number: Int?) // a window of the engine's in its Space not shown yet (a new app's, read), nil: no more
     func yield(to number: Int?) // another app's window opened in its Space: let in front until it's gone (nil)
     func frontRead(_ read: HostEngine.FrontRead) // the poll's read at rest of it and the hosted window: in front, kept so
@@ -383,6 +388,14 @@ protocol HostedLinks: AnyObject {
     func restoredWindowIds(of profile: String) -> [Int]?
     // The epoch of that profile's link now (a new link: a new epoch), nil: not linked.
     func linkEpoch(of profile: String) -> String?
+    // A request the session may give up (`asked`: its command's id, session/mod.rs `Command::Ask`), else as `request`;
+    // `cancel` gives it up (the session's `Command::Cancel`, its pick overtaken): the link's `cancel`, the copy told, the
+    // request returning at once. Mechanism only: the core decides when.
+    func request(profile: String, _ type: String, _ payload: JSONObject, asked: UInt64?) async -> (result: JSONObject?, error: String?)
+    func cancel(profile: String, asked: UInt64)
+    // How long that profile's copy has been slow (the link's `slow`: its oldest request not acked, in seconds), nil: it
+    // isn't, or it's not linked. The session's feedback only.
+    func slow(of profile: String) -> Double?
 }
 
 final class HostedSession {
@@ -407,6 +420,7 @@ final class HostedSession {
         var cycleWindow = 1.0 // (Tirth, 2026-11-20) a pick this soon after the next/previous-tab key in its window: a cycle's
         var cycleHold = 0.35 // ...an app not running yet held this long before it's started: one only passed over is never started
         var paneIdle = 900.0 // (docs/PEEK-SPLIT.md §4) a split's pane window of a profile unused this long: closed
+        var quitWait: Double? // the engine's own (HostEngine.Options.quitWait), set as they're joined: at quit, a copy's request it waits for no longer
     }
 
     // Where an item's page is: its host, and for a web item its profile.
@@ -636,9 +650,13 @@ final class HostedSession {
         case "ask":
             let profile = c["profile"] as? String ?? "", kind = c["kind"] as? String ?? "", payload = c["payload"] as? JSONObject ?? [:]
             startNow {
-                let (result, error) = await self.links.request(profile: profile, kind, payload)
+                let (result, error) = await self.links.request(profile: profile, kind, payload, asked: id)
                 self.drive(self.core.answer(id, ["result": result ?? NSNull(), "error": error ?? NSNull()]))
             }
+        case "cancel":
+            // (An ask given up, its pick overtaken: the link's cancel. Its own answer, when it comes, is let go.)
+            if let ask = (c["ask"] as? NSNumber)?.uint64Value { links.cancel(profile: c["profile"] as? String ?? "", asked: ask) }
+            drive(core.answer(id, [:]))
         case "run":
             let body = (c["job"] as? NSNumber).flatMap { jobs.removeValue(forKey: $0.uint64Value) }
             startNow {
@@ -812,7 +830,9 @@ final class HostedSession {
         case "shownFillsPage": return ["fills": engine.shownFillsPage]
         case "liveFollowers": let n = engine.liveFollowers(); return ["follow": n.follow, "visible": n.visible]
         case "swift": return ["value": swiftCall(ask["call"] as? String ?? "", ask["args"] as? JSONObject ?? [:]) ?? NSNull()]
+        case "setCopySlow": held(int(ask["window"]))?.setCopySlow(ask["on"] as? Bool == true); return [:]
         case "settings": return ["settings": uiSettings() ?? NSNull()]
+        case "linkSlow": return links.slow(of: ask["profile"] as? String ?? "").map { ["secs": $0] } ?? [:]
         case "idna": return ["ok": (ask["host"] as? String).map(SessionRules.idna) ?? false]
         case "urlHost": return (ask["url"] as? String).flatMap { URL(string: $0)?.host }.map { ["host": $0] } ?? [:]
         default: return [:]
@@ -1378,6 +1398,10 @@ final class HostedSession {
 
     // The start screen's Try again and Continue without Safari; the preparation over (ready, or not done).
     func startupRetry() { drive(core.input(["type": "startupRetry"])) }
+    // A browser copy's link came up or went down (the shell's linkUp/linkDown): the core's waits for a link look again.
+    func linkChanged(profile: String) { drive(core.input(["type": "linked", "profile": profile])) }
+    // Margin quits (before the engine's quitAll): the core's copy requests made for it aren't waited for once unread.
+    func marginQuits() { drive(core.input(["type": "quitting"])) }
     func startupSkip() { drive(core.input(["type": "startupSkip"])) }
     func preparationOver() { drive(core.input(["type": "preparationOver"])) }
     static let resumeKey = "MarginResumeLast"
@@ -1768,7 +1792,7 @@ extension HostedSession.Options {
          "closesRestoredSafariWindows": closesRestoredSafariWindows, "preparesBrowser": preparesBrowser,
          "prepareWindowWait": prepareWindowWait, "refitRetryAfter": refitRetryAfter, "resumesLast": resumesLast,
          "startupWait": startupWait, "pictureWait": pictureWait, "wokenLate": wokenLate, "wokenGrace": wokenGrace,
-         "cycleWindow": cycleWindow, "cycleHold": cycleHold, "paneIdle": paneIdle]
+         "cycleWindow": cycleWindow, "cycleHold": cycleHold, "paneIdle": paneIdle, "quitWait": quitWait ?? NSNull()]
     }
 }
 

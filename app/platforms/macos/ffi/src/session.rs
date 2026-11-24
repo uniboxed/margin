@@ -332,6 +332,14 @@ impl Ports for SwiftPorts {
         }
         Self::string(&self.ask(json!({ "port": "linkEpoch", "profile": profile })), "epoch")
     }
+    fn set_copy_slow(&self, window: i64, on: bool) {
+        // (Said once a `slowSay` at most while a show waits: rare, JSON.)
+        self.ask(json!({ "port": "setCopySlow", "window": window, "on": on }));
+    }
+    fn link_slow(&self, profile: &str) -> Option<f64> {
+        // (Read once a `slowSay` while a show waits: rare, JSON.)
+        json::num(self.ask(json!({ "port": "linkSlow", "profile": profile })).get("secs"))
+    }
     fn app_name(&self, bundle: &str) -> Option<String> {
         if let Some(c) = self.call {
             return self.text(c, PortKind::AppName, None, [Some(bundle), None, None]);
@@ -1461,8 +1469,9 @@ mod tests {
             json!([{ "op": "ask", "id": 1, "profile": "p", "kind": "hostShow", "payload": { "windowId": 90, "itemId": "t1", "url": "https://a/" } }])
         );
         assert_eq!(swift.asked.borrow()[0], json!({ "port": "window", "id": 1 }));
+        // (Its turn given up while its copy works: the queue idle meanwhile, docs/LINK-RESILIENCE.md.)
         // SAFETY: the live session.
-        assert!(!unsafe { margin_session_idle(s) });
+        assert!(unsafe { margin_session_idle(s) });
         // SAFETY: the live session.
         read(unsafe { margin_session_tick(s, 0.0, std::ptr::null_mut(), &mut n) }, n);
         let reply = br#"{"result":{"tabId":7},"error":null}"#;

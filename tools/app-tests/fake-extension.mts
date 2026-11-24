@@ -26,6 +26,16 @@
 //     (`corrupt`: one piece's bytes changed);
 //   { do: 'send', id, msg } → msg as is, its epoch filled in;
 //   { do: 'mute', id, on } → ticks no longer answered; { do: 'close', id };
+//   { do: 'stall', id, ms } → { ev: 'stalled' }: from now on each message read is handled `ms` after it was read, in
+//     order (a copy whose event loop runs late: docs/LINK-RESILIENCE.md), while what the host tells it to send
+//     (`windows`, `send`) still goes at once; its acks and tocks come late with the rest. `ms: 0` ends it once what's
+//     held has run ({ ev: 'drained', id } then: caught up). A `cancel` read while its req is held drops it (never acked or answered) → { ev: 'cancel', id,
+//     reqId, started: false }; one already handled → started: true (its reply, if it comes, isn't sent);
+//   { do: 'lose', id, n } → the next `n` reqs handled are left, as a copy that read past them: no ack, no reply →
+//     { ev: 'lost', id, reqId, type }.
+// As a copy of today's extension: each req is acked before it runs (`ack { id }`), an id seen this epoch runs once
+// (running: left, { ev: 'again', answered: false }; answered: its reply again, answered: true), and a tick's `seq` is
+// echoed in its tock.
 //   { do: 'play', id, play } → connect's `play` changed (below).
 // A socket done by hand (node:net), for what a page's WebSocket can't send (a close of 1001, an
 // empty close, a TCP end with no close frame, a socket that never says hello):
@@ -93,7 +103,11 @@ type Sock = {
   windows: Win[], data: Msg | null, acked: number, rev: string | null, cache: DataSet | null,
   incoming: { transfer: string, parts: Map<number, Msg>, bytes: number } | null, newWindow: Bounds | null, nextWindow: number,
   play: { enterMs?: number, exitMs?: number, listLagMs?: number, normal?: Bounds },
-  calling: Set<number>, send: (m: Msg) => void, hosted?: Map<string, number>, nextTab?: number,
+  calling: Set<number>, send: (m: Msg) => void, snapshot: () => void, hosted?: Map<string, number>, nextTab?: number,
+  // `stall`: each message read is held `stallMs` before it's handled (in order); `lose`: that many reqs read and left.
+  stallMs: number, held: { m: Msg, due: number }[], drainTimer: ReturnType<typeof setTimeout> | null, lose: number,
+  // This epoch's reqs: running, or their reply (sent again for a repeated id); and the ids the app cancelled.
+  answered: Map<number, Msg | 'running'>, cancelled: Set<number>,
 };
 // Node's WebSocket (undici's) takes the request's headers; the DOM's type doesn't say so.
 type NodeWebSocket = new (url: string, init: { headers: Record<string, string> }) => WebSocket;
@@ -271,11 +285,11 @@ function connect({ id, profile = 'P1', token, origin = ORIGIN, owner = true, win
     raw.openTabs = open;
   }
   for (let i = 0; i < (data?.icons ?? 0); i++) (raw.favicons ??= {})[`https://icon${i}.test`] = { data: 'data:image/png;base64,' + 'A'.repeat(60_000), href: `https://icon${i}.test/favicon.ico`, at: 1 };
-  // (Its `send`: just below.)
-  const s = ({ id, ws, profile, epoch: randomUUID(), seq: 0, muted: false, welcomed: false, raw, windows, data, acked: data?.acked ?? 0, rev: data?.rev ?? null, cache: null, incoming: null, newWindow, nextWindow, play, calling: new Set() } satisfies Omit<Sock, 'send'>) as Sock;
+  // (Its `send` and `snapshot`: just below.)
+  const s = ({ id, ws, profile, epoch: randomUUID(), seq: 0, muted: false, welcomed: false, raw, windows, data, acked: data?.acked ?? 0, rev: data?.rev ?? null, cache: null, incoming: null, newWindow, nextWindow, play, calling: new Set(), stallMs: 0, held: [], drainTimer: null, lose: 0, answered: new Map(), cancelled: new Set(), send: () => {}, snapshot: () => {} }) as Sock;
   sockets.set(id, s);
   s.send = (m: Msg) => ws.send(JSON.stringify({ epoch: s.epoch, ...m }));
-  const snapshot = () => s.send({ k: 'snapshot', seq: ++s.seq, state: s.raw, windows: s.windows });
+  const snapshot = (s.snapshot = () => s.send({ k: 'snapshot', seq: ++s.seq, state: s.raw, windows: s.windows }));
   ws.onopen = () => say({ ev: 'open', id });
   ws.onerror = () => say({ ev: 'error', id });
   ws.onclose = (e) => say({ ev: 'close', id, code: e.code, reason: e.reason });
@@ -299,15 +313,60 @@ function connect({ id, profile = 'P1', token, origin = ORIGIN, owner = true, win
       }
       return;
     }
+    // A cancel read while its req is still held (stalled): that req is dropped, never acked or answered (as the copy's
+    // queue is read first after a pause, docs/LINK-RESILIENCE.md §1 rules 12 and 14).
+    if (m.k === 'cancel') {
+      const at = s.held.findIndex((h) => h.m.k === 'req' && h.m.id === m.id);
+      if (at >= 0) s.held.splice(at, 1);
+      s.cancelled.add(m.id);
+      return say({ ev: 'cancel', id, reqId: m.id, started: at < 0 });
+    }
+    if (s.stallMs > 0 || s.held.length) {
+      s.held.push({ m, due: Date.now() + s.stallMs });
+      return drain(s);
+    }
+    handle(s, m);
+  };
+}
+
+// The held messages whose time has come, in the order they were read; the timer set for the next.
+function drain(s: Sock) {
+  clearTimeout(s.drainTimer ?? undefined);
+  s.drainTimer = null;
+  const had = s.held.length > 0;
+  while (s.held.length && s.held[0].due <= Date.now()) handle(s, s.held.shift()!.m);
+  if (s.held.length) s.drainTimer = setTimeout(() => drain(s), Math.max(0, s.held[0].due - Date.now()));
+  else if (had && s.stallMs === 0) say({ ev: 'drained', id: s.id }); // (caught up: nothing held, no longer stalled)
+}
+
+// One message from the app, handled (after its hold, when stalled).
+function handle(s: Sock, m: Msg) {
+  const id = s.id;
+  {
     switch (m.k) {
       case 'tick':
-        say({ ev: 'tick', id });
-        if (!s.muted) s.send({ k: 'tock', at: Date.now() });
+        say({ ev: 'tick', id, seq: m.seq ?? null });
+        if (!s.muted) s.send({ k: 'tock', at: Date.now(), ...(Number.isInteger(m.seq) ? { seq: m.seq } : {}) });
         return;
       case 'req': {
+        // `lose`: read and left, as a copy that read past it would (no ack, no reply).
+        if (s.lose > 0) {
+          s.lose--;
+          return say({ ev: 'lost', id, reqId: m.id, type: m.type });
+        }
+        // Acked as it's read, before it runs (a stalled copy's ack comes late with it); an id seen this epoch runs once.
+        s.send({ k: 'ack', id: m.id });
+        if (s.cancelled.has(m.id)) return;
+        const seen = s.answered.get(m.id);
+        if (seen) { say({ ev: 'again', id, reqId: m.id, answered: seen !== 'running' }); if (seen !== 'running') s.send(seen); return; }
+        s.answered.set(m.id, 'running');
         say({ ev: 'req', id, msg: m });
         const played = m.epoch === s.epoch ? playWindow(s, m) : null;
-        const reply = (result: unknown) => s.send({ k: 'reply', id: m.id, ok: m.epoch === s.epoch, result: result ?? { type: m.type, windowId: m.windowId, payload: m.payload } });
+        const reply = (result: unknown) => {
+          const r = { k: 'reply', id: m.id, ok: m.epoch === s.epoch, result: result ?? { type: m.type, windowId: m.windowId, payload: m.payload } };
+          s.answered.set(m.id, r);
+          if (!s.cancelled.has(m.id)) s.send(r);
+        };
         if (played instanceof Promise) return void played.then(reply);
         return reply(played);
       }
@@ -315,14 +374,14 @@ function connect({ id, profile = 'P1', token, origin = ORIGIN, owner = true, win
         return say({ ev: 'drawn', id, windowId: m.windowId, on: m.on, msg: m });
       case 'resync':
         say({ ev: 'resync', id });
-        return snapshot();
+        return s.snapshot();
       case 'bye':
         return say({ ev: 'bye', id, why: m.why });
       default:
         if (typeof m.k === 'string' && m.k.startsWith('data.')) return takeData(s, m);
         return say({ ev: 'message', id, msg: m });
     }
-  };
+  }
 }
 
 // A client's frame (masked, as every client's must be).
@@ -407,6 +466,14 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       return say({ ev: 'sent', id: c.id, what: 'data.hello' });
     case 'mute':
       s.muted = c.on;
+      return;
+    case 'stall':
+      s.stallMs = Math.max(0, Number(c.ms) || 0);
+      say({ ev: 'stalled', id: c.id, ms: s.stallMs });
+      if (s.stallMs === 0 && !s.held.length) say({ ev: 'drained', id: c.id });
+      return;
+    case 'lose':
+      s.lose = Math.max(0, Number(c.n) || 0);
       return;
     case 'play':
       s.play = { ...s.play, ...c.play };

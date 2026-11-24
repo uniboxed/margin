@@ -24,7 +24,7 @@ func dataScenario() async {
   func launch() async -> Shell? {
     launches += 1
     let link = SocketLink(dispatch: FakeDispatch(), safariSince: { nil }, wake: Notification.Name("com.unibox.margin.test.data.\(ProcessInfo.processInfo.processIdentifier).\(launches)"),
-                          timing: .init(tick: 0.5, dead: 3, keep: 30, hello: 2, request: 5, safariSettled: 2))
+                          timing: .init(tick: 0.5, dead: 3, keep: 30, hello: 2, safariSettled: 2))
     var options = Shell.Options()
     options.harness = true
     options.root = URL(fileURLWithPath: env["MARGIN_APP_ROOT"]!)
@@ -242,7 +242,7 @@ func carryScenario() async {
   defer { Diagnostics.echo = echo }
 
   let link = SocketLink(dispatch: FakeDispatch(), safariSince: { nil }, wake: Notification.Name("com.unibox.margin.test.carry.\(ProcessInfo.processInfo.processIdentifier)"),
-                        timing: .init(tick: 0.5, dead: 3, keep: 30, hello: 2, request: 5, safariSettled: 2))
+                        timing: .init(tick: 0.5, dead: 3, keep: 30, hello: 2, safariSettled: 2))
   var options = Shell.Options()
   options.harness = true
   options.root = URL(fileURLWithPath: env["MARGIN_APP_ROOT"]!)
