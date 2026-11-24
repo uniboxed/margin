@@ -26,6 +26,9 @@ libc = "0.2"
 icu_collator = "2.1"
 icu_locale_core = "2.1"
 url = "2.5"
+# The library's typed state keeps JavaScript's object key order (app/shared/core/src/library/state.rs `JsObject`); already
+# serde_json's (`preserve_order`), so nothing new is built.
+indexmap = "2"
 
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "deny"

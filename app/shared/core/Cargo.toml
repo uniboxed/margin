@@ -17,6 +17,7 @@ hex.workspace = true
 icu_collator.workspace = true
 icu_locale_core.workspace = true
 url.workspace = true
+indexmap.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

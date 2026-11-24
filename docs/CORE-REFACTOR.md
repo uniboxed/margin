@@ -1784,6 +1784,30 @@ step (each compares the changes).
 **Risks.** `Number.isFinite(g.pos) ? { pos }` (LT:113) keeps a split's `pos` only when it's a number: the typed struct
 keeps `Option<f64>`, not `0`. The `imported` object passes through rebuilt (LT:131). ~500 Rust lines.
 
+**Done (commit 2, step4/state), with these lines of the design corrected.** `state.rs` (the records, `LibTarget`,
+`target_of`, `place_of`, `state_of`, `JsObject`), `values.rs` (`values_of`, `diff`, `diff_values`, `Change`),
+`snapshot.rs` (the text), `import.rs`'s `import_changes` (LT:932-934), `model/mod.rs` (part 3's shared rules and its
+six files, see part 3). Corrected:
+- `state_of<V: Values>(values: &V, compare: &dyn LocaleCompare)`: over the store's `DataSet` (no JSON built) or values
+  as JSON (the import's, the vectors'), and the sorter handed in (Tirth's answer to question 1 again: the system's;
+  `js::LocaleCompare`, ICU4X's `Collation` one until the platform's lands, `CodePointOrder` the tests' stand-in).
+- The collections are `Rc<Vec<Rc<T>>>` and the items `Rc<JsObject<Rc<Item>>>`, not `Vec`/`IndexMap`: JS's identity is
+  kept (`LibState::same` is `next === s`; a record a rule didn't change is the same `Rc`), and a copy of the state is
+  nine refcounts. A field M can leave out of a record it makes (a pin's `pos`, M:1265; a favorite's or archive entry's
+  `target`, M:1504, 1780) is an `Option`, so `valuesOf`'s fallbacks (`finite(p.pos, i)`, `?? webTarget`) see what JS
+  sees.
+- JS's key order is **not** the set's order: `Object.entries` lists array-index keys first, ascending (ECMAScript's
+  OrdinaryOwnPropertyKeys), and the windows' ids are numbers (`"7"`, `"12"`). `state_of` reads every collection in that
+  order and `JsObject` (`keptTabs`, `activeSpaceByWindow`) keeps it, so the snapshot's `activeSpaceByWindow` is
+  `{"2":…,"10":…}` as JS writes it.
+- The import's diff (LT:934) is not the typed one: it compares the values **as stored** with the rules' reading
+  (`diff_values`, `JSON.stringify` equality: key order counts, numbers as doubles), so an import rewrites a stored
+  value in another key order or shape and deletes what the rules don't read. `perform`'s `before` is the reading
+  (LT:820), so a perform doesn't. `diff` skips a collection both states share, and an item both share (the same `Rc`).
+- The snapshot's text is `snapshot_text(&LibState, imported) -> String` (part 6's `Cached` keeps it) and `write_item`
+  one kept tab's row (commit 7's cached fragments); numbers as `String(n)` writes them (`1e+21`), strings as
+  `JSON.stringify` escapes them.
+
 #### Part 3: the model's rules (M's ~45 functions, PR, AT, FI)
 
 **Today.** Spaces: `createSpace` M:1113-1122, `orderSpaces` M:1126-1131, `updateSpace` M:1135-1155, `deleteSpace`
@@ -1808,6 +1832,15 @@ M:1460-1591 (`favoriteUrlOk`, `keptOfFavorite`, `addFavorite`'s cap and duplicat
 which `pinTab`'s `next === s` LT:532, `createFolder` LT:791 and `addFavorite` LT:601 test). The open-tab halves of M's
 functions (`state.tabs`, `tabSpace`: the extension's open tabs) aren't ported: the library's state has none (LT:136
 `tabs: {}`), so each port takes the kept half only, and says so.
+
+**Three pieces at once (laid out by commit 2).** "Unchanged returns the same" is `s.clone()` (`LibState::same`), not a
+`Cow`. `model/mod.rs` holds what more than one piece needs (`has_space`, `pos_of`, `pin_of_space`, `has_favorite`,
+`bound_elsewhere`, `held_bindings`, `settle_bindings`, `FOLDER_NAME_MAX`, `MAX_FOLDER_DEPTH`, `FAVORITES_CAP`; with
+tests) and declares six files, each with its functions and M lines in its header; no piece calls another's: (1)
+`spaces.rs` + `order.rs` (deleteSpace's cascade uses `pinOrder`, `writeOrder`, `pinForUrl`, the same piece's, and
+`settle_bindings`); (2) `kept.rs` + `favorites.rs` (FI's `frontItemOf` in kept.rs; `favoriteScopeOf` answers
+`DEFAULT_SETTINGS.favoritesScope`'s, as the library's state has no settings); (3) `splits.rs` + `links.rs`. Each
+piece adds only to its own two files and their tests (`model/<file>_tests.rs`).
 
 **FFI.** None.
 
@@ -2103,7 +2136,7 @@ commit 7 only).
 | --- | --- | --- | --- | --- |
 | 0 | The vectors and the edges, against the TS (Node and JSC) before any Rust: the recorder and its ~70 tests' vectors, the generated sequences, `js.json` from JSC on this Mac, the throw survey (every throw site and JSC's words), the Mac's outcome for a 2000-unit cut through an emoji (LT:43 → JSON → `JSONSerialization` → the store), the shadow harness in T/ (JSC only for now). Baselines (off screen, T/ timings): a perform, a draw's snapshot over 50/500/2,000 items, the app's binary size and footprint | 0 | 0 (~400 TS and JSON, ~150 Swift test lines) | the baselines |
 | 1 | **Done** (step4/js, da34b9b4): part 1: `js.rs`, the `url` and collation dependencies (open questions 1, 2), and part 5's `import_values` up to its normalising (import.rs) | 0 | ~450 + ~300 tests | binary size: +1.26 MB a architecture (collation), +0.22 MB (URL) |
-| 2 | Part 2: the typed state, `state_of`, `values_of`, `diff`, `target_of`, the snapshot's text; the snapshot vectors pass | 0 | ~850 | |
+| 2 | **Done** (step4/state): part 2: the typed state, `state_of`, `values_of`, `diff`, `target_of`, the snapshot's text, the import's normalising (`import_changes`), part 3's shared rules and files; the snapshot vectors pass once commit 0's are merged (until then: 5,000 generated libraries and 5,000 imports against library.ts) | 0 | ~2,000 + ~1,000 tests | a snapshot's text 0.26 ms at 500 items (JSC 4.7 ms), a perform's diff 1-22 µs |
 | 3 | Part 3: M's rules, PR, AT, FI (parallel: spaces + order; kept + archive + favorites; splits + link rules) | 0 | ~1,400 | |
 | 4 | Part 4: the 57 actions and `perform`; every perform vector and the generated sequences pass | 0 | ~900 | a perform (Rust alone) |
 | 5 | Part 5 and part 7's object: `import_values`, `import_once`, `Library` with its callbacks, the FFI; the T/ shadow check runs JSC and Rust on the whole Swift suite | 0 | ~700 | |

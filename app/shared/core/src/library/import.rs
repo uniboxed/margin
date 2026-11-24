@@ -5,13 +5,15 @@
 //! gone space's entries to the profile's first). The order: the library's own spaces first, then the person's
 //! (browser.json's, `order`), then the rest as the sets gave them. Nothing in the sets is changed.
 //!
-//! [`import_values`] is LT:875-931: the values with the import in them and its counts. LT's last step (LT:933-934:
-//! the result read through `stateOf`/`valuesOf`, so what's stored is what the rules give back, and `diff` against
-//! `current` for the changes) is part 2's (`library::state`), joined in when it lands.
+//! [`import_values`] is LT:875-931: the values with the import in them and its counts. [`import_changes`] adds LT's
+//! last step (LT:932-934: the result read through `stateOf`/`valuesOf`, so what's stored is what the rules give back,
+//! and `diff` against `current` for the changes), part 2's `library::state` and `library::values`.
 
 use serde_json::{Map, Value};
 
-use super::js::{self, Collation};
+use super::js::{self, LocaleCompare};
+use super::state;
+use super::values::{self, Change};
 
 /// The browsers a set can be of (LT:39 `BROWSERS`).
 const BROWSERS: [&str; 3] = ["safari", "chrome", "edge"];
@@ -131,7 +133,7 @@ pub fn import_values(
     sets: &[ImportSet],
     order: &[(String, String, String)],
     now: f64,
-    collation: &Collation,
+    collation: &dyn LocaleCompare,
 ) -> Imported {
     let now = if now.is_finite() { now } else { 0.0 };
     let mut next: Map<String, Value> = COLLECTIONS
@@ -274,6 +276,23 @@ pub fn import_values(
     }
     insert(&mut next, "imports", "done".into(), Value::Object(done));
     Imported { values: next, counts }
+}
+
+/// LT:875 `importValues` whole: [`import_values`], then its last step (LT:932-934): the result read through the rules
+/// once (`valuesOf(stateOf(next), next.imports)`), so what's stored is what the rules give back and the next action
+/// changes nothing, and the changes from `current` (the values as stored) to that. With its counts.
+pub fn import_changes(
+    current: &Map<String, Value>,
+    sets: &[ImportSet],
+    order: &[(String, String, String)],
+    now: f64,
+    collation: &dyn LocaleCompare,
+) -> (Vec<Change>, Counts) {
+    let Imported { values: next, counts } = import_values(current, sets, order, now, collation);
+    let state = state::state_of(&next, collation);
+    let imports = next.get("imports").and_then(Value::as_object).cloned().unwrap_or_default();
+    let normal = values::values_of(&state, &imports);
+    (values::diff_values(current, &normal), counts)
 }
 
 fn insert(values: &mut Map<String, Value>, collection: &str, id: String, value: Value) {

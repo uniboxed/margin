@@ -361,6 +361,7 @@ dependencies = [
  "hex",
  "icu_collator",
  "icu_locale_core",
+ "indexmap",
  "serde",
  "serde_json",
  "sha2",

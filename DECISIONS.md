@@ -8802,3 +8802,47 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   `Collation` made 0.7-1.5 µs (once per library, not per call).
 - Not done here: the vectors' `js.json` (commit 0's, recorded by its own branch: these edges are its cases, and its
   JSC answers must equal the tables in js_tests.rs), the import's normalising (part 2).
+
+## Core refactor step 4, commit 2: the library's typed state, its values, the diff and the snapshot's text in the core (2026-11-23)
+
+- margin-core's `library` gains library.ts's `stateOf`/`targetOf`/`placeOf` (`state.rs`), `valuesOf`/`diff`
+  (`values.rs`), the snapshot's text (`snapshot.rs`) and the import's last step (`import.rs` `import_changes`, LT:932-934:
+  the import's values read through the rules once and diffed against the values as stored). Nothing calls them in the
+  app yet (commit 6 switches); no behaviour changes.
+- The state is typed, not JSON: every collection an `Rc` of a list of `Rc`s, every string an `Rc<str>`. A copy of the
+  state is nine refcounts (an action's spread copies), a record a rule didn't change stays the same `Rc` (JS's
+  `p === state.pins[i]`), and a rule that changed nothing hands back the same lists (`LibState::same`: the TS's
+  `next === s`, which decides `result: null`). A field model.ts can leave out of a record it makes (a pin's `pos`, a
+  favorite's `target`) is an `Option`, so `valuesOf`'s fallbacks see what JS sees.
+- JS's key order, kept: `Object.entries` lists array-index keys first, ascending, then the rest as inserted; the
+  windows' ids are numbers, so `activeSpaceByWindow` is `{"2":…,"10":…}` in JS's text and in the core's (`JsObject`,
+  over `indexmap`, already built for serde_json's `preserve_order`: no new crate). The design said the set's order;
+  corrected in docs/CORE-REFACTOR.md.
+- `valuesOf` is written once, as rows borrowed from the state; `diff` compares two states' rows (equal exactly when
+  LT's two `JSON.stringify`s are: one writer for both, -0 as 0, any two non-finite numbers both `null`), builds JSON only
+  for what differs, and skips a collection or an item both states share. The import's diff is the JSON one
+  (`diff_values`): `current` is the values as stored, so an import rewrites a value stored in another key order and
+  deletes what the rules don't read, as LT's does; a perform never does (its `before` is the rules' reading).
+- `localeCompare` is handed in (`js::LocaleCompare`, Tirth's answer: the system's sorter): ICU4X's `Collation` is one
+  until the platform's comparator lands (its removal from the dependencies is that commit's), `CodePointOrder` the
+  tests' stand-in. `import_values` takes it too.
+- Part 3's three pieces are laid out: `library/model/mod.rs` holds what more than one needs (the bindings
+  `pin_of_space`, `has_favorite`, `bound_elsewhere`, `held_bindings`, `settle_bindings`; `has_space`, `pos_of`; the
+  shared limits) and six files name their functions: spaces + order, kept + favorites, splits + links, none calling
+  another's.
+- Measured against library.ts in Node (scratch harness: random libraries of every collection with odd values, emoji at
+  every cut, integer-like and non-tab ids, ties, non-finite ratios, each paired with a mutated copy): 5,000 libraries
+  (two seeds), the snapshot's text byte for byte, `valuesOf(stateOf(…))` as text (key order counts), 64,337 changes of
+  the import-style diff and 20,168 of perform's diff between two readings: no difference; the 5,000 imports of commit
+  1's harness now whole (`import_changes` against `importValues`): 32,619 changes and the counts, none. A cut through an
+  emoji drops its broken half on both sides (Tirth's answer 3).
+- 64 deliberate breaks of state.rs, values.rs, snapshot.rs, the import's normalising and model/mod.rs, each alone: 62
+  caught (61 by the unit tests, 1 by the harness: the import diffing its own reading); the 2 left change nothing
+  (a bundle id's 255-unit check after its 255-unit cut; Rust's `round` for JS's on ratios, which are positive). Three
+  first missed (an object's keys not compared, a plain string with only a `\` or U+001F, a pin with no `pos` in the
+  text) got tests, then were caught.
+- Cost (release, scratch bench, a library with 2 KB icons, 200 archive entries, 30 spaces, 60 pins; JSC is today's
+  dist/app/library.js in a bare JSContext, its JSON in and out only, Swift's JSONSerialization not counted): at 50 / 500
+  / 2,000 items, the snapshot's text 0.09 / 0.26 / 0.85 ms (JSC's `snapshot` 1.8 / 4.7 / 15.3 ms), `state_of` from the
+  store's set 0.2 / 0.6 / 1.7 ms (once per revision of the set), a perform's diff 0.7 µs for a window set and 3 / 22 /
+  85 µs for an item moved (JSC's whole perform 2.5 / 6 / 18.6 ms). A perform and a draw end far cheaper than today's.

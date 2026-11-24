@@ -181,8 +181,35 @@ impl Default for Collation {
 
 /// `a.localeCompare(b)` with a collation.
 #[inline]
-pub fn locale_compare(collation: &Collation, a: &str, b: &str) -> Ordering {
+pub fn locale_compare(collation: &dyn LocaleCompare, a: &str, b: &str) -> Ordering {
     collation.compare(a, b)
+}
+
+/// What the rules take for `localeCompare` (Tirth, 2026-11-23: the system's sorter): the platform hands one in (the Mac:
+/// libicucore's `ucol_strcoll` with the person's locale, the one JSC calls; Windows: its icu.dll). [`Collation`] (ICU4X)
+/// is one until the platform's lands; [`CodePointOrder`] is the tests' stand-in.
+pub trait LocaleCompare {
+    /// `a.localeCompare(b)`'s sign (`Equal` for `a == b`, and for strings that differ only in what collation ignores).
+    fn compare(&self, a: &str, b: &str) -> Ordering;
+}
+
+impl LocaleCompare for Collation {
+    #[inline]
+    fn compare(&self, a: &str, b: &str) -> Ordering {
+        Collation::compare(self, a, b)
+    }
+}
+
+/// The tests' stand-in for the system's sorter: code-point order (not ICU's: `A` < `a` < `b` here, `a` < `A` < `b`
+/// there). A test whose answer depends on a tie between two ids must use ids both orders agree on.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct CodePointOrder;
+
+impl LocaleCompare for CodePointOrder {
+    #[inline]
+    fn compare(&self, a: &str, b: &str) -> Ordering {
+        a.cmp(b)
+    }
 }
 
 // ---- numbers ----------------------------------------------------------------------------------------------------
