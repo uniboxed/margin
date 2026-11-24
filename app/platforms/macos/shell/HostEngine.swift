@@ -914,6 +914,8 @@ final class HostEngine {
     // (the person's): used as it is, never started again. Nil: it couldn't be started.
     func start(bundleId: String) async -> HostApp? {
         await serial(planned: true) {
+            // (Margin quits: no app started any more, one asked before the quit included.)
+            guard !self.quitting else { return nil }
             _ = await self.awaitExits(of: bundleId)
             if let running = self.liveInstances(of: bundleId).first { return running }
             let arguments = bundleId == self.options.safariBundle ? self.options.safariArguments : self.options.appArguments

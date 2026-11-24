@@ -100,6 +100,7 @@ final class LateHostEngine: HostedEngine {
     func wokenWindows(bundleId: String) -> Int { resolve()?.wokenWindows(bundleId: bundleId) ?? 0 }
     func wokenParked(bundleId: String) -> [Int] { resolve()?.wokenParked(bundleId: bundleId) ?? [] }
     func appRuns(bundleId: String) -> Bool? { resolve()?.appRuns(bundleId: bundleId) }
+    var quitting: Bool { resolve()?.quitting ?? false }
     func dragging(_ on: Bool) -> Bool { resolve()?.dragging(on) ?? false }
     func follow(_ placement: HostPlacement) { resolve()?.follow(placement) }
     var shownFillsPage: Bool { resolve()?.shownFillsPage ?? false }

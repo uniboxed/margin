@@ -205,6 +205,7 @@ final class StubLaunchEngine: HostedEngine {
     var windowsPerPress = 0
     var presses = 0
     var runs: Bool?
+    var quitting = false
     func hideWoken(bundleId: String) { presses += 1 }
     func wokenWindows(bundleId: String) -> Int { presses * windowsPerPress }
     func appRuns(bundleId: String) -> Bool? { runs }
@@ -628,6 +629,20 @@ func safariWakeTests(_ library: Library) {
         var ok2 = false
         hostRun { ok2 = await s2.safariLinked("s-late") }
         check("wake: a window from the second press: no third, linked", ok2 && links2.menuOpens.count == 2, "\(links2.menuOpens)")
+    }
+    do {
+        // Margin quits while a profile's copy is waited for (2026-11-24 09:15:42: the quit chosen, Safari's menu pressed
+        // again 0.07 s later, the quit having let go of the press's window): no press once it quits, the wait given up.
+        let (s, links, stub, _, at) = rig()
+        at(3) { stub.quitting = true; stub.windowsPerPress = 0 } // (the quit gives back every woken window)
+        var ok = true
+        hostRun { ok = await s.safariLinked("s-q") }
+        check("wake: Margin quits while a copy is waited for: never pressed again, the wait given up and said",
+              !ok && links.menuOpens == ["s-q"] && s.done.contains { $0.contains("Margin quits") }, "\(ok) \(links.menuOpens) \(s.done.suffix(2))")
+        // ...and a wake asked while it quits: not pressed at all.
+        var again = true
+        hostRun { again = await s.safariLinked("s-q2") }
+        check("wake: asked while Margin quits: not pressed", !again && links.menuOpens == ["s-q"], "\(links.menuOpens)")
     }
     do {
         // Safari's menu has no item by the name Margin has for the profile (its own names unreadable, 2026-11-18 23:02: four

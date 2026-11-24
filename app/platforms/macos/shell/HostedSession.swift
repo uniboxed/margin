@@ -93,6 +93,8 @@ protocol HostedEngine: AnyObject {
     // Those windows parked out of sight and still open (their private Space is kept until there are none).
     func wokenParked(bundleId: String) -> [Int]
     func appRuns(bundleId: String) -> Bool?
+    // Margin quits (HostEngine `quitAll`): nothing is woken, started or pressed any more.
+    var quitting: Bool { get }
     // A drag of the sidebar's edge began (true) or is over (false): true back, the one shown follows it live (HostEngine
     // `dragging`: its tile's rect, a window-mode window's frame); then each page area of the drag (`follow`), at most one
     // change a display frame. False: it doesn't (the page area's changes held until the drag is over, as before).
@@ -217,6 +219,7 @@ extension HostedEngine {
     func wokenWindows(bundleId: String) -> Int { 0 }
     func wokenParked(bundleId: String) -> [Int] { [] }
     func appRuns(bundleId: String) -> Bool? { nil }
+    var quitting: Bool { false }
     func dragging(_ on: Bool) -> Bool { false }
     func follow(_ placement: HostPlacement) {}
     var shownFillsPage: Bool { false }

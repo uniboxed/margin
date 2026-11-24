@@ -1613,6 +1613,10 @@ func hostTests() {
               && w.freezes == 3 && w.reveals == 3 && w.movedBeforeDelivery == 0 && w.lateDrops == 0 && w.destroyedBeforeFrame == 0 && clean(w), "\(w.calls) \(w.freezes)")
         hostRun { await e.quitAll() }
         check("early: quit: nothing left", w.apps.isEmpty && clean(w) && w.privates.isEmpty)
+        // (Margin quits: no app started any more, whoever asks: 2026-11-24, a wake's start after the quit.)
+        w.calls = []
+        let started = hostRun { await e.start(bundleId: "com.apple.TextEdit") }
+        check("quit: an app asked to start once Margin quits isn't launched", (started ?? nil) == nil && !w.calls.contains { $0.hasPrefix("launch") }, "\(w.calls)")
     }
     do {
         // macOS makes the new Space current early (the window not in it yet): Margin's Space made current again at once.
