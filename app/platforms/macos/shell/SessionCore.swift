@@ -225,28 +225,16 @@ final class SessionCore {
         return len < 0 ? nil : String(decoding: buf.prefix(len), as: UTF8.self)
     }
 
-    // What the UI draws: the rows (each listed item `kept` is asked of), and the window they're drawn in.
-    struct LiveRow { let item: String; let number: Int; let index: Int; let active, visible, audible, muted: Bool }
-    private final class LiveSink {
-        let kept: (String) -> Bool
-        var rows: [LiveRow] = []
-        init(_ kept: @escaping (String) -> Bool) { self.kept = kept }
-    }
-    func livePlan(kept: @escaping (String) -> Bool) -> (window: Int, rows: [LiveRow])? {
-        let sink = LiveSink(kept)
-        var window: Int64 = 0
-        let listed = withExtendedLifetime(sink) {
-            margin_session_live_plan(core, Unmanaged.passUnretained(sink).toOpaque(), { ctx, p, n in
-                guard let ctx, let p else { return false }
-                let item = String(decoding: UnsafeBufferPointer(start: p, count: n), as: UTF8.self)
-                return MainActor.assumeIsolated { Unmanaged<LiveSink>.fromOpaque(ctx).takeUnretainedValue().kept(item) }
-            }, { ctx, row in
-                guard let ctx, let r = row?.pointee else { return }
-                let row = LiveRow(item: SessionCore.text(r.item) ?? "", number: Int(r.number), index: Int(r.index), active: r.active, visible: r.visible, audible: r.audible, muted: r.muted)
-                MainActor.assumeIsolated { Unmanaged<LiveSink>.fromOpaque(ctx).takeUnretainedValue().rows.append(row) }
-            }, &window)
+    // What a Margin window draws (one call a draw): the library's snapshot with the items open here as its tabs, `tail`
+    // (the profile's `"settings":…,"favicons":…`) spliced in; the core's text as it is (nothing parsed).
+    func state(tail: String) -> String {
+        var tail = tail
+        return tail.withUTF8 { t in
+            var len = 0
+            guard let out = margin_session_state(core, t.baseAddress, t.count, &len) else { return "null" }
+            defer { margin_buffer_free(out, len) }
+            return String(decoding: UnsafeBufferPointer(start: out, count: len), as: UTF8.self)
         }
-        return listed ? (Int(window), sink.rows) : nil
     }
 
     // The windows of a copy's Margin draws (a Safari copy's hosted ones for its profile).

@@ -408,10 +408,11 @@ pub unsafe extern "C" fn margin_library_call(
             lib.perform(s(o, "action"), &payload).to_json()
         }
         "snapshot" => {
-            // (The kept text as it is, not parsed and written again: a draw's.)
-            let text = lib.snapshot_text();
+            // (The kept text as it is, not parsed and written again; the tests' and the start's: a draw is
+            // margin_session_state.)
+            let parts = lib.snapshot();
             log.extend(lib.take_log());
-            return bytes(format!("{{\"snapshot\":{text},\"log\":{}}}", log_json(&log)), out_len);
+            return bytes(format!("{{\"snapshot\":{},\"log\":{}}}", parts.text, log_json(&log)), out_len);
         }
         "actions" => json!({ "actions": Library::actions() }),
         "item" => json!({ "value": lib.item(s(o, "collection"), s(o, "id")) }),
@@ -486,8 +487,29 @@ pub unsafe extern "C" fn margin_library_rules(
     bytes(out, out_len)
 }
 
+/// The theme of the space a Margin window shows (`window`'s space, else the first space's: `Library::space_theme`),
+/// typed (a draw's), into `buf`: its length (over `cap`: nothing written, ask again; a theme id is at most 41 bytes),
+/// -1: none (no spaces, or that space has no theme of its own: the profile's), or a null library.
+///
+/// # Safety
+/// `library` null or from [`margin_library_new`], not freed; `buf` `cap` writable bytes (or null with `cap` 0).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_library_space_theme(
+    library: *const MarginLibrary,
+    window: i64,
+    buf: *mut u8,
+    cap: usize,
+) -> isize {
+    let Some(theme) = self::library(library).and_then(|l| l.space_theme(window)) else { return -1 };
+    if theme.len() <= cap && !buf.is_null() {
+        // SAFETY: `cap` writable bytes (the contract).
+        unsafe { std::ptr::copy_nonoverlapping(theme.as_ptr(), buf, theme.len()) };
+    }
+    theme.len() as isize
+}
+
 /// A text answer's bytes (freed with `margin_buffer_free`).
-fn bytes(text: String, out_len: *mut usize) -> *mut u8 {
+pub(crate) fn bytes(text: String, out_len: *mut usize) -> *mut u8 {
     if out_len.is_null() {
         return std::ptr::null_mut();
     }

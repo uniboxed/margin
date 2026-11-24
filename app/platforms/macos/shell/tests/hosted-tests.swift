@@ -224,6 +224,11 @@ final class StubLaunchEngine: HostedEngine {
     func launchedPid(bundleId: String) -> pid_t? { bundleId == safariIdentifier ? safariPid : nil }
 }
 
+// What Margin's windows draw over `session` (its state's text, the core's: `stateText`), read back as the page would.
+func drawnState(_ session: HostedSession) -> JSONObject {
+    (try? JSONSerialization.jsonObject(with: Data(session.stateText().utf8))) as? JSONObject ?? [:]
+}
+
 func restoredSweepTests(_ library: Library) {
     let stub = StubLaunchEngine()
     let links = FakeHostedLinks()
@@ -838,7 +843,7 @@ func hostedTests() {
     }
 
     // ---- what the UI draws ----
-    let snap = session.live(library.snapshot())
+    let snap = drawnState(session)
     let open = snap["openTabs"] as? JSONObject ?? [:]
     let tabs = (open["tabs"] as? JSONObject ?? [:]).values.compactMap { $0 as? JSONObject }
     let kept = open["keptTabs"] as? JSONObject ?? [:]
@@ -846,6 +851,11 @@ func hostedTests() {
     check("hosted: the open items are the window's tabs, the one shown in front, the others kept",
           tabs.count == 3 && front?["mid"] as? String == aItem && int(front?["windowId"]) == 1 && kept[aItem] == nil && kept[editItem] == nil, "\(tabs) \(kept.keys)")
     let source = LibraryWindowSource(library: library, session: session, profileSource: DataSetWindowSource(data: DataSync(root: tempFolder("hosted-profile")), pick: { nil }))
+    source.profileSource.perform("updateSettings", ["patch": ["sidebarPinnedOpen": false], "windowId": 1])
+    let drawnWhole = (try? JSONSerialization.jsonObject(with: Data(source.stateText().utf8))) as? JSONObject
+    check("hosted: what Margin's window is pushed: the session's state, the profile's settings and site icons spliced in",
+          ((drawnWhole?["openTabs"] as? JSONObject)?["tabs"] as? JSONObject)?.count == 3 && (drawnWhole?["settings"] as? JSONObject)?["sidebarPinnedOpen"] as? Bool == false
+          && drawnWhole?["favicons"] is JSONObject && (drawnWhole?["spaces"] as? [Any])?.isEmpty == false, String(source.stateText().suffix(200)))
     let bNumber = session.number(ofItem: bItem)
     let mark3 = links.asked.count
     run { _ = source.perform("activateTab", ["windowId": 1, "tabId": bNumber, "hint": ["url": "https://b.example/"]]) }
@@ -862,7 +872,7 @@ func hostedTests() {
     check("hosted: addFavorite from the page: the scope the person's settings say (none here: global), never one the page sent",
           !favId.isEmpty && (library.liveValues("favorites")[favId] as? JSONObject)?["scope"] as? String == "global", "\(String(describing: faved))")
     func liveTab(_ item: String) -> JSONObject? {
-        ((session.live(library.snapshot())["openTabs"] as? JSONObject)?["tabs"] as? JSONObject ?? [:]).values.compactMap { $0 as? JSONObject }.first { $0["mid"] as? String == item }
+        ((drawnState(session)["openTabs"] as? JSONObject)?["tabs"] as? JSONObject ?? [:]).values.compactMap { $0 as? JSONObject }.first { $0["mid"] as? String == item }
     }
     let aRow = liveTab(aItem)
     check("hosted: an open item's tab carries its own name and the favorite it's the tab of", aRow?["customTitle"] as? String == "Renamed A" && aRow?["favoriteId"] as? String == favId
@@ -881,9 +891,7 @@ func hostedTests() {
     session.copyTabs(profile: "s-default", tabs: [String(aSafariTab): ["id": aSafariTab]])
     check("hosted: …stopped: no sound marks", liveTab(aItem)?["audible"] == nil && liveTab(aItem)?["muted"] == nil && heardChange == 2)
     session.onChange = beforeChange
-    let pinned = HostedSession.liveTab(["title": "T", "url": "https://p.example/", "pinnedBy": "p-1", "favoriteId": "", "customTitle": "Mine"], number: 7, item: "t-x", windowId: 1, index: 0, active: false, audible: false, muted: false)
-    check("hosted: a pin's open item: its pinnedBy carried (an empty binding not)", pinned["pinnedBy"] as? String == "p-1" && pinned["customTitle"] as? String == "Mine"
-          && pinned["favoriteId"] == nil && pinned["audible"] == nil && pinned["mid"] as? String == "t-x" && int(pinned["id"]) == 7)
+    // (An open item's row with an empty binding: left out, the core's: library/snapshot_tests.rs.)
     // Pinned from its row (the UI's Pin Tab, by its number): the item shown stays, open, the pin's tab (sticky pins).
     if let front = session.shown[1] {
         let marked = links.asked.count
@@ -966,7 +974,7 @@ func hostedTests() {
     let textEditHost = HostTarget.app("com.apple.TextEdit").id
     // The UI's open tabs (live): each one's address and whether it's in front.
     func liveTabs() -> [(url: String, active: Bool)] {
-        let tabs = ((session.live(library.snapshot())["openTabs"] as? JSONObject)?["tabs"] as? JSONObject ?? [:]).values.compactMap { $0 as? JSONObject }
+        let tabs = ((drawnState(session)["openTabs"] as? JSONObject)?["tabs"] as? JSONObject ?? [:]).values.compactMap { $0 as? JSONObject }
         return tabs.map { ($0["url"] as? String ?? "", $0["active"] as? Bool == true) }
     }
     let itemsBefore = library.items().count
@@ -1246,7 +1254,7 @@ func hostedResumeTests() {
         session.resumeLast(window)
         check("resume: as the window is made (before its page loads): hosting, the loader with the item's name at once (known to be slow: no grace), its row in front; nothing launched until the window is up",
               window.hosting && window.showings == ["Notes"] && window.slowShowings == ["Notes"] && session.requested[1] == item && session.resuming == 1 && session.hostingWindow == 1
-              && !w.calls.contains { $0.hasPrefix("launch") } && (session.live(library.snapshot())["openTabs"] as? JSONObject).flatMap { ($0["tabs"] as? JSONObject)?.values.first as? JSONObject }?["active"] as? Bool == true,
+              && !w.calls.contains { $0.hasPrefix("launch") } && (drawnState(session)["openTabs"] as? JSONObject).flatMap { ($0["tabs"] as? JSONObject)?.values.first as? JSONObject }?["active"] as? Bool == true,
               "\(window.showings) \(window.slowShowings) \(String(describing: session.requested[1]))")
         check("resume: … with the app's bundle id for the loader's icon", window.showingApps == ["com.apple.Notes"], "\(window.showingApps)")
         // (Something that settles hosting meanwhile, an engine event: the loader stays.)
@@ -1358,7 +1366,7 @@ func hostedResumeTests() {
               !settingsLast.isEmpty && window.marginPage == "settings" && session.shown[1] == settingsLast && !window.hosting && window.showings.isEmpty
               && session.hostingWindow == nil && session.resuming == nil && w.calls.isEmpty, "\(String(describing: window.marginPage)) \(window.showings) \(session.done.suffix(3))")
         run {}
-        check("resume: …and its row an open tab in front", (session.live(library.snapshot())["openTabs"] as? JSONObject).flatMap { ($0["tabs"] as? JSONObject)?.values.compactMap { $0 as? JSONObject } }?
+        check("resume: …and its row an open tab in front", (drawnState(session)["openTabs"] as? JSONObject).flatMap { ($0["tabs"] as? JSONObject)?.values.compactMap { $0 as? JSONObject } }?
               .contains { $0["url"] as? String == "margin://settings" && $0["active"] as? Bool == true } == true)
         run { await engine.quitAll() }
     }

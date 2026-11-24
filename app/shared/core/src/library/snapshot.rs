@@ -6,8 +6,9 @@
 //!
 //! The text is JS's: the same keys in the same order (each record's as `stateOf` builds it, a key whose value is
 //! missing left out), JSON.stringify's string escapes, and every number as `String(n)` writes it (`5`, `0.5`, `1e+21`;
-//! `null` for one that isn't finite). Built once per revision of the set (part 6's `Cached`); [`write_item`] is one
-//! kept tab's object, for the per-draw composition (commit 7) to cache.
+//! `null` for one that isn't finite). Built once per revision of the set (part 6's `Cached`, [`Parts`]); a window's
+//! state ([`Parts::state_text`]: the session's open items as tabs, the profile's settings and icons after) is copies of
+//! it and the few open rows.
 
 use std::fmt::Write as _;
 
@@ -16,6 +17,7 @@ use super::state::{
     ArchiveEntry, FORMAT, Favorite, Folder, Item, LibState, LibTarget, Pin, Rule, Space, Split, Values, is_imported,
     state_of,
 };
+use crate::session::LiveRow;
 
 /// LT:839 `JSON.stringify(snapshot(values))`.
 pub fn snapshot<V: Values + ?Sized>(values: &V, compare: &dyn LocaleCompare) -> String {
@@ -24,47 +26,168 @@ pub fn snapshot<V: Values + ?Sized>(values: &V, compare: &dyn LocaleCompare) -> 
 
 /// The snapshot's text of a state `state_of` made, `imported` the import's marker (`isObject(values.imports.done)`).
 pub fn snapshot_text(s: &LibState, imported: bool) -> String {
-    let mut out = String::with_capacity(estimate(s));
-    out.push_str("{\"library\":{\"v\":");
-    let _ = write!(out, "{FORMAT}");
-    out.push_str(",\"imported\":");
-    out.push_str(if imported { "true" } else { "false" });
-    out.push_str("},\"spaces\":");
-    list(&mut out, &s.spaces, write_space);
-    out.push_str(",\"pins\":");
-    list(&mut out, &s.pins, write_pin);
-    out.push_str(",\"favorites\":");
-    list(&mut out, &s.favorites, write_favorite);
-    out.push_str(",\"airTraffic\":");
-    list(&mut out, &s.air_traffic, write_rule);
-    out.push_str(",\"splits\":");
-    list(&mut out, &s.splits, write_split);
-    out.push_str(",\"folders\":");
-    list(&mut out, &s.folders, write_folder);
-    out.push_str(",\"archive\":");
-    list(&mut out, &s.archive, write_archive);
-    out.push_str(
-        ",\"openTabs\":{\"origin\":\"margin-app\",\"since\":0,\"synced\":true,\"tabs\":{},\"tabSpace\":{},\"activeSpaceByWindow\":{",
-    );
-    for (i, (w, space_id)) in s.windows.iter().enumerate() {
-        if i > 0 {
-            out.push(',');
+    Parts::of(s, imported).text
+}
+
+/// The snapshot's text with the places a window's state splices at (part 6's cached fragments, kept with the state it
+/// was made of): the open tabs' two objects and each kept tab's entry (`"id":{…}`), so the state a Margin window draws
+/// is copies of this text and the few open rows: nothing parsed, nothing of the library written again.
+#[derive(Clone, Debug)]
+pub struct Parts {
+    pub text: String,
+    /// Where `"tabs":`'s `{}` begins.
+    tabs: usize,
+    /// Where `,"activeSpaceByWindow":` begins (just after `"tabSpace":{}`).
+    windows: usize,
+    /// Where the kept tabs' first entry begins (just after `"keptTabs":{`).
+    kept: usize,
+    /// Each kept tab's entry's end, in the state's order (the next begins past its comma).
+    ends: Vec<usize>,
+}
+
+impl Parts {
+    /// [`snapshot_text`]'s text, its places noted as it's written.
+    pub fn of(s: &LibState, imported: bool) -> Parts {
+        let mut out = String::with_capacity(estimate(s));
+        out.push_str("{\"library\":{\"v\":");
+        let _ = write!(out, "{FORMAT}");
+        out.push_str(",\"imported\":");
+        out.push_str(if imported { "true" } else { "false" });
+        out.push_str("},\"spaces\":");
+        list(&mut out, &s.spaces, write_space);
+        out.push_str(",\"pins\":");
+        list(&mut out, &s.pins, write_pin);
+        out.push_str(",\"favorites\":");
+        list(&mut out, &s.favorites, write_favorite);
+        out.push_str(",\"airTraffic\":");
+        list(&mut out, &s.air_traffic, write_rule);
+        out.push_str(",\"splits\":");
+        list(&mut out, &s.splits, write_split);
+        out.push_str(",\"folders\":");
+        list(&mut out, &s.folders, write_folder);
+        out.push_str(",\"archive\":");
+        list(&mut out, &s.archive, write_archive);
+        out.push_str(",\"openTabs\":{\"origin\":\"margin-app\",\"since\":0,\"synced\":true,\"tabs\":");
+        let tabs = out.len();
+        out.push_str("{},\"tabSpace\":{}");
+        let windows = out.len();
+        out.push_str(",\"activeSpaceByWindow\":{");
+        for (i, (w, space_id)) in s.windows.iter().enumerate() {
+            if i > 0 {
+                out.push(',');
+            }
+            write_str(&mut out, w);
+            out.push(':');
+            write_str(&mut out, space_id);
         }
-        write_str(&mut out, w);
-        out.push(':');
-        write_str(&mut out, space_id);
-    }
-    out.push_str("},\"awayByWindow\":{},\"keptTabs\":{");
-    for (i, (id, k)) in s.kept.iter().enumerate() {
-        if i > 0 {
-            out.push(',');
+        out.push_str("},\"awayByWindow\":{},\"keptTabs\":{");
+        let kept = out.len();
+        let mut ends = Vec::with_capacity(s.kept.len());
+        for (i, (id, k)) in s.kept.iter().enumerate() {
+            if i > 0 {
+                out.push(',');
+            }
+            write_str(&mut out, id);
+            out.push(':');
+            write_item(&mut out, k);
+            ends.push(out.len());
         }
-        write_str(&mut out, id);
-        out.push(':');
-        write_item(&mut out, k);
+        out.push_str("}}}");
+        Parts { text: out, tabs, windows, kept, ends }
     }
-    out.push_str("}}}");
-    out
+
+    /// What a Margin window draws (HostedSession `live` over the snapshot until step 4's commit 7): the snapshot with
+    /// the items the session has open (`open`: the window they're drawn in and their rows, session/ui.rs `live_plan`;
+    /// None: the snapshot as it is) moved from `keptTabs` to `tabs` (by their numbers, each its tab as the UI takes it:
+    /// [`write_open`]) and `tabSpace` (their spaces), then `tail` (the profile's `"settings":…,"favicons":…`; empty:
+    /// nothing) before the last brace. `s` is the state the text was made of; a row whose item it doesn't keep is left
+    /// out, as `live` left it.
+    pub fn state_text(&self, s: &LibState, open: Option<(i64, &[LiveRow])>, tail: &str) -> String {
+        let text = &self.text;
+        let mut out = String::with_capacity(text.len() + tail.len() + 2);
+        let (window, open): (i64, Vec<(&LiveRow, &Item)>) = match open {
+            Some((window, rows)) => {
+                (window, rows.iter().filter_map(|r| s.kept.get(&r.item).map(|k| (r, &**k))).collect())
+            }
+            None => (0, Vec::new()),
+        };
+        if open.is_empty() {
+            // (Nothing open, or none of it kept: the snapshot as it is, its `tabs` and `tabSpace` empty.)
+            out.push_str(&text[..text.len() - 1]);
+        } else {
+            out.push_str(&text[..self.tabs]);
+            out.push('{');
+            for (i, (r, k)) in open.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                let _ = write!(out, "\"{}\":", r.number);
+                write_open(&mut out, r, k, window);
+            }
+            out.push_str("},\"tabSpace\":{");
+            for (i, (r, k)) in open.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                let _ = write!(out, "\"{}\":", r.number);
+                write_str(&mut out, &k.space_id);
+            }
+            out.push('}');
+            out.push_str(&text[self.windows..self.kept]);
+            let mut first = true;
+            let mut start = self.kept;
+            for ((id, _), &end) in s.kept.iter().zip(&self.ends) {
+                if !open.iter().any(|(r, _)| r.item == **id) {
+                    if !first {
+                        out.push(',');
+                    }
+                    first = false;
+                    out.push_str(&text[start..end]);
+                }
+                start = end + 1;
+            }
+            out.push_str("}}");
+        }
+        if !tail.is_empty() {
+            out.push(',');
+            out.push_str(tail);
+        }
+        out.push('}');
+        out
+    }
+}
+
+/// An open item's tab as the UI takes it (state/model.ts tabRecord's shape; HostedSession `liveTab` until commit 7):
+/// its number, the window it's drawn in, its place among the open ones, its page (`k`, the kept tab: title, address,
+/// icon, `lastActive`, `order`), whether it's in front, its item (`mid`), what binds it (the pin or favorite it's the
+/// tab of, the name the person gave it: only with a value), whether it plays sound, is muted, is visible beside the
+/// one in front (only when so).
+fn write_open(out: &mut String, r: &LiveRow, k: &Item, window: i64) {
+    let mut o = Obj::new(out);
+    let _ = write!(o.key("id"), "{}", r.number);
+    let _ = write!(o.key("windowId"), "{window}");
+    let _ = write!(o.key("index"), "{}", r.index);
+    o.str("title", &k.title)
+        .str("url", &k.url)
+        .str("favIconUrl", &k.fav_icon_url)
+        .bool("active", r.active)
+        .num("lastActive", k.last_active)
+        .str("mid", &r.item)
+        .num("order", k.order)
+        // (Never empty: `stateOf` keeps a binding or a name only with a value, as `liveTab` wrote them.)
+        .opt_str("pinnedBy", k.pinned_by.as_deref())
+        .opt_str("favoriteId", k.favorite_id.as_deref())
+        .opt_str("customTitle", k.custom_title.as_deref());
+    if r.audible {
+        o.bool("audible", true);
+    }
+    if r.muted {
+        o.bool("muted", true);
+    }
+    if r.visible {
+        o.bool("visible", true);
+    }
+    o.end();
 }
 
 /// About the text's length, so it's written into one allocation (the icons are most of it).

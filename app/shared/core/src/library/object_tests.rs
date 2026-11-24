@@ -83,7 +83,10 @@ impl Host {
         }
         let Some(lib) = self.library.borrow().upgrade() else { return };
         // Every read, while the edit is under way: a borrow held across this call out would panic here.
-        let _ = lib.snapshot_text();
+        let _ = lib.snapshot();
+        let _ = lib.state_text(None, "");
+        let _ = lib.keeps("t-x");
+        let _ = lib.space_theme(1);
         let _ = lib.state();
         let _ = lib.item("tabs", "t-x");
         let _ = lib.live("spaces");
@@ -154,6 +157,53 @@ fn library(root: &std::path::Path, reenter: bool) -> (Rc<Library>, Rc<Seen>, Rc<
 }
 
 #[test]
+fn a_windows_space_theme_and_state() {
+    // MarginWindowController `spaceTheme`'s cases (margin-window-tests.swift, until commit 7): the window's space's
+    // own, a space with none, a window with no space of its own or one gone (the first space's), no spaces.
+    let dir = temp();
+    let (lib, _, _) = library(dir.path(), false);
+    assert_eq!(lib.space_theme(1), None, "no spaces: none");
+    let space = |id: &str, order: u32, theme: Option<&str>| {
+        let mut v = json!({ "name": id, "order": order });
+        if let Some(t) = theme {
+            v["theme"] = json!(t);
+        }
+        json!({ "collection": "spaces", "id": id, "value": v })
+    };
+    let window = |w: &str, s: &str| json!({ "collection": "windows", "id": w, "value": { "spaceId": s } });
+    lib.apply(
+        &[
+            space("a", 0, Some("pixel")),
+            space("b", 1, None),
+            space("c", 2, Some("material")),
+            window("1", "c"),
+            window("2", "b"),
+            window("3", "gone"),
+        ],
+        1.0,
+    );
+    assert_eq!(lib.space_theme(1).as_deref(), Some("material"), "the window's space's own");
+    assert_eq!(lib.space_theme(2), None, "a space with none: none (the profile's)");
+    assert_eq!(lib.space_theme(9).as_deref(), Some("pixel"), "a window with no space of its own: the first space's");
+    assert_eq!(lib.space_theme(3).as_deref(), Some("pixel"), "its space gone: the first space's");
+    lib.apply(
+        &[json!({ "collection": "spaces", "id": "a", "value": { "name": "a", "order": 0, "theme": "x".repeat(60) } })],
+        2.0,
+    );
+    assert_eq!(lib.space_theme(9), None, "a theme that isn't a theme's id (too long): none");
+    lib.apply(&[json!({ "collection": "spaces", "id": "a", "value": { "name": "a", "order": 0, "theme": 3 } })], 3.0);
+    assert_eq!(lib.space_theme(9), None, "not a string: none");
+
+    // The state with no session's open items: the kept snapshot, the tail before its last brace.
+    let text = lib.snapshot().text.clone();
+    assert_eq!(lib.state_text(None, ""), text);
+    assert_eq!(lib.state_text(None, r#""settings":{}"#), format!("{},\"settings\":{{}}}}", &text[..text.len() - 1]));
+    assert!(!lib.keeps("t-a"));
+    lib.apply(&[json!({ "collection": "tabs", "id": "t-a", "value": { "url": "https://a/", "spaceId": "a" } })], 4.0);
+    assert!(lib.keeps("t-a") && !lib.keeps("t-b"), "kept: an item the snapshot has as a tab");
+}
+
+#[test]
 fn a_perform_as_library_swift_makes_it() {
     let dir = temp();
     let (lib, seen, host) = library(dir.path(), false);
@@ -179,9 +229,9 @@ fn a_perform_as_library_swift_makes_it() {
     // The state is read once per revision: the same until something is stored.
     let a = lib.state();
     assert!(Rc::ptr_eq(&a, &lib.state()));
-    assert!(Rc::ptr_eq(&lib.snapshot_text(), &lib.snapshot_text()));
+    assert!(Rc::ptr_eq(&lib.snapshot(), &lib.snapshot()));
     assert_eq!(
-        *lib.snapshot_text(),
+        lib.snapshot().text,
         *snapshot::snapshot(&lib.values(), &AsciiCollation::new()),
         "the kept snapshot is the values' snapshot"
     );
@@ -457,10 +507,10 @@ fn object_costs() {
         });
         let snapshot = median(25, |k| {
             lib.perform("renameTab", &json!({ "tabId": format!("t-i{}", k % n), "title": format!("R {k}") }));
-            std::hint::black_box(lib.snapshot_text());
+            std::hint::black_box(lib.snapshot());
         });
         let kept = median(25, |_| {
-            std::hint::black_box(lib.snapshot_text());
+            std::hint::black_box(lib.snapshot());
         });
         eprintln!(
             "{n} items: a perform through the object {perform:.3} ms; an edit and the snapshot made again {snapshot:.3} ms; the kept snapshot {kept:.4} ms"

@@ -27,7 +27,7 @@ use serde_json::{Map, Value};
 use super::actions::{self, ACTION_NAMES, Env, Outcome, Request};
 use super::import::{self, Counts, ImportSet};
 use super::js::{self, LocaleCompare};
-use super::snapshot;
+use super::snapshot::{self, Parts};
 use super::state::{self, LibState};
 use super::values::Change;
 use crate::data::Note;
@@ -81,7 +81,7 @@ struct Cached {
     rev: u64,
     state: Rc<LibState>,
     imported: bool,
-    snapshot: Option<Rc<str>>,
+    snapshot: Option<Rc<Parts>>,
 }
 
 pub struct Library {
@@ -142,13 +142,37 @@ impl Library {
         f(cached.as_mut().expect("just made"))
     }
 
-    /// What the UI draws (LT:839 `snapshot`, L:142), as its text: made once per revision.
-    pub fn snapshot_text(&self) -> Rc<str> {
+    /// What the UI draws (LT:839 `snapshot`, L:142), as its text with its places for a window's state: made once per
+    /// revision.
+    pub fn snapshot(&self) -> Rc<Parts> {
+        self.cached(|c| c.snapshot.get_or_insert_with(|| Rc::new(Parts::of(&c.state, c.imported))).clone())
+    }
+
+    /// What a Margin window draws (step 4 part 6): the kept snapshot with the session's open items as tabs (`open`,
+    /// the session's `live_plan`, asked with [`Library::keeps`]) and the profile's settings and icons (`tail`), as
+    /// [`Parts::state_text`] writes it. The session's own is [`crate::session::Session::state_text`].
+    pub fn state_text(&self, open: Option<(i64, &[crate::session::LiveRow])>, tail: &str) -> String {
+        let (state, parts) = self.cached(|c| {
+            let parts = c.snapshot.get_or_insert_with(|| Rc::new(Parts::of(&c.state, c.imported))).clone();
+            (c.state.clone(), parts)
+        });
+        parts.state_text(&state, open, tail)
+    }
+
+    /// Whether the snapshot keeps an item as a tab in a space (the session's `live_plan` asks it of each open item).
+    pub fn keeps(&self, item: &str) -> bool {
+        self.cached(|c| c.state.kept.contains_key(item))
+    }
+
+    /// The theme of the space a Margin window shows (MarginWindowController `spaceTheme` until step 4's commit 7): its
+    /// space's (`activeSpaceByWindow`), else the first space's (a window with none of its own, or one gone, shows the
+    /// first: state/model.ts activeSpaceId); None: no spaces, or that space has no theme of its own (the profile's).
+    pub fn space_theme(&self, window: i64) -> Option<Rc<str>> {
         self.cached(|c| {
-            if c.snapshot.is_none() {
-                c.snapshot = Some(snapshot::snapshot_text(&c.state, c.imported).into());
-            }
-            c.snapshot.clone().expect("just made")
+            let s = &c.state;
+            let id = s.windows.get(&window.to_string());
+            let space = s.spaces.iter().find(|sp| Some(&sp.id) == id).or_else(|| s.spaces.first())?;
+            space.theme.clone()
         })
     }
 

@@ -291,3 +291,42 @@ fn the_rows_the_ui_draws_numbered_in_order_of_first_use() {
     assert_eq!(s.live_plan(&mut |_| panic!("not asked")), None);
     assert!(acts(&world).is_empty());
 }
+
+#[test]
+fn what_a_window_draws_is_the_librarys_snapshot_with_the_open_items_as_tabs() {
+    // The library's items (`t-` ids, as the rules keep them), three open, one not kept (Margin's own page `m`).
+    let (s, _, lib) = session();
+    for (id, space) in [("t-a", "home"), ("t-b", "home"), ("t-c", "work"), ("t-d", "home")] {
+        lib.put(
+            "tabs",
+            id,
+            json!({ "url": format!("https://{id}.example/"), "title": id, "spaceId": space, "order": 1 }),
+        );
+    }
+    let text = lib.lib.snapshot().text.clone();
+    assert_eq!(s.state_text(&lib.lib, ""), text, "nothing open: the snapshot as it is");
+    set(
+        &s,
+        json!({ "hostingWindow": { "put": [[2]] }, "shown": { "put": [[2, "t-c"]] }, "requested": { "put": [[2, "t-b"]] },
+                "open": { "put": [["t-c", "app:com.c", null], ["t-a", "safari:p", "p"]] }, "marginOpen": { "put": [["m"]] },
+                "safariAudio": { "put": [["t-a", true, false]] } }),
+    );
+    // (An edit first: this draw is the first to make the new revision's snapshot.)
+    lib.put("tabs", "t-e", json!({ "url": "https://t-e.example/", "title": "t-e", "spaceId": "home", "order": 2 }));
+    let drawn: Value = serde_json::from_str(&s.state_text(&lib.lib, r#""settings":{"a":1},"favicons":{}"#)).unwrap();
+    let open = &drawn["openTabs"];
+    let numbers: Vec<i64> = ["t-a", "t-b", "t-c"].iter().map(|i| s.number(i)).collect();
+    assert_eq!(open["tabs"].as_object().map(|t| t.len()), Some(3), "{open}");
+    let tab = |n: i64| &open["tabs"][n.to_string()];
+    assert_eq!(tab(numbers[0])["audible"], json!(true));
+    assert_eq!((tab(numbers[1])["active"].clone(), tab(numbers[1])["mid"].clone()), (json!(true), json!("t-b")));
+    assert_eq!(
+        (tab(numbers[2])["windowId"].clone(), open["tabSpace"][numbers[2].to_string()].clone()),
+        (json!(2), json!("work"))
+    );
+    assert_eq!(
+        open["keptTabs"].as_object().map(|k| k.keys().cloned().collect::<Vec<_>>()),
+        Some(vec!["t-d".to_string(), "t-e".to_string()])
+    );
+    assert_eq!((drawn["settings"].clone(), drawn["favicons"].clone()), (json!({ "a": 1 }), json!({})));
+}

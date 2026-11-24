@@ -762,6 +762,14 @@ impl Session {
         self.0.live_plan(kept)
     }
 
+    /// What a Margin window draws (step 4 part 6, one call a draw): `library`'s kept snapshot with the items this
+    /// session has open as the window's open tabs (`live_plan`), `tail` (the profile's `"settings":…,"favicons":…`)
+    /// spliced in. Nothing of the library is parsed or written again.
+    pub fn state_text(&self, library: &crate::library::Library, tail: &str) -> String {
+        let plan = self.0.live_plan(&mut |item| library.keeps(item));
+        library.state_text(plan.as_ref().map(|(w, rows)| (*w, rows.as_slice())), tail)
+    }
+
     /// The windows of a copy's Margin draws (`drawn`'s `hosted`).
     pub fn drawn_windows(&self, browser: &str, profile: &str) -> Vec<i64> {
         self.0.drawn_windows(browser, profile)

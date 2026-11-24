@@ -168,7 +168,7 @@ private func splitSessionTests() {
     check("split session: …the pane added focused (the keys, the sidebar's highlight), a's tab shown in the main window",
           session.shown[1] == edit && engine.shown == editId && links.asked.dropFirst(mark).contains { $0.type == "hostShow" && $0.payload["itemId"] as? String == a && int($0.payload["windowId"]) == 90 },
           "\(String(describing: session.shown[1])) \(String(describing: engine.shown))")
-    let live = session.live(library.snapshot())
+    let live = drawnState(session)
     let tabs = ((live["openTabs"] as? JSONObject)?["tabs"] as? JSONObject) ?? [:]
     func tab(_ i: String) -> JSONObject? { tabs[String(session.number(ofItem: i))] as? JSONObject }
     check("split session: what the UI draws: the focused pane active, the other visible", tab(edit)?["active"] as? Bool == true && tab(a)?["visible"] as? Bool == true)

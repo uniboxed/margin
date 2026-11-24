@@ -186,6 +186,10 @@ final class Library {
     // The space a Margin window shows (nil: none chosen yet).
     func space(ofWindow windowId: Int) -> String? { item("windows", String(windowId))?["spaceId"] as? String }
 
+    // The theme of the space a Margin window shows (its own space's, else the first's: a window with none of its own
+    // shows the first), nil: none of its own (the profile's). Typed, a draw's (the core's `space_theme`).
+    func spaceTheme(window: Int) -> String? { core.spaceTheme(window: window) }
+
     private func sortedValues(_ collection: String, by order: ((id: String, value: JSONObject), (id: String, value: JSONObject)) -> Bool) -> [(id: String, value: JSONObject)] {
         liveValues(collection).compactMap { id, v -> (id: String, value: JSONObject)? in (v as? JSONObject).map { (id, $0) } }.sorted(by: order)
     }
@@ -337,4 +341,11 @@ final class LibraryCore {
     }
 
     func written() { _ = call(["type": "written"]) }
+
+    func spaceTheme(window: Int) -> String? {
+        var buf = [UInt8](repeating: 0, count: 64)
+        let len = buf.withUnsafeMutableBufferPointer { margin_library_space_theme(core, Int64(window), $0.baseAddress, $0.count) }
+        guard len >= 0, len <= buf.count else { return nil } // (a theme's id is at most 41 bytes)
+        return String(decoding: buf.prefix(len), as: UTF8.self)
+    }
 }

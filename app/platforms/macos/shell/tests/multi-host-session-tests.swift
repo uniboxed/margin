@@ -104,7 +104,7 @@ func multiHostSessionTests() {
     engine.hosts[editHost]?.minSize = nil
     run { await session.setLayout(window: 1, main: aItem, mainRect: left, extras: [HostedLayout.Extra(item: editItem, role: .pane, rect: right)]) }
     check("multi-host session: …its minimum gone: no longer cut, the page told none", window.paneCutsSaid.last == "{}", "\(window.paneCutsSaid)")
-    let live = session.live(library.snapshot())
+    let live = drawnState(session)
     let tabs = ((live["openTabs"] as? JSONObject)?["tabs"] as? JSONObject) ?? [:]
     func tab(_ item: String) -> JSONObject? { tabs[String(session.number(ofItem: item))] as? JSONObject }
     check("multi-host session: what the UI draws: the focused item active, the other visible one marked visible",

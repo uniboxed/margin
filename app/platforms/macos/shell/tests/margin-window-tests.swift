@@ -215,18 +215,45 @@ func marginWindowTests() {
           NSDictionary(dictionary: drawn.settings).isEqual(to: settings) && drawn.icons.isEmpty)
     sync.onChange?(DataProfile(browser: "safari", profile: "P"), ["spaces"])
     check("hosted source: the shell still hears the data set's changes (the source's comes after)", shellHeard == 1)
+    // Each draw's text of them (spliced into the library's state by the core): the same settings and icons, kept until
+    // something it reads may have changed.
+    let text = source.drawnText()
+    let read = (try? JSONSerialization.jsonObject(with: Data(("{" + text + "}").utf8))) as? JSONObject
+    check("hosted source: each draw's text: the settings and site icons drawn",
+          (read?["settings"] as? NSDictionary)?.isEqual(to: settings) == true && (read?["favicons"] as? JSONObject)?.isEmpty == true, text)
+    let changesBefore = sync.changes
+    _ = sync.profiles()
+    _ = sync.values("settings", of: DataProfile(browser: "safari", profile: "P"))
+    check("hosted source: …kept while nothing changed (a read of the data's isn't a change)", sync.changes == changesBefore && source.drawnText() == text)
+    source.perform("updateSettings", ["patch": ["sidebarPinnedOpen": true], "windowId": 3])
+    check("hosted source: …a setting changed here: made again", source.drawnText().contains(#""sidebarPinnedOpen":true"#), source.drawnText())
+    let made = source.textsMade
+    _ = source.drawnText()
+    sync.change(DataProfile(browser: "safari", profile: "P"), [])
+    _ = source.drawnText()
+    check("hosted source: …any change of the data's (a call that isn't a read): made again at the next draw", sync.changes == changesBefore + 1 && source.textsMade == made + 1, "\(source.textsMade - made)")
 
-    // ---- a theme per space (2026-11-20): the theme of the space a window shows ----
+    // ---- a theme per space (2026-11-20): the theme of the space a window shows (the library's: the core's) ----
     do {
-        let spaces: [JSONObject] = [["id": "a", "theme": "pixel"], ["id": "b"], ["id": "c", "theme": "material"]]
-        let lib: JSONObject = ["spaces": spaces, "openTabs": ["activeSpaceByWindow": ["1": "c", "2": "b", "3": "gone"]] as JSONObject]
-        check("space theme: the library's snapshot: the window's space's own", MarginWindowController.spaceTheme(window: 1, state: lib) == "material")
-        check("space theme: a space with none: none (the profile's)", MarginWindowController.spaceTheme(window: 2, state: lib) == nil)
+        let root = tempFolder("space-theme")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let lib = Library.open(dataRoot: root, background: false)
+        check("space theme: no spaces: none", lib.spaceTheme(window: 1) == nil)
+        func space(_ id: String, _ order: Int, _ theme: Any?) -> JSONObject {
+            var v: JSONObject = ["name": id, "order": order]
+            if let theme { v["theme"] = theme }
+            return ["collection": "spaces", "id": id, "value": v]
+        }
+        func window(_ w: String, _ s: String) -> JSONObject { ["collection": "windows", "id": w, "value": ["spaceId": s]] }
+        lib.store([space("a", 0, "pixel"), space("b", 1, nil), space("c", 2, "material"), window("1", "c"), window("2", "b"), window("3", "gone")], at: 1)
+        check("space theme: the window's space's own", lib.spaceTheme(window: 1) == "material")
+        check("space theme: a space with none: none (the profile's)", lib.spaceTheme(window: 2) == nil)
         check("space theme: a window with no space of its own, or one gone: the first space's (the one it shows)",
-              MarginWindowController.spaceTheme(window: 9, state: lib) == "pixel" && MarginWindowController.spaceTheme(window: 3, state: lib) == "pixel")
-        check("space theme: no spaces, or an odd value: none", MarginWindowController.spaceTheme(window: 1, state: [:]) == nil
-              && MarginWindowController.spaceTheme(window: 1, state: ["spaces": [["id": "a", "theme": String(repeating: "x", count: 60)]]]) == nil
-              && MarginWindowController.spaceTheme(window: 1, state: ["spaces": [["id": "a", "theme": 3]]]) == nil)
+              lib.spaceTheme(window: 9) == "pixel" && lib.spaceTheme(window: 3) == "pixel")
+        lib.store([space("a", 0, String(repeating: "x", count: 60))], at: 2)
+        let long = lib.spaceTheme(window: 9)
+        lib.store([space("a", 0, 3)], at: 3)
+        check("space theme: an odd value: none", long == nil && lib.spaceTheme(window: 9) == nil)
     }
 
     // ---- a theme's settings changed in Margin's window (the sidebar's width, dragged) last across launches ----

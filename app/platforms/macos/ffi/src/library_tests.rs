@@ -210,6 +210,41 @@ fn the_library_object_through_the_ffi_called_back_into() {
     assert_eq!(snap["keptTabs"], Value::Null);
     assert_eq!(snap["openTabs"]["keptTabs"][&item]["url"], json!("https://a.example/"));
     assert_eq!(snap["library"], json!({ "v": 1, "imported": false }));
+    // What a window draws (one typed call a draw): the session's state over the snapshot, the tail spliced in; and
+    // its space's theme, typed.
+    let tail = r#""settings":{"theme":"pixel"},"favicons":{}"#;
+    let mut n = 0;
+    // SAFETY: the live session; the tail's bytes.
+    let drawn = read(unsafe { crate::margin_session_state(session, tail.as_ptr(), tail.len(), &mut n) }, n);
+    assert_eq!(
+        drawn["openTabs"]["keptTabs"], snap["openTabs"]["keptTabs"],
+        "nothing open in the session: the snapshot's"
+    );
+    assert_eq!((drawn["settings"].clone(), drawn["favicons"].clone()), (json!({ "theme": "pixel" }), json!({})));
+    // SAFETY: as above, no tail.
+    let plain = read(unsafe { crate::margin_session_state(session, std::ptr::null(), 0, &mut n) }, n);
+    assert_eq!(plain, snap, "no tail: the snapshot itself");
+    // SAFETY: a null session.
+    assert!(unsafe { crate::margin_session_state(std::ptr::null(), std::ptr::null(), 0, &mut n) }.is_null());
+    let theme = |l: *const MarginLibrary, w: i64| {
+        let mut buf = [0u8; 64];
+        // SAFETY: l null or live; the buffer's 64 bytes.
+        let len = unsafe { margin_library_space_theme(l, w, buf.as_mut_ptr(), buf.len()) };
+        (len >= 0).then(|| String::from_utf8_lossy(&buf[..len as usize]).into_owned())
+    };
+    assert_eq!(theme(l, 1), None, "a space with no theme of its own: none");
+    lib_call(
+        l,
+        json!({ "type": "perform", "action": "setSpaceTheme", "payload": { "spaceId": space, "theme": "pixel" } }),
+    );
+    assert_eq!(
+        (theme(l, 1), theme(l, 9), theme(std::ptr::null(), 1)),
+        (Some("pixel".into()), Some("pixel".into()), None)
+    );
+    let mut short = [0u8; 2];
+    // SAFETY: l live; a 2-byte buffer: too small, the length said, nothing written.
+    assert_eq!(unsafe { margin_library_space_theme(l, 1, short.as_mut_ptr(), short.len()) }, 5);
+    assert_eq!(short, [0, 0]);
     assert_eq!(lib_call(l, json!({ "type": "actions" }))["actions"].as_array().map(Vec::len), Some(57));
     let refused = lib_call(l, json!({ "type": "perform", "action": "renameSpace", "payload": { "spaceId": "none" } }));
     assert_eq!((refused["ok"].clone(), refused["error"].clone()), (json!(false), json!("no such space")));

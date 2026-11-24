@@ -9401,3 +9401,68 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   x86_64 11,283,360): +52 KB (the facade's callbacks, the session's sink and edit now reachable; the rules were linked
   since commit 5); the bundle 25,028 KB against 25,048 (library.js's 68,103 bytes gone from Resources/app). The running
   app's footprint isn't measured (it would open windows on the screen); the library's part is the table's.
+
+## Core refactor step 4, commit 7: a draw is the core's text, nothing of the library parsed or written again (2026-11-24)
+
+- **What Margin's window is pushed is one call of the core's.** `margin_session_state` (Session::state_text over
+  `Library::state_text`, library/snapshot.rs `Parts`): the library's kept snapshot (made once per revision of the set)
+  with the items the session has open moved from `keptTabs` to `tabs` (each its tab as the UI takes it: number,
+  window, place, title, address, icon, `active`, `lastActive`, `mid`, `order`, the pin or favorite it's the tab of and
+  the name the person gave it when they have a value, `audible`, `muted`, `visible`) and `tabSpace` (their spaces), and
+  the profile's `"settings":…,"favicons":…` spliced in before the last brace. The snapshot's text keeps where its open
+  tabs' objects and each kept tab's entry are, so a draw is copies of that text and the few open rows: no JSON parsed,
+  no dictionary, nothing of the library written again. HostedSession `live` and `liveTab`, SessionCore `livePlan` and
+  its row type, `margin_session_live_plan` and `MarginLiveRow` are deleted; `LibraryWindowSource.snapshot` is
+  `stateText()`, and MarginWindowController pushes that text as it is (`stateChanged`, `pageHello`).
+- **The space's theme typed** (`margin_library_space_theme`, Library.swift `spaceTheme(window:)`): the window's space's,
+  else the first space's, none when it has none of its own; MarginWindowController's static `spaceTheme` over the
+  snapshot's dictionary is deleted, the windows' `theme` closure takes the space's theme id, Shell `hostedTheme(spaceTheme:)`.
+- **The profile's settings and site icons as text, kept** (DataSetWindowSource `drawnText`): made again only when what
+  it reads may have changed: any call of the data object's but a read (`DataSync.changes`, counted as the call is made,
+  before its save is written, so a draw between never shows the old text), a setting changed in Margin's window, or
+  another profile picked. Until now every draw read the profile's settings, theme settings and site icons through three
+  JSON calls and wrote them again.
+- **Corrected in the design** (part 6): the state isn't per window. `live` drew the same open items for every window (the
+  session's hosting window's, `live_plan`), so `margin_session_state` takes no window (the design's
+  `margin_session_state(session, window, out_len)`); the theme is the per-window part, typed beside it. And the
+  settings' text goes into the call (`tail`) rather than being spliced by Swift after it: one buffer, no copy of the
+  state's text in Swift.
+- **Behaviour.** The text's values are the ones `live` gave (pinned by a reference transliteration of HostedSession
+  `live`/`liveTab` in snapshot_tests.rs, on hand-made and 400 generated libraries with any items open in any order,
+  rows for items not kept, empty bindings, odd strings, with and without the tail); only the text's spelling differs:
+  keys in one fixed order (the dictionaries' was a per-launch hash order: nothing reads it, `tabs`' keys are numbers,
+  which JS orders itself), numbers as JS writes them, `/` not escaped. The theme chosen per window and the settings
+  drawn are as before.
+- **Faster** (off screen, MARGIN_LIBRARY_BASELINE, commit 0's library, the median of 25, debug Swift and release Rust as
+  `run.sh` builds them; a draw now: the window's source over a session with an app item open, its text, as pushed):
+
+  | Items | A draw (commit 7) | The same draw at commit 6 (snapshot, `live`, settings, `jsonString`) | Commit 6's library part | Commit 0's (JSC) library part | A rename and the draw after it (commit 6) | Footprint after the 125 calls (commit 6) |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | 50 | **0.01 ms** | 1.19 ms | 1.14 ms | 2.8 ms | 0.67 ms (1.92) | ~20 MB (20) |
+  | 500 | **0.07 ms** | 6.98 ms | 6.8 ms | 13.9 ms | 4.15 ms (12.03) | ~75 MB (73) |
+  | 2,000 | **0.26 ms** | 29.37 ms | 25.7 ms | 52.3 ms | 16.2 ms (45.5) | ~330 MB (243–330) |
+
+  What's left of a rename and its draw is the perform (the store's apply: the set cloned, the changed file made) and
+  the snapshot's text made once for the new revision. The footprint is the store's writer's backlog (the next commit's: pending writes coalesced).
+- **Tests.** Rust: snapshot_tests.rs (the state's text against `live`'s transliteration: by hand, the commas at every
+  place an open item can be, 400 generated libraries), object_tests.rs (`space_theme`'s cases, moved from
+  margin-window-tests; `state_text`, `keeps`; each read again inside every call out), routing_tests.rs (the session's
+  `state_text` over the real library with three open items, one not kept), margin-ffi library_tests.rs (the two typed
+  calls, a null session, a buffer too small), routing_cost.rs's draw now `margin_session_state`. Swift: the tests read
+  the draw as the page would (`drawnState`: the state's text parsed), hosted-tests check the settings spliced into what
+  the window is pushed, margin-window-tests the profile's text kept and made again and the space's theme through the
+  facade; e2e-hosted's stand-in source gives text. `tools/app-tests/run.sh all`: 2,145 unit and 321 end-to-end checks;
+  `scripts/rust-test.sh`, `npm test` green.
+- 21 deliberate breaks, each alone (scratch step4-finish/breaks7.py, swift_breaks7.py): 19 caught, and the two missed
+  answered. Rust (14, 12 caught):
+  an open item left kept, a kept entry cut at its comma, `visible` never said, the tail not spliced, the window drawn in
+  not said, the tabs' spaces wrong, the theme ignoring the window, no first space's theme, every open item counted kept
+  (the rows' places), the session drawing no open items, the FFI dropping the tail, the FFI's theme always none; missed:
+  an empty binding written (the state never holds one: `stateOf` keeps a binding only with a value, so the filter was
+  dead and is removed), the snapshot's parts made from another state when a draw is the first to make them after an
+  edit (the tests made the snapshot first; routing_tests.rs now edits and then draws first, and catches it: run again,
+  caught). Swift (7, all caught): the profile's text kept over a data change, over a setting changed here, a read of the
+  data's counted a change, the source or the facade dropping the profile's text, the facade's space theme none, a
+  window drawn again keeping its theme (e2e-glue's theme per space).
+- Swift (app, from a08abad7): 122 lines deleted, 87 added (HostedSession 56 → 10, MarginWindowController 28 → 16,
+  SessionCore 21 → 9; ShellHosted +17 for the kept text, DataSync +7 for its count). Rust: ~250 lines in (~110 out: `live_plan`'s FFI, the old snapshot writer), ~290 of tests.

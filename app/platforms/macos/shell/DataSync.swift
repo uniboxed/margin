@@ -134,8 +134,15 @@ final class DataSync {
         margin_data_free(core)
     }
 
+    // The calls since this object was made that may have changed a set (every one but the reads): what a copy of what
+    // it reads (DataSetWindowSource's drawn text) is checked against, so it's made again after any change, written yet
+    // or not.
+    private(set) var changes = 0
+    private static let reads: Set<String> = ["profiles", "set", "values", "linked", "unsent", "holding", "nextHold", "root"]
+
     // One request to the core, its answer (an error answer said once).
     private func call(_ request: JSONObject) -> JSONObject {
+        if !Self.reads.contains(request["type"] as? String ?? "") { changes &+= 1 }
         let answer = KeysCore.bytes(KeysCore.json(request)) { p, n in KeysCore.answer { margin_data_call(core, p, n, $0) } } as? JSONObject ?? [:]
         if let error = answer["error"] as? String { Diagnostics.warn("data: \(error)") }
         return answer

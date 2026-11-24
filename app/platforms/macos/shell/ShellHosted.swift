@@ -1,9 +1,9 @@
 // Margin's own window in the shell (MarginWindow.swift, MarginWindowController.swift; docs/MARGIN-APP.md phase 2).
 //
 // The windows draw the library (LibraryWindowSource, HostedSession.swift, made in ShellHostedGlue.swift).
-// DataSetWindowSource gives the settings and site icons each draw of the library's takes (`settingsAndIcons`): one
-// browser profile's lasting data set (DataSync.swift, read only), with the settings changed in Margin's window over
-// it. A setting changed (the sidebar kept open) is kept here, and across launches in the app's defaults
+// DataSetWindowSource gives the settings and site icons each draw of the library's takes (`drawnText`, their text kept
+// between their changes): one browser profile's lasting data set (DataSync.swift, read only), with the settings changed
+// in Margin's window over it. A setting changed (the sidebar kept open) is kept here, and across launches in the app's defaults
 // (`SettingsKeeper`), as a theme's setting changed (the sidebar's width, dragged: `ThemeSettingsKeeper`), until the
 // app's own store has settings; nothing else is written anywhere.
 
@@ -90,12 +90,28 @@ final class DataSetWindowSource {
         }
     }
 
-    // What the library's snapshot takes of the profile (LibraryWindowSource, every draw): its settings with each theme's
-    // own under `themes` and what was changed in the UI over them, and its site icons.
-    func settingsAndIcons() -> (settings: JSONObject, icons: JSONObject) {
-        let p = pick()
-        return (drawnSettings(p), p.map { data.values("siteIcons", of: $0) } ?? [:])
+    // What each draw of the library's takes of the profile: its settings with each theme's own under `themes` and what
+    // was changed in the UI over them, and its site icons.
+    func settingsAndIcons() -> (settings: JSONObject, icons: JSONObject) { settingsAndIcons(pick()) }
+    private func settingsAndIcons(_ p: DataProfile?) -> (settings: JSONObject, icons: JSONObject) {
+        (drawnSettings(p), p.map { data.values("siteIcons", of: $0) } ?? [:])
     }
+
+    // The same as each draw's text (`"settings":…,"favicons":…`, which the core splices into the library's state:
+    // LibraryWindowSource), made again only when what it reads may have changed: the data set (any call of the data's
+    // but a read, `DataSync.changes`, written yet or not), a setting changed here, or another profile picked.
+    func drawnText() -> String {
+        let p = pick()
+        if let kept = drawn, kept.profile == p, kept.changes == data.changes, kept.edits == edits { return kept.text }
+        let s = settingsAndIcons(p)
+        let text = #""settings":"# + (jsonString(s.settings) ?? "{}") + #","favicons":"# + (jsonString(s.icons) ?? "{}")
+        drawn = (p, data.changes, edits, text)
+        textsMade += 1
+        return text
+    }
+    private var drawn: (profile: DataProfile?, changes: Int, edits: Int, text: String)?
+    private var edits = 0 // the settings changed here (`perform`)
+    private(set) var textsMade = 0 // (the tests')
     // (The settings alone: a UI request's, a search's engine and the favorites' scope.)
     var drawnSettings: JSONObject { drawnSettings(pick()) }
     private func drawnSettings(_ p: DataProfile?) -> JSONObject {
@@ -118,12 +134,14 @@ final class DataSetWindowSource {
     @discardableResult func perform(_ type: String, _ payload: JSONObject) -> JSONObject? {
         if type == "updateSettings", let patch = payload["patch"] as? JSONObject, !patch.isEmpty {
             settings.merge(patch.filter { $0.key != "themes" }) { _, new in new }
+            edits += 1
             settingsKeeper?.write(settings)
             onChange?()
             return nil
         }
         if type == "updateThemeSettings", let theme = payload["themeId"] as? String, let patch = payload["patch"] as? JSONObject, !patch.isEmpty {
             themeSettings[theme, default: [:]].merge(patch) { _, new in new }
+            edits += 1
             keeper?.write(themeSettings)
             onChange?()
             return nil
@@ -146,12 +164,11 @@ extension Shell {
     // The theme Margin's window draws (a package's JSON): the one its settings choose (`hostedSettings`: what was
     // chosen in Margin's own Settings, else the profile's set), an imported one or a built-in Margin carries; with none
     // chosen, a linked copy's package; nil: Arcadia, bundled with the page.
-    // A window's (`window`, `state`: the state it draws): the theme of the space it shows first (2026-11-20, Tirth: a
-    // theme per space; MarginWindowController.spaceTheme), when Margin has that theme (an imported one removed since:
-    // the next one down).
-    func hostedTheme(window: Int? = nil, state: JSONObject? = nil) -> String? {
-        if let window, let state, let own = MarginWindowController.spaceTheme(window: window, state: state),
-           let json = userThemes.store.message(own) ?? builtinThemes.message(own) { return json }
+    // A window's (`spaceTheme`: the theme of the space it shows, the library's `spaceTheme(window:)`): that one first
+    // (2026-11-20, Tirth: a theme per space), when Margin has that theme (an imported one removed since: the next one
+    // down).
+    func hostedTheme(spaceTheme own: String? = nil) -> String? {
+        if let own, let json = userThemes.store.message(own) ?? builtinThemes.message(own) { return json }
         let chosen = hostedSettings?.chosenTheme ?? hostedProfile().flatMap { data.values("settings", of: $0)["theme"] as? String }
         if let chosen, let json = userThemes.store.message(chosen) ?? builtinThemes.message(chosen) { return json }
         // (Nothing chosen: Arcadia's own package, never nil while it's there: a window that drew another space's theme
@@ -170,7 +187,7 @@ extension Shell {
         if !o.harness, windowOptions == nil, UserDefaults.standard.string(forKey: FrontMechanism.key) == FrontMechanism.order.rawValue { o.front = .order }
         let source = makeHostedSource()
         let windows = MarginWindows(pages: pages, source: source, options: o)
-        windows.theme = { [weak self] window, state in self?.hostedTheme(window: window, state: state) }
+        windows.theme = { [weak self] _, own in self?.hostedTheme(spaceTheme: own) }
         windows.themes = { [weak self] in self?.themesListJSON ?? "[]" }
         windows.browser = options.lastBrowser()
         marginWindows = windows

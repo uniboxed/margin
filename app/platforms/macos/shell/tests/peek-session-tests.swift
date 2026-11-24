@@ -99,7 +99,7 @@ func peekSessionTests() {
           said.count >= 2 && (said.first?["peek"] as? JSONObject)?["loading"] as? Bool == true && (said.last?["peek"] as? JSONObject)?["loading"] as? Bool == false
           && (said.last?["peek"] as? JSONObject)?["url"] as? String == "https://docs.example.org/guide", "\(said)")
     check("peek session: the card's first open never puts the page card's loader over main", window.loadings.count == lmark && window.loading == nil, "\(window.loadings.dropFirst(lmark))")
-    let live = session.live(library.snapshot())
+    let live = drawnState(session)
     let tabs = ((live["openTabs"] as? JSONObject)?["tabs"] as? JSONObject) ?? [:]
     check("peek session: the sidebar: the item under the card still highlighted, the card no row of its own (not the space's)",
           (tabs[String(session.number(ofItem: bItem))] as? JSONObject)?["active"] as? Bool == true && tabs.count == 2 && library.items(space: home).count == 2, "\(tabs.keys)")

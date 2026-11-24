@@ -2088,6 +2088,18 @@ over 50, 500 and 2,000 items with 2 KB icons, and the `idle-cost` screen part wh
 3 part 10 merged first (or `live` stays Swift over the snapshot's dictionary for one more commit: commit 6 without 7).
 ~60 Swift lines deleted with the fallback (SH:134-196), ~25 of `live`, ~20 of the snapshot's glue; ~350 Rust lines.
 
+**Done (commit 7, step4/finish), with these lines of the design corrected.**
+- The state isn't per window: `live` drew the same open items for every Margin window (the session's hosting window's,
+  `live_plan`), so `margin_session_state(session, tail, tail_len, out_len)` takes no window; the per-window part is the
+  theme, typed beside it (`margin_library_space_theme(library, window, buf, cap)`: its length, -1 none).
+- The profile's text goes into the call (`tail`, `"settings":…,"favicons":…`) and the core writes it before the last
+  brace: one buffer, Swift doesn't copy the state's text to splice it. Swift keeps that text (DataSetWindowSource
+  `drawnText`), made again when the data object took any call but a read (`DataSync.changes`), a setting changed in
+  Margin's window, or another profile is picked.
+- `Library::snapshot()` keeps the text as `snapshot::Parts`: where `tabs`, `tabSpace` and each kept tab's entry are, so
+  a draw copies the text around the open rows. `margin_library_call {"type":"snapshot"}` stays for the tests and the
+  start's reads. `Session::state_text(&self, library: &Library, tail)` is the session's (Windows calls it as is).
+
 #### Part 7: the library object, the FFI, the session's direct call
 
 **Today.** `MarginLibrary { library: LibraryStore }` ffi/data.rs:46-48, `margin_library_new` ffi/data.rs:255-271 (the
@@ -2291,7 +2303,7 @@ commit 7 only).
 | 5 | Part 5 and part 7's object: `import_values`, `import_once`, `Library` with its callbacks, the FFI; the T/ shadow check runs JSC and Rust on the whole Swift suite. **Done** (step4/object: library/object.rs, `import::sources`, the session as the sink (registered at commit 6), ffi data.rs's object and collation.rs, the system's sorter: ICU4X removed, libicucore on the Mac, icu.dll on Windows compile-checked; the shadow's 9,442 calls the same but the decided cuts and gap) | 0 | ~1,050 + ~900 tests | a perform through the FFI 0.6 / 3.6 / 15.5 ms at 50 / 500 / 2,000 items (JSC 2.6 / 16 / 61); binary +0.59 MB arm64, +0.72 MB x86_64 (the rules now linked; no collation data: ICU4X would have been +1.26 MB more each) |
 | 5a | **Done** (step4/urls): Tirth's answer 11, its own commit: `RULES_PARSE_URLS` true (link rules route, addresses match as the browsers' copies match them), the tests that pinned the no-URL answers pinned to the browsers', the vectors re-recorded (the `url` steps library.ts's in Node with `URL`, every other step JSC's), the shadow's address-only differences named (`js::without_urls`, `margin_library_rules_without_urls`, T/ only, gone at commit 6) | 0 | ~60 + ~150 tests | a match 0.55 µs an address; `routeUrl` at the 99th rule 10 µs; `openPin` 13 / 107 / 420 µs at 50 / 500 / 2,000 items (no URL 2 / 5 / 13); binary +0.23 MB arm64, +0.24 MB x86_64 |
 | 6 | **The switch**: `Library.swift` over the core, LR and JavaScriptCore gone, `library.js` out of the app, `Command::Perform` and the Swift delegate path gone, the no-rules fallback gone, the Swift tests on the core, the stand-in shelf in requests_tests.rs replaced by the real library. **Done** (step4/switch, one commit: the sink registered by `margin_session_new` (`take_requests` for several sessions), a Swift perform followed by the `edited` input, not a tick; `Ports::perform` and the executor's `same_turn` gone too; `buildApp`'s half of commit 8 done; part 7's corrections there; the data check both ways on the vectors and Tirth's copy; `idle-cost` and a switch not measured: no screen suite here) | 330 app Swift out, 184 in (LR 74, L 116 → 127, SH 97 → 11, HS 17 → 25, SG 8 → 3, SL 11 → 7) | ~500 changed (~500 out: the shadow's, the stand-in's) | a perform 0.64 / 3.6 / 15.0 ms at 50 / 500 / 2,000 items (JSC 2.7 / 16.2 / 62.0), a draw's library part 1.1 / 6.8 / 25.7 (2.8 / 13.9 / 52.3) |
-| 7 | Part 6 per draw: `state_text` with `live` joined, `space_theme` typed, the settings' text spliced, `live`'s Swift and the snapshot's dictionaries gone | ~45 Swift | ~350 | a draw, `idle-cost`, footprint |
+| 7 | Part 6 per draw: `state_text` with `live` joined, `space_theme` typed, the settings' text spliced, `live`'s Swift and the snapshot's dictionaries gone. **Done** (step4/finish: `margin_session_state` with no window and the profile's text as its `tail`, part 6's corrections there; the profile's text kept in Swift between its changes; `idle-cost` not measured: no screen suite here) | 122 app Swift out, 87 in | ~250 + ~290 tests | a draw 0.01 / 0.07 / 0.26 ms at 50 / 500 / 2,000 items (commit 6's same draw 1.19 / 6.98 / 29.4, its library part 1.14 / 6.8 / 25.7; JSC's 2.8 / 13.9 / 52.3); footprint as commit 6's (the store writer's backlog: row 7a) |
 | 8 | LT built into nothing (`buildApp`), its header saying it's the vectors' reference (**both done in commit 6**: `buildLibraryScript` builds it for the recorder only); DECISIONS.md "the library's rules are margin-core's" (replacing 2026-11-15's "one copy of the rules: the TypeScript model in JavaScriptCore"); this plan's step 4 marked done | ~5 TS (build) | 0 | |
 
 About 300 Swift lines deleted (~80 added), JavaScriptCore no longer used by the app (check: `otool -L` and the

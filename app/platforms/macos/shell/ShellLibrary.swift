@@ -1,8 +1,8 @@
 // The library in the shell (Library.swift): the app's own spaces, pins, folders and items, opened at launch from
 // data/app beside the profiles' sets (margin-core's library object: its rules and its store), and every profile's set
 // imported into it the first time (Library.importOnce: once, its marker kept, the profiles' files never written).
-// Margin's own window draws it (`library.snapshot()`, `library.perform(_:_:)`, `library.observe`), and the hosting
-// shows what it asks for (the session made over it is its requests' sink).
+// Margin's own window draws it (the session's `stateText` over the library's snapshot, `library.perform(_:_:)`,
+// `library.observe`), and the hosting shows what it asks for (the session made over it is its requests' sink).
 
 import Foundation
 

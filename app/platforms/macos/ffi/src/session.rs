@@ -1248,56 +1248,29 @@ pub unsafe extern "C" fn margin_session_item_of_tab(
     item.len() as isize
 }
 
-/// One row of what the UI draws (session/ui.rs `LiveRow`; its item's text valid during the sink's call).
-#[repr(C)]
-#[derive(Clone, Copy, Debug)]
-pub struct MarginLiveRow {
-    pub item: MarginBytes,
-    pub number: i64,
-    pub index: i64,
-    pub active: bool,
-    pub visible: bool,
-    pub audible: bool,
-    pub muted: bool,
-}
-
-/// Whether the library's snapshot keeps an item as a tab in a space (the caller's: `live`'s `kept`).
-pub type MarginLiveKept = extern "C" fn(ctx: *mut c_void, item: *const u8, len: usize) -> bool;
-pub type MarginLiveSink = extern "C" fn(ctx: *mut c_void, row: *const MarginLiveRow);
-
-/// The open items the UI draws: each listed one `kept` asks for, the rows to `sink` in order; the window they're
-/// drawn in (`window`). False: none listed (the snapshot drawn as it is), or a null session. Neither callback may
-/// call into the session.
+/// What a Margin window draws (step 4 part 6, one call a draw, no JSON in): the session's library's kept snapshot
+/// with the items the session has open as tabs (session/ui.rs `live_plan`), and `tail` (`tail_len` bytes: the
+/// profile's `"settings":…,"favicons":…`; empty or null: none) before the last brace. Its text, freed with
+/// `margin_buffer_free`; `null` with no library. Null: a null session or `out_len`.
 ///
 /// # Safety
-/// `s` from [`margin_session_new`] (or null), not freed; `ctx` passed to both; `window` writable.
+/// `s` from [`margin_session_new`] (or null), not freed, its library alive; `tail` `tail_len` readable bytes (or
+/// null); `out_len` writable.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn margin_session_live_plan(
+pub unsafe extern "C" fn margin_session_state(
     s: *const MarginSession,
-    ctx: *mut c_void,
-    kept: Option<MarginLiveKept>,
-    sink: Option<MarginLiveSink>,
-    window: *mut i64,
-) -> bool {
-    let (Some(s), Some(kept), Some(sink)) = (session(s), kept, sink) else { return false };
-    let Some((w, rows)) = s.live_plan(&mut |item| kept(ctx, item.as_ptr(), item.len())) else { return false };
-    if !window.is_null() {
-        // SAFETY: writable (the contract).
-        unsafe { *window = w };
-    }
-    for r in &rows {
-        let row = MarginLiveRow {
-            item: MarginBytes::of(Some(&r.item)),
-            number: r.number,
-            index: r.index,
-            active: r.active,
-            visible: r.visible,
-            audible: r.audible,
-            muted: r.muted,
-        };
-        sink(ctx, &row);
-    }
-    true
+    tail: *const u8,
+    tail_len: usize,
+    out_len: *mut usize,
+) -> *mut u8 {
+    // SAFETY: from margin_session_new and not freed (the caller's contract).
+    let Some(m) = (unsafe { s.as_ref() }) else { return std::ptr::null_mut() };
+    let tail = text(tail, tail_len).unwrap_or("");
+    let state = match crate::data::library(m.library) {
+        Some(l) => m.session.state_text(l, tail),
+        None => "null".to_string(),
+    };
+    crate::data::bytes(state, out_len)
 }
 
 /// The windows of a copy's that Margin draws (`drawn`'s hosted ones): into `out`, how many there are (more than

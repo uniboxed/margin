@@ -2,7 +2,7 @@
 // over margin-core's library object. The shared vectors (tests/fixtures/library/) run against the core in Rust, with the
 // Mac's sorter through the same FFI entry the app links (margin-ffi library_tests.rs); here, the Mac's own outcome of a
 // decided change (a title cut through an emoji, Tirth's answer 3) and the costs step 4 must not exceed
-// (MARGIN_LIBRARY_BASELINE=<items>: a perform, a snapshot, a draw's library part, the footprint), against commit 0's.
+// (MARGIN_LIBRARY_BASELINE=<items>: a perform, the snapshot, a draw, the footprint), against commit 0's and commit 6's.
 import Foundation
 
 extension Tests {
@@ -27,8 +27,9 @@ extension Tests {
   // MARGIN_LIBRARY_BASELINE=<items> (tests.swift runs only this, in a process of its own, so the footprint is the
   // library's): a library of that many items (2 KB icons, as a site's inline icon) and a full archive in its store,
   // opened as the app opens it (written in the background), then a click's perform (with the store's apply and the
-  // observers in it), a rename, a snapshot, and a draw's library part (the snapshot and its text for Margin's window),
-  // each the median of 25; the process's footprint after each. Commit 0's (JavaScriptCore's) to beat: DECISIONS.md.
+  // observers in it), a rename, the snapshot as JSON, and a draw (the text Margin's window is pushed: the session's
+  // state over the library, an app item open, the profile's settings), each the median of 25; the process's footprint.
+  // Commit 0's (JavaScriptCore's) and commit 6's to beat: DECISIONS.md.
 
   static func libraryBaseline(items n: Int) {
     func footprint() -> Double {
@@ -66,13 +67,41 @@ extension Tests {
     let perform = median(25) { k += 1; lib.perform("activateTab", ["windowId": 1, "tabId": "t-i\(k % n)"]) }
     let rename = median(25) { k += 1; lib.perform("renameTab", ["tabId": "t-i\(k % n)", "title": "Renamed \(k)"]) }
     let snapshot = median(25) { _ = lib.snapshot() }
-    let draw = median(25) { _ = try? JSONSerialization.data(withJSONObject: lib.snapshot()) }
-    let fresh = median(25) { k += 1; lib.perform("renameTab", ["tabId": "t-i\(k % n)", "title": "Again \(k)"]); _ = try? JSONSerialization.data(withJSONObject: lib.snapshot()) }
-    let size = (try? JSONSerialization.data(withJSONObject: lib.snapshot()))?.count ?? 0
-    check("library baseline: every perform told its observer", told >= 75, "\(told)")
-    // (The footprint after counts the store's writer's backlog: these edits come faster than their saves are written,
-    // each save the changed collection's file; written at once, `background: false`, it stays flat.)
-    print(String(format: "library baseline (margin-core through Library.swift): %d items (+200 archived, 2 KB icons): a perform %.2f ms (a rename %.2f), a snapshot %.2f ms, a draw's library part %.2f ms (%d KB; a rename and the draw after it %.2f); footprint %.1f MB at start, %.1f with the library open, %.1f after",
-                 n, perform, rename, snapshot, draw, size / 1024, fresh, start, opened, footprint()))
+    check("library baseline: every perform told its observer", told >= 50, "\(told)")
+    let afterEdits = footprint()
+    // A draw whole, as Margin's window makes it: the window's source over a session (on the stand-in world) with an
+    // app item open (one open row), the profile's settings and icons (none here) with it, the text pushed.
+    let w = FakeHostWorld()
+    let engine = HostEngine(system: w, marker: nil, pid: 1)
+    engine.options.privateRetire = 0
+    let session = HostedSession(library: lib, engine: engine, links: FakeHostedLinks())
+    session.sleep = { _ in await Task.yield() }
+    let window = FakeHostedWindow(id: 1, number: FakeHostWorld.marginWindow)
+    session.window = { id in id == nil || id == 1 ? window : nil }
+    session.appName = { $0 == "com.apple.TextEdit" ? "TextEdit" : nil }
+    engine.onEvent = { session.hostEvent($0) }
+    engine.hostedWindow = { session.hosted($0) }
+    engine.hostedWindows = { session.hostedWindows($0) }
+    hostRun { session.openApp("com.apple.TextEdit", windowId: 1); await session.idle() }
+    let dataRoot = tempFolder("library-baseline-data")
+    defer { try? FileManager.default.removeItem(at: dataRoot) }
+    let source = LibraryWindowSource(library: lib, session: session, profileSource: DataSetWindowSource(data: DataSync(root: dataRoot, background: false), pick: { nil }))
+    let drawn = { source.stateText() }
+    check("library baseline: the draw has the open app item's row", drawn().contains(#""mid":"#), String(drawn().prefix(200)))
+    let whole = median(25) { _ = drawn() }
+    let wholeFresh = median(25) { k += 1; lib.perform("renameTab", ["tabId": "t-i\(k % n)", "title": "Whole \(k)"]); _ = drawn() }
+    let size = drawn().utf8.count
+    let after = footprint()
+    // A burst of rapid edits (200 renames, each drawn), far faster than their saves are written (each save the changed
+    // collection's file, ~1 MB at 500 items): the footprint at its highest while the store's writer is behind.
+    var peak = after
+    for _ in 0..<200 {
+      k += 1
+      lib.perform("renameTab", ["tabId": "t-i\(k % n)", "title": "Burst \(k)"])
+      _ = drawn()
+      peak = max(peak, footprint())
+    }
+    print(String(format: "library baseline (margin-core through Library.swift): %d items (+200 archived, 2 KB icons): a perform %.2f ms (a rename %.2f), the snapshot as JSON (a test's read) %.2f ms, a draw %.3f ms (%d KB; a rename and the draw after it %.2f); footprint %.1f MB at start, %.1f with the library open, %.1f after the 75 calls, %.1f after the 125; a burst of 200 edits: %.1f MB at its highest (%.2f MB an edit)",
+                 n, perform, rename, snapshot, whole, size / 1024, wholeFresh, start, opened, afterEdits, after, peak, (peak - after) / 200))
   }
 }

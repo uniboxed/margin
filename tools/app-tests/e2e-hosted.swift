@@ -17,7 +17,8 @@ final class FakeWindowSource: MarginWindowSource {
   var onChange: (() -> Void)?
   var asked: [(type: String, payload: JSONObject)] = []
   init(_ state: JSONObject) { self.state = state }
-  func snapshot() -> JSONObject { state }
+  func stateText() -> String { jsonString(state) ?? "null" }
+  func spaceTheme(window: Int) -> String? { nil }
   @discardableResult func perform(_ type: String, _ payload: JSONObject) -> JSONObject? {
     asked.append((type, payload))
     if type == "updateSettings", let patch = payload["patch"] as? JSONObject {
@@ -343,7 +344,7 @@ func hostedScenario() async {
   let made = shell.makeMarginWindows()
   check("the shell's windows: made once, in a test never on a display", made === shell.makeMarginWindows() && made.options.harness)
   check("the shell's windows draw the library: nothing imported, a first space, Personal", made.source is LibraryWindowSource
-        && ((made.source.snapshot()["spaces"] as? [JSONObject])?.first?["name"] as? String) == "Personal")
+        && ((((try? JSONSerialization.jsonObject(with: Data(made.source.stateText().utf8))) as? JSONObject)?["spaces"] as? [JSONObject])?.first?["name"] as? String) == "Personal")
 
   // ---- ⌘Q with Margin itself in front (nothing hosted): its prompt; Always quit quits and stops asking ----
   let command = Combo.parse("Meta+KeyQ")!
