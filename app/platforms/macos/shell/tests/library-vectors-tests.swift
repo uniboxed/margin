@@ -1,10 +1,12 @@
 // The library's shared vectors (tests/fixtures/library/, docs/CORE-REFACTOR.md step 4, part 8) through the app's own
 // rules: dist/app/library.js in JavaScriptCore by LibraryRules, as Margin.app runs them. And the shadow: every call the
-// whole suite makes to the rules (perform, snapshot, importValues), given to a second engine as well and its answer
-// compared (JavaScriptCore again for now; margin-core's library at step 4's commit 5). And the baselines step 4 must not
-// exceed (MARGIN_LIBRARY_BASELINE=<items>: a perform, a snapshot, a draw's library part, the footprint).
+// whole suite makes to the rules (perform, snapshot, importValues), given to margin-core's library as well (through the
+// FFI: margin_library_rules, library.js's entry answered by the core with the Mac's sorter, libicucore's) and its
+// answer compared. And the baselines step 4 must not exceed (MARGIN_LIBRARY_BASELINE=<items>: a perform, a snapshot, a
+// draw's library part, the footprint), with the core's perform through the FFI beside today's.
 import Foundation
 import JavaScriptCore
+import MarginCore
 
 // ---- JSON as the vectors compare it: objects with no regard to key order, numbers as doubles, true isn't 1 ----
 
@@ -53,18 +55,24 @@ func valuesJSON(_ v: Any) -> String {
 
 // Every LibraryRules call of the rules' functions goes through here (JSValue's call, exchanged once): its arguments made
 // the vectors' (ids in code-point order, the env's ids padded so the rules never draw Math.random), the app's engine
-// answers, then the second engine, and the two answers must be the same. Test builds only; never in the app.
+// (JavaScriptCore) answers, then margin-core's (the FFI), and the two answers must be the same, but for what Tirth
+// decided they differ in: a cut through an emoji (JSC keeps half the pair, which the app can't read; the core drops
+// it: Tirth's answer 3) and piece 1's known gap (a `createSpace` given an emoji or colour that's truthy and no string:
+// JSC stores it as given, the core `""`, what the next reading of it is), each counted. Test builds only; never in the
+// app.
 enum LibraryShadow {
   static let shadowed: Set<String> = ["perform", "snapshot", "importValues"]
   private(set) static var installed = false
   // A call the shadow makes itself, or a timing (the baselines measure today's rules alone).
   static var bypass = false
-  private static var other: JSValue?
-  private static var otherContext: JSContext?
   private static var pad = 0
   static var counts: [String: Int] = [:]
   static var differences: [String] = []
   static var differing = 0
+  // The calls JSC answered with half an emoji (the same once both drop it), and the known gap's.
+  static var cuts = 0
+  static var rewrites = 0
+  static var gap = 0
 
   static func install() {
     guard !installed, let original = class_getInstanceMethod(JSValue.self, #selector(JSValue.call(withArguments:))),
@@ -73,17 +81,16 @@ enum LibraryShadow {
     installed = true
   }
 
-  // The second engine: library.js in a context of its own (JavaScriptCore, until margin-core's library is linked);
-  // MARGIN_LIBRARY_SHADOW_JS gives it another script (a deliberate break, to see the shadow catch it).
-  private static func second() -> JSValue? {
-    if let other { return other }
-    let env = ProcessInfo.processInfo.environment
-    let path = env["MARGIN_LIBRARY_SHADOW_JS"] ?? env["MARGIN_LIBRARY_JS"] ?? "../../dist/app/library.js"
-    guard let script = try? String(contentsOfFile: path, encoding: .utf8), let context = JSContext() else { return nil }
-    context.evaluateScript(script)
-    otherContext = context
-    other = context.objectForKeyedSubscript("marginLibrary")?.objectForKeyedSubscript("call")
-    return other
+  // The second engine: margin-core's library.js entry (margin_library_rules), the person's sorter.
+  static func core(_ name: String, _ text: String) -> String? {
+    KeysCore.bytes(name) { np, nn in
+      KeysCore.bytes(text) { ap, an in
+        var len = 0
+        guard let out = margin_library_rules(nil, np, nn, ap, an, &len) else { return nil }
+        defer { margin_buffer_free(out, len) }
+        return String(decoding: UnsafeBufferPointer(start: out, count: len), as: UTF8.self)
+      }
+    }
   }
 
   // The arguments as both engines get them: the values' ids in code-point order, and the env's ids each one the rules
@@ -112,15 +119,48 @@ enum LibraryShadow {
     return "[" + parts.joined(separator: ",") + "]"
   }
 
+  // JSC's text with half an emoji dropped: JSON.stringify writes a lone surrogate as its escape (`\ud83d`; a whole pair
+  // goes as the character), so every such escape is one.
+  static func dropped(_ text: String) -> String {
+    text.replacingOccurrences(of: "\\\\u[dD][89a-fA-F][0-9a-fA-F]{2}", with: "", options: .regularExpression)
+  }
+
+  // Piece 1's known gap (actions_tests.rs): a createSpace given an emoji or colour that's truthy and not a string.
+  static func inGap(_ name: String, _ text: String) -> Bool {
+    guard name == "perform", let list = (try? JSONSerialization.jsonObject(with: Data(text.utf8))) as? [Any], list.count >= 3,
+          list[1] as? String == "createSpace", let p = list[2] as? [String: Any] else { return false }
+    let odd = { (v: Any?) -> Bool in
+      guard let v, !(v is NSNull), !(v is String) else { return false }
+      if let n = v as? NSNumber { return CFGetTypeID(n) == CFBooleanGetTypeID() ? n.boolValue : (n.doubleValue != 0 && !n.doubleValue.isNaN) }
+      return true
+    }
+    return odd(p["emoji"]) || odd(p["color"])
+  }
+
   static func compare(_ name: String, _ text: String, _ answer: JSValue?) {
     counts[name, default: 0] += 1
     bypass = true
     defer { bypass = false }
-    guard let second = second() else { return differences.append("\(name): no second engine (MARGIN_LIBRARY_JS)") }
-    let a = answer?.toString(), b = second.call(withArguments: [name, text])?.toString()
+    if inGap(name, text) { gap += 1; return }
+    let a = answer?.toString(), b = core(name, text)
     let parse = { (s: String?) in s.flatMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) } }
-    // (Half an emoji in both answers: neither parses, the same failure.)
     if a == b || jsonSame(parse(a), parse(b)) { return }
+    if let a, dropped(a) != a {
+      if jsonSame(parse(dropped(a)), parse(b)) { cuts += 1; return }
+      // The known cut rewrite (core vectors.rs `KNOWN`): JSC writes a value again that, its half dropped, is the one
+      // stored (a rename through an emoji to the name it has); the core's diff sees no change. Left out, counted.
+      if name == "perform", var o = parse(dropped(a)) as? [String: Any], var v = o["value"] as? [String: Any],
+         let changes = v["changes"] as? [[String: Any]],
+         let given = ((try? JSONSerialization.jsonObject(with: Data(text.utf8))) as? [Any])?.first as? [String: Any] {
+        let kept = changes.filter { ch in
+          guard let c = ch["collection"] as? String, let id = ch["id"] as? String, ch["deleted"] == nil else { return true }
+          return !jsonSame((given[c] as? [String: Any])?[id], ch["value"])
+        }
+        v["changes"] = kept
+        o["value"] = v
+        if kept.count < changes.count, jsonSame(o, parse(b)) { rewrites += 1; return }
+      }
+    }
     differing += 1
     if differences.count < 20 { differences.append("\(name)(\(text.prefix(300))…): \(a?.prefix(300) ?? "nil") vs \(b?.prefix(300) ?? "nil")") }
   }
@@ -128,8 +168,8 @@ enum LibraryShadow {
   static func report() {
     guard installed else { return }
     let total = counts.values.reduce(0, +)
-    print("  (library shadow: \(total) calls of the rules through both engines: \(counts.sorted { $0.key < $1.key }.map { "\($0.key) \($0.value)" }.joined(separator: ", ")); \(differing) differ)")
-    check("library shadow: every call of the suite answered the same by both engines (\(total) calls: \(counts.sorted { $0.key < $1.key }.map { "\($0.key) \($0.value)" }.joined(separator: ", ")))",
+    print("  (library shadow: \(total) calls of the rules through JavaScriptCore and margin-core: \(counts.sorted { $0.key < $1.key }.map { "\($0.key) \($0.value)" }.joined(separator: ", ")); \(cuts) the same once the half emoji is dropped, \(rewrites) the known cut rewrite, \(gap) of the known gap, \(differing) differ)")
+    check("library shadow: every call of the suite answered the same by JavaScriptCore and margin-core (\(total) calls: \(counts.sorted { $0.key < $1.key }.map { "\($0.key) \($0.value)" }.joined(separator: ", ")); \(cuts) cuts, \(rewrites) the known rewrite, \(gap) of the gap)",
           differing == 0, differences.prefix(3).joined(separator: "\n"))
     check("library shadow: the suite's calls went through it", total > 100, "\(total)")
   }
@@ -301,5 +341,25 @@ extension Tests {
     let size = (try? JSONSerialization.data(withJSONObject: lib.snapshot()))?.count ?? 0
     print(String(format: "library baseline: %d items (+200 archived, 2 KB icons): a perform %.2f ms (the rules' call %.2f, a rename %.2f), a snapshot %.2f ms, a draw's library part %.2f ms (%d KB); footprint %.1f MB at start, %.1f with the library open, %.1f after",
                  n, perform, rules, rename, snapshot, draw, size / 1024, start, opened, footprint()))
+
+    // margin-core's library through the FFI (step 4 commit 5; the app switches at commit 6): the same library in a
+    // folder of its own, opened as the app will (written in the background), a click's perform as the facade will make
+    // it (margin_library_call: the request's JSON in, the answer read back with JSONSerialization; the observers and
+    // the store's apply in it), a rename, and the snapshot as JSON (the call the tests keep; the draw's own typed text
+    // is commit 7's).
+    let coreRoot = tempFolder("library-baseline-core")
+    defer { try? FileManager.default.removeItem(at: coreRoot) }
+    do { _ = LibraryCore(root: Library.folder(in: coreRoot), background: false).apply(entries, at: 900) }
+    let beforeCore = footprint()
+    let core: OpaquePointer? = KeysCore.bytes(Library.folder(in: coreRoot).path) { p, len in margin_library_new(p, len, true, nil, { _ in }, nil, nil, nil) }
+    defer { margin_library_free(core) }
+    let ask = { (request: JSONObject) -> Any? in KeysCore.bytes(KeysCore.json(request)) { p, len in KeysCore.answer { margin_library_call(core, p, len, $0) } } }
+    _ = ask(["type": "snapshot"])
+    let corePerform = median(25) { k += 1; _ = ask(["type": "perform", "action": "activateTab", "payload": ["windowId": 1, "tabId": "t-i\(k % n)"]]) }
+    let coreRename = median(25) { k += 1; _ = ask(["type": "perform", "action": "renameTab", "payload": ["tabId": "t-i\(k % n)", "title": "Renamed \(k)"]]) }
+    let coreSnapshot = median(25) { _ = ask(["type": "snapshot"]) }
+    let coreFresh = median(25) { k += 1; _ = ask(["type": "perform", "action": "renameTab", "payload": ["tabId": "t-i\(k % n)", "title": "Again \(k)"]]); _ = ask(["type": "snapshot"]) }
+    print(String(format: "library baseline, margin-core through the FFI: %d items: a perform %.2f ms (a rename %.2f), a snapshot as JSON %.2f ms (a rename and the snapshot made again %.2f); footprint %.1f MB before it, %.1f after",
+                 n, corePerform, coreRename, coreSnapshot, coreFresh, beforeCore, footprint()))
   }
 }

@@ -9108,3 +9108,86 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   revision); `renameTab` 0.005 / 0.029 / 0.12 ms, `closeTab` 0.031 / 0.057 / 0.16 ms. JSC's whole perform today 2.7 /
   16.2 / 62 ms (its rules' call alone 1.7 / 7.6 / 28). What costs is the items' map copied by `used` (`{ ...keptTabs }`
   in the TS too) and, with the read, the icons' text.
+
+## Core refactor step 4, commit 5: the library object, the import once, the FFI, the system's sorter (2026-11-23)
+
+- margin-core's `library::Library` (library/object.rs): Library.swift's `Library` (L:89-286) over the store
+  (`LibraryStore`, unchanged) with the rules in the core. Its state is read from the set once per revision (only the
+  object writes the set, so its own count of saves is the revision) and kept with the snapshot's text. A perform asks
+  the host for the env (`LibraryHost::env`: Swift's `now` and 4 ids), runs the action on the kept state, stores the
+  changes at the host's `now` (its second read, as L:233), tells the host the collections changed (the observers),
+  keeps the last 100 requests, then gives each request to the sink (`RequestSink`: the session) at the point L:225 gave
+  them to the delegate. A failure stores nothing, tells no one and asks nothing; an edit that changes nothing stored
+  tells no observer but still hands on its requests (as L:230's early return). Re-entrant as the session: `&self`,
+  cells, no borrow across a call out; a Rust test host re-enters every read on every call out (env, now, observers,
+  the sink) and an observer performs again inside a perform: never a borrow held.
+- The session as the sink: `Session::sink()` (weak), its request the `library` input inside the perform, with the
+  session counted as in a call (what it starts waits for the caller's next tick; no port call made inside it runs the
+  queue). Tested with the real library and the session's re-entrant ports (requests_tests.rs). margin_session_new
+  doesn't register it yet: no perform of the app reaches the core's object until the switch (commit 6, with
+  `Command::Perform`'s removal; a perform Swift makes itself then ticks the session after).
+- The import once in two halves: `import::sources(&mut DataSync)` (L:251-267: every profile's set the data has,
+  Safari's first then the browsers by name, each set's five collections, each browser's spaces in the person's order
+  by the slots rule over browser.json) and `Library::import_once(sets, order)` (its marker, L:274's line in its words,
+  None when it had run). Two halves so the data object is let go before the import's observers run (they may call it):
+  the design's `import_once(&DataSync)` corrected. Pinned by T/library-tests.swift's importChecks scenario in Rust
+  (two Safari profiles with the same `personal` space and tab id, browser.json's order, the files unchanged, never
+  twice, after a relaunch too, the marker alone with nothing to import) and a Chrome profile after Safari's.
+- library.js's entry in the core (`object::call`, LT:939): `perform`, `snapshot`, `importValues`, `actions` on JSON
+  arguments, LT's answer's text, each value LT's shape (a failed perform has no `result`). Every kind of the shared
+  vectors runs through it (`vectors::run_entry`: 8,783 performs, 295 snapshots, 2 imports, 285 normals, 3 targets;
+  the known 17 `createSpace` steps of piece 1's gap skipped and the one known cut rewrite), with the core's stand-in
+  sorter and, in margin-ffi's tests, the Mac's.
+- The FFI (ffi data.rs): `MarginLibrary` is the core's object; `margin_library_new` takes three callbacks more (`env`,
+  answering the time and giving its ids through `margin_library_env_id`; `now`; `changed`, the names as JSON), each
+  NULL: Library.swift's defaults (the wall clock in ms, 4 random ids, no observer); `margin_library_call` takes the
+  object shared and gains `perform`, `snapshot`, `actions`, `item`, `requests`, `imported` (every answer with its
+  `log`); `margin_library_import(library, data)`; `margin_library_rules(library, name, args)`, library.js's entry for
+  the tests' shadow. The session's `LibraryRef` reads through the shared object: ffi/session.rs's SAFETY note said
+  "never while a library call is under way (the library calls nothing back)", now false; it says the library calls
+  back, the read is shared and the object holds no borrow across a call out. Touched in session.rs: `LibraryRef`
+  (`*const`, its two reads, the note) and the cast at `margin_session_new`; nothing else. Library.swift passes NULL
+  for the three callbacks (its one call); no app behaviour changes: the app still runs LibraryRules.
+- The system's sorter (Tirth's answer after commit 1): ICU4X (`icu_collator`, `icu_locale_core`) out of the core's
+  dependencies, `js::Collation` deleted; the platform hands the core its `LocaleCompare`. The Mac's: margin-ffi
+  collation.rs, libicucore's `ucol_open` for the person's first preferred language (`CFLocaleCopyPreferredLanguages`,
+  as JavaScriptCore takes its default locale) and the attributes JSC's `Intl.Collator` sets (tertiary, no case level,
+  case first off even where a locale's data says upper, no numeric ordering, punctuation not ignored, normalization
+  on), then `ucol_strcoll` over UTF-16 (on the stack up to 128 bytes). The module map links `icucore` and
+  CoreFoundation. js.json's `localeCompare` cases (the 95 characters' order, all 9,025 ASCII signs, the 22 pairs with
+  the accents) and every vector run through it in margin-ffi's tests (vectors_tests.rs `js_json_collation` moved
+  there; the core's own tests sort with `vectors::AsciiCollation`, ICU's root on ASCII built from js.json's recorded
+  order, a stand-in). Against JSC through the FFI under 18 preferred languages (`-AppleLanguages`: en-US, da, sv,
+  en-GB, lt, cs, de-DE, tr, es, fr-CA, zh-Hans-CN, zh-Hant-TW, ja, ko, is, pl, hu, fi), 47 strings at equal places
+  (ASCII, accents, Danish and Swedish letters, Czech `ch`, Turkish `ı`, kana, Hangul, Han, emoji): every order the
+  same. Windows': the Windows shell's collation.rs over icu.dll (the same attributes, ICU's default locale),
+  compile-checked only, unverified on a PC.
+- The shadow (T/library-vectors-tests.swift): its second engine is margin-core through `margin_library_rules` (the
+  second JSContext and `MARGIN_LIBRARY_SHADOW_JS` gone). The whole Swift suite's 9,442 calls of the rules (9,122
+  performs, 314 snapshots, 6 imports): the same but 403 cuts (JSC's answer holds half an emoji, written as its escape
+  by JSON.stringify; the same once dropped, Tirth's answer 3), the one known cut rewrite and the 17 steps of the gap,
+  each counted; 0 differ. Three breaks of the core, each alone, all caught by it (a refusal's words: 186 calls; the
+  sorter upper first: 6; the snapshot's archive oldest first: 171).
+- 41 deliberate breaks of the Rust, each alone (the object's order, cap, cache, clock, borrows across the env and the
+  observers, the import's once, line and clocks, the entry's result, env and import time, the sources' order, the
+  sink's call, the sorter's six attributes, its locale, its bytes and its stack cut, the FFI's env, clock, observers,
+  ids, log and the session's read): 35 caught, 4 of them by checks added for them (the oldest requests dropped, a
+  browser's spaces by their order, the stack cut, the env's time stored). The 6 left change nothing the tests can
+  see: a profile with no set read (the data lists only profiles with sets), the sink's call outside a call (no port
+  of the stand-ins runs the queue between), normalization off (ICU's data handles the canonical pairs here), the
+  answer's log dropped (no call here writes a store line), the FFI's early "imported" (the object refuses too), the
+  entry's root sorter (en-US is root's on this Mac).
+- Cost (Swift, `MARGIN_LIBRARY_BASELINE`, commit 0's library: 2 KB icons, 200 archived; the median of 25, two rounds;
+  the core in a folder of its own, opened as the app will, written in the background): a click's perform through the
+  FFI (the request's JSON in, the answer read back by JSONSerialization, the store's apply and the observers in it)
+  0.6 / 3.6 / 15.5 ms at 50 / 500 / 2,000 items, today's JSC perform 2.6 / 16 / 61; a snapshot as JSON through the
+  call 1.3 / 6.5 / 25.5 ms (JSC's 2.1 / 11.2 / 41.4; the draw's typed text is commit 7's), a rename and the snapshot
+  made again 1.9 / 10.8 / 41.8. In Rust alone (release): a perform through the object 0.58 / 3.6 / 14.6 ms, the kept
+  snapshot nothing. What's left of a perform is the store's apply (data/library.rs: the whole set cloned, the changed
+  collection's file written out for the writer), step 1's and unchanged.
+- Size: Margin.app's binary (`npm run safari -- --no-install --unsigned`, universal) at this commit 20,786,272 bytes (arm64 9,759,840, x86_64 11,009,808; the
+  bundle 24.5 MB), at its base (cae309bf, built the same way from an export of it) 19,471,856 (arm64 9,166,320, x86_64
+  10,286,672): +1.31 MB, +0.59 MB arm64 and +0.72 MB x86_64, all of it the library's rules and object now reachable
+  from the FFI (until now the linker dropped them); no collation data (libicucore is the system's, linked dynamically:
+  `otool -L`), where ICU4X's would have added 1.26 MB more per architecture (commit 1's measure). JavaScriptCore stays
+  linked until the switch.

@@ -9,11 +9,15 @@
 //! last step (LT:932-934: the result read through `stateOf`/`valuesOf`, so what's stored is what the rules give back,
 //! and `diff` against `current` for the changes), part 2's `library::state` and `library::values`.
 
+use std::collections::HashMap;
+
 use serde_json::{Map, Value};
 
 use super::js::{self, LocaleCompare};
 use super::state;
 use super::values::{self, Change};
+use crate::data::profiles::BrowserProfiles;
+use crate::data::sync::DataSync;
 
 /// The browsers a set can be of (LT:39 `BROWSERS`).
 const BROWSERS: [&str; 3] = ["safari", "chrome", "edge"];
@@ -58,7 +62,8 @@ pub struct Counts {
 }
 
 impl Counts {
-    fn entries(&self) -> [(&'static str, u32); 5] {
+    /// The counts in LT's keys' order.
+    pub fn entries(&self) -> [(&'static str, u32); 5] {
         [
             ("spaces", self.spaces),
             ("pins", self.pins),
@@ -293,6 +298,46 @@ pub fn import_changes(
     let imports = next.get("imports").and_then(Value::as_object).cloned().unwrap_or_default();
     let normal = values::values_of(&state, &imports);
     (values::diff_values(current, &normal), counts)
+}
+
+/// What the import reads (L:249-267 `importOnce`'s reading): every profile's set the data has (Safari's first, then
+/// the other browsers by name; each browser's profiles in the data's order), each as its `spaces`, `pins`, `folders`,
+/// `tabs` and `archive`; and each browser's spaces in the person's order (data/<browser>/browser.json, read only: the
+/// slots rule, `BrowserProfiles::resolve`, over each set's spaces by their `order` and id), `[browser, profile,
+/// space]` each. Nothing written.
+pub fn sources(data: &mut DataSync) -> (Vec<ImportSet>, Vec<(String, String, String)>) {
+    let all = data.profiles(None);
+    let mut browsers: Vec<&str> = all.iter().map(|p| p.browser.as_str()).collect();
+    browsers.sort_by(|a, b| (*a != "safari", *a).cmp(&(*b != "safari", *b)));
+    browsers.dedup();
+    let root = data.store().root().to_path_buf();
+    let mut sets = Vec::new();
+    let mut order = Vec::new();
+    for browser in browsers {
+        let mut spaces: HashMap<String, Vec<String>> = HashMap::new();
+        for p in all.iter().filter(|p| p.browser == browser) {
+            if data.set(p).is_none() {
+                continue;
+            }
+            let mut values = Map::new();
+            for c in ["spaces", "pins", "folders", "tabs", "archive"] {
+                values.insert(c.into(), Value::Object(data.values(c, p)));
+            }
+            // The spaces by `order` (a number, else 0), then their ids.
+            let mut own: Vec<(f64, &String)> = values["spaces"]
+                .as_object()
+                .map(|l| l.iter().map(|(id, v)| (crate::json::num(v.get("order")).unwrap_or(0.0), id)).collect())
+                .unwrap_or_default();
+            own.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal).then_with(|| a.1.cmp(b.1)));
+            spaces.insert(p.profile.clone(), own.into_iter().map(|(_, id)| id.clone()).collect());
+            sets.push(ImportSet { browser: browser.to_owned(), profile: p.profile.clone(), values });
+        }
+        let known = BrowserProfiles::new(browser, Some(&root));
+        for k in BrowserProfiles::resolve(known.stored(), &spaces, &known.profiles()) {
+            order.push((browser.to_owned(), k.profile, k.space));
+        }
+    }
+    (sets, order)
 }
 
 fn insert(values: &mut Map<String, Value>, collection: &str, id: String, value: Value) {

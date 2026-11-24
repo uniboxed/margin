@@ -10,10 +10,10 @@ use std::time::Instant;
 use serde_json::{Map, Value, json};
 
 use super::*;
-use crate::library::js::{CodePointOrder, Collation};
+use crate::library::js::CodePointOrder;
 use crate::library::state::state_of;
 use crate::library::values::values_of;
-use crate::library::vectors::{self, Engine};
+use crate::library::vectors::{self, AsciiCollation, Engine};
 
 fn lib(v: Value) -> LibState {
     state_of(v.as_object().unwrap(), &CodePointOrder)
@@ -29,11 +29,12 @@ fn run(s: &LibState, action: &str, payload: Value, ids: &[&str]) -> Outcome {
 
 // ---- the shared vectors ----------------------------------------------------------------------------------------------
 
-/// The core's actions as the vectors' engine: the values read (`stateOf`, the system's sorter: ICU's here), the action
+/// The core's actions as the vectors' engine: the values read (`stateOf`, the system's sorter's stand-in: ICU's root
+/// on ASCII; margin-ffi's tests run the same steps through libicucore), the action
 /// performed. Skipped, and counted: a `createSpace` given an emoji or colour that's truthy and no string (the typed
 /// space's known gap: JS stores the value as given, the core `""`, what the next reading of it is; spaces.rs `text_or`).
 struct Core {
-    compare: Collation,
+    compare: AsciiCollation,
     gap: usize,
     by: BTreeMap<String, usize>,
 }
@@ -62,7 +63,7 @@ impl Engine for Core {
 
 #[test]
 fn every_perform_vector_answers_as_library_ts() {
-    let mut engine = Core { compare: Collation::default(), gap: 0, by: BTreeMap::new() };
+    let mut engine = Core { compare: AsciiCollation::new(), gap: 0, by: BTreeMap::new() };
     let mut report = vectors::run(&mut engine);
     // A `cut` step the typed diff answers without its no-op rewrite: library.ts renames a favorite to the name it has
     // but half an emoji (its cut), whose value, the half dropped (Tirth's answer 3), is the stored one; the core's diff
@@ -96,7 +97,7 @@ fn every_perform_vector_answers_as_library_ts() {
 fn more_generated_sequences() {
     let Ok(dir) = std::env::var("MARGIN_LIBRARY_MORE_VECTORS") else { return };
     let groups = vectors::groups_in(std::path::Path::new(&dir));
-    let mut engine = Core { compare: Collation::default(), gap: 0, by: BTreeMap::new() };
+    let mut engine = Core { compare: AsciiCollation::new(), gap: 0, by: BTreeMap::new() };
     let (mut checked, mut rewrites, mut failures) = (0, 0, Vec::new());
     for g in &groups {
         for (ci, case) in g.cases.iter().enumerate() {
@@ -277,41 +278,6 @@ fn what_three_breaks_showed() {
 
 // ---- the cost ----------------------------------------------------------------------------------------------------------
 
-/// Commit 0's baseline library (T/library-vectors-tests.swift `libraryBaseline`): `n` items (2 KB icons) in two spaces,
-/// the last selected, 200 archived, a window on the first space.
-fn baseline(n: usize) -> crate::data::set::DataSet {
-    let icon = format!("data:image/png;base64,{}", "A".repeat(2048 - 22));
-    let web = json!({ "kind": "web", "browser": "safari", "profile": null });
-    let mut tabs = Map::new();
-    for i in 0..n {
-        tabs.insert(
-            format!("t-i{i}"),
-            json!({
-                "url": format!("https://site{i}.example/page"), "title": format!("Page {i} of the baseline"), "icon": icon,
-                "spaceId": if i % 2 == 0 { "a" } else { "b" }, "order": i, "lastUsed": 1000 + i, "selected": i == n - 1,
-                "target": web,
-            }),
-        );
-    }
-    let mut archive = Map::new();
-    for i in 0..200 {
-        archive.insert(
-            format!("a-{i}"),
-            json!({ "url": format!("https://old{i}.example/"), "title": format!("Old {i}"), "spaceId": "a", "icon": "", "closedAt": 500 + i, "target": web }),
-        );
-    }
-    let values = json!({
-        "spaces": {
-            "a": { "name": "A", "emoji": "", "color": "", "order": 0, "browser": "safari", "profile": null },
-            "b": { "name": "B", "emoji": "", "color": "", "order": 1, "browser": "safari", "profile": null },
-        },
-        "windows": { "1": { "spaceId": "a" } },
-        "tabs": tabs,
-        "archive": archive,
-    });
-    vectors::data_set(values.as_object().unwrap())
-}
-
 fn median(runs: usize, mut f: impl FnMut(usize)) -> f64 {
     let mut times: Vec<f64> = (0..runs)
         .map(|k| {
@@ -327,9 +293,9 @@ fn median(runs: usize, mut f: impl FnMut(usize)) -> f64 {
 #[test]
 #[ignore]
 fn perform_costs() {
-    let compare = Collation::default();
+    let compare = AsciiCollation::new();
     for n in [50, 500, 2000] {
-        let set = baseline(n);
+        let set = vectors::baseline(n);
         let s = state_of(&set, &compare);
         let ids =
             |k: usize| vec![format!("base{k}x0"), format!("base{k}x1"), format!("base{k}x2"), format!("base{k}x3")];

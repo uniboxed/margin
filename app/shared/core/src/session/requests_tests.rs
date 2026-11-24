@@ -582,3 +582,67 @@ fn link_wanted_and_open_wanted() {
     assert!(!s.open_wanted(1, "t1") && s.open_wanted(1, "t2"));
     assert!(!s.open_wanted(5, "t2"), "its window gone");
 }
+
+// ---- the library object as the requests' source (step 4 part 7) ------------------------------------------------------
+
+/// The library object as the session reads it (its set, in place).
+struct LibraryOf(Rc<crate::library::Library>);
+
+impl LibraryView for LibraryOf {
+    fn item(&self, collection: &str, id: &str) -> Option<Value> {
+        self.0.item(collection, id)
+    }
+    fn collection(&self, collection: &str) -> Map<String, Value> {
+        self.0.live(collection)
+    }
+}
+
+struct Clock(Cell<u32>);
+
+impl crate::library::LibraryHost for Clock {
+    fn env(&self) -> crate::library::actions::Env {
+        let n = self.0.get() + 1;
+        self.0.set(n);
+        crate::library::actions::Env { now: f64::from(n), ids: (0..4).map(|i| format!("lib{n}x{i}")).collect() }
+    }
+    fn now(&self) -> f64 {
+        f64::from(self.0.get())
+    }
+    fn changed(&self, _: &BTreeSet<String>) {}
+}
+
+#[test]
+fn the_librarys_requests_reach_the_session_inside_its_perform() {
+    // The session as the library's sink (`Library::set_sink`, as margin_session_new will register it at the switch):
+    // a perform's request is the session's `library` input inside the perform (the item in front at once), its show
+    // started by the caller's next tick, reading the item from the library object (re-entered on every port).
+    let (_, world, _) = session();
+    let dir = crate::data::testing::temp();
+    let lib = Rc::new(crate::library::Library::new(
+        crate::data::library::LibraryStore::new(crate::data::store::DataStore::new(dir.path()).flat()),
+        Box::new(Clock(Cell::new(0))),
+        Box::new(crate::library::js::CodePointOrder),
+    ));
+    let s =
+        Session::new(Box::new(Reentrant(world.clone())), Box::new(LibraryOf(lib.clone())), &json!({ "every": 0.05 }));
+    *world.core.borrow_mut() = Rc::downgrade(s.core());
+    lib.set_sink(Some(s.sink()));
+    world.names.borrow_mut().insert("com.apple.Notes".into(), "Notes".into());
+    let space = lib.perform("createSpace", &json!({ "windowId": 1, "name": "A" })).outcome.result["spaceId"].clone();
+    let added = lib.perform(
+        "addItem",
+        &json!({ "spaceId": space, "target": { "kind": "app", "bundleId": "com.apple.Notes", "name": "Notes" } }),
+    );
+    let item = added.outcome.result["tabId"].as_str().expect("an item").to_owned();
+    acts(&world);
+    let out = lib.perform("activateTab", &json!({ "windowId": 1, "tabId": item }));
+    assert!(out.outcome.ok, "{out:?}");
+    assert_eq!(s.core().requested_in(1).as_deref(), Some(item.as_str()), "in front at once, inside the perform");
+    assert_eq!(acts(&world), [json!(["changed"])]);
+    let seen = pump(&s, &world, s.tick(0.0), &mut usual);
+    assert_eq!(kinds(&seen), ["engine open"], "its show, on the caller's next tick");
+    let Command::Engine { args, .. } = &seen[0] else { panic!() };
+    assert_eq!(args["target"], json!({ "kind": "app", "bundle": "com.apple.Notes" }));
+    assert_eq!(s.core().shown_in(1).as_deref(), Some(item.as_str()));
+    assert!(world.reentries.get() > 0, "the session re-entered on its ports throughout");
+}

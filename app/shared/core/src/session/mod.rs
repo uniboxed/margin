@@ -686,6 +686,12 @@ impl Session {
         })
     }
 
+    /// The session as the library's requests' sink (`Library::set_sink`, held weakly: the session holds the library).
+    pub fn sink(&self) -> Weak<dyn crate::library::RequestSink> {
+        let me: Weak<Core> = Rc::downgrade(&self.0);
+        me
+    }
+
     /// Whether a show waiting on profile `p`'s link is still wanted (HostedSession `linkWanted`; the Safari waker
     /// reads it at each look: typed, nothing allocated).
     pub fn link_wanted(&self, profile: &str) -> bool {

@@ -627,3 +627,15 @@ impl Core {
         self.exec.enqueue(async move { c.show(&item, None, Some(target), Some(w)).await });
     }
 }
+
+/// The library's requests reach the session inside the library's perform (step 4 part 7, the point Library.swift's
+/// delegate had them, L:225): as the `library` input, with the session counted as in a call, so what it starts waits
+/// for the caller's next answer and tick (as a request from a port's callback does) and no borrow of the library is
+/// held while it reads the library again.
+impl crate::library::RequestSink for Core {
+    fn request(&self, request: &Object) {
+        self.depth.set(self.depth.get() + 1);
+        self.library_request(request);
+        self.depth.set(self.depth.get() - 1);
+    }
+}

@@ -64,7 +64,8 @@ fn commit_nines_calls_cost() {
     let dir = tempfile::tempdir().expect("a folder");
     let root = dir.path().to_string_lossy().to_string();
     // SAFETY: the root's bytes; the library outlives the session below.
-    let lib = unsafe { margin_library_new(root.as_ptr(), root.len(), false, std::ptr::null_mut(), None) };
+    let lib =
+        unsafe { margin_library_new(root.as_ptr(), root.len(), false, std::ptr::null_mut(), None, None, None, None) };
     let mut entries = vec![json!({ "collection": "windows", "id": "1", "value": { "spaceId": "home" } })];
     for i in 0..10 {
         entries.push(json!({ "collection": "tabs", "id": format!("t{i}"), "value": { "url": format!("https://{i}.example/"), "title": "T", "spaceId": "home" } }));

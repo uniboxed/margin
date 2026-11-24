@@ -78,48 +78,6 @@ fn sort_with_no_comparator_is_utf16_order() {
 }
 
 #[test]
-fn locale_compare_orders_ascii_as_jsc() {
-    // Printable ASCII in JSC's localeCompare order (en-US); no two of them equal. The scratch harness checks all 9,025
-    // pairs' signs against JSC's.
-    let order = " _-,;:!?.'\"()[]{}@*/\\&#%`^+<=>|~$0123456789aAbBcCdDeEfFgGhHiIjJkKlLmMnNoOpPqQrRsStTuUvVwWxXyYzZ";
-    let c = Collation::default();
-    let chars: Vec<String> = order.chars().map(String::from).collect();
-    for (i, a) in chars.iter().enumerate() {
-        for (j, b) in chars.iter().enumerate() {
-            assert_eq!(c.compare(a, b), i.cmp(&j), "{a:?} vs {b:?}");
-        }
-    }
-}
-
-#[test]
-fn locale_compare_on_ids() {
-    let c = Collation::default();
-    // JSC: each pair's localeCompare sign.
-    for (a, b, want) in [
-        ("sp-a", "sp-B", Ordering::Less),
-        ("sp-b", "sp-B", Ordering::Less),
-        ("sp-B", "sp-c", Ordering::Less),
-        ("t-a1", "t-a_1", Ordering::Greater),
-        ("safari:Work:x", "safari:Personal:x", Ordering::Greater),
-        ("fav-9", "fav-a", Ordering::Less),
-        ("atc-10", "atc-9", Ordering::Less),
-        ("a", "a\0", Ordering::Equal),
-        ("sp-x", "sp-x", Ordering::Equal),
-        ("", "a", Ordering::Less),
-    ] {
-        assert_eq!(locale_compare(&c, a, b), want, "{a:?} vs {b:?}");
-    }
-}
-
-#[test]
-fn locale_compare_takes_the_locale() {
-    // A tailored locale reorders ASCII: Danish puts "aa" (å) after "z".
-    assert_eq!(Collation::new("en-US").compare("aa", "z"), Ordering::Less);
-    assert_eq!(Collation::new("da").compare("aa", "z"), Ordering::Greater);
-    assert_eq!(Collation::new("not a tag!").compare("aa", "z"), Ordering::Less);
-}
-
-#[test]
 fn round_as_math_round() {
     // JSC's Math.round.
     for (x, want) in [

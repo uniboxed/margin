@@ -296,11 +296,11 @@ final class LibraryCore {
         box.library = self
         let ctx = Unmanaged.passUnretained(box).toOpaque()
         core = KeysCore.bytes(root.path) { p, n in
-            margin_library_new(p, n, background, ctx) { ctx in
+            margin_library_new(p, n, background, ctx, { ctx in
                 guard let ctx else { return }
                 let box = Unmanaged<Box>.fromOpaque(ctx).retain()
                 DispatchQueue.main.async { MainActor.assumeIsolated { box.takeRetainedValue().library?.written() } }
-            }
+            }, nil, nil, nil)
         }
     }
 

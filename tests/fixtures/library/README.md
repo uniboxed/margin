@@ -84,8 +84,15 @@ step's `error` `{ "failed": site }` is `failed: ` and throws.json's `jsc` words 
   every file (`vectors::groups()`, or `groups_named("generated-")`), resolves each site's words, merges the expected
   changes between steps and returns a `Report` (checked and skipped by kind, failures with the file, case and step):
   `report.assert_ok()`. `vectors::data_set(&values)` gives the values as a `DataSet`; `vectors::js()` is js.json.
+  `vectors::run_entry(&sorter)` runs every kind through library.js's entry as the core answers it
+  (`library::object::call`). The core's tests sort with `vectors::AsciiCollation` (ICU's root on ASCII, from js.json's
+  recorded order), a stand-in for the system's sorter.
+- app/platforms/macos/ffi (`cargo test -p margin-ffi`, the `vectors` feature): every kind through the same entry with the
+  Mac's sorter (libicucore, collation.rs), and js.json's `localeCompare` cases: the Mac's vectors pin the system one.
 - app/platforms/macos/shell/tests/library-vectors-tests.swift (`npm run test:app`): dist/app/library.js through
   LibraryRules (JavaScriptCore), the perform, snapshot and import steps, until the switch (step 4 commit 6). A `cut`
   step there fails as the app does today (no answer). An `import` step leaves out, on both sides, the changes that
   write a value again unchanged: library.ts's import compares the stored values' text, and Swift's dictionaries give
-  their keys in their own order.
+  their keys in their own order. And the shadow there: every call the whole Swift suite makes to LibraryRules given to
+  margin-core as well (`margin_library_rules`, the same entry through the FFI) and compared: the same but a cut, where
+  JavaScriptCore's answer holds half an emoji and the core's drops it, and the 17 steps of the known `createSpace` gap.

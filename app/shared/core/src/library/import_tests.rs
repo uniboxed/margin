@@ -3,7 +3,8 @@
 // import vectors take over once part 2's normalising is in.
 
 use super::*;
-use crate::library::js::{CodePointOrder, Collation};
+use crate::library::js::CodePointOrder;
+use crate::library::vectors::AsciiCollation;
 use serde_json::json;
 
 #[test]
@@ -51,7 +52,7 @@ fn an_import_brings_a_profiles_set() {
     let bad = ImportSet::from_json(&json!({ "browser": "firefox", "profile": "x", "values": {} }));
     assert!(bad.is_none());
     let order = [("safari".to_string(), "s-default".to_string(), "sp-b".to_string())];
-    let out = import_values(current.as_object().unwrap(), &[personal], &order, 1762000000000.0, &Collation::default());
+    let out = import_values(current.as_object().unwrap(), &[personal], &order, 1762000000000.0, &AsciiCollation::new());
     assert_eq!(out.counts, Counts { spaces: 2, pins: 1, folders: 1, tabs: 1, archive: 1 });
     let v = &out.values;
     // The library's own first, then the person's order (sp-b), then the rest (sp-a: equal orders, by localeCompare).

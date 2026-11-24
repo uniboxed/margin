@@ -6,7 +6,7 @@
 //!
 //! - Strings are UTF-16 in JS: `.length` and `.slice` count units ([`len16`], [`slice16`]), `.sort()` with no
 //!   comparator orders units ([`cmp16`]), `trim` and `/\s/` know one list of spaces ([`is_space`]).
-//! - `localeCompare` is ICU's collation for the engine's default locale ([`Collation`]).
+//! - `localeCompare` is ICU's collation for the engine's default locale: the platform's ([`LocaleCompare`]).
 //! - Numbers are doubles: [`round`] (`Math.round`), [`max`]/[`min`], [`number_string`] (`String(n)`), [`num_cmp`] (a
 //!   comparator's `x - y`).
 //! - A payload's values as JS reads them: [`truthy`], [`nullish`], [`finite`], [`to_string`] (`String(x)`),
@@ -21,7 +21,6 @@
 use std::borrow::Cow;
 use std::cmp::Ordering;
 
-use icu_collator::{CollatorBorrowed, CollatorPreferences, options::CollatorOptions};
 use serde_json::Value;
 
 // ---- strings: UTF-16 --------------------------------------------------------------------------------------------
@@ -138,66 +137,24 @@ fn starts_with_ignore_case(s: &str, prefix: &str) -> bool {
 
 // ---- localeCompare ----------------------------------------------------------------------------------------------
 
-/// `a.localeCompare(b)`: ICU's collation for a locale, as JavaScriptCore runs it (`Intl.Collator` with its defaults:
-/// usage sort, sensitivity variant (tertiary), punctuation not ignored, no numeric ordering, the locale's case order).
-/// JSC takes the locale from the person's preferred languages (`en-US` on Tirth's Mac); a tailored locale changes even
-/// ASCII's order (Danish `aa`, Lithuanian `y`, Czech `ch`), so the caller gives the one the app runs in.
-///
-/// Root (and `en`) on ASCII is not byte order: `_` < `-` < `,` < `;` < `:` < `!` … < digits < letters, and `a` < `A` <
-/// `b`. JSC and Node agree on every pair of printable ASCII characters and on Margin's ids; they differ on a few
-/// non-ASCII characters, whose CLDR versions differ (Node 25's is newer).
-pub struct Collation {
-    collator: CollatorBorrowed<'static>,
-}
-
-impl Collation {
-    /// The collation for a BCP 47 locale (`en-US`, `da`, `sv-SE`…); an empty or malformed tag is root's (`und`).
-    pub fn new(locale: &str) -> Collation {
-        let prefs =
-            icu_locale_core::Locale::try_from_str(locale).map(|l| CollatorPreferences::from(&l)).unwrap_or_default();
-        let collator = CollatorBorrowed::try_new(prefs, CollatorOptions::default())
-            .or_else(|_| CollatorBorrowed::try_new(CollatorPreferences::default(), CollatorOptions::default()))
-            .expect("the compiled root collation");
-        Collation { collator }
-    }
-
-    /// `a.localeCompare(b)`'s sign. `Equal` also for strings that differ only in what collation ignores (`"a\0"` and
-    /// `"a"`), as JS answers 0 for them.
-    #[inline]
-    pub fn compare(&self, a: &str, b: &str) -> Ordering {
-        if a == b {
-            return Ordering::Equal;
-        }
-        self.collator.compare(a, b)
-    }
-}
-
-impl Default for Collation {
-    /// Tirth's Mac's (`en-US`).
-    fn default() -> Collation {
-        Collation::new("en-US")
-    }
-}
-
 /// `a.localeCompare(b)` with a collation.
 #[inline]
 pub fn locale_compare(collation: &dyn LocaleCompare, a: &str, b: &str) -> Ordering {
     collation.compare(a, b)
 }
 
-/// What the rules take for `localeCompare` (Tirth, 2026-11-23: the system's sorter): the platform hands one in (the Mac:
-/// libicucore's `ucol_strcoll` with the person's locale, the one JSC calls; Windows: its icu.dll). [`Collation`] (ICU4X)
-/// is one until the platform's lands; [`CodePointOrder`] is the tests' stand-in.
+/// `a.localeCompare(b)`: ICU's collation for the engine's default locale (`Intl.Collator` with its defaults: usage
+/// sort, sensitivity variant (tertiary), punctuation not ignored, no numeric ordering, case first off), which the
+/// platform hands in (Tirth, 2026-11-23: the system's sorter): the Mac's is libicucore's `ucol_strcoll` with the
+/// person's preferred language, set as JavaScriptCore sets it (margin-ffi collation.rs), Windows' its icu.dll's. A
+/// tailored locale changes even ASCII's order (Danish `aa` after `z`), so the platform gives the one the app runs in.
+///
+/// Root (and `en`) on ASCII is not byte order: `_` < `-` < `,` < `;` < `:` < `!` … < digits < letters, and `a` < `A` <
+/// `b`. [`CodePointOrder`] is a stand-in for tests that don't depend on it (the shared vectors' is ICU's root on ASCII,
+/// `vectors::AsciiCollation`).
 pub trait LocaleCompare {
     /// `a.localeCompare(b)`'s sign (`Equal` for `a == b`, and for strings that differ only in what collation ignores).
     fn compare(&self, a: &str, b: &str) -> Ordering;
-}
-
-impl LocaleCompare for Collation {
-    #[inline]
-    fn compare(&self, a: &str, b: &str) -> Ordering {
-        Collation::compare(self, a, b)
-    }
 }
 
 /// The tests' stand-in for the system's sorter: code-point order (not ICU's: `A` < `a` < `b` here, `a` < `A` < `b`

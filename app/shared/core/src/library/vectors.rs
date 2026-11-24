@@ -297,7 +297,12 @@ pub fn differ(got: &Value, expect: &Value) -> Option<String> {
 fn first_difference(got: &Value, expect: &Value, path: &str) -> Option<String> {
     let short = |v: &Value| {
         let t = v.to_string();
-        if t.len() > 200 { format!("{}…", &t[..t.floor_char_boundary(200)]) } else { t }
+        if t.len() > 200 {
+            let cut = (0..=200).rev().find(|&i| t.is_char_boundary(i)).unwrap_or(0);
+            format!("{}…", &t[..cut])
+        } else {
+            t
+        }
     };
     match (got, expect) {
         (Value::Number(a), Value::Number(b)) => {
@@ -434,6 +439,178 @@ fn step(v: &Value, throws: &BTreeMap<String, String>) -> Result<Step, String> {
         jsc_only: v.get("engine").and_then(Value::as_str) == Some("jsc"),
         cut: flag("cut"),
     })
+}
+
+/// Commit 0's baseline library (T/library-vectors-tests.swift `libraryBaseline`): `n` items (2 KB icons) in two spaces,
+/// the last selected, 200 archived, a window on the first space.
+pub fn baseline(n: usize) -> DataSet {
+    let icon = format!("data:image/png;base64,{}", "A".repeat(2048 - 22));
+    let web = serde_json::json!({ "kind": "web", "browser": "safari", "profile": null });
+    let mut tabs = Map::new();
+    for i in 0..n {
+        tabs.insert(
+            format!("t-i{i}"),
+            serde_json::json!({
+                "url": format!("https://site{i}.example/page"), "title": format!("Page {i} of the baseline"), "icon": icon,
+                "spaceId": if i % 2 == 0 { "a" } else { "b" }, "order": i, "lastUsed": 1000 + i, "selected": i == n - 1,
+                "target": web,
+            }),
+        );
+    }
+    let mut archive = Map::new();
+    for i in 0..200 {
+        archive.insert(
+            format!("a-{i}"),
+            serde_json::json!({ "url": format!("https://old{i}.example/"), "title": format!("Old {i}"), "spaceId": "a", "icon": "", "closedAt": 500 + i, "target": web }),
+        );
+    }
+    let values = serde_json::json!({
+        "spaces": {
+            "a": { "name": "A", "emoji": "", "color": "", "order": 0, "browser": "safari", "profile": null },
+            "b": { "name": "B", "emoji": "", "color": "", "order": 1, "browser": "safari", "profile": null },
+        },
+        "windows": { "1": { "spaceId": "a" } },
+        "tabs": tabs,
+        "archive": archive,
+    });
+    data_set(values.as_object().unwrap())
+}
+
+/// library.js's entry ([`crate::library::object::call`], LT:939) as the vectors' engine with a sorter: perform,
+/// snapshot and import (the app's three calls), and the core's `valuesOf(stateOf(…))` and `targetOf` for the other two
+/// kinds. Skipped and counted: piece 1's known gap (a `createSpace` given an emoji or colour that's truthy and no
+/// string: JS stores it as given, the core `""`, actions_tests.rs).
+pub struct Entry<'a> {
+    pub compare: &'a dyn crate::library::js::LocaleCompare,
+    pub gap: usize,
+}
+
+impl Entry<'_> {
+    fn value(&self, name: &str, args: Value) -> Option<Value> {
+        let out: Value =
+            serde_json::from_str(&crate::library::object::call(name, &args.to_string(), self.compare)).ok()?;
+        out.get("value").cloned()
+    }
+}
+
+impl Engine for Entry<'_> {
+    fn perform(&mut self, values: &Map<String, Value>, action: &str, payload: &Value, env: &Env) -> Option<Value> {
+        if action == "createSpace" {
+            let odd = |k: &str| payload.get(k).is_some_and(|v| crate::library::js::truthy(Some(v)) && !v.is_string());
+            if odd("emoji") || odd("color") {
+                self.gap += 1;
+                return None;
+            }
+        }
+        let args = serde_json::json!([values, action, payload, { "now": env.now, "ids": env.ids }]);
+        let mut out = self.value("perform", args)?;
+        // (The vectors' outcome always has `result`; LT's failure has none: null, as the vectors write it.)
+        if let Value::Object(o) = &mut out {
+            o.entry("result").or_insert(Value::Null);
+        }
+        Some(out)
+    }
+    fn snapshot(&mut self, values: &Map<String, Value>) -> Option<Value> {
+        self.value("snapshot", serde_json::json!([values]))
+    }
+    fn import(&mut self, values: &Map<String, Value>, sets: &[Value], order: &[Value], now: f64) -> Option<Value> {
+        self.value("importValues", serde_json::json!([values, sets, order, { "now": now }]))
+    }
+    fn normal(&mut self, values: &Map<String, Value>) -> Option<Value> {
+        let imports = values.get("imports").and_then(Value::as_object).cloned().unwrap_or_default();
+        let state = crate::library::state::state_of(values, self.compare);
+        Some(Value::Object(crate::library::values::values_of(&state, &imports)))
+    }
+    fn target(&mut self, raw: &Value) -> Option<Value> {
+        Some(crate::library::state::target_of(Some(raw)).map_or(Value::Null, |t| t.to_value()))
+    }
+}
+
+/// The steps every engine of the core answers otherwise, for a reason decided: a `cut` step the typed diff answers
+/// without library.ts's no-op rewrite (a favorite renamed through an emoji to the name it has, the half dropped: the
+/// stored value; favorites.rs `rename_favorite`, DECISIONS.md 2026-11-23 piece 2).
+pub const KNOWN: [&str; 1] =
+    ["generated-11.json › case 22 (sequence 297 (seed 11b7a5e)) › step 4 (perform): $.changes: 0 items where 1"];
+
+/// Every vector of every kind through library.js's entry with `compare`: all answered as JSC answered them but the
+/// known step and the gap (17 steps). The steps checked by kind, and the gap's.
+pub fn run_entry(compare: &dyn crate::library::js::LocaleCompare) -> (BTreeMap<&'static str, usize>, usize) {
+    let mut engine = Entry { compare, gap: 0 };
+    let mut report = run(&mut engine);
+    let (expected, rest): (Vec<String>, Vec<String>) =
+        report.failures.drain(..).partition(|f| KNOWN.iter().any(|k| f.starts_with(k)));
+    report.failures = rest;
+    report.assert_ok();
+    assert_eq!(expected.len(), KNOWN.len(), "the known step: {expected:?}");
+    assert_eq!(engine.gap, 17, "the createSpace steps of the known gap");
+    for (kind, at_least) in [("perform", 8700), ("snapshot", 290), ("import", 2), ("normal", 1), ("target", 1)] {
+        assert!(report.checked.get(kind).copied().unwrap_or(0) >= at_least, "{kind}: {:?}", report.checked);
+    }
+    assert_eq!(report.skipped.get("perform").copied().unwrap_or(0), engine.gap, "every other perform step checked");
+    (report.checked, engine.gap)
+}
+
+/// The core's tests' stand-in for the system's sorter (Tirth, 2026-11-23: the platform hands the core its
+/// comparator; the Mac's tests pin libicucore's): ICU's root collation on ASCII, as JavaScriptCore answers it (js.json's
+/// `asciiOrder`, its recorded order of the 95 printable characters), three levels as ICU compares them: every
+/// character's primary weight first (a letter's two cases one weight; the controls but tab to return ignorable, as
+/// `"a\0"` equals `"a"`), then the cases (lower before upper). Past ASCII a character weighs its code point, after
+/// every ASCII one: not ICU's (an accent is ICU's second level), so a test whose answer depends on a tie between
+/// non-ASCII strings runs on the platform's comparator, not this.
+pub struct AsciiCollation {
+    primary: [u32; 128],
+}
+
+impl AsciiCollation {
+    pub fn new() -> AsciiCollation {
+        let order = js()["cases"]["asciiOrder"].as_str().map(str::to_owned).unwrap_or_default();
+        let mut primary = [0u32; 128];
+        // Tab to return, before the space, in their order.
+        for (i, c) in (0x09u32..=0x0d).enumerate() {
+            primary[c as usize] = 1 + i as u32;
+        }
+        let mut next = 10;
+        for c in order.chars() {
+            let lower = c.to_ascii_lowercase();
+            if c.is_ascii_uppercase() && primary[lower as usize] != 0 {
+                primary[c as usize] = primary[lower as usize];
+                continue;
+            }
+            primary[c as usize] = next;
+            next += 1;
+        }
+        AsciiCollation { primary }
+    }
+
+    fn weights(&self, s: &str) -> (Vec<u32>, Vec<u8>) {
+        let mut p = Vec::with_capacity(s.len());
+        let mut t = Vec::with_capacity(s.len());
+        for c in s.chars() {
+            let w = if c.is_ascii() { self.primary[c as usize] } else { 0x1_0000 + c as u32 };
+            if w != 0 {
+                p.push(w);
+                t.push(u8::from(c.is_ascii_uppercase()));
+            }
+        }
+        (p, t)
+    }
+}
+
+impl Default for AsciiCollation {
+    fn default() -> AsciiCollation {
+        AsciiCollation::new()
+    }
+}
+
+impl crate::library::js::LocaleCompare for AsciiCollation {
+    fn compare(&self, a: &str, b: &str) -> std::cmp::Ordering {
+        if a == b {
+            return std::cmp::Ordering::Equal;
+        }
+        let (pa, ta) = self.weights(a);
+        let (pb, tb) = self.weights(b);
+        pa.cmp(&pb).then_with(|| ta.cmp(&tb))
+    }
 }
 
 #[cfg(test)]

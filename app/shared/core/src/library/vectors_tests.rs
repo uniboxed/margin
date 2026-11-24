@@ -235,13 +235,14 @@ fn js_json_is_js_rs() {
     }
 }
 
-// localeCompare's cases against the collation the core has today (ICU4X, en-US: JSC's locale on this Mac). When the
-// platform's comparator replaces it (Tirth's answer after commit 1), this runs that one.
+// localeCompare's cases (JSC's on this Mac, en-US) against the core's tests' stand-in, on ASCII: the printable
+// characters' order and every pair's sign, and the ASCII pairs; the whole of it (the accents too) against the system's
+// sorter in margin-ffi's tests (collation.rs).
 #[test]
-fn js_json_collation() {
+fn js_json_collation_on_ascii() {
     let js = js();
     assert_eq!(js["locale"], "en-US");
-    let c = Collation::new("en-US");
+    let c = AsciiCollation::new();
     let order: Vec<String> = s(&js["cases"]["asciiOrder"]).chars().map(String::from).collect();
     assert_eq!(order.len(), 95);
     for (i, a) in order.iter().enumerate() {
@@ -261,7 +262,10 @@ fn js_json_collation() {
             assert_eq!(c.compare(a, b), want, "{a:?} vs {b:?}");
         }
     }
-    for r in rows(&js, "pairs") {
+    let mut checked = 0;
+    for r in rows(&js, "pairs").iter().filter(|r| s(&r[0]).is_ascii() && s(&r[1]).is_ascii()) {
         assert_eq!(locale_compare(&c, s(&r[0]), s(&r[1])), r[2].as_i64().unwrap().cmp(&0), "{} vs {}", r[0], r[1]);
+        checked += 1;
     }
+    assert!(checked >= 19, "{checked}");
 }

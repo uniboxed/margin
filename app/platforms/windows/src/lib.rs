@@ -38,6 +38,9 @@ pub mod app;
 pub mod appwindow;
 #[cfg(windows)]
 pub mod browsers;
+// The library's sorter (`localeCompare`): icu.dll's collation, handed to margin-core's library.
+#[cfg(windows)]
+pub mod collation;
 #[cfg(windows)]
 pub mod hotkeys;
 #[cfg(windows)]

@@ -26,7 +26,6 @@
 
 use std::ffi::c_void;
 
-use margin_core::data::library::LibraryStore;
 use margin_core::geometry::Rect;
 use margin_core::host::layout::{Placement, Size};
 use margin_core::json;
@@ -746,25 +745,18 @@ impl SwiftPorts {
 }
 
 /// The library object's set, read in place (the Swift side's `Library` outlives the session: its contract).
-struct LibraryRef(*mut MarginLibrary);
+struct LibraryRef(*const MarginLibrary);
 
 impl LibraryView for LibraryRef {
+    // SAFETY (both reads, crate::data::library): from margin_library_new, alive as long as the session (the
+    // contract), on the session's thread. The library calls back now (step 4: its observers, its requests' sink), so
+    // a read may come while one of its calls is under way: it's taken shared, and the object keeps its state in cells
+    // and holds no borrow across a call out, so the read is sound at any point.
     fn item(&self, collection: &str, id: &str) -> Option<Value> {
-        if self.0.is_null() {
-            return None;
-        }
-        // SAFETY: from margin_library_new, alive as long as the session (the contract); used on the session's thread,
-        // never while a library call is under way (the library calls nothing back), and only for this read.
-        let store: &mut LibraryStore = unsafe { &mut (*self.0).library };
-        store.item(collection, id)
+        crate::data::library(self.0)?.item(collection, id)
     }
     fn collection(&self, collection: &str) -> Map<String, Value> {
-        if self.0.is_null() {
-            return Map::new();
-        }
-        // SAFETY: as `item`.
-        let store: &mut LibraryStore = unsafe { &mut (*self.0).library };
-        store.live(collection)
+        crate::data::library(self.0).map(|l| l.live(collection)).unwrap_or_default()
     }
 }
 
@@ -792,7 +784,7 @@ pub unsafe extern "C" fn margin_session_new(
     let options = text(options, len).and_then(|t| serde_json::from_str(t).ok()).unwrap_or(Value::Null);
     let follow = std::rc::Rc::new(std::cell::Cell::new(None));
     let ports = SwiftPorts { ctx, now, port, call, follow: follow.clone() };
-    let session = Session::new(Box::new(ports), Box::new(LibraryRef(library)), &options);
+    let session = Session::new(Box::new(ports), Box::new(LibraryRef(library.cast_const())), &options);
     Box::into_raw(Box::new(MarginSession { session, follow }))
 }
 
@@ -1421,7 +1413,9 @@ mod tests {
         let dir = tempfile::tempdir().expect("a folder");
         let root = dir.path().to_string_lossy().to_string();
         // SAFETY: the root's bytes.
-        let lib = unsafe { crate::margin_library_new(root.as_ptr(), root.len(), false, std::ptr::null_mut(), None) };
+        let lib = unsafe {
+            crate::margin_library_new(root.as_ptr(), root.len(), false, std::ptr::null_mut(), None, None, None, None)
+        };
         let apply = json!({ "type": "apply", "at": 1, "entries": [{ "collection": "tabs", "id": "t1", "value": { "url": "https://a/" } }] })
             .to_string();
         let mut n = 0;

@@ -21,10 +21,8 @@ getrandom = "0.4"
 hex = "0.4"
 tempfile = "3"
 libc = "0.2"
-# The library's rules (app/shared/core/src/library/js.rs): JavaScript's `localeCompare` (ICU collation) and its `new URL`
-# (WHATWG). 2.1 is the newest ICU4X for the workspace's rust-version.
-icu_collator = "2.1"
-icu_locale_core = "2.1"
+# The library's rules (app/shared/core/src/library/js.rs): JavaScript's `new URL` (WHATWG). Its `localeCompare` is the
+# system's ICU, handed in by each platform (margin-ffi's libicucore, the Windows shell's icu.dll).
 url = "2.5"
 # The library's typed state keeps JavaScript's object key order (app/shared/core/src/library/state.rs `JsObject`); already
 # serde_json's (`preserve_order`), so nothing new is built.

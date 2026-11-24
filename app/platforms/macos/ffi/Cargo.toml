@@ -20,3 +20,5 @@ workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+# The library's shared vectors, run here through the system's sorter (libicucore).
+margin-core = { path = "../../../shared/core", features = ["vectors"] }

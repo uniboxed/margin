@@ -1643,7 +1643,7 @@ Size: LT 954 lines, of which the actions are 57 (LT:283-807; the plan said about
 #### What every part shares
 
 - **One module, `core/library/`** (beside `core/data/library.rs`, which stays the store: `LibraryStore`, unchanged):
-  `mod.rs` (the `Library` object), `js.rs` (the JavaScript semantics below), `state.rs` (LT's `stateOf`, `valuesOf`,
+  `mod.rs` (the module's index; the `Library` object is `object.rs`, commit 5), `js.rs` (the JavaScript semantics below), `state.rs` (LT's `stateOf`, `valuesOf`,
   `diff`, `targetOf`), `model/` (M's rules: `spaces.rs`, `order.rs` (pins and folders), `kept.rs` (items' places, the
   archive), `favorites.rs`, `links.rs` (AT and M's link rules), `splits.rs`), `actions.rs` (the 57), `import.rs`,
   `snapshot.rs`, `vectors.rs` (tests). The Rust is a transliteration, function by function, with M's and LT's names
@@ -1663,7 +1663,7 @@ Size: LT 954 lines, of which the actions are 57 (LT:283-807; the plan said about
   | `s.slice(0, max)`, `.length` count **UTF-16 units** | `str(v, max)` LT:43 (every title 2000, name 200, icon 100,000, profile 256), `FOLDER_NAME_MAX` M:1250, `CUSTOM_TITLE_MAX` M:1314, AT:22's 200, `nsId`'s 256 LT:868 | `js::slice16(s, max) -> &str`: cut at `max` units, a prefix of the input (no copy). A cut between a surrogate pair drops the pair (Tirth's answer 3: 1,999 units) |
   | `trim()`, `/\s/` (WhiteSpace + LineTerminator: U+0009, 000A–000D, 0020, 00A0, 1680, 2000–200A, 2028, 2029, 202F, 205F, 3000, **FEFF**) | M:1116, 1139, 1251, 1315, 1503, 1546; AT:21-22; M:1476 | `js::trim`, `js::is_space`: that list exactly. Rust's `str::trim` differs: it trims U+0085 and not U+FEFF |
   | `.sort()` with no comparator: UTF-16 unit order | LT:168-169 (`diff`'s ids), LT:498 (`clearToday`'s items) | `js::cmp16(a, b) = a.encode_utf16().cmp(b.encode_utf16())`; Rust's `str` order is code points, which differs past U+FFFF vs U+E000–U+FFFF |
-  | `a.localeCompare(b)` (ICU collation, the default locale) | tie-breaks: spaces' and link rules' equal `order` (LT:89, 96, 885), the archive's equal `closedAt` (LT:119), `openMarginPage` (LT:394), FI:15, M:1482 (`keptOfFavorite`) | `js::Collation::new(locale)` (`compare`): ICU4X's collation for the locale JSC takes, the person's preferred language (`en-US` here; a tailored one reorders ASCII: Danish `aa` after `z`), so the app gives it (commit 6). Measured against JSC (commit 1): every ASCII pair and 70,000 id-shaped and mixed pairs the same; 2,133 Han pairs and 31 Unicode 17 characters differ (open question 1, asked again). Every id Margin makes is ASCII (`sp-`, `t-`, `a-`, `p-`, `fav-`, `atc-`, `spv-`, `f-` + `[a-z0-9]`, `t-` + hex, `<browser>:<profile>:<id>`), where it's still not byte order (`a` < `A` < `b`, `_` < `-` < `:` < digits < letters) |
+  | `a.localeCompare(b)` (ICU collation, the default locale) | tie-breaks: spaces' and link rules' equal `order` (LT:89, 96, 885), the archive's equal `closedAt` (LT:119), `openMarginPage` (LT:394), FI:15, M:1482 (`keptOfFavorite`) | `js::LocaleCompare`, handed in by the platform (Tirth's answer after commit 1: the system's sorter; ICU4X's `js::Collation` removed in commit 5): margin-ffi collation.rs, libicucore's `ucol_strcoll` set as JSC sets its collator, for the person's first preferred language (`en-US` here; a tailored one reorders ASCII: Danish `aa` after `z`); the Windows shell's collation.rs, icu.dll's. Measured (commit 5): js.json's cases, every vector and 18 preferred languages through the FFI the same as JSC; commit 1's ICU4X differed on 2,133 Han pairs and 31 Unicode 17 characters. Every id Margin makes is ASCII (`sp-`, `t-`, `a-`, `p-`, `fav-`, `atc-`, `spv-`, `f-` + `[a-z0-9]`, `t-` + hex, `<browser>:<profile>:<id>`), where it's still not byte order (`a` < `A` < `b`, `_` < `-` < `:` < digits < letters) |
   | Sort stability, comparators `x - y \|\| …` | every `.sort` | `sort_by` (stable) over `partial_cmp` of finite numbers (always finite: `finite()` first): a total order, so Rust's sort never panics on it (it may, since 1.81, on one that isn't) |
   | Numbers are doubles | `order` midpoints M:530, `TIGHT` 1e-6 M:398, ratios M:1636, `Math.max(-1, …)` M:396 | f64 throughout, the same operations in the same order (no `mul_add`, folds from `0.0` written out as LT:106 and M:1635 do, never `Iterator::sum`, whose empty sum is `-0.0`); `js::round` = JS's `Math.round` (ties toward +∞; Rust's `round` is away from zero: the same for the positive ratios, written as JS's anyway); `js::max` for `Math.max`'s `+0` over `-0` |
   | `JSON.parse` of a number, `String(n)`, `JSON.stringify(n)` | every payload number; `win(p)` LT:192 (`String(p.windowId)`) | every number read as f64 (`9007199254740993` is `…992` in JS); `js::number_string` is ECMAScript's Number::toString (shortest digits, exponent past 1e21 and under 1e-6: `1e+21`); a number written into a value goes through `protocol::number` (integral below 2^53: an integer, `5` not `5.0`), so the text is JS's for every number the library makes |
@@ -1701,7 +1701,7 @@ Size: LT 954 lines, of which the actions are 57 (LT:283-807; the plan said about
 **Today.** Implicit in V8/JSC: the table above. The core has two pieces already: `set.rs:37-39` counts UTF-16 units,
 `protocol.rs:33-41` writes integral numbers as integers.
 
-**Core.** `core/library/js.rs` (done, commit 1: also `Collation`, `min`, `max_of`, `num_cmp` for a comparator's `x - y`,
+**Core.** `core/library/js.rs` (done, commit 1: also `Collation`, ICU4X's, removed in commit 5 for the platform's sorter, `min`, `max_of`, `num_cmp` for a comparator's `x - y`,
 `rules_url`/`url_parts`/`normalize_url_whatwg` with `RULES_PARSE_URLS`, `Ids` and `random_letters`; `slice16` returns `&str`):
 `pub fn slice16(s: &str, max: usize) -> Cow<str>`, `len16`, `trim`, `is_space`,
 `squash_spaces` (`/\s+/g → ' '`), `cmp16`, `locale_compare`, `round`, `max`, `number_string`, `to_string`,
@@ -1790,7 +1790,8 @@ keeps `Option<f64>`, not `0`. The `imported` object passes through rebuilt (LT:1
 six files, see part 3). Corrected:
 - `state_of<V: Values>(values: &V, compare: &dyn LocaleCompare)`: over the store's `DataSet` (no JSON built) or values
   as JSON (the import's, the vectors'), and the sorter handed in (Tirth's answer to question 1 again: the system's;
-  `js::LocaleCompare`, ICU4X's `Collation` one until the platform's lands, `CodePointOrder` the tests' stand-in).
+  `js::LocaleCompare`: the platform's since commit 5, `CodePointOrder` and the vectors' `AsciiCollation`, ICU's root on
+  ASCII from js.json's recorded order, the core's tests' stand-ins).
 - The collections are `Rc<Vec<Rc<T>>>` and the items `Rc<JsObject<Rc<Item>>>`, not `Vec`/`IndexMap`: JS's identity is
   kept (`LibState::same` is `next === s`; a record a rule didn't change is the same `Rc`), and a copy of the state is
   nine refcounts. A field M can leave out of a record it makes (a pin's `pos`, M:1265; a favorite's or archive entry's
@@ -2013,7 +2014,9 @@ filter), `ns_id`, `ns_tab_id`; LT:933-934 (`valuesOf(stateOf(next))` and `diff`)
 **Core.** `core/library/import.rs`: `pub fn import_values(current: &DataSet, sets: &[ImportSet], order: &[(String,
 String, String)], now: f64) -> (Vec<Change>, Counts)` (LT:875), and `Library::import_once(&self, data: &DataSync) ->
 bool` (L:249-276 whole: the sets read from the core's data object, the order from `profiles.rs`, the log line in its
-words). The import reads the copies' sets by their fields (`spaces`, `pins`, `folders`, `tabs`, `archive`) as LT does
+words). Corrected (commit 5): two halves, `import::sources(&mut DataSync) -> (sets, order)` (L:251-267's reading) and
+`Library::import_once(&self, sets, order) -> Option<Counts>` (None: it had run), so the data object is let go before
+the import's observers run (they may call it); `margin_library_import(library, data)` calls both. The import reads the copies' sets by their fields (`spaces`, `pins`, `folders`, `tabs`, `archive`) as LT does
 and writes nothing in them (they're the copies' own files: data/<browser>/<profile>/). LT:934's `diff(current, normal)`
 compares the stored values **as given** (`JSON.stringify` of each: their key order counts), not their normal form as
 `perform`'s `before` does: a stored value whose keys come in another order than `valuesOf` writes them is written again,
@@ -2123,7 +2126,12 @@ lines, SG:196-203, SL:18, and the tests: one JSON call each, never per frame).
 **FFI.** `margin_library_new(root, len, background, ctx, wake, env, now, changed)` (three callbacks more),
 `margin_library_call` gains `perform`, `snapshot`, `actions`, `item`, `requests`; typed `margin_library_import`,
 `margin_library_space_theme`; `margin_session_state` (part 6). Panic-free as the others (a bad request: `{"error"}`,
-logged once a kind).
+logged once a kind). Done in commit 5 (but `space_theme` and `state`, commit 7's): `env` answers the time and gives
+its ids through `margin_library_env_id`; `call` gains `imported` too, and every answer carries `log`;
+`margin_library_rules(library, name, args)` is library.js's entry answered by the core (the Swift tests' shadow). The
+session's registration as the sink (`set_sink` in `margin_session_new`) is commit 6's, with `Command::Perform`'s
+removal: until then no perform of the app reaches the core's object, and a perform Swift makes then must tick the
+session after (the sink's request starts nothing in the call).
 
 **Must not change:** that a perform's requests are handled by the session before the perform returns, after its
 observers ran (re-entrant, as L:215-225); the 100 requests kept (L:93); the writer's wake and `written`.
@@ -2252,7 +2260,7 @@ commit 7 only).
 | 2 | **Done** (step4/state): part 2: the typed state, `state_of`, `values_of`, `diff`, `target_of`, the snapshot's text, the import's normalising (`import_changes`), part 3's shared rules and files; the snapshot vectors pass once commit 0's are merged (until then: 5,000 generated libraries and 5,000 imports against library.ts) | 0 | ~2,000 + ~1,000 tests | a snapshot's text 0.26 ms at 500 items (JSC 4.7 ms), a perform's diff 1-22 µs |
 | 3 | Part 3: M's rules, PR, AT, FI (parallel: spaces + order; kept + archive + favorites; splits + link rules). Piece 1 (spaces + order) **done** (step4/model-spaces); **kept + archive + favorites done** (step4/model-kept); **splits + link rules done** (step4/model-splits) | 0 | ~1,400 | piece 1: a rule 0.2–140 µs, with perform's diff 1–920 µs (2,000 items; JSC's perform 62 ms) |; splits + links: `settle_splits` 0.4 µs with nothing to change; kept + favorites: a rule 0.2–27 µs at 2,000 items (JSC's same rules 10–620 µs) |
 | 4 | Part 4: the 57 actions and `perform`; every perform vector and the generated sequences pass. **Done** (step4/actions) | 0 | ~1,560 + ~340 tests | a perform (Rust alone): 0.007 / 0.034 / 0.13 ms at 50 / 500 / 2,000 items on the kept state, 0.17 / 0.49 / 1.6 ms with the state read (JSC 2.7 / 16.2 / 62) |
-| 5 | Part 5 and part 7's object: `import_values`, `import_once`, `Library` with its callbacks, the FFI; the T/ shadow check runs JSC and Rust on the whole Swift suite | 0 | ~700 | |
+| 5 | Part 5 and part 7's object: `import_values`, `import_once`, `Library` with its callbacks, the FFI; the T/ shadow check runs JSC and Rust on the whole Swift suite. **Done** (step4/object: library/object.rs, `import::sources`, the session as the sink (registered at commit 6), ffi data.rs's object and collation.rs, the system's sorter: ICU4X removed, libicucore on the Mac, icu.dll on Windows compile-checked; the shadow's 9,442 calls the same but the decided cuts and gap) | 0 | ~1,050 + ~900 tests | a perform through the FFI 0.6 / 3.6 / 15.5 ms at 50 / 500 / 2,000 items (JSC 2.6 / 16 / 61); binary +0.59 MB arm64, +0.72 MB x86_64 (the rules now linked; no collation data: ICU4X would have been +1.26 MB more each) |
 | 6 | **The switch**: `Library.swift` over the core, LR and JavaScriptCore gone, `library.js` out of the app, `Command::Perform` and the Swift delegate path gone, the no-rules fallback gone, the Swift tests on the core, the stand-in shelf in requests_tests.rs replaced by the real library | ~250 Swift (LR 74, L ~120, HS ~10, SG ~5, SH ~60 of `state` and the fallback) (+~80 Swift of callbacks) | ~150 | a perform, a switch, `idle-cost` |
 | 7 | Part 6 per draw: `state_text` with `live` joined, `space_theme` typed, the settings' text spliced, `live`'s Swift and the snapshot's dictionaries gone | ~45 Swift | ~350 | a draw, `idle-cost`, footprint |
 | 8 | LT built into nothing (`buildApp`), its header saying it's the vectors' reference; DECISIONS.md "the library's rules are margin-core's" (replacing 2026-11-15's "one copy of the rules: the TypeScript model in JavaScriptCore"); this plan's step 4 marked done | ~5 TS (build) | 0 | |
