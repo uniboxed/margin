@@ -9,12 +9,9 @@ func multiHostSessionTests() {
     let echo = Diagnostics.echo
     Diagnostics.echo = { _ in }
     defer { Diagnostics.echo = echo }
-    let scriptPath = ProcessInfo.processInfo.environment["MARGIN_LIBRARY_JS"] ?? "../../dist/app/library.js"
     let dataRoot = tempFolder("multi-host")
     defer { try? FileManager.default.removeItem(at: dataRoot) }
-    guard let library = Library.open(dataRoot: dataRoot, script: URL(fileURLWithPath: scriptPath), background: false) else {
-        return check("multi-host session: the library opens (\(scriptPath): npm run build)", false)
-    }
+    let library = Library.open(dataRoot: dataRoot, background: false)
     var n = 0
     library.randomIds = { (0..<4).map { _ in n += 1; return "m\(n)x" } }
     let w = FakeHostWorld()
@@ -35,7 +32,6 @@ func multiHostSessionTests() {
     engine.hostedWindow = { session.hosted($0) }
     var told: [[HostShownWindow]] = []
     engine.hostedWindows = { told.append($0); session.hostedWindows($0) }
-    library.delegate = session
     var copyWindows: [Int: Int] = [:]
     links.onNewWindow = { id, _ in
         guard let pid = w.running(bundleId: "com.apple.Safari").first?.pid else { return }
@@ -108,7 +104,7 @@ func multiHostSessionTests() {
     engine.hosts[editHost]?.minSize = nil
     run { await session.setLayout(window: 1, main: aItem, mainRect: left, extras: [HostedLayout.Extra(item: editItem, role: .pane, rect: right)]) }
     check("multi-host session: …its minimum gone: no longer cut, the page told none", window.paneCutsSaid.last == "{}", "\(window.paneCutsSaid)")
-    let live = session.live(library.snapshot())
+    let live = drawnState(session)
     let tabs = ((live["openTabs"] as? JSONObject)?["tabs"] as? JSONObject) ?? [:]
     func tab(_ item: String) -> JSONObject? { tabs[String(session.number(ofItem: item))] as? JSONObject }
     check("multi-host session: what the UI draws: the focused item active, the other visible one marked visible",

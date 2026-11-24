@@ -4882,9 +4882,9 @@ Phase 1 of `docs/MARGIN-APP.md`: with `MarginHosted` on (`defaults write com.uni
 
 **Items have a target.** `{ kind: 'web', browser: 'safari', profile }` or `{ kind: 'app', bundleId, name }`, on every item, pin and archive entry, so a space can mix pages of several Safari profiles and Mac apps. An app item's address is `app://<bundleId>`: the model matches by address, and only `http(s)` pages are ever archived, so closing an app forgets it.
 
-**One copy of the rules: the TypeScript model in JavaScriptCore, not a Swift port.** `app/shared/library/library.ts` turns the library's values into a model `State` (items as kept tabs: a Margin tab with no browser tab, which is what an item is to the app), runs `extension/state/model.ts`'s own functions (`createSpace`, `deleteSpace`'s cascade, `orderSpaces`, `placeKept`, `addPin`/`movePin`/`writeOrder`, the folder rules, `archiveKept`…), and answers with the values that changed. `scripts/build.ts` bundles it as `dist/app/library.js` (an IIFE, 33 KB, shipped in `Resources/app/` with the overlay's page); `LibraryRules.swift` runs it in a `JSContext`, JSON in and out. Why: the rules that matter here (pins' and folders' positions, the delete cascade, list places) are the subtle part of `model.ts`, already tested by the extension's suites; a Swift port would be a second copy that drifts, needing its own parity vectors forever (as the merge has). The cost is small: JavaScriptCore is a system framework, a call is a JSON round trip of the library's values (well under a few ms for hundreds of items), and the bundle has no DOM, clock or randomness (the app gives `now` and random letters, `env.ids`), so it runs the same in Node's tests and in the app. The merge, the files and the times stay Swift's (`DataSet.swift`), as they are for the profiles.
+**The library's rules are margin-core's** (since 2026-11-24, docs/CORE-REFACTOR.md step 4; this replaces 2026-11-15's "one copy of the rules: the TypeScript model in JavaScriptCore, not a Swift port"). One copy still: the rules are app/shared/core/src/library, a function-by-function port of `app/shared/library/library.ts` over `extension/state/model.ts` (with pinned-rules.ts, air-traffic.ts, front-item.ts), which Margin.app runs through margin-ffi and the Windows shell runs as it is, with no JavaScript engine (Tirth, 2026-11-22: the rules go into the core once the hosted design is the only one coming; no WebAssembly). The TS stays only as the shared vectors' reference (tests/fixtures/library: the TS tests' calls, generated sequences, the edges as JavaScriptCore answers them, every step checked against the core) and as the extension's own rules while the browsers' copies own their spaces; it's built into nothing. The merge, the files and the times are the core's store's (data/library.rs, data/store.rs), as they are for the profiles. Until step 4: `scripts/build.ts` bundled library.ts as `dist/app/library.js` and `LibraryRules.swift` ran it in a `JSContext`, JSON in and out (the reasons then: one copy of the subtle rules, already tested; JavaScriptCore a system framework). What the move decided (Tirth's answers): ICU collation exact through the system's sorter, ties by the ids' order, a cut through an emoji drops the broken half, addresses parsed as the browsers do, the no-rules fallback gone.
 
-**Times.** The rules give untimed values; `Library.apply` stamps each at now, or just after the item's own time when the clock went back, and merges them like any change.
+**Times.** The rules give untimed values; the store stamps each (`Library.apply` until step 4, data/library.rs since) at now, or just after the item's own time when the clock went back, and merges them like any change.
 
 **The import (decided by Tirth).** The first time the library opens with `MarginHosted` on, every profile's set the app keeps (every browser's) is imported once (`Library.importOnce`): spaces with the profile as their own, pins, folders, every Margin tab (open or kept) as a web item in that profile, and the archive. Ids are namespaced, `<browser>:<profile>:<id>` (an item: `t-` and a hash of the same, since the model and UI take only `t-` ids for tabs), so two profiles' `personal` stay two spaces. The order is `browser.json`'s through `BrowserProfiles.resolve` (the slots rule), read only; a forgotten profile's spaces are imported too, after the others. The marker (`imports.done`: when, which sets, counts) is saved with what it brought, and `set.json` is written last, so a crash before it reruns the import, which gives the same ids. Nothing in the profiles' files is written or deleted (checked file by file). Settings, theme settings and site icons are not imported: they stay each profile's for now.
 
@@ -8744,3 +8744,791 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   of it the profile's part 1.19 ms → 75 µs and 12.7 → 0.50 ms (the site icons' read); a UI search request's route
   1.24 / 13.4 ms → 47 µs (it built the whole State for the settings). Nothing per frame changed.
 - Swift: 140 lines out, 59 in.
+
+## Core refactor step 4, commit 1: the JavaScript the library's rules rely on, in the core (2026-11-23)
+
+- margin-core gains `library` (app/shared/core/src/library/), its first two files: `js.rs`, what library.ts and
+  model.ts get from the engine without saying so, as JavaScriptCore runs it in Margin.app (a bare `JSContext`, as
+  LibraryRules.swift makes it): UTF-16 lengths and cuts (`len16`, `slice16`, a prefix of the input: no copy), `.sort()`'s
+  unit order (`cmp16`), JS's one list of spaces for `trim` and `\s` (`is_space`, `trim`, `squash_spaces`: U+FEFF is
+  one, U+0085 and U+180E aren't, the other way round from Rust's), `localeCompare` (`Collation`, ICU4X for a locale),
+  `Math.round`/`max`/`min` (-0 and NaN as JS), a comparator's `x - y` (`num_cmp`: NaN goes on to the tie, as `||`),
+  `String(n)` (`number_string`: `1e+21`, `1e-7`), `!!v`, `??`, `Number.isFinite`, `String(v)` and `obj[v]`'s key for
+  JSON values, the address regexes (`/i` as JS folds it without `u`: ASCII only), shared/data-set.ts's `fingerprint`
+  (JSON.stringify's escapes, FNV-1a over UTF-16), and library.ts's `idMaker` (`Ids`: the given ids first, used up
+  one each whether they pass or not; then the core's random letters, Swift's rule: a byte mod 36). And `import.rs`:
+  library.ts `importValues` up to its last step (the values with the import in them and its counts, `nsId`,
+  `nsTabId`, the sets' filter); its normalising through `stateOf`/`valuesOf` and the `diff` join it with part 2.
+- Found: **a bare JSContext has no `URL`** (it's WebCore's), so in Margin.app `new URL` always throws and both sites
+  catch it: model.ts `normalizeUrl` gives the address as it is, air-traffic.ts `patternMatchesUrl` is false. Measured
+  with dist/app/library.js in a JSContext: `routeUrl` of an address a rule matches answers null (Node: the rule), and
+  `addFavorite` of `https://a.com` beside `https://a.com/` adds a second (Node: refused). So a link rule never routes
+  in the app today, and pins, favorites, the archive and `keptForUrl` match addresses exactly as given. The core keeps
+  that (`RULES_PARSE_URLS = false`: `normalize_url` returns its input, `rules_url` nothing); the WHATWG reads
+  (`url_parts`, `normalize_url_whatwg`, the `url` crate: Tirth's answer 2) are there for when he decides the app's
+  rules should parse addresses as the browsers' copies do (the design's open question 11, asked).
+- Measured against JSC on this Mac and Node 25 (scratch harness: edges.js through a JSContext and through Node,
+  compared by a Rust tool over js.rs): every code point's space the same (1,112,064, `trim` and `\s` one list in
+  both engines), the cuts, the sort, 43 numbers' strings, 24 rounds, the max/min signs, 22 values' strings and keys,
+  17 fingerprints, 23 addresses' regexes, the lowercase of 6 hosts; `localeCompare` (`en-US`, what JSC resolves here)
+  the same on all 9,025 printable ASCII pairs, 20,000 two-character ASCII pairs, 20,000 id-shaped pairs, 3,000 ids in
+  JSC's sorted order and 30,000 random pairs over accents, combining marks, Hangul, CJK, emoji, joiners and
+  ignorables. It differs on 1,880 of 63,487 adjacent BMP characters in JSC's order and 284 of 12,858 in a
+  supplementary sample: all Han but 31 (Apple's ICU orders Han by radical and stroke, ICU4X's compiled data by code
+  point; the 31 are new in Unicode 17, which ICU4X 2.1 lacks and 2.2+ has, needing Rust 1.86+). Node and JSC differ
+  only there too (their CLDR versions). No id Margin makes has a Han character. A locale's tailoring reorders ASCII
+  (Danish `aa` after `z`), so the collation takes the locale: the app must give JSC's (the person's preferred
+  language) at the switch, commit 6. The `url` crate against WebKit (an off-screen WKWebView, Safari's parser) and Node
+  on 90 WPT-like addresses: the same parts and `normalizeUrl` for all but `https://xn--a.com` (the browsers take it,
+  the crate refuses: its `normalizeUrl` is the same either way).
+- Size (a release binary with the workspace's profile; arm64, x86_64 the same within 7 KB): the collation +1.26 MB
+  (1,618,816 bytes against 356,976), the WHATWG parser +0.22 MB, both +1.48 MB. Over the ~1 MB of Tirth's answer 1, so
+  it's asked again (open question 1, with the system's ICU and the ASCII table as the other choices); ICU4X stays
+  until he answers. Nothing reaches the app yet: margin-ffi calls neither, and the linker drops them.
+- The import: 2,000 generated imports (random sets of every browser, profiles long enough to be hashed, odd values
+  everywhere, sets given twice, orders with unknown and repeated entries, every kind of `now`) against library.ts in
+  Node, two ways: the Rust's values before normalising against library.ts's own (its last step taken off a copy made
+  at run time), 14,225 values, and after library.ts's normalising and diff, 13,257 changes: no difference, once a cut
+  through an emoji drops its broken half on both sides (Tirth's answer 3); a second seed, 5,000 imports (35,018
+  values, 32,619 changes): none either. 42 deliberate breaks of js.rs and import.rs, each alone, all caught (33 by the
+  unit tests, 9 by the harness): the spaces, the cut, the sort, the collation's strength, punctuation and bytes, the
+  rounding's half and -0, the max's -0 and NaN, the number strings' thresholds and `+`, arrays' nulls, falsy 0,
+  `"undefined"`, the fingerprint's escapes and prime, the regexes' spaces and case, the ids' length, the URL's `/`,
+  the URL switch, and the import's cuts, icon case, a repeated order entry's place, both tie-breaks, the archive's
+  fallback, `open`, `selected`, `now`, the folders' ids, `file:` items, the 256-unit hashing by units, the tab id's
+  key, unranked spaces' place, a pin with no address and `finite` on places.
+- Cost (release, scratch bench): a cut 1 ns when short (the input back, no copy) and about 0.3 µs for 3,000 ASCII units,
+  `trim` 9 ns, a number's string 33 ns, a fingerprint 0.2-0.3 µs, a collation's compare 0.13-0.4 µs (ties only), a
+  `Collation` made 0.7-1.5 µs (once per library, not per call).
+- Not done here: the vectors' `js.json` (commit 0's, recorded by its own branch: these edges are its cases, and its
+  JSC answers must equal the tables in js_tests.rs), the import's normalising (part 2).
+
+## Core refactor step 4, commit 2: the library's typed state, its values, the diff and the snapshot's text in the core (2026-11-23)
+
+- margin-core's `library` gains library.ts's `stateOf`/`targetOf`/`placeOf` (`state.rs`), `valuesOf`/`diff`
+  (`values.rs`), the snapshot's text (`snapshot.rs`) and the import's last step (`import.rs` `import_changes`, LT:932-934:
+  the import's values read through the rules once and diffed against the values as stored). Nothing calls them in the
+  app yet (commit 6 switches); no behaviour changes.
+- The state is typed, not JSON: every collection an `Rc` of a list of `Rc`s, every string an `Rc<str>`. A copy of the
+  state is nine refcounts (an action's spread copies), a record a rule didn't change stays the same `Rc` (JS's
+  `p === state.pins[i]`), and a rule that changed nothing hands back the same lists (`LibState::same`: the TS's
+  `next === s`, which decides `result: null`). A field model.ts can leave out of a record it makes (a pin's `pos`, a
+  favorite's `target`) is an `Option`, so `valuesOf`'s fallbacks see what JS sees.
+- JS's key order, kept: `Object.entries` lists array-index keys first, ascending, then the rest as inserted; the
+  windows' ids are numbers, so `activeSpaceByWindow` is `{"2":…,"10":…}` in JS's text and in the core's (`JsObject`,
+  over `indexmap`, already built for serde_json's `preserve_order`: no new crate). The design said the set's order;
+  corrected in docs/CORE-REFACTOR.md.
+- `valuesOf` is written once, as rows borrowed from the state; `diff` compares two states' rows (equal exactly when
+  LT's two `JSON.stringify`s are: one writer for both, -0 as 0, any two non-finite numbers both `null`), builds JSON only
+  for what differs, and skips a collection or an item both states share. The import's diff is the JSON one
+  (`diff_values`): `current` is the values as stored, so an import rewrites a value stored in another key order and
+  deletes what the rules don't read, as LT's does; a perform never does (its `before` is the rules' reading).
+- `localeCompare` is handed in (`js::LocaleCompare`, Tirth's answer: the system's sorter): ICU4X's `Collation` is one
+  until the platform's comparator lands (its removal from the dependencies is that commit's), `CodePointOrder` the
+  tests' stand-in. `import_values` takes it too.
+- Part 3's three pieces are laid out: `library/model/mod.rs` holds what more than one needs (the bindings
+  `pin_of_space`, `has_favorite`, `bound_elsewhere`, `held_bindings`, `settle_bindings`; `has_space`, `pos_of`; the
+  shared limits) and six files name their functions: spaces + order, kept + favorites, splits + links, none calling
+  another's.
+- Measured against library.ts in Node (scratch harness: random libraries of every collection with odd values, emoji at
+  every cut, integer-like and non-tab ids, ties, non-finite ratios, each paired with a mutated copy): 5,000 libraries
+  (two seeds), the snapshot's text byte for byte, `valuesOf(stateOf(…))` as text (key order counts), 64,337 changes of
+  the import-style diff and 20,168 of perform's diff between two readings: no difference; the 5,000 imports of commit
+  1's harness now whole (`import_changes` against `importValues`): 32,619 changes and the counts, none. A cut through an
+  emoji drops its broken half on both sides (Tirth's answer 3).
+- 64 deliberate breaks of state.rs, values.rs, snapshot.rs, the import's normalising and model/mod.rs, each alone: 62
+  caught (61 by the unit tests, 1 by the harness: the import diffing its own reading); the 2 left change nothing
+  (a bundle id's 255-unit check after its 255-unit cut; Rust's `round` for JS's on ratios, which are positive). Three
+  first missed (an object's keys not compared, a plain string with only a `\` or U+001F, a pin with no `pos` in the
+  text) got tests, then were caught.
+- Cost (release, scratch bench, a library with 2 KB icons, 200 archive entries, 30 spaces, 60 pins; JSC is today's
+  dist/app/library.js in a bare JSContext, its JSON in and out only, Swift's JSONSerialization not counted): at 50 / 500
+  / 2,000 items, the snapshot's text 0.09 / 0.26 / 0.85 ms (JSC's `snapshot` 1.8 / 4.7 / 15.3 ms), `state_of` from the
+  store's set 0.2 / 0.6 / 1.7 ms (once per revision of the set), a perform's diff 0.7 µs for a window set and 3 / 22 /
+  85 µs for an item moved (JSC's whole perform 2.5 / 6 / 18.6 ms). A perform and a draw end far cheaper than today's.
+
+## Core refactor step 4, commit 0: the library's shared vectors, as JavaScriptCore answers them (2026-11-23)
+
+- tests/fixtures/library/ (README.md has the format whole; docs/CORE-REFACTOR.md part 8 its summary, kept stable for
+  the parts that load it): `cases/*.json` (each `{ about, from, cases: [{ about, values, steps }] }`, a step one of
+  `perform`, `snapshot`, `import`, `normal`, `target` with its `expect`), `throws.json` (the throw survey's sites) and
+  `js.json` (part 1's cases). A file holds many cases (the design's one case a file would be ~350 files). Steps merge
+  their **expected** changes before the next, so one wrong step fails alone; each collection's ids are in code-point
+  order, the core's store's.
+- Recorded by `npm run library:vectors` (tests/library-vectors/record.ts, ~8 s): Node's module hooks (`registerHooks`)
+  send the ten TS test files' imports of library.ts to a wrapper that records every `perform`, `snapshot`,
+  `importValues`, `stateOf`, `targetOf` and `call` (inputs made the vectors' first: plain JSON, ids sorted, the env's
+  ids padded with fixed `zq000001x`…, trimmed after the last one the answer shows), and of node:test to one that keeps
+  the test's name; every file still passes under it. 318 calls of the tests' ~70 cases, 300 generated sequences of 30
+  steps (generate.ts, seeded: every action and 6 names that aren't, right and wrong payload types, ids that exist and
+  don't, emoji at every cut, JS's odd spaces, equal places and times, addresses that differ by a slash or a fragment),
+  and the throw survey (every action, each payload field as each of 12 wrong JSON types: 2,085 calls). In all 347
+  cases, 9,327 steps (8,750 performs, 289 snapshots, 283 round trips, 3 targets, 2 imports), every one of the 57
+  actions; 7.4 MB (the design guessed 1-3: the snapshots and round trips repeat a library's values; kept, as plain
+  JSON a line a step, for readable diffs).
+- Today's answers are JavaScriptCore's: each step is library.ts's in Node with `URL` deleted from the global object
+  (`new URL` a ReferenceError, as in a bare JSContext), then every case runs again in JSC (tools/library-vectors/
+  jsc.swift, a one-file `JSContext` tool, over dist/app/library.js as buildApp makes it) and JSC's answer is the one
+  kept. They agree on every step but a throw's words; js.json's 26 groups the same in both. A step whose answer
+  differs with `URL` is marked `"url": true` (68): the URL commit re-records them (Tirth's answer 11).
+- A throw is named by its site, `<action>: <Node's words>` (stable across edits; `where` gives the function, from the
+  stack of a copy of library.ts made at run time that keeps what its `catch` caught); throws.json holds JSC's words and
+  Node's. The survey finds **one** site: `createSpace {name: <not a string>}` (model.ts createSpace's `name?.trim()`;
+  JSC: `name?.trim is not a function. (In 'name?.trim()', 'name?.trim' is undefined)`). Every other payload value of the
+  wrong type is checked before it's used (`typeof`, `String(x ?? '')`, `Array.isArray`).
+- A title cut through an emoji, on the Mac today: JSC's `JSON.stringify` writes the half as `\ud83d`, and LibraryRules'
+  `JSONSerialization` refuses the whole answer ("expected low-surrogate code point"), so the action fails (`perform: no
+  answer`, nothing changed), a snapshot comes back empty and an import fails (and runs again at the next launch).
+  Measured with a scratch tool (JSC → its text → `JSONSerialization`). The vectors hold Tirth's answer 3 instead: the
+  broken half dropped (`"cut": true`, 600 steps; library.ts's answer with the half dropped is what both runners
+  compare).
+- The "first of several equal" order is the ids' (Tirth's answer 10): the recorder gives library.ts each collection in
+  code-point order, as the core's store reads it (JS still iterates integer-like keys first: only the windows'
+  `"7"`, `"12"`, which no rule's outcome depends on).
+- Corrected in the design: part 9's "a vector run feeds Rust's output back through LT's `stateOf` and expects no change
+  from `valuesOf(stateOf(…))`" doesn't hold for library.ts itself (a change writes only what moved, so a space's
+  `order` read back can differ, and a value of an odd type is written as given and read as `''`); what holds is that
+  the core writes exactly library.ts's changes, which every vector checks.
+- Run by tests/library-vectors.test.ts (`npm test`: library.ts without `URL`, 24 tests), margin-core's
+  `library::vectors` (`cargo test`: `Engine` with a default `None` per kind, `run`, `Report`, `differ`, `merge`,
+  `data_set`, `js`, `throw_words`; vectors_tests.rs checks the runner with an oracle and js.json against js.rs: every
+  code point's space, the cuts less the broken half, the sort, 41 numbers' strings, rounds, max and min, ratios, 24
+  values' strings, keys and truthiness, 17 fingerprints, 6 import ids, the id check, 23 addresses' regexes, the
+  lowercase, the no-URL answers, and all 9,025 ASCII pairs and 22 id pairs through today's collation).
+
+## Core refactor step 4, commit 0: the vectors through the app's rules, the shadow, today's costs (2026-11-23)
+
+- The hand-written edges (tests/library-vectors/edges.ts → cases/edges.json, 14 cases): the ties the generator rarely
+  makes (two Settings items used at once, a favorite's two items, a pin's unbound items, the front item, spaces and
+  link rules at equal orders, the archive at equal times, a clear of five items, equal places beside each other), cuts
+  at every limit, JS's spaces, addresses with no URL, numbers (`0.1 + 0.2`, 2^53 + 1, -0, a window id as a string and
+  with a fraction), payload keys (an array as a tab id, names of the object prototype as actions). In all 361 cases,
+  9,385 steps.
+- The vectors catch the reference broken: 17 deliberate breaks of library.ts, model.ts, front-item.ts,
+  pinned-rules.ts and air-traffic.ts, each alone (the cut, the changes' id order, settleSplits after a success, the
+  ratios' rounding, three tie-breaks, a refusal's words, the name's trim, the archive's and favorites' caps, a folder's
+  depth, the pattern's lowercase, the no-URL address, the selected item's tie), 16 caught; the one missed is
+  equivalent (clearToday's `.sort()` of `t-` ids given in code-point order: UTF-16 order is the same for them).
+- T/library-vectors-tests.swift (`npm run test:app`) runs every perform, snapshot and import step through
+  LibraryRules (dist/app/library.js, JavaScriptCore): 8,800 performs, 295 snapshots, 2 imports the same, 288 steps it
+  can't ask (normal, target); the 403 `cut` steps fail there as the app does today (no answer). And a check of the
+  Mac's own outcome: a title of 1,999 units and an emoji fails `addItem` with nothing kept; 1,998 and the emoji whole,
+  2,000 units kept. Two broken copies of library.js (a refusal's words, the cut at 1,999) fail it (21 and 85 steps).
+- The shadow (the same file, `LibraryShadow`): for the run, JSValue's `call(withArguments:)` is exchanged, so every
+  LibraryRules call of the whole Swift suite (9,442: 9,122 performs, 314 snapshots, 6 imports) is seen with no change
+  to the app's Swift; each is given to both engines as the same text (each collection's ids in code-point order, the
+  core's store's; the env's ids made ones the rules take, then 48 more) and the answers compared: 0 differ. Its second
+  engine is a second JSContext (MARGIN_LIBRARY_SHADOW_JS gives it another script: both broken copies are caught, 20+
+  calls each) until commit 5 makes it margin-core's library. Found by it: some Swift tests' ids (`q1x`, three letters)
+  are refused by library.ts (`^[A-Za-z0-9]{4,30}$`), so those actions drew Math.random's ids; the shadow gives ten
+  letters in their place, as Math.random's would be.
+- Found: library.ts's import compares the stored values' **text** (LT:934 `diff(current, normal)`, `JSON.stringify` of
+  each), not their normal form as `perform` does: a value whose keys come in another order than `valuesOf` writes them
+  is written again, the same value. In the app the values cross Swift dictionaries, so the first import rewrites the
+  library's own values (same values, a new time); harmless, and noted in part 5 for the core's import. The vectors'
+  imports keep the order the TS tests gave; the Swift run leaves those rewrites out on both sides.
+- Baselines (`MARGIN_LIBRARY_BASELINE=<items>`: a process each, off screen; 2 KB icons, 200 archived, two spaces; each
+  the median of 25, two rounds on a shared Mac, the quieter kept):
+
+  | Items | A perform (activateTab, all of L.perform) | The rules' call alone | A snapshot | A draw's library part (snapshot + its text) | State | Footprint, library open → after the 125 calls |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | 50 | 2.7 ms | 1.7 ms | 2.2 ms | 2.8 ms | 147 KB | 13 → 22 MB |
+  | 500 | 16.2 ms | 7.6 ms | 11.0 ms | 13.9 ms | 1.2 MB | 20 → 53 MB |
+  | 2,000 | 62.0 ms | 28.0 ms | 40.7 ms | 52.3 ms | 4.6 MB | 72 → 354 MB |
+
+  (A perform's rest is the values through JSONSerialization both ways and the store's apply; the footprint after is
+  JavaScriptCore's heap before it collects.) The app: Margin.app built from this commit (`npm run safari --
+  --no-install --unsigned`): its binary 19,150,304 bytes (arm64 9,041,376, x86_64 10,084,320), the bundle 22.9 MB,
+  library.js 68,103 bytes, JavaScriptCore linked. The running app's footprint isn't measured here (it would open
+  windows on the screen); the library's part of it is the table's.
+
+## Core refactor step 4, commit 3 piece 1: the model's rules for spaces and the pinned area's order in the core (2026-11-23)
+
+- margin-core's `library/model/spaces.rs` (model.ts's `setActiveSpace`, `createSpace`, `orderSpaces`, `updateSpace`,
+  `deleteSpace` and its cascade) and `model/order.rs` (`pinForUrl`, the folder lookups and PR's `folderDepth`,
+  `pinOrder`, `writeOrder`, `placed`, the names, `addPin`, `removePin`, `bindTabToPin`, `unbindPinTab`, `renamePin`,
+  `renameTab`, `movePin`, `createFolder`, `renameFolder`, `setFolderOpen`, `moveFolder`, `deleteFolder`), each with
+  M's name and line, its kept half only (the library has no open tabs). Nothing calls them in the app yet (commit 6
+  switches); no behaviour changes.
+- A value library.ts hands M straight from a payload is an `order::Arg` (undefined, a JSON value, or the caller's
+  string), so each rule tests it as M does: `movePin` refuses a truthy folder id that's no string and takes a falsy one
+  as the top level, `moveFolder` refuses any parent but null that isn't a folder's id (`""` and `0` too), `renameTab`
+  with an array as the id (library.ts's own check finds it by its key) is an open tab's to M: unchanged. Part 4 builds
+  them with `Arg::of(p.get(…))`, `.or_null()` for `?? null`. The other pieces will want it too: it belongs in
+  model/mod.rs (asked, not moved: mod.rs isn't this piece's).
+- `create_space` answers a `Result`: `name?.trim()` throws for a name neither a string nor nullish (the throw survey's
+  one site), with JSC's words.
+- A gap found, not closed: `createSpace` stores a truthy emoji or colour that's no string as given (`emoji: 5`; 17
+  generated vector steps), which the typed `Space` can't hold. `create_space` writes `""`, what the next reading of it
+  is, so every later state is the same and only that step's stored change differs. Exact needs a raw value in `Space`
+  (state.rs, values.rs) or part 4 refusing such a payload (a behaviour change): the caller's decision.
+- Identity kept as JS's: a rule that changes nothing answers the same lists (`LibState::same`), a record it doesn't
+  change is the same `Rc`, and where M always makes a new array or object (`updateSpace`'s `map`, `deleteSpace`'s
+  archive, items and windows, `setActiveSpace`'s spread) so does the Rust.
+- Checked against model.ts: a scratch harness (random libraries, step4-state's generator, and structured ones: nested
+  folders with cycles, parents in other spaces, tied places, bound items, one address in two spaces; 14 calls each with
+  library.ts's argument shapes, payload values of every type): 2,800 cases, 39,200 steps against Node and 2,500 cases,
+  35,000 steps against JavaScriptCore (`jsc`, a bare context, no `URL`), the throws' words too: none differ (each
+  step's values, `next === s`, and the lookups' answers). The shared vectors through a test engine of the 16 actions
+  library.ts answers with these rules alone (createSpace, renameSpace, setSpaceTheme, deleteSpace, orderSpaces, unpin,
+  pinTab, renamePin, renameTab, movePin, createFolder, renameFolder, setFolderOpen, deleteFolder, moveFolder,
+  nestFolder): 2,304 perform steps checked, all the same; skipped: other actions' steps, 17 of the gap above, 23 whose
+  `settleSplits` (piece 3's) would change the splits.
+- 81 deliberate breaks of the two files, each alone: 78 caught (75 by the unit tests and the vectors' steps, 3 first
+  only by the harness and then by unit tests added for them; 3 more first missed got tests: a depth past the limit, a
+  folder with no place after another space's, a parent `""`); the 3 left change nothing (`folderParent`'s check for
+  itself, which its walk's `seen` makes again; `addPin`'s falsy folder and a new pin's place, which `movePin` decides
+  again).
+- Cost (release, the bench library: 2 KB icons, 200 archived, 30 spaces, 60 pins, 8 folders): at 50 / 500 / 2,000 items
+  a rule alone 0.2-140 µs (`deleteSpace` 21 / 43 / 141 µs, `removePin` 1 / 4 / 17 µs, every other under 35 µs), with
+  perform's diff after it 1-920 µs; JSC's whole perform today 2.7 / 16.2 / 62 ms.
+
+## Core refactor step 4, commit 3 (piece 3): splits and link rules in the core (2026-11-23)
+
+- margin-core's `library/model/splits.rs` and `links.rs` gain model.ts's split rules (M:1628-1775: `normalizeSplitRatios`,
+  `paneKey`, `hasMarginTab`, `splitForItem`, `withPanes`, `createSplit`, `addToSplit`, `removeFromSplit`, `settleSplits`,
+  `swapSplitPanes`, `resizeSplit`, `toggleSplitAxis`) and its link rules (air-traffic.ts's `normalizePattern`,
+  `patternMatchesUrl`, `matchAirTrafficRule`; M:1594-1624's add, remove and toggle, the cap of 100), one function each
+  with M's name. Nothing calls them in the app yet (part 4's actions do, commit 6 switches); no behaviour changes.
+- Link rules keep today's app exactly: its JSContext has no `URL`, so no address parses and no rule routes a new tab or
+  `routeUrl` (`js::rules_url`, `RULES_PARSE_URLS` false). What a parsed address does is written and tested beside it
+  (`pattern_matches_parts`, `match_air_traffic_rule_with` over `js::url_parts`, against Node with a URL), so Tirth's fix
+  (answer 11) is that constant flipped and the test that pins today's answer (`no_address_matches_today`).
+- The open-tab halves aren't ported (the library's state has none): `paneKey` of a number or a string of digits (an
+  open tab's browser id) is none. A prototype name as an id (`constructor`) finds no item, open question 4's Rust
+  answer (model.ts in JS finds a function: the only difference the generated sequences showed, and left out of them).
+- "Unchanged is the same state": every rule that changes nothing hands back `s.clone()`; a split M remakes is a new
+  `Rc`, every other one the same (checked against model.ts's object identity, split by split). A link rule already at
+  its place keeps its `Rc` where M makes an equal new object (unseen: the diff compares values). `settle_splits`, run
+  after every perform that succeeds, allocates nothing when every split holds.
+- `matchAirTrafficRule` sorts by `Number(order) || 0` alone (stable); its ties by `localeCompare` are `stateOf`'s, which
+  already ordered the list (the stub's header said otherwise; corrected).
+- Checked: the shared vectors' 1,011 perform steps of the actions these rules carry alone (`addAirTrafficRule`,
+  `removeAirTrafficRule`, `toggleAirTrafficRule`, `routeUrl`, `resizeSplit`, `toggleSplitAxis`, `swapSplit`, through a
+  test stand-in of their library.ts actions: part 4 writes the real ones): none differ; js.json's `patterns` (18) and
+  `url.matches` (7) as JavaScriptCore answers them. The other split actions (`createSplit`, `addToSplit`,
+  `removeFromSplit`, `breakOutSplit`, `openSplit`, `closeSplitPane`) need part 4's helpers (`used`, `frontOf`,
+  `splitRefusal`) and run with it. A scratch harness of 6,000 random libraries (odd panes, ratios, orders and patterns)
+  with 25 random calls each (150,000 calls: 24,583 changed the state, 95,183 the same state, 30,234 lookups) against
+  model.ts in Node without `URL`, in JavaScriptCore (a bare JSContext), and for the address lookups against Node with
+  `URL` (2,322 addresses matched a pattern or a rule there, none today): none differ.
+- 78 deliberate breaks, each alone: 74 caught (71 by the unit tests with the vectors, 3 by the harness); the 4 left
+  change nothing (a JSON number is always finite; `""` has no digits to fail; old ratios of another length are made
+  equal anyway; an http address's pathname is never empty). Five first missed (a `_` in a label, `http:/` with one
+  slash, a pattern trimmed after its scheme, a length in bytes, a non-http address with the host) got tests, then
+  were caught.
+- Cost (release, a library of 500 items, 4 splits of 3, 99 rules): `settle_splits` with nothing to change 0.4 µs, a
+  rule added at the cap's edge 8.7 µs, a match today 0 µs (no address parses), parsed and found at the 99th rule
+  10 µs, a split made 0.7 µs, a pane added 0.4 µs (today's whole perform in JavaScriptCore is 2.5-18.6 ms).
+
+## Core refactor step 4, commit 3 piece 2: items' places, the archive and favorites in the core (2026-11-23)
+
+- margin-core's `library/model/kept.rs` (model.ts's `placeOf`, `lastPlace`, `tight`, `renumber`, `forgetKept`,
+  `archiveKept`, `archiveTab`, `removeArchived`, `keptForUrl`, `placeBeside`, `placeKept`, `moveTab`, and
+  front-item.ts's `frontItemOf`) and `model/favorites.rs` (pinned-rules.ts's `favoriteScopeOf`, `renumberFavorites`,
+  `favoriteUrlOk`, `keptOfFavorite`, `addFavorite`, `removeFavorite`, `moveFavorite`, `renameFavorite`,
+  `bindTabToFavorite`, `unbindFavoriteTab`), each with M's name and line, its kept half only. Nothing calls them in the
+  app yet (commit 6 switches); no behaviour changes.
+- A throw the payload survey can't find, as it's a state's: an item whose space is gone, archived (`closeTab`,
+  `itemClosed`) in a library with no spaces, reads `state.spaces[0].id`; JSC on dist/app/library.js fails the action
+  with `failed: undefined is not an object (evaluating 'state.spaces[0].id')`. `archive_kept` answers that as its
+  error (`NO_FIRST_SPACE`) for part 4 to fail the action with, as today.
+- `favoriteScopeOf` takes whether favorites are per profile from its caller (LT:593 builds the setting from the
+  payload), not `DEFAULT_SETTINGS` as the design said (corrected there).
+- Payload values go in as `model::Arg` (piece 1's): `p.tabId` for `forgetKept`/`archiveKept`, looked up as JS's key
+  (`["t-a"]` finds `t-a`); `favoriteId`, `beforeId` (a falsy one, `""` too, is the end; a truthy non-string none's) and
+  the new name as they came.
+- A rename through an emoji: JS's cut name keeps half of it, which no stored name equals, so it renames even to the
+  name it has; the Rust decides the same (`next !== s`) with the half dropped (Tirth's answer 3). The typed diff then
+  sees no change where library.ts's recorded vector writes the same value again (generated-11 case 22 step 4, a `cut`
+  step): the one vector step of these actions that differs, and only in that no-op rewrite; the test names it. Whether
+  the vector or the diff should give way is the step 4 lead's call.
+- Checked: 3,000 generated libraries with 40 ops each (119,810 ops) against model.ts in Node (no `URL`) and in
+  JavaScriptCore, the same (the throw's words JSC's, 624 of them); 14 renames of a name the chained TS state held half
+  of (no store between the ops, which the library never does) are counted apart. The shared vectors: all 1,217 perform
+  steps of the 8 actions these rules answer (`removeItem`, `moveTabToSpace`, `moveTab`, `itemClosed`, `addFavorite`,
+  `removeFavorite`, `renameFavorite`, `moveFavorite`, written in the test as LT does, with piece 1's `removePin` and
+  piece 3's `settleSplits`), the same but the step above. 51 deliberate breaks: the unit tests (with those vector
+  steps) catch 50, the one missed equivalent (`placeBeside`'s "beside itself", which the list without the moving item
+  already refuses); the generated run alone catches 41 of the first 47 (the rest: places that can't be non-finite,
+  `lastPlace` the library doesn't call, a scope or profile `stateOf` never leaves empty, the equivalent one, and the
+  rename's identity, which no value shows).
+- Cost, each rule alone from the state (Rust release against the same rule of model.ts in JSC, the median of 9 × 200;
+  JSC's timer is in ms, so its small ones read 0–20 µs): at 2,000 items `placeKept` 27 µs (JSC 620), `archiveKept` 16
+  (250), `keptForUrl` 9.5 (195), `frontItemOf` 5.8 (75), `keptOfFavorite` 1.6 (140), `addFavorite` 0.8 (20),
+  `moveFavorite` 0.8 (10), `removeFavorite` 14 (360), `bindTabToFavorite` 12 (70); at 500 items about a quarter of
+  those. What costs is the items' map copied (`{ ...keptTabs }` in the TS too).
+
+## Core refactor step 4, commit 4: the library's 57 actions and perform in the core (2026-11-23)
+
+- margin-core's `library/actions.rs`: library.ts's 57 actions (LT:283-807), `ACTION_NAMES` (LT:810, sorted as JS
+  sorts) and `perform` (LT:816-832), with the helpers they share (`win`, `windowSpace`, `frontOf`, `spaceTarget`,
+  `targetOfItem`, `used`, `pinOfItem`, `addItem`, `archiveItem`, `splitRefusal`, `splitShown`, `splitNext`), one Rust
+  function each with LT's name and line, over the model's rules (commit 3). Nothing calls it in the app yet (commit 5
+  makes the library object, commit 6 switches); no behaviour changes.
+- `perform(state, action, payload, env, compare)`: on the state the caller read (`stateOf`; part 7's object keeps it
+  per revision of the set), the sorter handed in (the system's, Tirth's answer to question 1). `values.imports` isn't
+  taken: LT passes it through both sides of its diff, so it never changes. An unknown name, or one of the object
+  prototype's (`__proto__`, `constructor`, `toString`…), is `unsupported` (`Object.hasOwn`). A failure has no changes
+  and no requests (a composite's requests made before it failed are dropped, as LT drops them).
+- The model's two throws fail the action with JavaScriptCore's words, as LT:825 does: `createSpace`'s `name?.trim()`
+  (`spaces::CREATE_SPACE_NAME_THROWS`) and `archiveKept`'s `state.spaces[0].id` for an item of a gone space with no
+  space left (`kept::NO_FIRST_SPACE`: `closeTab`, `closeSplitPane`, `itemClosed`).
+- A request's target is the object JS built: `targetOfItem`'s and `targetOf(pin.target)`'s checked again,
+  `spaceTarget`'s as the space holds it (a profile longer than 256 units, which `createSpace` and a stored space keep,
+  is named whole in a `newTab`'s request and stored cut in the item: checked against library.ts in Node). A request's
+  `windowId` is the payload's as it came, its numbers through a double.
+- The ids: the env's first (Swift's 4 a perform; a given one that isn't 4–30 letters and digits used up all the same),
+  then the core's own 10 letters (`js::Ids`, open question 6): a clear of 6 items given 4 ids, checked.
+- `kept.rs`'s private `key_of` is `model::Arg::key()` (ToPropertyKey), which the actions' `s.keptTabs[p?.tabId]` use
+  too.
+- Commit 3's three stand-in engines (spaces_tests.rs `Piece1`, favorites_tests.rs `Piece2`, links_tests.rs `Rules`,
+  ~650 lines re-writing a few actions) are deleted: one engine of the real actions runs every perform step of the
+  shared vectors (actions_tests.rs).
+- Checked: the shared vectors' 8,800 perform steps, 8,783 the same as JavaScriptCore's; 17 skipped as piece 1's known
+  gap (a `createSpace` given an emoji or colour that's truthy and no string: JS stores it as given, the core `""`); the
+  one `cut` step of piece 2 (generated-11 case 22 step 4: a favorite renamed through an emoji, JS's no-op rewrite)
+  answered the same but without the rewrite. A scratch harness of 3,000 more generated sequences of 40 steps
+  (tests/library-vectors' generator with seeds 101, 202, 303; library.ts in Node without `URL`, then in
+  JavaScriptCore, whose answers are kept; 129 of its steps threw, all at createSpace's site): 112,559 perform steps,
+  112,334 the same, 225 of the gap, and 1 more no-op rewrite of a cut (a folder renamed through an emoji at 40), none
+  differ.
+- 98 deliberate breaks of actions.rs, each alone (every helper and every action: a check dropped, a fallback changed,
+  a request's field, an order, a cut, the throws' words, the names' order): 87 caught by the shared vectors and the
+  unit tests, 3 more by a unit test added for them (a pane given twice counts twice against the cap, `moveTabToSpace`
+  of an id a key finds, `openMarginPage`'s item used last, each checked against library.ts in Node); the 8 left change
+  nothing the vectors or the 112,334 harness steps can see: `?? ''` for a rename (the rules read nullish as empty),
+  `targetOfItem`'s check again (every target that reaches it was read by `stateOf`), a new item's `keptAt` (never
+  stored), an empty binding (`valuesOf` drops it), the link rule of a new tab and `routeUrl`'s target (no address
+  parses today: the URL commit), an app's title written again unchanged, `closeTab` leaving the pane to `settleSplits`
+  (the same split after), and a refusal's requests (no action asks before it refuses).
+- Cost (release, commit 0's baseline library: 2 KB icons, 200 archived, two spaces; the median of 25): a click's
+  perform (`activateTab`: the rules, `settleSplits` and the diff) at 50 / 500 / 2,000 items 0.007 / 0.034 / 0.13 ms on
+  the kept state, 0.17 / 0.49 / 1.6 ms with the state read from the store's set first (part 7's object reads it once a
+  revision); `renameTab` 0.005 / 0.029 / 0.12 ms, `closeTab` 0.031 / 0.057 / 0.16 ms. JSC's whole perform today 2.7 /
+  16.2 / 62 ms (its rules' call alone 1.7 / 7.6 / 28). What costs is the items' map copied by `used` (`{ ...keptTabs }`
+  in the TS too) and, with the read, the icons' text.
+
+## Core refactor step 4, commit 5: the library object, the import once, the FFI, the system's sorter (2026-11-23)
+
+- margin-core's `library::Library` (library/object.rs): Library.swift's `Library` (L:89-286) over the store
+  (`LibraryStore`, unchanged) with the rules in the core. Its state is read from the set once per revision (only the
+  object writes the set, so its own count of saves is the revision) and kept with the snapshot's text. A perform asks
+  the host for the env (`LibraryHost::env`: Swift's `now` and 4 ids), runs the action on the kept state, stores the
+  changes at the host's `now` (its second read, as L:233), tells the host the collections changed (the observers),
+  keeps the last 100 requests, then gives each request to the sink (`RequestSink`: the session) at the point L:225 gave
+  them to the delegate. A failure stores nothing, tells no one and asks nothing; an edit that changes nothing stored
+  tells no observer but still hands on its requests (as L:230's early return). Re-entrant as the session: `&self`,
+  cells, no borrow across a call out; a Rust test host re-enters every read on every call out (env, now, observers,
+  the sink) and an observer performs again inside a perform: never a borrow held.
+- The session as the sink: `Session::sink()` (weak), its request the `library` input inside the perform, with the
+  session counted as in a call (what it starts waits for the caller's next tick; no port call made inside it runs the
+  queue). Tested with the real library and the session's re-entrant ports (requests_tests.rs). margin_session_new
+  doesn't register it yet: no perform of the app reaches the core's object until the switch (commit 6, with
+  `Command::Perform`'s removal; a perform Swift makes itself then ticks the session after).
+- The import once in two halves: `import::sources(&mut DataSync)` (L:251-267: every profile's set the data has,
+  Safari's first then the browsers by name, each set's five collections, each browser's spaces in the person's order
+  by the slots rule over browser.json) and `Library::import_once(sets, order)` (its marker, L:274's line in its words,
+  None when it had run). Two halves so the data object is let go before the import's observers run (they may call it):
+  the design's `import_once(&DataSync)` corrected. Pinned by T/library-tests.swift's importChecks scenario in Rust
+  (two Safari profiles with the same `personal` space and tab id, browser.json's order, the files unchanged, never
+  twice, after a relaunch too, the marker alone with nothing to import) and a Chrome profile after Safari's.
+- library.js's entry in the core (`object::call`, LT:939): `perform`, `snapshot`, `importValues`, `actions` on JSON
+  arguments, LT's answer's text, each value LT's shape (a failed perform has no `result`). Every kind of the shared
+  vectors runs through it (`vectors::run_entry`: 8,783 performs, 295 snapshots, 2 imports, 285 normals, 3 targets;
+  the known 17 `createSpace` steps of piece 1's gap skipped and the one known cut rewrite), with the core's stand-in
+  sorter and, in margin-ffi's tests, the Mac's.
+- The FFI (ffi data.rs): `MarginLibrary` is the core's object; `margin_library_new` takes three callbacks more (`env`,
+  answering the time and giving its ids through `margin_library_env_id`; `now`; `changed`, the names as JSON), each
+  NULL: Library.swift's defaults (the wall clock in ms, 4 random ids, no observer); `margin_library_call` takes the
+  object shared and gains `perform`, `snapshot`, `actions`, `item`, `requests`, `imported` (every answer with its
+  `log`); `margin_library_import(library, data)`; `margin_library_rules(library, name, args)`, library.js's entry for
+  the tests' shadow. The session's `LibraryRef` reads through the shared object: ffi/session.rs's SAFETY note said
+  "never while a library call is under way (the library calls nothing back)", now false; it says the library calls
+  back, the read is shared and the object holds no borrow across a call out. Touched in session.rs: `LibraryRef`
+  (`*const`, its two reads, the note) and the cast at `margin_session_new`; nothing else. Library.swift passes NULL
+  for the three callbacks (its one call); no app behaviour changes: the app still runs LibraryRules.
+- The system's sorter (Tirth's answer after commit 1): ICU4X (`icu_collator`, `icu_locale_core`) out of the core's
+  dependencies, `js::Collation` deleted; the platform hands the core its `LocaleCompare`. The Mac's: margin-ffi
+  collation.rs, libicucore's `ucol_open` for the person's first preferred language (`CFLocaleCopyPreferredLanguages`,
+  as JavaScriptCore takes its default locale) and the attributes JSC's `Intl.Collator` sets (tertiary, no case level,
+  case first off even where a locale's data says upper, no numeric ordering, punctuation not ignored, normalization
+  on), then `ucol_strcoll` over UTF-16 (on the stack up to 128 bytes). The module map links `icucore` and
+  CoreFoundation. js.json's `localeCompare` cases (the 95 characters' order, all 9,025 ASCII signs, the 22 pairs with
+  the accents) and every vector run through it in margin-ffi's tests (vectors_tests.rs `js_json_collation` moved
+  there; the core's own tests sort with `vectors::AsciiCollation`, ICU's root on ASCII built from js.json's recorded
+  order, a stand-in). Against JSC through the FFI under 18 preferred languages (`-AppleLanguages`: en-US, da, sv,
+  en-GB, lt, cs, de-DE, tr, es, fr-CA, zh-Hans-CN, zh-Hant-TW, ja, ko, is, pl, hu, fi), 47 strings at equal places
+  (ASCII, accents, Danish and Swedish letters, Czech `ch`, Turkish `ı`, kana, Hangul, Han, emoji): every order the
+  same. Windows': the Windows shell's collation.rs over icu.dll (the same attributes, ICU's default locale),
+  compile-checked only, unverified on a PC.
+- The shadow (T/library-vectors-tests.swift): its second engine is margin-core through `margin_library_rules` (the
+  second JSContext and `MARGIN_LIBRARY_SHADOW_JS` gone). The whole Swift suite's 9,442 calls of the rules (9,122
+  performs, 314 snapshots, 6 imports): the same but 403 cuts (JSC's answer holds half an emoji, written as its escape
+  by JSON.stringify; the same once dropped, Tirth's answer 3), the one known cut rewrite and the 17 steps of the gap,
+  each counted; 0 differ. Three breaks of the core, each alone, all caught by it (a refusal's words: 186 calls; the
+  sorter upper first: 6; the snapshot's archive oldest first: 171).
+- 41 deliberate breaks of the Rust, each alone (the object's order, cap, cache, clock, borrows across the env and the
+  observers, the import's once, line and clocks, the entry's result, env and import time, the sources' order, the
+  sink's call, the sorter's six attributes, its locale, its bytes and its stack cut, the FFI's env, clock, observers,
+  ids, log and the session's read): 35 caught, 4 of them by checks added for them (the oldest requests dropped, a
+  browser's spaces by their order, the stack cut, the env's time stored). The 6 left change nothing the tests can
+  see: a profile with no set read (the data lists only profiles with sets), the sink's call outside a call (no port
+  of the stand-ins runs the queue between), normalization off (ICU's data handles the canonical pairs here), the
+  answer's log dropped (no call here writes a store line), the FFI's early "imported" (the object refuses too), the
+  entry's root sorter (en-US is root's on this Mac).
+- Cost (Swift, `MARGIN_LIBRARY_BASELINE`, commit 0's library: 2 KB icons, 200 archived; the median of 25, two rounds;
+  the core in a folder of its own, opened as the app will, written in the background): a click's perform through the
+  FFI (the request's JSON in, the answer read back by JSONSerialization, the store's apply and the observers in it)
+  0.6 / 3.6 / 15.5 ms at 50 / 500 / 2,000 items, today's JSC perform 2.6 / 16 / 61; a snapshot as JSON through the
+  call 1.3 / 6.5 / 25.5 ms (JSC's 2.1 / 11.2 / 41.4; the draw's typed text is commit 7's), a rename and the snapshot
+  made again 1.9 / 10.8 / 41.8. In Rust alone (release): a perform through the object 0.58 / 3.6 / 14.6 ms, the kept
+  snapshot nothing. What's left of a perform is the store's apply (data/library.rs: the whole set cloned, the changed
+  collection's file written out for the writer), step 1's and unchanged.
+- Size: Margin.app's binary (`npm run safari -- --no-install --unsigned`, universal) at this commit 20,786,272 bytes (arm64 9,759,840, x86_64 11,009,808; the
+  bundle 24.5 MB), at its base (cae309bf, built the same way from an export of it) 19,471,856 (arm64 9,166,320, x86_64
+  10,286,672): +1.31 MB, +0.59 MB arm64 and +0.72 MB x86_64, all of it the library's rules and object now reachable
+  from the FFI (until now the linker dropped them); no collation data (libicucore is the system's, linked dynamically:
+  `otool -L`), where ICU4X's would have added 1.26 MB more per architecture (commit 1's measure). JavaScriptCore stays
+  linked until the switch.
+
+## Margin.app's rules parse addresses as the browsers do (Tirth, 2026-11-23: step 4's open question 11)
+
+- Tirth's decision (answer 11, "fix it, as its own commit"): the library's rules read addresses as the browsers' copies
+  of model.ts and air-traffic.ts do (WHATWG `URL`), no longer as Margin.app's bare JSContext did (it has no `URL`, so
+  `normalizeUrl` gave every address back as given and `patternMatchesUrl` was false for every address). In margin-core:
+  `js::RULES_PARSE_URLS` true (step4/urls), over `js::url_parts`/`normalize_url_whatwg` (the `url` crate, written and
+  checked against Node and WebKit in commit 1). **Margin.app's behaviour changes only at step 4's switch (commit 6)**,
+  when the app runs the core's rules; until then it runs library.js in JavaScriptCore, as today.
+- What changes for him then:
+  - **Link rules route.** A new tab opened with an address and no space given (`newTab`: the palette, a link Margin
+    opens) goes to the space of the first enabled rule it matches, in that space's browser and profile, and the window
+    shows that space; `routeUrl` answers the rule and its space's target. Until now no rule ever matched in the app (the
+    extension's copies routed). Patterns as air-traffic.ts reads them: `linear.app` (that host, any path),
+    `*.figma.com` (the host and every subdomain), `github.com/my-org/*` (a path and under it), http and https only.
+  - **Addresses match as the browsers match them** wherever the rules compare two: a pin and its item (`openPin`), a
+    favorite and its item (`openFavorite`), a favorite added to a scope that has one at the address (refused), a tab
+    pinned where a pin at the address is (not pinned twice), the pins moved when a space goes (one at an address the
+    other space has is dropped), and the archive (closing an item drops older entries at its address: one an address).
+    The same address now: with or without the bare trailing slash (`https://a.com` = `https://a.com/`; not a path's,
+    `/x/` ≠ `/x`), with any fragment (`#top`), the scheme's and host's case (`HTTPS://A.COM`), the scheme's default
+    port (`:443`, `:80`), dot segments (`/x/../y` = `/y`), `\` for `/`, an empty query (`?`), spaces around it, an IDN
+    host and its punycode (`bücher.de` = `xn--bcher-kva.de`), IPv4's other spellings (`0x7f.1` = `127.0.0.1`). Still
+    other addresses: the scheme (`http` ≠ `https`), `www.`, a path's case, the query, another port, percent escapes
+    (`~`, `%7e` and `%7E` are three, as in the browsers). An address that doesn't parse matches as given.
+  - **Nothing stored is rewritten**: no address is normalised on disk, at load, at the import or in the snapshot; an
+    address is stored as given (pinned by kept_tests.rs and a break that rewrote the archive's, caught). Only what an
+    edit from now on matches changes, so duplicates already stored (two favorites at `https://a.com` and
+    `https://a.com/`) stay until an edit meets them.
+- The vectors (tests/fixtures/library, `npm run library:vectors`): the recorder keeps each step's answer with Node's
+  `URL` and marks `url` the steps whose answer without it differs; those 76 (75 before, one new hand-written case of
+  11 steps: the host's case, the default port, dot segments, the archive, a `*.` rule) are the browsers' answers, and
+  JavaScriptCore's answer of each is checked to be Node's without `URL`. Every other step is JSC's answer (JSC differs
+  from Node on none). Since the steps after a `url` step start from its changes, and the generator's one random stream
+  and the padded ids follow every earlier answer, the generated sequences after the first that met an address and the
+  ids of later edges and the survey were made again: 24 files, 360 cases, 9,395 steps (8,798 performs, 302 snapshots,
+  290 normals, 2 imports, 3 targets), 651 cuts, the one throw site. js.json's `url` group is Node's with `URL`
+  (`jscUrl`, JSC's). tests/library-vectors.test.ts runs the `url` steps with `URL` (and each must answer otherwise
+  without). The one known cut rewrite moved (generated-11 case 24 step 4) and the known `createSpace` gap is 19 steps.
+- Pinned answers moved to the browsers': links_tests.rs `addresses_match_as_the_browsers` (was
+  `no_address_matches_today`), js_tests.rs, kept_tests.rs (an item by its address, the archive one an address),
+  order_tests.rs (`pinForUrl`), favorites_tests.rs (a scope's address), vectors_tests.rs (js.json), and margin-ffi's
+  `the_ffi_entry_parses_addresses_and_answers_as_jsc_without`.
+- The Mac's shadow (T/library-vectors-tests.swift) compares JSC with the core until the switch, so it now differs
+  exactly on calls whose answer depends on parsing an address. Each such call is asked again of the core with no URL
+  (`js::without_urls`, through `margin_library_rules_without_urls`: test builds only, both gone with the shadow at
+  commit 6) and counted and named by action when that is JSC's answer; anything else still fails it. The whole Swift
+  suite: 9,447 calls, 440 cuts, the known rewrite, 19 of the gap, 76 by addresses alone (addFavorite 6, clearToday 22,
+  closeSplitPane 3, closeTab 3, createFolder 2, deleteSpace 1, itemClosed 1, newTab 6, openFavorite 3, openPin 6,
+  pinTab 8, resetPin 3, routeUrl 12: the vectors' 76 `url` steps; the rest of the suite makes none), 0 differ. The
+  vectors through LibraryRules leave the 76 out, counted (JSC can't give the browsers' answer). Broken (that entry
+  parsing too): all 76 differ, caught.
+- Checked: every vector through the core (8,779 performs and every other kind; through library.js's entry with the
+  core's stand-in sorter and, in margin-ffi, the Mac's); 3,000 more generated sequences of 40 steps (the scratch
+  harness, seeds 101, 202, 303, with `URL` for the url steps, JSC for the rest: 120,000 steps, 798 `url`): 112,295
+  performs, 112,294 the same, 219 of the gap, 1 no-op cut rewrite, and **1 that differs, not by an address**: a
+  `createFolder` named through an emoji (`cut`) beside a folder with that name's whole half (39 `a`). library.ts
+  compares the name holding half an emoji, finds no such folder and keeps it; the core drops the half first (Tirth's
+  answer 3), finds the folder and names the new one `… 2` (order.rs:457, `unique_name`). Today's Mac fails the whole
+  action there (no answer). Not an address; left as it is and reported, for Tirth to say which.
+- 26 deliberate breaks of the URL path, each alone (parsing off, `without_urls` doing nothing or never ending, the link
+  rules or the matching unparsed, the bare slash kept, every trailing slash dropped, the query, port or scheme dropped,
+  the fragment kept, the path lowercased, an unparsed address as empty, the host without its port, the search with
+  its fragment, the input not trimmed, the rules' match and pattern unparsed, each of the six matching sites on raw
+  text, the archive's address rewritten, the shadow's entry parsing): 26 caught (6 by the js.rs and js.json tests
+  alone: the vectors meet no other port and no query that differs).
+- Cost (release; a library of 50 / 500 / 2,000 items in two spaces, 200 archived, 50 pins, 12 favorites, 99 rules, the
+  last the one that matches; the median of 41; parsed, then with no URL): `normalize_url` of an address 0.55 µs;
+  `routeUrl` found at the 99th rule 10 µs (0.3); `openPin` 13 / 107 / 420 µs (2 / 5 / 13: `keptForUrl` parses each
+  item of the pin's space); `openFavorite` 12 / 39 / 150 µs (2 / 3 / 6); `closeTab` 100 / 128 / 221 µs (30 / 56 / 147:
+  the archive's 200 entries); `newTab` with an address 15 / 45 / 152 µs (6 / 36 / 143); `addFavorite` 0.8 (0.8).
+  Today's JSC perform is 2.6 / 16 / 61 ms, so a perform still ends far cheaper than today's. The lever if it's ever
+  needed: each item's normalised address kept with the state. Size (a release binary of library.js's entry, the
+  workspace's profile): +0.23 MB arm64 (1,049,888 → 1,284,720 bytes), +0.24 MB x86_64 (1,169,368 → 1,410,680): the
+  `url` crate now reachable (commit 1 measured +0.22 MB).
+- Still differs from the browsers: an IDNA edge commit 1 found (`https://xn--a.com`: Node and WebKit take it, the `url`
+  crate refuses it, so there it matches as given and `https://xn--a.com` and `https://xn--a.com/` stay two).
+
+## Core refactor step 4, commit 6: the switch: Margin.app's library is margin-core's (2026-11-24)
+
+- **Margin.app runs the core's library.** Library.swift is a facade over margin-core's library object (library/
+  object.rs through margin-ffi's `margin_library_*`), the same API the app and the tests read (`perform`, `snapshot`,
+  `spaces()`, `items()`, `target(ofItem:)`, `split(…)`, `space(ofWindow:)`, `liveValues`, `values`, `observe`,
+  `importOnce`, `requests`, `isImported`, `actions`), each one call of the core's; its cache of every collection, its
+  `apply`, the import's Swift body and the rules' calls are gone. Its `now` and `randomIds` closures answer the core's
+  env callback (Swift's 4 SecRandom ids per action, as before), its observers the core's `changed` callback, called
+  during the core's call and free to read the library again. LibraryRules.swift is deleted; nothing of the app imports
+  JavaScriptCore any more (`otool -L` of the built app: WebKit and libicucore, no JavaScriptCore.framework; WebKit's own
+  stays, the page needs it). library.js is no longer built into the app (scripts/build.ts `buildApp`;
+  `buildLibraryScript` builds it for the vectors' recorder only, which still runs it in JavaScriptCore), so dist/app and
+  the app's Resources/app have no library.js; tools/app-tests/run.sh no longer builds or passes it.
+- **The session is the library's sink.** `margin_session_new` registers it (`Library::set_sink`, weak): a perform's
+  requests reach the session inside the perform, after its observers, as the delegate had them. `Command::Perform` (a
+  flow's edit handed to Swift and answered in the same turn), the executor's `same_turn`, `Ports::perform` (the card's
+  Quick Tab and Expand), HostedSession's `LibraryDelegate` conformance, its `library(_:wants:)`, its `perform` command
+  and port are gone: the session's flows call the library directly (`LibraryEdit`, `LibraryView`'s subtrait), the edit
+  made in the flow's turn and its requests queued behind it. A perform Swift makes itself (a UI request, the first run's
+  space, the tests) is followed by the session's `edited` input, which answers what the requests left in the session
+  (their lines, `ready`) without running anything, so their handling runs in the next main-actor turn, as the `library`
+  input's did for the delegate (not a tick: that would run it at once). Of several sessions over one library (the Swift
+  tests' rigs, where `library.delegate = session` chose one), `margin_session_take_requests` (HostedSession
+  `takeLibraryRequests`) makes one the sink again. The facade's `LibraryDelegate` stays for a library with no session
+  (library-tests.swift's recorder); the `library` input stays for requests of shapes the rules don't make (the session's
+  tests, HostedSession `request(_:)` for the Swift tests').
+- **The no-rules fallback is gone** (Tirth's answer 9): `Library.open` can't fail, `Shell.library` isn't optional,
+  ShellHostedGlue's "no library (its rules didn't load)" branch, ShellLibrary's "the library's rules didn't load" line,
+  `DataSetWindowSource.state` (the third copy of the snapshot), its `snapshot`, the window's chosen space and its
+  `unhandled` count, `defaultSpace`, and `spaceTheme`'s top-level `activeSpaceByWindow` are deleted. DataSetWindowSource
+  stays as the profile's settings and site icons, no longer a `MarginWindowSource`.
+- **What changes for Tirth** (every user-visible difference; each one of his decided answers, now in effect):
+  - **Link rules route** (answer 11): a new tab opened with an address and no space (the palette, a link Margin opens)
+    goes to the space of the first enabled rule it matches, in that space's browser and profile, and the window shows
+    that space; until now no rule ever matched in the app.
+  - **Addresses match as the browsers match them** (answer 11): opening a pin or a favorite finds its item at the same
+    address with or without the bare trailing slash, with any fragment, in another case of scheme or host, with the
+    scheme's default port, dot segments, `\` for `/`, an empty query, an IDN host or its punycode, IPv4's other
+    spellings; a favorite added where its scope has one at such an address is refused (no duplicate); a tab pinned where
+    a pin at such an address is isn't pinned twice; the pins moved when a space goes drop one at such an address the
+    other space has; closing an item drops the older archive entries at such an address (one an address). Nothing stored
+    is rewritten: duplicates already stored stay until an edit meets them.
+  - **A title cut through an emoji** (answer 3): an item's title (2,000 units), a space's name (200), a folder's name, a
+    custom title, an icon or a profile cut through an emoji now keeps the text with the broken half dropped (1,999
+    units). Until now the whole action failed with nothing changed (the rules' answer held half the pair, which the app
+    couldn't read): adding the item, renaming it, saving the page's title. A folder named through an emoji beside one
+    with that name's whole first half is named `… 2` (the found case of the URL commit).
+  - **Ties go by the ids' order** (answer 10): of several equal candidates (two items at a pin's or a favorite's
+    address, items, spaces or link rules at equal places, archive entries at equal times, the first kept tab the UI's
+    `nextFront` takes) the pick is the same every launch, the lowest id; until now the values crossed Swift
+    dictionaries, so it was a per-launch hash order.
+  - **The system's sorter** (answer 1): the same libicucore collator JavaScriptCore used, for the person's first
+    preferred language: no visible difference.
+  - **The fallback** (answer 9): Margin's window never draws a profile's spaces read only any more; it can't happen.
+  - Not visible, for the record: ids an action makes beyond Swift's 4 come from the core's random, not `Math.random`
+    (answer 6), so a clear of 5+ items names its archive entries otherwise (and of entries at the same time the cap
+    keeps others: found on Tirth's copy); an id named like JavaScript's object prototype (`constructor`) is "no such
+    item" (answer 4; no id Margin makes is one); `createSpace` given a truthy emoji or colour that's no string stores
+    `""` (piece 1's gap; the UI sends strings); a payload that isn't JSON is refused with the old words; the log lines
+    "hosted: the library's rules didn't load…" and "Margin's window: no library…" can't be said; "library: imported N
+    profile set(s): …" is the core's, the same words.
+- **Faster** (off screen, through the app's own path: Library.swift over the core, `MARGIN_LIBRARY_BASELINE`, commit 0's
+  library: 2 KB icons, 200 archived, two spaces; the median of 25; commit 0's JavaScriptCore figures beside):
+
+  | Items | A perform (activateTab, all of Library.perform) | A rename | A snapshot | A draw's library part (snapshot + its text) | A rename and the draw after it | Footprint, library open → after the 125 calls |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | 50 | 0.64 ms (2.7) | 0.61 | 0.61 ms (2.2) | 1.14 ms (2.8) | 1.83 | 9 → 20 MB (13 → 22) |
+  | 500 | 3.6 ms (16.2) | 3.6 | 3.9 ms (11.0) | 6.8 ms (13.9) | 10.9 | 12 → 75 MB (20 → 53) |
+  | 2,000 | 15.0 ms (62.0) | 15.2 | 15.3 ms (40.7) | 25.7 ms (52.3) | 42.5 | 62 → 330 MB (72 → 354) |
+
+  Two rounds, the quieter kept (the two within 3%). The footprint after counts the store's writer's backlog: these
+  125 edits come far faster than their saves are written (each save the changed collection's file, ~1 MB at 500
+  items): with the store writing at once (`background: false`) 200 edits and draws at 500 items stay flat at ~30 MB,
+  in the background it grows ~0.6 MB an edit while the writer is behind. The store is step 1's and unchanged; the
+  JSC figures' after was JavaScriptCore's heap before it collected, so the two afters aren't the same measure. What's
+  left of a perform is still the store's apply (the set cloned, the changed file made), as commit 5 found; the draw's
+  own typed text is commit 7's.
+- **Data, both ways** (the scratch harness step4-switch/compat: margin-ffi's library object over real folders, JSC over
+  library.js as LibraryRules ran it, each given the store's values with each collection's ids in the store's order):
+  - Every shared vector (360 cases, 8,798 perform steps): each case's values stored, then each step performed by the
+    core's object and, on a second store, by JSC with its changes stored as Library.swift stored them: what each wrote
+    read back by both, JSC's snapshot of the stored values against the core's: **the same for all 360 starts and all
+    8,798 × 2 writes**. The two wrote the same values for 8,716 steps; 64 differ only where an address is parsed
+    (Tirth's answer 11: the vectors' `url` steps) and 18 are piece 1's known `createSpace` gap (a truthy emoji or colour
+    that's no string: JSC stores it as given, the core `""`); none other.
+  - A copy of Tirth's profile set (data/app of 2026-11-20: 6 spaces, 27 items, 88 archived, 2 windows; read from the
+    scratch backup, never his folder): drawn the same by JSC and the core; 32 edits of a day (activate, rename with an
+    emoji, pin, move, favorite, a new tab, a folder, a space chosen and renamed, a close, a restore, a link rule, a
+    route, a clear) made by each and read back by both: all read the same; 31 wrote the same values, the clear of the
+    space's items differs only in the archive entries' ids past Swift's 4 (the core's random, JSC's `Math.random`:
+    answer 6), so of entries at the same time the cap kept other ones. set.json keeps its keys and `format` 1.
+  - The import of that copy's five Safari profile sets into an empty library (the core's `sources` and `import_once`):
+    178 items, 90 archived, 6 spaces, its line in the old words; every file under data/safari (149) byte for byte as it
+    was (the extension's copies' sets are only read); JSC's `importValues` of the same sets over what the core imported
+    changes nothing (275 the same value again in another key order, as the import compares text); the marker in
+    library.ts's shape, so neither an older Margin nor this one imports again.
+  - The store's files are step 1's (unchanged): an older Margin reads the set this one writes, and the values in it are
+    library.ts's shapes (above).
+- **Tests.** The Swift suite runs on the core: the 11 files' `MARGIN_LIBRARY_JS` and `Library.open(script:)` gone,
+  `library.delegate = session` gone (the session registers itself; hosted-tests' main session takes the requests back
+  after its rigs' sessions and preparedBrowserTests' rig takes them), library-tests.swift's rules-loading checks
+  replaced by the core's (57 actions, an observer reading the library again inside the call, a payload that isn't JSON),
+  library-vectors-tests.swift's runs through LibraryRules and the shadow gone with JSC (the vectors with the Mac's
+  sorter are margin-ffi's library_tests.rs, every kind through the same entry the app links), keeping the Mac's outcome
+  of the cut (now kept, 1,999 units) and the costs; margin-window-tests' fallback-state checks gone; e2e-hosted's
+  stand-in source draws the library's snapshot of its values. The session's Rust tests run over the real library object
+  (session/tests.rs `TestLibrary`: the core's `Library` over a store in a temporary folder, its env, clock and observers
+  re-entering the session): the stand-in shelf and its canned edits are gone from every session test file (requests,
+  card, layouts, routing, start); the tests that answered `Command::Perform` check the real edits and what their
+  requests did. margin-ffi: the session is the sink from `margin_session_new` (a perform through `margin_library_call`
+  leaves its request's handling ready in the session). js.rs `without_urls`, its thread-local and
+  `margin_library_rules_without_urls` are deleted with the shadow; the tests that pinned JSC's no-URL answers through
+  them go (js.json's `jscUrl` stays as recorded). `tools/app-tests/run.sh all`: 2,140 unit checks and 321 end-to-end
+  checks pass; `scripts/rust-test.sh` green; `npm test` green.
+- 26 deliberate breaks, each alone (scratch step4-switch/breaks.py and swift_breaks.py): 21 caught. Rust (15, 12
+  caught): the sink not registered by `margin_session_new`, `take_requests` doing nothing, the session's edit refused,
+  the card's Quick Tab and Expand edits dropped, the edit's outcome with no result or no refusal's words, the `edited`
+  input refused or running what's ready, the snapshot's fast path empty, `values` ignoring its collection (caught by a
+  check added for it), the sink told before the observers. Swift (11, 9 caught): the facade not answering what the
+  requests left, the session not taking the requests at its start, `takeLibraryRequests` leaving the sink as it was, the
+  env's ids ignored, the observers or the delegate never told, the snapshot empty, a refusal's words lost, the import
+  not reading the profiles. Missed, and why: `LibraryRef`'s edit refusing (margin-ffi's tests make no session flow that
+  edits; the Swift suite's do, through the same entry), the sink told outside a call with no depth (no port of the
+  stand-ins runs the queue there: commit 5's same miss), the snapshot's fast path dropping its log (no call here writes
+  a store line), the env's clock ignored (the stored times are the second clock's, which the tests read; the env's
+  stamps only `lastUsed`), `edited` ticking at once instead of the next turn (the Swift tests await the session's idle,
+  which hides the turn).
+- Size: Margin.app's binary (`npm run safari -- --no-install --unsigned`, universal) 21,388,928 bytes (arm64 10,051,200,
+  x86_64 11,319,632), at its base (d979dfe2, built the same way from an export of it) 21,336,688 (arm64 10,031,728,
+  x86_64 11,283,360): +52 KB (the facade's callbacks, the session's sink and edit now reachable; the rules were linked
+  since commit 5); the bundle 25,028 KB against 25,048 (library.js's 68,103 bytes gone from Resources/app). The running
+  app's footprint isn't measured (it would open windows on the screen); the library's part is the table's.
+
+## Core refactor step 4, commit 7: a draw is the core's text, nothing of the library parsed or written again (2026-11-24)
+
+- **What Margin's window is pushed is one call of the core's.** `margin_session_state` (Session::state_text over
+  `Library::state_text`, library/snapshot.rs `Parts`): the library's kept snapshot (made once per revision of the set)
+  with the items the session has open moved from `keptTabs` to `tabs` (each its tab as the UI takes it: number,
+  window, place, title, address, icon, `active`, `lastActive`, `mid`, `order`, the pin or favorite it's the tab of and
+  the name the person gave it when they have a value, `audible`, `muted`, `visible`) and `tabSpace` (their spaces), and
+  the profile's `"settings":…,"favicons":…` spliced in before the last brace. The snapshot's text keeps where its open
+  tabs' objects and each kept tab's entry are, so a draw is copies of that text and the few open rows: no JSON parsed,
+  no dictionary, nothing of the library written again. HostedSession `live` and `liveTab`, SessionCore `livePlan` and
+  its row type, `margin_session_live_plan` and `MarginLiveRow` are deleted; `LibraryWindowSource.snapshot` is
+  `stateText()`, and MarginWindowController pushes that text as it is (`stateChanged`, `pageHello`).
+- **The space's theme typed** (`margin_library_space_theme`, Library.swift `spaceTheme(window:)`): the window's space's,
+  else the first space's, none when it has none of its own; MarginWindowController's static `spaceTheme` over the
+  snapshot's dictionary is deleted, the windows' `theme` closure takes the space's theme id, Shell `hostedTheme(spaceTheme:)`.
+- **The profile's settings and site icons as text, kept** (DataSetWindowSource `drawnText`): made again only when what
+  it reads may have changed: any call of the data object's but a read (`DataSync.changes`, counted as the call is made,
+  before its save is written, so a draw between never shows the old text), a setting changed in Margin's window, or
+  another profile picked. Until now every draw read the profile's settings, theme settings and site icons through three
+  JSON calls and wrote them again.
+- **Corrected in the design** (part 6): the state isn't per window. `live` drew the same open items for every window (the
+  session's hosting window's, `live_plan`), so `margin_session_state` takes no window (the design's
+  `margin_session_state(session, window, out_len)`); the theme is the per-window part, typed beside it. And the
+  settings' text goes into the call (`tail`) rather than being spliced by Swift after it: one buffer, no copy of the
+  state's text in Swift.
+- **Behaviour.** The text's values are the ones `live` gave (pinned by a reference transliteration of HostedSession
+  `live`/`liveTab` in snapshot_tests.rs, on hand-made and 400 generated libraries with any items open in any order,
+  rows for items not kept, empty bindings, odd strings, with and without the tail); only the text's spelling differs:
+  keys in one fixed order (the dictionaries' was a per-launch hash order: nothing reads it, `tabs`' keys are numbers,
+  which JS orders itself), numbers as JS writes them, `/` not escaped. The theme chosen per window and the settings
+  drawn are as before.
+- **Faster** (off screen, MARGIN_LIBRARY_BASELINE, commit 0's library, the median of 25, debug Swift and release Rust as
+  `run.sh` builds them; a draw now: the window's source over a session with an app item open, its text, as pushed):
+
+  | Items | A draw (commit 7) | The same draw at commit 6 (snapshot, `live`, settings, `jsonString`) | Commit 6's library part | Commit 0's (JSC) library part | A rename and the draw after it (commit 6) | Footprint after the 125 calls (commit 6) |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | 50 | **0.01 ms** | 1.19 ms | 1.14 ms | 2.8 ms | 0.67 ms (1.92) | ~20 MB (20) |
+  | 500 | **0.07 ms** | 6.98 ms | 6.8 ms | 13.9 ms | 4.15 ms (12.03) | ~75 MB (73) |
+  | 2,000 | **0.26 ms** | 29.37 ms | 25.7 ms | 52.3 ms | 16.2 ms (45.5) | ~330 MB (243–330) |
+
+  What's left of a rename and its draw is the perform (the store's apply: the set cloned, the changed file made) and
+  the snapshot's text made once for the new revision. The footprint is the store's writer's backlog (the next commit's: pending writes coalesced).
+- **Tests.** Rust: snapshot_tests.rs (the state's text against `live`'s transliteration: by hand, the commas at every
+  place an open item can be, 400 generated libraries), object_tests.rs (`space_theme`'s cases, moved from
+  margin-window-tests; `state_text`, `keeps`; each read again inside every call out), routing_tests.rs (the session's
+  `state_text` over the real library with three open items, one not kept), margin-ffi library_tests.rs (the two typed
+  calls, a null session, a buffer too small), routing_cost.rs's draw now `margin_session_state`. Swift: the tests read
+  the draw as the page would (`drawnState`: the state's text parsed), hosted-tests check the settings spliced into what
+  the window is pushed, margin-window-tests the profile's text kept and made again and the space's theme through the
+  facade; e2e-hosted's stand-in source gives text. `tools/app-tests/run.sh all`: 2,145 unit and 321 end-to-end checks;
+  `scripts/rust-test.sh`, `npm test` green.
+- 21 deliberate breaks, each alone (scratch step4-finish/breaks7.py, swift_breaks7.py): 19 caught, and the two missed
+  answered. Rust (14, 12 caught):
+  an open item left kept, a kept entry cut at its comma, `visible` never said, the tail not spliced, the window drawn in
+  not said, the tabs' spaces wrong, the theme ignoring the window, no first space's theme, every open item counted kept
+  (the rows' places), the session drawing no open items, the FFI dropping the tail, the FFI's theme always none; missed:
+  an empty binding written (the state never holds one: `stateOf` keeps a binding only with a value, so the filter was
+  dead and is removed), the snapshot's parts made from another state when a draw is the first to make them after an
+  edit (the tests made the snapshot first; routing_tests.rs now edits and then draws first, and catches it: run again,
+  caught). Swift (7, all caught): the profile's text kept over a data change, over a setting changed here, a read of the
+  data's counted a change, the source or the facade dropping the profile's text, the facade's space theme none, a
+  window drawn again keeping its theme (e2e-glue's theme per space).
+- Swift (app, from a08abad7): 122 lines deleted, 87 added (HostedSession 56 → 10, MarginWindowController 28 → 16,
+  SessionCore 21 → 9; ShellHosted +17 for the kept text, DataSync +7 for its count). Rust: ~250 lines in (~110 out: `live_plan`'s FFI, the old snapshot writer), ~290 of tests.
+
+## The data store's pending writes coalesce: a burst of edits holds one text of each file (2026-11-24)
+
+- **What the switch found** (commit 6's footprint): in a burst of rapid edits the store's background writer (step 1.2's
+  design: memory at once, the files written in order on one writer thread) falls behind, and each save waiting held its
+  files' whole text (the library's edits rewrite the changed collection's file, ~1 MB at 500 items with their icons). At
+  500 items, 200 renames each drawn took the footprint from 105 MB to 357 MB (1.26 MB an edit); written at once it
+  stays at ~30 MB.
+- **Now** (data/store.rs `Job::merge`): a save handed over while the last job waiting for the writer is the same
+  profile's becomes part of that job, as if the two had been one save from its start: each collection's file once, with
+  its newest text, `set.json` last as the newest save has it (its rev, its acked, its time). So however long the burst,
+  what waits is the file being written and one text of each file after it. Only a job not yet taken by the writer is
+  merged into; one being written is left as it is; another profile's save is a job of its own behind it (the order
+  across profiles kept).
+- **Step 1's guarantees kept**:
+  - *What's on disk is what one save at a time leaves*: the same files with the same text once the last write lands,
+    which lands no later (fewer files are written: the burst above writes 3 + 4 files for 21 saves, not 63). The
+    in-between states that are skipped are states a crash could have left anyway.
+  - *`set.json` first with the new rev and the acked from before, then the collections, then `set.json` with the new
+    acked*, so no copy's rev ever names items that aren't on disk: the merged job's first `set.json` has the newest rev
+    with the acked from before the first of its saves (after a first set, none: there's no set until `set.json` lands;
+    after a save that changed no collection, the later save's own first, as written one at a time). `set.json`'s text is
+    made as it's written, from those.
+  - *A save's result only once it's on disk*: each save keeps its ticket and its own rev, and its result (`take_done`, in
+    order) comes once the job with its text is written: the sync's follow-ups (an ack, the changes sent, a carry) run
+    as before, for each save, never earlier. A merged save's own rev was never on disk by itself; its ack still names it
+    (the copy took the set at that rev), and a later relink on it finds the set moved on and is answered as any newer
+    set (the lost changes, the set): the same as when a later save had been made before the ack, which was already so.
+  - *A failed write forgets the profile's memory*: a merged job that fails fails each of its saves (each its line), and
+    the set is read again from disk. One at a time, the saves before the failing one would have been kept; merged,
+    they're lost with it (none of them was confirmed to a copy). Accepted: a disk that fails one write mid-burst is the
+    case, and nothing was said to be saved.
+  - A test's crash (`crash_after_writes`, which counts files one save at a time) merges nothing.
+- **Measured** (off screen, MARGIN_LIBRARY_BASELINE, two rounds, the larger kept): the burst's highest footprint at 50 /
+  500 / 2,000 items **13.7 / 33.9 / 186 MB** (0.01–0.03 MB an edit), was 53.7 / 357 / 466 MB (0.16 / 1.26 / 0.81 MB an
+  edit); after the baseline's first 75 calls 11.4 / 24.6 / 184 MB (was 16.3 / 71.5 / 301; commit 0's JavaScriptCore
+  library 22 / 53 / 354). A perform, a draw: unchanged (3.5 ms, 0.07 ms at 500).
+- **Tests.** store.rs: 21 saves while the writer is held at its wake (a gate in the test's wake, no wait of a time): the
+  20 waiting are one job, each file once in the order first changed, `set.json` first with the acked from before them,
+  another profile's save a job behind, each save's result in order with its own rev, the files on disk the newest, 10
+  files written for 23 saves; `set.json`'s first write after a first set, after an acked alone, before one; nothing
+  merged under a test's crash; `written_in_the_background_in_order` now waits for the writer (its three quick saves are
+  written together, so it's woken once, not three times). The sync's tests (data-merge vectors, links, carries) pass
+  unchanged over the background store. 9 deliberate breaks, each alone (scratch step4-finish/breaks7a.py): all caught
+  (a file's older text kept, a merged file written twice, `set.json`'s first always the later save's, or dropped after
+  an acked alone, the older rev last, the later saves' results lost, another profile's save merged, merged under a
+  test's crash, nothing merged).
+
+## Core refactor step 4, commit 8: step 4 done, the library's rules margin-core's (2026-11-24)
+
+- **The rule** ("Margin.app owns the spaces: the library", 2026-11-15, its rules paragraph replaced): the library's
+  rules are margin-core's; library.ts is the shared vectors' reference and the extension's own rules' companion while
+  the browsers' copies own their spaces, built into nothing (its header says so; `buildLibraryScript` builds
+  library.js for the vectors' recorder only, since commit 6).
+- **The test-only app API**: `Library.store(_:at:)` (values stored as given, no rule run) is out of the app: the
+  tests' own, over the core's `apply` call through `corePointer` (library-tests.swift for the unit checks,
+  e2e-hosted.swift for the end-to-end ones), since only tests store values in shapes the rules may never write (an
+  older Margin's, odd types: session-rules-tests' last items, margin-window-tests' themes) or 2,000 items at once (the
+  baseline); the app has no way past the rules now. HostedSession `request(_:)` is kept: it's the session's `library`
+  input, which the core keeps for request shapes the rules never make, and session-rules-tests pins the session's
+  handling of them through it (a pin or favorite with no item and no address: said, nothing shown); it needs the
+  facade's private `drive`, so it can't move to the tests without opening that. Not called by the app.
+- docs/CORE-REFACTOR.md: "Step 4: done (2026-11-24)" (what moved, what stayed and why, the totals, each commit's
+  results and breaks, what's open), the order table's rows 7, 7a and 8 done.
+- Not run here: the screen suite, an install, `npm run gate` (Tirth's). `tools/app-tests/run.sh all`,
+  `scripts/rust-test.sh`, `npm test` and the quick tests green.

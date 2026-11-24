@@ -13,12 +13,9 @@ func peekSessionTests() {
     let echo = Diagnostics.echo
     Diagnostics.echo = { _ in }
     defer { Diagnostics.echo = echo }
-    let scriptPath = ProcessInfo.processInfo.environment["MARGIN_LIBRARY_JS"] ?? "../../dist/app/library.js"
     let dataRoot = tempFolder("peek-session")
     defer { try? FileManager.default.removeItem(at: dataRoot) }
-    guard let library = Library.open(dataRoot: dataRoot, script: URL(fileURLWithPath: scriptPath), background: false) else {
-        return check("peek session: the library opens (\(scriptPath): npm run build)", false)
-    }
+    let library = Library.open(dataRoot: dataRoot, background: false)
     var n = 0
     library.randomIds = { (0..<4).map { _ in n += 1; return "p\(n)x" } }
     let w = FakeHostWorld()
@@ -40,7 +37,6 @@ func peekSessionTests() {
     engine.hostedWindow = { session.hosted($0) }
     engine.loading = { session.loading($0) }
     engine.hostedWindows = { session.hostedWindows($0) }
-    library.delegate = session
     var copyWindows: [Int: Int] = [:]
     links.onNewWindow = { id, _ in
         guard let pid = w.running(bundleId: "com.apple.Safari").first?.pid else { return }
@@ -103,7 +99,7 @@ func peekSessionTests() {
           said.count >= 2 && (said.first?["peek"] as? JSONObject)?["loading"] as? Bool == true && (said.last?["peek"] as? JSONObject)?["loading"] as? Bool == false
           && (said.last?["peek"] as? JSONObject)?["url"] as? String == "https://docs.example.org/guide", "\(said)")
     check("peek session: the card's first open never puts the page card's loader over main", window.loadings.count == lmark && window.loading == nil, "\(window.loadings.dropFirst(lmark))")
-    let live = session.live(library.snapshot())
+    let live = drawnState(session)
     let tabs = ((live["openTabs"] as? JSONObject)?["tabs"] as? JSONObject) ?? [:]
     check("peek session: the sidebar: the item under the card still highlighted, the card no row of its own (not the space's)",
           (tabs[String(session.number(ofItem: bItem))] as? JSONObject)?["active"] as? Bool == true && tabs.count == 2 && library.items(space: home).count == 2, "\(tabs.keys)")

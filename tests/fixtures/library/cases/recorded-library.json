@@ -1,0 +1,424 @@
+{
+  "about": "tests/library.test.ts's calls of library.ts, as the test made them (npm run library:vectors).",
+  "from": "recorded",
+  "cases": [
+    {
+      "about": "library.test.ts: library: spaces are created, renamed, given a profile, ordered, and the last one stays",
+      "values": {
+        "spaces": {"a":{"name":"A","emoji":"🅰️","color":"#111111","order":0,"browser":"safari","profile":"s-default"}},
+        "pins": {},
+        "favorites": {},
+        "airTraffic": {},
+        "splits": {},
+        "folders": {},
+        "tabs": {},
+        "archive": {},
+        "windows": {},
+        "imports": {}
+      },
+      "steps": [
+      {"perform":"createSpace","payload":{"windowId":7,"name":"  Work ","emoji":"💼"},"env":{"now":1002,"ids":["id1x","id2x","id3x","zq000001x","zq000002x"]},"expect":{"ok":true,"result":{"spaceId":"sp-id1x"},"changes":[{"collection":"spaces","id":"sp-id1x","value":{"name":"Work","emoji":"💼","color":"#00b894","order":1,"browser":"safari","profile":"s-default"}},{"collection":"windows","id":"7","value":{"spaceId":"sp-id1x"}}],"requests":[]}},
+      {"perform":"createSpace","payload":{"name":"Other","profile":null},"env":{"now":1003,"ids":["id4x","id5x","id6x","zq000049x","zq000050x"]},"expect":{"ok":true,"result":{"spaceId":"sp-id4x"},"changes":[{"collection":"spaces","id":"sp-id4x","value":{"name":"Other","emoji":"✨","color":"#00b894","order":2,"browser":"safari","profile":null}}],"requests":[]}},
+      {"perform":"renameSpace","payload":{"spaceId":"sp-id1x","name":"Job","color":"#222222"},"env":{"now":1004,"ids":["id7x","id8x","id9x","zq000097x","zq000098x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"spaces","id":"sp-id1x","value":{"name":"Job","emoji":"💼","color":"#222222","order":1,"browser":"safari","profile":"s-default"}}],"requests":[]}},
+      {"perform":"setSpaceProfile","payload":{"spaceId":"sp-id1x","profile":"s-1234"},"env":{"now":1005,"ids":["id10x","id11x","id12x","zq000145x","zq000146x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"spaces","id":"sp-id1x","value":{"name":"Job","emoji":"💼","color":"#222222","order":1,"browser":"safari","profile":"s-1234"}}],"requests":[]}},
+      {"perform":"orderSpaces","payload":{"spaceIds":["sp-id4x","a"]},"env":{"now":1006,"ids":["id13x","id14x","id15x","zq000193x","zq000194x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"spaces","id":"a","value":{"name":"A","emoji":"🅰️","color":"#111111","order":1,"browser":"safari","profile":"s-default"}},{"collection":"spaces","id":"sp-id1x","value":{"name":"Job","emoji":"💼","color":"#222222","order":2,"browser":"safari","profile":"s-1234"}},{"collection":"spaces","id":"sp-id4x","value":{"name":"Other","emoji":"✨","color":"#00b894","order":0,"browser":"safari","profile":null}}],"requests":[]}},
+      {"perform":"deleteSpace","payload":{"spaceId":"sp-id1x"},"env":{"now":1007,"ids":["id16x","id17x","id18x","zq000241x","zq000242x"]},"expect":{"ok":true,"result":{"into":"sp-id4x"},"changes":[{"collection":"spaces","id":"sp-id1x","deleted":true},{"collection":"windows","id":"7","value":{"spaceId":"sp-id4x"}}],"requests":[]}},
+      {"perform":"deleteSpace","payload":{"spaceId":"sp-id4x"},"env":{"now":1008,"ids":["id19x","id20x","id21x","zq000289x","zq000290x"]},"expect":{"ok":true,"result":{"into":"a"},"changes":[{"collection":"spaces","id":"a","value":{"name":"A","emoji":"🅰️","color":"#111111","order":0,"browser":"safari","profile":"s-default"}},{"collection":"spaces","id":"sp-id4x","deleted":true},{"collection":"windows","id":"7","value":{"spaceId":"a"}}],"requests":[]}},
+      {"perform":"deleteSpace","payload":{"spaceId":"a"},"env":{"now":1009,"ids":["id22x","id23x","id24x","zq000337x","zq000338x"]},"expect":{"ok":false,"result":null,"error":"the last space","changes":[],"requests":[]}}
+      ]
+    },
+    {
+      "about": "library.test.ts: library: a space's theme: the one it was made from by default, as asked, changed, cleared, kept in the set",
+      "values": {
+        "spaces": {"a":{"name":"A","order":0,"theme":"pixel"},"b":{"name":"B","order":1}},
+        "pins": {},
+        "favorites": {},
+        "airTraffic": {},
+        "splits": {},
+        "folders": {},
+        "tabs": {},
+        "archive": {},
+        "windows": {},
+        "imports": {}
+      },
+      "steps": [
+      {"perform":"setSpace","payload":{"windowId":7,"spaceId":"a"},"env":{"now":1002,"ids":["id1x","id2x","id3x","zq000385x","zq000386x"]},"expect":{"ok":true,"result":{"spaceId":"a","shown":null},"changes":[{"collection":"windows","id":"7","value":{"spaceId":"a"}}],"requests":[{"type":"setSpace","windowId":7,"spaceId":"a","item":null}]}},
+      {"perform":"createSpace","payload":{"windowId":7,"name":"From A"},"env":{"now":1003,"ids":["id4x","id5x","id6x","zq000433x","zq000434x"]},"expect":{"ok":true,"result":{"spaceId":"sp-id4x"},"changes":[{"collection":"spaces","id":"sp-id4x","value":{"name":"From A","emoji":"✨","color":"#00b894","order":2,"browser":"safari","profile":null,"theme":"pixel"}},{"collection":"windows","id":"7","value":{"spaceId":"sp-id4x"}}],"requests":[]}},
+      {"perform":"createSpace","payload":{"windowId":7,"name":"Asked","theme":"material"},"env":{"now":1004,"ids":["id7x","id8x","id9x","zq000481x","zq000482x"]},"expect":{"ok":true,"result":{"spaceId":"sp-id7x"},"changes":[{"collection":"spaces","id":"sp-id7x","value":{"name":"Asked","emoji":"✨","color":"#00b894","order":3,"browser":"safari","profile":null,"theme":"material"}},{"collection":"windows","id":"7","value":{"spaceId":"sp-id7x"}}],"requests":[]}},
+      {"perform":"setSpace","payload":{"windowId":7,"spaceId":"b"},"env":{"now":1005,"ids":["id10x","id11x","id12x","zq000529x","zq000530x"]},"expect":{"ok":true,"result":{"spaceId":"b","shown":null},"changes":[{"collection":"windows","id":"7","value":{"spaceId":"b"}}],"requests":[{"type":"setSpace","windowId":7,"spaceId":"b","item":null}]}},
+      {"perform":"createSpace","payload":{"windowId":7,"name":"From B"},"env":{"now":1006,"ids":["id13x","id14x","id15x","zq000577x","zq000578x"]},"expect":{"ok":true,"result":{"spaceId":"sp-id13x"},"changes":[{"collection":"spaces","id":"sp-id13x","value":{"name":"From B","emoji":"✨","color":"#00b894","order":4,"browser":"safari","profile":null}},{"collection":"windows","id":"7","value":{"spaceId":"sp-id13x"}}],"requests":[]}},
+      {"perform":"renameSpace","payload":{"spaceId":"sp-id13x","name":"Renamed","theme":"liquid-glass"},"env":{"now":1007,"ids":["id16x","id17x","id18x","zq000625x","zq000626x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"spaces","id":"sp-id13x","value":{"name":"Renamed","emoji":"✨","color":"#00b894","order":4,"browser":"safari","profile":null,"theme":"liquid-glass"}}],"requests":[]}},
+      {"perform":"renameSpace","payload":{"spaceId":"sp-id13x","name":"Again"},"env":{"now":1008,"ids":["id19x","id20x","id21x","zq000673x","zq000674x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"spaces","id":"sp-id13x","value":{"name":"Again","emoji":"✨","color":"#00b894","order":4,"browser":"safari","profile":null,"theme":"liquid-glass"}}],"requests":[]}},
+      {"perform":"setSpaceTheme","payload":{"spaceId":"sp-id13x","theme":"neubrutalism"},"env":{"now":1009,"ids":["id22x","id23x","id24x","zq000721x","zq000722x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"spaces","id":"sp-id13x","value":{"name":"Again","emoji":"✨","color":"#00b894","order":4,"browser":"safari","profile":null,"theme":"neubrutalism"}}],"requests":[]}},
+      {"perform":"setSpaceTheme","payload":{"spaceId":"sp-id13x","theme":null},"env":{"now":1010,"ids":["id25x","id26x","id27x","zq000769x","zq000770x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"spaces","id":"sp-id13x","value":{"name":"Again","emoji":"✨","color":"#00b894","order":4,"browser":"safari","profile":null}}],"requests":[]}},
+      {"perform":"setSpaceTheme","payload":{"spaceId":"sp-id13x","theme":"Not An Id!"},"env":{"now":1011,"ids":["id28x","id29x","id30x","zq000817x","zq000818x"]},"expect":{"ok":false,"result":null,"error":"not a theme id","changes":[],"requests":[]}},
+      {"perform":"setSpaceTheme","payload":{"spaceId":"nope","theme":"pixel"},"env":{"now":1012,"ids":["id31x","id32x","id33x","zq000865x","zq000866x"]},"expect":{"ok":false,"result":null,"error":"no such space","changes":[],"requests":[]}},
+      {"perform":"createSpace","payload":{"name":"Odd","theme":"../x"},"env":{"now":1013,"ids":["id34x","id35x","id36x","zq000913x","zq000914x"]},"expect":{"ok":true,"result":{"spaceId":"sp-id34x"},"changes":[{"collection":"spaces","id":"sp-id34x","value":{"name":"Odd","emoji":"✨","color":"#00b894","order":5,"browser":"safari","profile":null,"theme":"pixel"}}],"requests":[]}},
+      {"snapshot":true,"expect":{"library":{"v":1,"imported":false},"spaces":[{"id":"a","name":"A","emoji":"","color":"","browser":"safari","profile":null,"theme":"pixel"},{"id":"b","name":"B","emoji":"","color":"","browser":"safari","profile":null},{"id":"sp-id4x","name":"From A","emoji":"✨","color":"#00b894","browser":"safari","profile":null,"theme":"pixel"},{"id":"sp-id7x","name":"Asked","emoji":"✨","color":"#00b894","browser":"safari","profile":null,"theme":"material"},{"id":"sp-id13x","name":"Again","emoji":"✨","color":"#00b894","browser":"safari","profile":null},{"id":"sp-id34x","name":"Odd","emoji":"✨","color":"#00b894","browser":"safari","profile":null,"theme":"pixel"}],"pins":[],"favorites":[],"airTraffic":[],"splits":[],"folders":[],"archive":[],"openTabs":{"origin":"margin-app","since":0,"synced":true,"tabs":{},"tabSpace":{},"activeSpaceByWindow":{"7":"sp-id13x"},"awayByWindow":{},"keptTabs":{}}}}
+      ]
+    },
+    {
+      "about": "library.test.ts: library: deleting a space moves its items, pins, folders, archive and windows to the first space left",
+      "values": {
+        "spaces": {"a":{"name":"A","order":0},"b":{"name":"B","order":1}},
+        "pins": {},
+        "favorites": {},
+        "airTraffic": {},
+        "splits": {},
+        "folders": {},
+        "tabs": {},
+        "archive": {},
+        "windows": {},
+        "imports": {}
+      },
+      "steps": [
+      {"perform":"setSpace","payload":{"windowId":1,"spaceId":"b"},"env":{"now":1002,"ids":["id1x","id2x","id3x","zq000961x","zq000962x"]},"expect":{"ok":true,"result":{"spaceId":"b","shown":null},"changes":[{"collection":"windows","id":"1","value":{"spaceId":"b"}}],"requests":[{"type":"setSpace","windowId":1,"spaceId":"b","item":null}]}},
+      {"perform":"newTab","payload":{"windowId":1,"url":"https://b.example/"},"env":{"now":1003,"ids":["id4x","id5x","id6x","zq001009x","zq001010x"]},"expect":{"ok":true,"result":{"tabId":"t-id4x"},"changes":[{"collection":"tabs","id":"t-id4x","value":{"url":"https://b.example/","title":"https://b.example/","icon":"","spaceId":"b","order":0,"lastUsed":1003,"selected":true,"target":{"kind":"web","browser":"safari","profile":null}}}],"requests":[{"type":"newTab","windowId":1,"item":"t-id4x","url":"https://b.example/","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"b"}]}},
+      {"perform":"addItem","payload":{"windowId":1,"target":{"kind":"app","bundleId":"com.apple.Notes","name":"Notes"}},"env":{"now":1004,"ids":["id7x","id8x","id9x","zq001057x","zq001058x"]},"expect":{"ok":true,"result":{"tabId":"t-id7x"},"changes":[{"collection":"tabs","id":"t-id7x","value":{"url":"app://com.apple.Notes","title":"Notes","icon":"","spaceId":"b","order":1,"lastUsed":1004,"selected":false,"target":{"kind":"app","bundleId":"com.apple.Notes","name":"Notes"}}}],"requests":[]}},
+      {"perform":"newTab","payload":{"windowId":1,"url":"https://pin.example/"},"env":{"now":1005,"ids":["id10x","id11x","id12x","zq001105x","zq001106x"]},"expect":{"ok":true,"result":{"tabId":"t-id10x"},"changes":[{"collection":"tabs","id":"t-id10x","value":{"url":"https://pin.example/","title":"https://pin.example/","icon":"","spaceId":"b","order":2,"lastUsed":1005,"selected":true,"target":{"kind":"web","browser":"safari","profile":null}}},{"collection":"tabs","id":"t-id4x","value":{"url":"https://b.example/","title":"https://b.example/","icon":"","spaceId":"b","order":0,"lastUsed":1003,"selected":false,"target":{"kind":"web","browser":"safari","profile":null}}}],"requests":[{"type":"newTab","windowId":1,"item":"t-id10x","url":"https://pin.example/","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"b"}]}},
+      {"perform":"pinTab","payload":{"tabId":"t-id10x"},"env":{"now":1006,"ids":["id13x","id14x","id15x","zq001153x","zq001154x"]},"expect":{"ok":true,"result":"p-id13x","changes":[{"collection":"pins","id":"p-id13x","value":{"spaceId":"b","url":"https://pin.example/","title":"https://pin.example/","folderId":null,"pos":0,"target":{"kind":"web","browser":"safari","profile":null}}},{"collection":"tabs","id":"t-id10x","value":{"url":"https://pin.example/","title":"https://pin.example/","icon":"","spaceId":"b","order":2,"lastUsed":1005,"selected":true,"target":{"kind":"web","browser":"safari","profile":null},"pinnedBy":"p-id13x"}}],"requests":[]}},
+      {"perform":"createFolder","payload":{"windowId":1,"name":"F","pinIds":["p-id13x"]},"env":{"now":1007,"ids":["id16x","id17x","id18x","zq001201x","zq001202x"]},"expect":{"ok":true,"result":"f-id16x","changes":[{"collection":"pins","id":"p-id13x","value":{"spaceId":"b","url":"https://pin.example/","title":"https://pin.example/","folderId":"f-id16x","pos":0,"target":{"kind":"web","browser":"safari","profile":null}}},{"collection":"folders","id":"f-id16x","value":{"spaceId":"b","name":"F","open":true,"pos":0}}],"requests":[]}},
+      {"perform":"newTab","payload":{"windowId":1,"url":"https://gone.example/"},"env":{"now":1008,"ids":["id19x","id20x","id21x","zq001249x","zq001250x"]},"expect":{"ok":true,"result":{"tabId":"t-id19x"},"changes":[{"collection":"tabs","id":"t-id10x","value":{"url":"https://pin.example/","title":"https://pin.example/","icon":"","spaceId":"b","order":2,"lastUsed":1005,"selected":false,"target":{"kind":"web","browser":"safari","profile":null},"pinnedBy":"p-id13x"}},{"collection":"tabs","id":"t-id19x","value":{"url":"https://gone.example/","title":"https://gone.example/","icon":"","spaceId":"b","order":3,"lastUsed":1008,"selected":true,"target":{"kind":"web","browser":"safari","profile":null}}}],"requests":[{"type":"newTab","windowId":1,"item":"t-id19x","url":"https://gone.example/","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"b"}]}},
+      {"perform":"closeTab","payload":{"tabId":"t-id19x"},"env":{"now":1009,"ids":["id22x","id23x","id24x","zq001297x","zq001298x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"tabs","id":"t-id19x","deleted":true},{"collection":"archive","id":"a-id22x","value":{"url":"https://gone.example/","title":"https://gone.example/","spaceId":"b","icon":"","closedAt":1009,"target":{"kind":"web","browser":"safari","profile":null}}}],"requests":[{"type":"closeTab","item":"t-id19x","url":"https://gone.example/","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"b","next":"t-id10x"}]}},
+      {"perform":"deleteSpace","payload":{"spaceId":"b"},"env":{"now":1010,"ids":["id25x","id26x","id27x","zq001345x","zq001346x"]},"expect":{"ok":true,"result":{"into":"a"},"changes":[{"collection":"spaces","id":"b","deleted":true},{"collection":"pins","id":"p-id13x","value":{"spaceId":"a","url":"https://pin.example/","title":"https://pin.example/","folderId":"f-id16x","pos":0,"target":{"kind":"web","browser":"safari","profile":null}}},{"collection":"folders","id":"f-id16x","value":{"spaceId":"a","name":"F","open":true,"pos":0}},{"collection":"tabs","id":"t-id10x","value":{"url":"https://pin.example/","title":"https://pin.example/","icon":"","spaceId":"a","order":2,"lastUsed":1005,"selected":false,"target":{"kind":"web","browser":"safari","profile":null},"pinnedBy":"p-id13x"}},{"collection":"tabs","id":"t-id4x","value":{"url":"https://b.example/","title":"https://b.example/","icon":"","spaceId":"a","order":0,"lastUsed":1003,"selected":false,"target":{"kind":"web","browser":"safari","profile":null}}},{"collection":"tabs","id":"t-id7x","value":{"url":"app://com.apple.Notes","title":"Notes","icon":"","spaceId":"a","order":1,"lastUsed":1004,"selected":false,"target":{"kind":"app","bundleId":"com.apple.Notes","name":"Notes"}}},{"collection":"archive","id":"a-id22x","value":{"url":"https://gone.example/","title":"https://gone.example/","spaceId":"a","icon":"","closedAt":1009,"target":{"kind":"web","browser":"safari","profile":null}}},{"collection":"windows","id":"1","value":{"spaceId":"a"}}],"requests":[]}}
+      ]
+    },
+    {
+      "about": "library.test.ts: library: items: web or app, moved, ordered, pinned, and the hosting asked for what needs a browser",
+      "values": {
+        "spaces": {"a":{"name":"A","order":0,"browser":"safari","profile":"s-work"},"b":{"name":"B","order":1}},
+        "pins": {},
+        "favorites": {},
+        "airTraffic": {},
+        "splits": {},
+        "folders": {},
+        "tabs": {},
+        "archive": {},
+        "windows": {},
+        "imports": {}
+      },
+      "steps": [
+      {"perform":"newTab","payload":{"windowId":3,"url":"https://one.example/"},"env":{"now":1002,"ids":["id1x","id2x","id3x","zq001393x","zq001394x"]},"expect":{"ok":true,"result":{"tabId":"t-id1x"},"changes":[{"collection":"tabs","id":"t-id1x","value":{"url":"https://one.example/","title":"https://one.example/","icon":"","spaceId":"a","order":0,"lastUsed":1002,"selected":true,"target":{"kind":"web","browser":"safari","profile":"s-work"}}},{"collection":"windows","id":"3","value":{"spaceId":"a"}}],"requests":[{"type":"newTab","windowId":3,"item":"t-id1x","url":"https://one.example/","target":{"kind":"web","browser":"safari","profile":"s-work"},"spaceId":"a"}]}},
+      {"perform":"newTab","payload":{"windowId":3},"env":{"now":1003,"ids":["id4x","id5x","id6x","zq001441x","zq001442x"]},"expect":{"ok":false,"result":null,"error":"no address","changes":[],"requests":[]}},
+      {"perform":"newTab","payload":{"windowId":3,"url":"https://two.example/"},"env":{"now":1004,"ids":["id7x","id8x","id9x","zq001489x","zq001490x"]},"expect":{"ok":true,"result":{"tabId":"t-id7x"},"changes":[{"collection":"tabs","id":"t-id1x","value":{"url":"https://one.example/","title":"https://one.example/","icon":"","spaceId":"a","order":0,"lastUsed":1002,"selected":false,"target":{"kind":"web","browser":"safari","profile":"s-work"}}},{"collection":"tabs","id":"t-id7x","value":{"url":"https://two.example/","title":"https://two.example/","icon":"","spaceId":"a","order":1,"lastUsed":1004,"selected":true,"target":{"kind":"web","browser":"safari","profile":"s-work"}}}],"requests":[{"type":"newTab","windowId":3,"item":"t-id7x","url":"https://two.example/","target":{"kind":"web","browser":"safari","profile":"s-work"},"spaceId":"a"}]}},
+      {"perform":"activateTab","payload":{"tabId":"t-id1x","windowId":3},"env":{"now":1005,"ids":["id10x","id11x","id12x","zq001537x","zq001538x"]},"expect":{"ok":true,"result":{"shown":"t-id1x"},"changes":[{"collection":"tabs","id":"t-id1x","value":{"url":"https://one.example/","title":"https://one.example/","icon":"","spaceId":"a","order":0,"lastUsed":1005,"selected":true,"target":{"kind":"web","browser":"safari","profile":"s-work"}}},{"collection":"tabs","id":"t-id7x","value":{"url":"https://two.example/","title":"https://two.example/","icon":"","spaceId":"a","order":1,"lastUsed":1004,"selected":false,"target":{"kind":"web","browser":"safari","profile":"s-work"}}}],"requests":[{"type":"activateTab","windowId":3,"item":"t-id1x","url":"https://one.example/","target":{"kind":"web","browser":"safari","profile":"s-work"},"spaceId":"a"}]}},
+      {"perform":"moveTab","payload":{"tabId":"t-id1x","nextTo":"t-id7x","side":"before"},"env":{"now":1006,"ids":["id13x","id14x","id15x","zq001585x","zq001586x"]},"expect":{"ok":true,"result":true,"changes":[{"collection":"tabs","id":"t-id1x","value":{"url":"https://one.example/","title":"https://one.example/","icon":"","spaceId":"a","order":2,"lastUsed":1005,"selected":true,"target":{"kind":"web","browser":"safari","profile":"s-work"}}}],"requests":[]}},
+      {"perform":"addItem","payload":{"spaceId":"b","target":{"kind":"app","bundleId":"com.apple.Notes","name":"Notes"}},"env":{"now":1007,"ids":["id16x","id17x","id18x","zq001633x","zq001634x"]},"expect":{"ok":true,"result":{"tabId":"t-id16x"},"changes":[{"collection":"tabs","id":"t-id16x","value":{"url":"app://com.apple.Notes","title":"Notes","icon":"","spaceId":"b","order":3,"lastUsed":1007,"selected":false,"target":{"kind":"app","bundleId":"com.apple.Notes","name":"Notes"}}}],"requests":[]}},
+      {"perform":"addItem","payload":{"target":{"kind":"app","bundleId":"../x"}},"env":{"now":1008,"ids":["id19x","id20x","id21x","zq001681x","zq001682x"]},"expect":{"ok":false,"result":null,"error":"no address","changes":[],"requests":[]}},
+      {"perform":"moveTabToSpace","payload":{"tabId":"t-id7x","spaceId":"b"},"env":{"now":1009,"ids":["id22x","id23x","id24x","zq001729x","zq001730x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"tabs","id":"t-id7x","value":{"url":"https://two.example/","title":"https://two.example/","icon":"","spaceId":"b","order":1,"lastUsed":1004,"selected":false,"target":{"kind":"web","browser":"safari","profile":"s-work"}}}],"requests":[]}},
+      {"perform":"updateItem","payload":{"tabId":"t-id7x","url":"https://two.example/next","title":"Next","icon":"data:image/png;base64,AA=="},"env":{"now":1010,"ids":["id25x","id26x","id27x","zq001777x","zq001778x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"tabs","id":"t-id7x","value":{"url":"https://two.example/next","title":"Next","icon":"data:image/png;base64,AA==","spaceId":"b","order":1,"lastUsed":1004,"selected":false,"target":{"kind":"web","browser":"safari","profile":"s-work"}}}],"requests":[]}},
+      {"perform":"updateItem","payload":{"tabId":"t-id16x","url":"https://x.example/"},"env":{"now":1011,"ids":["id28x","id29x","id30x","zq001825x","zq001826x"]},"expect":{"ok":true,"result":null,"changes":[],"requests":[]}},
+      {"perform":"pinTab","payload":{"tabId":"t-id16x"},"env":{"now":1012,"ids":["id31x","id32x","id33x","zq001873x","zq001874x"]},"expect":{"ok":true,"result":"p-id31x","changes":[{"collection":"pins","id":"p-id31x","value":{"spaceId":"b","url":"app://com.apple.Notes","title":"Notes","folderId":null,"pos":0,"target":{"kind":"app","bundleId":"com.apple.Notes","name":"Notes"}}},{"collection":"tabs","id":"t-id16x","value":{"url":"app://com.apple.Notes","title":"Notes","icon":"","spaceId":"b","order":3,"lastUsed":1007,"selected":false,"target":{"kind":"app","bundleId":"com.apple.Notes","name":"Notes"},"pinnedBy":"p-id31x"}}],"requests":[]}},
+      {"perform":"openPin","payload":{"pinId":"p-id31x","windowId":3},"env":{"now":1013,"ids":["id34x","id35x","id36x","zq001921x","zq001922x"]},"expect":{"ok":true,"result":{"pin":"p-id31x","item":"t-id16x"},"changes":[{"collection":"tabs","id":"t-id16x","value":{"url":"app://com.apple.Notes","title":"Notes","icon":"","spaceId":"b","order":3,"lastUsed":1013,"selected":true,"target":{"kind":"app","bundleId":"com.apple.Notes","name":"Notes"},"pinnedBy":"p-id31x"}},{"collection":"windows","id":"3","value":{"spaceId":"b"}}],"requests":[{"type":"openPin","windowId":3,"pin":"p-id31x","item":"t-id16x","url":"app://com.apple.Notes","target":{"kind":"app","bundleId":"com.apple.Notes","name":"Notes"},"spaceId":"b"}]}},
+      {"perform":"unpin","payload":{"pinId":"p-id31x"},"env":{"now":1014,"ids":["id37x","id38x","id39x","zq001969x","zq001970x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"pins","id":"p-id31x","deleted":true},{"collection":"tabs","id":"t-id16x","value":{"url":"app://com.apple.Notes","title":"Notes","icon":"","spaceId":"b","order":3,"lastUsed":1013,"selected":true,"target":{"kind":"app","bundleId":"com.apple.Notes","name":"Notes"}}}],"requests":[{"type":"unpin","pin":"p-id31x","url":"app://com.apple.Notes","target":{"kind":"app","bundleId":"com.apple.Notes","name":"Notes"},"spaceId":"b"}]}}
+      ]
+    },
+    {
+      "about": "library.test.ts: library: closing: a web item to the archive with its target, an app item forgotten, the next one named",
+      "values": {
+        "spaces": {"a":{"name":"A","order":0,"profile":"s-p"}},
+        "pins": {},
+        "favorites": {},
+        "airTraffic": {},
+        "splits": {},
+        "folders": {},
+        "tabs": {},
+        "archive": {},
+        "windows": {},
+        "imports": {}
+      },
+      "steps": [
+      {"perform":"newTab","payload":{"windowId":1,"url":"https://one.example/"},"env":{"now":1002,"ids":["id1x","id2x","id3x","zq002017x","zq002018x"]},"expect":{"ok":true,"result":{"tabId":"t-id1x"},"changes":[{"collection":"tabs","id":"t-id1x","value":{"url":"https://one.example/","title":"https://one.example/","icon":"","spaceId":"a","order":0,"lastUsed":1002,"selected":true,"target":{"kind":"web","browser":"safari","profile":"s-p"}}},{"collection":"windows","id":"1","value":{"spaceId":"a"}}],"requests":[{"type":"newTab","windowId":1,"item":"t-id1x","url":"https://one.example/","target":{"kind":"web","browser":"safari","profile":"s-p"},"spaceId":"a"}]}},
+      {"perform":"newTab","payload":{"windowId":1,"url":"https://two.example/"},"env":{"now":1003,"ids":["id4x","id5x","id6x","zq002065x","zq002066x"]},"expect":{"ok":true,"result":{"tabId":"t-id4x"},"changes":[{"collection":"tabs","id":"t-id1x","value":{"url":"https://one.example/","title":"https://one.example/","icon":"","spaceId":"a","order":0,"lastUsed":1002,"selected":false,"target":{"kind":"web","browser":"safari","profile":"s-p"}}},{"collection":"tabs","id":"t-id4x","value":{"url":"https://two.example/","title":"https://two.example/","icon":"","spaceId":"a","order":1,"lastUsed":1003,"selected":true,"target":{"kind":"web","browser":"safari","profile":"s-p"}}}],"requests":[{"type":"newTab","windowId":1,"item":"t-id4x","url":"https://two.example/","target":{"kind":"web","browser":"safari","profile":"s-p"},"spaceId":"a"}]}},
+      {"perform":"addItem","payload":{"windowId":1,"target":{"kind":"app","bundleId":"com.apple.Music"}},"env":{"now":1004,"ids":["id7x","id8x","id9x","zq002113x","zq002114x"]},"expect":{"ok":true,"result":{"tabId":"t-id7x"},"changes":[{"collection":"tabs","id":"t-id7x","value":{"url":"app://com.apple.Music","title":"com.apple.Music","icon":"","spaceId":"a","order":2,"lastUsed":1004,"selected":false,"target":{"kind":"app","bundleId":"com.apple.Music","name":"com.apple.Music"}}}],"requests":[]}},
+      {"perform":"closeTab","payload":{"tabId":"t-id4x"},"env":{"now":1005,"ids":["id10x","id11x","id12x","zq002161x","zq002162x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"tabs","id":"t-id4x","deleted":true},{"collection":"archive","id":"a-id10x","value":{"url":"https://two.example/","title":"https://two.example/","spaceId":"a","icon":"","closedAt":1005,"target":{"kind":"web","browser":"safari","profile":"s-p"}}}],"requests":[{"type":"closeTab","item":"t-id4x","url":"https://two.example/","target":{"kind":"web","browser":"safari","profile":"s-p"},"spaceId":"a","next":"t-id7x"}]}},
+      {"perform":"closeTab","payload":{"tabId":"t-id7x"},"env":{"now":1006,"ids":["id13x","id14x","id15x","zq002209x","zq002210x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"tabs","id":"t-id7x","deleted":true}],"requests":[{"type":"closeTab","item":"t-id7x","url":"app://com.apple.Music","target":{"kind":"app","bundleId":"com.apple.Music","name":"com.apple.Music"},"spaceId":"a","next":"t-id1x"}]}},
+      {"perform":"restoreArchive","payload":{"archiveId":"a-id10x","windowId":1},"env":{"now":1007,"ids":["id16x","id17x","id18x","zq002257x","zq002258x"]},"expect":{"ok":true,"result":{"tabId":"t-id16x"},"changes":[{"collection":"tabs","id":"t-id16x","value":{"url":"https://two.example/","title":"https://two.example/","icon":"","spaceId":"a","order":1,"lastUsed":1007,"selected":true,"target":{"kind":"web","browser":"safari","profile":"s-p"}}},{"collection":"archive","id":"a-id10x","deleted":true}],"requests":[{"type":"restoreArchive","windowId":1,"item":"t-id16x","url":"https://two.example/","target":{"kind":"web","browser":"safari","profile":"s-p"},"spaceId":"a"}]}},
+      {"perform":"clearToday","payload":{"windowId":1},"env":{"now":1008,"ids":["id19x","id20x","id21x","zq002305x","zq002306x"]},"expect":{"ok":true,"result":["t-id16x","t-id1x"],"changes":[{"collection":"tabs","id":"t-id16x","deleted":true},{"collection":"tabs","id":"t-id1x","deleted":true},{"collection":"archive","id":"a-id19x","value":{"url":"https://two.example/","title":"https://two.example/","spaceId":"a","icon":"","closedAt":1008,"target":{"kind":"web","browser":"safari","profile":"s-p"}}},{"collection":"archive","id":"a-id20x","value":{"url":"https://one.example/","title":"https://one.example/","spaceId":"a","icon":"","closedAt":1008,"target":{"kind":"web","browser":"safari","profile":"s-p"}}}],"requests":[{"type":"clearToday","windowId":1,"spaceId":"a","items":["t-id16x","t-id1x"]}]}},
+      {"perform":"newTab","payload":{"windowId":1,"url":"https://three.example/"},"env":{"now":1009,"ids":["id22x","id23x","id24x","zq002353x","zq002354x"]},"expect":{"ok":true,"result":{"tabId":"t-id22x"},"changes":[{"collection":"tabs","id":"t-id22x","value":{"url":"https://three.example/","title":"https://three.example/","icon":"","spaceId":"a","order":0,"lastUsed":1009,"selected":true,"target":{"kind":"web","browser":"safari","profile":"s-p"}}}],"requests":[{"type":"newTab","windowId":1,"item":"t-id22x","url":"https://three.example/","target":{"kind":"web","browser":"safari","profile":"s-p"},"spaceId":"a"}]}},
+      {"perform":"itemClosed","payload":{"tabId":"t-id22x"},"env":{"now":1010,"ids":["id25x","id26x","id27x","zq002401x","zq002402x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"tabs","id":"t-id22x","deleted":true},{"collection":"archive","id":"a-id25x","value":{"url":"https://three.example/","title":"https://three.example/","spaceId":"a","icon":"","closedAt":1010,"target":{"kind":"web","browser":"safari","profile":"s-p"}}}],"requests":[]}}
+      ]
+    },
+    {
+      "about": "library.test.ts: library: Margin's Settings page as an item of its own (margin://settings): one per space, shown again, never archived or changed by a browser",
+      "values": {
+
+      },
+      "steps": [
+      {"target":{"kind":"margin","page":"settings"},"expect":{"kind":"margin","page":"settings"}},
+      {"target":{"kind":"margin","page":"evil"},"expect":null},
+      {"target":{"kind":"margin"},"expect":null}
+      ]
+    },
+    {
+      "about": "library.test.ts: library: Margin's Settings page as an item of its own (margin://settings): one per space, shown again, never archived or changed by a browser #2",
+      "values": {
+        "spaces": {"a":{"name":"A","order":0},"b":{"name":"B","order":1}},
+        "pins": {},
+        "favorites": {},
+        "airTraffic": {},
+        "splits": {},
+        "folders": {},
+        "tabs": {},
+        "archive": {},
+        "windows": {},
+        "imports": {}
+      },
+      "steps": [
+      {"perform":"openMarginPage","payload":{"windowId":1,"page":"settings"},"env":{"now":1002,"ids":["id1x","id2x","id3x","zq002449x","zq002450x"]},"expect":{"ok":true,"result":{"tabId":"t-id1x"},"changes":[{"collection":"tabs","id":"t-id1x","value":{"url":"margin://settings","title":"Settings","icon":"","spaceId":"a","order":0,"lastUsed":1002,"selected":true,"target":{"kind":"margin","page":"settings"}}},{"collection":"windows","id":"1","value":{"spaceId":"a"}}],"requests":[{"type":"newTab","windowId":1,"item":"t-id1x","url":"margin://settings","target":{"kind":"margin","page":"settings"},"spaceId":"a"}]}},
+      {"perform":"newTab","payload":{"windowId":1,"url":"https://one.example/"},"env":{"now":1003,"ids":["id4x","id5x","id6x","zq002497x","zq002498x"]},"expect":{"ok":true,"result":{"tabId":"t-id4x"},"changes":[{"collection":"tabs","id":"t-id1x","value":{"url":"margin://settings","title":"Settings","icon":"","spaceId":"a","order":0,"lastUsed":1002,"selected":false,"target":{"kind":"margin","page":"settings"}}},{"collection":"tabs","id":"t-id4x","value":{"url":"https://one.example/","title":"https://one.example/","icon":"","spaceId":"a","order":1,"lastUsed":1003,"selected":true,"target":{"kind":"web","browser":"safari","profile":null}}}],"requests":[{"type":"newTab","windowId":1,"item":"t-id4x","url":"https://one.example/","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"a"}]}},
+      {"perform":"openMarginPage","payload":{"windowId":1,"page":"settings"},"env":{"now":1004,"ids":["id7x","id8x","id9x","zq002545x","zq002546x"]},"expect":{"ok":true,"result":{"tabId":"t-id1x"},"changes":[{"collection":"tabs","id":"t-id1x","value":{"url":"margin://settings","title":"Settings","icon":"","spaceId":"a","order":0,"lastUsed":1004,"selected":true,"target":{"kind":"margin","page":"settings"}}},{"collection":"tabs","id":"t-id4x","value":{"url":"https://one.example/","title":"https://one.example/","icon":"","spaceId":"a","order":1,"lastUsed":1003,"selected":false,"target":{"kind":"web","browser":"safari","profile":null}}}],"requests":[{"type":"activateTab","windowId":1,"item":"t-id1x","url":"margin://settings","target":{"kind":"margin","page":"settings"},"spaceId":"a"}]}},
+      {"perform":"openMarginPage","payload":{"windowId":1,"page":"nope"},"env":{"now":1005,"ids":["id10x","id11x","id12x","zq002593x","zq002594x"]},"expect":{"ok":false,"result":null,"error":"no such page","changes":[],"requests":[]}},
+      {"perform":"updateItem","payload":{"tabId":"t-id1x","url":"https://elsewhere.example/","title":"Elsewhere","icon":"data:image/png;base64,AA"},"env":{"now":1006,"ids":["id13x","id14x","id15x","zq002641x","zq002642x"]},"expect":{"ok":true,"result":null,"changes":[],"requests":[]}},
+      {"perform":"setSpace","payload":{"windowId":1,"spaceId":"b"},"env":{"now":1007,"ids":["id16x","id17x","id18x","zq002689x","zq002690x"]},"expect":{"ok":true,"result":{"spaceId":"b","shown":null},"changes":[{"collection":"windows","id":"1","value":{"spaceId":"b"}}],"requests":[{"type":"setSpace","windowId":1,"spaceId":"b","item":null}]}},
+      {"perform":"openMarginPage","payload":{"windowId":1,"page":"settings"},"env":{"now":1008,"ids":["id19x","id20x","id21x","zq002737x","zq002738x"]},"expect":{"ok":true,"result":{"tabId":"t-id19x"},"changes":[{"collection":"tabs","id":"t-id19x","value":{"url":"margin://settings","title":"Settings","icon":"","spaceId":"b","order":2,"lastUsed":1008,"selected":true,"target":{"kind":"margin","page":"settings"}}}],"requests":[{"type":"newTab","windowId":1,"item":"t-id19x","url":"margin://settings","target":{"kind":"margin","page":"settings"},"spaceId":"b"}]}},
+      {"perform":"addItem","payload":{"windowId":1,"target":{"kind":"margin","page":"settings"},"url":"https://x.example/","title":"X","icon":"data:image/png;base64,AA"},"env":{"now":1009,"ids":["id22x","id23x","id24x","zq002785x","zq002786x"]},"expect":{"ok":true,"result":{"tabId":"t-id22x"},"changes":[{"collection":"tabs","id":"t-id22x","value":{"url":"margin://settings","title":"Settings","icon":"","spaceId":"b","order":3,"lastUsed":1009,"selected":false,"target":{"kind":"margin","page":"settings"}}}],"requests":[]}},
+      {"perform":"setSpace","payload":{"windowId":1,"spaceId":"a"},"env":{"now":1010,"ids":["id25x","id26x","id27x","zq002833x","zq002834x"]},"expect":{"ok":true,"result":{"spaceId":"a","shown":"t-id1x"},"changes":[{"collection":"windows","id":"1","value":{"spaceId":"a"}}],"requests":[{"type":"setSpace","windowId":1,"spaceId":"a","item":"t-id1x","url":"margin://settings","target":{"kind":"margin","page":"settings"}}]}},
+      {"perform":"closeTab","payload":{"tabId":"t-id1x"},"env":{"now":1011,"ids":["id28x","id29x","id30x","zq002881x","zq002882x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"tabs","id":"t-id1x","deleted":true}],"requests":[{"type":"closeTab","item":"t-id1x","url":"margin://settings","target":{"kind":"margin","page":"settings"},"spaceId":"a","next":"t-id4x"}]}},
+      {"perform":"pinTab","payload":{"tabId":"t-id19x"},"env":{"now":1012,"ids":["id31x","id32x","id33x","zq002929x","zq002930x"]},"expect":{"ok":true,"result":"p-id31x","changes":[{"collection":"pins","id":"p-id31x","value":{"spaceId":"b","url":"margin://settings","title":"Settings","folderId":null,"pos":0,"target":{"kind":"margin","page":"settings"}}},{"collection":"tabs","id":"t-id19x","value":{"url":"margin://settings","title":"Settings","icon":"","spaceId":"b","order":2,"lastUsed":1008,"selected":true,"target":{"kind":"margin","page":"settings"},"pinnedBy":"p-id31x"}}],"requests":[]}},
+      {"perform":"openPin","payload":{"windowId":1,"pinId":"p-id31x"},"env":{"now":1013,"ids":["id34x","id35x","id36x","zq002977x","zq002978x"]},"expect":{"ok":true,"result":{"pin":"p-id31x","item":"t-id19x"},"changes":[{"collection":"tabs","id":"t-id19x","value":{"url":"margin://settings","title":"Settings","icon":"","spaceId":"b","order":2,"lastUsed":1013,"selected":true,"target":{"kind":"margin","page":"settings"},"pinnedBy":"p-id31x"}},{"collection":"windows","id":"1","value":{"spaceId":"b"}}],"requests":[{"type":"openPin","windowId":1,"pin":"p-id31x","item":"t-id19x","url":"margin://settings","target":{"kind":"margin","page":"settings"},"spaceId":"b"}]}}
+      ]
+    },
+    {
+      "about": "library.test.ts: library: folders and pins follow the model's order rules",
+      "values": {
+        "spaces": {"a":{"name":"A","order":0}},
+        "pins": {},
+        "favorites": {},
+        "airTraffic": {},
+        "splits": {},
+        "folders": {},
+        "tabs": {},
+        "archive": {},
+        "windows": {},
+        "imports": {}
+      },
+      "steps": [
+      {"perform":"newTab","payload":{"windowId":1,"url":"https://x.example/"},"env":{"now":1002,"ids":["id1x","id2x","id3x","zq003025x","zq003026x"]},"expect":{"ok":true,"result":{"tabId":"t-id1x"},"changes":[{"collection":"tabs","id":"t-id1x","value":{"url":"https://x.example/","title":"https://x.example/","icon":"","spaceId":"a","order":0,"lastUsed":1002,"selected":true,"target":{"kind":"web","browser":"safari","profile":null}}},{"collection":"windows","id":"1","value":{"spaceId":"a"}}],"requests":[{"type":"newTab","windowId":1,"item":"t-id1x","url":"https://x.example/","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"a"}]}},
+      {"perform":"pinTab","payload":{"tabId":"t-id1x"},"env":{"now":1003,"ids":["id4x","id5x","id6x","zq003073x","zq003074x"]},"expect":{"ok":true,"result":"p-id4x","changes":[{"collection":"pins","id":"p-id4x","value":{"spaceId":"a","url":"https://x.example/","title":"https://x.example/","folderId":null,"pos":0,"target":{"kind":"web","browser":"safari","profile":null}}},{"collection":"tabs","id":"t-id1x","value":{"url":"https://x.example/","title":"https://x.example/","icon":"","spaceId":"a","order":0,"lastUsed":1002,"selected":true,"target":{"kind":"web","browser":"safari","profile":null},"pinnedBy":"p-id4x"}}],"requests":[]}},
+      {"perform":"newTab","payload":{"windowId":1,"url":"https://y.example/"},"env":{"now":1004,"ids":["id7x","id8x","id9x","zq003121x","zq003122x"]},"expect":{"ok":true,"result":{"tabId":"t-id7x"},"changes":[{"collection":"tabs","id":"t-id1x","value":{"url":"https://x.example/","title":"https://x.example/","icon":"","spaceId":"a","order":0,"lastUsed":1002,"selected":false,"target":{"kind":"web","browser":"safari","profile":null},"pinnedBy":"p-id4x"}},{"collection":"tabs","id":"t-id7x","value":{"url":"https://y.example/","title":"https://y.example/","icon":"","spaceId":"a","order":1,"lastUsed":1004,"selected":true,"target":{"kind":"web","browser":"safari","profile":null}}}],"requests":[{"type":"newTab","windowId":1,"item":"t-id7x","url":"https://y.example/","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"a"}]}},
+      {"perform":"pinTab","payload":{"tabId":"t-id7x"},"env":{"now":1005,"ids":["id10x","id11x","id12x","zq003169x","zq003170x"]},"expect":{"ok":true,"result":"p-id10x","changes":[{"collection":"pins","id":"p-id10x","value":{"spaceId":"a","url":"https://y.example/","title":"https://y.example/","folderId":null,"pos":1,"target":{"kind":"web","browser":"safari","profile":null}}},{"collection":"tabs","id":"t-id7x","value":{"url":"https://y.example/","title":"https://y.example/","icon":"","spaceId":"a","order":1,"lastUsed":1004,"selected":true,"target":{"kind":"web","browser":"safari","profile":null},"pinnedBy":"p-id10x"}}],"requests":[]}},
+      {"perform":"newTab","payload":{"windowId":1,"url":"https://z.example/"},"env":{"now":1006,"ids":["id13x","id14x","id15x","zq003217x","zq003218x"]},"expect":{"ok":true,"result":{"tabId":"t-id13x"},"changes":[{"collection":"tabs","id":"t-id13x","value":{"url":"https://z.example/","title":"https://z.example/","icon":"","spaceId":"a","order":2,"lastUsed":1006,"selected":true,"target":{"kind":"web","browser":"safari","profile":null}}},{"collection":"tabs","id":"t-id7x","value":{"url":"https://y.example/","title":"https://y.example/","icon":"","spaceId":"a","order":1,"lastUsed":1004,"selected":false,"target":{"kind":"web","browser":"safari","profile":null},"pinnedBy":"p-id10x"}}],"requests":[{"type":"newTab","windowId":1,"item":"t-id13x","url":"https://z.example/","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"a"}]}},
+      {"perform":"pinTab","payload":{"tabId":"t-id13x"},"env":{"now":1007,"ids":["id16x","id17x","id18x","zq003265x","zq003266x"]},"expect":{"ok":true,"result":"p-id16x","changes":[{"collection":"pins","id":"p-id16x","value":{"spaceId":"a","url":"https://z.example/","title":"https://z.example/","folderId":null,"pos":2,"target":{"kind":"web","browser":"safari","profile":null}}},{"collection":"tabs","id":"t-id13x","value":{"url":"https://z.example/","title":"https://z.example/","icon":"","spaceId":"a","order":2,"lastUsed":1006,"selected":true,"target":{"kind":"web","browser":"safari","profile":null},"pinnedBy":"p-id16x"}}],"requests":[]}},
+      {"perform":"createFolder","payload":{"windowId":1,"pinIds":["p-id10x","p-id16x"]},"env":{"now":1008,"ids":["id19x","id20x","id21x","zq003313x","zq003314x"]},"expect":{"ok":true,"result":"f-id19x","changes":[{"collection":"pins","id":"p-id10x","value":{"spaceId":"a","url":"https://y.example/","title":"https://y.example/","folderId":"f-id19x","pos":0,"target":{"kind":"web","browser":"safari","profile":null}}},{"collection":"pins","id":"p-id16x","value":{"spaceId":"a","url":"https://z.example/","title":"https://z.example/","folderId":"f-id19x","pos":1,"target":{"kind":"web","browser":"safari","profile":null}}},{"collection":"folders","id":"f-id19x","value":{"spaceId":"a","name":"New Folder","open":true,"pos":1}}],"requests":[]}},
+      {"normal":true,"expect":{"spaces":{"a":{"name":"A","emoji":"","color":"","order":0,"browser":"safari","profile":null}},"pins":{"p-id10x":{"spaceId":"a","url":"https://y.example/","title":"https://y.example/","folderId":"f-id19x","pos":0,"target":{"kind":"web","browser":"safari","profile":null}},"p-id16x":{"spaceId":"a","url":"https://z.example/","title":"https://z.example/","folderId":"f-id19x","pos":1,"target":{"kind":"web","browser":"safari","profile":null}},"p-id4x":{"spaceId":"a","url":"https://x.example/","title":"https://x.example/","folderId":null,"pos":0,"target":{"kind":"web","browser":"safari","profile":null}}},"favorites":{},"airTraffic":{},"splits":{},"folders":{"f-id19x":{"spaceId":"a","name":"New Folder","open":true,"pos":1}},"tabs":{"t-id13x":{"url":"https://z.example/","title":"https://z.example/","icon":"","spaceId":"a","order":2,"lastUsed":1006,"selected":true,"target":{"kind":"web","browser":"safari","profile":null},"pinnedBy":"p-id16x"},"t-id1x":{"url":"https://x.example/","title":"https://x.example/","icon":"","spaceId":"a","order":0,"lastUsed":1002,"selected":false,"target":{"kind":"web","browser":"safari","profile":null},"pinnedBy":"p-id4x"},"t-id7x":{"url":"https://y.example/","title":"https://y.example/","icon":"","spaceId":"a","order":1,"lastUsed":1004,"selected":false,"target":{"kind":"web","browser":"safari","profile":null},"pinnedBy":"p-id10x"}},"archive":{},"windows":{"1":{"spaceId":"a"}},"imports":{}}},
+      {"perform":"renameFolder","payload":{"folderId":"f-id19x","name":"Reading"},"env":{"now":1009,"ids":["id22x","id23x","id24x","zq003361x","zq003362x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"folders","id":"f-id19x","value":{"spaceId":"a","name":"Reading","open":true,"pos":1}}],"requests":[]}},
+      {"perform":"setFolderOpen","payload":{"folderId":"f-id19x","open":false},"env":{"now":1010,"ids":["id25x","id26x","id27x","zq003409x","zq003410x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"folders","id":"f-id19x","value":{"spaceId":"a","name":"Reading","open":false,"pos":1}}],"requests":[]}},
+      {"perform":"movePin","payload":{"pinId":"p-id16x","folderId":null,"beforeId":"p-id4x"},"env":{"now":1011,"ids":["id28x","id29x","id30x","zq003457x","zq003458x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"pins","id":"p-id16x","value":{"spaceId":"a","url":"https://z.example/","title":"https://z.example/","folderId":null,"pos":0,"target":{"kind":"web","browser":"safari","profile":null}}},{"collection":"pins","id":"p-id4x","value":{"spaceId":"a","url":"https://x.example/","title":"https://x.example/","folderId":null,"pos":1,"target":{"kind":"web","browser":"safari","profile":null}}},{"collection":"folders","id":"f-id19x","value":{"spaceId":"a","name":"Reading","open":false,"pos":2}}],"requests":[]}},
+      {"perform":"moveFolder","payload":{"folderId":"f-id19x","beforeId":"p-id16x"},"env":{"now":1012,"ids":["id31x","id32x","id33x","zq003505x","zq003506x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"pins","id":"p-id16x","value":{"spaceId":"a","url":"https://z.example/","title":"https://z.example/","folderId":null,"pos":1,"target":{"kind":"web","browser":"safari","profile":null}}},{"collection":"pins","id":"p-id4x","value":{"spaceId":"a","url":"https://x.example/","title":"https://x.example/","folderId":null,"pos":2,"target":{"kind":"web","browser":"safari","profile":null}}},{"collection":"folders","id":"f-id19x","value":{"spaceId":"a","name":"Reading","open":false,"pos":0}}],"requests":[]}},
+      {"normal":true,"expect":{"spaces":{"a":{"name":"A","emoji":"","color":"","order":0,"browser":"safari","profile":null}},"pins":{"p-id10x":{"spaceId":"a","url":"https://y.example/","title":"https://y.example/","folderId":"f-id19x","pos":0,"target":{"kind":"web","browser":"safari","profile":null}},"p-id16x":{"spaceId":"a","url":"https://z.example/","title":"https://z.example/","folderId":null,"pos":1,"target":{"kind":"web","browser":"safari","profile":null}},"p-id4x":{"spaceId":"a","url":"https://x.example/","title":"https://x.example/","folderId":null,"pos":2,"target":{"kind":"web","browser":"safari","profile":null}}},"favorites":{},"airTraffic":{},"splits":{},"folders":{"f-id19x":{"spaceId":"a","name":"Reading","open":false,"pos":0}},"tabs":{"t-id13x":{"url":"https://z.example/","title":"https://z.example/","icon":"","spaceId":"a","order":2,"lastUsed":1006,"selected":true,"target":{"kind":"web","browser":"safari","profile":null},"pinnedBy":"p-id16x"},"t-id1x":{"url":"https://x.example/","title":"https://x.example/","icon":"","spaceId":"a","order":0,"lastUsed":1002,"selected":false,"target":{"kind":"web","browser":"safari","profile":null},"pinnedBy":"p-id4x"},"t-id7x":{"url":"https://y.example/","title":"https://y.example/","icon":"","spaceId":"a","order":1,"lastUsed":1004,"selected":false,"target":{"kind":"web","browser":"safari","profile":null},"pinnedBy":"p-id10x"}},"archive":{},"windows":{"1":{"spaceId":"a"}},"imports":{}}},
+      {"perform":"newTab","payload":{"windowId":1,"url":"https://w.example/"},"env":{"now":1013,"ids":["id34x","id35x","id36x","zq003553x","zq003554x"]},"expect":{"ok":true,"result":{"tabId":"t-id34x"},"changes":[{"collection":"tabs","id":"t-id13x","value":{"url":"https://z.example/","title":"https://z.example/","icon":"","spaceId":"a","order":2,"lastUsed":1006,"selected":false,"target":{"kind":"web","browser":"safari","profile":null},"pinnedBy":"p-id16x"}},{"collection":"tabs","id":"t-id34x","value":{"url":"https://w.example/","title":"https://w.example/","icon":"","spaceId":"a","order":3,"lastUsed":1013,"selected":true,"target":{"kind":"web","browser":"safari","profile":null}}}],"requests":[{"type":"newTab","windowId":1,"item":"t-id34x","url":"https://w.example/","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"a"}]}},
+      {"perform":"createFolder","payload":{"windowId":1,"tabId":"t-id34x"},"env":{"now":1014,"ids":["id37x","id38x","id39x","zq003601x","zq003602x"]},"expect":{"ok":true,"result":"f-id37x","changes":[{"collection":"pins","id":"p-id38x","value":{"spaceId":"a","url":"https://w.example/","title":"https://w.example/","folderId":"f-id37x","pos":0,"target":{"kind":"web","browser":"safari","profile":null}}},{"collection":"folders","id":"f-id37x","value":{"spaceId":"a","name":"New Folder","open":true,"pos":3}},{"collection":"tabs","id":"t-id34x","value":{"url":"https://w.example/","title":"https://w.example/","icon":"","spaceId":"a","order":3,"lastUsed":1013,"selected":true,"target":{"kind":"web","browser":"safari","profile":null},"pinnedBy":"p-id38x"}}],"requests":[]}},
+      {"perform":"deleteFolder","payload":{"folderId":"f-id19x"},"env":{"now":1015,"ids":["id40x","id41x","id42x","zq003649x","zq003650x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"pins","id":"p-id10x","value":{"spaceId":"a","url":"https://y.example/","title":"https://y.example/","folderId":null,"pos":0,"target":{"kind":"web","browser":"safari","profile":null}}},{"collection":"folders","id":"f-id19x","deleted":true}],"requests":[]}}
+      ]
+    },
+    {
+      "about": "library.test.ts: library: an action changes only what it changes, refuses what it doesn't know, and never throws",
+      "values": {
+        "spaces": {"a":{"name":"A","order":0},"b":{"name":"B","order":1}},
+        "pins": {},
+        "favorites": {},
+        "airTraffic": {},
+        "splits": {},
+        "folders": {},
+        "tabs": {},
+        "archive": {},
+        "windows": {},
+        "imports": {}
+      },
+      "steps": [
+      {"perform":"setSpace","payload":{"windowId":2,"spaceId":"b"},"env":{"now":1002,"ids":["id1x","id2x","id3x","zq003697x","zq003698x"]},"expect":{"ok":true,"result":{"spaceId":"b","shown":null},"changes":[{"collection":"windows","id":"2","value":{"spaceId":"b"}}],"requests":[{"type":"setSpace","windowId":2,"spaceId":"b","item":null}]}},
+      {"perform":"setSpace","payload":{"windowId":2,"spaceId":"b"},"env":{"now":1003,"ids":["id4x","id5x","id6x","zq003745x","zq003746x"]},"expect":{"ok":true,"result":{"spaceId":"b","shown":null},"changes":[],"requests":[{"type":"setSpace","windowId":2,"spaceId":"b","item":null}]}},
+      {"perform":"updateSettings","payload":{"patch":{}},"env":{"now":1004,"ids":["id7x","id8x","id9x","zq003793x","zq003794x"]},"expect":{"ok":false,"result":null,"error":"unsupported","changes":[],"requests":[]}},
+      {"perform":"setSpace","payload":{"windowId":2,"spaceId":"nope"},"env":{"now":1005,"ids":["id10x","id11x","id12x","zq003841x","zq003842x"]},"expect":{"ok":false,"result":null,"error":"no such window or space","changes":[],"requests":[]}}
+      ]
+    },
+    {
+      "about": "library.test.ts: library: an action changes only what it changes, refuses what it doesn't know, and never throws #2",
+      "values": {
+        "spaces": null
+      },
+      "steps": [
+      {"perform":"createFolder","payload":{},"env":{"now":0,"ids":["zq003889x","zq003890x"]},"expect":{"ok":false,"result":null,"error":"no space","changes":[],"requests":[]}}
+      ]
+    },
+    {
+      "about": "library.test.ts: library: an action changes only what it changes, refuses what it doesn't know, and never throws #3",
+      "values": {
+
+      },
+      "steps": [
+      {"perform":"toString","payload":{},"env":{"now":0,"ids":["zq003937x","zq003938x"]},"expect":{"ok":false,"result":null,"error":"unsupported","changes":[],"requests":[]}}
+      ]
+    },
+    {
+      "about": "library.test.ts: library: an action changes only what it changes, refuses what it doesn't know, and never throws #4",
+      "values": {
+        "spaces": {"a":{"name":"A","order":0},"b":{"name":"B","order":1}},
+        "pins": {},
+        "favorites": {},
+        "airTraffic": {},
+        "splits": {},
+        "folders": {},
+        "tabs": {},
+        "archive": {},
+        "windows": {"2":{"spaceId":"b"}},
+        "imports": {}
+      },
+      "steps": [
+      {"perform":"forgetWindow","payload":{"windowId":2},"env":{"now":1006,"ids":["id13x","id14x","id15x","zq003985x","zq003986x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"windows","id":"2","deleted":true}],"requests":[]}},
+      {"perform":"activateTab","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq004033x","zq004034x"]},"expect":{"ok":false,"result":null,"error":"no such item","changes":[],"requests":[]}},
+      {"perform":"addAirTrafficRule","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq004081x","zq004082x"]},"expect":{"ok":false,"result":null,"error":"bad pattern","changes":[],"requests":[]}},
+      {"perform":"addFavorite","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq004129x","zq004130x"]},"expect":{"ok":false,"result":null,"error":"no address","changes":[],"requests":[]}},
+      {"perform":"addItem","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq004177x","zq004178x"]},"expect":{"ok":false,"result":null,"error":"no address","changes":[],"requests":[]}},
+      {"perform":"addToSplit","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq004225x","zq004226x"]},"expect":{"ok":false,"result":null,"error":"no such item","changes":[],"requests":[]}},
+      {"perform":"breakOutSplit","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq004273x","zq004274x"]},"expect":{"ok":true,"result":null,"changes":[],"requests":[]}},
+      {"perform":"clearToday","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq004321x","zq004322x"]},"expect":{"ok":true,"result":[],"changes":[],"requests":[]}},
+      {"perform":"closeSplitPane","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq004369x","zq004370x"]},"expect":{"ok":false,"result":null,"error":"no such item","changes":[],"requests":[]}},
+      {"perform":"closeTab","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq004417x","zq004418x"]},"expect":{"ok":false,"result":null,"error":"no such item","changes":[],"requests":[]}},
+      {"perform":"createFolder","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq004465x","zq004466x","zq004467x"]},"expect":{"ok":true,"result":"f-zq004465x","changes":[{"collection":"folders","id":"f-zq004465x","value":{"spaceId":"a","name":"New Folder","open":true,"pos":0}}],"requests":[]}}
+      ]
+    },
+    {
+      "about": "library.test.ts: library: an action changes only what it changes, refuses what it doesn't know, and never throws #5",
+      "values": {
+        "spaces": {"a":{"name":"A","order":0},"b":{"name":"B","order":1}},
+        "pins": {},
+        "favorites": {},
+        "airTraffic": {},
+        "splits": {},
+        "folders": {},
+        "tabs": {},
+        "archive": {},
+        "windows": {},
+        "imports": {}
+      },
+      "steps": [
+      {"perform":"createSpace","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq004513x","zq004514x","zq004515x"]},"expect":{"ok":true,"result":{"spaceId":"sp-zq004513x"},"changes":[{"collection":"spaces","id":"sp-zq004513x","value":{"name":"New space","emoji":"✨","color":"#00b894","order":2,"browser":"safari","profile":null}}],"requests":[]}}
+      ]
+    },
+    {
+      "about": "library.test.ts: library: an action changes only what it changes, refuses what it doesn't know, and never throws #6",
+      "values": {
+        "spaces": {"a":{"name":"A","order":0},"b":{"name":"B","order":1}},
+        "pins": {},
+        "favorites": {},
+        "airTraffic": {},
+        "splits": {},
+        "folders": {},
+        "tabs": {},
+        "archive": {},
+        "windows": {},
+        "imports": {}
+      },
+      "steps": [
+      {"perform":"createSplit","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq004561x","zq004562x"]},"expect":{"ok":false,"result":null,"error":"need at least 2 items","changes":[],"requests":[]}},
+      {"perform":"deleteFolder","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq004609x","zq004610x"]},"expect":{"ok":true,"result":null,"changes":[],"requests":[]}},
+      {"perform":"deleteSpace","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq004657x","zq004658x"]},"expect":{"ok":false,"result":null,"error":"no such space","changes":[],"requests":[]}},
+      {"perform":"duplicateTab","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq004705x","zq004706x"]},"expect":{"ok":false,"result":null,"error":"no such item","changes":[],"requests":[]}},
+      {"perform":"forgetWindow","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq004753x","zq004754x"]},"expect":{"ok":true,"result":null,"changes":[],"requests":[]}},
+      {"perform":"itemClosed","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq004801x","zq004802x"]},"expect":{"ok":false,"result":null,"error":"no such item","changes":[],"requests":[]}},
+      {"perform":"mediaControl","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq004849x","zq004850x"]},"expect":{"ok":false,"result":null,"error":"no such item","changes":[],"requests":[]}},
+      {"perform":"moveFavorite","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq004897x","zq004898x"]},"expect":{"ok":true,"result":null,"changes":[],"requests":[]}},
+      {"perform":"moveFolder","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq004945x","zq004946x"]},"expect":{"ok":true,"result":null,"changes":[],"requests":[]}},
+      {"perform":"movePin","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq004993x","zq004994x"]},"expect":{"ok":true,"result":null,"changes":[],"requests":[]}},
+      {"perform":"moveTab","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq005041x","zq005042x"]},"expect":{"ok":false,"result":null,"error":"no such item","changes":[],"requests":[]}},
+      {"perform":"moveTabToSpace","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq005089x","zq005090x"]},"expect":{"ok":false,"result":null,"error":"no such item or space","changes":[],"requests":[]}},
+      {"perform":"muteTab","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq005137x","zq005138x"]},"expect":{"ok":false,"result":null,"error":"no such item","changes":[],"requests":[]}},
+      {"perform":"nestFolder","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq005185x","zq005186x"]},"expect":{"ok":true,"result":null,"changes":[],"requests":[]}},
+      {"perform":"newTab","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq005233x","zq005234x"]},"expect":{"ok":false,"result":null,"error":"no address","changes":[],"requests":[]}},
+      {"perform":"openFavorite","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq005281x","zq005282x"]},"expect":{"ok":false,"result":null,"error":"no such favorite","changes":[],"requests":[]}},
+      {"perform":"openMarginPage","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq005329x","zq005330x"]},"expect":{"ok":false,"result":null,"error":"no such page","changes":[],"requests":[]}},
+      {"perform":"openPin","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq005377x","zq005378x"]},"expect":{"ok":false,"result":null,"error":"no such pin","changes":[],"requests":[]}},
+      {"perform":"openSplit","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq005425x","zq005426x"]},"expect":{"ok":false,"result":null,"error":"no such split","changes":[],"requests":[]}},
+      {"perform":"orderSpaces","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq005473x","zq005474x"]},"expect":{"ok":false,"result":null,"error":"no order","changes":[],"requests":[]}},
+      {"perform":"pinTab","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq005521x","zq005522x"]},"expect":{"ok":false,"result":null,"error":"no such item","changes":[],"requests":[]}},
+      {"perform":"removeAirTrafficRule","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq005569x","zq005570x"]},"expect":{"ok":true,"result":null,"changes":[],"requests":[]}},
+      {"perform":"removeFavorite","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq005617x","zq005618x"]},"expect":{"ok":false,"result":null,"error":"no such favorite","changes":[],"requests":[]}},
+      {"perform":"removeFromSplit","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq005665x","zq005666x"]},"expect":{"ok":true,"result":null,"changes":[],"requests":[]}},
+      {"perform":"removeItem","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq005713x","zq005714x"]},"expect":{"ok":false,"result":null,"error":"no such item","changes":[],"requests":[]}},
+      {"perform":"renameFavorite","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq005761x","zq005762x"]},"expect":{"ok":false,"result":null,"error":"no such favorite","changes":[],"requests":[]}},
+      {"perform":"renameFolder","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq005809x","zq005810x"]},"expect":{"ok":true,"result":null,"changes":[],"requests":[]}},
+      {"perform":"renamePin","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq005857x","zq005858x"]},"expect":{"ok":false,"result":null,"error":"no such pin","changes":[],"requests":[]}},
+      {"perform":"renameSpace","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq005905x","zq005906x"]},"expect":{"ok":false,"result":null,"error":"no such space","changes":[],"requests":[]}},
+      {"perform":"renameTab","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq005953x","zq005954x"]},"expect":{"ok":false,"result":null,"error":"no such item","changes":[],"requests":[]}},
+      {"perform":"resetFavorite","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq006001x","zq006002x"]},"expect":{"ok":false,"result":null,"error":"no such favorite","changes":[],"requests":[]}},
+      {"perform":"resetPin","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq006049x","zq006050x"]},"expect":{"ok":false,"result":null,"error":"no such pin","changes":[],"requests":[]}},
+      {"perform":"resizeSplit","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq006097x","zq006098x"]},"expect":{"ok":false,"result":null,"error":"no such split","changes":[],"requests":[]}},
+      {"perform":"restoreArchive","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq006145x","zq006146x"]},"expect":{"ok":false,"result":null,"error":"no such entry","changes":[],"requests":[]}},
+      {"perform":"restoreLastArchive","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq006193x","zq006194x"]},"expect":{"ok":true,"result":null,"changes":[],"requests":[]}},
+      {"perform":"routeUrl","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq006241x","zq006242x"]},"expect":{"ok":true,"result":null,"changes":[],"requests":[]}},
+      {"perform":"setFolderOpen","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq006289x","zq006290x"]},"expect":{"ok":true,"result":null,"changes":[],"requests":[]}},
+      {"perform":"setSpace","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq006337x","zq006338x"]},"expect":{"ok":false,"result":null,"error":"no such window or space","changes":[],"requests":[]}},
+      {"perform":"setSpaceProfile","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq006385x","zq006386x"]},"expect":{"ok":false,"result":null,"error":"no such space","changes":[],"requests":[]}},
+      {"perform":"setSpaceTheme","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq006433x","zq006434x"]},"expect":{"ok":false,"result":null,"error":"no such space","changes":[],"requests":[]}},
+      {"perform":"swapSplit","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq006481x","zq006482x"]},"expect":{"ok":false,"result":null,"error":"no such split","changes":[],"requests":[]}},
+      {"perform":"toggleAirTrafficRule","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq006529x","zq006530x"]},"expect":{"ok":true,"result":null,"changes":[],"requests":[]}},
+      {"perform":"toggleSplitAxis","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq006577x","zq006578x"]},"expect":{"ok":false,"result":null,"error":"no such split","changes":[],"requests":[]}},
+      {"perform":"unloadTab","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq006625x","zq006626x"]},"expect":{"ok":false,"result":null,"error":"no such item","changes":[],"requests":[]}},
+      {"perform":"unpin","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq006673x","zq006674x"]},"expect":{"ok":false,"result":null,"error":"no such pin","changes":[],"requests":[]}},
+      {"perform":"updateItem","payload":{"tabId":5,"spaceId":{},"pinIds":"x"},"env":{"now":0,"ids":["zq006721x","zq006722x"]},"expect":{"ok":false,"result":null,"error":"no such item","changes":[],"requests":[]}}
+      ]
+    },
+    {
+      "about": "library.test.ts: library: the snapshot is what the UI draws from its stored values",
+      "values": {
+        "spaces": {"a":{"name":"A","order":0},"b":{"name":"B","order":1}},
+        "pins": {},
+        "favorites": {},
+        "airTraffic": {},
+        "splits": {},
+        "folders": {},
+        "tabs": {},
+        "archive": {},
+        "windows": {},
+        "imports": {}
+      },
+      "steps": [
+      {"perform":"setSpace","payload":{"windowId":4,"spaceId":"b"},"env":{"now":1002,"ids":["id1x","id2x","id3x","zq006769x","zq006770x"]},"expect":{"ok":true,"result":{"spaceId":"b","shown":null},"changes":[{"collection":"windows","id":"4","value":{"spaceId":"b"}}],"requests":[{"type":"setSpace","windowId":4,"spaceId":"b","item":null}]}},
+      {"perform":"newTab","payload":{"windowId":4,"url":"https://one.example/"},"env":{"now":1003,"ids":["id4x","id5x","id6x","zq006817x","zq006818x"]},"expect":{"ok":true,"result":{"tabId":"t-id4x"},"changes":[{"collection":"tabs","id":"t-id4x","value":{"url":"https://one.example/","title":"https://one.example/","icon":"","spaceId":"b","order":0,"lastUsed":1003,"selected":true,"target":{"kind":"web","browser":"safari","profile":null}}}],"requests":[{"type":"newTab","windowId":4,"item":"t-id4x","url":"https://one.example/","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"b"}]}},
+      {"perform":"newTab","payload":{"windowId":4,"url":"https://pin.example/"},"env":{"now":1004,"ids":["id7x","id8x","id9x","zq006865x","zq006866x"]},"expect":{"ok":true,"result":{"tabId":"t-id7x"},"changes":[{"collection":"tabs","id":"t-id4x","value":{"url":"https://one.example/","title":"https://one.example/","icon":"","spaceId":"b","order":0,"lastUsed":1003,"selected":false,"target":{"kind":"web","browser":"safari","profile":null}}},{"collection":"tabs","id":"t-id7x","value":{"url":"https://pin.example/","title":"https://pin.example/","icon":"","spaceId":"b","order":1,"lastUsed":1004,"selected":true,"target":{"kind":"web","browser":"safari","profile":null}}}],"requests":[{"type":"newTab","windowId":4,"item":"t-id7x","url":"https://pin.example/","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"b"}]}},
+      {"perform":"pinTab","payload":{"tabId":"t-id7x"},"env":{"now":1005,"ids":["id10x","id11x","id12x","zq006913x","zq006914x"]},"expect":{"ok":true,"result":"p-id10x","changes":[{"collection":"pins","id":"p-id10x","value":{"spaceId":"b","url":"https://pin.example/","title":"https://pin.example/","folderId":null,"pos":0,"target":{"kind":"web","browser":"safari","profile":null}}},{"collection":"tabs","id":"t-id7x","value":{"url":"https://pin.example/","title":"https://pin.example/","icon":"","spaceId":"b","order":1,"lastUsed":1004,"selected":true,"target":{"kind":"web","browser":"safari","profile":null},"pinnedBy":"p-id10x"}}],"requests":[]}},
+      {"snapshot":true,"expect":{"library":{"v":1,"imported":false},"spaces":[{"id":"a","name":"A","emoji":"","color":"","browser":"safari","profile":null},{"id":"b","name":"B","emoji":"","color":"","browser":"safari","profile":null}],"pins":[{"id":"p-id10x","spaceId":"b","url":"https://pin.example/","title":"https://pin.example/","pos":0,"target":{"kind":"web","browser":"safari","profile":null}}],"favorites":[],"airTraffic":[],"splits":[],"folders":[],"archive":[],"openTabs":{"origin":"margin-app","since":0,"synced":true,"tabs":{},"tabSpace":{},"activeSpaceByWindow":{"4":"b"},"awayByWindow":{},"keptTabs":{"t-id4x":{"id":"t-id4x","url":"https://one.example/","title":"https://one.example/","favIconUrl":"","spaceId":"b","order":0,"lastActive":1003,"wasActive":false,"keptAt":1003,"why":"library","target":{"kind":"web","browser":"safari","profile":null}},"t-id7x":{"id":"t-id7x","url":"https://pin.example/","title":"https://pin.example/","favIconUrl":"","spaceId":"b","order":1,"lastActive":1004,"wasActive":true,"keptAt":1004,"why":"library","target":{"kind":"web","browser":"safari","profile":null},"pinnedBy":"p-id10x"}}}}}
+      ]
+    },
+    {
+      "about": "library.test.ts: library: the import takes every profile's set once, ids namespaced, the person's order kept",
+      "values": {
+
+      },
+      "steps": [
+      {"import":{"sets":[{"browser":"safari","profile":"s-default","values":{"spaces":{"personal":{"name":"Personal","emoji":"🏠","color":"#6c5ce7","order":0},"work":{"name":"Work","emoji":"💼","color":"#000","order":1}},"pins":{"p-1":{"spaceId":"work","url":"https://mail.example/","title":"Mail","folderId":"f-1","pos":0}},"folders":{"f-1":{"spaceId":"work","name":"F","open":true,"pos":0}},"tabs":{"t-aaaa":{"url":"https://a.example/","title":"A","icon":"","spaceId":"personal","order":3,"lastUsed":50,"selected":true},"t-nope":{"url":"about:blank","spaceId":"personal","order":1}},"archive":{"a-1":{"url":"https://old.example/","title":"Old","spaceId":"gone","icon":"","closedAt":9}},"settings":{"theme":{"updatedAt":1,"value":"x"}}}},{"browser":"safari","profile":"s-OTHER","values":{"spaces":{"personal":{"name":"Home","emoji":"🏡","color":"#fff","order":0}},"tabs":{"t-aaaa":{"url":"https://b.example/","title":"B","spaceId":"personal","order":0,"lastUsed":60}}}}],"order":[["safari","s-default","work"],["safari","s-OTHER","personal"],["safari","s-default","personal"]],"now":77},"expect":{"changes":[{"collection":"spaces","id":"safari:s-OTHER:personal","value":{"name":"Home","emoji":"🏡","color":"#fff","order":1,"browser":"safari","profile":"s-OTHER"}},{"collection":"spaces","id":"safari:s-default:personal","value":{"name":"Personal","emoji":"🏠","color":"#6c5ce7","order":2,"browser":"safari","profile":"s-default"}},{"collection":"spaces","id":"safari:s-default:work","value":{"name":"Work","emoji":"💼","color":"#000","order":0,"browser":"safari","profile":"s-default"}},{"collection":"pins","id":"safari:s-default:p-1","value":{"spaceId":"safari:s-default:work","url":"https://mail.example/","title":"Mail","folderId":"safari:s-default:f-1","pos":0,"target":{"kind":"web","browser":"safari","profile":"s-default"}}},{"collection":"folders","id":"safari:s-default:f-1","value":{"spaceId":"safari:s-default:work","name":"F","open":true,"pos":0}},{"collection":"tabs","id":"t-15972880a87ae55a","value":{"url":"https://b.example/","title":"B","icon":"","spaceId":"safari:s-OTHER:personal","order":0,"lastUsed":60,"selected":false,"target":{"kind":"web","browser":"safari","profile":"s-OTHER"},"imported":{"browser":"safari","profile":"s-OTHER","id":"t-aaaa"}}},{"collection":"tabs","id":"t-8e9bec55365e0487","value":{"url":"https://a.example/","title":"A","icon":"","spaceId":"safari:s-default:personal","order":3,"lastUsed":50,"selected":true,"target":{"kind":"web","browser":"safari","profile":"s-default"},"imported":{"browser":"safari","profile":"s-default","id":"t-aaaa"}}},{"collection":"archive","id":"safari:s-default:a-1","value":{"url":"https://old.example/","title":"Old","spaceId":"safari:s-default:personal","icon":"","closedAt":9,"target":{"kind":"web","browser":"safari","profile":"s-default"}}},{"collection":"imports","id":"done","value":{"at":77,"sets":["safari:s-default","safari:s-OTHER"],"spaces":3,"pins":1,"folders":1,"tabs":2,"archive":1}}],"counts":{"spaces":3,"pins":1,"folders":1,"tabs":2,"archive":1}}}
+      ]
+    },
+    {
+      "about": "library.test.ts: library: the import takes every profile's set once, ids namespaced, the person's order kept #2",
+      "values": {
+        "spaces": {"safari:s-OTHER:personal":{"name":"Home","emoji":"🏡","color":"#fff","order":1,"browser":"safari","profile":"s-OTHER"},"safari:s-default:personal":{"name":"Personal","emoji":"🏠","color":"#6c5ce7","order":2,"browser":"safari","profile":"s-default"},"safari:s-default:work":{"name":"Work","emoji":"💼","color":"#000","order":0,"browser":"safari","profile":"s-default"}},
+        "pins": {"safari:s-default:p-1":{"spaceId":"safari:s-default:work","url":"https://mail.example/","title":"Mail","folderId":"safari:s-default:f-1","pos":0,"target":{"kind":"web","browser":"safari","profile":"s-default"}}},
+        "favorites": {},
+        "airTraffic": {},
+        "splits": {},
+        "folders": {"safari:s-default:f-1":{"spaceId":"safari:s-default:work","name":"F","open":true,"pos":0}},
+        "tabs": {"t-15972880a87ae55a":{"url":"https://b.example/","title":"B","icon":"","spaceId":"safari:s-OTHER:personal","order":0,"lastUsed":60,"selected":false,"target":{"kind":"web","browser":"safari","profile":"s-OTHER"},"imported":{"browser":"safari","profile":"s-OTHER","id":"t-aaaa"}},"t-8e9bec55365e0487":{"url":"https://a.example/","title":"A","icon":"","spaceId":"safari:s-default:personal","order":3,"lastUsed":50,"selected":true,"target":{"kind":"web","browser":"safari","profile":"s-default"},"imported":{"browser":"safari","profile":"s-default","id":"t-aaaa"}}},
+        "archive": {"safari:s-default:a-1":{"url":"https://old.example/","title":"Old","spaceId":"safari:s-default:personal","icon":"","closedAt":9,"target":{"kind":"web","browser":"safari","profile":"s-default"}}},
+        "windows": {},
+        "imports": {"done":{"at":77,"sets":["safari:s-default","safari:s-OTHER"],"spaces":3,"pins":1,"folders":1,"tabs":2,"archive":1}}
+      },
+      "steps": [
+      {"import":{"sets":[{"browser":"safari","profile":"s-default","values":{"spaces":{"personal":{"name":"Personal","emoji":"🏠","color":"#6c5ce7","order":0},"work":{"name":"Work","emoji":"💼","color":"#000","order":1}},"pins":{"p-1":{"spaceId":"work","url":"https://mail.example/","title":"Mail","folderId":"f-1","pos":0}},"folders":{"f-1":{"spaceId":"work","name":"F","open":true,"pos":0}},"tabs":{"t-aaaa":{"url":"https://a.example/","title":"A","icon":"","spaceId":"personal","order":3,"lastUsed":50,"selected":true},"t-nope":{"url":"about:blank","spaceId":"personal","order":1}},"archive":{"a-1":{"url":"https://old.example/","title":"Old","spaceId":"gone","icon":"","closedAt":9}},"settings":{"theme":{"updatedAt":1,"value":"x"}}}},{"browser":"safari","profile":"s-OTHER","values":{"spaces":{"personal":{"name":"Home","emoji":"🏡","color":"#fff","order":0}},"tabs":{"t-aaaa":{"url":"https://b.example/","title":"B","spaceId":"personal","order":0,"lastUsed":60}}}}],"order":[["safari","s-default","work"],["safari","s-OTHER","personal"],["safari","s-default","personal"]],"now":77},"expect":{"changes":[],"counts":{"spaces":3,"pins":1,"folders":1,"tabs":2,"archive":1}}},
+      {"perform":"setSpace","payload":{"windowId":1,"spaceId":"safari:s-default:work"},"env":{"now":1003,"ids":["id1x","id2x","id3x","zq006961x","zq006962x"]},"expect":{"ok":true,"result":{"spaceId":"safari:s-default:work","shown":null},"changes":[{"collection":"windows","id":"1","value":{"spaceId":"safari:s-default:work"}}],"requests":[{"type":"setSpace","windowId":1,"spaceId":"safari:s-default:work","item":null}]}},
+      {"snapshot":true,"expect":{"library":{"v":1,"imported":true},"spaces":[{"id":"safari:s-default:work","name":"Work","emoji":"💼","color":"#000","browser":"safari","profile":"s-default"},{"id":"safari:s-OTHER:personal","name":"Home","emoji":"🏡","color":"#fff","browser":"safari","profile":"s-OTHER"},{"id":"safari:s-default:personal","name":"Personal","emoji":"🏠","color":"#6c5ce7","browser":"safari","profile":"s-default"}],"pins":[{"id":"safari:s-default:p-1","spaceId":"safari:s-default:work","url":"https://mail.example/","title":"Mail","folderId":"safari:s-default:f-1","pos":0,"target":{"kind":"web","browser":"safari","profile":"s-default"}}],"favorites":[],"airTraffic":[],"splits":[],"folders":[{"id":"safari:s-default:f-1","spaceId":"safari:s-default:work","name":"F","open":true,"pos":0}],"archive":[{"id":"safari:s-default:a-1","url":"https://old.example/","title":"Old","spaceId":"safari:s-default:personal","favIconUrl":"","closedAt":9,"target":{"kind":"web","browser":"safari","profile":"s-default"}}],"openTabs":{"origin":"margin-app","since":0,"synced":true,"tabs":{},"tabSpace":{},"activeSpaceByWindow":{"1":"safari:s-default:work"},"awayByWindow":{},"keptTabs":{"t-15972880a87ae55a":{"id":"t-15972880a87ae55a","url":"https://b.example/","title":"B","favIconUrl":"","spaceId":"safari:s-OTHER:personal","order":0,"lastActive":60,"wasActive":false,"keptAt":60,"why":"library","target":{"kind":"web","browser":"safari","profile":"s-OTHER"},"imported":{"browser":"safari","profile":"s-OTHER","id":"t-aaaa"}},"t-8e9bec55365e0487":{"id":"t-8e9bec55365e0487","url":"https://a.example/","title":"A","favIconUrl":"","spaceId":"safari:s-default:personal","order":3,"lastActive":50,"wasActive":true,"keptAt":50,"why":"library","target":{"kind":"web","browser":"safari","profile":"s-default"},"imported":{"browser":"safari","profile":"s-default","id":"t-aaaa"}}}}}}
+      ]
+    },
+    {
+      "about": "library.test.ts: library: the app's entry: JSON in and out, errors as values",
+      "values": {
+        "spaces": {"a":{"name":"A","order":0}}
+      },
+      "steps": [
+      {"perform":"createSpace","payload":{"name":"B"},"env":{"now":1,"ids":["abcd","zq007009x","zq007010x"]},"expect":{"ok":true,"result":{"spaceId":"sp-abcd"},"changes":[{"collection":"spaces","id":"sp-abcd","value":{"name":"B","emoji":"✨","color":"#00b894","order":1,"browser":"safari","profile":null}}],"requests":[]}}
+      ]
+    }
+  ]
+}

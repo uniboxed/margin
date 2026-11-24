@@ -1,0 +1,28 @@
+{
+  "about": "tests/favorites.test.ts's calls of library.ts, as the test made them (npm run library:vectors).",
+  "from": "recorded",
+  "cases": [
+    {
+      "about": "favorites.test.ts: M2.3 favorites: library supports web + app favorites, sticky close without archiving, reorder and rename",
+      "values": {
+        "spaces": {"a":{"name":"A","order":0}},
+        "pins": {},
+        "favorites": {},
+        "folders": {},
+        "tabs": {},
+        "archive": {},
+        "windows": {"1":{"spaceId":"a"}},
+        "imports": {}
+      },
+      "steps": [
+      {"perform":"newTab","payload":{"windowId":1,"url":"https://calendar.example/","title":"Calendar"},"env":{"now":1000,"ids":["t001","zq000001x","zq000002x"]},"expect":{"ok":true,"result":{"tabId":"t-t001"},"changes":[{"collection":"tabs","id":"t-t001","value":{"url":"https://calendar.example/","title":"Calendar","icon":"","spaceId":"a","order":0,"lastUsed":1000,"selected":true,"target":{"kind":"web","browser":"safari","profile":null}}}],"requests":[{"type":"newTab","windowId":1,"item":"t-t001","url":"https://calendar.example/","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"a"}]}},
+      {"perform":"addFavorite","payload":{"tabId":"t-t001"},"env":{"now":1000,"ids":["f001","zq000049x","zq000050x"]},"expect":{"ok":true,"result":"fav-f001","changes":[{"collection":"favorites","id":"fav-f001","value":{"scope":"global","url":"https://calendar.example/","title":"Calendar","pos":0,"target":{"kind":"web","browser":"safari","profile":null}}},{"collection":"tabs","id":"t-t001","value":{"url":"https://calendar.example/","title":"Calendar","icon":"","spaceId":"a","order":0,"lastUsed":1000,"selected":true,"target":{"kind":"web","browser":"safari","profile":null},"favoriteId":"fav-f001"}}],"requests":[]}},
+      {"perform":"addItem","payload":{"spaceId":"a","target":{"kind":"app","bundleId":"com.apple.Music","name":"Music"}},"env":{"now":1000,"ids":["t002","zq000097x","zq000098x"]},"expect":{"ok":true,"result":{"tabId":"t-t002"},"changes":[{"collection":"tabs","id":"t-t002","value":{"url":"app://com.apple.Music","title":"Music","icon":"","spaceId":"a","order":1,"lastUsed":1000,"selected":false,"target":{"kind":"app","bundleId":"com.apple.Music","name":"Music"}}}],"requests":[]}},
+      {"perform":"addFavorite","payload":{"tabId":"t-t002"},"env":{"now":1000,"ids":["f002","zq000145x","zq000146x"]},"expect":{"ok":true,"result":"fav-f002","changes":[{"collection":"favorites","id":"fav-f002","value":{"scope":"global","url":"app://com.apple.Music","title":"Music","pos":1,"target":{"kind":"app","bundleId":"com.apple.Music","name":"Music"}}},{"collection":"tabs","id":"t-t002","value":{"url":"app://com.apple.Music","title":"Music","icon":"","spaceId":"a","order":1,"lastUsed":1000,"selected":false,"target":{"kind":"app","bundleId":"com.apple.Music","name":"Music"},"favoriteId":"fav-f002"}}],"requests":[]}},
+      {"perform":"moveFavorite","payload":{"favoriteId":"fav-f002","beforeId":"fav-f001"},"env":{"now":1000,"ids":["1111","2222","zq000193x","zq000194x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"favorites","id":"fav-f001","value":{"scope":"global","url":"https://calendar.example/","title":"Calendar","pos":1,"target":{"kind":"web","browser":"safari","profile":null}}},{"collection":"favorites","id":"fav-f002","value":{"scope":"global","url":"app://com.apple.Music","title":"Music","pos":0,"target":{"kind":"app","bundleId":"com.apple.Music","name":"Music"}}}],"requests":[]}},
+      {"perform":"renameFavorite","payload":{"favoriteId":"fav-f001","title":"Cal"},"env":{"now":1000,"ids":["1111","2222","zq000241x","zq000242x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"favorites","id":"fav-f001","value":{"scope":"global","url":"https://calendar.example/","title":"Calendar","customTitle":"Cal","pos":1,"target":{"kind":"web","browser":"safari","profile":null}}}],"requests":[]}},
+      {"perform":"closeTab","payload":{"tabId":"t-t001"},"env":{"now":1000,"ids":["1111","2222","zq000289x","zq000290x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"tabs","id":"t-t001","deleted":true}],"requests":[{"type":"closeTab","item":"t-t001","url":"https://calendar.example/","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"a","next":"t-t002"}]}}
+      ]
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 //! What commit 9's calls cost (docs/CORE-REFACTOR.md step 3, parts 8-10): a copy's push for the mini player as it
 //! comes (its JSON's bytes read, checked and cut, its tabs numbered, its window picked, the page's JSON written and
-//! pushed: a few a second while media plays), a `loading` push, the engine's slow step, the rows the UI draws (a draw),
+//! pushed: a few a second while media plays), a `loading` push, the engine's slow step, what a window draws (a draw: its state with the open rows),
 //! a UI request's route, the page's ops (a `pointerWant`, the hits, a log line), its hello over a big state, a poll's
 //! drawn look. Typed ports throughout, as the Mac has them. A measure, not a check:
 //! `cargo test --release -p margin-ffi --test routing_cost -- --ignored --nocapture`.
@@ -64,7 +64,8 @@ fn commit_nines_calls_cost() {
     let dir = tempfile::tempdir().expect("a folder");
     let root = dir.path().to_string_lossy().to_string();
     // SAFETY: the root's bytes; the library outlives the session below.
-    let lib = unsafe { margin_library_new(root.as_ptr(), root.len(), false, std::ptr::null_mut(), None) };
+    let lib =
+        unsafe { margin_library_new(root.as_ptr(), root.len(), false, std::ptr::null_mut(), None, None, None, None) };
     let mut entries = vec![json!({ "collection": "windows", "id": "1", "value": { "spaceId": "home" } })];
     for i in 0..10 {
         entries.push(json!({ "collection": "tabs", "id": format!("t{i}"), "value": { "url": format!("https://{i}.example/"), "title": "T", "spaceId": "home" } }));
@@ -157,20 +158,13 @@ fn commit_nines_calls_cost() {
             free(out, n);
         })
     };
-    extern "C" fn kept(_: *mut c_void, _: *const u8, _: usize) -> bool {
-        true
-    }
-    extern "C" fn sink(ctx: *mut c_void, _: *const MarginLiveRow) {
-        // SAFETY: ctx is the test's counter.
-        unsafe { *(ctx as *mut usize) += 1 };
-    }
     let mut rows = 0usize;
-    let mut window = 0i64;
     let draw = per_call(100_000, || {
-        // SAFETY: the live session, the counter as ctx.
-        unsafe {
-            margin_session_live_plan(s, &mut rows as *mut usize as *mut c_void, Some(kept), Some(sink), &mut window)
-        };
+        let mut n = 0;
+        // SAFETY: the live session, no tail.
+        let out = unsafe { margin_session_state(s, std::ptr::null(), 0, &mut n) };
+        rows = n;
+        free(out, n);
     });
     let ui = per_call(50_000, || {
         input(r#"{"type":"ui","kind":"closeTab","payload":{"windowId":1,"tabId":3}}"#, &mut status);
@@ -255,7 +249,7 @@ fn commit_nines_calls_cost() {
     let drawn = per_call(1_000_000, look);
     println!(
         "commit 9 (release): a mini player's push (~{} bytes, 3 sources) {push:.0} ns, a loading push {loading_push:.0} ns, the \
-         engine's slow step on and off {loading:.0} ns, the UI's rows for 10 items (a draw) {draw:.0} ns ({rows} rows), a UI \
+         engine's slow step on and off {loading:.0} ns, a window's state with 10 items open (a draw) {draw:.0} ns ({rows} bytes), a UI \
          request's route {ui:.0} ns, a pointerWant {want:.0} ns, 10 hits {hits:.0} ns, a log line {log:.0} ns, a hello over a \
          {} KB state {hello:.0} ns, a poll's drawn look {drawn:.1} ns",
         media.len(),

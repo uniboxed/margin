@@ -494,7 +494,7 @@ impl Core {
             if let Some(space) = &space {
                 payload.insert("spaceId".into(), json!(space));
             }
-            self.ports.perform("newTab", &payload);
+            self.library.perform("newTab", &payload);
             return;
         };
         // (Its profile: the space's, as a new tab there would have.)
@@ -709,7 +709,7 @@ impl Core {
         if let Some(space) = &space {
             payload.insert("spaceId".into(), json!(space));
         }
-        let out = self.ports.perform("addItem", &payload);
+        let out = self.library.perform("addItem", &payload);
         let made = if out.ok { out.result.get("tabId").and_then(Value::as_str).map(str::to_string) } else { None };
         let Some(item) = made else {
             self.note(format!(

@@ -397,9 +397,27 @@ MarginData *margin_data_new(const uint8_t *root, size_t len, bool background, vo
 void margin_data_free(MarginData *data);
 uint8_t *margin_data_file_name(const uint8_t *name, size_t len, size_t *out_len);
 uint8_t *margin_data_call(MarginData *data, const uint8_t *request, size_t len, size_t *out_len);
-MarginLibrary *margin_library_new(const uint8_t *root, size_t len, bool background, void *ctx, MarginDataWake wake);
+// The library (margin-core's library object, ffi data.rs: its store and its rules, the person's sorter: libicucore's
+// collation for JSC's default locale). Its callbacks, called during a call and free to call back in: `env` (an action's
+// time in ms, answered, and its ids, each given through margin_library_env_id), `now` (its changes' time), `changed`
+// (the collections an edit changed, a JSON array); each NULL: the wall clock, 4 random ids, no observer. `call`:
+// values (a `collection`'s, or all), apply, written, rev; perform (its requests to the session made over it, its sink,
+// inside the call), snapshot, actions, item, requests, imported (each with `log`). `import`: the import once over the
+// data object's sets (read first). `rules`: library.js's `marginLibrary.call(name, argsJSON)` answered by the core (the
+// library's sorter; NULL: the person's), for the tests: the shared vectors with the Mac's sorter.
+typedef struct MarginLibraryEnvOut MarginLibraryEnvOut;
+typedef double (*MarginLibraryEnv)(void *ctx, MarginLibraryEnvOut *out);
+typedef double (*MarginLibraryNow)(void *ctx);
+typedef void (*MarginLibraryChanged)(void *ctx, const uint8_t *collections, size_t len);
+MarginLibrary *margin_library_new(const uint8_t *root, size_t len, bool background, void *ctx, MarginDataWake wake, MarginLibraryEnv env, MarginLibraryNow now, MarginLibraryChanged changed);
 void margin_library_free(MarginLibrary *library);
+void margin_library_env_id(MarginLibraryEnvOut *out, const uint8_t *id, size_t len);
 uint8_t *margin_library_call(MarginLibrary *library, const uint8_t *request, size_t len, size_t *out_len);
+uint8_t *margin_library_import(MarginLibrary *library, MarginData *data, size_t *out_len);
+uint8_t *margin_library_rules(MarginLibrary *library, const uint8_t *name, size_t name_len, const uint8_t *args, size_t args_len, size_t *out_len);
+// The theme of the space a Margin window shows (its own space's, else the first's), typed (a draw's): its length (over
+// `cap`: ask again), -1: none (the profile's).
+ptrdiff_t margin_library_space_theme(const MarginLibrary *library, int64_t window, uint8_t *buf, size_t cap);
 
 // A browser's profiles (data/profiles.rs, ffi profiles.rs; the hosted file's shape): one object per browser over its
 // browser.json in `root` (NULL: in memory), one JSON call (`now` passed in, the log lines in each answer), and the
@@ -449,7 +467,9 @@ uint8_t *margin_builtin_themes_message(MarginBuiltinThemes *builtins, const uint
 uint8_t *margin_themes_protocol(const uint8_t *request, size_t len, size_t *out_len);
 
 // The session (session/, ffi session.rs: HostedSession's flows as async steps): one object per app over the library
-// object, with the Swift side's ports, called during a call and free to call back in: `now` (the monotonic clock) and
+// object (the library's requests' sink from `new` on, or from `take_requests`, of several over one library: they reach
+// it inside a perform; a perform Swift makes itself is followed by the `edited` input, which answers what they left),
+// with the Swift side's ports, called during a call and free to call back in: `now` (the monotonic clock) and
 // `port` (JSON in, JSON out allocated with malloc or NULL, freed by the session with free). `input`, `answer` (a
 // command's, by its id) and `tick` (the commands handed out are started, the deadlines up to `due` over) each answer
 // `{ start?, deadline, log?, reply?, error? }`: start each command at once, in order, then call `tick`. Answers freed
@@ -476,6 +496,7 @@ typedef void (*MarginRowSink)(void *ctx, const MarginRow *row);
 
 MarginSession *margin_session_new(MarginLibrary *library, const uint8_t *options, size_t len, void *ctx, MarginSessionNow now, MarginSessionPort port, MarginSessionCall call);
 void margin_session_free(MarginSession *session);
+void margin_session_take_requests(MarginSession *session);
 void margin_port_out_text(MarginPortOut *out, const uint8_t *ptr, size_t len);
 void margin_port_out_int(MarginPortOut *out, int64_t n);
 void margin_port_out_float(MarginPortOut *out, double n);
@@ -515,8 +536,8 @@ uint8_t *margin_session_peek_open(const MarginSession *session, MarginBytes prof
 // as `input` does take a status. `copy_message`: a copy's push as its JSON's bytes, routed by the core (the loading
 // bar's, the preview card's, the UI's); `copy_tabs`: a Safari copy's `openTabs` value's bytes. `number` gives an item its
 // UI number if it has none; `open_row` INT64_MIN: none; `item_of_tab` its length (-1: none; over `cap`: ask again).
-// `live_plan`: the rows the UI draws, `kept` asked of each listed item, each row to `sink`, the window they're in
-// (false: none listed).
+// `state`: what a Margin window draws, one call a draw (the library's kept snapshot with the session's open items as
+// tabs, `tail`, the profile's `"settings":…,"favicons":…`, before the last brace; `null` with no library).
 uint8_t *margin_session_loading(const MarginSession *session, const uint8_t *host, size_t len, MarginSessionStatus *status, size_t *out_len);
 uint8_t *margin_session_refresh_loading(const MarginSession *session, MarginSessionStatus *status, size_t *out_len);
 uint8_t *margin_session_copy_message(const MarginSession *session, MarginBytes browser, MarginBytes profile, bool has_window, int64_t window, const uint8_t *msg, size_t len, MarginSessionStatus *status, size_t *out_len);
@@ -524,10 +545,7 @@ uint8_t *margin_session_copy_tabs(const MarginSession *session, MarginBytes prof
 int64_t margin_session_number(const MarginSession *session, const uint8_t *item, size_t len);
 int64_t margin_session_open_row(const MarginSession *session, const uint8_t *item, size_t len);
 ptrdiff_t margin_session_item_of_tab(const MarginSession *session, int64_t n, uint8_t *buf, size_t cap);
-typedef struct MarginLiveRow { MarginBytes item; int64_t number; int64_t index; bool active; bool visible; bool audible; bool muted; } MarginLiveRow;
-typedef bool (*MarginLiveKept)(void *ctx, const uint8_t *item, size_t len);
-typedef void (*MarginLiveSink)(void *ctx, const MarginLiveRow *row);
-bool margin_session_live_plan(const MarginSession *session, void *ctx, MarginLiveKept kept, MarginLiveSink sink, int64_t *window);
+uint8_t *margin_session_state(const MarginSession *session, const uint8_t *tail, size_t tail_len, size_t *out_len);
 size_t margin_session_drawn_windows(const MarginSession *session, MarginBytes browser, MarginBytes profile, int64_t *out, size_t cap);
 bool margin_session_prepare_wanted(const MarginSession *session);
 bool margin_session_start_screen(const MarginSession *session);

@@ -9,15 +9,15 @@ use crate::session::card::{CARD_COVER_WAIT, card_item, web_host};
 const RECT: Rect = Rect { x: 360.0, y: 150.0, width: 1044.0, height: 700.0 };
 
 /// Window 1 hosting a web item `b1` of `s-default` in its main window (the copy's 90).
-fn hosted() -> (Session, Rc<World>, Rc<Shelf>) {
-    let (s, world, shelf) = session();
+fn hosted() -> (Session, Rc<World>, Rc<TestLibrary>) {
+    let (s, world, lib) = session();
     world.profiles.borrow_mut().push("s-default".into());
-    shelf
-        .0
-        .borrow_mut()
-        .insert(("tabs".into(), "b1".into()), json!({ "url": "https://b.example/", "spaceId": "home",
-                                                      "target": { "kind": "web", "browser": "safari", "profile": null } }));
-    shelf.0.borrow_mut().insert(("spaces".into(), "home".into()), json!({ "name": "Home", "profile": "" }));
+    lib.put(
+        "tabs",
+        "b1",
+        json!({ "url": "https://b.example/", "spaceId": "home", "target": { "kind": "web", "browser": "safari", "profile": null } }),
+    );
+    lib.put("spaces", "home", json!({ "name": "Home", "profile": "" }));
     set(
         &s,
         json!({ "shown": { "put": [[1, "b1"]] }, "open": { "put": [["b1", "safari:s-default", "s-default"]] },
@@ -30,7 +30,7 @@ fn hosted() -> (Session, Rc<World>, Rc<Shelf>) {
     world.pages.borrow_mut().insert(1, Rect::new(260.0, 41.0, 1244.0, 933.0));
     // (The engine shows the window Margin's window hosts: hosting settled after a flow keeps it, as in the app.)
     *world.shown.borrow_mut() = Some("safari:s-default".into());
-    (s, world, shelf)
+    (s, world, lib)
 }
 
 fn peek(s: &Session, kind: &str, args: Value) -> Out {
@@ -211,31 +211,34 @@ fn hidden_with_its_opener_and_shown_again_on_its_return() {
 
 #[test]
 fn quick_tab_with_nothing_hosted_the_spaces_new_tab_made_now() {
-    let (s, world, _) = hosted();
+    let (s, world, lib) = hosted();
     set(&s, json!({ "hostingWindow": { "del": [null] } }));
     peek(&s, "quickTab", json!({ "window": 1, "space": "home" }));
     assert_eq!(
         s.input(&json!({ "type": "state", "get": ["littleArcs"] })).reply.unwrap()["littleArcs"],
         json!([[1, "home"]])
     );
-    world.perform_requests.borrow_mut().push(object(json!({ "type": "newTab", "item": "n1", "windowId": 1 })));
-    world.performs.borrow_mut().push_back(json!({ "ok": true, "result": { "tabId": "n1" } }));
     peek(&s, "quickTabGo", json!({ "window": 1, "url": "https://quick.example/", "space": "home" }));
     let a = acts(&world);
     assert_eq!(
         named(&a, "perform"),
         [json!(["perform", "newTab", { "windowId": 1, "url": "https://quick.example/", "spaceId": "home" }])]
     );
-    assert_eq!(s.core().requested_in(1).as_deref(), Some("n1"), "its request reached the session inside the edit");
+    let made =
+        lib.lib.live("tabs").into_iter().find(|(_, v)| v["url"] == json!("https://quick.example/")).map(|(id, _)| id);
+    assert!(made.as_deref().is_some_and(|m| m.starts_with("t-")), "the library's new tab: {made:?}");
+    assert_eq!(s.core().requested_in(1), made, "its request reached the session inside the edit");
     assert!(s.core().read(|st| st.little_arcs.is_empty()));
 }
 
 #[test]
 fn expand_refused_the_card_closed_instead_and_made_its_tab_moved_then_shown() {
-    let (s, world, shelf) = hosted();
+    let (s, world, lib) = hosted();
     let msg = json!({ "id": "p", "url": "https://docs.example.org/", "notAfter": later() });
     let out = peek(&s, "open", json!({ "profile": "s-default", "window": 90, "msg": msg }));
     pump(&s, &world, out, &mut laid_out(&s));
+    // (The card's space gone from the library: its edit refused.)
+    lib.delete("spaces", "home");
     peek(&s, "expand", json!({ "window": 1, "space": "nope" }));
     assert_eq!(s.done().last().map(String::as_str), Some("Preview: the card closed (Expand failed)"), "{:?}", s.done());
     let a = acts(&world);
@@ -245,26 +248,23 @@ fn expand_refused_the_card_closed_instead_and_made_its_tab_moved_then_shown() {
     let out = s.tick(0.0);
     pump(&s, &world, out, &mut laid_out(&s));
 
+    lib.put("spaces", "home", json!({ "name": "Home", "profile": "" }));
     let out = peek(&s, "open", json!({ "profile": "s-default", "window": 90, "msg": msg }));
     pump(&s, &world, out, &mut laid_out(&s));
-    world.performs.borrow_mut().push_back(json!({ "ok": true, "result": { "tabId": "e1" } }));
     let out = peek(&s, "expand", json!({ "window": 1 }));
-    assert_eq!(s.core().requested_in(1).as_deref(), Some("e1"));
+    let e1 = s.core().requested_in(1).expect("its item in front");
+    assert!(e1.starts_with("t-") && lib.lib.item("tabs", &e1).is_some(), "the library's: {e1}");
     let seen = pump(&s, &world, out, &mut laid_out(&s));
     assert_eq!(kinds(&seen)[0], "ask hostPromotePeek");
     let Command::Ask { payload, .. } = &seen[0] else { panic!() };
-    assert_eq!(
-        Value::Object(payload.clone()),
-        json!({ "fromItemId": "peek-card", "toWindowId": 90, "toItemId": "e1" })
-    );
-    assert_eq!(s.done().iter().filter(|l| l.as_str() == "Preview: expanded into item e1").count(), 1);
+    assert_eq!(Value::Object(payload.clone()), json!({ "fromItemId": "peek-card", "toWindowId": 90, "toItemId": e1 }));
+    assert_eq!(s.done().iter().filter(|l| **l == format!("Preview: expanded into item {e1}")).count(), 1);
 
     // A space the library has, named: it, before the card's own.
-    shelf.0.borrow_mut().insert(("spaces".into(), "work".into()), json!({ "name": "Work" }));
+    lib.put("spaces", "work", json!({ "name": "Work" }));
     let out = peek(&s, "open", json!({ "profile": "s-default", "window": 90, "msg": msg }));
     pump(&s, &world, out, &mut laid_out(&s));
     acts(&world);
-    world.performs.borrow_mut().push_back(json!({ "ok": true, "result": { "tabId": "e2" } }));
     peek(&s, "expand", json!({ "window": 1, "space": "work" }));
     assert_eq!(named(&acts(&world), "perform")[0][2]["spaceId"], json!("work"));
 }
@@ -321,11 +321,8 @@ fn the_pages_rect_moved_more_than_a_point_the_card_laid_out_again() {
 
 #[test]
 fn a_window_laid_out_with_several_never_only_switches_tabs_and_a_show_clears_its_layout() {
-    let (s, world, shelf) = hosted();
-    shelf.0.borrow_mut().insert(
-        ("tabs".into(), "b1".into()),
-        json!({ "url": "https://b.example/", "spaceId": "home", "target": { "kind": "web", "browser": "safari", "profile": "s-default" } }),
-    );
+    let (s, world, lib) = hosted();
+    lib.put("tabs", "b1", json!({ "url": "https://b.example/", "spaceId": "home", "target": { "kind": "web", "browser": "safari", "profile": "s-default" } }));
     *world.shown.borrow_mut() = Some("safari:s-default".into());
     world.hosted.borrow_mut().push("safari:s-default".into());
     let show = |s: &Session| {

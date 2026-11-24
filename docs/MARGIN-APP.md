@@ -127,7 +127,9 @@ Margin.app (a regular app: its Dock icon, its menu bar, Mission Control shows "M
    quitting his Safari).
 1. **Spaces owned by the app.** The edit rules of `extension/state/model.ts`
    for spaces, pins, folders and tabs run in the app (same TypeScript, in a
-   JavaScriptCore context, so there is one copy of the rules). The app's data
+   JavaScriptCore context, so there is one copy of the rules; since
+   docs/CORE-REFACTOR.md step 4, margin-core's port of them, pinned to the
+   TypeScript by shared vectors). The app's data
    set becomes the source; an item gets a target (`web`: Safari profile, or
    `app`: bundle id). First run: today's spaces imported, then the
    create-spaces step for anything new. The extension keeps only the live tab mapping.

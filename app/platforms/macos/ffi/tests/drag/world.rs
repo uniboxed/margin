@@ -60,7 +60,8 @@ pub fn world() -> World {
     let dir = tempfile::tempdir().expect("a folder");
     let root = dir.path().to_string_lossy().to_string();
     // SAFETY: the root's bytes.
-    let library = unsafe { margin_library_new(root.as_ptr(), root.len(), false, std::ptr::null_mut(), None) };
+    let library =
+        unsafe { margin_library_new(root.as_ptr(), root.len(), false, std::ptr::null_mut(), None, None, None, None) };
     let mut counter = Box::new((0usize, 0.0f64));
     let ctx = (&mut *counter as *mut (usize, f64)).cast::<c_void>();
     // SAFETY: the library; the counter as ctx (alive as long as the world).

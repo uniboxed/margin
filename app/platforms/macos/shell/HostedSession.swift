@@ -2,7 +2,8 @@
 // library's items shown in Margin's window by the host engine.
 //
 // - The library (Library.swift) says what needs a browser or an app (its requests: activateTab, newTab, closeTab,
-//   setSpace, openPin, clearToday, restoreArchive); this is its delegate, and does each one, one at a time, in order.
+//   setSpace, openPin, clearToday, restoreArchive); the core's session made here is its sink (inside each perform),
+//   and does each one, one at a time, in order.
 // - An app item: its app opened by the engine the first time (`.app(bundleId)`: started with no Dock icon, its
 //   window full screen and sized to the page area in a Space of its own, then a member of Margin's full-screen Space;
 //   Margin's page area shows a loading animation meanwhile), shown again by the engine after (an instant switch);
@@ -384,7 +385,7 @@ protocol HostedLinks: AnyObject {
     func linkEpoch(of profile: String) -> String?
 }
 
-final class HostedSession: LibraryDelegate {
+final class HostedSession {
     struct Options {
         var firstCopiesPace = 10.0 // a Safari with no copy linked yet: its own copies' turn before its menu is pressed for a profile
         var pressPace = 2.0 // Safari's menu pressed again after this (times the presses so far) while no window came of one
@@ -525,6 +526,15 @@ final class HostedSession: LibraryDelegate {
         self.options = options
         core = SessionCore(library: library, options: options.json)
         core.owner = self
+        takeLibraryRequests()
+    }
+
+    // The session the library's requests' sink in the core (from its start; again, of several sessions over one
+    // library: the tests' rigs): a perform's requests reach it inside the perform, and one Swift makes itself, outside
+    // the session's calls, then has what they left answered here.
+    func takeLibraryRequests() {
+        core.takeRequests()
+        library.onRequests = { [weak self] in self?.edited() }
     }
 
     // ---- the core (core/session/, SessionCore.swift: docs/CORE-REFACTOR.md step 3) ----
@@ -619,8 +629,7 @@ final class HostedSession: LibraryDelegate {
         }
     }
 
-    // A command started (session/mod.rs `Command`): a copy's request, a library edit (answered now, in the same turn: its
-    // requests reach this delegate first, as when a flow here performed it), a Swift job's turn.
+    // A command started (session/mod.rs `Command`): a copy's request, a Swift job's turn, an engine's operation.
     private func start(_ c: JSONObject) {
         guard let id = (c["id"] as? NSNumber)?.uint64Value else { return }
         switch c["op"] as? String {
@@ -630,10 +639,6 @@ final class HostedSession: LibraryDelegate {
                 let (result, error) = await self.links.request(profile: profile, kind, payload)
                 self.drive(self.core.answer(id, ["result": result ?? NSNull(), "error": error ?? NSNull()]))
             }
-        case "perform":
-            let out = library.perform(c["action"] as? String ?? "", c["payload"] as? JSONObject ?? [:])
-            let result = out.result.flatMap { JSONSerialization.isValidJSONObject([$0]) ? $0 : nil } ?? NSNull()
-            drive(core.answer(id, ["ok": out.ok, "result": result, "error": out.error ?? NSNull()]))
         case "run":
             let body = (c["job"] as? NSNumber).flatMap { jobs.removeValue(forKey: $0.uint64Value) }
             startNow {
@@ -810,11 +815,6 @@ final class HostedSession: LibraryDelegate {
         case "settings": return ["settings": uiSettings() ?? NSNull()]
         case "idna": return ["ok": (ask["host"] as? String).map(SessionRules.idna) ?? false]
         case "urlHost": return (ask["url"] as? String).flatMap { URL(string: $0)?.host }.map { ["host": $0] } ?? [:]
-        case "perform":
-            // (A library edit a synchronous flow makes now: its requests reach this delegate first, re-entrantly.)
-            let out = library.perform(ask["action"] as? String ?? "", ask["payload"] as? JSONObject ?? [:])
-            let result = out.result.flatMap { JSONSerialization.isValidJSONObject([$0]) ? $0 : nil } ?? NSNull()
-            return ["ok": out.ok, "result": result, "error": out.error ?? NSNull()]
         default: return [:]
         }
     }
@@ -1014,10 +1014,18 @@ final class HostedSession: LibraryDelegate {
 
     // ---- the library's requests ----
 
-    func library(_ library: Library, wants request: LibraryRequest) {
-        // (The core's, core/session/requests.rs: the item in front in its window at once, then handled in the queue.)
-        guard JSONSerialization.isValidJSONObject(request.body) else { return Diagnostics.warn("hosted: a library request that isn't JSON") }
-        drive(core.input(["type": "library", "request": request.body]))
+    // A library request given to the session as an input (`library`: handled as the sink's are), for one the rules
+    // don't make (the tests' odd shapes); the library's own reach the session inside its perform.
+    func request(_ body: JSONObject) {
+        guard JSONSerialization.isValidJSONObject(body) else { return Diagnostics.warn("hosted: a library request that isn't JSON") }
+        drive(core.input(["type": "library", "request": body]))
+    }
+
+    // A library edit Swift made itself (a UI request, the first run's space, a test): its requests reached the core's
+    // session inside it (the item in front at once, its handling queued: core/session/requests.rs); what they left
+    // answered now (their lines, what they made ready run in the next turn), as their input did for the delegate.
+    func edited() {
+        drive(core.input(["type": "edited"]))
     }
 
     // A show overtaken before it started by a newer one for its window (fast clicks): skipped (the core's).
@@ -1658,53 +1666,12 @@ final class HostedSession: LibraryDelegate {
     // An open item's row number, as the UI has it (nil: not open, or never numbered). DEV-HOOK: the dev hook's `ui`.
     func openRow(ofItem item: String) -> Int? { core.openRow(item) }
 
-    // The library's snapshot (stored values' shape) with the items that have a page as open tabs of the Margin
-    // window hosting them, the one shown active there: which, their numbers, in front, visible, their sound the core's
-    // (`live_plan`), shaped here into the snapshot's kept tabs until step 4.
-    func live(_ snapshot: JSONObject) -> JSONObject {
-        guard var openTabs = snapshot["openTabs"] as? JSONObject else { return snapshot }
-        var kept = openTabs["keptTabs"] as? JSONObject ?? [:]
-        // (Each listed item's kept tab read once: the core asks whether there's one, the shaping takes it.)
-        var found: [String: (tab: JSONObject, space: String)] = [:]
-        let had = kept
-        guard let plan = core.livePlan(kept: { item in
-            guard let k = had[item] as? JSONObject, let space = k["spaceId"] as? String else { return false }
-            found[item] = (k, space)
-            return true
-        }) else { return snapshot }
-        var tabs: JSONObject = [:], tabSpace: JSONObject = [:]
-        for r in plan.rows {
-            guard let (k, space) = found[r.item] else { continue }
-            var tab = Self.liveTab(k, number: r.number, item: r.item, windowId: plan.window, index: r.index, active: r.active, audible: r.audible, muted: r.muted)
-            if r.visible { tab["visible"] = true }
-            tabs[String(r.number)] = tab
-            tabSpace[String(r.number)] = space
-            kept[r.item] = nil
-        }
-        openTabs["tabs"] = tabs
-        openTabs["tabSpace"] = tabSpace
-        openTabs["keptTabs"] = kept
-        var out = snapshot
-        out["openTabs"] = openTabs
-        return out
-    }
-
-    // An open item's tab as the UI takes it (state/model.ts tabRecord's shape): its page (`k`, the library's item as a
-    // kept tab), and what binds it, as the item has it: the pin or favorite it's the tab of (sticky pins, favorites:
-    // their rows find it by them, and its close isn't an archive) and the name the person gave it; whether it plays
-    // sound and is muted (the mini player, the Mute/Unmute row: the copy's, `safariAudio`). Only fields with a value.
-    static func liveTab(_ k: JSONObject, number n: Int, item: String, windowId: Int, index: Int, active: Bool, audible: Bool, muted: Bool) -> JSONObject {
-        var tab: JSONObject = [
-            "id": n, "windowId": windowId, "index": index, "title": k["title"] ?? "", "url": k["url"] ?? "", "favIconUrl": k["favIconUrl"] ?? "",
-            "active": active, "lastActive": k["lastActive"] ?? 0, "mid": item, "order": k["order"] ?? 0,
-        ]
-        for key in ["pinnedBy", "favoriteId", "customTitle"] {
-            if let value = k[key] as? String, !value.isEmpty { tab[key] = value }
-        }
-        if audible { tab["audible"] = true }
-        if muted { tab["muted"] = true }
-        return tab
-    }
+    // What Margin's windows draw, as its text (the core's, one call a draw: core/session/mod.rs `state_text`): the
+    // library's snapshot (stored values' shape) with the items that have a page as open tabs of the Margin window
+    // hosting them, the one shown active there (which, their numbers, in front, visible, their sound: `live_plan`; each
+    // its tab as the UI takes it, state/model.ts tabRecord's shape: its page, the pin or favorite it's the tab of and
+    // the name the person gave it, only with a value), and `tail` (the profile's settings and site icons) spliced in.
+    func stateText(tail: String = "") -> String { core.state(tail: tail) }
 
     // A Safari copy's tabs, as its state says them now (`openTabs`, its JSON's bytes as the link's mirror keeps it:
     // Shell.linkReceived): each item's tab's sound (the core's, core/session/route.rs `copy_tabs`); the windows draw
@@ -1737,8 +1704,8 @@ final class HostedSession: LibraryDelegate {
 }
 
 // What Margin's windows draw with the library on (ShellHostedGlue.swift): the library's spaces, pins, folders and
-// items, with what the session has open; settings, theme settings and site icons still a profile's (read only,
-// changed in memory: DataSetWindowSource's `settingsAndIcons`).
+// items, with what the session has open (the core's text, `stateText`); settings, theme settings and site icons still
+// a profile's (read only, changed in memory: DataSetWindowSource's `drawnText`, its text kept between its changes).
 final class LibraryWindowSource: MarginWindowSource {
     let library: Library
     let session: HostedSession
@@ -1756,13 +1723,8 @@ final class LibraryWindowSource: MarginWindowSource {
         session.uiSettings = { [weak profileSource] in profileSource?.drawnSettings }
     }
 
-    func snapshot() -> JSONObject {
-        var s = library.snapshot()
-        let profile = profileSource.settingsAndIcons()
-        s["settings"] = profile.settings
-        s["favicons"] = profile.icons
-        return session.live(s)
-    }
+    func stateText() -> String { session.stateText(tail: profileSource.drawnText()) }
+    func spaceTheme(window: Int) -> String? { library.spaceTheme(window: window) }
 
     // A request the UI makes, routed by the core (core/session/ui.rs `ui_request`: an open item's row by the UI's number
     // mapped back to its item, the settings' own, the pasteboard's, the session's flows, `addFavorite`'s scope from the

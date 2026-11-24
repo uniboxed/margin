@@ -13,8 +13,8 @@ fn named(acts: &[Value], name: &str) -> Vec<Value> {
     acts.iter().filter(|a| a[0] == json!(name)).cloned().collect()
 }
 
-fn item(shelf: &Shelf, id: &str, v: Value) {
-    shelf.0.borrow_mut().insert(("tabs".into(), id.into()), v);
+fn item(lib: &TestLibrary, id: &str, v: Value) {
+    lib.put("tabs", id, v);
 }
 
 fn message(s: &Session, profile: &str, window: Option<i64>, msg: Value) -> Out {
@@ -79,8 +79,8 @@ fn the_loading_bar_by_the_uis_numbers_for_the_hosting_window_only() {
 
 #[test]
 fn a_panes_own_loader_kept_until_its_reveal_is_let_go() {
-    let (s, world, shelf) = session();
-    item(&shelf, "p", json!({ "title": "Pane page" }));
+    let (s, world, lib) = session();
+    item(&lib, "p", json!({ "title": "Pane page" }));
     set(
         &s,
         json!({ "hostingWindow": { "put": [[1]] }, "panesLaying": { "put": [[1, "safari:s-default#pane1", "p"], [1, "app:com.n", "n"]] },
@@ -108,11 +108,11 @@ fn media(sources: Value) -> Value {
 
 #[test]
 fn the_mini_players_window_and_its_standing_push_taken_back() {
-    let (s, world, shelf) = session();
+    let (s, world, lib) = session();
     world.windows.borrow_mut().push(2);
-    item(&shelf, "a", json!({ "url": "https://a.example/", "spaceId": "work" }));
-    item(&shelf, "b", json!({ "url": "https://b.example/", "spaceId": "home" }));
-    shelf.0.borrow_mut().insert(("windows".into(), "2".into()), json!({ "spaceId": "work" }));
+    item(&lib, "a", json!({ "url": "https://a.example/", "spaceId": "work" }));
+    item(&lib, "b", json!({ "url": "https://b.example/", "spaceId": "home" }));
+    lib.put("windows", "2", json!({ "spaceId": "work" }));
     set(
         &s,
         json!({ "hostingWindow": { "put": [[1]] }, "open": { "put": [["a", "safari:s-default", "s-default"], ["b", "safari:s-default", "s-default"]] },
@@ -247,12 +247,9 @@ fn the_uis_requests_routed() {
     ui(&s, "openLauncher", json!({ "windowId": 1, "settings": 1 }));
     ui(&s, "startup.retry", json!({}));
     assert!(named(&acts(&world), "swift").is_empty());
-    let out = s.tick(0.0);
-    let settings =
-        out.start.iter().find(|(_, c)| matches!(c, Command::Perform { action, .. } if action == "openMarginPage"));
-    let Some((id, Command::Perform { payload, .. })) = settings else { panic!("{:?}", out.start) };
-    assert_eq!(Value::Object(payload.clone()), json!({ "windowId": 1, "page": "settings" }));
-    s.answer(*id, json!({ "ok": true, "result": null, "error": null }));
+    s.tick(0.0);
+    let settings: Vec<Value> = acts(&world).into_iter().filter(|a| a[0] == json!("perform")).collect();
+    assert_eq!(settings, [json!(["perform", "openMarginPage", { "windowId": 1, "page": "settings" }])]);
     s.tick(0.0);
     // The history's in the queue (navigate), an app's open at once (its flow's first part in the call).
     set(&s, json!({ "open": { "put": [["a", "safari:p", "p"]] } }));
@@ -293,4 +290,43 @@ fn the_rows_the_ui_draws_numbered_in_order_of_first_use() {
     let (s, world, _) = session();
     assert_eq!(s.live_plan(&mut |_| panic!("not asked")), None);
     assert!(acts(&world).is_empty());
+}
+
+#[test]
+fn what_a_window_draws_is_the_librarys_snapshot_with_the_open_items_as_tabs() {
+    // The library's items (`t-` ids, as the rules keep them), three open, one not kept (Margin's own page `m`).
+    let (s, _, lib) = session();
+    for (id, space) in [("t-a", "home"), ("t-b", "home"), ("t-c", "work"), ("t-d", "home")] {
+        lib.put(
+            "tabs",
+            id,
+            json!({ "url": format!("https://{id}.example/"), "title": id, "spaceId": space, "order": 1 }),
+        );
+    }
+    let text = lib.lib.snapshot().text.clone();
+    assert_eq!(s.state_text(&lib.lib, ""), text, "nothing open: the snapshot as it is");
+    set(
+        &s,
+        json!({ "hostingWindow": { "put": [[2]] }, "shown": { "put": [[2, "t-c"]] }, "requested": { "put": [[2, "t-b"]] },
+                "open": { "put": [["t-c", "app:com.c", null], ["t-a", "safari:p", "p"]] }, "marginOpen": { "put": [["m"]] },
+                "safariAudio": { "put": [["t-a", true, false]] } }),
+    );
+    // (An edit first: this draw is the first to make the new revision's snapshot.)
+    lib.put("tabs", "t-e", json!({ "url": "https://t-e.example/", "title": "t-e", "spaceId": "home", "order": 2 }));
+    let drawn: Value = serde_json::from_str(&s.state_text(&lib.lib, r#""settings":{"a":1},"favicons":{}"#)).unwrap();
+    let open = &drawn["openTabs"];
+    let numbers: Vec<i64> = ["t-a", "t-b", "t-c"].iter().map(|i| s.number(i)).collect();
+    assert_eq!(open["tabs"].as_object().map(|t| t.len()), Some(3), "{open}");
+    let tab = |n: i64| &open["tabs"][n.to_string()];
+    assert_eq!(tab(numbers[0])["audible"], json!(true));
+    assert_eq!((tab(numbers[1])["active"].clone(), tab(numbers[1])["mid"].clone()), (json!(true), json!("t-b")));
+    assert_eq!(
+        (tab(numbers[2])["windowId"].clone(), open["tabSpace"][numbers[2].to_string()].clone()),
+        (json!(2), json!("work"))
+    );
+    assert_eq!(
+        open["keptTabs"].as_object().map(|k| k.keys().cloned().collect::<Vec<_>>()),
+        Some(vec!["t-d".to_string(), "t-e".to_string()])
+    );
+    assert_eq!((drawn["settings"].clone(), drawn["favicons"].clone()), (json!({ "a": 1 }), json!({})));
 }

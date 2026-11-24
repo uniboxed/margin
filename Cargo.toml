@@ -21,6 +21,12 @@ getrandom = "0.4"
 hex = "0.4"
 tempfile = "3"
 libc = "0.2"
+# The library's rules (app/shared/core/src/library/js.rs): JavaScript's `new URL` (WHATWG). Its `localeCompare` is the
+# system's ICU, handed in by each platform (margin-ffi's libicucore, the Windows shell's icu.dll).
+url = "2.5"
+# The library's typed state keeps JavaScript's object key order (app/shared/core/src/library/state.rs `JsObject`); already
+# serde_json's (`preserve_order`), so nothing new is built.
+indexmap = "2"
 
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "deny"

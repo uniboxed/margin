@@ -6,7 +6,7 @@
 // - The page's hello says `host: 'app-window'` (ui/host-app.ts appWindow): it
 //   draws the whole app, in the window's mode (windowed or full screen, pushed
 //   as its `windows` list as it changes), never as a layer over a browser.
-// - Its state is the source's `snapshot()` (the State shape pages draw), pushed
+// - Its state is the source's `stateText()` (the State shape pages draw, as its text), pushed
 //   again whenever the source says it changed; its requests (`send`) and what
 //   only the app does (`perform`) go to the source, but for the window's own
 //   full screen, done here.
@@ -67,13 +67,15 @@ import AppKit
 import MarginCore
 import WebKit
 
-// Where Margin's windows get their spaces (until the app owns them: the library phase's store, with the same
-// two calls). `snapshot()`: the whole state, in the shape pages draw (types/margin.d.ts State, as
-// shared/stored.ts fromStorage gives it); `perform`: a request of the UI's (its `send` type and payload, or a
-// `perform` name and argument), the window's id in the payload as `windowId`, answered as the page's request is
-// (`{ ok, result }` or `{ ok: false, error }`; nil: done, `{ ok: true, result: true }`); `onChange`: the snapshot changed.
+// Where Margin's windows get their spaces (the library's, LibraryWindowSource). `stateText()`: the whole state as
+// its JSON text, in the shape pages draw (types/margin.d.ts State, as shared/stored.ts fromStorage gives it), pushed as
+// it is; `spaceTheme(window:)`: the theme of the space that window shows (nil: none of its own); `perform`: a request
+// of the UI's (its `send` type and payload, or a `perform` name and argument), the window's id in the payload as
+// `windowId`, answered as the page's request is (`{ ok, result }` or `{ ok: false, error }`; nil: done,
+// `{ ok: true, result: true }`); `onChange`: the state changed.
 protocol MarginWindowSource: AnyObject {
-    func snapshot() -> JSONObject
+    func stateText() -> String
+    func spaceTheme(window: Int) -> String?
     @discardableResult func perform(_ type: String, _ payload: JSONObject) -> JSONObject?
     var onChange: (() -> Void)? { get set }
 }
@@ -1592,25 +1594,12 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // showing a space with another theme).
     func stateChanged() {
         guard asked, let owner else { return }
-        let snapshot = owner.source.snapshot()
-        let state = jsonString(snapshot) ?? "null"
+        let state = owner.source.stateText()
         push(#"{"type":"state","state":"# + state + #","windows":"# + windowsJSON + "}")
-        if let theme = owner.theme(id, snapshot), theme != themeSent {
+        if let theme = owner.theme(id, owner.source.spaceTheme(window: id)), theme != themeSent {
             themeSent = theme
             push(#"{"type":"theme","theme":"# + theme + "}")
         }
-    }
-
-    // The theme of the space window `window` shows in `state` (the library's snapshot: its spaces, `openTabs`'
-    // activeSpaceByWindow; a profile's set: activeSpaceByWindow at the top), nil: none of its own. A window with no space
-    // of its own (or one gone) shows the first (state/model.ts activeSpaceId).
-    static func spaceTheme(window: Int, state: JSONObject) -> String? {
-        guard let spaces = state["spaces"] as? [JSONObject], !spaces.isEmpty else { return nil }
-        let by = ((state["openTabs"] as? JSONObject)?["activeSpaceByWindow"] ?? state["activeSpaceByWindow"]) as? JSONObject
-        let id = by?[String(window)] as? String
-        let space = spaces.first { $0["id"] as? String == id } ?? spaces[0]
-        guard let theme = space["theme"] as? String, !theme.isEmpty, theme.count <= 41 else { return nil }
-        return theme
     }
 
     @discardableResult func ask(_ type: String, _ payload: JSONObject) -> JSONObject? {
@@ -1626,10 +1615,9 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         guard let owner else { return "null" }
         // (The facts this window reads, in the order the Swift read them; the hello itself the core's: its fields, their
         // order, the card's state and words, core/page/hello.rs.)
-        let snapshot = owner.source.snapshot()
-        let state = jsonString(snapshot) ?? "null"
+        let state = owner.source.stateText()
         let windows = windowsJSON, themes = owner.themes(), apps = owner.apps()
-        let theme = owner.theme(id, snapshot)
+        let theme = owner.theme(id, owner.source.spaceTheme(window: id))
         themeSent = theme
         hostedFrameSent = hostedFrameJSON
         // (Every visible host's window while several are: the same as the `hostedFrames` push, kept as said.)
@@ -1802,9 +1790,9 @@ final class MarginWindows {
     let pages: OverlayPages
     let source: MarginWindowSource
     let options: Options
-    // The theme package a window draws (JSON; its id and the state it draws given), nil for Arcadia; the imported themes'
-    // index (JSON).
-    var theme: (Int, JSONObject) -> String? = { _, _ in nil }
+    // The theme package a window draws (JSON; its id and the theme of the space it shows given: the source's
+    // `spaceTheme`, nil: none of its own), nil for Arcadia; the imported themes' index (JSON).
+    var theme: (Int, String?) -> String? = { _, _ in nil }
     var themes: () -> String = { "[]" }
     var apps: () -> String = { "null" } // the installed apps (ShellApps.swift), null with none read
     // A window's page area changed (MarginWindow.pageRect: hosting's own, or the hole's); its page drawn.

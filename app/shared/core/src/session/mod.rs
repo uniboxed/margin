@@ -5,8 +5,10 @@
 //!   copies' links and the OS, and the clock ([`Ports`]). The Mac's are C callbacks into Swift (margin-ffi
 //!   session.rs); Windows implements them in Rust over its adapter.
 //! - **Commands** (asynchronous): what a flow awaits, handed out in the answer's `start` and answered by id
-//!   ([`Session::answer`]): a copy's request, a library edit (answered in the same turn), a Swift job's turn.
-//! - **The library**'s values read straight from its set ([`LibraryView`]: one item by id, never a collection built).
+//!   ([`Session::answer`]): a copy's request, a Swift job's turn, an engine's operation.
+//! - **The library**'s values read straight from its set ([`LibraryView`]: one item by id, never a collection built),
+//!   and its edits made by a direct call ([`LibraryEdit`]: the core's library object, step 4 part 7), whose requests
+//!   reach the session inside the call (the session is the library's sink, [`Session::sink`]).
 //! - **Inputs** ([`Session::input`]): what happens outside (a request, a window's event, an option changed), and the
 //!   Swift facade's reads and writes of the state still shared with Swift flows.
 //! - **Time**: the caller's clock through its port; sleeps are deadlines, the earliest in every answer, the caller's
@@ -157,9 +159,6 @@ pub trait Ports {
     /// such a host).
     fn idna(&self, host: &str) -> bool;
     fn url_host(&self, url: &str) -> Option<String>;
-    /// A library edit made now (`Library.perform`), its requests reaching the session re-entrantly before it returns,
-    /// as a synchronous Swift flow made it (the card's Quick Tab and Expand). Flows that await use `Command::Perform`.
-    fn perform(&self, action: &str, payload: &Object) -> Performed;
 
     // ---- commit 6's (layouts and splits, the page area moving) ----
 
@@ -202,7 +201,7 @@ pub trait Ports {
     fn follow(&self, placement: &Placement, rects: &[(&str, Rect)]);
 }
 
-/// The library's values as its set has them now (Library.swift's reads over margin-core's `LibraryStore`).
+/// The library's values as its set has them now (the core's library object's reads of its `LibraryStore`).
 pub trait LibraryView {
     /// A live item of a collection by its id (`liveValues(collection)[id]`); None: none, or deleted.
     fn item(&self, collection: &str, id: &str) -> Option<Value>;
@@ -211,15 +210,19 @@ pub trait LibraryView {
     fn collection(&self, collection: &str) -> Map<String, Value>;
 }
 
+/// The library's edits (`Library::perform`, step 4 part 7): an action run now, its requests given to the session (its
+/// sink) inside the call, re-entrantly, after its observers ran (Margin's windows drawing again), before it returns, as
+/// Library.swift's delegate had them; then the flow that made it goes on.
+pub trait LibraryEdit: LibraryView {
+    fn perform(&self, action: &str, payload: &Object) -> Performed;
+}
+
 /// What a flow awaits, handed out by id.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Command {
     /// A request of a profile's copy (`HostedLinks.request`): answered `{ result }` or `{ error }`, in the Swift's
     /// words ("not linked", the scrubbed refusal, the thrown error).
     Ask { profile: String, kind: String, payload: Object },
-    /// A library edit (`Library.perform`), answered in the same turn `{ ok, result, error }`: its requests reach the
-    /// session (re-entrantly, as the Library's delegate) before the flow goes on.
-    Perform { action: String, payload: Object },
     /// A Swift job of the session's queue (HostedSession `enqueue`'s body), its turn come: answered when it's over.
     Run { job: u64 },
     /// An engine operation (`open` `{ target, placement, space, window, item }` → `{ shown, placed }` or
@@ -248,9 +251,6 @@ impl Command {
             Command::Ask { profile, kind, payload } => {
                 json!({ "op": "ask", "id": id, "profile": profile, "kind": kind, "payload": payload })
             }
-            Command::Perform { action, payload } => {
-                json!({ "op": "perform", "id": id, "action": action, "payload": payload })
-            }
             Command::Run { job } => json!({ "op": "run", "id": id, "job": job }),
             Command::Engine { op, args } => json!({ "op": "engine", "id": id, "name": op, "args": args }),
             Command::Waker { op, args } => json!({ "op": "waker", "id": id, "name": op, "args": args }),
@@ -276,22 +276,12 @@ impl Asked {
     }
 }
 
-/// A library edit's outcome (`LibraryOutcome`: its `ok`, its `result`, its `error`).
+/// A library edit's outcome (`LibraryOutcome`: its `ok`, its `result`, its `error`: a refusal's words).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Performed {
     pub ok: bool,
     pub result: Value,
     pub error: Option<String>,
-}
-
-impl Performed {
-    pub fn read(v: &Value) -> Performed {
-        Performed {
-            ok: v.get("ok").and_then(Value::as_bool) == Some(true),
-            result: v.get("result").cloned().unwrap_or(Value::Null),
-            error: v.get("error").and_then(Value::as_str).map(str::to_string),
-        }
-    }
 }
 
 /// A line for the app's log (Diagnostics).
@@ -435,9 +425,14 @@ pub enum Input {
         kind: String,
         window: Option<i64>,
     },
-    /// A library request (the Library's delegate, inside its `perform`): its item drawn in front at once, then handled
-    /// in the session's queue.
+    /// A library request (the library's sink takes them inside its `perform`, [`Session::sink`]; as an input, an
+    /// adapter's or a test's with no library object): its item drawn in front at once, then handled in the session's
+    /// queue.
     Library(Object),
+    /// A library edit Swift made itself, outside a call of the session's (a UI request, a test): its requests reached the
+    /// session inside it, as the sink's; this answers what they left (their lines, what they made ready: run at the
+    /// caller's tick), as the `library` input answered them for the delegate.
+    Edited,
     /// A flow called by Swift (an engine's ask, a Swift flow's call; `openApp` from the palette): run now, as Swift's
     /// call ran its first part at once, its answer (`id`: a caller that awaits it) a `Reply`.
     Call {
@@ -540,6 +535,7 @@ impl Input {
                 window: json::int(o.get("window")),
             }),
             "library" => Ok(Input::Library(json::object(o.get("request")).ok_or("no request")?.clone())),
+            "edited" => Ok(Input::Edited),
             "call" => Ok(Input::Call {
                 id: o.get("id").and_then(Value::as_u64),
                 flow: s("flow").ok_or("no flow")?.to_string(),
@@ -615,7 +611,7 @@ pub(crate) fn swift_int(v: Option<&Value>) -> Option<i64> {
 pub(crate) struct Core {
     me: Weak<Core>,
     ports: Box<dyn Ports>,
-    library: Box<dyn LibraryView>,
+    library: Box<dyn LibraryEdit>,
     exec: Exec,
     state: RefCell<State>,
     revs: [Cell<u64>; Field::COUNT],
@@ -644,7 +640,7 @@ impl Drop for Session {
 }
 
 impl Session {
-    pub fn new(ports: Box<dyn Ports>, library: Box<dyn LibraryView>, options: &Value) -> Session {
+    pub fn new(ports: Box<dyn Ports>, library: Box<dyn LibraryEdit>, options: &Value) -> Session {
         let options = Options::read(options, &Options::default());
         Session(Rc::new_cyclic(|me| Core {
             me: me.clone(),
@@ -684,6 +680,12 @@ impl Session {
             c.peek_open_click(profile, window, id, url, not_after);
             (None, None)
         })
+    }
+
+    /// The session as the library's requests' sink (`Library::set_sink`, held weakly: the session holds the library).
+    pub fn sink(&self) -> Weak<dyn crate::library::RequestSink> {
+        let me: Weak<Core> = Rc::downgrade(&self.0);
+        me
     }
 
     /// Whether a show waiting on profile `p`'s link is still wanted (HostedSession `linkWanted`; the Safari waker
@@ -758,6 +760,14 @@ impl Session {
     /// The open items the UI draws (`kept`: the library's snapshot keeps it as a tab in a space).
     pub fn live_plan(&self, kept: &mut dyn FnMut(&str) -> bool) -> Option<(i64, Vec<LiveRow>)> {
         self.0.live_plan(kept)
+    }
+
+    /// What a Margin window draws (step 4 part 6, one call a draw): `library`'s kept snapshot with the items this
+    /// session has open as the window's open tabs (`live_plan`), `tail` (the profile's `"settings":…,"favicons":…`)
+    /// spliced in. Nothing of the library is parsed or written again.
+    pub fn state_text(&self, library: &crate::library::Library, tail: &str) -> String {
+        let plan = self.0.live_plan(&mut |item| library.keeps(item));
+        library.state_text(plan.as_ref().map(|(w, rows)| (*w, rows.as_slice())), tail)
     }
 
     /// The windows of a copy's Margin draws (`drawn`'s `hosted`).
@@ -932,12 +942,13 @@ impl Core {
             Input::Enqueue { job } => {
                 if let Some(c) = self.rc() {
                     self.exec.enqueue(async move {
-                        c.exec.command(Command::Run { job }, false).await;
+                        c.exec.command(Command::Run { job }).await;
                     });
                 }
             }
             Input::Navigate { kind, window } => self.navigate(&kind, window),
             Input::Library(request) => self.library_request(&request),
+            Input::Edited => {}
             Input::Call { id, flow, args } => self.call_flow(id, &flow, args),
             Input::Overtaken { item, window } => return (Some(json!(self.overtaken(&item, window))), None),
             Input::Cycled { window } => {
@@ -1052,24 +1063,23 @@ impl Core {
     /// A request of a profile's copy.
     pub(crate) async fn ask(&self, profile: &str, kind: &str, payload: Object) -> Asked {
         let command = Command::Ask { profile: profile.to_string(), kind: kind.to_string(), payload };
-        Asked::read(&self.exec.command(command, false).await)
+        Asked::read(&self.exec.command(command).await)
     }
 
-    /// A library edit, answered in the same turn (its requests reach the session before the flow goes on).
-    pub(crate) async fn perform(&self, action: &str, payload: Object) -> Performed {
-        let command = Command::Perform { action: action.to_string(), payload };
-        Performed::read(&self.exec.command(command, true).await)
+    /// A library edit, made now (its requests reach the session, the library's sink, before the flow goes on).
+    pub(crate) fn perform(&self, action: &str, payload: Object) -> Performed {
+        self.library.perform(action, &payload)
     }
 
     /// An engine operation, or the Safari waker's, answered when it's over.
     pub(crate) async fn engine(&self, op: &str, args: Value) -> Value {
         let command = Command::Engine { op: op.to_string(), args: object(args) };
-        self.exec.command(command, false).await
+        self.exec.command(command).await
     }
 
     pub(crate) async fn waker(&self, op: &str, args: Value) -> Value {
         let command = Command::Waker { op: op.to_string(), args: object(args) };
-        self.exec.command(command, false).await
+        self.exec.command(command).await
     }
 
     /// The Swift step called by name, synchronous (`Ports::swift`: `paneCuts`).

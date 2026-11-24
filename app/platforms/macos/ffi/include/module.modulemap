@@ -1,7 +1,10 @@
-// The hosting core (app/platforms/macos/ffi, Rust) as a Swift module: `import MarginCore`. The `link` line makes every
-// target that imports it link libmargin_ffi.a (scripts/build-core.sh builds it), with no linker flags of its own.
+// The hosting core (app/platforms/macos/ffi, Rust) as a Swift module: `import MarginCore`. The `link` lines make every
+// target that imports it link libmargin_ffi.a (scripts/build-core.sh builds it) and what it calls of the system (the
+// library's sorter: libicucore, the person's language from CoreFoundation), with no linker flags of its own.
 module MarginCore {
     header "margin_ffi.h"
     link "margin_ffi"
+    link "icucore"
+    link framework "CoreFoundation"
     export *
 }

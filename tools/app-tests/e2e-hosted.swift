@@ -10,14 +10,25 @@
 // area; a press on a pin is a request of the source for this window; the source's change is drawn; New Window
 // makes a second window; the shell's windows draw the library.
 import AppKit
+import MarginCore
 import WebKit
+
+// Entries stored as given at `at` (ms), no rule run (the core's `apply` call; a test's only: library-tests.swift has the
+// unit checks' copy).
+extension Library {
+  func store(_ entries: [Any], at: Double) {
+    let request = KeysCore.json(["type": "apply", "entries": entries, "at": at] as JSONObject)
+    _ = KeysCore.bytes(request) { p, n in KeysCore.answer { margin_library_call(corePointer, p, n, $0) } }
+  }
+}
 
 final class FakeWindowSource: MarginWindowSource {
   var state: JSONObject
   var onChange: (() -> Void)?
   var asked: [(type: String, payload: JSONObject)] = []
   init(_ state: JSONObject) { self.state = state }
-  func snapshot() -> JSONObject { state }
+  func stateText() -> String { jsonString(state) ?? "null" }
+  func spaceTheme(window: Int) -> String? { nil }
   @discardableResult func perform(_ type: String, _ payload: JSONObject) -> JSONObject? {
     asked.append((type, payload))
     if type == "updateSettings", let patch = payload["patch"] as? JSONObject {
@@ -50,7 +61,17 @@ func hostedScenario() async {
     "tabs": ["t-aaaaaaaaaa": ["spaceId": "home", "url": "https://kept.example/", "title": "Kept Page", "order": 3, "lastUsed": 100]],
     "settings": ["sidebarPinnedOpen": true],
   ]
-  let source = FakeWindowSource(DataSetWindowSource.state(values: { values[$0] ?? [:] }, active: [:]))
+  // (What Margin's window draws of them: the library's snapshot of them as stored, the profile's settings over it.)
+  let stored = FileManager.default.temporaryDirectory.appendingPathComponent("margin-e2e-hosted-\(UUID().uuidString)", isDirectory: true)
+  defer { try? FileManager.default.removeItem(at: stored) }
+  let library = Library.open(dataRoot: stored, background: false)
+  var entries: [Any] = []
+  for (c, list) in values where c != "settings" { for (id, v) in list { entries.append(["collection": c, "id": id, "value": v] as JSONObject) } }
+  library.store(entries, at: 1)
+  var drawn = library.snapshot()
+  drawn["settings"] = (values["settings"] ?? [:]).merging(["themes": JSONObject()]) { a, _ in a }
+  drawn["favicons"] = JSONObject()
+  let source = FakeWindowSource(drawn)
   let pages = OverlayPages(root: URL(fileURLWithPath: env["MARGIN_APP_ROOT"]!))
   // Every warning said meanwhile (the page's own come as "Margin's window N: …"), passed on as before.
   var warned: [String] = []
@@ -333,7 +354,7 @@ func hostedScenario() async {
   let made = shell.makeMarginWindows()
   check("the shell's windows: made once, in a test never on a display", made === shell.makeMarginWindows() && made.options.harness)
   check("the shell's windows draw the library: nothing imported, a first space, Personal", made.source is LibraryWindowSource
-        && ((made.source.snapshot()["spaces"] as? [JSONObject])?.first?["name"] as? String) == "Personal")
+        && ((((try? JSONSerialization.jsonObject(with: Data(made.source.stateText().utf8))) as? JSONObject)?["spaces"] as? [JSONObject])?.first?["name"] as? String) == "Personal")
 
   // ---- ⌘Q with Margin itself in front (nothing hosted): its prompt; Always quit quits and stops asking ----
   let command = Combo.parse("Meta+KeyQ")!

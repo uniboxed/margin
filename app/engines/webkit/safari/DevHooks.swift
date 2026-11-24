@@ -201,7 +201,6 @@ final class DevHooks {
 // DEV-HOOK: the shell's side.
 extension Shell: DevHookWorld {
     func devForgetTestItems(also apps: [String]) -> String? {
-        guard let library else { return "no library" }
         let bundles = Set(["test.margin.pane"] + apps)
         let test: (JSONObject) -> Bool = { v in
             let target = v["target"] as? JSONObject
@@ -351,7 +350,7 @@ extension MarginWindowController {
     // The sidebar's width set as a drag of its edge that ends there: begun (the session holds the page area's changes),
     // the theme's own width setting changed, and over once the page has said its layout at that width (0.6 s at most).
     func devResize(to width: Int) -> String? {
-        guard let state = owner?.source.snapshot(), let theme = (state["settings"] as? JSONObject)?["theme"] as? String ?? Optional("arcadia") else { return "no theme" }
+        guard let text = owner?.source.stateText(), let state = (try? JSONSerialization.jsonObject(with: Data(text.utf8))) as? JSONObject, let theme = (state["settings"] as? JSONObject)?["theme"] as? String ?? Optional("arcadia") else { return "no theme" }
         let before = layout?.left
         owner?.onSidebarResizing?(self, true, false)
         ask("updateThemeSettings", ["themeId": theme, "patch": ["sidebarWidth": width]])

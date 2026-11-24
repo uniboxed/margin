@@ -1,7 +1,7 @@
 //! The executor's order (first in first out, a spawned task after its spawner suspends, the serial queue, a start
-//! ending the run, a same-turn answer first, a re-entrant call only queuing), deadlines, `wait`'s looks and
-//! `first_of`; and the session through a test adapter that calls back into the session on every port call (a borrow
-//! held across one panics here).
+//! ending the run, a re-entrant call only queuing), deadlines, `wait`'s looks and `first_of`; and the session through
+//! a test adapter that calls back into the session on every port call (a borrow held across one panics here), over the
+//! core's own library object (its edits the rules', their requests reaching the session through its sink).
 
 use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
@@ -60,7 +60,7 @@ fn the_serial_queue_one_turn_at_a_time_detached_tasks_beside_it() {
     let (l, e) = (log.clone(), exec.clone());
     exec.enqueue(async move {
         push(&l, "q1 starts");
-        e.command(ask(1), false).await;
+        e.command(ask(1)).await;
         push(&l, "q1 ends");
     });
     let l = log.clone();
@@ -82,26 +82,6 @@ fn the_serial_queue_one_turn_at_a_time_detached_tasks_beside_it() {
     exec.run();
     assert_eq!(names(&log), ["q1 starts", "detached", "q1 ends", "q2"]);
     assert!(exec.idle());
-}
-
-#[test]
-fn a_same_turn_answer_resumes_its_task_before_what_became_ready_meanwhile() {
-    let exec = Rc::new(Exec::default());
-    let log: Log = Rc::default();
-    let (l, e) = (log.clone(), exec.clone());
-    exec.spawn(async move {
-        e.command(ask(1), true).await;
-        push(&l, "after the edit");
-    });
-    exec.run();
-    let (id, _) = exec.take_started()[0].clone();
-    // (While the edit runs, the Library's delegate re-enters: a task made ready, then the edit's answer.)
-    let l = log.clone();
-    exec.spawn(async move { push(&l, "made during the edit") });
-    exec.answer(id, json!({ "ok": true }));
-    exec.release();
-    exec.run();
-    assert_eq!(names(&log), ["after the edit", "made during the edit"]);
 }
 
 #[test]
@@ -149,7 +129,7 @@ fn deadlines_from_the_later_of_the_clock_and_the_last_tick_a_dropped_sleep_forgo
     let e = exec.clone();
     exec.spawn(async move {
         let s = e.sleep(0.0, 1.0);
-        let a = e.command(ask(9), false);
+        let a = e.command(ask(9));
         let _ = first_of(a, s).await;
     });
     exec.run();
@@ -168,7 +148,7 @@ fn first_of_the_one_that_came_first_even_when_both_came_before_the_poll() {
         let won: Rc<RefCell<Option<&str>>> = Rc::default();
         let (w, e) = (won.clone(), exec.clone());
         exec.spawn(async move {
-            let r = first_of(e.command(ask(1), false), e.sleep(0.0, 0.4)).await;
+            let r = first_of(e.command(ask(1)), e.sleep(0.0, 0.4)).await;
             *w.borrow_mut() = Some(match r {
                 Either::A(_) => "answer",
                 Either::B(()) => "time",
@@ -222,8 +202,6 @@ struct World {
     lines: RefCell<Vec<Line>>,
     card_rects: RefCell<BTreeMap<i64, Rect>>,
     pages: RefCell<BTreeMap<i64, Rect>>,
-    performs: RefCell<std::collections::VecDeque<Value>>,
-    perform_requests: RefCell<Vec<Object>>,
     // (Commit 6's: Margin's windows' facts, the engine's minimums and the drag.)
     not_full_screen: RefCell<Vec<i64>>,
     placement: RefCell<Option<Placement>>,
@@ -242,6 +220,21 @@ impl World {
     fn act(&self, v: Value) {
         self.acts.borrow_mut().push(v);
     }
+
+    /// The session called back into (a state read and edit, an answer no task waits for), as each port and the
+    /// library's callbacks do.
+    fn reenter_session(&self) {
+        let Some(core) = self.core.borrow().upgrade() else { return };
+        self.reentries.set(self.reentries.get() + 1);
+        let get = vec!["shown".into(), "open".into(), "safariWindows".into()];
+        let set = json!({ "shown": { "del": [987_654] } }).as_object().cloned();
+        let out = core.call(false, |c| c.input(Input::State { get, set }));
+        assert!(out.start.is_empty(), "a re-entrant call hands nothing out");
+        core.call(true, |c| {
+            c.exec.answer(u64::MAX, Value::Null);
+            (None, None)
+        });
+    }
 }
 
 /// Ports that call back into the session on every call: a state read and edit, a log line's take, an answer no task
@@ -251,16 +244,7 @@ struct Reentrant(Rc<World>);
 impl Reentrant {
     fn reenter(&self, port: &str) {
         self.0.ports.borrow_mut().push(port.to_string());
-        let Some(core) = self.0.core.borrow().upgrade() else { return };
-        self.0.reentries.set(self.0.reentries.get() + 1);
-        let get = vec!["shown".into(), "open".into(), "safariWindows".into()];
-        let set = json!({ "shown": { "del": [987_654] } }).as_object().cloned();
-        let out = core.call(false, |c| c.input(Input::State { get, set }));
-        assert!(out.start.is_empty(), "a re-entrant call hands nothing out");
-        core.call(true, |c| {
-            c.exec.answer(u64::MAX, Value::Null);
-            (None, None)
-        });
+        self.0.reenter_session();
     }
 }
 
@@ -423,22 +407,6 @@ impl Ports for Reentrant {
         self.0.act(json!(["urlHost", url]));
         Some("xn--host".into())
     }
-    fn perform(&self, action: &str, payload: &Object) -> Performed {
-        self.reenter("perform");
-        self.0.act(json!(["perform", action, payload]));
-        let answer = self.0.performs.borrow_mut().pop_front();
-        // (The Library's delegate inside the edit: its requests reach the session before it returns.)
-        if let Some(core) = self.0.core.borrow().upgrade() {
-            for r in self.0.perform_requests.borrow_mut().drain(..) {
-                core.call(false, |c| c.input(Input::Library(r)));
-            }
-        }
-        answer.map(|a| Performed::read(&a)).unwrap_or(Performed {
-            ok: false,
-            result: Value::Null,
-            error: Some("refused".into()),
-        })
-    }
     fn window_number(&self, window: i64) -> i64 {
         self.reenter("windowNumber");
         100 + window
@@ -533,24 +501,97 @@ impl Ports for Reentrant {
     }
 }
 
-#[derive(Default)]
-struct Shelf(RefCell<BTreeMap<(String, String), Value>>);
+/// The library the session reads and edits: the core's own object (library/object.rs) over a store in a folder of its
+/// own, in place of the stand-in lib that answered canned edits. Values put as given (`put`: the store's own apply, no
+/// rule run, as a library read from disk); an edit the rules' own, said as an act (`["perform", action, payload]`), its
+/// requests given to the session inside it (the sink, registered as margin_session_new registers it), the session
+/// called back into from the library's env and observers meanwhile.
+pub(super) struct TestLibrary {
+    pub(super) lib: Rc<crate::library::Library>,
+    world: Rc<World>,
+    _dir: tempfile::TempDir,
+}
 
-impl LibraryView for Rc<Shelf> {
-    fn item(&self, collection: &str, id: &str) -> Option<Value> {
-        self.0.borrow().get(&(collection.to_string(), id.to_string())).cloned()
+impl TestLibrary {
+    /// A value put as it is (none: deleted).
+    pub(super) fn put(&self, collection: &str, id: &str, v: Value) {
+        self.lib.apply(&[json!({ "collection": collection, "id": id, "value": v })], 1.0);
     }
-    fn collection(&self, collection: &str) -> serde_json::Map<String, Value> {
-        self.0
-            .borrow()
+    /// A value deleted.
+    pub(super) fn delete(&self, collection: &str, id: &str) {
+        self.lib.apply(&[json!({ "collection": collection, "id": id, "deleted": true })], 1.5);
+    }
+    /// Every value gone.
+    pub(super) fn clear(&self) {
+        let all: Vec<Value> = self
+            .lib
+            .values()
             .iter()
-            .filter(|((c, _), _)| c == collection)
-            .map(|((_, id), v)| (id.clone(), v.clone()))
-            .collect()
+            .flat_map(|(c, ids)| {
+                let ids: Vec<String> = ids.as_object().map(|o| o.keys().cloned().collect()).unwrap_or_default();
+                ids.into_iter().map(move |id| json!({ "collection": c, "id": id, "deleted": true }))
+            })
+            .collect();
+        self.lib.apply(&all, 2.0);
     }
 }
 
-fn session() -> (Session, Rc<World>, Rc<Shelf>) {
+impl LibraryView for TestLibrary {
+    fn item(&self, collection: &str, id: &str) -> Option<Value> {
+        self.lib.item(collection, id)
+    }
+    fn collection(&self, collection: &str) -> serde_json::Map<String, Value> {
+        self.lib.live(collection)
+    }
+}
+
+impl LibraryEdit for TestLibrary {
+    fn perform(&self, action: &str, payload: &Object) -> Performed {
+        self.world.act(json!(["perform", action, payload]));
+        LibraryEdit::perform(&*self.lib, action, payload)
+    }
+}
+
+impl LibraryView for Rc<TestLibrary> {
+    fn item(&self, collection: &str, id: &str) -> Option<Value> {
+        (**self).item(collection, id)
+    }
+    fn collection(&self, collection: &str) -> serde_json::Map<String, Value> {
+        (**self).collection(collection)
+    }
+}
+
+impl LibraryEdit for Rc<TestLibrary> {
+    fn perform(&self, action: &str, payload: &Object) -> Performed {
+        (**self).perform(action, payload)
+    }
+}
+
+/// The library's env (its ids `lib<n>x<i>`, numbered by perform), its clock and its observers: each calls the session
+/// back, as Swift's do (an observer is Margin's window drawing again).
+struct TestHost {
+    world: Rc<World>,
+    n: Cell<u32>,
+}
+
+impl crate::library::LibraryHost for TestHost {
+    fn env(&self) -> crate::library::actions::Env {
+        self.world.reenter_session();
+        let n = self.n.get() + 1;
+        self.n.set(n);
+        crate::library::actions::Env { now: f64::from(1000 + n), ids: (0..4).map(|i| format!("lib{n}x{i}")).collect() }
+    }
+    fn now(&self) -> f64 {
+        self.world.reenter_session();
+        f64::from(1000 + self.n.get())
+    }
+    fn changed(&self, collections: &std::collections::BTreeSet<String>) {
+        self.world.reenter_session();
+        self.world.act(json!(["libraryChanged", collections]));
+    }
+}
+
+fn session() -> (Session, Rc<World>, Rc<TestLibrary>) {
     let world = Rc::new(World::default());
     world.windows.borrow_mut().push(1);
     // (Margin's window's page area, measured: what `prepare` waits for.)
@@ -559,10 +600,17 @@ fn session() -> (Session, Rc<World>, Rc<Shelf>) {
         area: Rect::new(0.0, 0.0, 1512.0, 949.0),
         display: Rect::new(0.0, 0.0, 1512.0, 982.0),
     });
-    let shelf = Rc::new(Shelf::default());
-    let s = Session::new(Box::new(Reentrant(world.clone())), Box::new(shelf.clone()), &json!({ "every": 0.05 }));
+    let dir = crate::data::testing::temp();
+    let lib = Rc::new(crate::library::Library::new(
+        crate::data::library::LibraryStore::new(crate::data::store::DataStore::new(dir.path()).flat()),
+        Box::new(TestHost { world: world.clone(), n: Cell::new(0) }),
+        Box::new(crate::library::js::CodePointOrder),
+    ));
+    let lib = Rc::new(TestLibrary { lib, world: world.clone(), _dir: dir });
+    let s = Session::new(Box::new(Reentrant(world.clone())), Box::new(lib.clone()), &json!({ "every": 0.05 }));
     *world.core.borrow_mut() = Rc::downgrade(s.core());
-    (s, world, shelf)
+    lib.lib.set_sink(Some(s.sink()));
+    (s, world, lib)
 }
 
 fn set(s: &Session, edit: Value) {
@@ -584,8 +632,8 @@ fn asks(out: &Out) -> Vec<(u64, String, String, Value)> {
 
 #[test]
 fn navigate_its_tab_by_host_show_then_the_copys_own_request() {
-    let (s, world, shelf) = session();
-    shelf.0.borrow_mut().insert(("tabs".into(), "t1".into()), json!({ "url": "https://a.example/", "title": "A" }));
+    let (s, world, lib) = session();
+    lib.put("tabs", "t1", json!({ "url": "https://a.example/", "title": "A" }));
     set(
         &s,
         json!({ "shown": { "put": [[1, "t1"]] }, "open": { "put": [["t1", "safari:s-default", "s-default"]] },
@@ -612,7 +660,7 @@ fn navigate_its_tab_by_host_show_then_the_copys_own_request() {
 
     // The front window's, with no window named; a pane's window by its role; no address: about:blank; no window of
     // that role: -1.
-    shelf.0.borrow_mut().clear();
+    lib.clear();
     set(&s, json!({ "open": { "put": [["t1", "safari:s-default#pane2", "s-default"]] } }));
     s.input(&json!({ "type": "navigate", "kind": "reload", "window": null }));
     let out = s.tick(0.0);
@@ -775,24 +823,33 @@ fn swift_jobs_take_their_turn_in_the_queue() {
 }
 
 #[test]
-fn a_library_edit_answered_in_the_same_turn() {
-    let (s, _, _) = session();
+fn a_library_edit_made_now_its_requests_handled_in_the_queue_after_the_flow() {
+    // (The session's edit is the library's perform, called directly: its requests reach the session, the sink, inside
+    // it, after its observers; the flow goes on at once, and what the requests queued runs after it.)
+    let (s, world, lib) = session();
+    lib.put("spaces", "sp", json!({ "name": "A", "order": 0 }));
     let got: Rc<RefCell<Option<Performed>>> = Rc::default();
     let (c, g) = (s.core().clone(), got.clone());
     s.core().exec.enqueue(async move {
-        let p = c.perform("addItem", json!({ "url": "x" }).as_object().cloned().unwrap_or_default()).await;
+        let p = c.perform("newTab", object(json!({ "url": "https://x/", "spaceId": "sp", "windowId": 1 })));
+        c.note(format!("after the edit: {}", c.requested_in(1).unwrap_or_default()));
         *g.borrow_mut() = Some(p);
-        c.note("after the edit".into());
     });
     let out = s.tick(0.0);
-    let (id, cmd) = out.start[0].clone();
-    assert!(matches!(cmd, Command::Perform { ref action, .. } if action == "addItem"));
-    // (The delegate's request, re-entrant, while the edit runs: queued behind the flow, which goes on first.)
-    s.input(&json!({ "type": "note", "line": "the delegate" }));
-    s.answer(id, json!({ "ok": true, "result": { "tabId": "t9" }, "error": null }));
-    s.tick(0.0);
-    assert_eq!(*got.borrow(), Some(Performed { ok: true, result: json!({ "tabId": "t9" }), error: None }));
-    assert_eq!(s.done(), ["the delegate", "after the edit"]);
+    let p = got.borrow().clone().expect("made in the flow's turn");
+    let item = p.result["tabId"].as_str().expect("an item").to_string();
+    assert!(p.ok && p.error.is_none(), "{p:?}");
+    assert_eq!(s.done()[0], format!("after the edit: {item}"), "in front at once, inside the edit");
+    // (No command for the edit: its request's show, queued inside it, ran after the flow, in the same run.)
+    let first = out.start.first().map(|(_, c)| c.clone());
+    let opens = matches!(&first, Some(Command::Engine { op, args }) if op == "open" && args["item"] == json!(item));
+    assert!(opens, "{first:?}");
+    let a = std::mem::take(&mut *world.acts.borrow_mut());
+    let names: Vec<&str> = a.iter().filter_map(|v| v[0].as_str()).collect();
+    let at = |n: &str| names.iter().position(|x| *x == n).unwrap_or(usize::MAX);
+    assert!(at("perform") < at("libraryChanged"), "{names:?}");
+    let refused = s.core().perform("deleteSpace", object(json!({ "spaceId": "nope" })));
+    assert!(!refused.ok && refused.result == Value::Null && refused.error.is_some(), "{refused:?}");
 }
 
 #[path = "requests_tests.rs"]

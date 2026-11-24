@@ -26,12 +26,11 @@
 
 use std::ffi::c_void;
 
-use margin_core::data::library::LibraryStore;
 use margin_core::geometry::Rect;
 use margin_core::host::layout::{Placement, Size};
 use margin_core::json;
 use margin_core::session::state::rect_read;
-use margin_core::session::{Field, Frame, LibraryView, Out, Performed, Ports, Row, Session};
+use margin_core::session::{Field, Frame, LibraryEdit, LibraryView, Out, Performed, Ports, Row, Session};
 use serde_json::{Map, Value, json};
 
 use crate::data::{MarginLibrary, answer, text};
@@ -195,6 +194,7 @@ pub type MarginSessionFollow =
 pub struct MarginSession {
     session: Session,
     follow: std::rc::Rc<std::cell::Cell<Option<MarginSessionFollow>>>,
+    library: *const MarginLibrary,
 }
 
 struct SwiftPorts {
@@ -519,9 +519,6 @@ impl Ports for SwiftPorts {
     fn url_host(&self, url: &str) -> Option<String> {
         Self::string(&self.ask(json!({ "port": "urlHost", "url": url })), "host")
     }
-    fn perform(&self, action: &str, payload: &Map<String, Value>) -> Performed {
-        Performed::read(&self.ask(json!({ "port": "perform", "action": action, "payload": payload })))
-    }
     fn window_number(&self, window: i64) -> i64 {
         if let Some(c) = self.call {
             let n = self.number(c, PortKind::WindowNumber, Some(window), false, [None; 3]);
@@ -746,25 +743,29 @@ impl SwiftPorts {
 }
 
 /// The library object's set, read in place (the Swift side's `Library` outlives the session: its contract).
-struct LibraryRef(*mut MarginLibrary);
+struct LibraryRef(*const MarginLibrary);
 
 impl LibraryView for LibraryRef {
+    // SAFETY (both reads, crate::data::library): from margin_library_new, alive as long as the session (the
+    // contract), on the session's thread. The library calls back now (step 4: its observers, its requests' sink), so
+    // a read may come while one of its calls is under way: it's taken shared, and the object keeps its state in cells
+    // and holds no borrow across a call out, so the read is sound at any point.
     fn item(&self, collection: &str, id: &str) -> Option<Value> {
-        if self.0.is_null() {
-            return None;
-        }
-        // SAFETY: from margin_library_new, alive as long as the session (the contract); used on the session's thread,
-        // never while a library call is under way (the library calls nothing back), and only for this read.
-        let store: &mut LibraryStore = unsafe { &mut (*self.0).library };
-        store.item(collection, id)
+        crate::data::library(self.0)?.item(collection, id)
     }
     fn collection(&self, collection: &str) -> Map<String, Value> {
-        if self.0.is_null() {
-            return Map::new();
+        crate::data::library(self.0).map(|l| l.live(collection)).unwrap_or_default()
+    }
+}
+
+impl LibraryEdit for LibraryRef {
+    // SAFETY: as the reads'. The perform calls out (the env, its observers: Swift's, which draw Margin's windows again
+    // and may call the session and the library back; then its requests to the sink, this session), holding nothing.
+    fn perform(&self, action: &str, payload: &Map<String, Value>) -> Performed {
+        match crate::data::library(self.0) {
+            Some(l) => LibraryEdit::perform(l, action, payload),
+            None => Performed { ok: false, result: Value::Null, error: Some("no library".into()) },
         }
-        // SAFETY: as `item`.
-        let store: &mut LibraryStore = unsafe { &mut (*self.0).library };
-        store.live(collection)
     }
 }
 
@@ -775,7 +776,7 @@ fn session<'a>(s: *const MarginSession) -> Option<&'a Session> {
 
 /// The session over `library` (alive as long as it), with `options` (`len` bytes of the Swift struct's JSON) and the
 /// Swift side's ports (`ctx` passed back to each; alive as long as the session): `call`, the typed ones (null: every
-/// port through `port`).
+/// port through `port`). It's the library's sink from then on: its requests reach this session inside its perform.
 ///
 /// # Safety
 /// `library` from `margin_library_new` (or null: an empty library); `options` points at `len` readable bytes.
@@ -792,8 +793,34 @@ pub unsafe extern "C" fn margin_session_new(
     let options = text(options, len).and_then(|t| serde_json::from_str(t).ok()).unwrap_or(Value::Null);
     let follow = std::rc::Rc::new(std::cell::Cell::new(None));
     let ports = SwiftPorts { ctx, now, port, call, follow: follow.clone() };
-    let session = Session::new(Box::new(ports), Box::new(LibraryRef(library)), &options);
-    Box::into_raw(Box::new(MarginSession { session, follow }))
+    let session = Session::new(Box::new(ports), Box::new(LibraryRef(library.cast_const())), &options);
+    // (The session is the library's requests' sink from now on: a perform's requests reach it inside the perform, the
+    // last session made over the library the one, or the last that took them since; held weakly, so one freed is no
+    // longer told.)
+    let s = MarginSession { session, follow, library: library.cast_const() };
+    s.take_requests();
+    Box::into_raw(Box::new(s))
+}
+
+impl MarginSession {
+    fn take_requests(&self) {
+        if let Some(l) = crate::data::library(self.library) {
+            l.set_sink(Some(self.session.sink()));
+        }
+    }
+}
+
+/// The session the library's requests' sink again (as `new` made it): of several sessions over one library (the tests'
+/// rigs), the one that takes them now.
+///
+/// # Safety
+/// `s` from [`margin_session_new`], not freed, its library alive.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_session_take_requests(s: *const MarginSession) {
+    // SAFETY: from margin_session_new and not freed (the caller's contract).
+    if let Some(s) = unsafe { s.as_ref() } {
+        s.take_requests();
+    }
 }
 
 /// # Safety
@@ -1221,56 +1248,29 @@ pub unsafe extern "C" fn margin_session_item_of_tab(
     item.len() as isize
 }
 
-/// One row of what the UI draws (session/ui.rs `LiveRow`; its item's text valid during the sink's call).
-#[repr(C)]
-#[derive(Clone, Copy, Debug)]
-pub struct MarginLiveRow {
-    pub item: MarginBytes,
-    pub number: i64,
-    pub index: i64,
-    pub active: bool,
-    pub visible: bool,
-    pub audible: bool,
-    pub muted: bool,
-}
-
-/// Whether the library's snapshot keeps an item as a tab in a space (the caller's: `live`'s `kept`).
-pub type MarginLiveKept = extern "C" fn(ctx: *mut c_void, item: *const u8, len: usize) -> bool;
-pub type MarginLiveSink = extern "C" fn(ctx: *mut c_void, row: *const MarginLiveRow);
-
-/// The open items the UI draws: each listed one `kept` asks for, the rows to `sink` in order; the window they're
-/// drawn in (`window`). False: none listed (the snapshot drawn as it is), or a null session. Neither callback may
-/// call into the session.
+/// What a Margin window draws (step 4 part 6, one call a draw, no JSON in): the session's library's kept snapshot
+/// with the items the session has open as tabs (session/ui.rs `live_plan`), and `tail` (`tail_len` bytes: the
+/// profile's `"settings":…,"favicons":…`; empty or null: none) before the last brace. Its text, freed with
+/// `margin_buffer_free`; `null` with no library. Null: a null session or `out_len`.
 ///
 /// # Safety
-/// `s` from [`margin_session_new`] (or null), not freed; `ctx` passed to both; `window` writable.
+/// `s` from [`margin_session_new`] (or null), not freed, its library alive; `tail` `tail_len` readable bytes (or
+/// null); `out_len` writable.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn margin_session_live_plan(
+pub unsafe extern "C" fn margin_session_state(
     s: *const MarginSession,
-    ctx: *mut c_void,
-    kept: Option<MarginLiveKept>,
-    sink: Option<MarginLiveSink>,
-    window: *mut i64,
-) -> bool {
-    let (Some(s), Some(kept), Some(sink)) = (session(s), kept, sink) else { return false };
-    let Some((w, rows)) = s.live_plan(&mut |item| kept(ctx, item.as_ptr(), item.len())) else { return false };
-    if !window.is_null() {
-        // SAFETY: writable (the contract).
-        unsafe { *window = w };
-    }
-    for r in &rows {
-        let row = MarginLiveRow {
-            item: MarginBytes::of(Some(&r.item)),
-            number: r.number,
-            index: r.index,
-            active: r.active,
-            visible: r.visible,
-            audible: r.audible,
-            muted: r.muted,
-        };
-        sink(ctx, &row);
-    }
-    true
+    tail: *const u8,
+    tail_len: usize,
+    out_len: *mut usize,
+) -> *mut u8 {
+    // SAFETY: from margin_session_new and not freed (the caller's contract).
+    let Some(m) = (unsafe { s.as_ref() }) else { return std::ptr::null_mut() };
+    let tail = text(tail, tail_len).unwrap_or("");
+    let state = match crate::data::library(m.library) {
+        Some(l) => m.session.state_text(l, tail),
+        None => "null".to_string(),
+    };
+    crate::data::bytes(state, out_len)
 }
 
 /// The windows of a copy's that Margin draws (`drawn`'s hosted ones): into `out`, how many there are (more than
@@ -1421,7 +1421,9 @@ mod tests {
         let dir = tempfile::tempdir().expect("a folder");
         let root = dir.path().to_string_lossy().to_string();
         // SAFETY: the root's bytes.
-        let lib = unsafe { crate::margin_library_new(root.as_ptr(), root.len(), false, std::ptr::null_mut(), None) };
+        let lib = unsafe {
+            crate::margin_library_new(root.as_ptr(), root.len(), false, std::ptr::null_mut(), None, None, None, None)
+        };
         let apply = json!({ "type": "apply", "at": 1, "entries": [{ "collection": "tabs", "id": "t1", "value": { "url": "https://a/" } }] })
             .to_string();
         let mut n = 0;

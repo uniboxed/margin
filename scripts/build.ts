@@ -136,23 +136,31 @@ function bundle(out: string, manifest: Record<string, any>, profile: Target) {
 
 // Margin.app's overlay page (app/shared/host/: the UI runtime with the app's
 // host, app/shared/ui/host-app.ts) as one script and its page, for the app's
-// Resources/app/ (scripts/xcode-add-sources.py), with the library's rules for the app itself (LIBRARY_FILE: not a
-// page's, run by Margin.app in JavaScriptCore: app/platforms/macos/shell/LibraryRules.swift). Safari's profile for now
-// (Margin 2 Phase 2 is Safari's; Chrome and Edge are Phase 5).
+// Resources/app/ (scripts/xcode-add-sources.py). Safari's profile for now
+// (Margin 2 Phase 2 is Safari's; Chrome and Edge are Phase 5). The library's rules are margin-core's since step 4's
+// switch (docs/CORE-REFACTOR.md): library.js is no longer the app's (buildLibraryScript: the vectors' recorder's).
 export const LIBRARY_FILE = 'library.js';
 // Every built-in theme's package, for Margin.app to hand its window when that theme is chosen (ShellThemes.swift
 // BuiltinThemes): the window's page has only Arcadia of its own (FALLBACK_FILE), and the others came only from a
 // browser's copy, so choosing one in Margin's own Settings changed nothing (2026-11-19).
 export const BUILTIN_THEMES = ['arcadia', 'neubrutalism', 'pixel', 'liquid-glass', 'material'];
 export const builtinThemeFile = (id: string) => `theme.${id}.json`;
-export const APP_FILES = ['overlay.html', 'overlay.js', 'arcadia.js', LIBRARY_FILE, ...BUILTIN_THEMES.map(builtinThemeFile)];
+export const APP_FILES = ['overlay.html', 'overlay.js', 'arcadia.js', ...BUILTIN_THEMES.map(builtinThemeFile)];
 export function buildApp(outDir: string | URL, { profile = 'safari' }: { profile?: Target } = {}) {
   const out = outDir instanceof URL ? fileURLToPath(outDir) : outDir;
   rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
   // The page's entry and the extension's modules it imports, with the profile's engine's code.
-  // And the library's rules (app/shared/library/library.ts: state/model.ts's, for the app's JavaScriptCore, LibraryRules.swift).
-  for (const [entry, from] of [['overlay', 'host'], ['library', 'library']]) buildSync({
+  bundleScript(out, 'overlay', 'host', profile);
+  cpSync(fileURLToPath(new URL('app/shared/host/overlay.html', root)), `${out}/overlay.html`);
+  writeFileSync(`${out}/${FALLBACK_FILE}`, fallbackScript());
+  for (const id of BUILTIN_THEMES) writeFileSync(`${out}/${builtinThemeFile(id)}`, JSON.stringify(themePackage(id)));
+  return out;
+}
+
+// app/shared/<from>/<entry>.ts as one script, <out>/<entry>.js.
+function bundleScript(out: string, entry: string, from: string, profile: Target) {
+  buildSync({
     entryPoints: [fileURLToPath(new URL(`app/shared/${from}/${entry}.ts`, root))],
     ...engineOptions(profile),
     bundle: true,
@@ -165,10 +173,15 @@ export function buildApp(outDir: string | URL, { profile = 'safari' }: { profile
     outfile: `${out}/${entry}.js`,
     logLevel: 'warning',
   });
-  cpSync(fileURLToPath(new URL('app/shared/host/overlay.html', root)), `${out}/overlay.html`);
-  writeFileSync(`${out}/${FALLBACK_FILE}`, fallbackScript());
-  for (const id of BUILTIN_THEMES) writeFileSync(`${out}/${builtinThemeFile(id)}`, JSON.stringify(themePackage(id)));
-  return out;
+}
+
+// The library's rules as one script (app/shared/library/library.ts over state/model.ts: LIBRARY_FILE in `outDir`), as
+// Margin.app ran them in JavaScriptCore until step 4's switch: for the shared vectors' recorder only
+// (tests/library-vectors/record.ts runs it in JSC, whose answers the vectors keep). Built into no app.
+export function buildLibraryScript(outDir: string, { profile = 'safari' }: { profile?: Target } = {}) {
+  mkdirSync(outDir, { recursive: true });
+  bundleScript(outDir, 'library', 'library', profile);
+  return `${outDir}/${LIBRARY_FILE}`;
 }
 
 // Arcadia, bundled with the overlay (docs/phase6-themes.md §3): what it draws

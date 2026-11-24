@@ -1,9 +1,20 @@
-// Checks of Margin.app's library (Library.swift, LibraryRules.swift, ShellLibrary.swift), part of tests.swift's run:
-// the rules from dist/app/library.js (where MARGIN_LIBRARY_JS says) run in JavaScriptCore, the library's files in
-// a temporary folder (flat: data/app/set.json), times and merges, the delegate and the recorded requests, the
-// observers, the import of every profile's set (once, namespaced, in the person's order, the profiles' files left
-// as they were), and the shell's setting (off: nothing made). The rules themselves: tests/library.test.ts.
+// Checks of Margin.app's library (Library.swift over margin-core's library object, ShellLibrary.swift), part of
+// tests.swift's run: the library's files in a temporary folder (flat: data/app/set.json), times and merges, the
+// delegate and the recorded requests, the observers (called back during the core's calls), the import of every
+// profile's set (once, namespaced, in the person's order, the profiles' files left as they were), and the shell's.
+// The rules themselves: the core's (app/shared/core/src/library, the shared vectors tests/fixtures/library).
 import Foundation
+import MarginCore
+
+// Entries (`{ collection, id, value }` or `{ …, deleted: true }`) stored as given at `at` (ms), no rule run, no observer
+// told: the core's `apply` call (a test's only, so the app has no way past the rules): a library made for a check or a
+// measure, in shapes the rules may never write (an older Margin's, odd values), or of 2,000 items at once.
+extension Library {
+  func store(_ entries: [Any], at: Double) {
+    let request = KeysCore.json(["type": "apply", "entries": entries, "at": at] as JSONObject)
+    _ = KeysCore.bytes(request) { p, n in KeysCore.answer { margin_library_call(corePointer, p, n, $0) } }
+  }
+}
 
 final class RecordingLibraryDelegate: LibraryDelegate {
   var asked: [LibraryRequest] = []
@@ -26,39 +37,35 @@ extension Tests {
     let echo = Diagnostics.echo
     Diagnostics.echo = { _ in }
     defer { Diagnostics.echo = echo }
-    let scriptPath = ProcessInfo.processInfo.environment["MARGIN_LIBRARY_JS"] ?? "../../dist/app/library.js"
-    let script = URL(fileURLWithPath: scriptPath)
-    guard let rules = LibraryRules.load(from: script) else { return check("library: the rules load (\(scriptPath): npm run build)", false) }
-    check("library: the rules' actions", Set(rules.call("actions", []) as? [String] ?? []).isSuperset(of: [
-      "setSpace", "createSpace", "renameSpace", "deleteSpace", "orderSpaces", "moveTabToSpace", "moveTab", "pinTab", "unpin", "openPin",
-      "movePin", "createFolder", "renameFolder", "setFolderOpen", "deleteFolder", "moveFolder", "activateTab", "newTab", "closeTab",
-      "clearToday", "restoreArchive", "addItem", "updateItem", "itemClosed", "removeItem", "setSpaceProfile", "forgetWindow",
-    ]))
-    check("library: a script that throws isn't rules", LibraryRules(script: "throw new Error('no')") == nil)
-    check("library: a script with no entry isn't rules", LibraryRules(script: "var x = 1") == nil)
-    check("library: an unknown function: nil, and why", rules.call("nope", []) == nil && rules.lastError?.contains("no function") == true)
-
     let dataRoot = tempFolder("library")
     defer { try? FileManager.default.removeItem(at: dataRoot) }
     var clock: Double = 5000
     var n = 0
-    func make() -> Library? {
-      let lib = Library.open(dataRoot: dataRoot, script: script, background: false)
-      lib?.now = { clock }
-      lib?.randomIds = { (0..<4).map { _ in n += 1; return "id\(n)x" } }
+    func make() -> Library {
+      let lib = Library.open(dataRoot: dataRoot, background: false)
+      lib.now = { clock }
+      lib.randomIds = { (0..<4).map { _ in n += 1; return "id\(n)x" } }
       return lib
     }
-    guard let lib = make() else { return check("library: opens", false) }
+    let lib = make()
+    check("library: the rules' actions", Set(lib.actions).isSuperset(of: [
+      "setSpace", "createSpace", "renameSpace", "deleteSpace", "orderSpaces", "moveTabToSpace", "moveTab", "pinTab", "unpin", "openPin",
+      "movePin", "createFolder", "renameFolder", "setFolderOpen", "deleteFolder", "moveFolder", "activateTab", "newTab", "closeTab",
+      "clearToday", "restoreArchive", "addItem", "updateItem", "itemClosed", "removeItem", "setSpaceProfile", "forgetWindow",
+    ]) && lib.actions.count == 57)
     check("library: empty at first, not imported", lib.spaces().isEmpty && lib.items().isEmpty && !lib.isImported)
     var told: [Set<String>] = []
-    let token = lib.observe { told.append($0) }
+    // (Each observer reads the library again, as Margin's window does during the core's call.)
+    var seenInside: [Int] = []
+    let token = lib.observe { told.append($0); seenInside.append(lib.spaces().count) }
 
     // ---- spaces, in files of their own ----
     let made = lib.perform("createSpace", ["windowId": 1, "name": "Home", "emoji": "🏠", "profile": "s-default"])
     let home = (made.result as? JSONObject)?["spaceId"] as? String ?? ""
     check("library: a space made", made.ok && home == "sp-id1x" && made.changed == ["spaces", "windows"], "\(made)")
     check("library: its profile, and the window shows it", lib.spaces().first?.value["profile"] as? String == "s-default" && lib.space(ofWindow: 1) == home)
-    check("library: the observers told what changed", told == [["spaces", "windows"]])
+    check("library: the observers told what changed, reading it again inside", told == [["spaces", "windows"]] && seenInside == [1])
+    check("library: a payload that isn't JSON: refused, said", !lib.perform("renameSpace", ["spaceId": home, "name": Date()]).ok && lib.spaces().first?.value["name"] as? String == "Home")
     let dir = Library.folder(in: dataRoot)
     check("library: one flat set in data/app", FileManager.default.fileExists(atPath: dir.appendingPathComponent("set.json").path)
       && FileManager.default.fileExists(atPath: dir.appendingPathComponent("items/spaces.json").path)
@@ -113,18 +120,18 @@ extension Tests {
     let count = told.count
     lib.perform("renameSpace", ["spaceId": home, "name": "House"])
     check("library: an observer stopped isn't told", told.count == count)
-    guard let again = make() else { return check("library: opens again", false) }
+    let again = make()
     check("library: read back from its files", again.spaces().map { $0.value["name"] as? String } == ["House"] && again.items().map(\.id) == [notes]
       && again.target(ofItem: notes) == .app(bundleId: "com.apple.Notes", name: "Notes"))
     for _ in 0..<(Library.requestsKept + 5) { lib.perform("setSpace", ["windowId": 1, "spaceId": home]) }
     check("library: the requests recorded, the last ones only", lib.requests.count == Library.requestsKept && lib.requests.last?.type == "setSpace")
 
-    importChecks(script: script)
+    importChecks()
     shellChecks()
   }
 
   // Two Safari profiles' sets (both with a `personal` space and the same tab id) and browser.json's order.
-  static func importChecks(script: URL) {
+  static func importChecks() {
     let root = tempFolder("library-import")
     defer { try? FileManager.default.removeItem(at: root) }
     let profiles = DataSync(root: root, background: false)
@@ -146,7 +153,7 @@ extension Tests {
     try? FileManager.default.createDirectory(at: browserJSON.deletingLastPathComponent(), withIntermediateDirectories: true)
     try? JSONSerialization.data(withJSONObject: order).write(to: browserJSON, options: .atomic)
     let filesBefore = filesUnder(root)
-    guard let lib = Library.open(dataRoot: root, script: script, background: false) else { return check("library import: opens", false) }
+    let lib = Library.open(dataRoot: root, background: false)
     lib.now = { 777 }
     check("library import: runs once", lib.importOnce(from: profiles) && lib.isImported)
     check("library import: every space, namespaced, in the person's order",
@@ -160,21 +167,21 @@ extension Tests {
     check("library import: its marker", ((lib.liveValues("imports")["done"] as? JSONObject)?["sets"] as? [String]) == ["safari:s-OTHER", "safari:s-default"]
       || ((lib.liveValues("imports")["done"] as? JSONObject)?["sets"] as? [String]) == ["safari:s-default", "safari:s-OTHER"])
     check("library import: never twice", !lib.importOnce(from: profiles))
-    let reopened = Library.open(dataRoot: root, script: script, background: false)
-    check("library import: never twice, after a relaunch too", reopened?.isImported == true && reopened?.importOnce(from: profiles) == false)
+    let reopened = Library.open(dataRoot: root, background: false)
+    check("library import: never twice, after a relaunch too", reopened.isImported && !reopened.importOnce(from: profiles))
     let filesAfter = filesUnder(root).filter { !$0.key.hasPrefix("app/") }
     check("library import: the profiles' files left as they were", filesAfter == filesBefore, "\(Set(filesAfter.keys).symmetricDifference(filesBefore.keys))")
 
     // Nothing to import: the marker alone, and the library empty for the create-spaces step.
     let bare = tempFolder("library-bare")
     defer { try? FileManager.default.removeItem(at: bare) }
-    let none = Library.open(dataRoot: bare, script: script, background: false)
-    check("library import: no profiles: marked, empty", none?.importOnce(from: DataSync(root: bare, background: false)) == true && none?.isImported == true && none?.spaces().isEmpty == true)
+    let none = Library.open(dataRoot: bare, background: false)
+    check("library import: no profiles: marked, empty", none.importOnce(from: DataSync(root: bare, background: false)) && none.isImported && none.spaces().isEmpty)
   }
 
-  // The setting: off, no library and no folder; on, the library opened and imported.
+  // The shell's: the library opened and imported at its start.
   static func shellChecks() {
-    let appRoot = URL(fileURLWithPath: ProcessInfo.processInfo.environment["MARGIN_LIBRARY_JS"] ?? "../../dist/app/library.js").deletingLastPathComponent()
+    let appRoot = URL(fileURLWithPath: "../../dist/app")
     let root = tempFolder("library-shell")
     defer { try? FileManager.default.removeItem(at: root) }
     var options = Shell.Options()
@@ -183,6 +190,6 @@ extension Tests {
     options.root = appRoot
     let shell = Shell(link: SocketLink(), apps: StubApps(), hotKeys: FakeRegistrar(), options: options)
     let made = FileManager.default.fileExists(atPath: Library.folder(in: root).path)
-    check("library: opened and imported with the shell", shell.library?.isImported == true && made)
+    check("library: opened and imported with the shell", shell.library.isImported && made)
   }
 }

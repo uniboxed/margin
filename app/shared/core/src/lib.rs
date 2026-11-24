@@ -49,3 +49,7 @@ pub mod session;
 // Margin's own window's page (MarginWindowController.swift's decisions, docs/CORE-REFACTOR.md step 3 part 11): its
 // page card's state, the holes and the ground, in front of what it hosts, the page area; one per Margin window.
 pub mod page;
+
+// The library's edit rules (library.ts over model.ts, docs/CORE-REFACTOR.md step 4): the JavaScript semantics they
+// rely on first (`library::js`).
+pub mod library;

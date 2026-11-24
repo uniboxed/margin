@@ -55,7 +55,8 @@ fn the_sessions_calls_cost() {
     let dir = tempfile::tempdir().expect("a folder");
     let root = dir.path().to_string_lossy().to_string();
     // SAFETY: the root's bytes; the library outlives the session below.
-    let lib = unsafe { margin_library_new(root.as_ptr(), root.len(), false, std::ptr::null_mut(), None) };
+    let lib =
+        unsafe { margin_library_new(root.as_ptr(), root.len(), false, std::ptr::null_mut(), None, None, None, None) };
     let web = json!({ "kind": "web", "browser": "safari", "profile": "p" });
     let apply = json!({ "type": "apply", "at": 1, "entries": [
         { "collection": "tabs", "id": "t1", "value": { "url": "https://a.example/", "target": web } },

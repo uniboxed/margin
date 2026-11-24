@@ -47,6 +47,8 @@ final class FakeRegistrar: HotKeyRegistrar {
 @main enum Tests {
   static func main() {
     let started = Date()
+    // (Step 4's baselines, a process each: MARGIN_LIBRARY_BASELINE=<items>, library-vectors-tests.swift.)
+    if let n = ProcessInfo.processInfo.environment["MARGIN_LIBRARY_BASELINE"].flatMap({ Int($0) }) { libraryBaseline(items: n); exit(failures == 0 ? 0 : 1) }
     linkMessages()
     appMessages()
     stateMessages()
@@ -60,7 +62,8 @@ final class FakeRegistrar: HotKeyRegistrar {
     pointerWant()
     dataSync()
     dataCarry() // data-tests.swift (the merge's vectors and the files: margin-core's tests)
-    libraryTests() // library-tests.swift: the app's own spaces, its rules in JavaScriptCore
+    libraryTests() // library-tests.swift: the app's own spaces, margin-core's library object
+    libraryVectorsTests() // library-vectors-tests.swift: the Mac's outcome of a decided change (the cut through an emoji)
     profilesTests()
     safariProfilesTests() // safari-profiles-tests.swift
     oneMargin()

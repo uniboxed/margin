@@ -1,14 +1,11 @@
 // Margin's own window in the shell (MarginWindow.swift, MarginWindowController.swift; docs/MARGIN-APP.md phase 2).
 //
-// The windows draw the library (LibraryWindowSource, HostedSession.swift, made in ShellHostedGlue.swift) once it
-// opened. DataSetWindowSource is the fallback when it didn't, and gives the settings and site icons either way
-// (`settingsAndIcons`, each draw of the library's): one browser
-// profile's lasting data set (DataSync.swift, read only), turned into the
-// State shape pages draw as the extension's stateFromDataSet would (extension/shared/data-set.ts), every Margin
-// tab a kept tab (nothing is open in Margin's window yet). Choosing a space (per window) and a setting changed (the
-// sidebar kept open) are kept here, in memory; a theme's setting changed (the sidebar's width, dragged) is also kept
-// across launches, in the app's defaults (`ThemeSettingsKeeper`: until the app's own store has settings); nothing else
-// is written anywhere.
+// The windows draw the library (LibraryWindowSource, HostedSession.swift, made in ShellHostedGlue.swift).
+// DataSetWindowSource gives the settings and site icons each draw of the library's takes (`drawnText`, their text kept
+// between their changes): one browser profile's lasting data set (DataSync.swift, read only), with the settings changed
+// in Margin's window over it. A setting changed (the sidebar kept open) is kept here, and across launches in the app's defaults
+// (`SettingsKeeper`), as a theme's setting changed (the sidebar's width, dragged: `ThemeSettingsKeeper`), until the
+// app's own store has settings; nothing else is written anywhere.
 
 import AppKit
 
@@ -63,20 +60,16 @@ struct SettingsKeeper {
     }
 }
 
-final class DataSetWindowSource: MarginWindowSource {
+final class DataSetWindowSource {
     let data: DataSync
-    // The profile whose set is shown (asked again at every snapshot: a copy linking can change it).
+    // The profile whose settings are drawn (asked again at every draw: a copy linking can change it).
     let pick: () -> DataProfile?
     var onChange: (() -> Void)?
-    // The space each window shows, as chosen in it.
-    private(set) var active: [Int: String] = [:]
     // Settings changed in the UI (updateSettings), and each theme's (updateThemeSettings), over the set's.
     private(set) var settings: JSONObject = [:]
     private(set) var themeSettings: [String: JSONObject] = [:]
     // The theme chosen in Margin's own Settings (nil: none chosen there: the profile's set says).
     var chosenTheme: String? { settings["theme"] as? String }
-    // Requests this can't do yet, by type (the log says the first of each).
-    private(set) var unhandled: [String: Int] = [:]
 
     private let keeper: ThemeSettingsKeeper?
     private let settingsKeeper: SettingsKeeper?
@@ -97,21 +90,28 @@ final class DataSetWindowSource: MarginWindowSource {
         }
     }
 
-    // The whole State (the no-rules fallback's, until step 4: ShellHostedGlue makeHostedSource).
-    func snapshot() -> JSONObject {
-        let p = pick()
-        var state = Self.state(values: { collection in p.map { self.data.values(collection, of: $0) } ?? [:] }, active: active)
-        if let s = state["settings"] as? JSONObject { state["settings"] = overlaid(s) }
-        return state
+    // What each draw of the library's takes of the profile: its settings with each theme's own under `themes` and what
+    // was changed in the UI over them, and its site icons.
+    func settingsAndIcons() -> (settings: JSONObject, icons: JSONObject) { settingsAndIcons(pick()) }
+    private func settingsAndIcons(_ p: DataProfile?) -> (settings: JSONObject, icons: JSONObject) {
+        (drawnSettings(p), p.map { data.values("siteIcons", of: $0) } ?? [:])
     }
 
-    // What the library's snapshot takes of the profile (LibraryWindowSource, every draw), no State built: its settings
-    // with each theme's own under `themes` and what was changed in the UI over them, and its site icons. The same
-    // values as `snapshot()`'s `settings` and `favicons`.
-    func settingsAndIcons() -> (settings: JSONObject, icons: JSONObject) {
+    // The same as each draw's text (`"settings":…,"favicons":…`, which the core splices into the library's state:
+    // LibraryWindowSource), made again only when what it reads may have changed: the data set (any call of the data's
+    // but a read, `DataSync.changes`, written yet or not), a setting changed here, or another profile picked.
+    func drawnText() -> String {
         let p = pick()
-        return (drawnSettings(p), p.map { data.values("siteIcons", of: $0) } ?? [:])
+        if let kept = drawn, kept.profile == p, kept.changes == data.changes, kept.edits == edits { return kept.text }
+        let s = settingsAndIcons(p)
+        let text = #""settings":"# + (jsonString(s.settings) ?? "{}") + #","favicons":"# + (jsonString(s.icons) ?? "{}")
+        drawn = (p, data.changes, edits, text)
+        textsMade += 1
+        return text
     }
+    private var drawn: (profile: DataProfile?, changes: Int, edits: Int, text: String)?
+    private var edits = 0 // the settings changed here (`perform`)
+    private(set) var textsMade = 0 // (the tests')
     // (The settings alone: a UI request's, a search's engine and the favorites' scope.)
     var drawnSettings: JSONObject { drawnSettings(pick()) }
     private func drawnSettings(_ p: DataProfile?) -> JSONObject {
@@ -130,91 +130,23 @@ final class DataSetWindowSource: MarginWindowSource {
         return s
     }
 
+    // A settings request of the UI's (the core's `settings` route: core/session/ui.rs), kept and drawn again.
     @discardableResult func perform(_ type: String, _ payload: JSONObject) -> JSONObject? {
-        if type == "setSpace", let space = payload["spaceId"] as? String, let window = payload["windowId"] as? Int {
-            active[window] = space
-            onChange?()
-            return nil
-        }
         if type == "updateSettings", let patch = payload["patch"] as? JSONObject, !patch.isEmpty {
             settings.merge(patch.filter { $0.key != "themes" }) { _, new in new }
+            edits += 1
             settingsKeeper?.write(settings)
             onChange?()
             return nil
         }
         if type == "updateThemeSettings", let theme = payload["themeId"] as? String, let patch = payload["patch"] as? JSONObject, !patch.isEmpty {
             themeSettings[theme, default: [:]].merge(patch) { _, new in new }
+            edits += 1
             keeper?.write(themeSettings)
             onChange?()
             return nil
         }
-        unhandled[type, default: 0] += 1
-        if unhandled[type] == 1 { Diagnostics.note("Margin's window: \(type) isn't done yet (its spaces are read only until the app owns them)") }
         return nil
-    }
-
-    static let defaultSpace: JSONObject = ["id": "personal", "name": "Personal", "emoji": "🏠", "color": "#6c5ce7"]
-
-    // A data set's collections (`values`: live values by id) as the State pages draw, nothing open:
-    // spaces in their order (Personal when there are none), pins, folders, the archive newest first,
-    // settings with each theme's own, site icons, and every Margin tab of a known space as a kept tab.
-    // `active`: the space each window shows (one that no longer exists is left out).
-    static func state(values: (String) -> [String: Any], active: [Int: String]) -> JSONObject {
-        func objects(_ collection: String) -> [(id: String, value: JSONObject)] {
-            values(collection).compactMap { id, v in (v as? JSONObject).map { (id, $0) } }.sorted { $0.id < $1.id }
-        }
-        func number(_ v: Any?) -> Double { num(v).flatMap { $0.isFinite ? $0 : nil } ?? 0 }
-        var spaces: [JSONObject] = objects("spaces").sorted { (number($0.value["order"]), $0.id) < (number($1.value["order"]), $1.id) }.map { id, s in
-            var space: JSONObject = ["id": id, "name": s["name"] as? String ?? "", "emoji": s["emoji"] as? String ?? "", "color": s["color"] as? String ?? ""]
-            if let theme = s["theme"] as? String, !theme.isEmpty { space["theme"] = theme }
-            return space
-        }
-        if spaces.isEmpty { spaces = [defaultSpace] }
-        let known = Set(spaces.compactMap { $0["id"] as? String })
-        let pins: [JSONObject] = objects("pins").map { id, p in
-            var pin: JSONObject = ["id": id, "spaceId": p["spaceId"] as? String ?? "", "url": p["url"] as? String ?? "", "title": p["title"] as? String ?? "", "pos": number(p["pos"])]
-            if let folder = p["folderId"] as? String { pin["folderId"] = folder }
-            if let custom = p["customTitle"] as? String, !custom.isEmpty { pin["customTitle"] = custom }
-            return pin
-        }
-        let favorites: [JSONObject] = objects("favorites").map { id, f in
-            var fav: JSONObject = ["id": id, "scope": f["scope"] as? String ?? "global", "url": f["url"] as? String ?? "", "title": f["title"] as? String ?? "", "pos": number(f["pos"])]
-            if let custom = f["customTitle"] as? String, !custom.isEmpty { fav["customTitle"] = custom }
-            if let target = f["target"] { fav["target"] = target }
-            return fav
-        }
-        let airTraffic: [JSONObject] = objects("airTraffic").sorted { (number($0.value["order"]), $0.id) < (number($1.value["order"]), $1.id) }.map { id, r in
-            ["id": id, "pattern": r["pattern"] as? String ?? "", "spaceId": r["spaceId"] as? String ?? "", "enabled": r["enabled"] as? Bool ?? true, "order": number(r["order"])]
-        }
-        let splits: [JSONObject] = objects("splits").map { id, g in
-            var split: JSONObject = ["id": id, "spaceId": g["spaceId"] as? String ?? "", "axis": g["axis"] as? String ?? "horizontal", "panes": g["panes"] as? [String] ?? [], "ratios": g["ratios"] as? [Double] ?? []]
-            if let pinned = g["pinned"] as? Bool, pinned { split["pinned"] = true }
-            if let folder = g["folderId"] as? String { split["folderId"] = folder }
-            return split
-        }
-        let folders: [JSONObject] = objects("folders").map { id, f in
-            var folder: JSONObject = ["id": id, "spaceId": f["spaceId"] as? String ?? "", "name": f["name"] as? String ?? "", "open": f["open"] as? Bool ?? true, "pos": number(f["pos"])]
-            if let parent = f["parentId"] as? String, !parent.isEmpty { folder["parentId"] = parent }
-            return folder
-        }
-        let archive: [JSONObject] = objects("archive").sorted { number($0.value["closedAt"]) > number($1.value["closedAt"]) }.map { id, a in
-            ["id": id, "url": a["url"] as? String ?? "", "title": a["title"] as? String ?? "", "spaceId": a["spaceId"] as? String ?? "", "favIconUrl": a["icon"] as? String ?? "", "closedAt": number(a["closedAt"])]
-        }
-        var settings: JSONObject = values("settings")
-        settings["themes"] = values("themeSettings")
-        var kept: JSONObject = [:]
-        for (id, t) in objects("tabs") {
-            guard let space = t["spaceId"] as? String, known.contains(space) else { continue }
-            kept[id] = ["id": id, "url": t["url"] as? String ?? "", "title": t["title"] as? String ?? "", "favIconUrl": t["icon"] as? String ?? "", "spaceId": space,
-                        "order": number(t["order"]), "lastActive": number(t["lastUsed"]), "keptAt": number(t["lastUsed"]), "why": "app", "wasActive": t["selected"] as? Bool == true]
-        }
-        var shown: JSONObject = [:]
-        for (window, space) in active where known.contains(space) { shown[String(window)] = space }
-        return [
-            "spaces": spaces, "pins": pins, "favorites": favorites, "airTraffic": airTraffic, "splits": splits, "folders": folders, "archive": archive, "settings": settings,
-            "favicons": values("siteIcons"), "keptTabs": kept, "tabs": JSONObject(), "tabSpace": JSONObject(),
-            "activeSpaceByWindow": shown, "awayByWindow": JSONObject(), "lostTabs": NSNull(),
-        ]
     }
 }
 
@@ -232,12 +164,11 @@ extension Shell {
     // The theme Margin's window draws (a package's JSON): the one its settings choose (`hostedSettings`: what was
     // chosen in Margin's own Settings, else the profile's set), an imported one or a built-in Margin carries; with none
     // chosen, a linked copy's package; nil: Arcadia, bundled with the page.
-    // A window's (`window`, `state`: the state it draws): the theme of the space it shows first (2026-11-20, Tirth: a
-    // theme per space; MarginWindowController.spaceTheme), when Margin has that theme (an imported one removed since:
-    // the next one down).
-    func hostedTheme(window: Int? = nil, state: JSONObject? = nil) -> String? {
-        if let window, let state, let own = MarginWindowController.spaceTheme(window: window, state: state),
-           let json = userThemes.store.message(own) ?? builtinThemes.message(own) { return json }
+    // A window's (`spaceTheme`: the theme of the space it shows, the library's `spaceTheme(window:)`): that one first
+    // (2026-11-20, Tirth: a theme per space), when Margin has that theme (an imported one removed since: the next one
+    // down).
+    func hostedTheme(spaceTheme own: String? = nil) -> String? {
+        if let own, let json = userThemes.store.message(own) ?? builtinThemes.message(own) { return json }
         let chosen = hostedSettings?.chosenTheme ?? hostedProfile().flatMap { data.values("settings", of: $0)["theme"] as? String }
         if let chosen, let json = userThemes.store.message(chosen) ?? builtinThemes.message(chosen) { return json }
         // (Nothing chosen: Arcadia's own package, never nil while it's there: a window that drew another space's theme
@@ -256,7 +187,7 @@ extension Shell {
         if !o.harness, windowOptions == nil, UserDefaults.standard.string(forKey: FrontMechanism.key) == FrontMechanism.order.rawValue { o.front = .order }
         let source = makeHostedSource()
         let windows = MarginWindows(pages: pages, source: source, options: o)
-        windows.theme = { [weak self] window, state in self?.hostedTheme(window: window, state: state) }
+        windows.theme = { [weak self] _, own in self?.hostedTheme(spaceTheme: own) }
         windows.themes = { [weak self] in self?.themesListJSON ?? "[]" }
         windows.browser = options.lastBrowser()
         marginWindows = windows

@@ -304,7 +304,8 @@ func glueScenario() async {
 
   // ---- the first run: a space made, the UI's editor open for it ----
   let made = shell.makeMarginWindows()
-  guard let library = shell.library, let session = shell.hosted, let engine = shell.host else { return check("the library, the session and the engine", false) }
+  let library = shell.library
+  guard let session = shell.hosted, let engine = shell.host else { return check("the library, the session and the engine", false) }
   check("the windows draw the library", made.source is LibraryWindowSource)
   // (Keep open on, as most of what follows was written for: the sidebar docked beside the hosted app, its edge dragged.
   // Off, while an app is hosted: the block "Keep open off while an app is hosted" below.)
@@ -1522,7 +1523,8 @@ func glueResumeScenario() async {
   shell.start()
   defer { shell.stop {} }
   let made = shell.makeMarginWindows()
-  guard let library = shell.library, let session = shell.hosted, let engine = shell.host else { return check("the library, the session and the engine", false) }
+  let library = shell.library
+  guard let session = shell.hosted, let engine = shell.host else { return check("the library, the session and the engine", false) }
   // (What an earlier run left: an app item of the first space, the one selected there.)
   let space = library.spaces().first?.id ?? ""
   let added = library.perform("addItem", ["spaceId": space, "target": ItemTarget.app(bundleId: "com.apple.Notes", name: "Notes").json, "front": true])

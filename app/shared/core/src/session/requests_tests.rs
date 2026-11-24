@@ -1,12 +1,13 @@
 //! The library's requests, `show`, `close`, `openApp`, the choice of host and profile and the engine's window asks
 //! (requests.rs, hosting.rs) through the re-entrant test adapter: what each flow asks of Margin's windows, the engine,
-//! the copies, the library and the Swift flows not moved yet, in order. (The same flows are compared against the
-//! deleted Swift on generated vectors in the step's harness; these pin the shapes.)
+//! the copies, the library (the core's own object: its edits the rules', their requests back through its sink) and the
+//! Swift flows not moved yet, in order. (The same flows are compared against the deleted Swift on generated vectors in
+//! the step's harness; these pin the shapes.)
 
 use super::*;
 
-/// The commands a run handed out, each answered by `answer` (a library edit before the run goes on, as Swift answers
-/// it in the same turn; the others after); deadlines ticked on the world's clock when nothing else is left.
+/// The commands a run handed out, each answered by `answer` after the run's tick; deadlines ticked on the world's clock
+/// when nothing else is left. (A library edit is no command: the library's perform, made in the flow's turn.)
 pub(super) fn pump(s: &Session, world: &World, first: Out, answer: &mut dyn FnMut(&Command) -> Value) -> Vec<Command> {
     let mut seen = Vec::new();
     let mut out = first;
@@ -31,11 +32,7 @@ pub(super) fn pump(s: &Session, world: &World, first: Out, answer: &mut dyn FnMu
             seen.push(c.clone());
             let a = answer(&c);
             engine_after(world, &c, &a);
-            if matches!(c, Command::Perform { .. }) {
-                s.answer(id, a);
-            } else {
-                later.push((id, a));
-            }
+            later.push((id, a));
         }
         let mut next = s.tick(0.0);
         for (id, a) in later {
@@ -93,7 +90,6 @@ pub(super) fn kinds(cs: &[Command]) -> Vec<String> {
     cs.iter()
         .map(|c| match c {
             Command::Ask { kind, .. } => format!("ask {kind}"),
-            Command::Perform { action, .. } => format!("perform {action}"),
             Command::Run { .. } => "run".into(),
             Command::Engine { op, .. } => format!("engine {op}"),
             Command::Waker { op, .. } => format!("waker {op}"),
@@ -111,15 +107,33 @@ pub(super) fn named(acts: &[Value], name: &str) -> Vec<Value> {
     acts.iter().filter(|a| a[0] == json!(name) || a[1] == json!(name)).cloned().collect()
 }
 
-pub(super) fn item(shelf: &Shelf, id: &str, v: Value) {
-    shelf.0.borrow_mut().insert(("tabs".into(), id.into()), v);
+/// The library edits made so far (`["perform", action, payload]`), taken out of the acts (the rest left).
+pub(super) fn performed(world: &World) -> Vec<Value> {
+    let mut acts = world.acts.borrow_mut();
+    let (edits, rest): (Vec<Value>, Vec<Value>) = acts.drain(..).partition(|a| a[0] == json!("perform"));
+    *acts = rest;
+    edits
+}
+
+/// A space and the window showing it, as stored.
+pub(super) fn space(lib: &TestLibrary, id: &str, window: i64) {
+    lib.put(
+        "spaces",
+        id,
+        json!({ "name": id, "emoji": "", "color": "", "order": 0, "browser": "safari", "profile": null }),
+    );
+    lib.put("windows", &window.to_string(), json!({ "spaceId": id }));
+}
+
+pub(super) fn item(lib: &TestLibrary, id: &str, v: Value) {
+    lib.put("tabs", id, v);
 }
 
 #[test]
 fn a_show_request_drawn_in_front_at_once_then_an_app_hosted() {
-    let (s, world, shelf) = session();
+    let (s, world, lib) = session();
     world.names.borrow_mut().insert("com.apple.Notes".into(), "Notes".into());
-    item(&shelf, "a1", json!({ "target": { "kind": "app", "bundleId": "com.apple.Notes", "name": "" }, "title": "N" }));
+    item(&lib, "a1", json!({ "target": { "kind": "app", "bundleId": "com.apple.Notes", "name": "" }, "title": "N" }));
     let out = s.input(&json!({ "type": "library", "request": { "type": "activateTab", "item": "a1", "windowId": 1 } }));
     assert!(out.ready && out.start.is_empty(), "handled in the queue, after the caller's code");
     assert_eq!(s.core().requested_in(1).as_deref(), Some("a1"), "in front at once");
@@ -157,9 +171,9 @@ fn a_show_request_drawn_in_front_at_once_then_an_app_hosted() {
 
 #[test]
 fn a_show_overtaken_before_it_started_is_skipped_and_a_failed_one_draws_the_one_before() {
-    let (s, world, shelf) = session();
-    item(&shelf, "a1", json!({ "target": { "kind": "app", "bundleId": "com.a", "name": "A" } }));
-    item(&shelf, "a2", json!({ "target": { "kind": "app", "bundleId": "com.b", "name": "B" } }));
+    let (s, world, lib) = session();
+    item(&lib, "a1", json!({ "target": { "kind": "app", "bundleId": "com.a", "name": "A" } }));
+    item(&lib, "a2", json!({ "target": { "kind": "app", "bundleId": "com.b", "name": "B" } }));
     s.input(&json!({ "type": "library", "request": { "type": "activateTab", "item": "a1", "windowId": 1 } }));
     let out = s.input(&json!({ "type": "library", "request": { "type": "activateTab", "item": "a2", "windowId": 1 } }));
     let seen = pump(&s, &world, out, &mut |c| match c {
@@ -178,10 +192,10 @@ fn a_show_overtaken_before_it_started_is_skipped_and_a_failed_one_draws_the_one_
 
 #[test]
 fn a_web_item_its_profiles_window_made_then_its_tab_shown() {
-    let (s, world, shelf) = session();
+    let (s, world, lib) = session();
     world.profiles.borrow_mut().push("s-default".into());
     item(
-        &shelf,
+        &lib,
         "w1",
         json!({ "target": { "kind": "web", "browser": "safari", "profile": null }, "url": "https://a/", "title": "" }),
     );
@@ -220,45 +234,47 @@ fn a_web_item_its_profiles_window_made_then_its_tab_shown() {
 
 #[test]
 fn a_pins_open_and_reset_the_four_paths_as_one() {
-    let (s, world, shelf) = session();
+    let (s, world, lib) = session();
     world.profiles.borrow_mut().push("s-default".into());
     // An open with no item: one made (in front, bound to the pin), then shown; refused: said.
     let out = s.input(&json!({ "type": "library", "request": { "type": "openPin", "url": "https://p/", "pin": "pin1", "windowId": 1, "spaceId": "sp" } }));
-    let mut made = None;
-    let seen = pump(&s, &world, out, &mut |c| match c {
-        Command::Perform { payload, .. } => {
-            made = Some(Value::Object(payload.clone()));
-            json!({ "ok": false, "error": "no such space" })
-        }
-        c => usual(c),
-    });
-    assert_eq!(kinds(&seen), ["perform addItem"]);
+    assert!(pump(&s, &world, out, &mut usual).is_empty());
     assert_eq!(
-        made,
-        Some(json!({ "url": "https://p/", "front": true, "spaceId": "sp", "windowId": 1, "pinnedBy": "pin1" }))
+        performed(&world),
+        [
+            json!(["perform", "addItem", { "url": "https://p/", "front": true, "spaceId": "sp", "windowId": 1, "pinnedBy": "pin1" }])
+        ]
     );
-    assert_eq!(s.done().last().map(String::as_str), Some("openPin: no item made (no such space)"));
+    assert_eq!(s.done().last().map(String::as_str), Some("openPin: no item made (no space)"), "the library has none");
     // A favourite's reset with no item, refused: silent, its own key.
     let n = s.done().len();
     let out = s.input(
         &json!({ "type": "library", "request": { "type": "resetFavorite", "url": "https://f/", "favorite": "fav1" } }),
     );
-    let seen = pump(&s, &world, out, &mut |c| match c {
-        Command::Perform { payload, .. } => {
-            made = Some(Value::Object(payload.clone()));
-            json!({ "ok": true, "result": {} })
-        }
-        c => usual(c),
-    });
-    assert_eq!(kinds(&seen), ["perform addItem"]);
-    assert_eq!(made, Some(json!({ "url": "https://f/", "front": true, "favoriteId": "fav1" })));
+    assert!(pump(&s, &world, out, &mut usual).is_empty());
+    assert_eq!(
+        performed(&world),
+        [json!(["perform", "addItem", { "url": "https://f/", "front": true, "favoriteId": "fav1" }])]
+    );
     assert_eq!(s.done().len(), n, "a reset that made nothing says nothing");
+    // A pin's open with a space: its item made, bound to the pin (the library's own), then shown in its window.
+    space(&lib, "sp", 1);
+    lib.put("pins", "pin1", json!({ "spaceId": "sp", "url": "https://p/", "title": "P", "folderId": null, "pos": 0 }));
+    let out = s.input(&json!({ "type": "library", "request": { "type": "openPin", "url": "https://p/", "pin": "pin1", "windowId": 1, "spaceId": "sp" } }));
+    let seen = pump(&s, &world, out, &mut usual);
+    assert_eq!(kinds(&seen), ["engine open"]);
+    assert_eq!(performed(&world).len(), 1);
+    let made = lib.lib.live("tabs").into_iter().find(|(_, v)| v["pinnedBy"] == json!("pin1")).map(|(id, _)| id);
+    let Command::Engine { args, .. } = &seen[0] else { panic!() };
+    assert!(made.as_deref().is_some_and(|m| m.starts_with("t-")), "{made:?}");
+    assert_eq!(args["item"].as_str(), made.as_deref(), "{args:?}");
+    lib.clear();
     // A reset with no address: nothing at all.
     let out = s.input(&json!({ "type": "library", "request": { "type": "resetPin", "item": "w1" } }));
     assert!(pump(&s, &world, out, &mut usual).is_empty());
     // A reset of an open item: its tab back at its address first, then shown.
     item(
-        &shelf,
+        &lib,
         "w1",
         json!({ "target": { "kind": "web", "browser": "safari", "profile": "s-default" }, "url": "https://moved/" }),
     );
@@ -276,7 +292,7 @@ fn a_pins_open_and_reset_the_four_paths_as_one() {
     assert_eq!(payload["url"], json!("https://p/"), "the pin's address, not the item's");
     // Overtaken (Tirth, 2026-11-23): its tab back at its address still, not shown; the item picked after it is.
     item(
-        &shelf,
+        &lib,
         "w2",
         json!({ "target": { "kind": "web", "browser": "safari", "profile": "s-default" }, "url": "https://two/" }),
     );
@@ -303,11 +319,11 @@ fn a_pins_open_and_reset_the_four_paths_as_one() {
 
 #[test]
 fn a_cycles_pick_of_an_app_not_running_held_and_never_started_when_passed_over() {
-    let (s, world, shelf) = session();
+    let (s, world, lib) = session();
     world.runs.borrow_mut().insert("com.a".into(), false);
     world.now.set(100.0);
-    item(&shelf, "a1", json!({ "target": { "kind": "app", "bundleId": "com.a", "name": "A" } }));
-    item(&shelf, "a2", json!({ "target": { "kind": "app", "bundleId": "com.b", "name": "B" } }));
+    item(&lib, "a1", json!({ "target": { "kind": "app", "bundleId": "com.a", "name": "A" } }));
+    item(&lib, "a2", json!({ "target": { "kind": "app", "bundleId": "com.b", "name": "B" } }));
     s.input(&json!({ "type": "cycled", "window": 1 }));
     let out = s.input(&json!({ "type": "library", "request": { "type": "activateTab", "item": "a1", "windowId": 1 } }));
     let mut first = s.tick(0.0);
@@ -322,19 +338,19 @@ fn a_cycles_pick_of_an_app_not_running_held_and_never_started_when_passed_over()
     assert_eq!(s.done()[0], "a1: passed over by the tab keys (com.a not started)");
     assert_eq!(kinds(&seen), ["engine open"], "only the second (com.b's running state unknown: never held)");
     // A click (no key) is never held.
-    let (s, world, shelf) = session();
+    let (s, world, lib) = session();
     world.runs.borrow_mut().insert("com.a".into(), false);
-    item(&shelf, "a1", json!({ "target": { "kind": "app", "bundleId": "com.a", "name": "A" } }));
+    item(&lib, "a1", json!({ "target": { "kind": "app", "bundleId": "com.a", "name": "A" } }));
     let out = s.input(&json!({ "type": "library", "request": { "type": "activateTab", "item": "a1", "windowId": 1 } }));
     assert_eq!(kinds(&pump(&s, &world, out, &mut usual)), ["engine open"]);
 }
 
 #[test]
 fn closing_its_page_closed_the_next_one_shown_and_the_split_around_it_again() {
-    let (s, world, shelf) = session();
+    let (s, world, lib) = session();
     world.profiles.borrow_mut().push("s-default".into());
-    item(&shelf, "w1", json!({ "target": { "kind": "web", "browser": "safari", "profile": "s-default" } }));
-    item(&shelf, "a2", json!({ "target": { "kind": "app", "bundleId": "com.b", "name": "B" } }));
+    item(&lib, "w1", json!({ "target": { "kind": "web", "browser": "safari", "profile": "s-default" } }));
+    item(&lib, "a2", json!({ "target": { "kind": "app", "bundleId": "com.b", "name": "B" } }));
     s.core().edit(Field::Open, |st| {
         st.open.insert("w1".into(), OpenItem { host: "safari:s-default".into(), profile: Some("s-default".into()) })
     });
@@ -368,15 +384,11 @@ fn closing_its_page_closed_the_next_one_shown_and_the_split_around_it_again() {
 
 #[test]
 fn the_profile_fallback_said_once_its_profile_cant_be_opened() {
-    let (s, world, shelf) = session();
+    let (s, world, lib) = session();
     world.profiles.borrow_mut().push("s-default".into());
     world.unopenable.borrow_mut().push("s-work".into());
-    shelf.0.borrow_mut().insert(("spaces".into(), "sp".into()), json!({ "name": "Work", "order": 1 }));
-    item(
-        &shelf,
-        "w1",
-        json!({ "target": { "kind": "web", "browser": "safari", "profile": "s-work" }, "spaceId": "sp" }),
-    );
+    lib.put("spaces", "sp", json!({ "name": "Work", "order": 1 }));
+    item(&lib, "w1", json!({ "target": { "kind": "web", "browser": "safari", "profile": "s-work" }, "spaceId": "sp" }));
     let out = s.input(
         &json!({ "type": "call", "id": 7, "flow": "profileFallback", "args": { "profile": "s-work", "space": "sp" } }),
     );
@@ -531,37 +543,38 @@ fn a_window_closed_full_screen_and_focused_by_its_copy() {
 
 #[test]
 fn an_app_picked_in_the_palette() {
-    let (s, world, shelf) = session();
-    shelf.0.borrow_mut().insert(("windows".into(), "1".into()), json!({ "spaceId": "sp" }));
-    item(&shelf, "old", json!({ "url": "app://com.b", "spaceId": "sp" }));
+    let (s, world, lib) = session();
+    space(&lib, "sp", 1);
+    item(&lib, "old", json!({ "url": "app://com.b", "spaceId": "sp" }));
     for (bundle, want, line) in [
         ("com.google.Chrome.beta", vec![], Some("com.google.Chrome.beta: Chrome and Edge aren't hosted yet")),
-        ("COM.unibox.margin", vec!["perform newTab"], Some("Margin picked in its own palette: the surprise")),
-        ("com.apple.Safari", vec!["perform newTab"], None),
-        ("com.b", vec!["perform activateTab"], None),
+        ("COM.unibox.margin", vec!["newTab"], Some("Margin picked in its own palette: the surprise")),
+        ("com.apple.Safari", vec!["newTab"], None),
+        ("com.b", vec!["activateTab"], None),
     ] {
         let n = s.done().len();
         let out = s.input(&json!({ "type": "call", "flow": "openApp", "args": { "bundle": bundle, "window": null } }));
-        assert_eq!(kinds(&pump(&s, &world, out, &mut usual)), want, "{bundle}");
-        assert_eq!(s.done().get(n).map(String::as_str), line, "{bundle}");
+        pump(&s, &world, out, &mut usual);
+        let edits: Vec<Value> = performed(&world).iter().map(|e| e[1].clone()).collect();
+        assert_eq!(edits, want, "{bundle}");
+        // (The flow's own line; a new item's show says its own after it, `t-…: …`.)
+        let own = s.done()[n..].iter().find(|l| !l.starts_with("t-")).cloned();
+        assert_eq!(own.as_deref(), line, "{bundle}");
     }
     let out = s.input(&json!({ "type": "call", "flow": "openApp", "args": { "bundle": "com.c", "window": 1 } }));
-    let mut payload = None;
-    let seen = pump(&s, &world, out, &mut |c| match c {
-        Command::Perform { payload: p, .. } => {
-            payload = Some(Value::Object(p.clone()));
-            json!({ "ok": true, "result": { "tabId": "new" } })
-        }
-        c => usual(c),
-    });
+    let seen = pump(&s, &world, out, &mut usual);
     assert_eq!(
-        payload,
-        Some(
-            json!({ "windowId": 1, "target": { "kind": "app", "bundleId": "com.c", "name": "com.c" }, "front": true, "spaceId": "sp" })
-        )
+        performed(&world),
+        [
+            json!(["perform", "addItem", { "windowId": 1, "target": { "kind": "app", "bundleId": "com.c", "name": "com.c" }, "front": true, "spaceId": "sp" }])
+        ]
     );
-    assert_eq!(kinds(&seen), ["perform addItem", "engine open"]);
-    assert_eq!(s.done()[s.done().len() - 2], "com.c: item new added");
+    assert_eq!(kinds(&seen), ["engine open"]);
+    let made =
+        lib.lib.live("tabs").into_iter().find(|(_, v)| v["target"]["bundleId"] == json!("com.c")).map(|(id, _)| id);
+    let made = made.expect("the app's item, in the library");
+    assert!(made.starts_with("t-"));
+    assert_eq!(s.done()[s.done().len() - 2], format!("com.c: item {made} added"));
 }
 
 #[test]
@@ -581,4 +594,46 @@ fn link_wanted_and_open_wanted() {
     s.core().edit(Field::Requested, |st| st.requested.insert(1, "t2".into()));
     assert!(!s.open_wanted(1, "t1") && s.open_wanted(1, "t2"));
     assert!(!s.open_wanted(5, "t2"), "its window gone");
+}
+
+// ---- the library object as the requests' source (step 4 part 7) ------------------------------------------------------
+
+#[test]
+fn the_librarys_requests_reach_the_session_inside_its_perform() {
+    // The session as the library's sink (`Library::set_sink`, as margin_session_new registers it): a perform's request
+    // is the session's `library` input inside the perform (the item in front at once), its show started by the
+    // caller's next tick, reading the item from the library object (re-entered on every port and callback).
+    let (s, world, lib) = session();
+    world.names.borrow_mut().insert("com.apple.Notes".into(), "Notes".into());
+    let l = &lib.lib;
+    let space = l.perform("createSpace", &json!({ "windowId": 1, "name": "A" })).outcome.result["spaceId"].clone();
+    let added = l.perform(
+        "addItem",
+        &json!({ "spaceId": space, "target": { "kind": "app", "bundleId": "com.apple.Notes", "name": "Notes" } }),
+    );
+    let item = added.outcome.result["tabId"].as_str().expect("an item").to_owned();
+    acts(&world);
+    let out = l.perform("activateTab", &json!({ "windowId": 1, "tabId": item }));
+    assert!(out.outcome.ok, "{out:?}");
+    assert_eq!(s.core().requested_in(1).as_deref(), Some(item.as_str()), "in front at once, inside the perform");
+    assert_eq!(
+        acts(&world),
+        [json!(["libraryChanged", ["tabs"]]), json!(["changed"])],
+        "its observers, then the session"
+    );
+    assert!(s.ready(), "what it queued waits for the caller's tick");
+    let seen = pump(&s, &world, s.tick(0.0), &mut usual);
+    assert_eq!(kinds(&seen), ["engine open"], "its show, on the caller's next tick");
+    let Command::Engine { args, .. } = &seen[0] else { panic!() };
+    assert_eq!(args["target"], json!({ "kind": "app", "bundle": "com.apple.Notes" }));
+    assert_eq!(s.core().shown_in(1).as_deref(), Some(item.as_str()));
+    assert!(world.reentries.get() > 0, "the session re-entered on its ports throughout");
+    // A perform Swift makes itself, outside a call: what its requests left answered by the `edited` input (their lines,
+    // nothing run in it), then run at the caller's tick, as the `library` input answered the delegate.
+    l.perform("closeTab", &json!({ "windowId": 1, "tabId": item }));
+    let left = s.input(&json!({ "type": "edited" }));
+    assert!(left.ready && left.start.is_empty() && left.error.is_none(), "{left:?}");
+    let n = s.done().len();
+    pump(&s, &world, left, &mut usual);
+    assert_eq!(s.done()[n..], [format!("{item}: closed")], "{:?}", s.done());
 }

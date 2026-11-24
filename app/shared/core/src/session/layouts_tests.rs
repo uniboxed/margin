@@ -8,16 +8,16 @@ use super::requests_tests::{acts, item, kinds, named, pump, usual};
 use super::*;
 use crate::page::Page;
 
-fn split_world(s: &Session, world: &World, shelf: &Shelf) {
+fn split_world(s: &Session, world: &World, lib: &TestLibrary) {
     world.profiles.borrow_mut().push("s-default".into());
     item(
-        shelf,
+        lib,
         "w1",
         json!({ "target": { "kind": "web", "browser": "safari", "profile": null }, "url": "https://a/", "title": "A" }),
     );
-    item(shelf, "a2", json!({ "target": { "kind": "app", "bundleId": "com.b", "name": "B" }, "title": "" }));
-    item(shelf, "a3", json!({ "target": { "kind": "app", "bundleId": "com.b", "name": "B" }, "title": "" }));
-    shelf.0.borrow_mut().insert(("splits".into(), "sp".into()), json!({ "panes": ["w1", "a2", "a3"] }));
+    item(lib, "a2", json!({ "target": { "kind": "app", "bundleId": "com.b", "name": "B" }, "title": "" }));
+    item(lib, "a3", json!({ "target": { "kind": "app", "bundleId": "com.b", "name": "B" }, "title": "" }));
+    lib.put("splits", "sp", json!({ "panes": ["w1", "a2", "a3"] }));
     // (The page lays the split out as the item in front asks: two panes side by side.)
     *world.panes.borrow_mut() = Some((
         "sp".into(),
@@ -64,8 +64,8 @@ fn laid_out<'a>(failing: &'a [(&'a str, &'a str)]) -> impl FnMut(&Command) -> Va
 
 #[test]
 fn a_split_shown_at_its_pages_rects_an_app_once_room_checked_first() {
-    let (s, world, shelf) = session();
-    split_world(&s, &world, &shelf);
+    let (s, world, lib) = session();
+    split_world(&s, &world, &lib);
     world.minimums.borrow_mut().insert("app:com.b".into(), Size::new(300.0, 200.0));
     let out = s.input(
         &json!({ "type": "library", "request": { "type": "showSplit", "splitId": "sp", "item": "a2", "windowId": 1 } }),
@@ -108,14 +108,17 @@ fn a_split_shown_at_its_pages_rects_an_app_once_room_checked_first() {
         "sp".into(),
         vec![("w1".into(), Rect::new(949.0, 8.0, 574.0, 933.0)), ("a2".into(), Rect::new(260.0, 8.0, 681.0, 933.0))],
     ));
-    shelf.0.borrow_mut().insert(("splits".into(), "sp".into()), json!({ "panes": ["w1", "a2"] }));
+    lib.put("splits", "sp", json!({ "panes": ["w1", "a2"] }));
     s.core().set_layout_of(1, None);
     let out = s.input(
         &json!({ "type": "library", "request": { "type": "showSplit", "splitId": "sp", "item": "w1", "windowId": 1 } }),
     );
     let seen = pump(&s, &world, out, &mut laid_out(&[]));
     assert!(!kinds(&seen).contains(&"engine setLayout".to_string()), "{:?}", kinds(&seen));
-    assert!(kinds(&seen).contains(&"perform removeFromSplit".to_string()));
+    let a = acts(&world);
+    assert_eq!(named(&a, "perform").len(), 1, "removeFromSplit: {:?}", named(&a, "perform"));
+    assert_eq!(named(&a, "perform")[0][1], json!("removeFromSplit"));
+    world.acts.borrow_mut().extend(a.into_iter().filter(|v| v[0] != json!("perform")));
     let line = "layout: split sp: no room in the page area 1244×933 (w1 949…1523×933 , a2 260…941×933 , each pane 220 at least): nothing moved";
     assert!(s.done().iter().any(|l| l == line), "{:?}", s.done());
     let a = acts(&world);
@@ -127,9 +130,9 @@ fn a_split_shown_at_its_pages_rects_an_app_once_room_checked_first() {
 
 #[test]
 fn a_pane_that_didnt_come_leaves_the_split_the_one_with_the_keys_keeps_them() {
-    let (s, world, shelf) = session();
-    split_world(&s, &world, &shelf);
-    shelf.0.borrow_mut().insert(("splits".into(), "sp".into()), json!({ "panes": ["w1", "a2"] }));
+    let (s, world, lib) = session();
+    split_world(&s, &world, &lib);
+    lib.put("splits", "sp", json!({ "panes": ["w1", "a2"] }));
     *world.panes.borrow_mut() = Some((
         "sp".into(),
         vec![("w1".into(), Rect::new(260.0, 8.0, 618.0, 933.0)), ("a2".into(), Rect::new(886.0, 8.0, 618.0, 933.0))],
@@ -138,11 +141,10 @@ fn a_pane_that_didnt_come_leaves_the_split_the_one_with_the_keys_keeps_them() {
         &json!({ "type": "library", "request": { "type": "showSplit", "splitId": "sp", "item": "a2", "windowId": 1 } }),
     );
     let seen = pump(&s, &world, out, &mut laid_out(&[("app:com.b", "below its window's minimum")]));
-    assert!(kinds(&seen).contains(&"perform removeFromSplit".to_string()));
-    let Some(Command::Perform { payload, .. }) = seen.iter().find(|c| matches!(c, Command::Perform { .. })) else {
-        panic!()
-    };
-    assert_eq!(Value::Object(payload.clone()), json!({ "windowId": 1, "tabId": "a2", "focus": "w1" }));
+    assert_eq!(
+        named(&acts(&world), "perform"),
+        [json!(["perform", "removeFromSplit", { "windowId": 1, "tabId": "a2", "focus": "w1" }])]
+    );
     assert!(s.done().contains(&"layout: a2: not shown (failed(place, \"below its window's minimum\"))".to_string()));
     assert!(
         s.done().contains(
@@ -157,11 +159,11 @@ fn a_pane_that_didnt_come_leaves_the_split_the_one_with_the_keys_keeps_them() {
 
 #[test]
 fn a_profiles_fourth_pane_not_laid_out_its_panes_in_their_roles() {
-    let (s, world, shelf) = session();
+    let (s, world, lib) = session();
     world.profiles.borrow_mut().push("s-default".into());
     for i in 0..5 {
         item(
-            &shelf,
+            &lib,
             &format!("w{i}"),
             json!({ "target": { "kind": "web", "browser": "safari", "profile": null }, "url": format!("https://{i}/") }),
         );
@@ -182,9 +184,9 @@ fn a_profiles_fourth_pane_not_laid_out_its_panes_in_their_roles() {
 
 #[test]
 fn prepare_parks_the_other_windows_item_and_waits_for_full_screen_and_the_page_area() {
-    let (s, world, shelf) = session();
+    let (s, world, lib) = session();
     world.windows.borrow_mut().push(2);
-    item(&shelf, "a1", json!({ "target": { "kind": "app", "bundleId": "com.a", "name": "A" } }));
+    item(&lib, "a1", json!({ "target": { "kind": "app", "bundleId": "com.a", "name": "A" } }));
     s.core().set_hosting(Some(2));
     s.core().edit(Field::Shown, |st| st.shown.insert(2, "a1".into()));
     world.not_full_screen.borrow_mut().push(1);
@@ -216,7 +218,7 @@ fn prepare_parks_the_other_windows_item_and_waits_for_full_screen_and_the_page_a
     assert_eq!(s.done()[1], "Margin's window 1 not in full screen (it always is while hosting is on: test): asked");
     // No page area within its wait: nothing hosted, said, its looks remeasured (3 s at 0.05: 62 looks).
     *world.placement.borrow_mut() = None;
-    item(&shelf, "a2", json!({ "target": { "kind": "app", "bundleId": "com.b", "name": "B" } }));
+    item(&lib, "a2", json!({ "target": { "kind": "app", "bundleId": "com.b", "name": "B" } }));
     let out = s.input(&json!({ "type": "library", "request": { "type": "activateTab", "item": "a2", "windowId": 1 } }));
     let seen = pump(&s, &world, out, &mut usual);
     assert!(seen.is_empty());
@@ -412,19 +414,11 @@ fn a_drags_frame_only_the_layouts_panes_followed_a_panes_rect_kept_over_the_card
 
 #[test]
 fn a_new_panes_loader_its_own_while_the_engine_lays_it_out_held_till_its_toolbar_rests() {
-    let (s, world, shelf) = session();
+    let (s, world, lib) = session();
     world.profiles.borrow_mut().push("s-default".into());
-    item(
-        &shelf,
-        "w1",
-        json!({ "target": { "kind": "web", "browser": "safari", "profile": null }, "url": "https://a/" }),
-    );
-    item(
-        &shelf,
-        "w2",
-        json!({ "target": { "kind": "web", "browser": "safari", "profile": null }, "url": "https://b/" }),
-    );
-    shelf.0.borrow_mut().insert(("splits".into(), "sp".into()), json!({ "panes": ["w1", "w2"] }));
+    item(&lib, "w1", json!({ "target": { "kind": "web", "browser": "safari", "profile": null }, "url": "https://a/" }));
+    item(&lib, "w2", json!({ "target": { "kind": "web", "browser": "safari", "profile": null }, "url": "https://b/" }));
+    lib.put("splits", "sp", json!({ "panes": ["w1", "w2"] }));
     *world.panes.borrow_mut() = Some((
         "sp".into(),
         vec![("w1".into(), Rect::new(260.0, 8.0, 618.0, 933.0)), ("w2".into(), Rect::new(886.0, 8.0, 618.0, 933.0))],

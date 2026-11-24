@@ -95,12 +95,9 @@ private func splitSessionTests() {
     let echo = Diagnostics.echo
     Diagnostics.echo = { _ in }
     defer { Diagnostics.echo = echo }
-    let scriptPath = ProcessInfo.processInfo.environment["MARGIN_LIBRARY_JS"] ?? "../../dist/app/library.js"
     let dataRoot = tempFolder("split")
     defer { try? FileManager.default.removeItem(at: dataRoot) }
-    guard let library = Library.open(dataRoot: dataRoot, script: URL(fileURLWithPath: scriptPath), background: false) else {
-        return check("split session: the library opens (\(scriptPath): npm run build)", false)
-    }
+    let library = Library.open(dataRoot: dataRoot, background: false)
     var n = 0
     library.randomIds = { (0..<4).map { _ in n += 1; return "s\(n)x" } }
     let w = FakeHostWorld()
@@ -123,7 +120,6 @@ private func splitSessionTests() {
     engine.hostedWindow = { session.hosted($0) }
     engine.hostedWindows = { session.hostedWindows($0) }
     engine.onMinimum = { session.minimum($0) }
-    library.delegate = session
     var copyWindows: [Int: Int] = [:]
     links.onNewWindow = { id, _ in
         guard let pid = w.running(bundleId: "com.apple.Safari").first?.pid else { return }
@@ -172,7 +168,7 @@ private func splitSessionTests() {
     check("split session: …the pane added focused (the keys, the sidebar's highlight), a's tab shown in the main window",
           session.shown[1] == edit && engine.shown == editId && links.asked.dropFirst(mark).contains { $0.type == "hostShow" && $0.payload["itemId"] as? String == a && int($0.payload["windowId"]) == 90 },
           "\(String(describing: session.shown[1])) \(String(describing: engine.shown))")
-    let live = session.live(library.snapshot())
+    let live = drawnState(session)
     let tabs = ((live["openTabs"] as? JSONObject)?["tabs"] as? JSONObject) ?? [:]
     func tab(_ i: String) -> JSONObject? { tabs[String(session.number(ofItem: i))] as? JSONObject }
     check("split session: what the UI draws: the focused pane active, the other visible", tab(edit)?["active"] as? Bool == true && tab(a)?["visible"] as? Bool == true)

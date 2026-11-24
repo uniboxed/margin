@@ -48,12 +48,9 @@ private func splitRealUseSessionTests() {
     var lines: [String] = []
     Diagnostics.echo = { lines.append($0) }
     defer { Diagnostics.echo = echo }
-    let scriptPath = ProcessInfo.processInfo.environment["MARGIN_LIBRARY_JS"] ?? "../../dist/app/library.js"
     let dataRoot = tempFolder("split-real-use")
     defer { try? FileManager.default.removeItem(at: dataRoot) }
-    guard let library = Library.open(dataRoot: dataRoot, script: URL(fileURLWithPath: scriptPath), background: false) else {
-        return check("split real use: the library opens (\(scriptPath): npm run build)", false)
-    }
+    let library = Library.open(dataRoot: dataRoot, background: false)
     var n = 0
     library.randomIds = { (0..<4).map { _ in n += 1; return "ru\(n)x" } }
     let w = FakeHostWorld()
@@ -80,7 +77,6 @@ private func splitRealUseSessionTests() {
     engine.onMinimum = { session.minimum($0) }
     engine.onAppMinimums = { session.appMinimumsChanged() }
     engine.loading = { session.loading($0) }
-    library.delegate = session
     var copyWindows: [Int: Int] = [:]
     var newUnraisable = false
     var noNewWindow = false // Safari never makes the window asked for

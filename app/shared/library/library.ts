@@ -6,14 +6,19 @@
 //
 // The edit rules are state/model.ts's, run here unchanged: the library's values become a model State (its items as
 // kept tabs: a Margin tab with no browser tab, which is what an item is to the app), the model's function runs, and
-// the values that changed come back as changes for the app to merge into its set (shared/data-merge.ts's rules,
-// DataSet.swift). The app runs this file in JavaScriptCore (LibraryRules.swift), built into dist/app/library.js by
-// scripts/build.ts; the unit tests import it as it is (tests/library.test.ts). Pure: no clock (the app gives `now`),
-// no randomness the app doesn't give (`ids`), no browser API.
+// the values that changed come back as changes for the app to merge into its set (shared/data-merge.ts's rules).
+//
+// **The vectors' reference, built into nothing.** The app ran this file in JavaScriptCore until docs/CORE-REFACTOR.md
+// step 4's switch; since, Margin.app (and Windows) run margin-core's port (app/shared/core/src/library: DECISIONS.md
+// "the library's rules are margin-core's"), and no app or extension build has this file. It stays as the shared
+// vectors' reference (tests/fixtures/library, recorded from it: scripts/build.ts buildLibraryScript builds library.js
+// for the recorder only) while model.ts still owns the browsers' copies' spaces; the unit tests import it as it is
+// (tests/library.test.ts). A rule changed here is changed in the core with its vectors recorded again. Pure: no clock
+// (the app gives `now`), no randomness the app doesn't give (`ids`), no browser API.
 //
 // What needs a browser or an app (showing a tab, opening an address, closing a page) isn't done here: each such
-// action returns a request (`requests`) for the hosting phase (Library.swift's delegate), with the item and its
-// target resolved.
+// action returns a request (`requests`) for the hosting (in the core, the library object gives each to the session,
+// its sink), with the item and its target resolved.
 import * as M from '../../../extension/state/model.ts';
 import { frontItemOf } from '../../../extension/shared/front-item.ts';
 import { matchAirTrafficRule } from '../../../extension/shared/air-traffic.ts';
@@ -934,7 +939,7 @@ export function importValues(current: Values, sets: ImportSet[], order: [string,
   return { changes: diff(current ?? {}, normal), counts };
 }
 
-// ---- the app's entry (JavaScriptCore) -----------------------------------------------------------------------------
+// ---- the JavaScriptCore entry (the vectors' recorder's; the app's until step 4's switch) -------------------------
 // One function, JSON in and out (no object bridging): marginLibrary.call(name, argsJSON) → resultJSON.
 const API: Record<string, (...args: any[]) => any> = {
   perform: (values, action, payload, env) => perform(values, action, payload, env),

@@ -1,6 +1,6 @@
 // Margin.app's library (app/shared/library/library.ts): the spaces, pins, folders and items the app owns with
 // MarginHosted on, edited by state/model.ts's rules; the import of each profile's set; what the UI is given.
-// The app's side (its files, JavaScriptCore, the delegate) is app/platforms/macos/shell/tests/library-tests.swift.
+// The app's side (its files, margin-core's library object, the delegate) is app/platforms/macos/shell/tests/library-tests.swift.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as L from '../app/shared/library/library.ts';
