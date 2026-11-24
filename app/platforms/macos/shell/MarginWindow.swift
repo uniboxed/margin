@@ -28,6 +28,7 @@
 // key.
 
 import AppKit
+import MarginCore
 
 final class MarginWindow: NSWindow {
     static let style: NSWindow.StyleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
@@ -186,16 +187,16 @@ enum MarginWindowGeometry {
     }
 
     // Whether a layout was measured at the content's present size (one from before a resize is followed by the right one).
+    // (The core's: core/page/area.rs.)
     static func measuredAt(_ layout: PageLayout, _ size: CGSize) -> Bool {
-        abs(layout.width - size.width) < 1 && abs(layout.height - size.height) < 1
+        margin_page_measured_at(layout.width, layout.height, MarginRect(x: 0, y: 0, width: Double(size.width), height: Double(size.height)))
     }
 
     // The page area in the window server's coordinates: the content (top left) less the layout's insets.
-    // Nil until the layout is one measured at the content's size, or if it leaves no area.
+    // Nil until the layout is one measured at the content's size, or if it leaves no area. (The core's.)
     static func pageRect(layout: PageLayout, content: CGRect) -> CGRect? {
-        guard measuredAt(layout, content.size) else { return nil }
-        let rect = PassThrough.slot(in: content, layout: layout).rect
-        return rect.width > 0 && rect.height > 0 ? rect : nil
+        var out = MarginRect()
+        return margin_page_rect(layout.insets, layout.width, layout.height, content.raw, &out) ? CGRect(out) : nil
     }
 
     // The window's three buttons (close, minimize, zoom) inside the theme's <m-window-controls> box (top left,
@@ -491,39 +492,25 @@ final class WindowGroundView: NSView {
 }
 
 // The colours the page says it draws around the page card's corners (host-app.ts cornerFill, reported with the layout
-// as `fills`): the ground under the page area is the colour most of them have (the theme's frame).
+// as `fills`): the ground under the page area is the colour most of them have (the theme's frame). The rules are the
+// core's (core/page/fill.rs); here the colours as AppKit's.
 enum PageFill {
     // The colour most of the corners have (the theme's frame; a sharp shadow at one corner aside), the first on a tie.
     static func common(_ colors: [NSColor]) -> NSColor? {
-        let counts = colors.map { c in colors.filter { $0 == c }.count }
-        guard let top = counts.max(), let i = counts.firstIndex(of: top) else { return nil }
-        return colors[i]
+        let list = colors.map { c -> MarginRgba in
+            let s = c.usingColorSpace(.sRGB) ?? c
+            return MarginRgba(r: Double(s.redComponent), g: Double(s.greenComponent), b: Double(s.blueComponent), a: Double(s.alphaComponent))
+        }
+        var out = MarginRgba()
+        guard list.withUnsafeBufferPointer({ margin_page_fill_common($0.baseAddress, $0.count, &out) }) else { return nil }
+        return colors[list.firstIndex { $0.r == out.r && $0.g == out.g && $0.b == out.b && $0.a == out.a } ?? 0]
     }
 
     // A CSS colour as the page computes it ("rgb(r, g, b)", "rgba(r, g, b, a)", or "color(srgb r g b / a)"); nil: none
     // read (or see-through).
     static func color(_ css: String) -> NSColor? {
-        let s = css.trimmingCharacters(in: .whitespaces).lowercased()
-        func numbers(_ inner: Substring) -> [Double] {
-            inner.split(whereSeparator: { ", /".contains($0) }).compactMap { part -> Double? in
-                if part.hasSuffix("%") { return Double(part.dropLast()).map { $0 / 100 } }
-                return Double(part)
-            }
-        }
-        var rgba: [Double] = []
-        if (s.hasPrefix("rgb(") || s.hasPrefix("rgba(")), let open = s.firstIndex(of: "("), s.hasSuffix(")") {
-            let n = numbers(s[s.index(after: open)..<s.index(before: s.endIndex)])
-            guard n.count >= 3 else { return nil }
-            rgba = [n[0] / 255, n[1] / 255, n[2] / 255, n.count > 3 ? n[3] : 1]
-        } else if s.hasPrefix("color(srgb "), s.hasSuffix(")") {
-            let n = numbers(s.dropFirst("color(srgb ".count).dropLast())
-            guard n.count >= 3 else { return nil }
-            rgba = [n[0], n[1], n[2], n.count > 3 ? n[3] : 1]
-        } else {
-            return nil
-        }
-        guard rgba.allSatisfy({ $0.isFinite }), rgba[3] > 0 else { return nil }
-        return NSColor(srgbRed: min(1, max(0, rgba[0])), green: min(1, max(0, rgba[1])), blue: min(1, max(0, rgba[2])), alpha: min(1, max(0, rgba[3])))
+        var out = MarginRgba()
+        return withText(css) { t, n, _ in margin_page_fill_color(t, n, &out) } ? NSColor(out) : nil
     }
 }
 

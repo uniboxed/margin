@@ -69,7 +69,8 @@ final class FakeRegistrar: HotKeyRegistrar {
     hostTests() // host-tests.swift: the host engine against a stand-in window manager, and its calls' check
     hostModelTests() // host-model-tests.swift: the hosting core's window kinds, its observed model and its observer
     hostedTests() // hosted-tests.swift: the library, the host engine and the Safari copies joined 
-    marginWindowTests() // margin-window-tests.swift: Margin's own window 
+    marginWindowTests() // margin-window-tests.swift: Margin's own window
+    sessionRulesTests() // session-rules-tests.swift: the session's rules step 3 moves into the core, pinned against the Swift
     devHooksTests() // devhooks-tests.swift (DEV-HOOK: removed with the hook)
     themeTests() // theme-tests.swift
     appsTests() // apps-tests.swift: installed apps for the palette, fake bundles in a temporary folder

@@ -142,8 +142,8 @@ enum LinkMessage {
     // The copy's state changed (or a message of it was left): the core's mirror has it (the link's `mirror`).
     case state(State)
     // Something for one window's UI (or every window's, with no windowId). The app reads `loading` and the preview's
-    // and the UI's pushes (Shell.linkReceived).
-    case push(epoch: String, windowId: Int?, msg: JSONObject)
+    // and the UI's pushes (Shell.linkReceived): its message as its JSON's text, which the session takes as it is.
+    case push(epoch: String, windowId: Int?, msg: Push)
     case theme(epoch: String, theme: Theme)
     // The copy's shortcuts for the app's hot keys: { command: [combination] } (Shortcuts.swift).
     case keys(epoch: String, bindings: [String: [String]])
@@ -155,6 +155,15 @@ enum LinkMessage {
     // A kind this app doesn't know (a newer extension): left.
     case other(String)
 
+    // A push's message as the core gives it (ffi link.rs `wire`): its JSON's text and its type; read as an object only
+    // by what reads it outside the session (the tests): the session takes the text as it is.
+    struct Push {
+        let type: String?
+        let text: String
+        var object: JSONObject { (try? JSONSerialization.jsonObject(with: Data(text.utf8))) as? JSONObject ?? [:] }
+        subscript(_ key: String) -> Any? { object[key] }
+    }
+
     // A message as the core read it (protocol.rs LinkMessage::object: its wire form, every field checked there).
     init?(core m: JSONObject) {
         guard let k = m["k"] as? String else { return nil }
@@ -165,7 +174,7 @@ enum LinkMessage {
             guard let h = Hello(core: m) else { return nil }
             self = .hello(h)
         case "push":
-            self = .push(epoch: epoch, windowId: int(m["windowId"]), msg: m["msg"] as? JSONObject ?? [:])
+            self = .push(epoch: epoch, windowId: int(m["windowId"]), msg: Push(type: m["type"] as? String, text: m["msgText"] as? String ?? "{}"))
         case "keys":
             var bindings: [String: [String]] = [:]
             for (command, list) in m["bindings"] as? JSONObject ?? [:] { bindings[command] = list as? [String] ?? [] }

@@ -240,6 +240,10 @@ func marginWindowTests() {
     let settings = source.snapshot()["settings"] as? JSONObject
     check("hosted source: the sidebar kept open or not, and its width, kept in memory and drawn",
           changed == 3 && settings?["sidebarPinnedOpen"] as? Bool == false && ((settings?["themes"] as? JSONObject)?["arcadia"] as? JSONObject)?["sidebarWidth"] as? Int == 300)
+    let drawn = source.settingsAndIcons()
+    check("hosted source: what the library's draw takes (settingsAndIcons, no State built): the same settings and site icons",
+          NSDictionary(dictionary: drawn.settings).isEqual(to: settings ?? [:]) && NSDictionary(dictionary: drawn.icons).isEqual(to: source.snapshot()["favicons"] as? JSONObject ?? ["x": 1])
+          && NSDictionary(dictionary: source.drawnSettings).isEqual(to: drawn.settings))
     sync.onChange?(DataProfile(browser: "safari", profile: "P"), ["spaces"])
     check("hosted source: the shell still hears the data set's changes (the source's comes after)", shellHeard == 1)
 

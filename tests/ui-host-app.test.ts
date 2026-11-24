@@ -131,6 +131,19 @@ test('the app host: layout reports go to the app once per change; what only the 
   assert.equal(host.perform('notice', { id: 'n', action: 'ok' }), true);
 });
 
+test("the app host in Margin.app's window: a layout report sent as its JSON text when the app asks for that (`layoutText`), the same report", () => {
+  const g = { insets: { left: 260, top: 8, right: 8, bottom: 8 }, radius: 6, radii: [6, 6, 6, 6], outer: { left: 260, top: 8, right: 8, bottom: 8, radius: 6 }, container: { width: 1512, height: 982 }, mode: 'fullscreen', fills: Array(4).fill('rgb(17, 17, 17)') };
+  const asObject = bridge(), asText = bridge(), overBrowser = bridge();
+  createAppHost({ hello: hello({ host: 'app-window' }), post: asObject.post }).reportLayout(g);
+  createAppHost({ hello: hello({ host: 'app-window', layoutText: true }), post: asText.post }).reportLayout(g);
+  createAppHost({ hello: hello({ layoutText: true }), post: overBrowser.post }).reportLayout(g);
+  const sent = (b: ReturnType<typeof bridge>) => b.posts.filter((p) => p.op === 'layout');
+  assert.equal(sent(asText).length, 1);
+  assert.equal(sent(asText)[0].geometry, undefined);
+  assert.deepEqual(JSON.parse(sent(asText)[0].json), sent(asObject)[0].geometry, 'the same report, as its JSON');
+  assert.ok(sent(overBrowser)[0].geometry && sent(overBrowser)[0].json === undefined, 'over a browser: as it was');
+});
+
 test("the app host: a layout of another mode, or measured with the sidebar alone, reaches the app even at the same insets", () => {
   const b = bridge();
   const host = createAppHost({ hello: hello({ host: 'app-window', mode: 'windowed' }), post: b.post });

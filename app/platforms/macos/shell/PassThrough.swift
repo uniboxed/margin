@@ -12,8 +12,14 @@
 // (its root ignores the pointer, its children keep theirs). While a button
 // is held, nothing changes: a drag that started on the page stays the
 // page's, one that started on Margin stays Margin's.
+//
+// The rules are margin-core's (app/shared/core/src/passthrough.rs, with CGRect's edges: docs/CORE-REFACTOR.md step 3
+// part 12): who gets the pointer, the slot, the catch region, the positions a page wants, and Margin's window's
+// pointer (its page's, PageCore.swift: each pointer event one typed call). Here: the values Margin's window and the
+// pane click tap hold, read through the core, and the mechanism (the mouse monitors, the catch fill's drawing).
 
 import AppKit
+import MarginCore
 
 // The page slot of one overlay, in the window server's coordinates (top left). (Nonisolated: the pane click tap reads it
 // on its own thread, PaneClickTap.swift.)
@@ -29,32 +35,53 @@ nonisolated struct Slot: Equatable, Sendable {
     var holes: [CGRect]? = nil
 }
 
+// (Its rects to and from the core's: PageCore.swift's `raw`, `withRects`, `rects`.)
+
+nonisolated extension Slot {
+    // The slot as the core reads it, its rects borrowed for the call.
+    func withView<T>(_ body: (UnsafePointer<MarginSlotView>) -> T) -> T {
+        withRects(hits) { h, hn in
+            withRects(holes ?? []) { o, on in
+                var v = MarginSlotView(rect: rect.raw, radius: Double(radius), hits: h, hits_len: hn, capture_all: captureAll,
+                                       has_holes: holes != nil, holes: o, holes_len: on)
+                return withUnsafePointer(to: &v) { body($0) }
+            }
+        }
+    }
+
+    // A slot the core holds, copied.
+    init(_ v: MarginSlotView) {
+        self.init(rect: CGRect(v.rect), radius: CGFloat(v.radius), hits: rects(v.hits, v.hits_len), captureAll: v.capture_all,
+                  holes: v.has_holes ? rects(v.holes, v.holes_len) : nil)
+    }
+}
+
+extension PageLayout {
+    var insets: MarginInsets { MarginInsets(left: left, top: top, right: right, bottom: bottom, radius: radius) }
+}
+
 enum PassThrough {
     // Whether the page gets the pointer at `point` (the overlay ignores the mouse there).
     nonisolated static func pageGets(_ point: CGPoint, _ slot: Slot?) -> Bool {
-        guard let slot, !slot.captureAll, slot.rect.contains(point) else { return false }
-        if slot.hits.contains(where: { $0.contains(point) }) { return false }
-        if let holes = slot.holes, !holes.contains(where: { $0.contains(point) }) { return false }
-        // Outside a rounded corner of the slot: the theme's.
-        let r = min(slot.radius, slot.rect.width / 2, slot.rect.height / 2)
-        if r > 0 {
-            let cx = point.x < slot.rect.minX + r ? slot.rect.minX + r : (point.x > slot.rect.maxX - r ? slot.rect.maxX - r : nil)
-            let cy = point.y < slot.rect.minY + r ? slot.rect.minY + r : (point.y > slot.rect.maxY - r ? slot.rect.maxY - r : nil)
-            if let cx, let cy, hypot(point.x - cx, point.y - cy) > r { return false }
-        }
-        return true
+        guard let slot else { return margin_pass_page_gets(point.margin, nil) }
+        return slot.withView { margin_pass_page_gets(point.margin, $0) }
     }
 
     // What the overlay should do now: `ignoring` is what it does; a held button keeps it.
     static func decide(_ point: CGPoint, _ slot: Slot?, buttonsDown: Bool, ignoring: Bool) -> Bool {
-        buttonsDown ? ignoring : pageGets(point, slot)
+        guard let slot else { return margin_pass_decide(point.margin, nil, buttonsDown, ignoring) }
+        return slot.withView { margin_pass_decide(point.margin, $0, buttonsDown, ignoring) }
     }
 
     // The slot from the page's layout report: the overlay's frame (top left) with the insets.
     static func slot(in frame: CGRect, layout: PageLayout, hits: [CGRect] = [], captureAll: Bool = false) -> Slot {
-        let rect = CGRect(x: frame.minX + layout.left, y: frame.minY + layout.top,
-                          width: max(0, frame.width - layout.left - layout.right), height: max(0, frame.height - layout.top - layout.bottom))
-        return Slot(rect: rect, radius: layout.radius, hits: hits.map { $0.offsetBy(dx: frame.minX, dy: frame.minY) }, captureAll: captureAll)
+        var out = [CGRect](repeating: .zero, count: hits.count)
+        let rect = withRects(hits) { h, n in
+            out.withUnsafeMutableBufferPointer { o in
+                o.withMemoryRebound(to: MarginRect.self) { margin_pass_slot(frame.raw, layout.insets, h, n, $0.baseAddress) }
+            }
+        }
+        return Slot(rect: CGRect(rect), radius: CGFloat(layout.radius), hits: out, captureAll: captureAll)
     }
 }
 
@@ -75,19 +102,37 @@ struct CatchRegion: Equatable {
 
     // For an overlay at `frame` (top left) with this slot (window server coordinates).
     static func of(frame: CGRect, slot: Slot?) -> CatchRegion {
-        guard let slot, !slot.captureAll else { return CatchRegion(all: true, hole: nil) }
-        let hole = slot.rect.offsetBy(dx: -frame.minX, dy: -frame.minY).intersection(CGRect(origin: .zero, size: frame.size))
-        guard !hole.isNull, hole.width > 0, hole.height > 0 else { return CatchRegion(all: true, hole: nil) }
-        return CatchRegion(all: false, hole: hole, radius: min(slot.radius, hole.width / 2, hole.height / 2), hits: slot.hits.map { $0.offsetBy(dx: -frame.minX, dy: -frame.minY) },
-                           holes: slot.holes.map { $0.map { $0.offsetBy(dx: -frame.minX, dy: -frame.minY).intersection(hole) }.filter { !$0.isNull && $0.width > 0 && $0.height > 0 } })
+        var hits = [MarginRect](repeating: MarginRect(), count: slot?.hits.count ?? 0)
+        var holes = [MarginRect](repeating: MarginRect(), count: slot?.holes?.count ?? 0)
+        var v = MarginCatchView()
+        hits.withUnsafeMutableBufferPointer { h in
+            holes.withUnsafeMutableBufferPointer { o in
+                if let slot { slot.withView { margin_pass_catch(frame.raw, $0, h.baseAddress, o.baseAddress, &v) } }
+                else { margin_pass_catch(frame.raw, nil, h.baseAddress, o.baseAddress, &v) }
+            }
+        }
+        return CatchRegion(v)
+    }
+
+    // A region the core made, copied (its rects read now).
+    init(_ v: MarginCatchView) {
+        self.init(all: v.all, hole: v.has_hole ? CGRect(v.hole) : nil, radius: CGFloat(v.radius), hits: rects(v.hits, v.hits_len),
+                  holes: v.has_holes ? rects(v.holes, v.holes_len) : nil)
+    }
+
+    init(all: Bool, hole: CGRect?, radius: CGFloat = 0, hits: [CGRect] = [], holes: [CGRect]? = nil) {
+        (self.all, self.hole, self.radius, self.hits, self.holes) = (all, hole, radius, hits, holes)
     }
 
     // Whether a point (in the frame, top left) is filled: the same answer as !PassThrough.pageGets.
     func contains(_ p: CGPoint, in size: CGSize) -> Bool {
-        guard CGRect(origin: .zero, size: size).contains(p) else { return false }
-        guard !all, let hole else { return true }
-        if hits.contains(where: { $0.contains(p) }) { return true }
-        return !PassThrough.pageGets(p, Slot(rect: hole, radius: radius, holes: holes))
+        withRects(hits) { h, hn in
+            withRects(holes ?? []) { o, on in
+                var v = MarginCatchView(all: all, has_hole: hole != nil, hole: (hole ?? .zero).raw, radius: Double(radius), hits: h, hits_len: hn,
+                                        has_holes: holes != nil, holes: o, holes_len: on)
+                return margin_pass_catch_contains(&v, p.margin, Double(size.width), Double(size.height))
+            }
+        }
     }
 }
 
@@ -95,6 +140,7 @@ struct CatchRegion: Equatable {
 // reportWant; only peek uses them): none while its sidebar is docked, those within
 // `zone` points of its peek edges while the sidebar is hidden, every one while it's
 // out over the page. Before 2026-11-05 every move over an overlay went in, at 30 a second.
+// (Read from the page's message here; which positions it wants is the core's.)
 struct PointerWant: Equatable {
     enum Mode: String { case none, edges, all }
     var mode: Mode
@@ -105,25 +151,28 @@ struct PointerWant: Equatable {
 
     init(mode: Mode, edges: Set<String> = [], zone: CGFloat = 24) { (self.mode, self.edges, self.zone) = (mode, edges, zone) }
 
+    // The page's `pointerWant` message as the core reads it (core/page/said.rs `pointer_want`: the one reader).
     init(_ body: JSONObject) {
-        mode = Mode(rawValue: body["mode"] as? String ?? "") ?? .all
-        edges = Set((body["edges"] as? [Any] ?? []).compactMap { $0 as? String })
-        zone = CGFloat((body["zone"] as? NSNumber)?.doubleValue ?? 24)
+        var m: UInt8 = 2, bits: UInt8 = 0, z = 24.0
+        if let data = jsonText(SessionRules.json(body)) {
+            data.withUnsafeBytes { margin_page_pointer_want($0.bindMemory(to: UInt8.self).baseAddress, $0.count, &m, &bits, &z) }
+        }
+        mode = [Mode.none, .edges, .all][Int(min(m, 2))]
+        edges = Set([("left", 1), ("right", 2), ("top", 4), ("bottom", 8)].compactMap { bits & UInt8($0.1) != 0 ? $0.0 : nil })
+        zone = CGFloat(z)
+    }
+
+    // As the core has it: the mode's number, the edges' bits (1 left, 2 right, 4 top, 8 bottom).
+    var code: UInt8 { switch mode { case .none: 0; case .edges: 1; case .all: 2 } }
+    var bits: UInt8 {
+        [("left", 1), ("right", 2), ("top", 4), ("bottom", 8)].reduce(0) { $0 | (edges.contains($1.0) ? UInt8($1.1) : 0) }
     }
 
     // Whether a position (in the overlay, top left) is wanted.
     func wants(_ p: CGPoint, in size: CGSize) -> Bool {
-        switch mode {
-        case .none: return false
-        case .all: return true
-        case .edges:
-            return (edges.contains("left") && p.x <= zone) || (edges.contains("right") && p.x >= size.width - zone)
-                || (edges.contains("top") && p.y <= zone) || (edges.contains("bottom") && p.y >= size.height - zone)
-        }
+        margin_pass_wants(code, bits, Double(zone), p.margin, Double(size.width), Double(size.height))
     }
 }
-
-
 
 // The pointer, wherever it is (no Accessibility): every move and drag, and
 // each press (a press in the browser re-orders the overlays above it).

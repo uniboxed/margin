@@ -27,15 +27,20 @@ enum ItemTarget: Hashable {
 
     static let marginPages: Set<String> = ["settings"]
 
+    // Read with the core's rules (session/target.rs: the default browser, an empty profile, the pages there are), from
+    // the shape it writes back.
     init?(json: Any?) {
-        guard let o = json as? JSONObject else { return nil }
-        switch o["kind"] as? String {
-        case "web": self = .web(browser: o["browser"] as? String ?? "safari", profile: (o["profile"] as? String).flatMap { $0.isEmpty ? nil : $0 })
+        guard let o = json as? JSONObject, JSONSerialization.isValidJSONObject(o),
+              let t = SessionRules.call(["rule": "target", "target": o])["target"] as? JSONObject else { return nil }
+        switch t["kind"] as? String {
+        case "web":
+            guard let browser = t["browser"] as? String else { return nil }
+            self = .web(browser: browser, profile: t["profile"] as? String)
         case "app":
-            guard let id = o["bundleId"] as? String, !id.isEmpty else { return nil }
-            self = .app(bundleId: id, name: o["name"] as? String ?? id)
+            guard let id = t["bundleId"] as? String, let name = t["name"] as? String else { return nil }
+            self = .app(bundleId: id, name: name)
         case "margin":
-            guard let page = o["page"] as? String, Self.marginPages.contains(page) else { return nil }
+            guard let page = t["page"] as? String else { return nil }
             self = .margin(page: page)
         default: return nil
         }
@@ -105,6 +110,9 @@ final class Library {
 
     // data/app under the lasting data's root (DataSync.appRoot, or a test's folder).
     static func folder(in dataRoot: URL) -> URL { dataRoot.appendingPathComponent("app", isDirectory: true) }
+
+    // margin-core's library object, for the session's reads of it (SessionCore: it lives as long as this library).
+    var corePointer: OpaquePointer? { core.pointer }
 
     // The library in `root` (its flat store's folder), written in the background (false: at once, the unit tests).
     init(root: URL, background: Bool = true, rules: LibraryRules) {
@@ -297,6 +305,8 @@ final class LibraryCore {
     }
 
     deinit { margin_library_free(core) }
+
+    var pointer: OpaquePointer? { core }
 
     private func call(_ request: JSONObject) -> JSONObject {
         let answer = KeysCore.bytes(KeysCore.json(request)) { p, n in KeysCore.answer { margin_library_call(core, p, n, $0) } } as? JSONObject ?? [:]

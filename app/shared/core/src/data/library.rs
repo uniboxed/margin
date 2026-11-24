@@ -89,6 +89,17 @@ impl LibraryStore {
         log
     }
 
+    /// One live item's value by its id (the session's reads: a map lookup, never a collection built); None: none,
+    /// deleted, or a library never stored.
+    pub fn item(&mut self, collection: &str, id: &str) -> Option<Value> {
+        self.store.load(&key())?.set.item(collection, id)?.value.clone()
+    }
+
+    /// A collection's live values (`{ id: value }`; none for a library never stored).
+    pub fn live(&mut self, collection: &str) -> Map<String, Value> {
+        self.store.load(&key()).map(|s| s.set.live_values(collection)).unwrap_or_default()
+    }
+
     /// The store's log since the last call.
     pub fn take_log(&mut self) -> Vec<Note> {
         self.store.take_log()
@@ -121,6 +132,10 @@ mod tests {
         assert_eq!(b.values["spaces"]["s1"]["name"], json!("Work"));
         let set = lib.store_mut().load(&key()).map(|s| s.set.clone()).unwrap_or_default();
         assert_eq!(set.item("spaces", "s1").map(|i| i.updated_at), Some(51.0));
+        assert_eq!(lib.item("spaces", "s1"), Some(json!({ "name": "Work" })), "one item read by its id");
+        assert_eq!(lib.item("spaces", "none"), None);
+        assert_eq!(lib.live("spaces").get("s1"), Some(&json!({ "name": "Work" })), "a collection read");
+        assert!(lib.live("pins").is_empty());
         // A deletion, and entries that aren't one.
         let c = lib.apply(
             &[
@@ -134,6 +149,7 @@ mod tests {
         );
         assert_eq!(c.changed, BTreeSet::from(["spaces".to_string()]), "only the deletion");
         assert!(c.values["spaces"].as_object().is_some_and(Map::is_empty));
+        assert_eq!(lib.item("spaces", "s1"), None, "deleted: none");
         assert_eq!(lib.apply(&[], 1.0), Applied::default());
         let mut again = library(dir.path());
         assert!(again.values()["spaces"].as_object().is_some_and(Map::is_empty), "read back: deleted");

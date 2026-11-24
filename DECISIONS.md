@@ -7998,3 +7998,749 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   unchanged.
 - Not measured on the real screen (no screen suite on this branch): `live-resize` (followed median and p95) and
   `idle-cost`, before the merge as the plan asks.
+
+## Core refactor step 3, commit 2: the pointer's pass-through for several holes in the core (2026-11-23)
+
+- passthrough.rs is brought up to PassThrough.swift and the Mac's Margin window's pointer moves into it. One rule with
+  two edge semantics: `Plain`, the old overlay's own `Rect` (Windows' old overlay through core/shell/overlay.rs: its
+  code path, answers and tests unchanged), and `Cg`, CGRect's to the bit (each rect standardized as
+  CGRectStandardize does it, its change added to the origin so a -0 is 0; CG's null; Swift's `min` and `max`). `Slot`
+  gains `holes: Option<Vec<Rect>>` (None for the old overlay); `CatchRegion` gains its holes, each cut to the slot's
+  hole. The Mac's pointer is `PagePointer`: the slot placed from the page's layout, hits and hole (one host: the rect
+  within the hole, its corners the card's only within 2 pt of it, MWC:1121-1126 as was) or holes (several: the card's
+  alone, chosen by MWC as before), the catch region, the theme's window buttons while windowed (MWC `passes`), the
+  positions the page wants and their throttle, the leaving, the cut pane under the pointer (the frontmost) and its
+  forgetting, and whether the panel lets the pointer through. A placing answers what changed (the slot: the pointer
+  looked at again; the catch region: drawn again), compared as Swift's `==` compared.
+- margin-ffi's page object (`MarginPage`, ffi page.rs) owns it now; commit 3's `page::Page` becomes that object with a
+  `pointer: PagePointer` field, so no C signature changes then (`margin_page_place_slot` becomes the Page's own call
+  at its hole decisions). Per pointer event one typed call, `margin_page_pointer(page, at, content, buttons_down, now,
+  out)`: the content's rect is passed (the window's frame changes without the core being told) and `now` (the core
+  reads no clock). The pane click tap's read and the facade the tests use are pure calls on a slot the caller holds
+  (`margin_pass_*`, any thread, no lock). Nothing allocated per event nor per placing once warm (ffi tests no_alloc.rs).
+- Swift: PassThrough.swift keeps `Slot`, `CatchRegion` and `PointerWant` as the values Margin's window, the tap and the
+  tests hold (their rules read through the core), `PageCore` (the page object's wrapper), `PointerWatch` and
+  `CatchView`. Deleted: `pageGets`', `decide`'s, `slot(in:)`'s and `CatchRegion`'s maths, `wants`, MWC's `passes`, the
+  one-host rule, the several hosts' slot, `hoverCut`, the push throttle and `pointerInside`/`lastPointerPush`/
+  `hoveredCut`/`pointerWant`. Stays Swift: PointerWant's reading of the page's message (a boolean `zone` is 1 there and
+  24 in the core's old-overlay `from_json`: two readers of one message until commit 9 routes the page's messages),
+  which holes are the pointer's (part 11, commit 3), the guards on visibility and the harness, the pushes' JSON, the
+  panel's `ignoresMouseEvents`, the hover. Swift lines: 95 out, 218 in (the facade and the wrapper).
+- Checked before the Swift went: the deleted Swift (copied verbatim, renamed) against the new code over the core, on
+  generated slots (negative, zero and touching sizes, -0 and NaN values, radii past half a side), holes (none, empty,
+  touching, zero-size, out of the slot), hits, corners' arcs and edges a ulp either way, layouts, frames and pointer
+  sequences (placings, buttons, full screen, wants, cut panes, held buttons, the throttle's edge): 101,658,375 checks,
+  every value to the bit, no difference. The old overlay's path against the old passthrough.rs (copied) on 20,700,000
+  checks: no difference (any NaN taken as equal: its sign is LLVM's to choose). The harness caught 27 of 28 deliberate
+  breaks (edges, the holes' test, the corner, Swift's min with NaN, the 2 pt rule, the cut and empty slots, the -0
+  origin, the region's holes and hits, the buttons, the throttle, the leaving, the push's size, the frontmost cut pane,
+  a held button, the cuts forgotten, the change compared without the radius, the region never redrawn, the wants' edge,
+  three of the FFI's mappings); two only once the generator had a card over a pane and a placing changing only the
+  radius. The one missed (Swift's `max` written as Rust's `f64::max`) is the same function on every reachable input:
+  a size less the insets is never -0 there.
+- Cost (release, ffi tests pointer_cost.rs): a pointer event over a split of two panes with three hits and a cut pane
+  15 ns, the slot looked at again 9 ns, a placing 37 ns, the tap's read 10 ns. The Swift side's whole pointer event
+  (the scratch bench, -O) fell from 172 to 63 ns, the tap's read from 18 to 16 ns. The app's 2040 checks and 321
+  end-to-end checks pass unchanged; `pane-clicks` not measured (no screen suite on this branch).
+
+## Core refactor step 3, commit 4 (first part): Safari's waker its own Swift type, nothing moved (2026-11-23)
+
+- Safari's own window mechanics, which step 3 leaves the Mac's (docs/CORE-REFACTOR.md part 2, "What should not
+  move"), out of HostedSession into SafariWaker.swift: the presses' ladder (`linked`, was `safariLinked`'s body), the
+  windows opened to wake a profile closed again (`closeWoken`) and their private Space released, the windows a Safari
+  Margin started restored from its last session swept (the poll's half of `sweepRestoredSafariWindows`), the profiles
+  Safari's menu has no item for (`unopenable`, forgotten by `namesChanged`). Its state is its own (`wokenByMenu`,
+  `wokenAtLink`, `wokenLinkedAt`, `wokenHeld`, `unopenable`, `swept`); what it reads of the session (the links, the
+  engine, the options, the clock and sleep, the log, `resolve`, `linkWanted`, which windows are Margin's: `safariWindows`,
+  `made_`, `requesting`) it reads at each look, as before.
+- A move only: every line the same but for `session.` before what's the session's (checked line by line against the
+  deleted Swift). HostedSession keeps its API (`safariLinked`, `closeWoken`, `wokenByMenu`, `unopenable`,
+  `profileNamesChanged`, `sweepRestoredSafariWindows`) as one-line calls into the waker, so the engine's hooks and the
+  tests are unchanged; `linkWanted`, `secs`, `requesting` and `made_` lose their `private` for it. When the session's
+  flows are the core's (commit 5), the waker reads the session's `linkWanted` through a typed call instead.
+- HostedSession 172 lines out, 16 in; SafariWaker.swift 199 lines. The app's 2040 checks pass.
+
+
+## Core refactor step 3, commit 4: the session's skeleton in the core, navigate the first flow moved (2026-11-23)
+
+- margin-core gains `session` (app/shared/core/src/session/): one object per app, re-entrant like the Swift class
+  (every entry `&self`, its state in `Cell`/`RefCell`, no borrow across a port call or an await: clippy's
+  `await_holding_refcell_ref` denied for the module, a test adapter calling back in on every port call, and a call made
+  inside another only changing state and queuing). Its executor (exec.rs) has no runtime, thread or timer
+  (`Waker::noop`: a task is made ready by what it waits on): one serial queue for what HostedSession enqueued and
+  detached tasks beside it, ready tasks first in first out, a spawned task after its spawner suspends. A task that
+  starts a command ends the run: the answer hands the commands out (`start`, a list), Swift starts each at once and
+  says so with `tick(0)`, and nothing runs in between (`held`), so the command's synchronous part runs where Swift's
+  `await` ran it. A library edit (`Perform`, for parts 1 and 3) is answered in the same turn and resumes its task before
+  anything that became ready meanwhile (the delegate's requests). Sleeps are deadlines: the earliest goes out with each
+  answer, Swift's one timer sleeps with the session's `sleep` (a test's own) and ticks `max(now, deadline)`; a sleep
+  counts from the later of the clock and the last tick, so a test's frozen clock still wakes sleepers in deadline
+  order. `wait` keeps the Swift's shape (looks counted, never a clock compare: 0.3 s at 0.05 is 8 looks, 3 s 62, as the
+  Swift's arithmetic gives, pinned with the Swift's counts), `first_of` gives the one that came first even when both
+  came before the poll.
+- One finding the design didn't have: an input never runs what it makes ready in the same call. A main-actor `Task`
+  (HostedSession's `enqueue`) starts after the Swift code that made it, and that code goes on after the call (a
+  library perform's other requests, its delegate's loop, the caller's own steps): run at once, the first try failed 4
+  of the app's checks (two resize checks, the preview card's answer order, a split's pane window). The answer says
+  `ready`, and the facade ticks in the next main-actor turn (`runSoon`, once); answers and ticks run what's ready as
+  before. docs/CORE-REFACTOR.md's "What every part shares" says so now.
+- Ports (session/mod.rs `Ports`): the clock, Margin's windows (`window(id)`, `windowIds`), the engine's reads
+  (`shown`, `isHosted`), the links' (`safariProfiles`, `linkEpoch`), the OS's (`appName`); each part adds its own. On
+  the Mac they are two C callbacks made with the object, as `MarginDataNeed`: `now` typed, `port` JSON in and out
+  (malloc'd, freed by the core). Commands: `Ask` (a copy's request, answered `{ result, error }` in the Swift's words),
+  `Perform`, `Run` (a Swift job's turn: HostedSession's `enqueue` now puts its bodies in the core's queue, so the core's
+  flows and the Swift's take their turns in one queue). The library is read in place (`LibraryView` over the library
+  object's set: `item(collection, id)`, a map lookup, `LibraryStore::item`).
+- The state the flows share while they move (session/state.rs): `shown`, `open`, `safariWindows` are the core's now,
+  and the 200 log lines kept (`done`, built in Rust: Swift's `note` is an input, its line logged from the answer in
+  order with the core's). HostedSession keeps the same API: each is a computed property over the core, read again only
+  when its revision changed (`margin_session_rev`, typed, 0.3 ns) and written as the difference (`put`, `del`), so
+  T/'s `session.shown[1]`, `session.open[...]`, `session.done.suffix(4)` and the Swift flows that write them are
+  unchanged. Options stay the Swift struct, sent whole on each change (the core reads `every` for now).
+- FFI: `margin_session_new(library, options, ctx, now, port)`, `_free`, `_input`, `_answer(id, …)`, `_tick(due)`,
+  `_done`, `_idle`, `_rev`, in the header and the module map's library; every answer `{ start?, ready?, deadline, log?,
+  reply?, error? }`, a bad input `{ error }` and a warning once a kind; nothing panics on a bad pointer or input.
+- `navigate` (HS:2378-2385) is the first flow moved (session/navigate.rs), its Swift copy deleted: the window, its item
+  shown and where its page is read at once; at its turn the profile's window by the role in its host id (-1: none)
+  and the item's address (about:blank: none), `hostShow`, then the copy's own request for the tab it answered (Swift's
+  `int`: a number, whole, under 9e15). The payloads are built as the Swift built them (no `pinned`, a -1 window sent),
+  not by hosted_browser's `Ask`, which would refuse a -1 window: unchanged. HostID's logged form and role are ported
+  (host_id.rs) with the Swift's own answers as a vector.
+- Checked before the Swift copy went: T/hosted-tests.swift gained navigate's checks against the Swift first (its tab by
+  `hostShow` in its window with no pin, then the copy's request for that tab; the front window with none named;
+  nothing for a window not there, an app's item, a refused `hostShow`), unchanged after. The deleted Swift (verbatim, its
+  members a harness's) against the core through the FFI, the state written as the facade writes it: 20,000 generated
+  vectors (1 to 3 navigates each, the windows, the items shown, their hosts with every role and odd suffixes, the
+  profiles' windows, the state changed between two asks, addresses that are no string or no object, tab ids whole,
+  fractional, 9e15, strings, bools, null, refusals), 13,869 requests (3,844 of them the copy's own goBack, goForward or
+  reload), no difference; each of 11 deliberate breaks of the core caught on 3,000 vectors (about:blank lost, no window
+  as 0, the role ignored, a profile-less item asked, the window read when asked instead of at its turn, a tab id
+  truncated, 9e15 let in, a bool as a tab, a non-string address, a non-object item, the queue's order reversed). HostID: 180,022 generated ids against the Swift's `description` and `safariRole`,
+  no difference; 7 breaks caught. The one difference, accepted as step 1's caps took it: a `#` or the `:` of `safari:`
+  joined to a combining mark after it is one Character in Swift and so not found (685 of 20,000 such ids differ),
+  ids that never have one (profile ids and roles are ASCII).
+- Before macOS 26 a task can't be started at once (`Task.immediate`): there each command is a task of its own and the
+  run goes on in the next one (one main-actor turn later than the Swift's `await`); on 26 and later, at once.
+- Cost: nothing per frame (the skeleton adds no call to a drag). Release, the core's side: a note 1.7 µs, a field read
+  2.4 µs, a tick with nothing due 0.4 µs, a revision 0.3 ns, a whole navigate (an input, four ticks, two answers, one
+  port) 10 µs (ffi tests/session_cost.rs). With the facade's JSON (Swift, -O): a note 5.6 µs (it was an array's
+  append), the open items read again 33 µs for 20 (only after a change: a read with none is a revision, 1 ns). A
+  switch's dozen notes are well under a millisecond. The app's 2045 checks pass.
+
+## Core refactor step 3, commit 0: the session's pure rules pinned against the Swift before they move (2026-11-23)
+
+- New Swift checks (T/session-rules-tests.swift, 105 of them) of what commit 1 moves, against today's Swift: the
+  four pin and favourite paths of the library's requests (open and reset, each with an item or not, `addItem`
+  refused, overtaken: an open is skipped with its line, a reset never is), `noRoom` at its 1 pt slack and the least's,
+  `lastItem`'s tie (the smallest id among equal `lastUsed`) and its names, `loaderApp`, `resolve`, `webAddress`
+  (Foundation's `URL(string:)`: what it encodes, the hosts it refuses, 2,048 characters), `searchUrl`, the UI pushes'
+  caps, a host's logged form (`safari:p<djb2 % 10000>`), the ground's holes with zero-size and touching rects, the
+  pointer through several holes and the catch region's, the page's layout report (fills, splits, panes).
+- Two of the design's lines were wrong, found by these checks: `searchUrl` never kept a Unicode letter unencoded
+  (Foundation's `addingPercentEncoding` ignores the non-ASCII part of the allowed set, so "café" was already
+  `caf%C3%A9`); `noRoom` with only main cramped answers none (main never goes), not an empty list. The design and
+  open question 8 are corrected with commit 1's.
+- The baseline numbers the commit also asks for (`idle-cost`, `idle-profile`, `live-resize`, `page-frames`, a
+  switch) are measured on the screen, not here.
+
+## Core refactor step 3, commit 1: the session's pure rules in the core, the Swift's copies deleted (2026-11-23)
+
+- margin-core gains `session` (app/shared/core/src/session/, plain functions, no state yet): a split's room and a
+  drag's line (layout.rs: `PANE_LEAST`, `NO_ROOM_REASON`, `is_no_room`, `no_room`, `drag_line`), the card's default
+  rect and a web address (card.rs), a web item's profile (choice.rs `resolve`), the item a window showed last and its
+  loader's app (start.rs), a target as the Swift writes it (target.rs), a search's address (ui.rs), the copies'
+  pushes for the page (push.rs: UIPush's table, `page`, `empty`, the image rule), and the page's layout report with
+  the fields it lacked (protocol.rs `PageLayout`: `outside`, `hosted`, `fills`, `split`, `panes`; `rounded` leaves them
+  out, so the old overlay's outbox compares as before). The Swift keeps its names (HostedSession.noRoom, isNoRoom,
+  paneLeast, noRoomReason, lastItem, loaderApp, dragLine, resolve, LibraryWindowSource.searchUrl,
+  HostedSession.defaultCardRect, webAddress, UIPush, PageLayout) over margin-ffi's session_rules.rs: the rare ones one
+  JSON call (`margin_session_rule`), a split's room, the card's rect, a web address and the layout report typed, a push
+  with the UI's numbers asked through a C callback in the entries' order (as the Swift's `compactMap` asked them,
+  twice a list's cap read). App Swift: 191 lines out, 142 in (SessionRules.swift's 44 among them).
+- Exact, as Foundation and Swift answered: `webAddress` is `URL(string:)` as macOS 14 and later parse (RFC 3986 with
+  invalid characters encoded: only a port that isn't digits, something after an IP literal, an IP literal's address
+  or a host outside RFC 3986's characters refuse an http(s) text; swift-foundation's masks copied); a host with letters
+  outside ASCII goes through ICU's UTS #46 IDNA, which the core can't port, so the core answers "its IDNA decides" and
+  the Mac asks Foundation that one question (`URL(string: "http://<host>/")`). The search template's checks are
+  Swift's characters (`contains`, `hasPrefix`) and its replacing NSString's composed sequences, as is `isNoRoom`'s
+  `contains`: kept with three tables of the scalars that join an ASCII character (session/unicode.rs, generated from
+  this Mac's Swift over every scalar). `addingPercentEncoding` ignores the non-ASCII part of
+  `CharacterSet.alphanumerics`, so the query's encoding is encodeURIComponent's set (no Unicode table). Image data URLs
+  as NSRegularExpression's `$` matches (before one final line terminator too). `lastItem`'s `selected` as Swift's
+  `as? Bool` (a number 1 is one), its tie the smallest id.
+- Accepted differences, at edges only: caps count Unicode scalars, as step 1's (a web address's 2,048, a push's
+  texts, a fill's 80): a text with combining marks or joined emoji can be cut shorter or refused; ids and profiles are
+  ordered by their UTF-8 (Swift's String order differs only for non-ASCII that isn't NFC; both are ASCII); a layout
+  report with a NaN (WebKit's message can carry one, JSON can't) is read as the page's JSON would say it (null): a NaN
+  radius now gives radii of 0 (the Swift gave four NaNs), a NaN among the radii the radius four times (the Swift kept
+  the NaN). The workspace's serde_json reads floats exactly now (`float_roundtrip`): its default was 1 ulp off on some
+  (1e-9 read as 9.999999999999999e-10, found by the comparison), which every JSON the core reads gains.
+- Checked before the Swift went: the deleted Swift (copied verbatim) against the new Swift over the core in a scratch
+  harness, 13.3 million vectors over eight runs (740,065 or 2,220,065 each, five seeds): split rooms at the slack's and the
+  least's edges with negative and zero sizes, card rects at the rounding's halves and -0, 150,000 addresses from a
+  grammar (schemes, user info, IP literals, every ASCII and IDN hosts, ports, paths with marks), the 2,048 edge,
+  queries and templates with marks, joiners and prepended marks, profiles, last items with JSON's every kind of
+  `selected` and `lastUsed`, drag lines, pushes with images at the limit and every line end, flags, times and lists past
+  their caps (each tab ask compared), layout reports with every kind of number, fills, ids and panes: no difference
+  but the accepted ones and one more, the core's the right one: JSONSerialization reads a long decimal as an
+  NSDecimalNumber whose `doubleValue` can be 2 ulp off (0.011969999916118468 read as …464), where the core reads the
+  text exactly (a WebKit message's numbers are doubles: none there). The harness caught each of 32 deliberate breaks of
+  the core (every rule's edges: the slack, the least, the tie, the rounding, the masks, the port, the IDNA question,
+  the marks' tables, the caps, the flags, the times, the image's line ends, the splits, the floats' parsing); two
+  more were found to be no break at all (a least height the 7% always covers, a "[" before a scheme's colon, which
+  http(s) can't have), and two were caught only once the generator made clean splits. The app's checks: 2145 pass (the
+  commit-0 pins of the three scalar caps changed to the new edge).
+- Cost (release, `--ignored` session_cost): a web address 53 ns (was 490 ns in the Swift), the card rect 1.4 ns, a
+  split's room 240 ns, a layout report read 3.6 µs in the core and 14 µs a report on the Swift side (was 10: its JSON
+  made, the answer typed; commit 6 keeps it in the Page); a push 31 µs (was 5.5: a few a second while media plays).
+  The typed web address and card rect allocate nothing (no_alloc.rs).
+
+## A search's address encodes every letter outside ASCII (Tirth, 2026-11-23: step 3's open question 8)
+
+- Tirth's answer to the design's question 8: `searchUrl` percent-encodes every non-ASCII letter ("café" →
+  `caf%C3%A9`), as the extension's search (shared/search.ts, encodeURIComponent) does. The design took the Swift to
+  keep Unicode's letters, marks and digits unencoded (`CharacterSet.alphanumerics` in its allowed set); commit 0's
+  checks found it never did: Foundation's `addingPercentEncoding` ignores whatever of the allowed set isn't ASCII. So
+  his decision is the behaviour Margin already had, and nothing changes: the core's `search_url` (session/ui.rs) keeps
+  ASCII's letters and digits and `-_.!~*'()`, every other byte its `%XX`.
+- Pinned in both: the Swift's checks (T/session-rules-tests.swift: café, a combining mark, CJK, Arabic digits, ½ and
+  Ⅻ, ß, all encoded) and the core's (ui.rs `a_search_address`). The design's question 8 and part 10's risk say so.
+
+
+## Core refactor step 3, commit 5: the library's requests, the show, the choice of host and the engine's window asks in the core (2026-11-23)
+
+- Moved (session/requests.rs, hosting.rs, items.rs, target.rs, choice.rs; their Swift deleted): the Library's delegate
+  (`library(_:wants:)`: a show request's item drawn in front at once, its preview card hidden, the request queued),
+  `overtaken`, `handle` (every request type), the four pin and favourite near-copies made one (`open_by`, the
+  differences as `reset`), `show` with its six after-steps in Swift's reverse order (each `defer` an inner flow whose
+  every return comes back through them), `cycled` and the cycle's hold, `host` (its five results), `close`, `openApp`,
+  `profileFallback`, `linkWanted`, `requestSafariWindow` with its stale-copy retries on the link's epoch, `askAgain`,
+  `closeSafariWindow`, `safariFullScreen` (hosted_browser's `SetWindowState`), `safariFocus`; `ItemTarget(json:)`'s
+  rules (target.rs, the Swift enum built from the core's answer) and `DefaultBrowser`'s table (choice.rs
+  `default_browser`, Foundation's `.whitespaces` to the scalar, U+200B among them). `resolve` is choice.rs's
+  (step3/pure's), the private copy gone.
+- State moved to the core as commit 4's three fields were (a revision each, the facade reading again only on a change,
+  writing the difference): `requested`, `hostingWindow`, `labels`, `showing`, `marginPages`, `marginOpen`, `cycledAt`,
+  `safariTabs`, `safariMuted`, `safariAudio`, `preparingWindow`/`preparingProfile` (written by the preparation, still
+  Swift), `requesting` and `made_` (read by the waker). The facade's fields keep their names and types, so T/ and
+  the Swift flows of later parts are unchanged; the generic cache (`field`, `setMap`, `setSet`) is ~40 lines.
+- The ports gained what the moved flows read and do: the engine's `appRuns`, `showsAlone`, `stopHidingWoken`; the
+  links' `windowIds`; the wall clock (`notAfter`); Margin's windows' `setShowing`, `setMarginPage`, `push`; `changed`
+  (onChange); the waker's `wokenByMenu`, `unopenable`; `log`; and one `swift` port for the Swift flows of parts not
+  moved yet, by name (`cardLeaving`, `cardReturning`, `pinnedOrFavorite`, `cardUrl`, `settleHosting`,
+  `refreshLoading`, `leaveMarginPage`, `hasLayout`, `clearLayout`, `layoutsWith`, `clearElsewhere`,
+  `forgetElsewhere`, `paneFor`): each goes as its part moves. Commands: `Engine` (open, parkShown, close), `Waker`
+  (ensureLinked, the design's `EnsureLinked`, read through the typed `margin_session_link_wanted`; closeWoken),
+  `Swift` (interim: `prepare`, `showSplit`, part 3's), `Reply`.
+- A flow Swift calls (the engine's asks, `show`/`close`/`profileFallback` from the Swift flows still there, the
+  palette's `openApp`) is a `call` input that runs at once (its task first: a Swift call ran its first part at once),
+  answered with a `Reply` command; the facade resumes the caller's continuation and lets the core's run go on in the
+  next turn, so the caller goes on first, as a Swift return did. A new app's open asks `margin_session_open_wanted`
+  (typed) while its window is awaited.
+- Two findings the design didn't have:
+  - The notes go out through a `log` port as they're made, not in the answer: in the answer, a flow's lines came
+    after what it did to Margin's windows meanwhile (the comparison's first difference), and a Swift line logged during
+    a port call came before them. The app's log is in the Swift's order again; `done` was always.
+  - A window the core named is held by the facade until nothing is under way (the queue idle and no call
+    outstanding): the Swift flows held the window they were for, so one closed mid-show was still told
+    (`setShowing(nil)`); held weakly, its calls were dropped (the comparison's second).
+- Tirth's change 3 is its own commit (next entry); nothing else changes behaviour.
+- Checked before the Swift went: the old Swift (refactor/core-session at 53ffc75f) and the new over the core, both
+  built whole with the unit tests' stand-ins and one scratch driver, on generated sequences in a deterministic world:
+  a real library, an engine, copies and two Margin windows whose every async operation waits at a gate the driver
+  opens in a generated order with generated answers (refusals, stale copies, links down, busy and late window calls,
+  tab ids that aren't whole, superseded opens, an engine open that asks for its window first: re-entrance), virtual
+  sleeps, requests through the library and straight to the delegate with every field missing or wrong, palette
+  picks of every kind, cycles, engine asks of every role, links and windows coming and going: 450 vectors over nine
+  seeds, 26,469 steps, 19,034 requests and asks, 11,311 engine opens and copy requests. 446 the same to the line; the
+  4 others differ only where the driver makes no order: two sleepers due at the same virtual instant, one the core's,
+  one the Swift's (the waker's presses against `requestSafariWindow`'s wait on the link, 3: the core's one timer is
+  armed after the Swift's sleep, so at an exact tie the Swift's resumes first; real deadlines never tie, and the
+  driver's answers take a random moment so its timers rarely do), and the order two Margin windows are told of a
+  closed Margin page (Swift's dictionary order against the core's window order, 1; each window's calls the same).
+  The driver caught 17 of 21 deliberate breaks of the core; of the 4 it missed, three can't happen in its world (a
+  third stale retry, the launch's preparation's window, a pane's address: part 3's Swift never asked) and are caught
+  by the core's tests (requests_tests.rs), and one isn't a break (the next item of a closed one shown in the last of
+  the windows showing it rather than the first: one window shows an item at a time, the design's risk).
+- Cost: a web tab switch (a library request, the show, the copy's hostShow) 35 µs in the core (release, ffi
+  tests/session_cost.rs, every port its JSON); a note 2.1 µs (1.7: its line now through the `log` port). Through the
+  facade with the stand-ins (a scratch bench of 2,000 switches through the deterministic world's answers given at
+  once, -O): a web tab switch 244 µs against the Swift's 124 (best 163 against 91), an app switch 236 against 100:
+  +120 to +135 µs a switch, the ports' and fields' JSON on the Swift side (a dozen ports a show); well inside the
+  16 ms budget, and nothing per frame. The waker's look (`link_wanted`) allocates nothing (no_alloc.rs). The app's
+  checks: 2150 pass.
+
+
+## A pin's or favourite's reset overtaken: its tab back at its address, not shown (Tirth, 2026-11-23: step 3's open question 3)
+
+- Tirth's answer to the design's question 3: a reset (a pin's or a favourite's) that another pick in its window
+  overtook before its turn still navigates its open item's tab back to its address (the copy's `hostNavigate`), but
+  isn't shown: no flash of it before the item picked after it. Until now only an open was skipped so (HS:495-496,
+  525-526); a reset showed its item, then the later pick.
+- Where it's checked: after the navigate, at the point an open checks it (right before the show), so a pick made
+  while the navigate was under way counts too; said as an open's is (`<item>: not shown, <newest> asked for since`).
+  A reset with no item (one made at its address) is shown as before: nothing could have been asked for it.
+- Pinned: the core's (requests_tests.rs, both resets: the navigate, then only the later pick's hostShow, the line)
+  and the Swift's (T/session-rules-tests.swift: commit 0's check of the old behaviour turned into the new one).
+
+## Core refactor step 3, commit 3: Margin's window's page in the core (2026-11-23)
+
+- margin-core gains `page` (app/shared/core/src/page/): one `Page` per Margin window, MarginWindowController's
+  decisions. The page card's state (`empty`, `loading`, `shown`, `elsewhere`; the setters' sameness rules; the
+  loader's label and app; the start's look) and the loader's grace, now a deadline (`settle(now)`: dropped, then begun
+  or the state applied, in the Swift's order; `grace_over`); the holes (one host's: its window's bounds in the page
+  area, the page area while it follows a drag, the old hole while the grace runs; several: each visible host's
+  window in its rect, a card's whole rect a cut, the focused one's hole), their corners (the card's within 2 pt), the
+  ground's cut-outs and `subtract` (holes.rs), the pane click tap's holes, and the slot and catch region placed from
+  them (the Page owns the pointer, `PagePointer`); the ground's colour (fill.rs: `PageFill`'s CSS colours and the
+  most common, cached per layout); in front (front.rs: `keepFront`'s level and orders, the yield and the cover, the
+  poll's read at rest with `SETTLE`, `MISS_APART`, `PROBE_EVERY`); the page area (area.rs: `measuredAt`, `pageRect`,
+  `narrowed`, `hostedPlacement`, `idlePlacement`, `paneLayout`'s whole points) from the page's layout report, parsed
+  and kept there (`set_layout_bytes`: protocol.rs's `from_geometry`, a split's panes' change answered).
+- margin-ffi's `MarginPage` is now the core's `Page` (every pointer call as it was; `margin_page_place_slot` gone:
+  the Page places its slot at `margin_page_place_hole`). Typed calls only: each setter, the settle and the grace, the
+  holes' placing (its ground handed out in place), one read of everything the window shows (`margin_page_read`), its
+  texts into a buffer, the page area and the placements, `keepFront` and the poll's read (the clock through a C
+  callback, read at each of the Swift's points), the pure rules the tests read (`margin_page_rect`, `_measured_at`,
+  `_narrowed`, `_fill_color`, `_fill_common`, `_subtract`, `_ground_holes`).
+- Swift: MWC keeps its mechanism and its order. Each decision is a typed call at the Swift's own point (the design's
+  out-callback dropped: MWC re-enters the session through its page rect, so nothing reads the Page while a call is
+  under way), its answer carried out before the next call: the window's page rect, the ground's drawing and the
+  panel's background, the level and orders, the keys, the pushes, the log lines (word for word: the core answers
+  codes and numbers). The hosted window's bounds are read where the Swift read them (`readHosted`, `readVisible`, the
+  same reads) and handed in before the decision. The grace's deadline is kept by MWC's own timer (one a window, as
+  before: the session doesn't own the Pages). PageCore.swift is the Page's wrapper (PassThrough.swift's moved into
+  it); MWC's fields the session and tests read are computed over it (`pageState`, `hole`, `holes`, `pageGround`,
+  `mechanism`, the counts…). `PageFill`, `MarginWindowGeometry.pageRect`/`measuredAt` and MWC's `subtract`/`groundHoles`
+  stay as thin wrappers the tests read. The HostedWindow contract is unchanged. Swift: 482 lines out, 527 in (323 of
+  them PageCore.swift, 90 of which moved from PassThrough.swift).
+- The layout report comes as its JSON text: Margin.app's window says `layoutText` in its hello and its page
+  (host-app.ts) sends the report it built as `JSON.stringify` makes it; the bytes go to the core as WebKit hands them
+  (no NSDictionary made by WebKit, none walked or re-serialized by Swift), the Swift `PageLayout` built only when
+  read. The same report: JSON.stringify writes numbers exactly (commit 1's path made them JSON from WebKit's numbers
+  again; a -0 was already read as 0 there). The overlay over a browser, Windows and the tests' dictionaries send
+  `geometry` as before, which MWC makes JSON as commit 1 did.
+- Two Mac facts the comparison found, now the core's: NSColor's `==` compares each component as a 32-bit float (the
+  ground's "most of the corners" counts so); Swift's `Double(_:)` (its runtime's strtod) takes `snan`, a NaN's
+  payload only as none, `0x` and hex digits, `0` and octal ones, or a decimal number, and nothing with a NUL in it.
+- Checked before the Swift went (scratch harness, two processes: the old MWC's members verbatim over 53ffc75f's core,
+  the new over this branch's, each writing every call of the window's mechanism and every value it holds after each
+  step, doubles to the bit): 50,000 generated sequences (setters, layout reports as text and as dictionaries, hits,
+  hosting, the hosted window and its bounds, visible hosts and their frames with zero-size, touching, negative and
+  sub-point rects, following, cover, yield, full screen, resizes and displays, elsewhere, the start held up, the
+  poll's reads at rest over a while, keepFront, Space changes, the keys, a simulated clock firing the grace):
+  100,388,607 lines, no difference; the pure rules with NaN and odd texts (subtract, the cut-outs, 50,000 seeds of CSS
+  colours with marks, prepended marks, hex floats past 53 bits and their ties, NaN payloads, NULs, colours alike as
+  floats, the page area): 14,000,000 lines, no difference (after the two facts above). The harness caught 34 of 35
+  deliberate breaks of the core (the grace's conditions, the hole kept in a grace, the loader's label, a point's hole,
+  the 2 pt corners, the card's cut, the focused hole, the cut-outs' corners and slivers, the colours' alpha, tie and
+  float compare, strtod's octal payload, marks at separators, hex rounding, the reorder, the misses' gap, the probe's
+  time, the warning said once, narrowed, measured within a point, the sidebar-alone layout, the panes' rounding, the
+  setters' sameness, slow off hosting, the start's look, the ground per layout, the FFI's two mappings, the top place,
+  the holes and the pane holes): three only once the generator had a point-wide hole, exact 2 pt corners and colours
+  alike as floats, one once the poll was read over a while, and two once the harness's copy was rebuilt from scratch
+  each time (rsync kept the branch's file times and cargo a break). The one missed (the page rect compared raw, not
+  standardized) is no break: a page area's sizes are never negative. A NaN in a visible host's rect or a window's
+  bounds traps the old and the new alike (its `Int(...)` in the frames' pushes): never generated there. The app's
+  checks: 2150 unit and 321 end-to-end pass unchanged (two loop-guard timing checks failed once under the harness's
+  load, passed idle); T/margin-window-tests.swift and every `window.loadings`/`showings`/`hostings` check of
+  T/hosted-tests.swift unchanged.
+- Cost (release, ffi tests page_cost.rs): a setter 26 ns, the holes placed 38 ns (one host) and 109 ns (two panes
+  under a card), the page area again with the placement 14 ns, the poll's read at rest 12 ns, keepFront 6 ns, a read
+  of the page 7 ns, a layout report's parse 4.1 µs (serde's `Value`: it allocates; commit 6's typed follow path can
+  end that). MWC's calls, old against new (the harness, -O, the stand-ins writing nothing): a show's setter 6,961 → 505
+  ns, the hole placed (`updateHole`) 6,604 → 170 ns with one host and 9,506 → 348 ns with a split under a card (the
+  ground's colour no longer read from four CSS texts each placing), the poll's read at rest 74 → 182 ns (every 1.5-2
+  s), a layout report with its page area and hole 20,186 → 3,907 ns. The layout report
+  on the Swift side: 2.5 µs (3.7 with a split), was 6.6 (12.0) before commit 1 and 10.7 (15.0) after it. Nothing
+  allocated by the holes' placing, the setters of a drag's frame, the reads, keepFront or the poll's read once warm
+  (no_alloc.rs). `page-frames` and `idle-cost` not measured: no screen suite on this branch.
+
+## A switch costs no more than the Swift's: the session's ports, answers and fields typed (2026-11-23)
+
+- Tirth's rule (no CPU increase) against commit 5's measure: a switch through the facade cost about twice the old
+  Swift's (a web tab switch 220 µs of the main thread against 115-125, an app switch 220 against 88-96), the JSON of
+  a dozen ports a show, every core answer read as JSON, and each field the show changed read again as JSON. Now:
+  - The ports a show asks are one typed C callback (`MarginSessionCall`: the port's number, a window, a flag and up
+    to three texts as bytes; it answers a number, `INT64_MIN` for none, and gives texts and lists back through
+    `margin_port_out_text`/`_int` during the call): the window, the engine's reads, the links' profiles and epochs,
+    the app's name, `setShowing`, `setMarginPage`, `push`, `changed`, the waker's two reads, `log`, and the Swift flows
+    of later parts a show calls (the card's leaving and returning, `pinnedOrFavorite`, `settleHosting`,
+    `refreshLoading`, `leaveMarginPage`, the layout's reads and clearing, the elsewhere card's). The JSON port stays
+    for the rare ones (`layoutsWith`, `cardUrl`, `paneFor`, the wall clock) and for a session made with no callback
+    (the Rust tests).
+  - `margin_session_input`, `_answer` and `_tick` write readiness and the deadline into a `MarginSessionStatus` and
+    answer JSON only when there's more to say (commands to start, a reply, a warning): most answers of a switch are
+    nothing to read.
+  - The facade's fields are read and edited as typed rows (`margin_session_rows` to a sink, `margin_session_edit_row`),
+    not the JSON `state` input; the `state` input stays for the core's own tests.
+  - The interim `prepare` hands the core a number for its placement, kept on the Swift side for the engine's open
+    (the core only passes it on): no placement's JSON there and back.
+- Measured (the scratch bench's 5,000 switches, the main thread's own CPU time per switch, median, two quiet rounds;
+  the Mac was shared, so CPU time, not wall time): a web tab switch 84-88 µs (the old Swift 115-125, commit 5 229-231),
+  an app switch 79-87 µs (old 88-96, commit 5 218-222). Under the Swift's in both.
+- Nothing changes in what the session does: the 450-vector comparison rerun against the build it starts from
+  (551d3016, commit 5 and change 3), all 450 the same to the line (26,469 steps, 18,989 requests and asks, 11,086
+  engine opens and copy requests); against the old Swift, the differences are change 3's (a reset overtaken: not shown)
+  and commit 5's four ties. The
+  waker's look and a field's typed rows allocate nothing (no_alloc.rs). The app's checks: 2150 pass.
+- The one extra main-actor turn a Swift caller of a core flow waits (commit 5: a `Reply`'s continuation resumes in the
+  next turn) is scheduling, not work: one job hop, about a microsecond, unchanged by typing the ports. It goes when
+  its callers are the core's: the Swift flows that still call `show` and `close` (part 4's `expandCard`, part 5's
+  `focused`, part 6's resume and `enteredFullScreen`, `profileNamesChanged`) as their parts move. The engine's asks
+  keep it (the engine is the Mac's and awaits the session's answer): removing it there would need the engine to take
+  the answer through a callback in the same turn instead of awaiting, a change of the engine's own flow for one hop.
+
+## Core refactor step 3, commit 7: the preview card and Quick Tab in the core (2026-11-23)
+
+- Moved (session/card.rs; HostedPeek.swift's flows deleted, the file now the facade): the card's state machine and
+  every flow of it, each a transliteration at the Swift's points between the same awaits: the copy's word
+  (`peekOpen` answered at once, before anything else is asked of the copy, `peekCancel`, `cardPage`, `cardKey`), the
+  page's (`littleArcOpened`, `littleArcGo`), `showCard`, `placeCard` (the page's `<m-preview-page>` waited for, else
+  the default rect), `dropCard`, `cardLeaving`, `cardReturning`, `cardRectChanged`, `closeCard` (the page told first,
+  the cover wait, the rest laid out again, `hostCardClose`), `closeCardForKey`, `expandCard`, `cardHistory`,
+  `cardHostGone`, `closeIdleCards`, the pushes to the page and `pinnedOrFavorite`. The interim card entries of the
+  `swift` port (`cardLeaving`, `cardReturning`, `pinnedOrFavorite`, `cardUrl`, typed or not) are gone: requests.rs and
+  hosting.rs call the core's own.
+- State: `Card` and the fields `cards` and `littleArcs` are the core's (their rows typed as the others', a card's
+  parts as their JSON text in one of its texts: read again only when a card changed), `card_used_at` the core's only;
+  what Swift's layout reads of a card (its address, a new page or not) is a typed read-only field, `cardPages`, whose
+  revision moves with `cards`'.
+  `HostedPeek.swift` keeps what parts 3, 7 and 8 (still Swift) read of a card: `cardPart`, `cardShowPayload`,
+  `cardHostRects`, `cardPlaced`, `cardLoadingStep`.
+- Three things the design didn't have:
+  - The layout the card reads and lays out is part 3's. Its field (`layouts`) is the core's now, Swift's applyLayout
+    writing it through the facade, and the core lays out through a `Swift` command (`applyLayout`) until commit 6. The
+    show's `hasLayout`, `clearLayout` and `layoutsWith` read the field there too: three fewer ports a show.
+  - Quick Tab's new tab and Expand's item are library edits made inside a synchronous call (the Swift performed them
+    in place, its delegate's requests arriving before it went on), so a `perform` port, not the awaited `Perform`
+    command: the delegate's requests reach the session re-entrantly, as before.
+  - The card's title with no page title is Foundation's `URL.host` (percent-decoded, an IP literal without its
+    brackets, nil for an empty authority or a host that doesn't decode as UTF-8): `web_host`, ported with
+    Foundation's answers on macOS 27.2 as its vectors; a host with letters outside ASCII is the OS's IDNA (`urlHost`).
+- Ports added: typed `wall` (the clock's bits), `cardRect`, `hostedPage` (a rect's four numbers as bits), and
+  `margin_session_pinned` (Swift's layout asks it for each web pane); JSON `idna`, `urlHost`, `perform`. Inputs: one
+  `peek` input by kind for the copy's and the page's word (part 10 routes them later); `close` and `closeForKey`
+  answer whether one was closed; a page's click typed as well (`margin_session_peek_open`: its id, address and
+  time), the one the Mac sends, so a peek open carries no JSON in. A layout's row text is written by hand on the
+  Swift side (a few times cheaper than JSONSerialization, each layout change).
+- Edges as the design said: Swift's dictionary order where two cards share a window (one hidden, another profile's
+  open: `card(in:)` took either at random) is the lowest profile here; a click's id (80) and a title (300) count
+  Unicode scalars, step 1's rule. Nothing else changes.
+- Checked before the Swift went: the old flows (refactor/core-session at f78d6598, its HostedPeek.swift) and the new
+  over the core through the facade, both built whole with the unit tests' stand-ins and one scratch driver (commit
+  5's, with the card's steps), on generated sequences in its deterministic world: page clicks from every window of
+  every profile with ids, addresses and times good and bad, cancels, the card's page and keys, Quick Tab opened and
+  chosen with and without anything hosted, closes with and without the page told, ⌘W, Expand into a space named or
+  not, history, hosts gone (a card window, a main window), idle sweeps after time passing, the page's rect moving by
+  less and more than a point (a negative size too), presses around the card, all among the library's requests,
+  splits laid out by the page, the engine's and the copies' answers in a generated order with failures, and a second
+  Margin window coming and going: 150 vectors over six seeds, 14,991 steps, 6,217 card actions, 5,269 engine opens and
+  copy requests, all 150 the same to the line. (A first run differed only where the driver jumped its clock past
+  several sleepers at once, the Swift's own and the core's: the order of sleepers overdue together, which the driver
+  can't make; its jumps now wait for no sleeper to be due.) The driver caught 22 of 27 deliberate breaks of the core
+  (on 36 vectors each); the 5 it missed are rare in its world (Expand into a named space other than the card's,
+  the idle sweep at exactly fifteen minutes, the page's rect moved by half a point, a main window gone with its card
+  window hosted, a layout's window shown again) and each is caught by the core's tests (card_tests.rs, four of them
+  added for it).
+- Cost, a peek open's Margin side (the scratch bench: a web item shown, then a page's click to the card laid out at
+  its rect and the page told, the copy and the engine answering at once; the main thread's CPU time per open, 400
+  opens a round, ten rounds old and new alternately; the Mac shared with other work at a load of 30-38, so the rounds
+  vary by ±15%): the old Swift 493 µs (mean of the medians; the rounds' best 253), the core's 534 µs (best 273), about
+  8% more, 20-40 µs. Not yet "no dearer than before". What a peek open still pays that the Swift didn't is the
+  interim's: the layout laid out through the `applyLayout` command and its answer (part 3's Swift, both as JSON; gone
+  with commit 6) and the copy's `peekAnswer` as a core `Ask` (its command and answer as JSON) where the Swift called
+  the copy itself. Measured on the way: the first build (every new port JSON) cost 75-150 µs more; typing the wall
+  clock, the card's rect, `pinnedOrFavorite` (Swift's layout asked it as a JSON input per web pane), the click itself
+  and `cardPages`, and writing a layout's row by hand, took that to this. Nothing is per frame: a drag reads the
+  card's rect through the facade's cached field (a revision a frame, typed).
+- T/peek-session-tests.swift, T/peek-split-tests.swift and T/screen-card-tests.swift unchanged and passing; the app's
+  checks 2150 pass, its end-to-end ones 321 (off screen).
+## Core refactor step 3, commit 9: the loading bar, the copies' pushes, `drawn`, the page's hello and ops, the UI's requests and rows in the core (2026-11-23)
+
+- Moved (their Swift deleted): the loading bar (session/loading.rs: `loading`, a split's pane's own loader and its
+  reveal held and let go, the copy's `loading` push for the window Margin hosts, `refreshLoading` with what each window
+  was told; the UI's numbers given in order of first use and back, an open item's row); the copies' messages
+  (session/route.rs: a push routed by its type, the UI's to the Margin window it belongs in with the mini player's
+  pick and the standing push taken back, `uiNumber` with the address cut as NSRegularExpression's `#.*$` and `/$` cut
+  it, the copy's tabs' sound, `drawn`'s rule); the UI's requests (session/ui.rs `ui_request`: an open item's row by its
+  number mapped back, the settings' route, the pasteboard's text, openApp and the history, a search's address with the
+  query trimmed of Foundation's `whitespacesAndNewlines`, `addFavorite`'s scope from the settings, ⌘W, the quiet ones;
+  answered as a route the Mac carries out; AppCatalog's bundle id check ported for `app.open`) and the rows the UI
+  draws (`live_plan`: which items, their numbers, their place, in front, visible, sound; `live` the Mac's shaping of
+  them into the library's snapshot until step 4); Margin's window's page (page/said.rs `Page::said`: every op read as
+  the Swift read WebKit's objects, a rect's list, the all-or-nothing list casts, Swift's `as? Int` and `as? Bool`,
+  PointerWant's reading: one reader now, the Mac's `PointerWant(body)` through it; page/hello.rs `Page::hello`).
+- No Swift dictionary on a push's way: the link object hands a push out with its message's JSON text (`msgText`, its
+  `type` beside it: ffi link.rs `wire`), Shell gives the text to the session (`margin_session_copy_message`), the core
+  reads, routes, checks and cuts it and gives the page its JSON as text through the `push` port. LinkMessage's `.push`
+  carries a `Push` (its text and type; an object only for the tests that read one). A copy's
+  `openTabs` goes as its JSON's bytes as the link's mirror keeps it (`StateMirror.data`).
+- `drawn`'s diff is kept by the link object per connection (`margin_link_drawn`, which sends each change itself), not
+  in the session as the design had it: a copy links, and its windows are told, before Margin's window (and so the
+  session) is made. The session answers only which windows it hosts for a copy (`drawn_windows`).
+- The page's ops come as their JSON's text (`saidText` in the hello, as commit 3's `layoutText`: overlay.ts's `post`
+  sends `{ op, json }` for every op but the hello, `send`, the appearance and the layout's own); a dictionary's body (the
+  tests', an older page) is made JSON first. The hello's head (`windowId` … `state`) was written in a Swift
+  dictionary's order, a new one each launch (its hash seed; probed: it differed within one run), so no byte order
+  existed for it: the core writes it in a fixed order, and everything after it is the same bytes (checked); strings
+  escaped as JSONSerialization does (`\/`, the short escapes, `\u00xx`).
+- Ports and inputs: typed `setLoading` 31, `setPaneLoading` 32, `setLoadingTabs` 33 (Margin's windows'); interim JSON
+  `swift` calls, each gone as its part moves: `uiSettings`, `startupRetry`, `startupSkip`, `openLauncher` (part 6).
+  The interim `refreshLoading` port (24) is deleted: the core's own now, and the Swift flows of later parts that change
+  what it reads call `margin_session_refresh_loading`. Fields 22 `panesLaying` and 23 `revealHeld` (applyLayout's,
+  Swift until part 3's flow moves). Inputs `ui`, `loadingForget`.
+- On commit 7's core (rebased onto it): the card has no Swift hop left in these parts. A copy's card pushes
+  (`peekOpen`, `peekCancel`, `cardPage`, `cardKey`) go straight from the push's routing to card.rs's flows; the UI's
+  `peek.*` and ⌘W to `close_card`, `expand_card`, `card_history`, `little_arc_opened`, `little_arc_go` and
+  `close_card_for_key` (`peek.go`'s address by card.rs's `web_address`, its query cut at 1,000 characters counted with
+  the marks that join one, as the Swift's `prefix` did for every query a person types); the card's own loader
+  (HostedPeek's `cardLoadingStep`) is loading.rs's; a window's layout's items for `visible` are commit 7's `layouts`.
+- One difference, accepted: the numbers a `refreshLoading` gives items it is the first to number go in their ids'
+  order; the Swift gave them in its Set's order (hash order, new each launch). In practice an item loading has its
+  number from its row, which the UI draws first. Two edges as commits 1 and 3 took them: a pushed text's cap counts
+  scalars; a NaN in a page's message is JSON's null (the page's own text says so), so a five-value rect list with a
+  NaN reads as its other four. The Rust map order where Swift took a dictionary's first: a tab several items claim is
+  the first item's by id.
+- Checked before the Swift went, two ways. The session: the old Swift (f78d6598) and the new over the core in commit
+  5's deterministic world, extended (the copies' pushes of every kind with tabs known and not, items named by another
+  profile, addresses with fragments, slashes and line ends, `loading` pushes, the copy's tabs' sound with every kind
+  of flag, the engine's slow steps with panes laid out, the UI's requests of every route with numbers given and not,
+  the rows drawn; inputs through JSON as the link and WebKit hand them): 150 vectors over six seeds, 8,871 steps, 1,216
+  copy pushes, 397 slow steps, 387 UI requests, 370 draws, 1,117 calls to Margin's windows: the same to the line but
+  one line in one seed, the accepted numbering (two new items numbered by one refresh), with the library's items
+  numbered first; without that, the same difference and only it. The pure parts (the deleted Swift verbatim against
+  the core through the new Swift: `drawn`'s diff, every op's reading and route on generated bodies with every kind of
+  value, PointerWant, the hello over pages in every state with odd strings): 560,413 checks over five seeds (60,000
+  hellos: every one parsed equal, every one the same bytes after its head), no difference once the harness gave the
+  old Swift WebKit's NSNumbers rather than Swift's own Ints. The harnesses caught each of 31 deliberate breaks of the
+  core (20 by the session's vectors: the logged form, the icon, the main window's loading push, the other windows told
+  none, the shown item's host, the same numbers, the pane's title, the mini player's two picks, the standing push, an
+  item of another profile, the tab kept, the address's cut, muted, nextTo, the scope, the trimming, visible, muted
+  from the copy, the quiet ones; 11 by the pure ones: the hits' cap, the list casts, the bool zone, Swift's Int, the
+  card's rounding, a rect's list, the slash, the stuck words, an empty pane cut, the minimum's truncation, `drawn`'s
+  forgetting), the hits' cap only once the generator made lists right at 64.
+- Cost. The push as the link hands it (1.8 KB, three sources), main thread CPU, Swift and core together: 16 µs (the
+  Swift at f78d6598, the same push through Shell's dictionary: 112 µs; commit 1's sanitiser alone was 31, the Swift's
+  before it 5.5); of it the Swift side is the wrapper and two typed port calls (the window, the push's text), the rest
+  the core's parse, check and cut and the page's JSON (release, ffi tests routing_cost.rs on this shared Mac, load
+  ~22: 18.9 µs; serde's `Value` and the workspace's `float_roundtrip`: a few a second while media plays). A draw's
+  `live` (10 open items) 35 µs (was 32: the plan's 3 µs, its callbacks, each kept tab read once); the engine's slow step
+  3.6 µs (was 2.8). The core alone: a loading push 0.9 µs, a slow step 0.65, a draw's plan 1.1, a UI request's route
+  2.1, a `pointerWant` 0.6, ten hits 1.6, a log line 0.4, a hello over a 42 KB state 2.5, a poll's drawn look 42 ns,
+  which allocates nothing (no_alloc.rs). Nothing per frame changed: a layout report still goes straight to the Page.
+## Core refactor step 3, commit 6: layouts, splits and the page area moving in the core, a drag's frame typed (2026-11-23)
+
+- Moved (session/layouts.rs, page_area.rs; their Swift deleted): `showSplit` (an app one pane, main the pane that
+  keeps its window else the first web one, the panes' first addresses and items for their windows), `paneRects`
+  (waited `pageWait`, the page asked to measure again at each look), `paneHostRects`, `pageAppMinimums`,
+  `refreshPaneMinimums`, `appMinimumsChanged`, `applyLayout` (each decision at the Swift's point between the same
+  awaits; its three `defer`s run only once reached, in reverse order), `leaveSplit` (the library's `removeFromSplit`
+  and the toast), `forgetInLayouts`, `prepare` (the other window's item pictured and parked first; full screen, its
+  page's full-screen layout, hosting, its page area measured), `pageRectChanged` (a drag the one shown follows: each
+  frame to the engine at once; else one placing per burst), `placeAgain` with its one retry after `refitRetryAfter`,
+  `sidebarResizing` and its `dragLine`. It writes commit 7's `layouts` field and commit 9's `panesLaying` and
+  `revealHeld` (the facade's writers of the last two, and `margin_session_release_reveal`, are gone: applyLayout was
+  their one user). `paneAddress`/`paneItem` are the core's (`PaneOpens`): the interim `prepare`, `showSplit` and
+  `applyLayout` Swift commands and the `paneFor` port are gone. The card's layouts are this flow (card.rs calls it),
+  the card's parts in it the core's (its part, its hostShow payload, its window's rect in a placing and a drag's frame,
+  its rect kept after a placing): HostedPeek's `cardPart`, `cardShowPayload`, `cardHostRects`, `cardPlaced` and the
+  facade's `cardPages` gone. `HostID.iconApp` is commit 9's `loading::icon_app` now (the Swift copy gone).
+- Left Swift, by name through the `swift` port (rare: a layout's): the elsewhere card's `showElsewhere` (and
+  `pagePicture`, async, a Swift command) and the cut panes' `paneCuts`, until their parts move. `HostedSession.
+  applyLayout` stays the API `setLayout` queues (the tests'), a `call`. `noRoom`, `isNoRoom`, `noRoomReason`,
+  `paneLeast`, `dragLine` stay the static wrappers the tests read.
+- The ports `prepare` asks on a show are typed (`MarginSessionCall` 40-47: the window's number, full screen, its
+  layout's mode, its placement with a token, hosting, its Space, every app's known minimum and their setting); the rest
+  are JSON (a layout's, a placing's, a drag's start and end). Two things the design's sketch lacked:
+  - The engine's layout results come with their Swift description (`"\(result)"`): the layout's "not shown" line
+    prints it, and it names the Swift module, which the core can't know.
+  - A placement Margin's window gave the core goes back to the engine as the window's own value: the port answers a
+    token with it, and the commands carry it (no placement made again of JSON numbers, which JSONSerialization can
+    read an ulp or two off for long decimals). It replaces the typed-ports commit's interim number for `prepare`'s.
+- The hot path, a drag's frame (≤120 a second): the page's layout report is read straight into the Page's kept layout
+  (page/report.rs: serde_json's own deserializer through a seed, every value through `deserialize_any` as a `Value` is,
+  so the same numbers, escapes, nesting limit and refusals; each key's last; the layout and a spare taking turns: no
+  allocation once both have grown; 200,000 generated reports and near-reports against `from_geometry` over a `Value`,
+  bit for bit). Then `updatePage` → the page rect → the session's `pageRectChanged` →
+  `margin_session_page_rect(s, window, page, content, display, card)`: the window's Page in the core
+  (`HostedWindow.pageFrame`, MWC's; a test's window has none and is read through the ports), its content and display
+  as MWC reads them, and where its page draws the card (`cardRect`: the core decides whether its card is there). While
+  the one shown follows, the core reads the placement and the panes' rects from the Page and the hosts from its state
+  (copied to the stack: nothing borrowed across the call out) and calls the engine's typed `MarginSessionFollow`
+  (`margin_session_set_follow`): no JSON, nothing allocated (no_alloc.rs `a_drags_frame_allocates_nothing`: 400 frames
+  of a split, with and without the card). The engine's `shown` is read after the drag's hold now, not before it (a
+  read: the same answer), so a drag that isn't followed asks nothing per frame either.
+- Checked before the Swift went (scratch harness layouts/: commit 5's driver extended): Margin's windows each a real
+  Page in the core whose layout report the driver writes from what's in front (the sidebar's width, the split of the
+  item in front and its ratio, a pane past the page area, none laid out yet, a stale layout, windowed), its
+  `setHosting` telling the session its page rect at once (`prepare`'s re-entrant `pageRectChanged`); the engine's
+  layouts with generated refusals (below a minimum, no room, didn't open, not laid out) and the copy's windows asked
+  for them, placings again (placed, kept, left full screen), drags of the edge and of a split's divider, followed or
+  not, with the card over them, splits of every shape (web and app, two of a profile and an app, an app twice and a
+  Chrome page, an app first, four), `setLayout` of up to six items, minimums, host events, presses, Quick Tab's card and
+  its close, full screen left, a narrowed window. Against the Swift at each base this branch sat on: f78d6598 (commit
+  5's typed ports) 192 + 86 vectors, commit 7 (187a6525) 196, commit 9 (40f909d4) 72: 541 of 546 the same to the line.
+  The five others are two sleepers due at the same virtual instant (`prepare`'s look and a link's wait, both the
+  core's now and so ordered by creation, the Swift's on its own timer; real deadlines never tie). A first run also
+  showed a Swift caller of the test-only `setLayout` going on one main-actor turn sooner (the `call`'s reply; nothing
+  of the app awaits it: the card's flows are the core's), which the driver no longer prints. Commit 7's merge found one bug, fixed (a card's hostShow
+  asked `pinnedOrFavorite` of Swift after commit 7 made it the core's).
+- The harness caught 23 of 32 deliberate breaks of the core over its runs (19 on this branch's final tree with three
+  seeds of eight vectors); of the nine it missed, seven are caught by the core's tests (an app twice, a profile's
+  fourth pane, the reveal held, the panes laid out for main, the focus moved back when a layout's host goes, a card's
+  rect not over a pane's, a pane the layout hasn't not followed: layouts_tests.rs), and two by neither: a no-room's
+  focus kept and the failed panes' order (newcomers out first): rare in the driver's world (two refusals beside a
+  focus change) and pinned only by T/split-real-use-tests.swift.
+- Cost. The core's side (release, ffi tests/drag_cost.rs): the report's parse 0.84 µs (was 4.1 with `Value`), the
+  session's page rect with the typed follow 0.2 µs, a whole frame (report, page area, session, holes) 1.4 µs. Through
+  the facade (scratch bench, main thread CPU, five alternating rounds against commit 9): a drag's frame 4.1-4.5 µs →
+  1.29-1.35 µs; a switch the same (web tab 68-97 against 66-88 µs, app 74-120 against 69-94); a peek open with commit
+  7's bench median 403-507 against 430-534 µs, best 265-307 against 253-303 (the card's layout now the core's whole,
+  `prepare`'s ports typed). The app's checks: 2150 unit and 321 end-to-end pass.
+
+## Core refactor step 3, commit 8: an item shown in another Margin window and the start in the core (2026-11-23)
+
+- Moved (session/elsewhere.rs, start.rs; their Swift deleted): part 5's `showElsewhere` (the card's name: the app's,
+  else the title, else the address, 120 at most), `pagePicture` (the copy's `hostPicture` raced against `pictureWait`
+  with `first_of`, the Swift's rule: a JPEG or PNG data address, no 8 MiB cap, Tirth's answer 4), `focused`,
+  `windowClosing` (parked first, then Swift's `done`), `windowClosed`, `forgetElsewhere`; part 6's start screen
+  (`Startup`, `StartScreen`: its seven fields and the setting it ran with), `startupRetry`/`startupSkip`,
+  `holdStartup`, `preparationOver`, `lastItem`'s and `loaderApp`'s use, `resumeLast`, `resumeShow`, `settleHosting`,
+  `openLauncher`, `leaveMarginPage`, `prepareBrowser`'s four steps (the browser started at once and awaited later: a
+  command handed out when the flow next suspends, `begin`, as Swift's `let t = Task { … }` … `await t.value`). The
+  start screen's words are the core's (`STARTUP_LABEL`, `STARTUP_SLOW`, `STARTUP_NO_LINK`, read by Swift from the
+  rules' constants).
+- The interim `swift` calls the earlier commits left for these parts are gone, the core's flows calling its own: commit
+  5's `settleHosting`, `leaveMarginPage`, `clearElsewhere`, `forgetElsewhere`; commit 9's `startupRetry`,
+  `startupSkip`, `openLauncher` (the UI's request now the core's flow: the launcher's Settings edit a main-actor turn
+  later than the Swift's call made it, as commit 9's `app.open`); commit 6's `pagePicture` (a Swift command) and
+  `showElsewhere` in `prepare`, and its `clearElsewhere`. Left, not these parts': `uiSettings` (the profile source's
+  settings, part 13) and `paneCuts` (the engine's visible windows' cuts, Swift's list).
+- State moved: `elsewhere`, `resume` (also written by `leftFullScreen`, still Swift), `resuming`, and the start screen
+  (read only, one row); the facade reads them as typed rows. `startupShown` is typed (`margin_session_start_screen`,
+  0.5 ns, nothing allocated): the keys' gate reads it per key press, the menu per check.
+- Ports added (typed, numbered from 60, after commit 6's 40-47): `setElsewhere`, `setStartupStuck`, `clearCover`,
+  `hasHostedPlacement`, `hasIdlePlacement` (each read where the Swift read it, the `&&`s short-circuited the same),
+  `preparesOutOfSight`, `marginActive`, `activateMargin`, `engineShows` (the engine's `shown != nil`, allocation free);
+  commit 6's and 9's own used for the rest (`windowSetHosting`, `setHosted`, `windowFullScreen`, `windowNumber` and
+  `fullScreenSpace`, `setLoading`). Fields 24-27 (`elsewhere`, `resume`, `resuming`, `start`).
+  Commands: the engine's `start` and `prepare`, the waker's `ensureLinked` with `prepare` (its look then
+  `margin_session_prepare_wanted`, typed, nothing allocated: the preparation's own `wanted`), `Done` (a callback given
+  with an input). Inputs (JSON, rare): `windowOpened`, `windowFocused`, `windowClosing` (answered: later or now),
+  `windowClosed` (the loading bar's own of the window forgotten in it, commit 9's), `startupRetry`, `startupSkip`,
+  `preparationOver`, `lastItem` (a read); flows Swift calls: `prepareBrowser` (awaited), `openLauncher`. Hosting settled from the Swift flows of later parts and the engine's
+  events: `margin_session_settle`, answered as an input.
+- The window given to `resumeLast` is held by the facade while the core resumes it or its start screen is up, as the
+  Swift flow held it (a closed one is still told, as before).
+- Not moved, and why: the poll's sweep (`closeIdleCards` is part 4's, `closeIdlePaneWindows` reads part 3's layouts,
+  the restored windows' sweep is the waker's): the design's `poll` input comes with them.
+- Accepted differences:
+  - The picture's wait is on the session's clock (its `sleep`, a deadline), as every other wait; the Swift's was the
+    one on `Task.sleep` directly. The same in the app; a test's own sleep now paces it too.
+  - Order against a Swift task: a task the core enqueues during a run starts in that run, where Swift's `enqueue`
+    started it a main-actor turn later, and a Swift caller of a core flow (`prepareBrowser`'s) resumes a turn after the
+    flow returns (commit 5's hop). Seen only as when the harness's `prepareBrowser` caller says it's over and the
+    `onChange` it causes, never in what either flow does.
+  - As step 1's caps: the card's 120 characters are counted as Unicode scalars, Swift's as Characters: only a title
+    with combining marks past 120 differs.
+- A finding the design didn't have, fixed in the facade (commit 4's timer): a deadline dropped before it was due (the
+  picture's wait once the picture came) cancelled the one timer, whose cancelled sleep ended at once and still ticked
+  that deadline: the core's time jumped to it, so the sleeps after counted from a moment still ahead (the next
+  picture's wait 0.05 s longer, in the comparison). A timer let go is now never ticked. No flow before this one
+  dropped a deadline early.
+- Checked before the Swift went: the old Swift (refactor/core-session at f78d6598) and the new over the core, both
+  built whole with the unit tests' stand-ins and commit 5's driver extended: three Margin windows, closings mid-show
+  (parked first, then closed), the start screen held up, retried, skipped, a pick meanwhile, the preparation started,
+  given up (not out of sight, no window in time, not started, never linked), prepared, pictures of every kind racing
+  their wait, windows in and out of full screen and without a page area, the launcher, Settings last; the old Swift's
+  picture wait put on the session's clock and its losing wait let go, so the race is the virtual clock's in both. 720
+  vectors over 18 seeds (42,905 steps, 20,021 requests and asks, 11,889 engine opens, preparations and copy requests;
+  1,450 resumes, 2,630 preparations, 86 start screens held up, 694 window focuses, 546 closings, 557 cards, 68 of them
+  pictured, 740 picture asks, 921 launchers, 954 settles): 602 the same to the line, 114 the same but for when the
+  harness's `prepareBrowser` caller says it's over and the `onChange` around it (the hop above), 4 differ only where
+  the driver makes no order: sleepers due at the same virtual instant, the core's against the Swift's (commit 5's
+  class). Rerun on each new base: on commits 7 and 9, 270 vectors more over 9 seeds (16,011 steps), 231 the same, 37 the
+  same but for the hop, 2 ties of the same class; on commit 6 (the last), 270 over 9 seeds (16,141 steps), 230 the
+  same, 40 the same but for the hop, none different. The harness's breaks (31 of the core's flows, one at a time,
+  three runs at a time, 15 vectors of three seeds against the old Swift's output, the hop's lines left out and the
+  `onChange` lines counted): 20 of 31 caught on the first base, 18 of 31 on the last; 25 caught on one base or
+  another. The 6 never caught are paths the generated sequences seldom reach in that many vectors (a card's name
+  from the address, a window in front that already hosts, a closed window's resume, a window closed while it still
+  hosts with no closing first, the failure kept with no start screen up), or no break at all (Try again's limit read
+  again: the option didn't change meanwhile); each is pinned by the core's own tests (start_tests.rs).
+- The app's checks: 2152 unit and 321 end-to-end pass (a timing check that failed once under the harness's load
+  passed idle). The tests the design names are unchanged; the core's own pin each flow's shape through the re-entrant
+  adapter (elsewhere.rs, start_tests.rs).
+- Cost (release, ffi tests/session_cost.rs, the Mac shared with the harness): the start screen's read 0.5 ns and the
+  preparation's look 39 ns typed, neither allocating (no_alloc.rs); hosting settled 4-6 µs and a window in front 6 µs
+  with every port as JSON (the Mac's are typed); rerun quiet: 0.5 ns, 4.9 ns, 1.4 µs, 0.7 µs. Nothing per frame.
+  Swift: ~400 lines out, ~120 in.
+
+## The start screen held up re-checks only on events, no 50 ms looks (Tirth, 2026-11-23: step 3's open question 5)
+
+- Tirth's answer to the design's question 5: once held up (its words said, Try again and Continue without Safari),
+  the start screen no longer looks every 50 ms (HS:1559's `wait(.infinity)`, 20 wakes a second for as long as it's
+  up); it re-checks only when what it reads changes, and nothing wakes while it's up and idle. The first `startupWait`
+  (15 s, before it's held up) keeps its looks: the question was the held-up wait's.
+- What the looks read, and where each changes (every one inside a session call, so each is an input or a step of a
+  flow one runs):
+  - Continue without Safari: the `startupSkip` input (the page's `startup.skip`).
+  - Try again's count: the `startupRetry` input (`startup.retry`).
+  - The preparation over, and whether it was given up for a reason the screen says: the `preparationOver` input (the
+    shell's, the preparation off), and the preparation's own flow, run by its commands' answers: the browser
+    started (an app), Margin's window in full screen with its page area (a window), the copy linked or given up
+    (a copy's link: the waker's answer), its window made ready (the engine's).
+  - The window's item asked for (`requested`): a library request (a sidebar pick, the palette), a window in front
+    (`windowFocused`), a window closed (`windowClosed`), the core's own flows, and the Swift flows of later parts
+    that write it through the facade (a split, the card, a window back in full screen): the facade ticks in the next
+    turn when such an edit woke it (`margin_session_ready`, typed, nothing allocated).
+  The looks read nothing else: no port, no window, engine or link directly. So in the core: a task can wait for a
+  change (exec.rs `changed`), woken by any change of the start screen's state or of `requested` (`Core::bump`, the one
+  place every edit of a field passes); it re-checks then, and waits again if it isn't over. No deadline while it waits.
+- Measured (the harness's `idle` mode, real time, the session's own sleeps counted over 3 s once held up): the browser
+  not ready within its limit, no preparation under way: 20.0 wakes a second in the old Swift, 19.7 after commit 8's
+  move, 0 now; its extension never linked, the preparation given up: 19.7, 19.7, 0. Continue without Safari still
+  lifts it at once in each.
+- Pinned: the core's (start_tests.rs `held_up_it_rechecks_only_on_events`: no deadline while held up, then each event
+  (Continue, Try again, the preparation over, a facade's edit, a library request, the window closed) re-checks at
+  once); the Swift's (T/hosted-tests.swift: held up and idle, nothing wakes, in `hostedResumeTests` and the start
+  screen of `preparedBrowserTests`; the checks of Try again, Continue and the browser ready after all unchanged).
+
+## Core refactor step 3, commit 10: a draw takes the profile's settings and icons without a State, the facades trimmed (2026-11-23)
+
+- Part 13: `DataSetWindowSource.settingsAndIcons()` gives what the library's snapshot takes of the profile: its
+  `settings` with each theme's own under `themes` and the in-memory overlays over them (the Swift's merge, now one
+  `overlaid` that `snapshot()` uses too), and its `siteIcons`. `LibraryWindowSource.snapshot` takes it instead of
+  building the whole State (every collection, every kept tab) per draw to read two keys. `state` and `snapshot()` stay
+  only as the no-rules fallback (Tirth: it goes at step 4's switch).
+- The interim `uiSettings` call on the `swift` port is gone: the core reads the settings a search, `peek.go` and
+  `addFavorite` need through a `settings` port of its own (rare, JSON), answered by `drawnSettings` (the same settings,
+  no State built). The `swift` port is left with `paneCuts` only (built from the engine's visible list in Swift, as
+  commit 6 left it); `Command::Swift`, which nothing has handed out since commit 8, is deleted.
+- The facades trimmed to what the app and the tests read. Deleted: the fields nothing reads (`marginOpen`, `cycledAt`,
+  `labels`, `safariMuted`, `preparingProfile`, `startup` and its enum, the facade's own `startupStuck`; MWC reads the
+  core's), the setters nothing calls (`marginPages`, `showing`, `cards`, `elsewhere`, `preparingWindow` are reads now;
+  `setSet` and `PeekCard.cells` with them), `onCardDismiss` (never set: the press closes the card as before), the
+  card wrappers the page's requests reach the core without (`expandCard`, `cardHistory`, `openCard`, `isCardItem`,
+  `cardTag`), and the JSON answers of every port margin-ffi asks typed (SessionCore always gives the typed call, so the
+  core never asked them as JSON; ffi keeps its JSON forms as its contract, its tests run them). Kept on purpose: `paneCuts`,
+  the poll's sweep (`closeIdleCards`, `closeIdlePaneWindows`, the restored windows), `applyLayout`/`setLayout` (the
+  tests' API), the static wrappers the tests read (`noRoom`, `isNoRoom`, `paneLeast`, `noRoomReason`, `dragLine`,
+  `liveTab`, `searchUrl`, `webAddress`, `defaultCardRect`, `loaderApp`, the start's words), `copyLoading`/`copyPush`,
+  `startupRetry`/`startupSkip`, `littleArcOpened`/`littleArcGo` (the tests'). The core's `peek` input keeps `expand`
+  and `history` (its tests drive the flows through them). No `TODO(step3` marker and no interim entry is left; the one
+  `#[allow(dead_code)]` (ffi tests/drag/world.rs) is a helper module two test binaries share, each using part of it.
+- Checked before the Swift went: the old snapshot's `settings` and `favicons` (the Swift at 04ea0a76, verbatim in the
+  harness) against `settingsAndIcons`, `drawnSettings` and the new `snapshot()`'s settings, on generated profile sets
+  (settings and theme settings of every kind of value, deletions, site icons, a profile with no set, another profile,
+  none), keepers of both kinds (a kept `themes` key among them) and overlays of every request: 8 seeds, 1,200 sources,
+  7,180 checks, no difference. The harness caught each of 9 deliberate breaks (no overlay, no `themes`, icons empty or
+  from another collection, the set's value winning over the overlay's, a theme's old value winning, themes merged
+  before the settings, the theme overlay skipped, the guard reading the settings' overlay alone; 390 to 2,952 differences each).
+  Pinned in T/margin-window-tests.swift (the source's draw values the same as the fallback's).
+- Cost (release Swift, the Mac loaded ~7, a set and a library of N items each: pins, tabs, the archive, favorites,
+  site icons, overlays on): a draw (`LibraryWindowSource.snapshot`) 1.74 → 0.86 ms at 50 items, 17.6 → 5.1 ms at 500;
+  of it the profile's part 1.19 ms → 75 µs and 12.7 → 0.50 ms (the site icons' read); a UI search request's route
+  1.24 / 13.4 ms → 47 µs (it built the whole State for the settings). Nothing per frame changed.
+- Swift: 140 lines out, 59 in.

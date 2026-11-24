@@ -18,6 +18,7 @@
 //!
 //! Nothing here panics on what it's given: a bad request is `{"error": …}`.
 
+use std::collections::{BTreeMap, HashMap};
 use std::ffi::c_void;
 
 use margin_core::hosted_browser::{Ask, State};
@@ -40,6 +41,23 @@ pub struct MarginLink {
     hub: LinkHub,
     ctx: *mut c_void,
     write: Option<MarginLinkWrite>,
+    /// What each connection's copy was last told of each of its windows (`margin_link_drawn`: session/route.rs
+    /// `drawn`), forgotten with the connection.
+    drawn: HashMap<u64, BTreeMap<i64, bool>>,
+}
+
+/// A message as the Mac's Swift reads it: `object()`'s, but a push's `msg` as its JSON's text (`msgText`) and its
+/// type beside it (`type`, null when it has none): the session takes the text as it is (no dictionary made of it,
+/// none written back), the Mac parses it only for the preview card's pushes.
+fn wire(message: &LinkMessage) -> Object {
+    let mut o = message.object();
+    if o.get("k").and_then(Value::as_str) == Some("push")
+        && let Some(msg) = o.remove("msg")
+    {
+        o.insert("type".into(), msg.get("type").filter(|t| t.is_string()).cloned().unwrap_or(Value::Null));
+        o.insert("msgText".into(), msg.to_string().into());
+    }
+    o
 }
 
 fn f(o: &Object, k: &str) -> Option<f64> {
@@ -83,7 +101,7 @@ fn which_name(w: Which) -> &'static str {
 
 impl MarginLink {
     /// The outs carried out: each write to the callback now, the rest in the answer's list, in order.
-    fn carry(&self, outs: Vec<HubOut>, list: &mut Vec<Value>) {
+    fn carry(&mut self, outs: Vec<HubOut>, list: &mut Vec<Value>) {
         for o in outs {
             let item = match o {
                 HubOut::Write { which, conn, bytes } => {
@@ -96,10 +114,13 @@ impl MarginLink {
                 HubOut::Safari { name, info, n } => json!({ "do": "safari", "name": name, "info": info, "n": n }),
                 HubOut::Note(info) => json!({ "do": "note", "info": info }),
                 HubOut::AppUpDue => json!({ "do": "appUpDue" }),
-                HubOut::Up { conn, hello } => json!({ "do": "up", "conn": conn, "hello": hello.object() }),
+                HubOut::Up { conn, hello } => {
+                    self.drawn.remove(&conn);
+                    json!({ "do": "up", "conn": conn, "hello": hello.object() })
+                }
                 HubOut::State { conn, key, applied } => state_json(conn, &key, applied),
                 HubOut::Received { conn, key, message } => {
-                    json!({ "do": "received", "conn": conn, "key": key, "message": message.object() })
+                    json!({ "do": "received", "conn": conn, "key": key, "message": wire(&message) })
                 }
                 HubOut::Theme { conn, key, epoch, id, data } => {
                     let bytes = data.len();
@@ -109,7 +130,10 @@ impl MarginLink {
                 HubOut::ThemeRefused { conn, key, why } => {
                     json!({ "do": "themeRefused", "conn": conn, "key": key, "why": why })
                 }
-                HubOut::Down { conn, key, why } => json!({ "do": "down", "conn": conn, "key": key, "why": why }),
+                HubOut::Down { conn, key, why } => {
+                    self.drawn.remove(&conn);
+                    json!({ "do": "down", "conn": conn, "key": key, "why": why })
+                }
                 HubOut::Answer { conn, id, answer: Ok(reply) } => {
                     json!({ "do": "answer", "conn": conn, "id": id, "reply": reply })
                 }
@@ -297,7 +321,7 @@ pub unsafe extern "C" fn margin_link_new(
     if let Some(origins) = json::array(o.get("origins")) {
         link.allowed_origins = origins.iter().filter_map(Value::as_str).map(str::to_owned).collect();
     }
-    Box::into_raw(Box::new(MarginLink { hub: LinkHub::with_link(link, version), ctx, write }))
+    Box::into_raw(Box::new(MarginLink { hub: LinkHub::with_link(link, version), ctx, write, drawn: HashMap::new() }))
 }
 
 /// # Safety
@@ -377,6 +401,56 @@ pub unsafe extern "C" fn margin_link_bytes(
     let mut list = Vec::new();
     l.carry(outs, &mut list);
     answer(&l.reply(list, None), out_len)
+}
+
+/// Which of a connection's copy's windows Margin draws (session/route.rs `drawn`): `hosted` the ones the session
+/// hosts for it, `windows` the copy's windows as listed (`epoch`: its link's). Each change told the copy (`drawn`, in
+/// the windows' order), what it was told kept for the windows still listed. Null when nothing was sent; else the
+/// answer as `margin_link_call`'s `send` (its `do` list, `refused`).
+///
+/// # Safety
+/// `link` from [`margin_link_new`], not freed; `epoch` `epoch_len` readable bytes; `hosted` and `windows` their
+/// counts' readable ids (or null with 0); one call at a time.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn margin_link_drawn(
+    link: *mut MarginLink,
+    conn: u64,
+    epoch: *const u8,
+    epoch_len: usize,
+    hosted: *const i64,
+    hosted_len: usize,
+    windows: *const i64,
+    windows_len: usize,
+    now: f64,
+    wall: f64,
+    out_len: *mut usize,
+) -> *mut u8 {
+    // SAFETY: from margin_link_new and not freed (the caller's contract); one call at a time.
+    let Some(l) = (!link.is_null()).then(|| unsafe { &mut *link }) else { return std::ptr::null_mut() };
+    let ids = |p: *const i64, n: usize| -> &[i64] {
+        // SAFETY: `n` readable ids (the contract).
+        if p.is_null() || n == 0 { &[] } else { unsafe { std::slice::from_raw_parts(p, n) } }
+    };
+    let (hosted, windows) = (ids(hosted, hosted_len), ids(windows, windows_len));
+    let changes = margin_core::session::route::drawn(hosted, windows, l.drawn.entry(conn).or_default());
+    if changes.is_empty() {
+        return std::ptr::null_mut();
+    }
+    let epoch = text(epoch, epoch_len).unwrap_or("").to_owned();
+    let now = if now.is_finite() { now } else { 0.0 };
+    if wall.is_finite() {
+        l.hub.set_wall_offset(wall - now);
+    }
+    let mut list = Vec::new();
+    for (window_id, on) in changes {
+        let (_, outs) = l.hub.send(conn, &AppMessage::Drawn { epoch: epoch.clone(), window_id, on }, now);
+        l.carry(outs, &mut list);
+    }
+    let refused = l.hub.link().link().connection_on(conn).map_or(0, |c| c.refused());
+    let mut extra = Object::new();
+    extra.insert("refused".into(), refused.into());
+    answer(&l.reply(list, Some(extra)), out_len)
 }
 
 /// One stored key of a link's state (its copy's storage.local, as the core mirrors it), its JSON's bytes as kept
@@ -468,7 +542,7 @@ pub extern "C" fn margin_link_protocol(request: *const u8, len: usize, out_len: 
             None => Value::Null,
         },
         "message" => match LinkMessage::decode(json::string(o.get("text")).unwrap_or("")) {
-            Some(m) => Value::Object(m.object()),
+            Some(m) => Value::Object(wire(&m)),
             None => Value::Null,
         },
         "encode" => {

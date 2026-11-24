@@ -1,9 +1,10 @@
 // Margin's own window's page layout as its page reports it (ui/host.ts Geometry): where the page area is, its corners,
-// a split's panes. Margin's window's, not the link's (it moved here from LinkMessage.swift with step 1.5 of
-// docs/CORE-REFACTOR.md; it goes into the core with the page states, step 3).
+// a split's panes. Read by the core (protocol.rs `PageLayout::from_geometry`: docs/CORE-REFACTOR.md step 3, commit 1),
+// kept by the window's page there (core/page/, commit 3); this is the value Margin's window and its tests read of it.
 
 import CoreGraphics
 import Foundation
+import MarginCore
 
 // Where the theme put the page in Margin's window (ui/host.ts Geometry): `<m-page>`'s content box as insets from the
 // window's edges, in points (CSS pixels at zoom 1 in the window's page). The hosted window goes there
@@ -28,26 +29,40 @@ struct PageLayout: Equatable {
     var split: String?
     var panes: [PagePane] = []
 
-    // From the page's report ({ insets, radius, radii, container, mode, pageOutside, split, panes }); nil if it isn't one.
+    // From the page's report ({ insets, radius, radii, container, mode, pageOutside, pageHosted, fills, split, panes }),
+    // as the core reads it; nil if it isn't one.
     init?(geometry g: JSONObject) {
-        guard let insets = g["insets"] as? JSONObject,
-              let l = num(insets["left"]), let t = num(insets["top"]), let r = num(insets["right"]), let b = num(insets["bottom"]),
-              let container = g["container"] as? JSONObject, let w = num(container["width"]), let h = num(container["height"]),
-              [l, t, r, b, w, h].allSatisfy({ $0.isFinite }), w > 0, h > 0 else { return nil }
-        let radius = num(g["radius"]) ?? 0
-        let radii = (g["radii"] as? [Any])?.compactMap(num) ?? []
-        self.init(left: l, top: t, right: r, bottom: b, radius: radius.isFinite ? max(0, radius) : 0,
-                  radii: radii.count == 4 ? radii : [radius, radius, radius, radius], width: w, height: h,
-                  mode: g["mode"] as? String ?? "fullscreen")
-        outside = g["pageOutside"] as? Bool == true
-        hosted = g["pageHosted"] as? Bool == true
-        let said = (g["fills"] as? [Any])?.prefix(4).map { ($0 as? String).flatMap { $0.count <= 80 ? $0 : nil } ?? "" } ?? []
-        fills = said.count == 4 ? said : []
-        // (At most 4 panes, each an item's id and a finite box of its own; anything else: no split said.)
-        if let id = g["split"] as? String, PagePane.idOk(id), let list = g["panes"] as? [Any], (2...4).contains(list.count) {
-            let parsed = list.compactMap { PagePane($0) }
-            if parsed.count == list.count, Set(parsed.map(\.item)).count == parsed.count { split = id; panes = parsed }
+        guard let data = Self.bytes(g) else { return nil }
+        var l = MarginPageLayout()
+        var text = [UInt8](repeating: 0, count: 1024)
+        let read = { (text: inout [UInt8]) in
+            data.withUnsafeBytes { b in text.withUnsafeMutableBufferPointer { t in margin_page_layout_read(b.bindMemory(to: UInt8.self).baseAddress, b.count, &l, t.baseAddress, t.count) } }
         }
+        var need = read(&text)
+        if need > text.count { text = [UInt8](repeating: 0, count: need); need = read(&text) }
+        guard need >= 0, need <= text.count else { return nil }
+        self.init(l, text: text)
+    }
+
+    // A report given as an object (a page's message WebKit read, a test's): its JSON, made once, without sorting, and
+    // without the walk for numbers that aren't finite unless it has one. (The page's own report comes as its JSON.)
+    static func bytes(_ g: JSONObject) -> Data? {
+        let valid = JSONSerialization.isValidJSONObject(g) ? g : SessionRules.json(g)
+        return try? JSONSerialization.data(withJSONObject: valid)
+    }
+
+    // A layout as the core wrote it, its texts in `text`.
+    init(_ l: MarginPageLayout, text: [UInt8]) {
+        let s = { (m: MarginText) in String(decoding: text[m.at..<(m.at + m.len)], as: UTF8.self) }
+        self.init(left: l.left, top: l.top, right: l.right, bottom: l.bottom, radius: l.radius,
+                  radii: [l.radii.0, l.radii.1, l.radii.2, l.radii.3], width: l.width, height: l.height, mode: s(l.mode))
+        outside = l.outside
+        hosted = l.hosted
+        let allFills = [l.fills.0, l.fills.1, l.fills.2, l.fills.3]
+        fills = allFills.prefix(Int(l.fill_count)).map(s)
+        split = l.has_split ? s(l.split) : nil
+        let items = [l.pane_items.0, l.pane_items.1, l.pane_items.2, l.pane_items.3], rects = [l.pane_rects.0, l.pane_rects.1, l.pane_rects.2, l.pane_rects.3]
+        panes = (0..<min(Int(l.pane_count), 4)).map { PagePane(item: s(items[$0]), rect: CGRect(rects[$0])) }
     }
 
     init(left: Double, top: Double, right: Double, bottom: Double, radius: Double, radii: [Double], width: Double, height: Double, mode: String) {
@@ -59,12 +74,5 @@ struct PageLayout: Equatable {
 struct PagePane: Equatable {
     var item: String
     var rect: CGRect
-    static func idOk(_ s: String) -> Bool { !s.isEmpty && s.count <= 256 && s.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || "-_:.".contains($0)) } }
     init(item: String, rect: CGRect) { (self.item, self.rect) = (item, rect) }
-    init?(_ raw: Any) {
-        guard let o = raw as? JSONObject, let item = o["id"] as? String, Self.idOk(item), let r = o["rect"] as? [Any], r.count == 4 else { return nil }
-        let n = r.compactMap(num)
-        guard n.count == 4, n.allSatisfy(\.isFinite), n[2] > 0, n[3] > 0 else { return nil }
-        self.init(item: item, rect: CGRect(x: n[0], y: n[1], width: n[2], height: n[3]))
-    }
 }
