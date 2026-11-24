@@ -8706,3 +8706,41 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   (Continue, Try again, the preparation over, a facade's edit, a library request, the window closed) re-checks at
   once); the Swift's (T/hosted-tests.swift: held up and idle, nothing wakes, in `hostedResumeTests` and the start
   screen of `preparedBrowserTests`; the checks of Try again, Continue and the browser ready after all unchanged).
+
+## Core refactor step 3, commit 10: a draw takes the profile's settings and icons without a State, the facades trimmed (2026-11-23)
+
+- Part 13: `DataSetWindowSource.settingsAndIcons()` gives what the library's snapshot takes of the profile: its
+  `settings` with each theme's own under `themes` and the in-memory overlays over them (the Swift's merge, now one
+  `overlaid` that `snapshot()` uses too), and its `siteIcons`. `LibraryWindowSource.snapshot` takes it instead of
+  building the whole State (every collection, every kept tab) per draw to read two keys. `state` and `snapshot()` stay
+  only as the no-rules fallback (Tirth: it goes at step 4's switch).
+- The interim `uiSettings` call on the `swift` port is gone: the core reads the settings a search, `peek.go` and
+  `addFavorite` need through a `settings` port of its own (rare, JSON), answered by `drawnSettings` (the same settings,
+  no State built). The `swift` port is left with `paneCuts` only (built from the engine's visible list in Swift, as
+  commit 6 left it); `Command::Swift`, which nothing has handed out since commit 8, is deleted.
+- The facades trimmed to what the app and the tests read. Deleted: the fields nothing reads (`marginOpen`, `cycledAt`,
+  `labels`, `safariMuted`, `preparingProfile`, `startup` and its enum, the facade's own `startupStuck`; MWC reads the
+  core's), the setters nothing calls (`marginPages`, `showing`, `cards`, `elsewhere`, `preparingWindow` are reads now;
+  `setSet` and `PeekCard.cells` with them), `onCardDismiss` (never set: the press closes the card as before), the
+  card wrappers the page's requests reach the core without (`expandCard`, `cardHistory`, `openCard`, `isCardItem`,
+  `cardTag`), and the JSON answers of every port margin-ffi asks typed (SessionCore always gives the typed call, so the
+  core never asked them as JSON; ffi keeps its JSON forms as its contract, its tests run them). Kept on purpose: `paneCuts`,
+  the poll's sweep (`closeIdleCards`, `closeIdlePaneWindows`, the restored windows), `applyLayout`/`setLayout` (the
+  tests' API), the static wrappers the tests read (`noRoom`, `isNoRoom`, `paneLeast`, `noRoomReason`, `dragLine`,
+  `liveTab`, `searchUrl`, `webAddress`, `defaultCardRect`, `loaderApp`, the start's words), `copyLoading`/`copyPush`,
+  `startupRetry`/`startupSkip`, `littleArcOpened`/`littleArcGo` (the tests'). The core's `peek` input keeps `expand`
+  and `history` (its tests drive the flows through them). No `TODO(step3` marker and no interim entry is left; the one
+  `#[allow(dead_code)]` (ffi tests/drag/world.rs) is a helper module two test binaries share, each using part of it.
+- Checked before the Swift went: the old snapshot's `settings` and `favicons` (the Swift at 04ea0a76, verbatim in the
+  harness) against `settingsAndIcons`, `drawnSettings` and the new `snapshot()`'s settings, on generated profile sets
+  (settings and theme settings of every kind of value, deletions, site icons, a profile with no set, another profile,
+  none), keepers of both kinds (a kept `themes` key among them) and overlays of every request: 8 seeds, 1,200 sources,
+  7,180 checks, no difference. The harness caught each of 9 deliberate breaks (no overlay, no `themes`, icons empty or
+  from another collection, the set's value winning over the overlay's, a theme's old value winning, themes merged
+  before the settings, the theme overlay skipped, the guard reading the settings' overlay alone; 390 to 2,952 differences each).
+  Pinned in T/margin-window-tests.swift (the source's draw values the same as the fallback's).
+- Cost (release Swift, the Mac loaded ~7, a set and a library of N items each: pins, tabs, the archive, favorites,
+  site icons, overlays on): a draw (`LibraryWindowSource.snapshot`) 1.74 → 0.86 ms at 50 items, 17.6 → 5.1 ms at 500;
+  of it the profile's part 1.19 ms → 75 µs and 12.7 → 0.50 ms (the site icons' read); a UI search request's route
+  1.24 / 13.4 ms → 47 µs (it built the whole State for the settings). Nothing per frame changed.
+- Swift: 140 lines out, 59 in.

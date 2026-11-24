@@ -496,6 +496,10 @@ impl Ports for SwiftPorts {
         // (The rare ones left, by JSON: none a show asks.)
         self.ask(json!({ "port": "swift", "call": call, "args": args })).get("value").cloned().unwrap_or(Value::Null)
     }
+    fn settings(&self) -> Value {
+        // (A UI request's, rare: JSON.)
+        self.ask(json!({ "port": "settings" })).get("settings").cloned().unwrap_or(Value::Null)
+    }
     // (The preview card's, commit 7: rare, JSON.)
     fn card_rect(&self, window: i64) -> Option<Rect> {
         if let Some(c) = self.call {

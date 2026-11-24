@@ -97,7 +97,6 @@ pub(super) fn kinds(cs: &[Command]) -> Vec<String> {
             Command::Run { .. } => "run".into(),
             Command::Engine { op, .. } => format!("engine {op}"),
             Command::Waker { op, .. } => format!("waker {op}"),
-            Command::Swift { call, .. } => format!("swift {call}"),
             Command::Reply { .. } => "reply".into(),
             Command::Done { .. } => "done".into(),
         })

@@ -25,8 +25,8 @@
 // chosen opens as the space's new tab at once (decided here, DECISIONS.md).
 //
 // The state machine and its flows are margin-core's (core/session/card.rs, docs/CORE-REFACTOR.md step 3 part 4): this
-// is the facade (the same calls, each the core's `peek` input), and what the layout, the page area's moves and the
-// loading bar (parts 3, 7 and 8, still Swift's) read of a card.
+// is the facade (the calls the shell and the tests make, each the core's `peek` input; the page's `peek.*` reach the
+// core straight from its requests, ui.rs) and the cards as the tests read them.
 
 import AppKit
 import MarginCore
@@ -56,17 +56,12 @@ struct PeekCard: Equatable {
         (self.open, self.ready, self.fresh, self.hiddenBy, self.click) = (open, ready, fresh, r[9] as? String, r[10] as? String)
         if let n = r[8] as? [Any], n.count == 4, let x = num(n[0]), let y = num(n[1]), let w = num(n[2]), let h = num(n[3]) { rect = CGRect(x: x, y: y, width: w, height: h) }
     }
-    var cells: String? {
-        jsonString([window, opener, space ?? NSNull(), url, title, open, ready, fresh, rect.map(HostedSession.json) ?? NSNull(), hiddenBy ?? NSNull(), click ?? NSNull()] as [Any])
-    }
 }
 
 extension HostedSession {
     static let cardPrefix = "card:"
     static let cardIdle = 15 * 60.0 // (the core's CARD_IDLE: the tests move their clock past it)
     static func cardItem(_ profile: String) -> String { cardPrefix + profile }
-    static func isCardItem(_ item: String?) -> Bool { item?.hasPrefix(cardPrefix) == true }
-    private static let cardTag = "peek-card" // the copy's tag for the card's page (background/hosted.ts CARD_ITEM)
 
     // Margin's default card rect in a page area (a theme with no `<m-preview-page>`): the core's session/card.rs
     // `default_card_rect` (centred, 8% each side and 7% above and below at most, its page under a 52 pt bar).
@@ -75,9 +70,6 @@ extension HostedSession {
     // An item that's a pin's or a favorite's tab (the library's `pinnedBy`, `favoriteId`): its page's links to other
     // sites open in a card (auto-preview, settings.autoPeekPins), told to the copy with each hostShow. The core's.
     func pinnedOrFavorite(_ item: String) -> Bool { core.pinned(item) }
-
-    // The card a Margin window shows (one open card in a window: the core's).
-    func openCard(in windowId: Int) -> PeekCard? { cards.values.first { $0.window == windowId && $0.open } }
 
     // ---- the copy's word (Shell.swift routes its pushes here): the core's ----
 
@@ -91,7 +83,7 @@ extension HostedSession {
     // Esc or ⌘↩ in the card's page (the copy's `cardKey { key }`).
     func cardKey(profile: String, windowId: Int?, key: String) { peek("key", ["profile": profile, "window": windowId ?? NSNull(), "key": key]) }
 
-    // ---- the page's word (LibraryWindowSource.perform: `peek.*`, ⌘W): the core's ----
+    // ---- Quick Tab and the card's close, as the tests and the shell's keys say them: the core's ----
 
     // Quick Tab's field up in window `windowId`; its choice (the card at that address over the window's item; nothing
     // hosted there: the space's new tab).
@@ -107,10 +99,6 @@ extension HostedSession {
     }
     // ⌘W in window `windowId`: the card there, or Quick Tab's field, closed; never the item under it. False: neither.
     func closeCardForKey(windowId: Int?) -> Bool { peek("closeForKey", ["window": windowId ?? NSNull()]) as? Bool == true }
-    // Expand: the card's page a new item of its space, its tab moved into the profile's main window, shown as main.
-    func expandCard(windowId: Int?, spaceId: String?) { peek("expand", ["window": windowId ?? NSNull(), "space": spaceId ?? NSNull()]) }
-    // The card's Back and Forward: its page's history.
-    func cardHistory(windowId: Int?, back: Bool) { peek("history", ["window": windowId ?? NSNull(), "back": back]) }
 
     // ---- the card windows' own lives: the core's ----
 

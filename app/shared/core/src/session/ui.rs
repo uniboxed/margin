@@ -134,8 +134,8 @@ impl Core {
     /// (`value`, the request's answer), `none` (nothing to answer), `perform` (`action`, `payload`: a library edit,
     /// answered as the library answers), `settings` (`kind`, `payload`: the profile source's), with `pasteboard` (a
     /// text to put there) beside an answer. The session's flows it asks for run here (openApp at once, the history's
-    /// in the queue); the Swift flows of later parts (the start screen's, the launcher's, the preview card's) through
-    /// the `swift` port, interim.
+    /// in the queue, the start screen's, the launcher's, the preview card's); the settings a search and `addFavorite`
+    /// read through the `settings` port.
     pub(crate) fn ui_request(&self, kind: &str, mut payload: Object) -> Value {
         payload.remove("hint");
         let window = swift_int(payload.get("windowId"));
@@ -172,7 +172,7 @@ impl Core {
                 if query.is_empty() {
                     return none();
                 }
-                let settings = self.swift("uiSettings", Value::Null);
+                let settings = self.ports.settings();
                 let learned = settings.get("safariSearch").and_then(|s| s.get("template")).and_then(Value::as_str);
                 let url = search_url(&query, learned);
                 let p = json!({ "windowId": window, "url": url, "title": query });
@@ -199,7 +199,7 @@ impl Core {
             "addFavorite" => {
                 // (Which favorites it joins: the person's setting, whatever the page sent; the library takes the
                 // scope from it and the window's space (library.ts addFavorite), never a scope a page names.)
-                let settings = self.swift("uiSettings", Value::Null);
+                let settings = self.ports.settings();
                 let scope = if settings.get("favoritesScope").and_then(Value::as_str) == Some("profile") {
                     "profile"
                 } else {
@@ -231,7 +231,7 @@ impl Core {
                 let typed = json::string(payload.get("url")).filter(|u| self.web_address(u)).map(str::to_string);
                 let url = typed.or_else(|| {
                     (!query.is_empty()).then(|| {
-                        let settings = self.swift("uiSettings", Value::Null);
+                        let settings = self.ports.settings();
                         let learned =
                             settings.get("safariSearch").and_then(|s| s.get("template")).and_then(Value::as_str);
                         search_url(&prefix_characters(&query, 1000), learned)

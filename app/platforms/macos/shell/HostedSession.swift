@@ -456,7 +456,7 @@ final class HostedSession: LibraryDelegate {
     }
     // Each Margin window's layout while more than its item shown is visible (the preview card, a split's panes): main, the
     // others with their roles and rects, the focused one (`shown[w]`). None: one item shown, as before. (The core's
-    // field, `layouts`: the card's flows and the show read it there; applyLayout, part 3's, still writes it here.)
+    // field, `layouts`, its flows' (layouts.rs, card.rs); written here only by a press that focuses a pane.)
     private(set) var layout: [Int: HostedLayout] {
         get { field(.layouts) { rows in Dictionary(rows.compactMap { HostedLayout.decode($0) }, uniquingKeysWith: { a, _ in a }) } }
         set { setMap(.layouts, old: layout, newValue) { w, l in CoreRow(i0: w, s0: l?.cells) } }
@@ -465,45 +465,20 @@ final class HostedSession: LibraryDelegate {
         get { field(.hostingWindow) { $0.first?.i0 } }
         set { setOne(.hostingWindow, old: hostingWindow, newValue) { CoreRow(i0: $0) } }
     }
-    // Each Margin window's own page shown (ItemTarget.margin's page: Settings), drawn by the window itself, and the items
-    // of Margin's pages shown this session (open tabs in the UI, as items with a page are: `live`).
-    private(set) var marginPages: [Int: String] {
-        get { field(.marginPages) { Self.intText($0) } }
-        set { setMap(.marginPages, old: marginPages, newValue) { CoreRow(i0: $0, s0: $1) } }
-    }
-    private(set) var marginOpen: Set<String> {
-        get { field(.marginOpen) { Self.texts($0) } }
-        set { setSet(.marginOpen, old: marginOpen, newValue) }
-    }
-    // When each Margin window's next/previous-tab key was last pressed (its repeats too): the picks a cycle makes.
-    private var cycledAt: [Int: Double] {
-        get { field(.cycledAt) { rows in Dictionary(rows.map { ($0.i0, $0.f) }, uniquingKeysWith: { a, _ in a }) } }
-        set { setMap(.cycledAt, old: cycledAt, newValue) { CoreRow(i0: $0, f: $1 ?? 0) } }
-    }
+    // Each Margin window's own page shown (ItemTarget.margin's page: Settings), drawn by the window itself.
+    var marginPages: [Int: String] { field(.marginPages) { Self.intText($0) } }
     // Each Margin window's item shown when macOS took the window out of full screen: hosted again once it's back in.
     // (The core's: the start writes it too.)
     private(set) var resume: [Int: String] {
         get { field(.resume) { Self.intText($0) } }
         set { setMap(.resume, old: resume, newValue) { CoreRow(i0: $0, s0: $1) } }
     }
-    // What the loading animation names for a host (the app's name; Safari).
-    var labels: [HostID: String] {
-        get { field(.labels) { Self.hostText($0) } }
-        set { setMap(.labels, old: labels, newValue) { CoreRow(s0: $0.raw, s1: $1) } }
-    }
-    // The item each host is being shown for, each web item's tab in its Safari window (the copy's id, from hostShow).
-    // (The loading bar's own, the core's: core/session/loading.rs.)
-    private var showing: [HostID: String] {
-        get { field(.showing) { Self.hostText($0) } }
-        set { setMap(.showing, old: showing, newValue) { CoreRow(s0: $0.raw, s1: $1) } }
-    }
+    // The item each host is being shown for (the loading bar's own, the core's: core/session/loading.rs), each web
+    // item's tab in its Safari window (the copy's id, from hostShow).
+    private var showing: [HostID: String] { field(.showing) { Self.hostText($0) } }
     private(set) var safariTabs: [String: Int] {
         get { field(.safariTabs) { rows in Dictionary(rows.compactMap { r in r.s0.map { ($0, r.i0) } }, uniquingKeysWith: { a, _ in a }) } }
         set { setMap(.safariTabs, old: safariTabs, newValue) { CoreRow(i0: $1 ?? 0, s0: $0) } }
-    }
-    private(set) var safariMuted: Set<String> {
-        get { field(.safariMuted) { Self.texts($0) } }
-        set { setSet(.safariMuted, old: safariMuted, newValue) }
     }
     // Each web item's tab's sound, as its profile's copy says (copyTabs): playing, muted. (None: not heard yet.)
     private(set) var safariAudio: [String: (audible: Bool, muted: Bool)] {
@@ -540,10 +515,7 @@ final class HostedSession: LibraryDelegate {
     // windows with Quick Tab's field up, the core's (core/session/card.rs: a card's row its profile and its parts as
     // JSON text, read again only when one changed); the card whose window's first open is under way (its own loader,
     // never the page card's: the loading bar's, part 8).
-    var cards: [String: PeekCard] {
-        get { field(.cards) { rows in Dictionary(rows.compactMap { PeekCard(row: $0) }.map { ($0.profile, $0) }, uniquingKeysWith: { a, _ in a }) } }
-        set { setMap(.cards, old: cards, newValue) { p, c in CoreRow(s0: p, s1: c?.cells) } }
-    }
+    var cards: [String: PeekCard] { field(.cards) { rows in Dictionary(rows.compactMap { PeekCard(row: $0) }.map { ($0.profile, $0) }, uniquingKeysWith: { a, _ in a }) } }
     var littleArcs: [Int: String] { field(.littleArcs) { Self.intText($0) } }
 
     init(library: Library, engine: HostedEngine, links: HostedLinks, options: Options = Options()) {
@@ -560,9 +532,8 @@ final class HostedSession: LibraryDelegate {
     // The session's object in margin-core: the one queue the core's flows and the Swift's jobs take their turns in, the
     // state they share, the log. Its ports (`port`, `now`) call back here during a call.
     let core: SessionCore
-    // The core's fields as last read, by their revisions (`fresh`).
     // The core's fields as last read, by their revisions (`field`): read again only when one changed there, and
-    // written as the difference (`setMap`, `setSet`, `setOne`), the value written kept with the revision it made. Rows
+    // written as the difference (`setMap`, `setOne`), the value written kept with the revision it made. Rows
     // both ways, no JSON.
     private var cache: [UInt32: (rev: UInt64, value: Any)] = [:]
     private func field<T>(_ f: SessionCore.Field, _ decode: ([CoreRow]) -> T) -> T {
@@ -584,9 +555,6 @@ final class HostedSession: LibraryDelegate {
     }
     private func setMap<K: Hashable, V: Equatable>(_ f: SessionCore.Field, old: [K: V], _ new: [K: V], row: (K, V?) -> CoreRow) {
         write(f, new, puts: new.filter { old[$0.key] != $0.value }.map { row($0.key, $0.value) }, dels: old.keys.filter { new[$0] == nil }.map { row($0, nil) })
-    }
-    private func setSet(_ f: SessionCore.Field, old: Set<String>, _ new: Set<String>) {
-        write(f, new, puts: new.subtracting(old).map { CoreRow(s0: $0) }, dels: old.subtracting(new).map { CoreRow(s0: $0) })
     }
     private func setOne<V: Equatable>(_ f: SessionCore.Field, old: V?, _ new: V?, row: (V) -> CoreRow) {
         guard old != new else { return }
@@ -818,71 +786,28 @@ final class HostedSession: LibraryDelegate {
         }
     }
 
-    // The core's ports (session/mod.rs `Ports`), answered during its call: Margin's windows, the engine's reads, the
-    // links', the OS's.
+    // The core's rare ports (session/mod.rs `Ports`), as JSON, answered during its call: the ones margin-ffi has no typed
+    // kind for (every other one is `typedPort`'s: SessionCore always gives the typed call, so the core never asks them
+    // here). Margin's windows' facts and acts, the engine's minimums and the drag, the Swift step, the settings, the OS's.
     func port(_ ask: JSONObject) -> JSONObject {
         switch ask["port"] as? String {
-        case "window":
-            guard let w = window(int(ask["id"])) else { return [:] }
-            if seen[w.id] !== w { seen[w.id] = w }
-            return ["id": w.id]
-        case "windowIds": return ["ids": windowIds()]
-        case "engineShown": return engine.shown.map { ["host": $0.raw] } ?? [:]
-        case "isHosted": return ["hosted": (ask["host"] as? String).map { engine.isHosted(HostID(raw: $0)) } ?? false]
-        case "safariProfiles": return ["profiles": links.safariProfiles()]
-        case "linkEpoch": return (ask["profile"] as? String).flatMap { links.linkEpoch(of: $0) }.map { ["epoch": $0] } ?? [:]
-        case "appName": return (ask["bundle"] as? String).flatMap { appName($0) }.map { ["name": $0] } ?? [:]
-        case "appRuns": return (ask["bundle"] as? String).flatMap { engine.appRuns(bundleId: $0) }.map { ["runs": $0] } ?? [:]
-        case "showsAlone": return ["alone": engine.showsAlone(HostID(raw: ask["host"] as? String ?? ""))]
-        case "stopHidingWoken": engine.stopHidingWoken(bundleId: ask["bundle"] as? String ?? safariIdentifier); return [:]
-        case "windowIdsOf": return ["ids": links.windowIds(of: ask["profile"] as? String ?? "")]
-        case "wall": return ["now": Date().timeIntervalSince1970]
-        case "setShowing":
-            held(int(ask["window"]))?.setShowing(ask["label"] as? String, app: ask["app"] as? String, slow: ask["slow"] as? Bool == true)
-            return [:]
-        case "setMarginPage": held(int(ask["window"]))?.setMarginPage(ask["page"] as? String); return [:]
-        case "push": if let json = ask["json"] as? String { held(int(ask["window"]))?.push(json) }; return [:]
-        case "changed": onChange?(); return [:]
-        case "log":
-            if let text = ask["text"] as? String { if ask["warn"] as? Bool == true { Diagnostics.warn(text) } else { Diagnostics.note(text) } }
-            return [:]
-        // (Margin's windows' facts and acts, the engine's minimums and the drag: layouts and the page area; the ones a show
-        // asks are typed, `typedPort`.)
-        case "windowNumber": return ["number": held(int(ask["window"]))?.number ?? -1]
-        case "windowFullScreen": return ["on": held(int(ask["window"]))?.isFullScreen == true]
         case "windowFullScreenState": return ["state": held(int(ask["window"]))?.fullScreenState ?? ""]
         case "windowWhyNot": return ["why": held(int(ask["window"]))?.pageAreaWhyNot ?? ""]
-        case "windowLayoutMode": return held(int(ask["window"]))?.layoutMode.map { ["mode": $0] } ?? [:]
-        case "hostedPlacement":
-            guard let p = held(int(ask["window"]))?.hostedPlacement else { return [:] }
-            return ["page": Self.json(p.page), "area": Self.json(p.area), "display": Self.json(p.display), "token": keep(p)]
         case "paneLayout":
             guard let pl = held(int(ask["window"]))?.paneLayout else { return [:] }
             return ["split": pl.split, "panes": pl.panes.map { [$0.item] + Self.json($0.rect) }]
         case "remeasure": held(int(ask["window"]))?.remeasure(); return [:]
         case "toFullScreen": held(int(ask["window"]))?.toFullScreen(); return [:]
-        case "setHosting": held(int(ask["window"]))?.setHosting(ask["on"] as? Bool == true); return [:]
         case "setHosted": held(int(ask["window"]))?.setHosted(int(ask["number"])); return [:]
-        case "setAppMinimums": held(int(ask["window"]))?.setAppMinimums(Self.sizes(ask["minimums"])); return [:]
         case "setPaneMinimums": held(int(ask["window"]))?.setPaneMinimums(Self.sizes(ask["minimums"])); return [:]
         case "followsPage": held(int(ask["window"]))?.followsPage(ask["on"] as? Bool == true); return [:]
         case "hostedMoved": held(int(ask["window"]))?.hostedMoved(); return [:]
-        case "fullScreenSpace": return int(ask["number"]).flatMap { engine.fullScreenSpace(ofWindow: $0) }.map { ["space": NSNumber(value: $0)] } ?? [:]
-        case "knownAppMinimums": return ["minimums": engine.knownAppMinimums.map { [$0.key, Double($0.value.width), Double($0.value.height)] }]
         case "minimum": return engine.minimum(of: HostID(raw: ask["host"] as? String ?? "")).map { ["size": [Double($0.width), Double($0.height)]] } ?? [:]
         case "dragging": return ["follows": engine.dragging(ask["on"] as? Bool == true)]
         case "shownFillsPage": return ["fills": engine.shownFillsPage]
         case "liveFollowers": let n = engine.liveFollowers(); return ["follow": n.follow, "visible": n.visible]
-        case "follow":
-            // (The typed follow is set: this only if it isn't.)
-            if let p = placement(ask["placement"]) { let rects = Self.hostRects(ask["rects"] as? [[Any]] ?? []); rects.isEmpty ? engine.follow(p) : engine.follow(p, rects: rects) }
-            return [:]
-        case "wokenByMenu": return ["woken": wokenByMenu[ask["profile"] as? String ?? ""] != nil]
-        case "unopenable": return ["unopenable": unopenable.contains(ask["profile"] as? String ?? "")]
         case "swift": return ["value": swiftCall(ask["call"] as? String ?? "", ask["args"] as? JSONObject ?? [:]) ?? NSNull()]
-        // (The preview card's, core/session/card.rs.)
-        case "cardRect": return held(int(ask["window"]))?.cardRect.map { ["rect": Self.json($0)] } ?? [:]
-        case "hostedPage": return held(int(ask["window"]))?.hostedPlacement.map { ["page": Self.json($0.page)] } ?? [:]
+        case "settings": return ["settings": uiSettings() ?? NSNull()]
         case "idna": return ["ok": (ask["host"] as? String).map(SessionRules.idna) ?? false]
         case "urlHost": return (ask["url"] as? String).flatMap { URL(string: $0)?.host }.map { ["host": $0] } ?? [:]
         case "perform":
@@ -894,7 +819,7 @@ final class HostedSession: LibraryDelegate {
         }
     }
 
-    // The typed ports (margin-ffi session.rs `PortKind`), the ones a show asks: a number back (`SessionCore.none`:
+    // The typed ports (margin-ffi session.rs `PortKind`): a number back (`SessionCore.none`:
     // none), texts and lists given back through `out` during the call.
     func typedPort(_ kind: UInt32, _ a: MarginPortArgs, _ out: OpaquePointer?) -> Int64 {
         let none = SessionCore.none
@@ -975,12 +900,11 @@ final class HostedSession: LibraryDelegate {
         return window(id) ?? seen[id] ?? (opened?.id == id ? opened : nil)
     }
 
-    // The Swift flows of the parts not moved yet, as the core's flows call them (session/mod.rs `Ports::swift`).
+    // The one Swift step the core calls by name (session/mod.rs `Ports::swift`): a split's cut panes said again, from the
+    // engine's last visible list (`shownList`, the Mac's windows: kept Swift).
     private func swiftCall(_ call: String, _ a: JSONObject) -> Any? {
         let w = held(int(a["window"]))
         switch call {
-        case "uiSettings": return uiSettings() ?? NSNull()
-        // (Part 9's: a split's cut panes said again.)
         case "paneCuts": if let w { w.setPaneCuts(paneCutsJSON(shownList)) }
         default: Diagnostics.warn("hosted: the core asked for \(call), which isn't a Swift flow")
         }
@@ -1350,13 +1274,12 @@ final class HostedSession: LibraryDelegate {
         Task { await self.engine.activateShown(at: point) }
     }
 
-    // A card open in Margin's window `w`: a press on the page area around its content (Margin's window caught it). Preview
-    // closes the card then (docs/PEEK-SPLIT.md §2: `onCardDismiss`); nothing else is done here.
-    var onCardDismiss: ((Int) -> Void)?
+    // A card open in Margin's window `w`: a press on the page area around its content (Margin's window caught it): the
+    // card closed (docs/PEEK-SPLIT.md §2); nothing else is done here.
     func caughtPress(_ w: HostedWindow, at point: CGPoint) {
         guard w.id == hostingWindow, layout[w.id]?.extras.contains(where: { $0.role == .card }) == true else { return }
         note("Margin's window \(w.id): a press on the page around the card")
-        if let onCardDismiss { onCardDismiss(w.id) } else { closeCard(windowId: w.id, why: "a press on the dimmed page around it") }
+        closeCard(windowId: w.id, why: "a press on the dimmed page around it")
     }
 
     // A visible host pressed in Margin's window `w` (its window's own press, or one in its pane around a smaller window):
@@ -1413,10 +1336,7 @@ final class HostedSession: LibraryDelegate {
 
     // One Margin window hosts at a time. Another one's item stays on it as a card, faded; the window brought in front
     // takes the item back (the core's, core/session/elsewhere.rs). Each window's item, by window.
-    var elsewhere: [Int: String] {
-        get { field(.elsewhere) { Self.intText($0) } }
-        set { setMap(.elsewhere, old: elsewhere, newValue) { CoreRow(i0: $0, s0: $1) } }
-    }
+    var elsewhere: [Int: String] { field(.elsewhere) { Self.intText($0) } }
     // A Margin window brought in front: its item from another window shown here again.
     func focused(_ windowId: Int) { drive(core.input(["type": "windowFocused", "window": windowId])) }
     // A Margin window closing while it hosts (its close button): what it shows parked first, then `done` (it closes).
@@ -1440,14 +1360,9 @@ final class HostedSession: LibraryDelegate {
 
     // The start screen (Tirth, 2026-11-19): while the default browser gets ready, Margin's window is the start screen
     // alone, nothing of Margin's usable; held up, what's wrong is said with Try again and Continue without Safari. The
-    // core's (core/session/start.rs); its state read here.
-    enum Startup: Equatable { case waiting, preparing, done }
-    var startup: Startup {
-        field(.start) { rows in rows.first?.s1.map { $0 == "preparing" ? .preparing : $0 == "done" ? .done : .waiting } ?? .waiting }
-    }
-    // (Typed: read per key press and menu check.)
+    // core's (core/session/start.rs); whether it's up (typed: read per key press and menu check) and Try again's count
+    // read here.
     var startupShown: Bool { core.startScreen }
-    var startupStuck: String? { field(.start) { $0.first?.s0 } }
     var startupRetries: Int { field(.start) { $0.first?.i0 ?? 0 } }
     static let startupLabel = SessionRules.constants["startupLabel"] as? String ?? ""
     static let startupSlow = SessionRules.constants["startupSlow"] as? String ?? ""
@@ -1498,15 +1413,8 @@ final class HostedSession: LibraryDelegate {
     func prepareBrowser(setting: String?) async {
         _ = await call("prepareBrowser", ["setting": setting ?? NSNull()])
     }
-    // The Margin window a browser's window is made ready over (covered by it), and its profile.
-    private(set) var preparingWindow: Int? {
-        get { field(.preparingWindow) { $0.first?.i0 } }
-        set { setOne(.preparingWindow, old: preparingWindow, newValue) { CoreRow(i0: $0) } }
-    }
-    private var preparingProfile: String? {
-        get { field(.preparingProfile) { $0.first?.s0 } }
-        set { setOne(.preparingProfile, old: preparingProfile, newValue) { CoreRow(s0: $0) } }
-    }
+    // The Margin window a browser's window is made ready over (covered by it): the core's.
+    private var preparingWindow: Int? { field(.preparingWindow) { $0.first?.i0 } }
 
     // ---- the engine's Safari windows (HostEngine's requestSafariWindow, closeSafariWindow, safariFullScreen, safariLinked) ----
 
@@ -1730,7 +1638,8 @@ final class HostedSession: LibraryDelegate {
 
     // ---- what the UI asks ----
 
-    // The settings the UI's requests read (the profile source's: a search's engine, the favorites' scope).
+    // The settings the UI's requests read (the profile source's: a search's engine, the favorites' scope), the core's
+    // `settings` port.
     var uiSettings: () -> JSONObject? = { nil }
 
     // A request the UI makes: its route, the core's (core/session/ui.rs `ui_request`; LibraryWindowSource carries it out).
@@ -1829,7 +1738,7 @@ final class HostedSession: LibraryDelegate {
 
 // What Margin's windows draw with the library on (ShellHostedGlue.swift): the library's spaces, pins, folders and
 // items, with what the session has open; settings, theme settings and site icons still a profile's (read only,
-// changed in memory: DataSetWindowSource).
+// changed in memory: DataSetWindowSource's `settingsAndIcons`).
 final class LibraryWindowSource: MarginWindowSource {
     let library: Library
     let session: HostedSession
@@ -1844,14 +1753,14 @@ final class LibraryWindowSource: MarginWindowSource {
         profileSource.onChange = { [weak self] in self?.onChange?() }
         let before = session.onChange
         session.onChange = { [weak self] in before?(); self?.onChange?() }
-        session.uiSettings = { [weak profileSource] in profileSource?.snapshot()["settings"] as? JSONObject }
+        session.uiSettings = { [weak profileSource] in profileSource?.drawnSettings }
     }
 
     func snapshot() -> JSONObject {
         var s = library.snapshot()
-        let profile = profileSource.snapshot()
-        s["settings"] = profile["settings"] ?? JSONObject()
-        s["favicons"] = profile["favicons"] ?? JSONObject()
+        let profile = profileSource.settingsAndIcons()
+        s["settings"] = profile.settings
+        s["favicons"] = profile.icons
         return session.live(s)
     }
 

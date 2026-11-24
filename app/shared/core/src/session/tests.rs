@@ -217,7 +217,7 @@ struct World {
     names: RefCell<BTreeMap<String, String>>,
     woken: RefCell<Vec<String>>,
     unopenable: RefCell<Vec<String>>,
-    swift: RefCell<BTreeMap<String, Value>>,
+    settings: RefCell<Value>,
     acts: RefCell<Vec<Value>>,
     lines: RefCell<Vec<Line>>,
     card_rects: RefCell<BTreeMap<i64, Rect>>,
@@ -400,7 +400,11 @@ impl Ports for Reentrant {
     fn swift(&self, call: &str, args: Value) -> Value {
         self.reenter("swift");
         self.0.act(json!(["swift", call, args]));
-        self.0.swift.borrow().get(call).cloned().unwrap_or(Value::Null)
+        Value::Null
+    }
+    fn settings(&self) -> Value {
+        self.reenter("settings");
+        self.0.settings.borrow().clone()
     }
     fn card_rect(&self, window: i64) -> Option<Rect> {
         self.reenter("cardRect");

@@ -140,10 +140,13 @@ pub trait Ports {
     fn unopenable(&self, profile: &str) -> bool;
     /// A line for the app's log (Diagnostics), said at once.
     fn log(&self, warn: bool, text: &str);
-    /// The Swift flows of the parts not moved yet (step 3's later commits), called synchronously by name, gone as each
-    /// part moves: commit 9's `uiSettings` → the settings object (the profile source's); part 9's `paneCuts`
-    /// `{ window }` (its cut panes said again).
+    /// The one Swift step left that the core calls by name, synchronously: `paneCuts` `{ window }` (a split's cut panes
+    /// said again, from the engine's visible windows: the Mac's list, kept Swift).
     fn swift(&self, call: &str, args: Value) -> Value;
+    /// The profile's settings as Margin's windows draw them (`DataSetWindowSource.drawnSettings`: each theme's own under
+    /// `themes`, what was changed in the UI over them), null: none: a search's engine, the favorites' scope. Rare (a UI
+    /// request's), JSON.
+    fn settings(&self) -> Value;
     /// Where a Margin window's page draws the preview card's page (the theme's `<m-preview-page>`,
     /// `HostedWindow.cardRect`), None: none drawn. The window as the flow had it.
     fn card_rect(&self, window: i64) -> Option<Rect>;
@@ -232,8 +235,6 @@ pub enum Command {
     /// `closeWoken` `{ profile, except, why }`. (The launch's preparation's `ensureLinked` says `prepare`: its look
     /// is `margin_session_prepare_wanted`.)
     Waker { op: String, args: Object },
-    /// A Swift flow of a part not moved yet (interim): none is left since commit 8 (the picture the core's own).
-    Swift { call: String, args: Object },
     /// The answer to a Swift caller (an engine's ask, a Swift flow's call of one of these): its continuation resumed,
     /// and the run goes on once that caller had its turn (the next main-actor turn).
     Reply { to: u64, value: Value },
@@ -253,7 +254,6 @@ impl Command {
             Command::Run { job } => json!({ "op": "run", "id": id, "job": job }),
             Command::Engine { op, args } => json!({ "op": "engine", "id": id, "name": op, "args": args }),
             Command::Waker { op, args } => json!({ "op": "waker", "id": id, "name": op, "args": args }),
-            Command::Swift { call, args } => json!({ "op": "swift", "id": id, "name": call, "args": args }),
             Command::Reply { to, value } => json!({ "op": "reply", "id": id, "to": to, "value": value }),
             Command::Done { then } => json!({ "op": "done", "id": id, "then": then }),
         }
@@ -1061,7 +1061,7 @@ impl Core {
         Performed::read(&self.exec.command(command, true).await)
     }
 
-    /// An engine operation, the Safari waker's or a Swift flow's (interim), answered when it's over.
+    /// An engine operation, or the Safari waker's, answered when it's over.
     pub(crate) async fn engine(&self, op: &str, args: Value) -> Value {
         let command = Command::Engine { op: op.to_string(), args: object(args) };
         self.exec.command(command, false).await
@@ -1072,7 +1072,7 @@ impl Core {
         self.exec.command(command, false).await
     }
 
-    /// A Swift flow of a part not moved yet, synchronous (`Ports::swift`).
+    /// The Swift step called by name, synchronous (`Ports::swift`: `paneCuts`).
     pub(crate) fn swift(&self, call: &str, args: Value) -> Value {
         self.ports.swift(call, args)
     }

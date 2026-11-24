@@ -218,10 +218,8 @@ fn the_uis_requests_routed() {
         ui(&s, "app.open", json!({ "bundleId": "not one" }))["value"],
         json!({ "ok": false, "error": "not a bundle id" })
     );
-    world.swift.borrow_mut().insert(
-        "uiSettings".into(),
-        json!({ "favoritesScope": "profile", "safariSearch": { "template": "https://d.example/?q=%s" } }),
-    );
+    *world.settings.borrow_mut() =
+        json!({ "favoritesScope": "profile", "safariSearch": { "template": "https://d.example/?q=%s" } });
     let r = ui(&s, "search", json!({ "windowId": 1, "query": " \u{3000}a b\n" }));
     assert_eq!(
         r,
@@ -230,7 +228,7 @@ fn the_uis_requests_routed() {
     assert_eq!(ui(&s, "search", json!({ "query": " " })), json!({ "route": "none" }));
     let r = ui(&s, "addFavorite", json!({ "windowId": 1, "tabId": n, "scope": "profile:evil", "favoritesScope": "x" }));
     assert_eq!(r["payload"], json!({ "windowId": 1, "tabId": "a", "favoritesScope": "profile" }));
-    world.swift.borrow_mut().insert("uiSettings".into(), Value::Null);
+    *world.settings.borrow_mut() = Value::Null;
     assert_eq!(ui(&s, "addFavorite", json!({}))["payload"]["favoritesScope"], json!("global"));
     assert_eq!(
         ui(&s, "sidebarScroll", json!({})),

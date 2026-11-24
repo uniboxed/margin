@@ -57,8 +57,6 @@ fn pump(
 
 fn usual(c: &Command) -> Value {
     match c {
-        Command::Swift { call, .. } if call == "prepare" => json!({ "placement": 1, "space": 7 }),
-        Command::Swift { call, .. } if call == "showSplit" => json!({ "shown": false }),
         Command::Engine { op, args } if op == "open" => {
             let t = &args["target"];
             let id = if t["kind"] == json!("app") {
@@ -97,7 +95,6 @@ fn kinds(cs: &[Command]) -> Vec<String> {
             Command::Run { .. } => "run".into(),
             Command::Engine { op, .. } => format!("engine {op}"),
             Command::Waker { op, .. } => format!("waker {op}"),
-            Command::Swift { call, .. } => format!("swift {call}"),
             Command::Reply { .. } => "reply".into(),
             Command::Done { then } => format!("done {then}"),
         })

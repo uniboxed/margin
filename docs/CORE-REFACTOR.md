@@ -1498,7 +1498,7 @@ until step 4 (open question 6).
 | 7 | Part 4: the card and Quick Tab. **Done 2026-11-23** (step3/card, one commit: card.rs's flows and `web_host`, `Card`, `cards`, `littleArcs` and part 3's `layouts` the core's fields, HostedPeek.swift the facade; the interim card entries of the `swift` port gone; a peek open measured) | ~350 (+~200: the facade, the ports, the fields' rows) | ~1,580 (a quarter tests) | a peek open |
 | 8 | Parts 5 and 6: elsewhere, the start, `resumeLast`, `settleHosting`, the launcher, the preparation. **Done 2026-11-23** (step3/start, two commits: the move, then Tirth's change 5; session/elsewhere.rs and start.rs's flows, the interim `swift` calls commits 5, 6 and 9 left for these parts gone (`uiSettings` and `paneCuts` not theirs, left); the poll's sweep not part 6's; the facade's timer fixed; `idle-cost` not measured: no screen suite on this branch, the start screen's idle wakes measured in the harness) | ~265 (385 out, 122 in) | ~1,600 (a third tests) | `idle-cost` |
 | 9 | Parts 8, 9, 10: the loading bar, the pushes and the mini player, `drawn`, the hello and the ops' routing, the UI's requests, `live_plan`. **Done 2026-11-23** (step3/routing, one commit: session/loading.rs, route.rs, ui.rs's requests and rows, page/said.rs, hello.rs; the push as its text from the link, `drawn`'s diff kept by the link object, the page's ops as their text; a push and a draw measured) | ~380 (~450 in: the typed facade, PageCore's said and hello) | ~2,600 (a third tests and measures) | a push, a draw |
-| 10 | Part 13 and the leftovers: `settingsAndIcons`, the facade trimmed to what T/ reads | ~40 | ~50 | a draw |
+| 10 | Part 13 and the leftovers: `settingsAndIcons`, the facade trimmed to what T/ reads. **Done 2026-11-23** (step3/finish, one commit: `settingsAndIcons` and `drawnSettings` the draw's and the UI requests' (no State built), `state` only the no-rules fallback's; `uiSettings` a `settings` port of its own, `Command::Swift` gone; the facades' fields, wrappers and JSON ports nothing reads deleted; a draw measured) | ~80 (140 out, 59 in) | ~0 (26 in, 24 out) | a draw |
 
 About 2,400 Swift lines deleted (of HS's 2,620, HP's 438, ~450 of MWC's, PT's ~80, UP's ~90), ~700 Swift lines added
 (the facade, the ports' adapter, the Page's mechanism glue) and ~250 moved into `SafariWaker`; ~7,700 Rust lines in,
@@ -1546,6 +1546,60 @@ The three changes come after the pure moves, each its own commit with tests pinn
    premise, found in commit 0: Foundation already encoded every non-ASCII character; Tirth's answer is the behaviour.)
 9. **The session's log lines built in Rust** (their words unchanged), as step 2 kept them Swift's. *Default: Rust,
    since every line is a decision's.*
+
+### Step 3: done (2026-11-23)
+
+Every commit of the order table is done (each one's DECISIONS.md entry has its checks: the deleted Swift against the
+core on generated vectors or sequences before it went, each harness proven by deliberate breaks). What moved into the
+core (app/shared/core/src/session/ and page/, typed calls in app/platforms/macos/ffi/src/session.rs and page.rs):
+
+- **The pure rules** (commit 1): a split's room and the 220 pt least, the card's default rect, web and search
+  addresses, the profile resolved, the last item, the UI pushes' caps, the page's layout report.
+- **The pointer and the page** (commits 2, 3): pass-through for several holes, one typed call a pointer event; Margin's
+  window's page (its states, the loader's grace, the holes and the ground, the page area), MWC's decisions deleted.
+- **The session** (commits 4-9): one queue for the core's flows and the Swift's jobs, the shared state as typed rows;
+  the library's requests (show, close, the palette's pick, the four pin and favourite paths made one, overtaken picks,
+  the cycle hold), the engine's Safari window asks, layouts and splits, the page area moving and a drag's frame typed
+  end to end, the preview card and Quick Tab, an item in another Margin window, the start screen, `resumeLast`,
+  `settleHosting`, the launcher, the default browser made ready, the loading bar, the copies' pushes and the mini
+  player, `drawn`, the page's hello and ops, the UI's requests and rows.
+- **The draw's snapshot** (commit 10): the library's draw takes the profile's settings and site icons
+  (`settingsAndIcons`), no State rebuilt per draw; the UI requests' settings a `settings` port of their own.
+- Tirth's three changes, each its own commit after the moves: a reset overtaken navigates back but isn't shown; the
+  start screen held up re-checks only on events (0 wakes a second, was 20); `searchUrl`'s encoding was already his
+  answer.
+
+What stayed Swift, and why:
+
+- **The adapter's contract:** the protocols to the engine, Margin's window and the links, the ports' adapter
+  (SessionCore.swift) and the facade (HostedSession.swift, HostedPeek.swift: the fields as typed rows, the calls the
+  shell and the tests make, the static wrappers the tests read, `applyLayout`/`setLayout` as the tests' API).
+- **The Mac's own:** Safari's window mechanics (SafariWaker: the menu's presses, the woken windows, the restored
+  windows' sweep), the poll's sweep (`closeIdleCards` the core's through the facade, `closeIdlePaneWindows`, the
+  restored windows), `paneCuts` (built from the engine's visible list, the one call left on the `swift` port), the
+  engine's events' edits (`hostEvent`), MWC's mechanism, the keys, PanesActive and PaneClickTap, NSPasteboard,
+  UserDefaults (the keepers).
+- **Until step 4:** `DataSetWindowSource.state` as the no-rules fallback (Tirth: it goes at step 4's switch), `live`'s
+  shaping of the core's rows into the library's kept tabs, the library's rules (TS).
+- margin-ffi's JSON forms of the typed ports stay as its contract (its own tests run them); the app always gives the
+  typed call, so the Swift answers only the rare ports as JSON.
+
+Swift lines (app/platforms/macos, from 673288b9): 2,778 deleted, 2,395 added (of them 279 SessionCore.swift, 410
+PageCore.swift, 199 SafariWaker.swift moved out of HostedSession, the rest the facade and the ports' adapter), so the
+app's Swift is 383 lines smaller; HostedSession.swift 2,620 → 1,820, HostedPeek.swift 438 → 115. Swift tests: 523
+added (the pins against the Swift before each move). Rust: ~22,200 lines in (~4,800 of them test files, more in
+inline test modules). The design's ~700 added was low: the facade's typed rows and the Page's glue cost more than it
+counted. A draw (release, Swift side, `LibraryWindowSource.snapshot`): 1.74 → 0.86 ms at 50 items, 17.6 → 5.1 ms at
+500; a UI search request's route 1.2-13 ms → 47 µs.
+
+Open, for later:
+
+- Before macOS 26 a command can't start at once (`Task.immediate`): each is a task of its own and the run goes on a
+  main-actor turn later than the Swift's `await` did. One extra hop for the engine's asks there; on 26 and later none.
+- The loop guard's screen test (T/screen-engine-tests.swift ~229, "a re-entry held by the loop guard's hold") fails
+  only under heavy load (the hold's end measured on a busy Mac); it passes idle.
+- Still to do before the merge: the gate and the screen suite (`idle-cost`, `idle-profile`, `live-resize`,
+  `page-frames`, `pane-clicks`, a switch, a peek open), never run on these branches.
 
 ## Step 4: the sidebar's rules into the core (Tirth, 2026-11-22)
 

@@ -1,7 +1,8 @@
 // Margin's own window in the shell (MarginWindow.swift, MarginWindowController.swift; docs/MARGIN-APP.md phase 2).
 //
 // The windows draw the library (LibraryWindowSource, HostedSession.swift, made in ShellHostedGlue.swift) once it
-// opened. DataSetWindowSource is the fallback when it didn't, and gives the settings either way: one browser
+// opened. DataSetWindowSource is the fallback when it didn't, and gives the settings and site icons either way
+// (`settingsAndIcons`, each draw of the library's): one browser
 // profile's lasting data set (DataSync.swift, read only), turned into the
 // State shape pages draw as the extension's stateFromDataSet would (extension/shared/data-set.ts), every Margin
 // tab a kept tab (nothing is open in Margin's window yet). Choosing a space (per window) and a setting changed (the
@@ -96,16 +97,37 @@ final class DataSetWindowSource: MarginWindowSource {
         }
     }
 
+    // The whole State (the no-rules fallback's, until step 4: ShellHostedGlue makeHostedSource).
     func snapshot() -> JSONObject {
         let p = pick()
         var state = Self.state(values: { collection in p.map { self.data.values(collection, of: $0) } ?? [:] }, active: active)
-        guard !settings.isEmpty || !themeSettings.isEmpty, var s = state["settings"] as? JSONObject else { return state }
+        if let s = state["settings"] as? JSONObject { state["settings"] = overlaid(s) }
+        return state
+    }
+
+    // What the library's snapshot takes of the profile (LibraryWindowSource, every draw), no State built: its settings
+    // with each theme's own under `themes` and what was changed in the UI over them, and its site icons. The same
+    // values as `snapshot()`'s `settings` and `favicons`.
+    func settingsAndIcons() -> (settings: JSONObject, icons: JSONObject) {
+        let p = pick()
+        return (drawnSettings(p), p.map { data.values("siteIcons", of: $0) } ?? [:])
+    }
+    // (The settings alone: a UI request's, a search's engine and the favorites' scope.)
+    var drawnSettings: JSONObject { drawnSettings(pick()) }
+    private func drawnSettings(_ p: DataProfile?) -> JSONObject {
+        var s: JSONObject = p.map { data.values("settings", of: $0) } ?? [:]
+        s["themes"] = p.map { data.values("themeSettings", of: $0) } ?? [:]
+        return overlaid(s)
+    }
+    // The settings changed in the UI over the set's (each theme's over its own).
+    private func overlaid(_ base: JSONObject) -> JSONObject {
+        guard !settings.isEmpty || !themeSettings.isEmpty else { return base }
+        var s = base
         s.merge(settings) { _, new in new }
         var themes = s["themes"] as? JSONObject ?? [:]
         for (id, patch) in themeSettings { themes[id] = (themes[id] as? JSONObject ?? [:]).merging(patch) { _, new in new } }
         s["themes"] = themes
-        state["settings"] = s
-        return state
+        return s
     }
 
     @discardableResult func perform(_ type: String, _ payload: JSONObject) -> JSONObject? {
