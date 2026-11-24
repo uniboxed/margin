@@ -69,13 +69,18 @@ test('feature names: no string in the extension, Margin\'s UI or Margin.app name
     ...files(join(ROOT, 'app/shared'), /\.ts$/),
   ];
   const swift = [...files(join(ROOT, 'app/platforms/macos'), /\.swift$/), ...files(join(ROOT, 'app/engines'), /\.swift$/)];
+  // (The core's and the ffi's Rust: the session's and the library's words are built there since the core refactor's
+  // steps 3 and 4. Its strings are "…", r"…" and r#"…"#, read as Swift's are; its tests files are left out as tests/ is.)
+  const rust = [...files(join(ROOT, 'app/shared/core/src'), /\.rs$/), ...files(join(ROOT, 'app/platforms/macos/ffi/src'), /\.rs$/)]
+    .filter((f) => !/_tests\.rs$|\/tests\.rs$/.test(f));
   const bad: string[] = [];
   for (const f of sources) for (const s of strings(readFileSync(f, 'utf8'))) if (found(s)) bad.push(`${rel(f)}: ${JSON.stringify(s.slice(0, 120))}`);
-  for (const f of swift) for (const s of strings(readFileSync(f, 'utf8'), true)) if (found(s)) bad.push(`${rel(f)}: ${JSON.stringify(s.slice(0, 120))}`);
-  assert.ok(sources.length > 50 && swift.length > 20, `the sources found: ${sources.length} TypeScript, ${swift.length} Swift`);
+  for (const f of [...swift, ...rust]) for (const s of strings(readFileSync(f, 'utf8'), true)) if (found(s)) bad.push(`${rel(f)}: ${JSON.stringify(s.slice(0, 120))}`);
+  assert.ok(sources.length > 50 && swift.length > 20 && rust.length > 50, `the sources found: ${sources.length} TypeScript, ${swift.length} Swift, ${rust.length} Rust`);
   // (The scanner sees the words it should: Margin's own names, in a TypeScript and a Swift file.)
   assert.ok(strings(readFileSync(join(ROOT, 'app/shared/ui/settings-form.ts'), 'utf8')).includes('Link Rules'));
-  assert.ok(strings(readFileSync(join(ROOT, 'app/platforms/macos/shell/HostedPeek.swift'), 'utf8'), true).some((s) => s.startsWith('Quick Tab open')));
+  assert.ok(strings(readFileSync(join(ROOT, 'app/shared/core/src/session/card.rs'), 'utf8'), true).some((s) => s.startsWith('Quick Tab open')));
+  assert.ok(strings(readFileSync(join(ROOT, 'app/platforms/macos/shell/MarginWindowController.swift'), 'utf8'), true).length > 50);
   assert.ok(found('Arc’s look') && found('Little Arc') && found('Open in Peek') && !found('Arcadia') && !found('the sidebar peeks'), 'what counts as Arc\'s names');
   assert.deepEqual(bad, []);
 });
