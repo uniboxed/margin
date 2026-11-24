@@ -9747,3 +9747,21 @@ Both parts merged (`fix/link-resilience-link` into the session's part): one canc
 - **Not here**: the e2e for the preparation and for no start screen with an app last (the e2e world has no early full
   screen, so no preparation can run there at all: the core's and the unit checks pin them); the engine preparing a
   window out of sight while an app is shown.
+
+## The WebKit host's `undrawn`: a race in the harness, not a regression (2026-11-24)
+
+- **Seen**: on fix/link-resilience-int the gate's `undrawn` failed 4 checks: `PASS A: linked` 2 ms after the copy's
+  hello, `appDrawn false` then `drawn kept: no copy linked`, the snapshot 2 ms later. The link server knows a copy's
+  window only from its first snapshot (link-server/main.swift `firstWindow`), and the scenario's `linked('A')` passes on
+  the page's `appLink` state, which the copy writes as it says hello (`linked()` → `setPageState('linked')`), a few ms
+  before its snapshot is read and sent (`snapshot()` reads storage and the windows first). That order is unchanged
+  since before link resilience.
+- **Measured**: the same scenario at 6919c854 (fix/waker-quit plus the design's doc only) failed 1 run in 10, and once
+  more passed with the check seeing `linked` before the snapshot; at 0e3fae3a 1 in 6. The check polls every 100 ms: it
+  fails when a poll lands in the 2–4 ms between hello and snapshot.
+- **Fix (the harness only, no change to Margin)**: a `drawn` asked while a copy is linked but its first snapshot hasn't
+  come is held ("drawn held: the copy's first snapshot not here yet") and sent as that snapshot names the window. 20 runs:
+  none failed, the hold taken in 5. Moving the copy's `linked` after its snapshot was not done: it would change what
+  pages see, which the link resilience design doesn't ask for.
+- `npm run test:webkit` (41 scenarios), `npm test` (1112), `tools/app-tests/run.sh all` (2156 unit, 339 e2e) and
+  `scripts/rust-test.sh` green.

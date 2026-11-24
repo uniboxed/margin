@@ -41,6 +41,8 @@ final class Harness: ExtensionLinkDelegate {
   var asked = Set<String>()
   var firstWindow: [String: Int] = [:] // each copy's (epoch's) first window, as its first snapshot listed it
   var current: LinkConnection?
+  // A `drawn` asked for while the copy was linked but its first snapshot hadn't come: sent with it.
+  var heldDrawn: Bool?
 
   init() {
     link = SocketLink(dispatch: dispatcher, safariSince: { nil }, wake: Notification.Name("com.unibox.margin.test.link.\(getpid())"))
@@ -66,6 +68,11 @@ final class Harness: ExtensionLinkDelegate {
         say(["ev": "snapshot", "seq": state.seq, "keys": state.keys.sorted(), "spaces": spaces, "windows": windows])
         guard firstWindow[state.epoch] == nil, let w = windows.first, let id = int(w["windowId"]) else { return }
         firstWindow[state.epoch] = id
+        if let on = heldDrawn, current === c {
+          heldDrawn = nil
+          c.send(.drawn(epoch: c.epoch, windowId: id, on: on))
+          say(["ev": "drawn sent", "windowId": id, "on": on])
+        }
       case .delta:
         say(["ev": "delta", "seq": state.seq, "keys": state.keys.sorted()])
       case .windows:
@@ -103,7 +110,7 @@ final class Harness: ExtensionLinkDelegate {
   }
 
   func linkDown(_ c: LinkConnection, _ why: String) {
-    if current === c { current = nil }
+    if current === c { current = nil; heldDrawn = nil }
     say(["ev": "down", "why": why])
   }
 }
@@ -138,6 +145,11 @@ FileHandle.standardInput.readabilityHandler = { handle in
           if let c = harness.current, let id = harness.firstWindow[c.epoch] {
             c.send(.drawn(epoch: c.epoch, windowId: id, on: on))
             say(["ev": "drawn sent", "windowId": id, "on": on])
+          } else if harness.current != nil {
+            // (Linked, its snapshot not here yet: the copy says hello and writes `linked` for its pages before its
+            // snapshot is read, so a scenario's check can see it linked first. Sent as the first snapshot names the window.)
+            harness.heldDrawn = on
+            say(["ev": "drawn held: the copy's first snapshot not here yet"])
           } else { say(["ev": "drawn kept: no copy linked"]) }
         }
       }
