@@ -291,7 +291,7 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of themesInS
         const count = (await sent()).length;
         const chip = await rect('.chip', 1);
         await page.mouse.click(chip.x, chip.y, { button: 'right' });
-        assert.deepEqual((await vm()).menu, ['Edit Space…', 'Rename Space', '', 'New Space', '', 'Delete Space']);
+        assert.deepEqual((await vm()).menu, ['Edit Space…', 'Rename Space', 'Edit Theme Color…', '', 'New Space', '', 'Delete Space']);
         let del = (await ev(() => T.rtBoxText('.menu-item', 'Delete Space')))!;
         await page.mouse.click(del.x, del.y);
         assert.equal((await vm()).menu!.at(-1), 'Really delete?');

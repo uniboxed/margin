@@ -10,7 +10,9 @@ import { neverSleeps, oldSleepPage, siteList } from '../shared/sleep.ts';
 import { isAwayPage } from '../shared/away.ts';
 import { normalizePattern } from '../shared/air-traffic.ts';
 import { FAVORITES_CAP, MAX_FOLDER_DEPTH, boundElsewhere, favoriteScopeOf, folderDepth } from '../shared/pinned-rules.ts';
-import type { AirTrafficRule, ArchiveEntry, KeptTab, SpaceBackground, SplitGroup, State, TabRecord } from '../../types/margin';
+import { backgroundOf } from '../shared/space-background.ts';
+export { BG_APPEARANCES, BG_FITS, BG_TEXTURES, BG_WHEELS, backgroundOf } from '../shared/space-background.ts';
+import type { AirTrafficRule, ArchiveEntry, KeptTab, SplitGroup, State, TabRecord } from '../../types/margin';
 // A kept tab lost with its window: where it was (a window that comes back takes it back).
 type KeptFrom = KeptTab & { from: NonNullable<KeptTab['from']> };
 
@@ -1110,40 +1112,7 @@ function recentTabOfSpace(state: State, windowId: number, spaceId: string | null
 export const THEME_ID = /^[a-z0-9][a-z0-9-]{0,40}$/;
 export const themeIdOk = (v: unknown): v is string => typeof v === 'string' && THEME_ID.test(v);
 
-// A space's background (M2.9, Edit Theme Color: docs/SPACE-BACKGROUNDS.md), read from anything: colours `#rrggbb`
-// (lowercased, the first three), the rest each its default when it isn't one of its values, numbers clamped to 0–1 and
-// rounded (intensity to 0.01, amount to 0.05, a picture's focus to 0.001), a picture only with a SHA-256 id; null when
-// it has neither a colour nor a picture (none: the theme's own). Keys in this order. margin-core's twin:
-// library/state.rs background_of, which the shared vectors hold to this.
-export const BG_WHEELS = ['complementary', 'analogous'] as const;
-export const BG_TEXTURES = ['grain', 'sand', 'denim', 'tweed', 'dots', 'grid'] as const;
-export const BG_APPEARANCES = ['auto', 'light', 'dark'] as const;
-export const BG_FITS = ['cover', 'contain', 'tile'] as const;
-const BG_HEX = /^#[0-9a-f]{6}$/i;
-const BG_IMAGE_ID = /^[0-9a-f]{64}$/;
-const bgObject = (v: unknown): v is Record<string, any> => !!v && typeof v === 'object' && !Array.isArray(v);
-const oneOf = <T extends string>(list: readonly T[], v: unknown, or: T): T => ((list as readonly unknown[]).includes(v) ? v as T : or);
-// 0–1 in steps of 1/steps (`v > 0 ? …` so -0 reads as 0), `or` for what isn't a finite number.
-const unit = (v: unknown, or: number, steps: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.round((v > 0 ? (v > 1 ? 1 : v) : 0) * steps) / steps : or);
-
-export function backgroundOf(v: unknown): SpaceBackground | null {
-  if (!bgObject(v)) return null;
-  const colors = Array.isArray(v.colors) ? v.colors.filter((c: unknown): c is string => typeof c === 'string' && BG_HEX.test(c)).slice(0, 3).map((c: string) => c.toLowerCase()) : [];
-  const i = v.image;
-  const image = bgObject(i) && typeof i.id === 'string' && BG_IMAGE_ID.test(i.id)
-    ? { id: i.id, fit: oneOf(BG_FITS, i.fit, 'cover'), focus: (Array.isArray(i.focus) && i.focus.length === 2 ? [unit(i.focus[0], 0.5, 1000), unit(i.focus[1], 0.5, 1000)] : [0.5, 0.5]) as [number, number] }
-    : null;
-  if (!colors.length && !image) return null;
-  return {
-    colors,
-    wheel: oneOf(BG_WHEELS, v.wheel, 'analogous'),
-    intensity: unit(v.intensity, 0.5, 100),
-    texture: oneOf(BG_TEXTURES, v.texture, 'grain'),
-    amount: unit(v.amount, 0, 20),
-    appearance: oneOf(BG_APPEARANCES, v.appearance, 'auto'),
-    ...(image ? { image } : {}),
-  };
-}
+// A space's background: extension/shared/space-background.ts (the UI reads it too).
 
 function createSpace(state: State, { id, name, emoji, color, theme }: { id: string; name?: string; emoji?: string; color?: string; theme?: string | null; }) {
   const space: State['spaces'][number] = {
@@ -1175,7 +1144,8 @@ function updateSpace(state: State, spaceId: string, patch: { name?: string; emoj
     if (value) allowed[key] = value;
   }
   const theme = themeIdOk(patch.theme) ? patch.theme : patch.theme === null ? null : undefined;
-  const background = bgObject(patch.background) ? backgroundOf(patch.background) : patch.background === null ? null : undefined;
+  const b = patch.background;
+  const background = b && typeof b === 'object' && !Array.isArray(b) ? backgroundOf(b) : patch.background === null ? null : undefined;
   return {
     ...state,
     spaces: state.spaces.map((s) => {

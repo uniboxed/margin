@@ -489,6 +489,9 @@ const withRuntime = Object.assign(T, {
   rtBackground() { return rt.runtime!.backgroundDrawn(); },
   rtCornerFillGround() { return cornerFill(rt.target.querySelector('m-page'), { ground: rt.runtime!.backgroundAt }); },
   rtBackgroundAt(x: number, y: number) { return rt.runtime!.backgroundAt(x, y); },
+  // Edit Theme Color (M2.9 step 4): its parts (boxes and states: its content is closed), whether it's open and where.
+  rtPicker() { return rt.runtime!.pickerParts(); },
+  rtPanel() { return { open: rt.runtime!.panelOpen, rect: rt.runtime!.panelRect() }; },
   rtVars(names: string[]) {
     const root = rt.runtime!.view.rootElement();
     if (!root) return null;

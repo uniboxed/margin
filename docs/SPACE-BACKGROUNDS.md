@@ -243,23 +243,27 @@ it. The code: `app/shared/ui/background.ts` (the layer), `background-look.ts` (w
 - Neubrutalism (fixed light) and Pixel (fixed dark) keep their look. Only the background layer and its palette follow.
 - Safari's pages aren't affected, and the tooltip says so.
 
-### 4. The picker: Margin's own component
+### 4. The picker: Margin's own component (built: step 4)
 
-- A Margin-owned panel (closed shadow root, `all: initial`, its words in the component, not the theme's), so it looks the same in every theme. It's a TypeScript module that works without a host, so it's tested in Chromium and WebKit.
+- A Margin-owned panel (`ui/picker/panel.ts`: a top-layer popover in a closed shadow root, its own style pinned, its words in the component, not the theme's), so it looks the same in every theme. Its model is pure (`ui/picker/model.ts`: each edit a step from one picker state to the next), and the behaviour that saves it (`ui/behaviors/background-picker.ts`) runs without a host, so all three are tested in Node, Chromium and WebKit.
 - **Controls, as in the prototype:**
-  - appearance buttons;
-  - the dotted field with up to three knobs;
+  - appearance buttons (automatic, light, dark);
+  - the field, a hidden wheel (the angle the hue, the distance from the centre the lightness, in OKLCH), with up to three knobs; the others follow the key by the rule (complementary 180°, or 120° and 240°; analogous 38°, or 38° each way: Margin's angles);
   - −/+ and the wheel pill;
-  - preset pages (Margin's own colours, today's 8 `SPACE_COLORS` on page one);
-  - the wavy slider;
-  - the dial (turn the ring, drag the centre, scroll; click or a sideways swipe changes texture);
-  - the picture button and drop.
-- **Live:** dragging redraws the background layer on every animation frame. Nothing is saved until the gesture ends.
+  - preset pages (five pages of nine, today's 8 `SPACE_COLORS` on page one; a preset is its exact colour);
+  - the wavy slider (the intensity);
+  - the dial (turn the ring, drag the centre, scroll; a click or a sideways swipe the next texture; at 0 a texture starts at 25%);
+  - Use for All Spaces, Done.
+  - The picture button and drop come with step 7.
+- **Live:** while a gesture runs, the background layer is redrawn once a frame (`rt.previewBackground`, held). Nothing is saved until the gesture ends.
 - **Saving:**
-  - Closing (Done, a click outside) saves one `space.update {background, color}`. Escape restores the value from when the panel opened. ⌘Z undoes one gesture.
-  - "Use for all spaces" sends the same `space.update` for every space of the profile, in one batch.
-- **Where it opens:** "Edit Theme Color…" in the space's menu (`menu-items.ts`, after the theme items), and a button in the space's editor.
-- **Its glass:** see step 5.
+  - Each gesture's end (a click, a drag let go, a burst of scrolling or keys at rest, 350 ms) saves once: `space.setBackground {space, background, color}` (Margin's own action, behaviour-only), sent as `renameSpace {spaceId, background, color}`, the key colour the space's colour. It's drawn ahead until the state has it. (The plan said one save on close. Saving per gesture lets the window's appearance, which follows the state (step 3), change at the click, and loses nothing when the window goes. `space.update` wasn't used because it is the editor's whole save, with a name and an emoji.)
+  - ⌘Z goes back a saved step, saving it again. Escape restores the value from when the panel opened, then closes it.
+  - Done, a press outside, another space shown, or the space gone: closed, what's saved kept.
+  - "Use for all spaces" saves the same value to every space of the profile, one request each.
+- **Where it opens:** "Edit Theme Color…" in the space's menu (`menu-items.ts`, after Rename Space), where the menu was. `space.editBackground` is a theme's to name too (a theme's button: the picker opens beside it). The space editor has no button yet: its save sends the colour it shows and would overwrite the key colour the picker saved, so it waits until the editor shows the background's.
+- **While it's open**, Margin.app gives the page the keys and is told the panel takes the pointer (`overlay.ts`: `panelOpen`, `panelRect`), as for Margin's menus.
+- **Its glass:** see step 5. **Its ticks:** an `onTick` hook, step 6.
 
 ### 5. The panel's glass: two candidates, settled by a spike
 
@@ -353,7 +357,7 @@ The spike's measurements, which decide between them:
 | 1 | `feat(m2.9)`: a space's background in the library | core `state.rs`, `model/spaces.rs`, `actions.rs` (`rename_space`), `values.rs`, `snapshot.rs` (an object-or-absent writer); TS `model.ts`, `library.ts`, `types/margin.d.ts`, `data-set.ts`; vectors (`generate.ts`, `edges.ts`, re-recorded); `docs/DATA.md` | Rust unit tests per rule, an edge case per wrong type, the vectors on both sides, data-set round-trip |
 | 2 | `feat(m2.9)`: Margin's background layer and palette under every theme | `ui/background.ts`, `background-look.ts`, `color.ts`, `textures.ts` (new), `runtime.ts`, `render.ts`, `view-model.ts`, `host-app.ts` `cornerFill`, `overlay.ts`, the five themes' CSS, themes README | Theme tests: each theme with and without a background, light, dark, more contrast, every texture, a theme without the contract, `--m-fg` on `--m-bg` ≥ 4.5:1, corner fill sRGB, cross-fade, reduced motion |
 | 3 | `feat(m2.9)`: appearance per space | core `object.rs`, FFI `data.rs`, `Library.swift`, `HostedSession.swift`, `MarginWindowController.swift` (Windows later, with its library windows) | Core and FFI tests; a Swift unit test of WebKit's side; end-to-end: the window and its page follow the shown space |
-| 4 | `feat(m2.9)`: the Edit Theme Color picker | `ui/picker/*` (new), `menu-items.ts`, `editor.ts`, `actions.ts` (`space.update` carries `background`), `runtime.ts` | Behaviour tests in Chromium and WebKit: drag, wheel, −/+, presets, slider, dial (turn, drag, scroll, click, swipe), undo, Escape, save as one request, Use for all spaces, keyboard |
+| 4 | `feat(m2.9)`: the Edit Theme Color picker (built) | `ui/picker/*`, `behaviors/background-picker.ts` (new), `extension/shared/space-background.ts` (the rule, out of `model.ts`), `menu-items.ts`, `menus.ts`, `actions.ts` (`space.editBackground`, `space.setBackground`), `runtime.ts`, `overlay.ts` | Behaviour tests in Chromium and WebKit: drag, wheel, −/+, presets, slider, dial (turn, drag, scroll, click, swipe), undo, Escape, save as one request, Use for all spaces, keyboard |
 | 5 | `feat(m2.9)`: the picker on system glass (A or B per spike) | Swift; DECISIONS.md (the glass exception) | Swift unit tests; e2e: opens, places, closes, keeps focus |
 | 6 | `feat(m2.9)`: haptic or sound ticks | Swift device detection, `said.rs`/FFI/`PageCore.swift` (`haptic.level`), picker, settings (`model.ts` + core) | Unit tests of the choice table (kind × setting × platform); the rate limit; Swift tests of the classifier with synthesized events |
 | 7 | `feat(m2.9)`: pictures as backgrounds | core store (new), scheme route (Swift), `serve.rs`, picker button and drop, snapshot's average colour | Store tests (atomic, bad input, size cap, metadata stripped, cleanup); the route refuses everything but a stored id; security tests (a theme can't load it); e2e: add, show, remove |

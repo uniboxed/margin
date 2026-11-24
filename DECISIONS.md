@@ -9635,3 +9635,39 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
 - **A flaky check that was there before**: "screen: a re-entry held by the loop guard's hold" (a timing check of the
   hosting's loop guard, untouched here) fails now and then: 1 of 5 runs of the app's unit checks on this branch, 2 of
   6 on the base (71e11707) on this Mac. The space-appearance checks passed in every run.
+
+## M2.9 step 4: Edit Theme Color, the space background picker (`feat/space-backgrounds`, 2026-11-24)
+
+- **What it is**: Arc's Edit Theme Color in Margin: "Edit Theme Color…" in the space's menu opens Margin's own panel
+  where the menu was (a theme's button may name `space.editBackground` too: the panel opens beside it). Its controls
+  are the prototype's: the appearance (automatic, light, dark), the field with up to three knobs, −/+ and the rule
+  (complementary, analogous), five pages of presets, the wavy slider (the intensity), the dial (the texture and its
+  amount), Use for All Spaces, Done. The picture button is step 7, the panel's glass step 5, its ticks step 6 (an
+  `onTick` hook kept for them).
+- **Three parts**, each tested where it runs: the model (`ui/picker/model.ts`, pure: the field a hidden wheel, the
+  angle the hue and the distance the lightness in OKLCH; each edit a step from one picker state to the next; what's
+  saved the model's own reading, `backgroundOf`), the panel (`ui/picker/panel.ts`: a top-layer popover in a closed
+  shadow root, its style pinned and its words its own, so it's the same in every theme), and the behaviour that saves
+  it (`ui/behaviors/background-picker.ts`).
+- **Saved per gesture, not on close** (the plan said on close): a click, a drag let go, a burst of scrolling or keys at
+  rest (350 ms) is one `space.setBackground {space, background, color}`, sent as `renameSpace` with the key colour as
+  the space's colour. While a gesture runs, Margin's layer is redrawn once a frame (`rt.previewBackground`, held), and
+  nothing is sent. Why per gesture: the window's light or dark follows the state (step 3), so a click on ☾ turns the
+  window at once, and nothing is lost when the window goes. ⌘Z goes back a saved step (saved again); Escape saves what
+  the space had when the panel opened and closes; Done, a press outside, another space shown, or the space gone close
+  it with what's saved kept. Use for All Spaces is one request per space.
+- **Its own action, not `space.update`**: `space.update` is the editor's whole save (a name, an emoji, a colour);
+  the picker knows only the background, and `renameSpace` keeps what it isn't sent. `space.setBackground` is
+  behaviour-only (an object argument: only Margin sends it), checked as the model reads it (a value that reads as none
+  is refused).
+- **No button in the space editor yet**: the editor's save sends the colour it shows and would overwrite the key colour
+  the picker saved. It waits until the editor shows the background's own.
+- **The rule moved to `extension/shared/space-background.ts`**: the picker and its action read `backgroundOf`, and the
+  UI must not load the model (tests/layering.test.ts). `state/model.ts` takes it from there and re-exports it (one copy),
+  as `pinned-rules.ts`.
+- **While it's open**, Margin.app gives the page the keys and is told the panel takes the pointer (`overlay.ts`:
+  `panelOpen`, `panelRect`), as for Margin's menus.
+- **Tests**: the model and actions in Node (`tests/ui-picker.test.ts`); the panel in WebKit and Chromium as a person
+  uses it (`tests/theme/picker.test.ts`): opening from the menu, the field, a drag, −/+, the rule, presets, the
+  slider, the dial (ring, centre, click, scroll, swipe), the appearance, the keys, ⌘Z, Tab kept inside, Use for All
+  Spaces, Escape, the three ways it closes, and every built-in theme opening it.

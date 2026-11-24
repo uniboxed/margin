@@ -18,7 +18,7 @@ import { themeChoices } from './space-theme.ts';
 import type { Host } from './host.ts';
 import type { LoadedTheme } from './theme-loader.ts';
 import type { UiState, ViewModel } from './view-model.ts';
-import type { State } from '../../../types/margin';
+import type { SpaceBackground, State } from '../../../types/margin';
 import { View } from './render.ts';
 import { createBackground } from './background.ts';
 import { checkIconUrl } from './sanitize.ts';
@@ -41,6 +41,7 @@ import { installScroll } from './behaviors/scroll.ts';
 import { installSwipe } from './behaviors/swipe.ts';
 import { installPress } from './behaviors/press.ts';
 import { installSettings } from './behaviors/settings.ts';
+import { installBackgroundPicker } from './behaviors/background-picker.ts';
 import { createIntents } from './intents.ts';
 import type { Front } from './intents.ts';
 import { createRowMotion } from './row-motion.ts';
@@ -99,6 +100,13 @@ export type Rt = {
   spaceView(id: string): ViewModel | null,
   /** A short note at the top of the window (the `toast` part, or Margin's own). */
   showToast(text: string, ms?: number): void,
+  /**
+   * A space's background drawn ahead of the state (the picker: ui/behaviors/background-picker.ts): `held` while a
+   * gesture runs (until the next call), else until the state has it (PENDING_MS at most). Nothing else is drawn again.
+   */
+  previewBackground(spaceId: string, value: SpaceBackground | null, options: { held: boolean }): void,
+  /** Margin's own panel (the picker) opened or closed: the host is told (`onPanel`). */
+  panelChanged(): void,
   // Each behavior's own (createRuntime: set before any is installed).
   behaviors: Record<string, any>,
 };
@@ -114,7 +122,7 @@ export type Rt = {
  * pill and notice); `onSwitchRun`: each chain of switches as it ends, with a
  * host whose UI stays on screen (shared/switching.ts SwitchRun: Margin.app's log)
  */
-export function createRuntime({ host, theme, container, ui: start = {}, onWarn, log, onSwitchSlow, onSwitchFailed, onPalette, onSwitching, onSwitchRun, onGround }: {
+export function createRuntime({ host, theme, container, ui: start = {}, onWarn, log, onSwitchSlow, onSwitchFailed, onPalette, onSwitching, onSwitchRun, onGround, onPanel }: {
   host: Host,
   theme: LoadedTheme,
   container: ShadowRoot | Document,
@@ -128,6 +136,8 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   onSwitchRun?: (run: import('../../../extension/shared/switching.ts').SwitchRun) => void,
   /** The ground Margin draws under the theme changed (a space's background shown, changed or gone): what's around the page's corners may have (`backgroundAt`). */
   onGround?: () => void,
+  /** Margin's own panel (Edit Theme Color) opened or closed: while it's open it takes the keys and the pointer where it is (`panelOpen`, `panelRect`). */
+  onPanel?: () => void,
 }) {
   // (Always with a palette: closed, or as it's open.)
   let ui: Ui = { sidebar: null, palette: CLOSED_PALETTE, menu: null, editing: null, editor: null, notice: null, prompt: null, toast: null, focused: true, switchingTo: null, newTabPending: false, opening: null, ...start };
@@ -162,7 +172,8 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   let expiryTimer: Timer | null = null;
   function expireLater() {
     const ends = [intents.nextDeadline() ?? undefined, pending.settings?.until, ...[...pending.folders.values()].map((p) => p.until), ...[...pending.spaces.values()].map((p) => p.until),
-      pending.space ? pending.space.since + PENDING_MS + 50 : undefined, pending.hold ? pending.hold.until + 1 : undefined, pending.themeSettings && !pending.themeSettings.live ? pending.themeSettings.until : undefined].filter((t) => t != null);
+      pending.space ? pending.space.since + PENDING_MS + 50 : undefined, pending.hold ? pending.hold.until + 1 : undefined, pending.themeSettings && !pending.themeSettings.live ? pending.themeSettings.until : undefined,
+      backgroundAhead?.until != null ? backgroundAhead.until + 5 : undefined].filter((t) => t != null);
     clearTimeout(expiryTimer);
     if (!ends.length) return;
     expiryTimer = setTimeout(() => render(), Math.max(0, Math.min(...ends) - Date.now()) + 5);
@@ -302,12 +313,24 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   // it's drawn as on the theme's root: `m-background` while there's one, `m-appearance` its light or dark (themes
   // README, "A space's background"). Placed at once the first time (later layouts place it: the view's onLayout).
   const media = (query: string) => !!win.matchMedia?.(query).matches;
+  // A background drawn ahead of the state (rt.previewBackground): `until` null while held.
+  let backgroundAhead: { spaceId: string, value: SpaceBackground | null, until: number | null } | null = null;
+  function backgroundShown(space: ViewModel['space'] | undefined): SpaceBackground | null {
+    const stored = space?.background ?? null;
+    const ahead = backgroundAhead;
+    if (!ahead || !space || ahead.spaceId !== space.id) return stored;
+    if (ahead.until !== null && (JSON.stringify(stored) === JSON.stringify(ahead.value) || Date.now() > ahead.until)) {
+      backgroundAhead = null;
+      return stored;
+    }
+    return ahead.value;
+  }
   function followBackground() {
     const space = vm?.space;
     const was = background.active();
     const before = background.revision();
     const appearance = background.update({
-      spaceId: space?.id ?? '', background: space?.background ?? null,
+      spaceId: space?.id ?? '', background: backgroundShown(space),
       systemDark: media('(prefers-color-scheme: dark)'), moreContrast: media('(prefers-contrast: more)'), reducedMotion: media('(prefers-reduced-motion: reduce)'),
     });
     if (appearance && !was) background.place(view.measurePageOuter());
@@ -740,6 +763,10 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       case 'folder.setName':
         pending.folders.set(arg.folder, { name: arg.name, until: Date.now() + PENDING_MS });
         break;
+      case 'space.setBackground':
+        // (Its key colour, the space's colour: shown at once, as a rename's.)
+        if (typeof arg.color === 'string') pending.spaces.set(arg.space, { patch: { color: arg.color }, until: Date.now() + PENDING_MS });
+        break;
       case 'space.setName': case 'space.update': {
         const patch = name === 'space.setName' ? { name: arg.name } : Object.fromEntries(Object.entries({ name: arg.name, emoji: arg.emoji, color: arg.color }).filter(([, v]) => typeof v === 'string' && v.trim()).map(([k, v]) => [k, v.trim()]));
         if (Object.keys(patch).length) pending.spaces.set(arg.space, { patch, until: Date.now() + PENDING_MS });
@@ -846,6 +873,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       case 'preview.forward':
         return !!ui.peek && !ui.peek.littleArc && !!host.perform?.('peek.forward', {});
       case 'space.edit': return behaviors.editor.open(arg);
+      case 'space.editBackground': return behaviors.backgroundPicker.open(arg, info);
       case 'space.rename': return behaviors.rename.start('space', arg);
       case 'folder.rename': return behaviors.rename.start('folder', arg);
       case 'tab.rename': return behaviors.rename.start('tab', arg);
@@ -972,6 +1000,12 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     },
     cancel(id: ReturnType<typeof setTimeout> | null | undefined) { clearTimeout(id); timers.delete(id); },
     get destroyed() { return destroyed; },
+    previewBackground(spaceId: string, value: SpaceBackground | null, { held }: { held: boolean }) {
+      backgroundAhead = { spaceId, value, until: held ? null : Date.now() + PENDING_MS };
+      followBackground();
+      if (!held) expireLater();
+    },
+    panelChanged() { onPanel?.(); },
     /** The model with space `id` shown in this window (one of vm.spaces), for a swipe drawing it beside the current
      *  one; null if it isn't one. */
     spaceView(id: string) {
@@ -1001,6 +1035,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     scroll: installScroll(rt),
     swipe: installSwipe(rt),
     settings: installSettings(rt),
+    backgroundPicker: installBackgroundPicker(rt),
   });
   const list = Object.values(behaviors);
 
@@ -1084,6 +1119,11 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     backgroundAt: (x: number, y: number) => background.colorAt(x, y),
     /** What the background layer has drawn (ui/background.ts drawn), for the tests. */
     backgroundDrawn: () => background.drawn(),
+    /** Edit Theme Color open (Margin's own panel: it takes the keys while it is), and where: [x, y, width, height] in the window's pixels (null: closed). */
+    get panelOpen() { return !!behaviors.backgroundPicker?.openFor; },
+    panelRect: (): number[] | null => behaviors.backgroundPicker?.rect() ?? null,
+    /** The picker's parts, for the tests (its content is closed to them). */
+    pickerParts: () => behaviors.backgroundPicker?.parts() ?? null,
     /** The new-tab launcher's field focused, by the host's word (its overlay shown over a new window: behaviors/palette.js). */
     focusLauncher: () => !!behaviors.palette?.focusLauncher(),
     /** The tab list's scroll: saved now (before a switch), or set (a page prepared for a show). */

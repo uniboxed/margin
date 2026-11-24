@@ -488,7 +488,8 @@ else is ignored and logged.
   split of the item in front, or split with it), `split.open` (a split's id: shown), `split.remove` (a pane out, the rest
   shown), `split.breakOut` (a pane out, shown alone), `split.closePane` (its tab closed: the split goes on), `split.swap`
   and `split.toggleAxis` (a split's id). `split.resize` is Margin's own (its dividers), never a button's.
-- Spaces: `space.switch`, `space.new`, `space.edit`, `space.rename`,
+- Spaces: `space.switch`, `space.new`, `space.edit`, `space.rename`, `space.editBackground` (Edit Theme Color,
+  Margin's own panel for the space's background, opened beside the button; the space's menu has it too),
   `today.clear`.
 - The palette: `palette.open`, `palette.close`, `palette.run` (a row).
 - Menus: `menu.open` (`add`), `menu.run` (an item), `menu.close`.
@@ -507,7 +508,7 @@ else is ignored and logged.
   `launcher.more`, `window.close`, `window.minimise`, `window.fullscreen`.
 - Only Margin's behaviors and menus run `tab.move`, `tab.pinAt`,
   `tab.moveToSpace`, `pin.move`, `folder.move`, `folder.setName`,
-  `space.setName`, `space.update`, `space.setTheme` and `space.delete`.
+  `space.setName`, `space.update`, `space.setTheme`, `space.setBackground` and `space.delete`.
 
 ## Behaviors
 

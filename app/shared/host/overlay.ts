@@ -291,9 +291,11 @@ function reportHits() {
   stats.hits++;
   stats.hitsMs += ms;
   stats.hitsMaxMs = Math.max(stats.hitsMaxMs, ms);
-  // The preview's bar (Margin's own, outside the theme) takes the pointer too.
+  // The preview's bar and Edit Theme Color's panel (Margin's own, outside the theme) take the pointer too.
   const bar = preview.bar.rect();
   if (bar && !all) rects.push(bar);
+  const panel = runtime?.panelRect();
+  if (panel && !all) rects.push(panel);
   reportChrome(root);
   reportPeekPage();
   const key = JSON.stringify([rects, all]);
@@ -550,6 +552,8 @@ async function mount(pkg: any, { fallback = false, preview: previewing = false }
     onPalette: (what) => { if (splitPick && what === 'close') splitPick = null; else if (splitPick && what === 'run') splitPick.picked = true; },
     // (A space's background drawn, changed or gone: the colours around the page's corners told again.)
     onGround: () => measureNow(),
+    // (Edit Theme Color opened or closed: the keys taken or given back with it, and what takes the pointer told again.)
+    onPanel: () => { hitsSoon(); queueMicrotask(followPopup); },
   });
   // (The page's own hover: the theme's sheets and Margin's own, every :hover also [m-hover]; the marks start again.)
   for (const sheet of runtime.view.sheets ?? []) { try { withHoverAttr(sheet.cssRules); } catch { /* a sheet not readable: its :hover only */ } }
@@ -969,7 +973,7 @@ let keysCheck = false;
 // are Margin's while it's up, and the app doesn't hand them back to the hosted app at the press that opened it, which
 // made the page lose its focus and the menu close as it came. The hosted app stays the front app throughout: Margin's
 // panel takes the keys without making Margin active. Closed: the keys back to the app.)
-const popupOpen = () => !!(runtime?.vm?.menu || runtime?.vm?.prompt);
+const popupOpen = () => !!(runtime?.vm?.menu || runtime?.vm?.prompt || runtime?.panelOpen);
 const stillHasKeys = () => editable(document.activeElement) || preview.bar.shown || popupOpen();
 const setKeys = (on: boolean) => {
   if (on === hasKeys) return;

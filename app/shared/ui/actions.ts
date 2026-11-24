@@ -7,6 +7,7 @@
 // action: the runtime does, once it's checked against the state. An unknown
 // action or a bad argument is ignored and logged.
 import type { State } from '../../../types/margin';
+import { backgroundOf } from '../../../extension/shared/space-background.ts';
 
 // What each action's argument must be:
 //   none   — no argument (anything given is refused);
@@ -77,6 +78,10 @@ export const ACTIONS = Object.freeze({
   'space.update': Object.freeze({ space: 'space', name: 'name', emoji: 'emoji', color: 'hex?', theme: 'theme?' }),
   // A space's theme (ui/space-theme.ts; null: none, the profile's): its menu's Theme items, Settings' Theme.
   'space.setTheme': Object.freeze({ space: 'space', theme: 'theme?' }),
+  // A space's background (M2.9: Edit Theme Color, ui/behaviors/background-picker.ts): the picker opened for it, and
+  // what it saves (null: none, the theme's own; `color` its key colour, null: as it is).
+  'space.editBackground': 'space',
+  'space.setBackground': Object.freeze({ space: 'space', background: 'background?', color: 'hex?' }),
   'space.delete': 'space',
   'today.clear': 'none',
   'nav.back': 'none',
@@ -210,6 +215,8 @@ function valueOk(kind: string | readonly unknown[], v: any, ctx: ActionContext) 
     // A split's ratios: 2–4 positive numbers (normalized where they're saved).
     case 'ratios': return Array.isArray(v) && v.length >= 2 && v.length <= 4 && v.every((r) => typeof r === 'number' && Number.isFinite(r) && r > 0 && r <= 1);
     case 'theme': return isId(v) && !!ctx.hasTheme?.(v);
+    // A space's background: one the model reads as one (extension/state/model.ts backgroundOf), as plain data.
+    case 'background': return isPlainObject(v) && backgroundOf(v) !== null;
     default: return false;
   }
 }
@@ -354,6 +361,8 @@ export function contextFromState(state: any, paletteIds: Iterable<string> = [], 
 // | space.setName      | {space, name}     | renameSpace                   | { spaceId, name }                       |
 // | space.update       | {space, name, emoji, color, theme?} | renameSpace | { spaceId, name, emoji, color, theme? } |
 // | space.setTheme     | {space, theme}    | setSpaceTheme                 | { spaceId, theme } (null: the profile's) |
+// | space.editBackground | space id        | local: Edit Theme Color       | (it sends space.setBackground)          |
+// | space.setBackground | {space, background, color} | renameSpace          | { spaceId, background (as the model reads it; null: none), color? } |
 // | space.delete       | space id          | deleteSpace                   | { spaceId }                             |
 // | today.clear        | none              | clearToday                    | { windowId }                            |
 // | nav.back, .forward, .reload | none     | host, else goBack, goForward, reload | { windowId }                     |
@@ -437,6 +446,8 @@ export const ACTION_MAP = Object.freeze({
   'space.setName': 'renameSpace',
   'space.update': 'renameSpace',
   'space.setTheme': 'setSpaceTheme',
+  'space.editBackground': 'local',
+  'space.setBackground': 'renameSpace',
   'space.delete': 'deleteSpace',
   'today.clear': 'clearToday',
   'nav.back': 'host | goBack',
@@ -495,7 +506,7 @@ export const ACTION_MAP = Object.freeze({
   'settings.category': 'local',
 });
 
-const LOCAL = new Set(['space.edit', 'space.rename', 'folder.rename', 'tab.rename', 'pin.rename', 'favorite.rename', 'palette.open', 'palette.close', 'menu.open', 'menu.run', 'menu.close', 'editor.save', 'editor.cancel', 'editor.delete', 'editor.color', 'editor.theme',
+const LOCAL = new Set(['space.edit', 'space.editBackground', 'space.rename', 'folder.rename', 'tab.rename', 'pin.rename', 'favorite.rename', 'palette.open', 'palette.close', 'menu.open', 'menu.run', 'menu.close', 'editor.save', 'editor.cancel', 'editor.delete', 'editor.color', 'editor.theme',
   'notice.run', 'notice.close', 'prompt.run', 'prompt.close', 'launcher.more', 'settings.run', 'settings.category', 'tab.copyUrl', 'pin.copyUrl', 'favorite.copyUrl', 'preview.close', 'preview.expand', 'preview.copyUrl', 'preview.setSpace', 'preview.back', 'preview.forward', 'quickTab.open']);
 const NAV = { 'nav.back': 'goBack', 'nav.forward': 'goForward', 'nav.reload': 'reload' };
 
@@ -560,6 +571,7 @@ export function requestFor(name: string, arg: any, { state, ui, platform, row }:
     case 'space.setName': return send('renameSpace', { spaceId: arg.space, name: arg.name });
     case 'space.update': return send('renameSpace', { spaceId: arg.space, name: arg.name, emoji: arg.emoji, color: arg.color, ...(arg.theme !== undefined ? { theme: arg.theme } : {}) });
     case 'space.setTheme': return send('setSpaceTheme', { spaceId: arg.space, theme: arg.theme ?? null });
+    case 'space.setBackground': return send('renameSpace', { spaceId: arg.space, background: arg.background === null ? null : backgroundOf(arg.background), ...(typeof arg.color === 'string' ? { color: arg.color } : {}) });
     case 'space.delete': return send('deleteSpace', { spaceId: arg });
     case 'today.clear': return send('clearToday', { windowId });
     case 'nav.back': case 'nav.forward': case 'nav.reload':
