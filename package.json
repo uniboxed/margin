@@ -38,7 +38,8 @@
     "test:webkit": "node scripts/build.ts && tools/webkit-host/run.sh all",
     "test:screen": "tools/screen-tests/run.sh",
     "safari": "sh scripts/safari.sh",
-    "log:app": "scripts/margin-log.sh"
+    "log:app": "scripts/margin-log.sh",
+    "library:vectors": "node tests/library-vectors/record.ts"
   },
   "devDependencies": {
     "@types/node": "26.6.6",

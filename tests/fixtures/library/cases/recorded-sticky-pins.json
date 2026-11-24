@@ -1,0 +1,26 @@
+{
+  "about": "tests/sticky-pins.test.ts's calls of library.ts, as the test made them (npm run library:vectors).",
+  "from": "recorded",
+  "cases": [
+    {
+      "about": "sticky-pins.test.ts: M2.2 sticky pins: library closeTab unloads without archiving, openPin focuses drifted URL, resetPin navigates back to root",
+      "values": {
+        "spaces": {"a":{"name":"A","order":0}},
+        "pins": {},
+        "folders": {},
+        "tabs": {},
+        "archive": {},
+        "windows": {"1":{"spaceId":"a"}},
+        "imports": {}
+      },
+      "steps": [
+      {"perform":"newTab","payload":{"windowId":1,"url":"https://linear.app/inbox","title":"Inbox"},"env":{"now":1000,"ids":["t001","zq000001x","zq000002x"]},"expect":{"ok":true,"result":{"tabId":"t-t001"},"changes":[{"collection":"tabs","id":"t-t001","value":{"url":"https://linear.app/inbox","title":"Inbox","icon":"","spaceId":"a","order":0,"lastUsed":1000,"selected":true,"target":{"kind":"web","browser":"safari","profile":null}}}],"requests":[{"type":"newTab","windowId":1,"item":"t-t001","url":"https://linear.app/inbox","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"a"}]}},
+      {"perform":"pinTab","payload":{"tabId":"t-t001"},"env":{"now":1000,"ids":["p001","zq000049x","zq000050x"]},"expect":{"ok":true,"result":"p-p001","changes":[{"collection":"pins","id":"p-p001","value":{"spaceId":"a","url":"https://linear.app/inbox","title":"Inbox","folderId":null,"pos":0,"target":{"kind":"web","browser":"safari","profile":null}}},{"collection":"tabs","id":"t-t001","value":{"url":"https://linear.app/inbox","title":"Inbox","icon":"","spaceId":"a","order":0,"lastUsed":1000,"selected":true,"target":{"kind":"web","browser":"safari","profile":null},"pinnedBy":"p-p001"}}],"requests":[]}},
+      {"perform":"updateItem","payload":{"tabId":"t-t001","url":"https://linear.app/issue/ENG-99","title":"ENG-99"},"env":{"now":1000,"ids":["1111","2222","3333","zq000097x","zq000098x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"tabs","id":"t-t001","value":{"url":"https://linear.app/issue/ENG-99","title":"ENG-99","icon":"","spaceId":"a","order":0,"lastUsed":1000,"selected":true,"target":{"kind":"web","browser":"safari","profile":null},"pinnedBy":"p-p001"}}],"requests":[]}},
+      {"perform":"openPin","payload":{"pinId":"p-p001","windowId":1},"env":{"now":1000,"ids":["1111","2222","3333","zq000145x","zq000146x"]},"expect":{"ok":true,"result":{"pin":"p-p001","item":"t-t001"},"changes":[],"requests":[{"type":"openPin","windowId":1,"pin":"p-p001","item":"t-t001","url":"https://linear.app/issue/ENG-99","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"a"}]}},
+      {"perform":"resetPin","payload":{"pinId":"p-p001","windowId":1},"env":{"now":1000,"ids":["1111","2222","3333","zq000193x","zq000194x"]},"expect":{"ok":true,"result":{"pin":"p-p001","item":"t-t001"},"changes":[{"collection":"tabs","id":"t-t001","value":{"url":"https://linear.app/inbox","title":"Inbox","icon":"","spaceId":"a","order":0,"lastUsed":1000,"selected":true,"target":{"kind":"web","browser":"safari","profile":null},"pinnedBy":"p-p001"}}],"requests":[{"type":"resetPin","windowId":1,"pin":"p-p001","item":"t-t001","url":"https://linear.app/inbox","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"a"}]}},
+      {"perform":"closeTab","payload":{"tabId":"t-t001"},"env":{"now":1000,"ids":["1111","2222","3333","zq000241x","zq000242x"]},"expect":{"ok":true,"result":null,"changes":[{"collection":"tabs","id":"t-t001","deleted":true}],"requests":[{"type":"closeTab","item":"t-t001","url":"https://linear.app/inbox","target":{"kind":"web","browser":"safari","profile":null},"spaceId":"a","next":null}]}}
+      ]
+    }
+  ]
+}

@@ -8846,3 +8846,52 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   / 2,000 items, the snapshot's text 0.09 / 0.26 / 0.85 ms (JSC's `snapshot` 1.8 / 4.7 / 15.3 ms), `state_of` from the
   store's set 0.2 / 0.6 / 1.7 ms (once per revision of the set), a perform's diff 0.7 µs for a window set and 3 / 22 /
   85 µs for an item moved (JSC's whole perform 2.5 / 6 / 18.6 ms). A perform and a draw end far cheaper than today's.
+
+## Core refactor step 4, commit 0: the library's shared vectors, as JavaScriptCore answers them (2026-11-23)
+
+- tests/fixtures/library/ (README.md has the format whole; docs/CORE-REFACTOR.md part 8 its summary, kept stable for
+  the parts that load it): `cases/*.json` (each `{ about, from, cases: [{ about, values, steps }] }`, a step one of
+  `perform`, `snapshot`, `import`, `normal`, `target` with its `expect`), `throws.json` (the throw survey's sites) and
+  `js.json` (part 1's cases). A file holds many cases (the design's one case a file would be ~350 files). Steps merge
+  their **expected** changes before the next, so one wrong step fails alone; each collection's ids are in code-point
+  order, the core's store's.
+- Recorded by `npm run library:vectors` (tests/library-vectors/record.ts, ~8 s): Node's module hooks (`registerHooks`)
+  send the ten TS test files' imports of library.ts to a wrapper that records every `perform`, `snapshot`,
+  `importValues`, `stateOf`, `targetOf` and `call` (inputs made the vectors' first: plain JSON, ids sorted, the env's
+  ids padded with fixed `zq000001x`…, trimmed after the last one the answer shows), and of node:test to one that keeps
+  the test's name; every file still passes under it. 318 calls of the tests' ~70 cases, 300 generated sequences of 30
+  steps (generate.ts, seeded: every action and 6 names that aren't, right and wrong payload types, ids that exist and
+  don't, emoji at every cut, JS's odd spaces, equal places and times, addresses that differ by a slash or a fragment),
+  and the throw survey (every action, each payload field as each of 12 wrong JSON types: 2,085 calls). In all 347
+  cases, 9,327 steps (8,750 performs, 289 snapshots, 283 round trips, 3 targets, 2 imports), every one of the 57
+  actions; 7.4 MB (the design guessed 1-3: the snapshots and round trips repeat a library's values; kept, as plain
+  JSON a line a step, for readable diffs).
+- Today's answers are JavaScriptCore's: each step is library.ts's in Node with `URL` deleted from the global object
+  (`new URL` a ReferenceError, as in a bare JSContext), then every case runs again in JSC (tools/library-vectors/
+  jsc.swift, a one-file `JSContext` tool, over dist/app/library.js as buildApp makes it) and JSC's answer is the one
+  kept. They agree on every step but a throw's words; js.json's 26 groups the same in both. A step whose answer
+  differs with `URL` is marked `"url": true` (68): the URL commit re-records them (Tirth's answer 11).
+- A throw is named by its site, `<action>: <Node's words>` (stable across edits; `where` gives the function, from the
+  stack of a copy of library.ts made at run time that keeps what its `catch` caught); throws.json holds JSC's words and
+  Node's. The survey finds **one** site: `createSpace {name: <not a string>}` (model.ts createSpace's `name?.trim()`;
+  JSC: `name?.trim is not a function. (In 'name?.trim()', 'name?.trim' is undefined)`). Every other payload value of the
+  wrong type is checked before it's used (`typeof`, `String(x ?? '')`, `Array.isArray`).
+- A title cut through an emoji, on the Mac today: JSC's `JSON.stringify` writes the half as `\ud83d`, and LibraryRules'
+  `JSONSerialization` refuses the whole answer ("expected low-surrogate code point"), so the action fails (`perform: no
+  answer`, nothing changed), a snapshot comes back empty and an import fails (and runs again at the next launch).
+  Measured with a scratch tool (JSC → its text → `JSONSerialization`). The vectors hold Tirth's answer 3 instead: the
+  broken half dropped (`"cut": true`, 600 steps; library.ts's answer with the half dropped is what both runners
+  compare).
+- The "first of several equal" order is the ids' (Tirth's answer 10): the recorder gives library.ts each collection in
+  code-point order, as the core's store reads it (JS still iterates integer-like keys first: only the windows'
+  `"7"`, `"12"`, which no rule's outcome depends on).
+- Corrected in the design: part 9's "a vector run feeds Rust's output back through LT's `stateOf` and expects no change
+  from `valuesOf(stateOf(…))`" doesn't hold for library.ts itself (a change writes only what moved, so a space's
+  `order` read back can differ, and a value of an odd type is written as given and read as `''`); what holds is that
+  the core writes exactly library.ts's changes, which every vector checks.
+- Run by tests/library-vectors.test.ts (`npm test`: library.ts without `URL`, 24 tests), margin-core's
+  `library::vectors` (`cargo test`: `Engine` with a default `None` per kind, `run`, `Report`, `differ`, `merge`,
+  `data_set`, `js`, `throw_words`; vectors_tests.rs checks the runner with an oracle and js.json against js.rs: every
+  code point's space, the cuts less the broken half, the sort, 41 numbers' strings, rounds, max and min, ratios, 24
+  values' strings, keys and truthiness, 17 fingerprints, 6 import ids, the id check, 23 addresses' regexes, the
+  lowercase, the no-URL answers, and all 9,025 ASCII pairs and 22 id pairs through today's collation).

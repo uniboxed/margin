@@ -14,3 +14,6 @@ pub mod model;
 pub mod snapshot;
 pub mod state;
 pub mod values;
+// The shared vectors (tests/fixtures/library/), for every part's tests.
+#[cfg(test)]
+pub mod vectors;

@@ -2053,40 +2053,59 @@ from L (the cache, `apply`, `importOnce`'s body, the rules' calls), ~74 of LR, ~
 
 #### Part 8: the shared vectors
 
-**Format.** `tests/fixtures/library/` with a README.md (as data-merge's): one JSON file per case group,
+**Format** (commit 0, stable: tests/fixtures/library/README.md has it whole). `tests/fixtures/library/`:
+`cases/*.json` (the steps: `recorded-<test>.json` per TS test file, `generated-00…11.json`, `survey.json`), `throws.json`
+(the throw survey: site → `jsc` and `node` words, `where`, a payload that does it) and `js.json` (part 1's cases, JSC's
+answers). A case file is `{ about, from, cases: [{ about, values, steps }] }` (a file holds many cases: the design's one
+case a file would be ~350 files):
 
 ```json
-{ "about": "…",
-  "values": { "spaces": { "a": { … } }, "tabs": { … } },
-  "steps": [
-    { "perform": "createSpace", "payload": { "windowId": 7, "name": " Work " }, "env": { "now": 1001, "ids": ["id1x", "id2x", …] },
-      "expect": { "ok": true, "result": { "spaceId": "sp-id1x" }, "changes": [ … ], "requests": [ … ] } },
-    { "snapshot": true, "expect": { … } },
-    { "import": { "sets": [ … ], "order": [ … ], "now": 5 }, "expect": { "changes": [ … ], "counts": { … } } } ] }
+{ "about": "…", "from": "recorded",
+  "cases": [ { "about": "library.test.ts: library: spaces are created, …",
+    "values": { "spaces": { "a": { … } }, "tabs": { … } },
+    "steps": [
+      { "perform": "createSpace", "payload": { "windowId": 7, "name": "  Work " }, "env": { "now": 1001, "ids": ["id1x", "id2x", "zq000001x"] },
+        "expect": { "ok": true, "result": { "spaceId": "sp-id1x" }, "changes": [ … ], "requests": [] } },
+      { "perform": "createSpace", "payload": { "name": 5 }, "env": { … },
+        "expect": { "ok": false, "result": null, "error": { "failed": "createSpace: name?.trim is not a function" }, "changes": [], "requests": [] } },
+      { "snapshot": true, "expect": { … } },
+      { "import": { "sets": [ … ], "order": [ … ], "now": 5 }, "expect": { "changes": [ … ], "counts": { … } } },
+      { "normal": true, "expect": { … } },
+      { "target": { "kind": "app", "bundleId": "com.apple.Notes" }, "expect": { … } } ] } ] }
 ```
 
-Steps run in order; each step's changes are merged into the values before the next (as tests/library.test.ts's
-`library()` does: a value or a deletion; the times are the store's, never the rules'). `values` lists each collection's
-ids in code-point order, the order the core's store reads them in, and the TS runner feeds LT that order (part 4's
-"first of several"). Comparison: JSON values, object key order ignored, numbers as numbers, arrays in order; an
-`error` that starts `failed:` compared by the survey's site name, not the engine's words (`"error": {"failed":
-"createSpace.name"}`). `env.ids` always lists enough ids for the step (never the random fallback).
+Steps run in order; after a `perform` or `import` its **expected** changes are merged into the values (a value or a
+deletion, a new id in code-point order; the times are the store's, never the rules'), so one wrong step fails alone.
+`values` lists each collection's ids in code-point order (the store's `BTreeMap`; the recorder hands LT that order, part
+4's "first of several"; JS still iterates integer-like keys, the windows', first: no rule's outcome depends on them).
+`normal` is `valuesOf(stateOf(values), values.imports)` (part 2's round trip), `target` is `targetOf(raw)`. `env.ids`
+always lists enough ids (the test's own, then fixed `zq000001x`…; never the random fallback: a step that drew
+`Math.random` isn't recorded). `expect.result` is null when there's none; `expect.error` only when not `ok`: a refusal's
+words, or `{ "failed": "<site>" }` for a throw, the site `<action>: <Node's words>`, its JSC words in throws.json.
+Flags on a step: `"url": true` (the answer differs when addresses are parsed: today's has no URL, the URL commit
+re-records these), `"cut": true` (LT's answer held half an emoji: dropped, Tirth's answer 3), `"engine": "jsc"` (Node
+differs: JSC's kept; none today). Comparison: JSON values, object key order ignored, numbers as doubles, arrays in
+order.
 
-**Where from.** (1) **Recorded**: a recorder (tests/library-record.ts, run by `npm run library:vectors`) wraps
-`L.perform`, `L.snapshot` and `L.importValues` while the ten TS files run, pads each call's `env.ids` with fixed ones,
-and writes every call with its outcome: the ~70 tests' few hundred calls, grouped by test file. The TS tests stay as
-they are (they keep saying what each case means). (2) **Written by hand**: the JS-semantics cases of part 1 (`js.json`)
-and the edges commit 0 adds against the Swift (below). (3) **Generated**: a seeded generator of random action sequences
-over random libraries (every action, payloads of right and wrong types, ids that exist and don't, emoji at cut
-points, equal places and times), 300 sequences of 30 steps, recorded the same way; checked in, re-made only on
-purpose.
+**Where from** (`npm run library:vectors`, tests/library-vectors/record.ts, ~8 s). (1) **Recorded**: hooks.ts sends
+the ten TS files' imports of LT to wrap.ts (the same module, its `perform`, `snapshot`, `importValues`, `stateOf`,
+`targetOf` and `call` recorded with their inputs made the vectors' first: plain JSON, ids sorted, ids padded) and of
+node:test to node-test.ts (the test's name kept); each file runs and must pass. The TS tests stay as they are.
+(2) **Generated** (generate.ts, seeded): 300 random libraries and sequences of 30 steps (every action and 6 names that
+aren't, payloads of right and wrong types, ids that exist and don't, emoji at every cut, JS's odd spaces, equal places
+and times, addresses that differ by a slash or a fragment), and the **survey**: every action with each payload field as
+each of 12 wrong JSON types. (3) **js.json**: tests/library-vectors/js-cases.js over LT's own functions (bundled as the
+app's library.js is). Every answer is LT's in Node with `URL` taken away (a bare JSContext has none), then every case
+runs again in **JavaScriptCore** (tools/library-vectors/jsc.swift: dist/app/library.js as the app builds it) and JSC's
+answer is the one kept; a throw's site is named from the stack of an instrumented copy of LT made at run time.
 
-**Run by.** `tests/library-vectors.test.ts` (Node, LT: part of `npm test`), `core/library/vectors.rs` (`cargo test`,
-reading `../../../tests/fixtures/library`, as set.rs:295 reads data-merge), and until the switch (commit 6) the Swift
-test run through JSC (T/library-tests.swift: the same files through LR), since JSC is what the Mac runs: a case where
-Node and JSC differ is marked `"engine": "jsc"` with JSC's answer and Rust follows it. After LT is deleted (when M's
-space-owning half goes, feat/hosted-windows-chromium step 9), the vectors stay, Rust only, as data-merge's outlived
-DataSet.swift.
+**Run by.** `tests/library-vectors.test.ts` (Node, LT without `URL`: part of `npm test`), `core/library/vectors.rs`
+(`cargo test`: a part's test implements `vectors::Engine` for the kinds it has, the rest answer `None` and are
+skipped and counted, and `vectors::run(&mut engine).assert_ok()`; `vectors::groups()`, `groups_named(prefix)`,
+`data_set(&values)`, `js()`, `throw_words()`; vectors_tests.rs checks js.json against js.rs), and until the switch
+(commit 6) T/library-vectors-tests.swift (`npm run test:app`): the same files through LR, since JSC is what the Mac
+runs. After LT is deleted (when M's space-owning half goes, feat/hosted-windows-chromium step 9), the vectors stay,
+Rust only, as data-merge's outlived DataSet.swift.
 
 **Must not change:** a vector re-recorded only with a rule changed on purpose, in the same commit as both copies'
 change.
