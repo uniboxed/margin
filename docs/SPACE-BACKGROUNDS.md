@@ -226,11 +226,20 @@ it. The code: `app/shared/ui/background.ts` (the layer), `background-look.ts` (w
   transition (`overlay.ts` swapTheme).
 - **A picture alone** draws the underlay and the texture until step 7 serves the picture.
 
-### 3. Appearance per space
+### 3. Appearance per space (built: step 3)
 
-- The effective appearance is the space's own value, or the system's under `auto`. Arc-style: a picture with no colours uses the picture's lightness.
-- **Mac:** the web view's `NSView.appearance` (`.aqua` or `.darkAqua`; `nil` for `auto`). This switches `prefers-color-scheme` for Arcadia and Material and `light-dark()` for Liquid Glass with no CSS change.
-- **Windows:** WebView2's `PreferredColorScheme`.
+- The effective appearance is the space's own value, or the system's under `auto` (and with no background).
+- **Mac (Margin.app's window):** the core's `Library::space_appearance(window)` (the space found as its theme is:
+  the window's, else the first), the FFI's `margin_library_space_appearance` (0 the system's, 1 light, 2 dark),
+  `Library.spaceAppearance`, the window source's `spaceAppearance(window:)`; `MarginWindowController.followAppearance`
+  sets the web view's `appearance` (`.aqua`, `.darkAqua`, or nil: the window's) in `pageHello`, before the page draws,
+  and in `stateChanged`, before the state that shows the space is pushed (both reach the page in order). WebKit takes a
+  web view's appearance as the page's `prefers-color-scheme` and `light-dark()`, with the private system appearance
+  off and on (Liquid Glass): checked on this Mac first (`space-appearance-tests.swift`). So every theme draws in it,
+  its menus and panels too, with no CSS of its own for it. Only Margin's page: the hosted windows, Safari's pages among
+  them, keep theirs.
+- **Windows:** not yet: Margin's Windows app has no per-space theme or library window yet; its appearance (WebView2's
+  `PreferredColorScheme`) comes with those. The extension's overlay over a browser's page stays the system's too.
 - Neubrutalism (fixed light) and Pixel (fixed dark) keep their look. Only the background layer and its palette follow.
 - Safari's pages aren't affected, and the tooltip says so.
 
@@ -343,7 +352,7 @@ The spike's measurements, which decide between them:
 | 0 | Spikes (no product code; results in DECISIONS.md) | throwaway, on this branch | A small event logger Tirth runs on both trackpads (click, tap-to-click, force click, scroll); synthesized `CGEvent` mouse events through the same logger; A vs B measurements; `NSView.appearance` on the web view, with and without system appearance; reading Arc's file from Margin.app; the UI-sound preference |
 | 1 | `feat(m2.9)`: a space's background in the library | core `state.rs`, `model/spaces.rs`, `actions.rs` (`rename_space`), `values.rs`, `snapshot.rs` (an object-or-absent writer); TS `model.ts`, `library.ts`, `types/margin.d.ts`, `data-set.ts`; vectors (`generate.ts`, `edges.ts`, re-recorded); `docs/DATA.md` | Rust unit tests per rule, an edge case per wrong type, the vectors on both sides, data-set round-trip |
 | 2 | `feat(m2.9)`: Margin's background layer and palette under every theme | `ui/background.ts`, `background-look.ts`, `color.ts`, `textures.ts` (new), `runtime.ts`, `render.ts`, `view-model.ts`, `host-app.ts` `cornerFill`, `overlay.ts`, the five themes' CSS, themes README | Theme tests: each theme with and without a background, light, dark, more contrast, every texture, a theme without the contract, `--m-fg` on `--m-bg` ≥ 4.5:1, corner fill sRGB, cross-fade, reduced motion |
-| 3 | `feat(m2.9)`: appearance per space | `MarginWindowController.swift` (web view appearance), Windows `webview.rs`, runtime | Theme tests via `emulateMedia`; a Swift unit test that the appearance follows the shown space |
+| 3 | `feat(m2.9)`: appearance per space | core `object.rs`, FFI `data.rs`, `Library.swift`, `HostedSession.swift`, `MarginWindowController.swift` (Windows later, with its library windows) | Core and FFI tests; a Swift unit test of WebKit's side; end-to-end: the window and its page follow the shown space |
 | 4 | `feat(m2.9)`: the Edit Theme Color picker | `ui/picker/*` (new), `menu-items.ts`, `editor.ts`, `actions.ts` (`space.update` carries `background`), `runtime.ts` | Behaviour tests in Chromium and WebKit: drag, wheel, −/+, presets, slider, dial (turn, drag, scroll, click, swipe), undo, Escape, save as one request, Use for all spaces, keyboard |
 | 5 | `feat(m2.9)`: the picker on system glass (A or B per spike) | Swift; DECISIONS.md (the glass exception) | Swift unit tests; e2e: opens, places, closes, keeps focus |
 | 6 | `feat(m2.9)`: haptic or sound ticks | Swift device detection, `said.rs`/FFI/`PageCore.swift` (`haptic.level`), picker, settings (`model.ts` + core) | Unit tests of the choice table (kind × setting × platform); the rate limit; Swift tests of the classifier with synthesized events |

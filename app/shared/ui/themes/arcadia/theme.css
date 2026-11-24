@@ -106,7 +106,8 @@
    the docked sidebar are clear. The frame's colour is the background as one colour (--m-bg), for what lies over the
    page (the sidebar out as a card, a divider, the page's picture, Clear's patch) and the fills mixed from it. On the
    docked sidebar, which lies on the background, the text is Margin's palette and the fills are translucent whites,
-   as Arcadia's own are over its tint (the menus and panels keep theirs: they're drawn in the system's appearance). */
+   as Arcadia's own are over its tint (the menus and panels keep theirs, drawn in the page's appearance: the background's
+   in Margin.app's window, the system's in the extension's overlay). */
 .arcadia[m-background] { --frame: var(--m-bg); }
 .arcadia[m-background] .margin-sidebar {
   --fg: var(--m-fg);

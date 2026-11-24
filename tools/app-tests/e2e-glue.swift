@@ -1615,4 +1615,38 @@ func glueResumeScenario() async {
     check("a theme per space: and back", await waitJS(c.webView, rootIs("arcadia")))
     _ = library.perform("deleteSpace", ["spaceId": pix])
   }
+
+  // ---- a space's appearance (M2.9 step 3): Margin's window draws in the space's own light or dark ----
+  do {
+    let shown = ((library.snapshot()["openTabs"] as? JSONObject)?["activeSpaceByWindow"] as? JSONObject)?[String(c.id)] as? String ?? ""
+    let systemDark = c.window.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+    // (The other one: so each change is one the page can see, whatever this Mac's appearance.)
+    let other = systemDark ? "light" : "dark", otherName: NSAppearance.Name = systemDark ? .aqua : .darkAqua
+    let pageDark = { (dark: Bool) in "return matchMedia('(prefers-color-scheme: dark)').matches === \(dark)" }
+    let marked = { (look: String) in " && document.querySelector('[m-background]')?.getAttribute('m-appearance') === '\(look)'" }
+    let look = { (appearance: String) -> JSONObject in ["colors": ["#6c5ce7"], "appearance": appearance] }
+    let start = await waitJS(c.webView, pageDark(systemDark))
+    check("a space's appearance: none of its own: the window's, the system's", c.webView.appearance == nil && start)
+    _ = library.perform("renameSpace", ["spaceId": shown, "background": look(other)])
+    let own = await until(3) { c.webView.appearance?.name == otherName }
+    check("a space's appearance: its own (\(other)): the window's web view in it", own, "\(String(describing: c.webView.appearance?.name))")
+    check("a space's appearance: the page in it (prefers-color-scheme), its background marked so", await waitJS(c.webView, pageDark(!systemDark) + marked(other)))
+    _ = library.perform("renameSpace", ["spaceId": shown, "background": look("auto")])
+    let auto = await until(3) { c.webView.appearance == nil }
+    let autoPage = await waitJS(c.webView, pageDark(systemDark))
+    check("a space's appearance: automatic: the system's again", auto && autoPage)
+    let made = library.perform("createSpace", ["windowId": c.id, "name": "Night"])
+    let night = (made.result as? JSONObject)?["spaceId"] as? String ?? ""
+    _ = library.perform("renameSpace", ["spaceId": night, "background": look(other)])
+    let switched = await until(3) { c.webView.appearance?.name == otherName }
+    let nightPage = await waitJS(c.webView, pageDark(!systemDark))
+    check("a space's appearance: another space with its own, shown: the window in it", !night.isEmpty && switched && nightPage)
+    _ = library.perform("setSpace", ["windowId": c.id, "spaceId": shown])
+    let back = await until(3) { c.webView.appearance == nil }
+    let backPage = await waitJS(c.webView, pageDark(systemDark))
+    check("a space's appearance: back to one that follows the system: the system's", back && backPage)
+    _ = library.perform("renameSpace", ["spaceId": shown, "background": NSNull()])
+    _ = library.perform("deleteSpace", ["spaceId": night])
+    check("a space's appearance: no background, none of its own", await until(3) { c.webView.appearance == nil })
+  }
 }

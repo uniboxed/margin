@@ -69,13 +69,15 @@ import WebKit
 
 // Where Margin's windows get their spaces (the library's, LibraryWindowSource). `stateText()`: the whole state as
 // its JSON text, in the shape pages draw (types/margin.d.ts State, as shared/stored.ts fromStorage gives it), pushed as
-// it is; `spaceTheme(window:)`: the theme of the space that window shows (nil: none of its own); `perform`: a request
+// it is; `spaceTheme(window:)`: the theme of the space that window shows (nil: none of its own); `spaceAppearance(window:)`:
+// that space's own light or dark (its background's; nil: the system's); `perform`: a request
 // of the UI's (its `send` type and payload, or a `perform` name and argument), the window's id in the payload as
 // `windowId`, answered as the page's request is (`{ ok, result }` or `{ ok: false, error }`; nil: done,
 // `{ ok: true, result: true }`); `onChange`: the state changed.
 protocol MarginWindowSource: AnyObject {
     func stateText() -> String
     func spaceTheme(window: Int) -> String?
+    func spaceAppearance(window: Int) -> SpaceAppearance?
     @discardableResult func perform(_ type: String, _ payload: JSONObject) -> JSONObject?
     var onChange: (() -> Void)? { get set }
 }
@@ -1590,10 +1592,23 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         }
     }
 
+    // The space's own light or dark (M2.9 step 3, docs/SPACE-BACKGROUNDS.md Part B §3): this window's web view draws
+    // in it, so the theme does (WebKit takes a web view's appearance as the page's `prefers-color-scheme` and
+    // `light-dark()`, its system appearance on or off: space-appearance-tests.swift); nil, the window's (the system's).
+    // Only Margin's own page: the hosted windows, Safari's pages among them, keep theirs. Set before the state that
+    // shows the space is pushed (both go to the page in order), so its background and its theme change together.
+    func followAppearance() {
+        guard let owner else { return }
+        let name: NSAppearance.Name? = owner.source.spaceAppearance(window: id).map { $0 == .dark ? .darkAqua : .aqua }
+        guard webView.appearance?.name != name else { return }
+        webView.appearance = name.flatMap { NSAppearance(named: $0) }
+    }
+
     // The source's state changed: drawn again; its theme too, if that changed (another theme chosen, or this window
-    // showing a space with another theme).
+    // showing a space with another theme), and its light or dark first.
     func stateChanged() {
         guard asked, let owner else { return }
+        followAppearance()
         let state = owner.source.stateText()
         push(#"{"type":"state","state":"# + state + #","windows":"# + windowsJSON + "}")
         if let theme = owner.theme(id, owner.source.spaceTheme(window: id)), theme != themeSent {
@@ -1613,6 +1628,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         asked = true
         sidebarResizing(false) // (a page loaded again mid-drag never says it's over)
         guard let owner else { return "null" }
+        followAppearance() // (before the page draws anything: its first frame is in the space's light or dark)
         // (The facts this window reads, in the order the Swift read them; the hello itself the core's: its fields, their
         // order, the card's state and words, core/page/hello.rs.)
         let state = owner.source.stateText()

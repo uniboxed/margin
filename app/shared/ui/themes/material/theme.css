@@ -158,7 +158,8 @@
    tonal containers: the search bar, the mini player, the editor; the state layers) translucent whites over it, in
    the background's light or dark (a role mixed from another at the root comes resolved: each one named here). The
    active indicator keeps its tonal container, its own content colour with it. Menus, the command bar and dialogs
-   keep their surfaces: they're drawn in the system's appearance. */
+   keep their surfaces, drawn in the page's appearance (the background's in Margin.app's window, the
+   system's in the extension's overlay). */
 .m3[m-background] { --frame: var(--m-bg); }
 .m3[m-background] .margin-sidebar {
   --on-surface: var(--m-fg);

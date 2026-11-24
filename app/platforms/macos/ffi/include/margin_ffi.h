@@ -418,6 +418,9 @@ uint8_t *margin_library_rules(MarginLibrary *library, const uint8_t *name, size_
 // The theme of the space a Margin window shows (its own space's, else the first's), typed (a draw's): its length (over
 // `cap`: ask again), -1: none (the profile's).
 ptrdiff_t margin_library_space_theme(const MarginLibrary *library, int64_t window, uint8_t *buf, size_t cap);
+// The appearance of the space a Margin window shows (its background's, the space found as its theme is): 1 light,
+// 2 dark, 0 none (the system's).
+int32_t margin_library_space_appearance(const MarginLibrary *library, int64_t window);
 
 // A browser's profiles (data/profiles.rs, ffi profiles.rs; the hosted file's shape): one object per browser over its
 // browser.json in `root` (NULL: in memory), one JSON call (`now` passed in, the log lines in each answer), and the

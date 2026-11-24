@@ -9609,3 +9609,29 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
 - **Browsers on this Mac**: Playwright 1.65 wants Chromium 1254 and WebKit 2388; the cache has Chromium 1248 and WebKit
   2287. Not installed (CLAUDE.md). The theme tests ran in Chromium 1248 through a scratch `PLAYWRIGHT_BROWSERS_PATH`
   of links; WebKit's halves couldn't launch (2287 hangs under 1.65). CI runs both.
+
+## M2.9 step 3: Margin's window in the space's own light or dark (`feat/space-backgrounds`, 2026-11-24)
+
+- **What it is**: a space's background has an appearance (Arc's ✨ ☀ ☾: automatic, light, dark). Step 2 drew the
+  background and Margin's text colours in it; now Margin.app's whole window does: its web view takes the space's
+  light or dark, so the theme draws in it everywhere (its menus, command bar, panels, Settings), with no CSS of its
+  own for it. Automatic, and a space with no background: the system's, as before. Safari's pages, and every hosted
+  window, keep theirs (Margin can't set a page's appearance per space).
+- **The path**, the per-space theme's: the core's `Library::space_appearance(window)` (the space found as its theme
+  is: the window's, else the first; its background's `light` or `dark`, None otherwise), the FFI's
+  `margin_library_space_appearance` (0 the system's, 1 light, 2 dark), `Library.spaceAppearance` (a `SpaceAppearance`:
+  the library stays Foundation's; what a view draws in is the controller's, AppKit's), the window source's
+  `spaceAppearance(window:)`, and `MarginWindowController.followAppearance`: the web view's `appearance` (`.aqua`,
+  `.darkAqua`, nil) set in `pageHello` (before the page's first frame) and in `stateChanged` before the state is pushed
+  (the two reach the page in order, so the background and the theme change together).
+- **Checked first, on this Mac** (`space-appearance-tests.swift`, a unit check kept): WebKit takes a web view's
+  appearance as the page's `prefers-color-scheme` and `light-dark()`, with its private system appearance off (most
+  themes) and on (Liquid Glass's glass); nil goes back to the window's. End to end (`e2e-glue.swift`): a space given the
+  other appearance than this Mac's turns the window's web view and its page that way, the theme's root marked;
+  automatic, another space with its own, back, and none all follow.
+- **Not yet**: Windows (its app has no library windows or per-space themes yet: its WebView2 `PreferredColorScheme`
+  comes with them), and the extension's overlay over a browser's page (the system's). So the themes still put
+  Margin's text colours on the surfaces that lie on the background, not their root (themes README).
+- **A flaky check that was there before**: "screen: a re-entry held by the loop guard's hold" (a timing check of the
+  hosting's loop guard, untouched here) fails now and then: 1 of 5 runs of the app's unit checks on this branch, 2 of
+  6 on the base (71e11707) on this Mac. The space-appearance checks passed in every run.

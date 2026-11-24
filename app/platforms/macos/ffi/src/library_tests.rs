@@ -245,6 +245,24 @@ fn the_library_object_through_the_ffi_called_back_into() {
     // SAFETY: l live; a 2-byte buffer: too small, the length said, nothing written.
     assert_eq!(unsafe { margin_library_space_theme(l, 1, short.as_mut_ptr(), short.len()) }, 5);
     assert_eq!(short, [0, 0]);
+    // A space's appearance (M2.9 step 3): 0 the system's, 1 light, 2 dark; a null library 0.
+    // SAFETY (each call): l null or live.
+    let appearance = |l: *const MarginLibrary, w: i64| unsafe { margin_library_space_appearance(l, w) };
+    assert_eq!(appearance(l, 1), 0, "no background: the system's");
+    let set = |look: serde_json::Value| {
+        lib_call(
+            l,
+            json!({ "type": "perform", "action": "renameSpace", "payload": { "spaceId": space, "background": look } }),
+        )
+    };
+    set(json!({ "colors": ["#123456"], "appearance": "dark" }));
+    assert_eq!((appearance(l, 1), appearance(l, 9), appearance(std::ptr::null(), 1)), (2, 2, 0));
+    set(json!({ "colors": ["#123456"], "appearance": "light" }));
+    assert_eq!(appearance(l, 1), 1);
+    set(json!({ "colors": ["#123456"], "appearance": "auto" }));
+    assert_eq!(appearance(l, 1), 0, "automatic: the system's");
+    set(json!(null));
+    assert_eq!(appearance(l, 1), 0, "none again");
     assert_eq!(lib_call(l, json!({ "type": "actions" }))["actions"].as_array().map(Vec::len), Some(57));
     let refused = lib_call(l, json!({ "type": "perform", "action": "renameSpace", "payload": { "spaceId": "none" } }));
     assert_eq!((refused["ok"].clone(), refused["error"].clone()), (json!(false), json!("no such space")));

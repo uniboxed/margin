@@ -579,8 +579,10 @@ To take part, under `[m-background]`:
    (`0 0 0 100vmax …`), the sidebar's own background, a layer of dots or lights. Keep what's drawn on the card itself
    (a border, an offset shadow).
 2. Give what lies on the background Margin's text colours, or fills that suit it (translucent white over it, as the
-   built-in themes do). Set them on the surfaces that lie on it, not on your root: menus and panels are still drawn
-   in the system's appearance, which can differ from the background's until Margin.app sets the window's own.
+   built-in themes do). Set them on the surfaces that lie on it, not on your root: menus and panels are drawn in the
+   page's appearance, `prefers-color-scheme`. In Margin.app's window that is the background's (the window's web view
+   takes the space's light or dark); in the extension's overlay over a browser's page, and on Windows for now, it is
+   the system's, which can differ.
 3. Anything solid that stands in for the ground (a sidebar out over the page as a card, a split's divider) takes
    `--m-bg`.
 
