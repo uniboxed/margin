@@ -9466,3 +9466,50 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   window drawn again keeping its theme (e2e-glue's theme per space).
 - Swift (app, from a08abad7): 122 lines deleted, 87 added (HostedSession 56 → 10, MarginWindowController 28 → 16,
   SessionCore 21 → 9; ShellHosted +17 for the kept text, DataSync +7 for its count). Rust: ~250 lines in (~110 out: `live_plan`'s FFI, the old snapshot writer), ~290 of tests.
+
+## The data store's pending writes coalesce: a burst of edits holds one text of each file (2026-11-24)
+
+- **What the switch found** (commit 6's footprint): in a burst of rapid edits the store's background writer (step 1.2's
+  design: memory at once, the files written in order on one writer thread) falls behind, and each save waiting held its
+  files' whole text (the library's edits rewrite the changed collection's file, ~1 MB at 500 items with their icons). At
+  500 items, 200 renames each drawn took the footprint from 105 MB to 357 MB (1.26 MB an edit); written at once it
+  stays at ~30 MB.
+- **Now** (data/store.rs `Job::merge`): a save handed over while the last job waiting for the writer is the same
+  profile's becomes part of that job, as if the two had been one save from its start: each collection's file once, with
+  its newest text, `set.json` last as the newest save has it (its rev, its acked, its time). So however long the burst,
+  what waits is the file being written and one text of each file after it. Only a job not yet taken by the writer is
+  merged into; one being written is left as it is; another profile's save is a job of its own behind it (the order
+  across profiles kept).
+- **Step 1's guarantees kept**:
+  - *What's on disk is what one save at a time leaves*: the same files with the same text once the last write lands,
+    which lands no later (fewer files are written: the burst above writes 3 + 4 files for 21 saves, not 63). The
+    in-between states that are skipped are states a crash could have left anyway.
+  - *`set.json` first with the new rev and the acked from before, then the collections, then `set.json` with the new
+    acked*, so no copy's rev ever names items that aren't on disk: the merged job's first `set.json` has the newest rev
+    with the acked from before the first of its saves (after a first set, none: there's no set until `set.json` lands;
+    after a save that changed no collection, the later save's own first, as written one at a time). `set.json`'s text is
+    made as it's written, from those.
+  - *A save's result only once it's on disk*: each save keeps its ticket and its own rev, and its result (`take_done`, in
+    order) comes once the job with its text is written: the sync's follow-ups (an ack, the changes sent, a carry) run
+    as before, for each save, never earlier. A merged save's own rev was never on disk by itself; its ack still names it
+    (the copy took the set at that rev), and a later relink on it finds the set moved on and is answered as any newer
+    set (the lost changes, the set): the same as when a later save had been made before the ack, which was already so.
+  - *A failed write forgets the profile's memory*: a merged job that fails fails each of its saves (each its line), and
+    the set is read again from disk. One at a time, the saves before the failing one would have been kept; merged,
+    they're lost with it (none of them was confirmed to a copy). Accepted: a disk that fails one write mid-burst is the
+    case, and nothing was said to be saved.
+  - A test's crash (`crash_after_writes`, which counts files one save at a time) merges nothing.
+- **Measured** (off screen, MARGIN_LIBRARY_BASELINE, two rounds, the larger kept): the burst's highest footprint at 50 /
+  500 / 2,000 items **13.7 / 33.9 / 186 MB** (0.01–0.03 MB an edit), was 53.7 / 357 / 466 MB (0.16 / 1.26 / 0.81 MB an
+  edit); after the baseline's first 75 calls 11.4 / 24.6 / 184 MB (was 16.3 / 71.5 / 301; commit 0's JavaScriptCore
+  library 22 / 53 / 354). A perform, a draw: unchanged (3.5 ms, 0.07 ms at 500).
+- **Tests.** store.rs: 21 saves while the writer is held at its wake (a gate in the test's wake, no wait of a time): the
+  20 waiting are one job, each file once in the order first changed, `set.json` first with the acked from before them,
+  another profile's save a job behind, each save's result in order with its own rev, the files on disk the newest, 10
+  files written for 23 saves; `set.json`'s first write after a first set, after an acked alone, before one; nothing
+  merged under a test's crash; `written_in_the_background_in_order` now waits for the writer (its three quick saves are
+  written together, so it's woken once, not three times). The sync's tests (data-merge vectors, links, carries) pass
+  unchanged over the background store. 9 deliberate breaks, each alone (scratch step4-finish/breaks7a.py): all caught
+  (a file's older text kept, a merged file written twice, `set.json`'s first always the later save's, or dropped after
+  an acked alone, the older rev last, the later saves' results lost, another profile's save merged, merged under a
+  test's crash, nothing merged).
