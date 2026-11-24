@@ -8982,3 +8982,41 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
 - Cost (release, the bench library: 2 KB icons, 200 archived, 30 spaces, 60 pins, 8 folders): at 50 / 500 / 2,000 items
   a rule alone 0.2-140 µs (`deleteSpace` 21 / 43 / 141 µs, `removePin` 1 / 4 / 17 µs, every other under 35 µs), with
   perform's diff after it 1-920 µs; JSC's whole perform today 2.7 / 16.2 / 62 ms.
+
+## Core refactor step 4, commit 3 (piece 3): splits and link rules in the core (2026-11-23)
+
+- margin-core's `library/model/splits.rs` and `links.rs` gain model.ts's split rules (M:1628-1775: `normalizeSplitRatios`,
+  `paneKey`, `hasMarginTab`, `splitForItem`, `withPanes`, `createSplit`, `addToSplit`, `removeFromSplit`, `settleSplits`,
+  `swapSplitPanes`, `resizeSplit`, `toggleSplitAxis`) and its link rules (air-traffic.ts's `normalizePattern`,
+  `patternMatchesUrl`, `matchAirTrafficRule`; M:1594-1624's add, remove and toggle, the cap of 100), one function each
+  with M's name. Nothing calls them in the app yet (part 4's actions do, commit 6 switches); no behaviour changes.
+- Link rules keep today's app exactly: its JSContext has no `URL`, so no address parses and no rule routes a new tab or
+  `routeUrl` (`js::rules_url`, `RULES_PARSE_URLS` false). What a parsed address does is written and tested beside it
+  (`pattern_matches_parts`, `match_air_traffic_rule_with` over `js::url_parts`, against Node with a URL), so Tirth's fix
+  (answer 11) is that constant flipped and the test that pins today's answer (`no_address_matches_today`).
+- The open-tab halves aren't ported (the library's state has none): `paneKey` of a number or a string of digits (an
+  open tab's browser id) is none. A prototype name as an id (`constructor`) finds no item, open question 4's Rust
+  answer (model.ts in JS finds a function: the only difference the generated sequences showed, and left out of them).
+- "Unchanged is the same state": every rule that changes nothing hands back `s.clone()`; a split M remakes is a new
+  `Rc`, every other one the same (checked against model.ts's object identity, split by split). A link rule already at
+  its place keeps its `Rc` where M makes an equal new object (unseen: the diff compares values). `settle_splits`, run
+  after every perform that succeeds, allocates nothing when every split holds.
+- `matchAirTrafficRule` sorts by `Number(order) || 0` alone (stable); its ties by `localeCompare` are `stateOf`'s, which
+  already ordered the list (the stub's header said otherwise; corrected).
+- Checked: the shared vectors' 1,011 perform steps of the actions these rules carry alone (`addAirTrafficRule`,
+  `removeAirTrafficRule`, `toggleAirTrafficRule`, `routeUrl`, `resizeSplit`, `toggleSplitAxis`, `swapSplit`, through a
+  test stand-in of their library.ts actions: part 4 writes the real ones): none differ; js.json's `patterns` (18) and
+  `url.matches` (7) as JavaScriptCore answers them. The other split actions (`createSplit`, `addToSplit`,
+  `removeFromSplit`, `breakOutSplit`, `openSplit`, `closeSplitPane`) need part 4's helpers (`used`, `frontOf`,
+  `splitRefusal`) and run with it. A scratch harness of 6,000 random libraries (odd panes, ratios, orders and patterns)
+  with 25 random calls each (150,000 calls: 24,583 changed the state, 95,183 the same state, 30,234 lookups) against
+  model.ts in Node without `URL`, in JavaScriptCore (a bare JSContext), and for the address lookups against Node with
+  `URL` (2,322 addresses matched a pattern or a rule there, none today): none differ.
+- 78 deliberate breaks, each alone: 74 caught (71 by the unit tests with the vectors, 3 by the harness); the 4 left
+  change nothing (a JSON number is always finite; `""` has no digits to fail; old ratios of another length are made
+  equal anyway; an http address's pathname is never empty). Five first missed (a `_` in a label, `http:/` with one
+  slash, a pattern trimmed after its scheme, a length in bytes, a non-http address with the host) got tests, then
+  were caught.
+- Cost (release, a library of 500 items, 4 splits of 3, 99 rules): `settle_splits` with nothing to change 0.4 µs, a
+  rule added at the cap's edge 8.7 µs, a match today 0 µs (no address parses), parsed and found at the 99th rule
+  10 µs, a split made 0.7 µs, a pane added 0.4 µs (today's whole perform in JavaScriptCore is 2.5-18.6 ms).
