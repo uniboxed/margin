@@ -1842,6 +1842,28 @@ tests) and declares six files, each with its functions and M lines in its header
 `DEFAULT_SETTINGS.favoritesScope`'s, as the library's state has no settings); (3) `splits.rs` + `links.rs`. Each
 piece adds only to its own two files and their tests (`model/<file>_tests.rs`).
 
+**Piece 1 done (step4/model-spaces), with these lines of the design corrected.** `spaces.rs` (`set_active_space`,
+`create_space`, `order_spaces`, `update_space`, `delete_space`) and `order.rs` (`pin_for_url`, the folder lookups,
+`folder_depth`, `pin_order`, `write_order`, `placed`, `folder_name`, `unique_name`, `clean_custom_title`, `add_pin`,
+`remove_pin`, `bind_tab_to_pin`, `unbind_pin_tab`, `rename_pin`, `rename_tab`, `move_pin`, `create_folder`,
+`rename_folder`, `set_folder_open`, `move_folder`, `delete_folder`). Corrected:
+- A parameter library.ts fills straight from a payload (`p?.folderId ?? null`, `p?.name`, `p?.tabId`) is an
+  `order::Arg` (undefined, a JSON value, or a string the caller has), not a `&str`: M tests it as JS does, and the tests
+  differ by rule (`movePin` refuses a truthy folder id that's no string and takes a falsy one as the top level;
+  `moveFolder` refuses any parent but null that isn't a folder's id, `""` and `0` too; `renameTab` with an array as
+  the id, which library.ts's own check finds by its key, is an open tab's in M: unchanged). Part 4 builds each with
+  `Arg::of(p.get(…))` (and `.or_null()` for `?? null`). Used by the other pieces too, it belongs in `model/mod.rs`.
+- `create_space` answers `Result<LibState, &str>`: `name?.trim()` throws for a name that's neither a string nor
+  nullish, the throw survey's only site; the error is JSC's words (`CREATE_SPACE_NAME_THROWS`).
+- **A gap of the typed state**: `createSpace` stores a truthy emoji or colour that's no string as given (`emoji: 5`,
+  `color: ["t-x"]`: 17 steps of the generated vectors), which `Space`'s `Str` can't hold. `create_space` writes `""`, what
+  the next reading of it is (`str(5, 16)`), so every later state is the same and only that step's stored change
+  differs. Exact needs `Space.emoji`/`color` able to hold a raw value (state.rs, values.rs), or part 4 refusing such
+  a payload (a behaviour change): not decided here.
+- Checked: 39,200 generated steps against model.ts in Node and 35,000 in JSC, none differ; the shared vectors' 2,304
+  perform steps of the 16 actions these rules answer alone, the same; 81 deliberate breaks, 78 caught, 3 equivalent
+  (DECISIONS.md, 2026-11-23).
+
 **FFI.** None.
 
 **Must not change:** every number (places, ratios), every refusal (a 5th pane, a 13th favorite, a 5th folder level, a
@@ -2167,7 +2189,7 @@ commit 7 only).
 | 0 | **Done** (step4/vectors): the vectors and the edges, against the TS (Node and JSC) before any Rust: the recorder and its ~70 tests' vectors, the generated sequences, `js.json` from JSC on this Mac, the throw survey (every throw site and JSC's words), the Mac's outcome for a 2000-unit cut through an emoji (LT:43 → JSON → `JSONSerialization` → the store), the shadow harness in T/ (JSC only for now). Baselines (off screen, T/ timings): a perform, a draw's snapshot over 50/500/2,000 items, the app's binary size and footprint | 0 | 0 (~400 TS and JSON, ~150 Swift test lines) | the baselines |
 | 1 | **Done** (step4/js, da34b9b4): part 1: `js.rs`, the `url` and collation dependencies (open questions 1, 2), and part 5's `import_values` up to its normalising (import.rs) | 0 | ~450 + ~300 tests | binary size: +1.26 MB a architecture (collation), +0.22 MB (URL) |
 | 2 | **Done** (step4/state): part 2: the typed state, `state_of`, `values_of`, `diff`, `target_of`, the snapshot's text, the import's normalising (`import_changes`), part 3's shared rules and files; the snapshot vectors pass once commit 0's are merged (until then: 5,000 generated libraries and 5,000 imports against library.ts) | 0 | ~2,000 + ~1,000 tests | a snapshot's text 0.26 ms at 500 items (JSC 4.7 ms), a perform's diff 1-22 µs |
-| 3 | Part 3: M's rules, PR, AT, FI (parallel: spaces + order; kept + archive + favorites; splits + link rules) | 0 | ~1,400 | |
+| 3 | Part 3: M's rules, PR, AT, FI (parallel: spaces + order; kept + archive + favorites; splits + link rules). Piece 1 (spaces + order) **done** (step4/model-spaces) | 0 | ~1,400 | piece 1: a rule 0.2–140 µs, with perform's diff 1–920 µs (2,000 items; JSC's perform 62 ms) |
 | 4 | Part 4: the 57 actions and `perform`; every perform vector and the generated sequences pass | 0 | ~900 | a perform (Rust alone) |
 | 5 | Part 5 and part 7's object: `import_values`, `import_once`, `Library` with its callbacks, the FFI; the T/ shadow check runs JSC and Rust on the whole Swift suite | 0 | ~700 | |
 | 6 | **The switch**: `Library.swift` over the core, LR and JavaScriptCore gone, `library.js` out of the app, `Command::Perform` and the Swift delegate path gone, the no-rules fallback gone, the Swift tests on the core, the stand-in shelf in requests_tests.rs replaced by the real library | ~250 Swift (LR 74, L ~120, HS ~10, SG ~5, SH ~60 of `state` and the fallback) (+~80 Swift of callbacks) | ~150 | a perform, a switch, `idle-cost` |

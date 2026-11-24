@@ -8941,3 +8941,44 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   --no-install --unsigned`): its binary 19,150,304 bytes (arm64 9,041,376, x86_64 10,084,320), the bundle 22.9 MB,
   library.js 68,103 bytes, JavaScriptCore linked. The running app's footprint isn't measured here (it would open
   windows on the screen); the library's part of it is the table's.
+
+## Core refactor step 4, commit 3 piece 1: the model's rules for spaces and the pinned area's order in the core (2026-11-23)
+
+- margin-core's `library/model/spaces.rs` (model.ts's `setActiveSpace`, `createSpace`, `orderSpaces`, `updateSpace`,
+  `deleteSpace` and its cascade) and `model/order.rs` (`pinForUrl`, the folder lookups and PR's `folderDepth`,
+  `pinOrder`, `writeOrder`, `placed`, the names, `addPin`, `removePin`, `bindTabToPin`, `unbindPinTab`, `renamePin`,
+  `renameTab`, `movePin`, `createFolder`, `renameFolder`, `setFolderOpen`, `moveFolder`, `deleteFolder`), each with
+  M's name and line, its kept half only (the library has no open tabs). Nothing calls them in the app yet (commit 6
+  switches); no behaviour changes.
+- A value library.ts hands M straight from a payload is an `order::Arg` (undefined, a JSON value, or the caller's
+  string), so each rule tests it as M does: `movePin` refuses a truthy folder id that's no string and takes a falsy one
+  as the top level, `moveFolder` refuses any parent but null that isn't a folder's id (`""` and `0` too), `renameTab`
+  with an array as the id (library.ts's own check finds it by its key) is an open tab's to M: unchanged. Part 4 builds
+  them with `Arg::of(p.get(…))`, `.or_null()` for `?? null`. The other pieces will want it too: it belongs in
+  model/mod.rs (asked, not moved: mod.rs isn't this piece's).
+- `create_space` answers a `Result`: `name?.trim()` throws for a name neither a string nor nullish (the throw survey's
+  one site), with JSC's words.
+- A gap found, not closed: `createSpace` stores a truthy emoji or colour that's no string as given (`emoji: 5`; 17
+  generated vector steps), which the typed `Space` can't hold. `create_space` writes `""`, what the next reading of it
+  is, so every later state is the same and only that step's stored change differs. Exact needs a raw value in `Space`
+  (state.rs, values.rs) or part 4 refusing such a payload (a behaviour change): the caller's decision.
+- Identity kept as JS's: a rule that changes nothing answers the same lists (`LibState::same`), a record it doesn't
+  change is the same `Rc`, and where M always makes a new array or object (`updateSpace`'s `map`, `deleteSpace`'s
+  archive, items and windows, `setActiveSpace`'s spread) so does the Rust.
+- Checked against model.ts: a scratch harness (random libraries, step4-state's generator, and structured ones: nested
+  folders with cycles, parents in other spaces, tied places, bound items, one address in two spaces; 14 calls each with
+  library.ts's argument shapes, payload values of every type): 2,800 cases, 39,200 steps against Node and 2,500 cases,
+  35,000 steps against JavaScriptCore (`jsc`, a bare context, no `URL`), the throws' words too: none differ (each
+  step's values, `next === s`, and the lookups' answers). The shared vectors through a test engine of the 16 actions
+  library.ts answers with these rules alone (createSpace, renameSpace, setSpaceTheme, deleteSpace, orderSpaces, unpin,
+  pinTab, renamePin, renameTab, movePin, createFolder, renameFolder, setFolderOpen, deleteFolder, moveFolder,
+  nestFolder): 2,304 perform steps checked, all the same; skipped: other actions' steps, 17 of the gap above, 23 whose
+  `settleSplits` (piece 3's) would change the splits.
+- 81 deliberate breaks of the two files, each alone: 78 caught (75 by the unit tests and the vectors' steps, 3 first
+  only by the harness and then by unit tests added for them; 3 more first missed got tests: a depth past the limit, a
+  folder with no place after another space's, a parent `""`); the 3 left change nothing (`folderParent`'s check for
+  itself, which its walk's `seen` makes again; `addPin`'s falsy folder and a new pin's place, which `movePin` decides
+  again).
+- Cost (release, the bench library: 2 KB icons, 200 archived, 30 spaces, 60 pins, 8 folders): at 50 / 500 / 2,000 items
+  a rule alone 0.2-140 µs (`deleteSpace` 21 / 43 / 141 µs, `removePin` 1 / 4 / 17 µs, every other under 35 µs), with
+  perform's diff after it 1-920 µs; JSC's whole perform today 2.7 / 16.2 / 62 ms.
