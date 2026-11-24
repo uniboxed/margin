@@ -1072,3 +1072,52 @@ fn at_quit_an_unread_close_window_is_given_up_in_the_same_turn() {
     let out = s.input(&json!({ "type": "linked", "profile": "s-default" }));
     assert!(pump_holding(&s, &world, out, 0, &mut held).0.is_empty(), "its own, sent since the quit: waited for");
 }
+
+#[test]
+fn at_quit_a_copy_that_acks_then_never_answers_holds_the_quit_no_longer_than_quit_wait() {
+    // (The engine's own quit pattern: `quitWait` after the quit began, the window not confirmed closed left in its
+    // marker, closed later.)
+    let (s, world, _) = session();
+    world.profiles.borrow_mut().push("s-default".into());
+    world.now.set(10.0);
+    s.input(&json!({ "type": "options", "options": { "quitWait": 6 } }));
+    let mut held = |c: &Command| match c {
+        Command::Ask { .. } => None,
+        c => Some(usual(c)),
+    };
+    // Its copy reading (acked: not slow), never answering.
+    let out = s
+        .input(&json!({ "type": "call", "id": 3, "flow": "closeWindow", "args": { "profile": null, "windowId": 91 } }));
+    let (seen, asked) = pump_holding(&s, &world, out, 0, &mut held);
+    assert_eq!(kinds(&seen), ["ask closeWindow"]);
+    let out = s.input(&json!({ "type": "quitting" }));
+    let (seen, _) = pump_holding(&s, &world, out, 0, &mut held);
+    assert!(seen.is_empty(), "read by its copy: waited for at the quit");
+    // Not before it (the slow words' look at 13 s decides nothing).
+    s.tick(0.0);
+    world.now.set(13.0);
+    let at13 = s.tick(13.0);
+    assert!(at13.start.is_empty());
+    assert_eq!(at13.deadline, Some(16.0), "no longer than quitWait after the quit began");
+    world.now.set(15.9);
+    assert!(s.tick(15.9).start.is_empty());
+    world.now.set(16.0);
+    let seen = pump(&s, &world, s.tick(16.0), &mut usual);
+    assert_eq!(kinds(&seen), ["cancel", "reply"], "{seen:?}");
+    assert_eq!(seen[0], Command::Cancel { profile: "s-default".into(), id: asked[0].0 });
+    let Some(Command::Reply { value, .. }) = seen.last() else { panic!() };
+    assert_eq!(value, &json!(false), "not confirmed closed: the engine keeps it in its marker");
+    assert!(
+        s.done().contains(
+            &"at quit: closeWindow for s-default unanswered after quitWait (6.0 s): left in the marker".into()
+        ),
+        "{:?}",
+        s.done()
+    );
+    // One asked later in the quit: the same bound, from the quit's start (none left here: sent, not waited for).
+    let out = s
+        .input(&json!({ "type": "call", "id": 4, "flow": "closeWindow", "args": { "profile": null, "windowId": 92 } }));
+    let (seen, _) = pump_holding(&s, &world, out, 0, &mut held);
+    assert_eq!(kinds(&seen), ["ask closeWindow", "cancel", "reply"], "{seen:?}");
+    assert_eq!(world.now.get(), 16.0);
+}

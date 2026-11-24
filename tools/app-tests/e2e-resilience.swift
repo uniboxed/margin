@@ -33,7 +33,8 @@ func resilienceScenario() async {
   let link = SocketLink(dispatch: FakeDispatch(), safariSince: { nil }, wake: Notification.Name("com.unibox.margin.test.resilience.\(ProcessInfo.processInfo.processIdentifier)"))
   let shell = Shell(link: link, apps: ScriptedApps(), hotKeys: FakeKeys(), options: options)
   shell.start()
-  defer { shell.stop {} }
+  var stopped = false
+  defer { if !stopped { shell.stop {} } }
   guard await until(3, { link.port != nil }) else { return check("the link listens", false) }
   fake.tell(["do": "wantLink"])
   guard await until(3, { fake.first("wantLink") != nil }), let nonce = fake.first("wantLink")?["nonce"] as? String else { return check("the link asked for", false) }
@@ -172,6 +173,32 @@ func resilienceScenario() async {
   check("… the copy answers after: its tab in front in Safari, the later pick keeps the engine, the first window keeps the item as its card",
         engine.shown == notes && session.hostingWindow == other.id && session.elsewhere[c.id] == w2 && session.done.contains { $0.hasPrefix("\(w2): its tab in front in Safari window") },
         "\(String(describing: engine.shown)) \(session.elsewhere) \(session.done.suffix(4))")
-  other.window.close()
+  // ---- Margin quits with its copy stalled (its Safari window still hosted, parked): the copy's requests made for the
+  // quit waited for no longer than the engine's quitWait after the quit began, its window left in the marker ----
+  await stall(60_000)
+  stalled = true
+  reporting(while: { stalled })
+  let quitMark = session.done.count
+  let quitAt = Date()
+  var quitDone = false
+  stopped = true
+  var engineLines: [String] = []
+  let echo = Diagnostics.echo
+  Diagnostics.echo = { line in engineLines.append(line); echo?(line) }
+  shell.stop { quitDone = true }
+  let ended = await until(20, { quitDone })
+  Diagnostics.echo = echo
+  let quitTook = Date().timeIntervalSince(quitAt)
+  stalled = false
+  let wait = engine.options.quitWait
+  let quitLines = Array(session.done.dropFirst(quitMark))
+  check("Margin's quit with its copy stalled: over within the engine's quitWait (\(String(format: "%.1f", quitTook)) s of \(wait) s, not the link's 40 s)",
+        ended && quitTook <= wait + 2, "\(quitLines)")
+  // (The engine keeps it in its marker, closed by its poll or the next launch; here the Safari Margin started quits with
+  // Margin, its windows with it, so the marker's entry goes after.)
+  check("… its Safari window's close unanswered, said, and kept in the engine's marker to close later",
+        quitLines.contains("at quit: closeWindow for s-default unanswered after quitWait (\(String(format: "%.1f", wait)) s): left in the marker")
+          && engineLines.contains { $0.contains("Margin asked for wasn't closed") && $0.contains("kept in the marker, closed later") },
+        "\(quitLines) \(engineLines.filter { $0.contains("marker") })")
   print(String(format: "  timings: the resilience scenario %.1f s", Date().timeIntervalSince(started)))
 }

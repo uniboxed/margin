@@ -148,6 +148,8 @@ extension Shell {
     // The engine's hooks to the session (the Safari windows it asks for, its loading steps, its events): when the
     // session is made with an engine already there, or when the engine starts after the session.
     func wire(_ host: HostEngine, to session: HostedSession) {
+        // (At quit the session waits for a copy's answer no longer than the engine's own quit does: its quitWait.)
+        session.options.quitWait = host.options.quitWait
         host.requestSafariWindow = { [weak session] profile in await session?.requestSafariWindow(profile) }
         host.requestRoleWindow = { [weak session] profile, role in await session?.requestSafariWindow(profile, role: role) }
         host.hostedWindows = { [weak session] list in session?.hostedWindows(list) }

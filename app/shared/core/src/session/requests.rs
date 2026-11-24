@@ -612,10 +612,12 @@ impl Core {
                         self.ports.set_showing(w, Some(label), Some(SAFARI_BUNDLE), slow);
                         self.ports.set_copy_slow(w, slow);
                     },
+                    || None,
                 )
                 .await;
             let shown = match asked {
                 Until::Answered(a) => a,
+                Until::Limit => return None, // (a show has no limit: it's raced against its pick)
                 Until::Overtaken { asked } => {
                     let why = self.show_overtaken(w, item).unwrap_or_default();
                     self.note(if asked {

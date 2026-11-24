@@ -296,6 +296,8 @@ pub(crate) enum Until {
     Answered(Asked),
     /// Overtaken first: the request cancelled, its answer let go (`asked`: false, overtaken already: never asked).
     Overtaken { asked: bool },
+    /// Its `limit` came first (Margin's quit: `quitWait` after it began): cancelled, its answer let go.
+    Limit,
 }
 
 /// What woke an `ask_until`.
@@ -303,6 +305,7 @@ enum Woke {
     Answer(Value),
     Changed,
     Look,
+    Limit,
 }
 
 /// A library edit's outcome (`LibraryOutcome`: its `ok`, its `result`, its `error`: a refusal's words).
@@ -387,6 +390,9 @@ pub struct Options {
     /// A copy slow this long (`Ports::link_slow`) while a show waits for it: its loader says so (`slow`). Paces the
     /// feedback only: nothing is decided by it.
     pub slow_say: f64,
+    /// At Margin's quit, how long after it began a copy's request an engine operation waits for may go unanswered (the
+    /// engine's own `quitWait`, sent with these: none until it is, no bound then).
+    pub quit_wait: Option<f64>,
 }
 
 impl Default for Options {
@@ -406,6 +412,7 @@ impl Default for Options {
             startup_wait: 15.0,
             prepare_window_wait: 30.0,
             slow_say: 3.0,
+            quit_wait: None,
         }
     }
 }
@@ -431,6 +438,7 @@ impl Options {
             startup_wait: n("startupWait", was.startup_wait),
             prepare_window_wait: n("prepareWindowWait", was.prepare_window_wait),
             slow_say: n("slowSay", was.slow_say),
+            quit_wait: json::num(v.get("quitWait")).filter(|w| w.is_finite() && *w >= 0.0).or(was.quit_wait),
         }
     }
 }
@@ -1143,10 +1151,13 @@ impl Core {
         payload: Object,
         overtaken: impl Fn() -> bool,
         slow: impl Fn(bool),
+        limit: impl Fn() -> Option<f64>,
     ) -> Until {
         if overtaken() {
             return Until::Overtaken { asked: false };
         }
+        // (The time it may not outlast, on the caller's clock, read again at each wake: Margin's quit begins later.)
+        let mut bound: Option<(f64, exec::Sleep<'_>)> = None;
         let mut answer =
             self.exec.command(Command::Ask { profile: profile.to_string(), kind: kind.to_string(), payload });
         let mut changed = self.exec.changed();
@@ -1155,9 +1166,18 @@ impl Core {
         let mut look = paced.then(|| self.sleep(say));
         let mut said = false;
         loop {
+            let at = limit();
+            if at != bound.as_ref().map(|(t, _)| *t) {
+                bound = at.map(|t| (t, self.sleep((t - self.ports.now()).max(0.0))));
+            }
             let woke = std::future::poll_fn(|cx| {
                 if let Poll::Ready(v) = Pin::new(&mut answer).poll(cx) {
                     return Poll::Ready(Woke::Answer(v));
+                }
+                if let Some((_, b)) = bound.as_mut()
+                    && Pin::new(b).poll(cx).is_ready()
+                {
+                    return Poll::Ready(Woke::Limit);
                 }
                 if Pin::new(&mut changed).poll(cx).is_ready() {
                     return Poll::Ready(Woke::Changed);
@@ -1180,6 +1200,14 @@ impl Core {
                         self.exec.command(Command::Cancel { profile: profile.to_string(), id }).await;
                     }
                     return Until::Overtaken { asked: true };
+                }
+                Woke::Limit => {
+                    let id = answer.id();
+                    drop(answer);
+                    if let Some(id) = id {
+                        self.exec.command(Command::Cancel { profile: profile.to_string(), id }).await;
+                    }
+                    return Until::Limit;
                 }
                 Woke::Changed => {}
                 Woke::Look => {
@@ -1231,11 +1259,22 @@ impl Core {
         wanted: impl Fn() -> bool,
     ) -> Asked {
         let gone = || !wanted() || self.unread_at_quit(profile);
-        match self.ask_until(profile, kind, payload, gone, |_| {}).await {
+        // (At Margin's quit, as the engine's own quit decides: no longer than `quitWait` after it began.)
+        let limit = || Some(self.quit_at.get()? + self.options.borrow().quit_wait?);
+        match self.ask_until(profile, kind, payload, gone, |_| {}, limit).await {
             Until::Answered(a) => a,
             Until::Overtaken { .. } => {
                 let why = if wanted() { "not read by its copy as Margin quits" } else { "no longer wanted" };
                 Asked { result: None, error: Some(format!("given up ({why})")) }
+            }
+            Until::Limit => {
+                let wait = self.options.borrow().quit_wait.unwrap_or(0.0);
+                let left = if kind == "closeWindow" { "left in the marker" } else { "given up" };
+                self.note(format!(
+                    "at quit: {kind} for {profile} unanswered after quitWait ({} s): {left}",
+                    hosting::secs(wait)
+                ));
+                Asked { result: None, error: Some("given up (unanswered at Margin's quit)".into()) }
             }
         }
     }

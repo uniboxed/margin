@@ -116,7 +116,7 @@ fn described(a: &WindowCallAnswer) -> String {
 }
 
 /// `String(format: "%.1f", …)`.
-fn secs(d: f64) -> String {
+pub(crate) fn secs(d: f64) -> String {
     format!("{d:.1}")
 }
 

@@ -9718,8 +9718,14 @@ Both parts merged (`fix/link-resilience-link` into the session's part): one canc
     `stopHost`) against its copy not reading what it was sent before the quit (the link's `slow`: its oldest unacked
     request no younger than the quit), judged as the input comes and at each read of its link after it (the shell's
     `linkHeard` while it quits, as `linked`: an ack, a tock; the link down), never on a timer: `slowSay` paces the
-    words only. A request sent since the quit and not acked yet isn't unread by that alone. The engine keeps a window
-    not confirmed closed in its marker, closed later;
+    words only. A request sent since the quit and not acked yet isn't unread by that alone. And, as the engine's own
+    quit decides (`quitWait`, sent to the session with its options: `quitWait`, never copied), no request an engine
+    operation waits for outlasts `quitWait` after the quit began (`ask_until`'s `limit`): given up, said ("at quit:
+    closeWindow for <profile> unanswered after quitWait (6.0 s): left in the marker"), cancelled. The engine keeps a
+    window not confirmed closed in its marker (`leftSafariWindows`), closed by its poll or the next launch. Tested
+    failing first: a copy that acks and never answers holds the quit `quitWait` and no longer (requests_tests.rs), and
+    e2e-resilience.swift's quit with the copy stalled ends within `quitWait`, the window kept in the marker (it waited
+    for the link's 40 s before);
   - `hostShow` of a layout's pane (layouts.rs `show_tab`): raced against another item (none of the layout's) asked for
     in its window, and at quit;
   - `hostPicture`: raced against `pictureWait` (as before); `peekAnswer`, the card's history: detached tasks, nothing

@@ -420,6 +420,7 @@ final class HostedSession {
         var cycleWindow = 1.0 // (Tirth, 2026-11-20) a pick this soon after the next/previous-tab key in its window: a cycle's
         var cycleHold = 0.35 // ...an app not running yet held this long before it's started: one only passed over is never started
         var paneIdle = 900.0 // (docs/PEEK-SPLIT.md §4) a split's pane window of a profile unused this long: closed
+        var quitWait: Double? // the engine's own (HostEngine.Options.quitWait), set as they're joined: at quit, a copy's request it waits for no longer
     }
 
     // Where an item's page is: its host, and for a web item its profile.
@@ -1791,7 +1792,7 @@ extension HostedSession.Options {
          "closesRestoredSafariWindows": closesRestoredSafariWindows, "preparesBrowser": preparesBrowser,
          "prepareWindowWait": prepareWindowWait, "refitRetryAfter": refitRetryAfter, "resumesLast": resumesLast,
          "startupWait": startupWait, "pictureWait": pictureWait, "wokenLate": wokenLate, "wokenGrace": wokenGrace,
-         "cycleWindow": cycleWindow, "cycleHold": cycleHold, "paneIdle": paneIdle]
+         "cycleWindow": cycleWindow, "cycleHold": cycleHold, "paneIdle": paneIdle, "quitWait": quitWait ?? NSNull()]
     }
 }
 
