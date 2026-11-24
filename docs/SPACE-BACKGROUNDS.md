@@ -255,12 +255,16 @@ The spike's measurements, which decide between them:
 - **The page decides, natively informed.** The Mac side tells the picker which device the current gesture comes from (`pointerKind: "trackpad" | "mouse"`). The picker then either:
   - sends `perform('haptic.alignment')` (the existing path; detents use `.alignment`, a texture change `.levelChange` through a new `haptic.level`, the `Said` enum, FFI code and `said()` case); or
   - plays a short click on WebAudio (generated, no file).
-- **Detecting the device** (verified on hardware in the spike, step 0):
-  - Pointer gestures: at mouse-down, the event's `subtype` (`.touch` vs `.mouseEvent`) and any `.pressure` event (Force Touch trackpads only) during the gesture.
-  - Scrolls on the dial: `hasPreciseScrollingDeltas` plus a non-empty `phase` (trackpad or Magic Mouse).
-  - Fallback if those don't separate the cases: indirect touches (`allowedTouchTypes = .indirect`) on the panel's host view.
-  - The cases to check: built-in trackpad (click, and tap-to-click), Magic Trackpad, Magic Mouse, a plain USB mouse.
-  - Haptics on Magic Mouse do nothing, so it counts as a mouse.
+- **Detecting the device: a mouse unless proven a trackpad.** Haptics play only on positive trackpad evidence in the current gesture. Anything else gets sound, so a mouse lands on sound by construction.
+  - The evidence (which one separates the cases is decided in the spike, step 0):
+    - **Pointer gestures:** at mouse-down, the event's `subtype` (`.touch` vs `.mouseEvent`), or any `.pressure` event during the gesture (only Force Touch trackpads send these).
+    - **Scrolls on the dial:** `hasPreciseScrollingDeltas` plus a non-empty `phase`.
+    - **If neither works for tap-to-click:** indirect touches (`allowedTouchTypes = .indirect`) on the panel's host view.
+  - **Haptics hardware:** the IORegistry's `AppleMultitouchDevice` entries carry `ActuationSupported`. With no such device connected, it's always sound.
+  - **Tirth's Mac has** the built-in trackpad and a Magic Trackpad (both `ForceSupported` and `ActuationSupported`), and **no mouse**:
+    - The trackpad cases are checked by hand on both: physical click, tap-to-click, a force click, and scrolling on the dial.
+    - **The mouse case is checked with synthesized events.** `CGEvent` mouse-down, drag and line-scroll events carry what a plain USB mouse sends (subtype `.mouseEvent`, no pressure, no touches, no precise deltas, no phase). The classifier's Swift tests feed it those. They stand in for a real mouse, which stays a manual check (below).
+  - Magic Mouse is untested (none available). Its surface may report touches and phases, which could look like a trackpad. If it does, haptics play to no effect: silence, not a wrong sound. The setting fixes it, and the manual check covers it.
 - **Windows and Linux:** always sound (no haptics API used).
 - **Setting** `pickerFeedback: "auto" | "haptics" | "sound" | "off"` (default `auto`), in Settings, validated in `model.ts`'s settings and the core's twin.
   - It covers the case where the system's "Force Click and haptic feedback" is off and haptics are silently suppressed.
@@ -309,7 +313,7 @@ The spike's measurements, which decide between them:
 
 | # | Commit | Touches | Tests |
 |---|---|---|---|
-| 0 | Spikes (no product code; results in DECISIONS.md) | throwaway, on this branch | Hardware matrix for device detection (Tirth); A vs B measurements; `NSView.appearance` on the web view, with and without system appearance; reading Arc's file from Margin.app; the UI-sound preference |
+| 0 | Spikes (no product code; results in DECISIONS.md) | throwaway, on this branch | A small event logger Tirth runs on both trackpads (click, tap-to-click, force click, scroll); synthesized `CGEvent` mouse events through the same logger; A vs B measurements; `NSView.appearance` on the web view, with and without system appearance; reading Arc's file from Margin.app; the UI-sound preference |
 | 1 | `feat(m2.9)`: a space's background in the library | core `state.rs`, `model/spaces.rs`, `actions.rs` (`rename_space`), `values.rs`, `snapshot.rs` (an object-or-absent writer); TS `model.ts`, `library.ts`, `types/margin.d.ts`, `data-set.ts`; vectors (`generate.ts`, `edges.ts`, re-recorded); `docs/DATA.md` | Rust unit tests per rule, an edge case per wrong type, the vectors on both sides, data-set round-trip |
 | 2 | `feat(m2.9)`: Margin's backdrop and palette under every theme | `ui/backdrop.ts` (new), `runtime.ts`, `view-model.ts`, `host-app.ts` `cornerFill`, `page/fill.rs`, the five themes' CSS, themes README | Theme tests: each theme with and without a background, light, dark, more contrast, every texture, a theme without the contract, `--m-fg` on `--m-bg` ≥ 4.5:1, corner fill sRGB, cross-fade, reduced motion |
 | 3 | `feat(m2.9)`: appearance per space | `MarginWindowController.swift` (web view appearance), Windows `webview.rs`, runtime | Theme tests via `emulateMedia`; a Swift unit test that the appearance follows the shown space |
@@ -324,7 +328,8 @@ Steps 1, 2 and 4 contain no Swift and can run alongside the Mac session's work. 
 
 ## What only a Mac can confirm (manual checks, TESTING.md)
 
-- Haptics on the built-in and Magic Trackpad, sound with a mouse, nothing doubled.
+- Haptics on the built-in and Magic Trackpad, with click and tap-to-click, and nothing doubled.
+- **With a real mouse (when one is at hand; none on Tirth's Mac):** sound on a USB or Bluetooth mouse, and what a Magic Mouse gets.
 - The glass panel in all five themes, light and dark, in a window and in full screen.
 - Per-space appearance switching Arcadia, Material and Liquid Glass. Safari's pages unchanged.
 - Arc import from the real `StorableSidebar.json`.
