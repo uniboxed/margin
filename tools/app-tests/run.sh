@@ -13,7 +13,8 @@
 #         installed apps (apps-tests.swift), Chrome's and Edge's relay (relay-tests.swift)
 #   e2e:  e2e.swift, the harness (a stand-in for the extension: fake-extension.mts, Node; scripted apps and keys);
 #         e2e-data.swift, the lasting data over the real link, in a temporary folder (never
-#         ~/Library/Application Support/Margin); e2e-hosted.swift, Margin's own window off every display with the real
+#         ~/Library/Application Support/Margin); e2e-link.swift, requests to a stalled copy (the fake's stall and lose
+#         modes) ending on evidence only; e2e-hosted.swift, Margin's own window off every display with the real
 #         page: its page area published, the pointer through it, the menu's New Tab opening the palette, its sidebar,
 #         full screen, resize; and e2e-glue.swift, the hosted parts joined: the library's first run, an app and a web
 #         item picked, the host engine on a stand-in window manager given the page area from the tiles, the copy's
@@ -99,11 +100,11 @@ if [ "$WHAT" = unit ] || [ "$WHAT" = all ]; then
     "$NODE" ../../scripts/build.ts >/dev/null || exit 1
   fi
   build tests "${UNIT_TESTS[@]}" "$CHAMELEON_SWITCHES" "${SHELL_SOURCES[@]}"
-  MARGIN_DATA_VECTORS="$PWD/../../tests/fixtures/data-merge" MARGIN_LIBRARY_VECTORS="$PWD/../../tests/fixtures/library" MARGIN_CONNECTOR_BIN="$CONNECTOR" "$BUILD/tests" || status=1
+  MARGIN_DATA_VECTORS="$PWD/../../tests/fixtures/data-merge" MARGIN_LIBRARY_VECTORS="$PWD/../../tests/fixtures/library" MARGIN_LINK_VECTORS="$PWD/../../tests/fixtures/link-protocol.json" MARGIN_CONNECTOR_BIN="$CONNECTOR" "$BUILD/tests" || status=1
 fi
 if [ "$WHAT" = e2e ] || [ "$WHAT" = all ]; then
   [ -f ../../dist/app/overlay.js ] || { echo "dist/app/ is missing: run npm run build" >&2; exit 1; }
-  build e2e e2e.swift e2e-data.swift e2e-hosted.swift e2e-glue.swift e2e-split.swift "$FAKE_SAFARI" "${SHELL_SOURCES[@]}"
+  build e2e e2e.swift e2e-data.swift e2e-link.swift e2e-hosted.swift e2e-glue.swift e2e-split.swift "$FAKE_SAFARI" "${SHELL_SOURCES[@]}"
   MARGIN_APP_ROOT="$PWD/../../dist/app" MARGIN_FAKE_EXTENSION="$PWD/fake-extension.mts" MARGIN_NODE="$NODE" "$BUILD/e2e" || status=1
 fi
 exit $status

@@ -396,15 +396,6 @@ protocol HostedLinks: AnyObject {
     func slow(of profile: String) -> Double?
 }
 
-extension HostedLinks {
-    // (A stand-in that can't give a request up: it runs to its answer, which the session lets go.)
-    func request(profile: String, _ type: String, _ payload: JSONObject, asked: UInt64?) async -> (result: JSONObject?, error: String?) {
-        await request(profile: profile, type, payload)
-    }
-    func cancel(profile: String, asked: UInt64) {}
-    func slow(of profile: String) -> Double? { nil }
-}
-
 final class HostedSession {
     struct Options {
         var firstCopiesPace = 10.0 // a Safari with no copy linked yet: its own copies' turn before its menu is pressed for a profile

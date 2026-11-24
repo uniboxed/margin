@@ -214,6 +214,8 @@ final class FakeHostedLinks: HostedLinks {
         cancelled.append(asked)
         held.removeValue(forKey: asked)?.resume(returning: (nil, "cancelled"))
     }
+    var slowFor: [String: Double] = [:] // (how long each profile's copy has been slow, as its link says)
+    func slow(of profile: String) -> Double? { slowFor[profile] }
 }
 
 // An engine that only says which app Margin started (the restored-window sweep's one question).

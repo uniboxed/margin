@@ -664,6 +664,20 @@ impl SocketLink {
         }
     }
 
+    /// [`Link::cancel`]: request `id` on `conn` no longer waited for; the `cancel` frame to write, or `None` if nothing
+    /// waited for it there.
+    pub fn cancel(&mut self, conn: ConnId, id: i64) -> Option<Vec<u8>> {
+        match self.link.cancel(conn, id)? {
+            Action::Send { text, .. } => self.frame(conn, &text).ok(),
+            _ => None,
+        }
+    }
+
+    /// [`Link::slow`]: the age of the oldest request on `conn` its copy hasn't acked.
+    pub fn slow(&self, conn: ConnId, now: Secs) -> Option<Secs> {
+        self.link.slow(conn, now)
+    }
+
     fn frame(&self, conn: ConnId, text: &str) -> Result<Vec<u8>, LinkError> {
         if self.sockets.get(&conn).is_some_and(|s| s.open && !s.ended) {
             Ok(websocket::encode(Op::Text, text.as_bytes()))
@@ -932,18 +946,18 @@ mod tests {
     #[test]
     fn the_links_messages_are_frames() {
         let mut s = linked();
-        let bytes = s.send(1, &AppMessage::Tick, 1.0).unwrap_or_default();
+        let bytes = s.send(1, &AppMessage::Tick { seq: 1 }, 1.0).unwrap_or_default();
         let back = server_frames(&bytes).unwrap_or_default();
         assert_eq!(back.len(), 1);
-        assert_eq!(serde_json::from_slice::<Value>(&back[0].1).ok(), Some(json!({"k":"tick","at":1000})));
+        assert_eq!(serde_json::from_slice::<Value>(&back[0].1).ok(), Some(json!({"k":"tick","at":1000,"seq":1})));
         let (id, bytes) = s.request(1, "x", Object::new(), Some(3), 1.0).unwrap_or_default();
         assert_eq!(id, 1);
         assert!(!bytes.is_empty());
         let out = s.on_bytes(1, &client_frame(1, br#"{"k":"reply","id":1,"ok":true}"#, true), 2.0);
         assert!(out.iter().any(|o| matches!(o, Out::Link(Action::Answer { id: 1, answer: Ok(_), .. }))));
         let out = s.tick(5.0);
-        assert_eq!(texts(&out, 1), vec![json!({"k":"tick","at":5000})], "the ticker, as frames");
-        assert_eq!(s.send(9, &AppMessage::Tick, 1.0), Err(LinkError::Down));
+        assert_eq!(texts(&out, 1), vec![json!({"k":"tick","at":5000,"seq":1})], "the ticker, as frames");
+        assert_eq!(s.send(9, &AppMessage::Tick { seq: 1 }, 1.0), Err(LinkError::Down));
     }
 
     #[test]

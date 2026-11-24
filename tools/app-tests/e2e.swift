@@ -1,7 +1,8 @@
 // Margin.app's shell end to end, with no browser and nothing on screen: the harness the scenarios share (a stand-in
 // for the extension's copies, fake-extension.mts in Node; scripted apps and hot keys), then the lasting data
 // (e2e-data.swift: the first link, a relink with a queue, two profiles kept apart, a wiped cache refilled, the app's
-// own change, and a crash mid-write followed by a relaunch, all in a temporary folder), Margin's own window
+// own change, and a crash mid-write followed by a relaunch, all in a temporary folder), the link's requests ending on
+// evidence against a stalled copy (e2e-link.swift), Margin's own window
 // (e2e-hosted.swift) and the hosted parts joined (e2e-glue.swift). The app never activates, nothing is made key, no
 // real hot key is taken (FakeKeys).
 import AppKit
@@ -149,6 +150,11 @@ final class Runner: NSObject, NSApplicationDelegate {
         print(failures == 0 ? "all \(passed) hosting checks passed" : "\(failures) hosting checks failed")
         exit(failures == 0 ? 0 : 1)
       }
+      if env["MARGIN_E2E_ONLY"] == "link" {
+        await linkScenario()
+        print(failures == 0 ? "all \(passed) link checks passed" : "\(failures) link checks failed")
+        exit(failures == 0 ? 0 : 1)
+      }
       if env["MARGIN_E2E_ONLY"] == "hosted" {
         await hostedScenario()
         print(failures == 0 ? "all \(passed) Margin window checks passed" : "\(failures) Margin window checks failed")
@@ -156,6 +162,7 @@ final class Runner: NSObject, NSApplicationDelegate {
       }
       await dataScenario()
       await carryScenario() // e2e-data.swift
+      await linkScenario() // e2e-link.swift
       await hostedScenario() // e2e-hosted.swift
       await glueScenario() // e2e-glue.swift
       await glueResumeScenario()

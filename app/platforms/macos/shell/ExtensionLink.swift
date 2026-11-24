@@ -2,7 +2,8 @@
 // step 3's). The rules are margin-core's (app/shared/core/src/link_hub.rs over socket.rs, link.rs, websocket.rs and
 // relay.rs, through margin-ffi's link object; docs/CORE-REFACTOR.md step 1.5): the upgrade and who may open the
 // socket, the frames, welcome and hello, one link per browser profile (a newer one takes over, a copy not in charge is
-// closed 1008), the tick every 5 s and 40 s of silence closing a link (1001), the requests' 15 s, the secrets and their
+// closed 1008), the tick every 5 s and 40 s of silence closing a link (1001), the requests ending on evidence only
+// (their reply, the link down, cancelled, lost: docs/LINK-RESILIENCE.md; no time of their own), the secrets and their
 // change 30 s after the last link goes, `wantLink` answered with `link` (held until there's a port), `appUp` once
 // Safari has run 2 s, the link note's contents, Chrome's and Edge's relays' words, each link's theme put together.
 // This file is the Mac's transport only, as app/platforms/windows/src/tcp.rs and pipe.rs are Windows':
@@ -28,11 +29,12 @@ protocol ExtensionLinkDelegate: AnyObject {
     func linkDown(_ link: LinkConnection, _ why: String)
 }
 
+// Why a request got no answer (the core's, but `cancelled`: this side's own call to `cancel`).
 enum LinkError: Error {
     case down
-    case timedOut
+    case lost
+    case cancelled
     case notJSON
-    case cancelled // (given up by the app: `LinkConnection.cancel`)
 }
 
 // What the app says into the extension (its copies' native ports). `done`:
@@ -114,31 +116,32 @@ final class LinkConnection {
         owner.drawn(self, hosted: hosted, windows: windows)
     }
 
-    // A request (`req`), answered as a page's is: { ok, result } or { ok: false, error, stale? }. The core gives up
-    // after 15 s. `sent`: told its id as it's sent (what `cancel` takes).
-    func request(type: String, payload: JSONObject, windowId: Int?, sent: ((Int) -> Void)? = nil) async throws -> JSONObject {
+    // A request (`req`), answered as a page's is: { ok, result } or { ok: false, error, stale? }. It ends on evidence
+    // only (the core's rules): its reply, the link down (`down`), read past twice (`lost`), or `cancel(id)`
+    // (`cancelled`); never after a time. `asked`: its id, as it's sent (for `cancel`).
+    func request(type: String, payload: JSONObject, windowId: Int?, asked: ((Int) -> Void)? = nil) async throws -> JSONObject {
         guard isUp, let owner else { throw LinkError.down }
         return try await withCheckedThrowingContinuation { continuation in
             switch owner.ask(self, type, payload, windowId) {
             case .success(let id):
                 waiting[id] = continuation
-                sent?(id)
+                asked?(id)
             case .failure(let error): continuation.resume(throwing: error)
             }
         }
     }
 
-    // A request given up (the session's `Command::Cancel`): the core's link cancels it (the copy told, a later reply
-    // dropped), and its caller's wait ends now, `cancelled`. One answered already: nothing.
-    func cancel(_ id: Int) {
-        guard let continuation = waiting.removeValue(forKey: id) else { return }
-        owner?.cancel(self, id)
-        continuation.resume(throwing: LinkError.cancelled)
+    // Request `id` no longer waited for: the core forgets it and tells the copy (`cancel { id }`); its call ends
+    // `cancelled` now, and nothing more comes of it. False: it wasn't waiting.
+    @discardableResult func cancel(_ id: Int) -> Bool {
+        guard isUp, let owner, waiting[id] != nil else { return false }
+        owner.cancel(self, id)
+        answered(id, .failure(.cancelled))
+        return true
     }
 
-    // How long the copy has been slow (the core's `Link::slow`: its oldest request not acked, in seconds), nil: it
-    // isn't, or the link is down.
-    func slow() -> Double? {
+    // How long the oldest request the copy hasn't acked has waited (the core's `slow`): for feedback only. Nil: none.
+    var slow: TimeInterval? {
         guard isUp, let owner else { return nil }
         return owner.slow(self)
     }
@@ -205,7 +208,6 @@ final class SocketLink {
         var dead: TimeInterval = 40
         var keep: TimeInterval = 30 // the token and key, after the last link closes
         var hello: TimeInterval = 5 // an accepted socket, to say hello
-        var request: TimeInterval = 15
         var safariSettled: TimeInterval = 2 // before appUp
         var listenWait: TimeInterval = 5 // the listener waiting this long (after sleep or wake): made again
     }
@@ -259,7 +261,7 @@ final class SocketLink {
         let config: JSONObject = [
             "version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "",
             "pid": Int(ProcessInfo.processInfo.processIdentifier),
-            "timing": ["tick": timing.tick, "dead": timing.dead, "keep": timing.keep, "hello": timing.hello, "request": timing.request, "safariSettled": timing.safariSettled],
+            "timing": ["tick": timing.tick, "dead": timing.dead, "keep": timing.keep, "hello": timing.hello, "safariSettled": timing.safariSettled],
             "origins": allowedOrigins,
         ]
         let ctx = Unmanaged.passUnretained(box).toOpaque()
@@ -374,7 +376,7 @@ final class SocketLink {
 
     private static func error(_ name: String?) -> LinkError {
         switch name {
-        case "timedOut": .timedOut
+        case "lost": .lost
         case "notJSON": .notJSON
         default: .down
         }
@@ -469,16 +471,16 @@ final class SocketLink {
         return .failure(Self.error(answer["error"] as? String))
     }
 
+    fileprivate func close(_ link: LinkConnection, _ code: UInt16, _ why: String) {
+        perform(call(["type": "close", "conn": link.conn, "code": Int(code), "why": why]))
+    }
+
     fileprivate func cancel(_ link: LinkConnection, _ id: Int) {
         perform(call(["type": "cancel", "conn": link.conn, "id": id]))
     }
 
-    fileprivate func slow(_ link: LinkConnection) -> Double? {
+    fileprivate func slow(_ link: LinkConnection) -> TimeInterval? {
         num(call(["type": "slow", "conn": link.conn])?["slow"])
-    }
-
-    fileprivate func close(_ link: LinkConnection, _ code: UInt16, _ why: String) {
-        perform(call(["type": "close", "conn": link.conn, "code": Int(code), "why": why]))
     }
 
     // Whether a relay's hello has named this browser process since the app started (RelayHub.heardPid).

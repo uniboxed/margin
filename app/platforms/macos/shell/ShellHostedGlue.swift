@@ -48,7 +48,7 @@ final class ShellHostedLinks: HostedLinks {
         let connection = entry.connection
         defer { if let asked { asking[asked] = nil } }
         do {
-            let reply = try await connection.request(type: type, payload: payload, windowId: nil, sent: { [weak self] id in
+            let reply = try await connection.request(type: type, payload: payload, windowId: nil, asked: { [weak self] id in
                 if let asked { self?.asking[asked] = (connection, id) }
             })
             guard reply["ok"] as? Bool == true else { return (nil, Diagnostics.scrub(reply["error"] as? String ?? "refused", max: 160)) }
@@ -64,7 +64,7 @@ final class ShellHostedLinks: HostedLinks {
     }
 
     func slow(of profile: String) -> Double? {
-        shell?.links["safari:\(profile)"]?.connection.slow()
+        shell?.links["safari:\(profile)"]?.connection.slow
     }
 }
 

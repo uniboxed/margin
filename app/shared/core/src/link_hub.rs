@@ -379,6 +379,20 @@ impl LinkHub {
         }
     }
 
+    /// [`crate::link::Link::cancel`]: request `id` on `conn` no longer waited for (no answer comes for it), the copy
+    /// told. False: nothing waited for it there.
+    pub fn cancel(&mut self, conn: ConnId, id: i64) -> (bool, Vec<HubOut>) {
+        match self.link.cancel(conn, id) {
+            Some(bytes) => (true, vec![HubOut::Write { which: Which::Tcp, conn, bytes }]),
+            None => (false, Vec::new()),
+        }
+    }
+
+    /// [`crate::link::Link::slow`]: the age of the oldest request on `conn` its copy hasn't acked (for feedback only).
+    pub fn slow(&self, conn: ConnId, now: Secs) -> Option<Secs> {
+        self.link.slow(conn, now)
+    }
+
     /// `LinkConnection.close`.
     pub fn close(&mut self, conn: ConnId, code: u16, why: &str, now: Secs) -> Vec<HubOut> {
         let outs = self.link.close(conn, code, why, now);
@@ -765,7 +779,7 @@ mod tests {
         assert_eq!(sent, Err(LinkError::NotJson));
         assert!(logged(&out, "not sent to safari:P1: not JSON, or over 1000000 bytes"));
         assert_eq!(h.link().link().connection_on(1).map(|c| c.refused()), Some(1));
-        assert_eq!(h.send(9, &AppMessage::Tick, 1.0).0, Err(LinkError::Down));
+        assert_eq!(h.send(9, &AppMessage::Tick { seq: 1 }, 1.0).0, Err(LinkError::Down));
         let (id, _) = h.request(1, "updateSettings", Object::new(), None, 1.0);
         assert_eq!(id, Ok(1));
         let out = h.tcp_bytes(1, &frame(json!({"k":"reply","id":1,"ok":true,"result":{}})), 2.0);
@@ -773,7 +787,15 @@ mod tests {
         let (id, _) = h.request(1, "x", Object::new(), None, 3.0);
         assert_eq!(id, Ok(2));
         let out = h.tick(18.0);
-        assert!(out.iter().any(|o| matches!(o, HubOut::Answer { id: 2, answer: Err(LinkError::TimedOut), .. })));
+        assert!(!out.iter().any(|o| matches!(o, HubOut::Answer { .. })), "no time-out: still waiting");
+        assert_eq!(h.slow(1, 18.0), Some(15.0), "not acked: slow for 15 s");
+        assert!(h.tcp_bytes(1, &frame(json!({"k":"ack","id":2})), 18.5).is_empty(), "an ack: the link's own");
+        assert_eq!(h.slow(1, 19.0), None);
+        let (cancelled, out) = h.cancel(1, 2);
+        assert!(cancelled);
+        assert_eq!(texts(&out, Which::Tcp, 1), vec![json!({"k":"cancel","id":2})]);
+        assert!(h.tcp_bytes(1, &frame(json!({"k":"reply","id":2,"ok":true})), 19.0).is_empty(), "its late reply: left");
+        assert!(!h.cancel(1, 2).0 && !h.cancel(9, 1).0, "nothing waits for it");
         let out = h.tcp_bytes(
             1,
             &frame(json!({"k":"push","epoch":"e1","windowId":3,"msg":{"type":"loading","tabIds":[1]}})),
