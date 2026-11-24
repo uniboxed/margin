@@ -134,7 +134,7 @@ pub enum SwitchEvent {
 
 /// The world a switch acts in: the shell's. Requests are the copies' `req`s; each answer comes back through
 /// [`ProfileSwitch::answered`] with the id `request` gave (an answer that never comes is fine: the switch has its
-/// own timeouts; the link's own 15 s timeout should still answer it with an error).
+/// own timeouts; the link has none, and answers it with an error only on evidence: its link down, or lost).
 pub trait SwitchWorld {
     fn is_linked(&self, link: &str) -> bool;
     /// A `req` of `kind` to the link's copy. `window_id`: the window it's for (the link's `req.windowId`).

@@ -1406,7 +1406,7 @@ impl Shell {
 fn error_words(e: LinkError) -> &'static str {
     match e {
         LinkError::Down => "down",
-        LinkError::TimedOut => "timedOut",
+        LinkError::Lost => "lost",
         LinkError::NotJson => "notJSON",
     }
 }
