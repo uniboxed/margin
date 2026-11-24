@@ -94,7 +94,7 @@ final class Harness: ExtensionLinkDelegate {
     case .keys(_, let bindings):
       say(["ev": "keys", "bindings": bindings])
     case .push(_, let windowId, let msg):
-      say(["ev": "push", "windowId": windowId ?? NSNull(), "msg": msg])
+      say(["ev": "push", "windowId": windowId ?? NSNull(), "msg": msg.object])
     case .other(let k):
       say(["ev": "other", "k": k])
     default:
