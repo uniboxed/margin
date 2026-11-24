@@ -209,6 +209,16 @@ img.fav.app, .tab.on img.fav.app { width: 22px; height: 22px; margin: -2px; bord
 /* The page: an 18 px-rounded card with a 3 px border and a 6 px shadow.
    The page itself goes inside the border. */
 .page { flex: 1; min-width: 0; position: relative; z-index: 0; border: var(--edge) solid var(--ink); border-radius: var(--radius); box-shadow: 6px 6px 0 var(--ink), 0 0 0 100vmax var(--space); transition: box-shadow .3s; }
+/* A space's background (Margin draws it under the theme: the themes README, "A space's background"; the root has
+   m-background while one shows, m-appearance its light or dark). It is the ground: the card keeps its ink shadow, not
+   the space's colour around it, and the dots give way (Dots is one of the background's textures). The cards stay
+   paper and ink; the space's name, on the ground itself, takes Margin's text colour; what lies over the page (the
+   sidebar out as a card, a divider) the background as one colour (--m-bg). */
+.nb[m-background] .page { box-shadow: 6px 6px 0 var(--ink); }
+.nb[m-background]::before { display: none; }
+.nb[m-background] .space-name { color: var(--m-fg); }
+.nb[m-background][data-sidebar="peek"] .sidebar { background: var(--m-bg); }
+.nb[m-background] m-divider { background: var(--m-bg); }
 
 /* The page card while an item opens (Margin.app: the root's m-page-state):
    opaque, exactly over the page's place inside the card's border, whatever

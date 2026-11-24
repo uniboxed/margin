@@ -17,7 +17,7 @@
 // row whose item is the same object (ui/render.ts), so this is what keeps an
 // update down to the rows that changed. Pure: no browser APIs, runs in Node.
 import { themeChoices, spaceThemeId, spaceThemesOn } from './space-theme.ts';
-import type { State } from '../../../types/margin';
+import type { SpaceBackground, State } from '../../../types/margin';
 import * as V from '../../../extension/shared/view.ts';
 import { NEW_TAB } from '../../../extension/shared/switching.ts';
 import { hostOf } from '../../../extension/shared/dom.ts';
@@ -149,6 +149,8 @@ export type SpaceView = SpaceChip & {
   splits: SplitRow[], hasSplits: boolean,
   today: TabRow[], hasToday: boolean, hasPinned: boolean,
   newTab: { active: boolean },
+  /** Its background as stored (extension/state/model.ts backgroundOf), null for none: Margin draws it under the theme (ui/background.ts). */
+  background: SpaceBackground | null,
 };
 export type ActiveTab = Face & {
   id: number, loading: boolean, audible: boolean, muted: boolean, asleep: boolean, pinned: boolean, newTab: boolean,
@@ -422,7 +424,7 @@ function fresh(input: ViewModelInput): ViewModel {
   if (!state) {
     return {
       version: VM_VERSION, ready: false, window: win,
-      space: { id: '', name: '', emoji: '', color: '', abbr: '', index: 0, number: 1, active: true, tabCount: 0, label: '', pinned: [], pinnedFlat: [], folders: [], pins: [], splits: [], hasSplits: false, today: [], hasToday: false, hasPinned: false, newTab: { active: false } },
+      space: { id: '', name: '', emoji: '', color: '', abbr: '', index: 0, number: 1, active: true, tabCount: 0, label: '', pinned: [], pinnedFlat: [], folders: [], pins: [], splits: [], hasSplits: false, today: [], hasToday: false, hasPinned: false, newTab: { active: false }, background: null },
       spaces: [], favorites: { items: [], hasItems: false, columns: 3 }, tab: null, archive: [], hasArchive: false,
       palette: { open: !!paletteUi.open, query: paletteUi.query ?? '', newTab: !!paletteUi.newTab, rows: [], hasRows: false, selected: null },
       menu: null, editing, editor: null, notice, prompt, toast, media: null, preview: null, split: null, gesture, launcher: null, pageLoader, settingsForm: null, settingsTab: null, settings, platform,
@@ -572,6 +574,7 @@ function fresh(input: ViewModelInput): ViewModel {
     hasToday: today.length > 0,
     hasPinned: pinned.length > 0,
     newTab: { active: !!view.newTab.active },
+    background: (chip ? state.spaces[chip.index]?.background : null) ?? null,
   };
 
   // The tab in front: this page's own (in pages), else the window's active one.

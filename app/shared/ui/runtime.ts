@@ -20,6 +20,7 @@ import type { LoadedTheme } from './theme-loader.ts';
 import type { UiState, ViewModel } from './view-model.ts';
 import type { State } from '../../../types/margin';
 import { View } from './render.ts';
+import { createBackground } from './background.ts';
 import { checkIconUrl } from './sanitize.ts';
 import { buildViewModel, paletteItems } from './view-model.ts';
 import { BEHAVIOR_ONLY, checkAction, contextFromState, requestFor } from './actions.ts';
@@ -113,7 +114,7 @@ export type Rt = {
  * pill and notice); `onSwitchRun`: each chain of switches as it ends, with a
  * host whose UI stays on screen (shared/switching.ts SwitchRun: Margin.app's log)
  */
-export function createRuntime({ host, theme, container, ui: start = {}, onWarn, log, onSwitchSlow, onSwitchFailed, onPalette, onSwitching, onSwitchRun }: {
+export function createRuntime({ host, theme, container, ui: start = {}, onWarn, log, onSwitchSlow, onSwitchFailed, onPalette, onSwitching, onSwitchRun, onGround }: {
   host: Host,
   theme: LoadedTheme,
   container: ShadowRoot | Document,
@@ -125,6 +126,8 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   onPalette?: (what: 'run' | 'close', request?: any) => void,
   onSwitching?: (tabId: number | string | null) => void,
   onSwitchRun?: (run: import('../../../extension/shared/switching.ts').SwitchRun) => void,
+  /** The ground Margin draws under the theme changed (a space's background shown, changed or gone): what's around the page's corners may have (`backgroundAt`). */
+  onGround?: () => void,
 }) {
   // (Always with a palette: closed, or as it's open.)
   let ui: Ui = { sidebar: null, palette: CLOSED_PALETTE, menu: null, editing: null, editor: null, notice: null, prompt: null, toast: null, focused: true, switchingTo: null, newTabPending: false, opening: null, ...start };
@@ -270,11 +273,14 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     front,
   });
 
+  // The shown space's background (M2.9: ui/background.ts): Margin's layer under the theme, cut out of the page card at
+  // every layout, its variables in a sheet of Margin's with the theme's.
+  const background = createBackground({ doc, container });
   const view = new View(container, theme.template, {
-    sheets: [theme.sheet, theme.settingsSheet].filter(Boolean),
+    sheets: [theme.sheet, theme.settingsSheet, background.sheet].filter(Boolean),
     onAction: (name, arg, info) => { themeClick(name, arg, info); },
     onInput: (name, value) => { for (const b of list) b.onInput?.(name, value); },
-    onLayout: (geometry) => { placeLoader(); behaviors.card?.layout?.(); host.reportLayout({ ...geometry, windowId: windowId(), mode: host.mode ?? 'inpage' }); },
+    onLayout: (geometry) => { placeLoader(); behaviors.card?.layout?.(); background.place(view.measurePageOuter()); host.reportLayout({ ...geometry, windowId: windowId(), mode: host.mode ?? 'inpage' }); },
     onWarn: (message) => warn(message),
   });
   drawsSettingsNav = view.reads('settingsTab');
@@ -290,6 +296,38 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       if (agrees || Date.now() > p.until) pending.themeSettings = null;
     }
     return pending.themeSettings ? { ...(own ?? {}), ...pending.themeSettings.values } : own;
+  }
+
+  // The shown space's background drawn (or none), as the system asks now (dark, more contrast, less motion), and what
+  // it's drawn as on the theme's root: `m-background` while there's one, `m-appearance` its light or dark (themes
+  // README, "A space's background"). Placed at once the first time (later layouts place it: the view's onLayout).
+  const media = (query: string) => !!win.matchMedia?.(query).matches;
+  function followBackground() {
+    const space = vm?.space;
+    const was = background.active();
+    const before = background.revision();
+    const appearance = background.update({
+      spaceId: space?.id ?? '', background: space?.background ?? null,
+      systemDark: media('(prefers-color-scheme: dark)'), moreContrast: media('(prefers-contrast: more)'), reducedMotion: media('(prefers-reduced-motion: reduce)'),
+    });
+    if (appearance && !was) background.place(view.measurePageOuter());
+    if (background.revision() !== before) onGround?.();
+    const root = view.rootElement() as HTMLElement | null;
+    if (!root) return;
+    if (appearance) {
+      if (!root.hasAttribute('m-background')) root.setAttribute('m-background', '');
+      if (root.getAttribute('m-appearance') !== appearance) root.setAttribute('m-appearance', appearance);
+    } else if (root.hasAttribute('m-background') || root.hasAttribute('m-appearance')) {
+      root.removeAttribute('m-background');
+      root.removeAttribute('m-appearance');
+    }
+  }
+  for (const query of ['(prefers-color-scheme: dark)', '(prefers-contrast: more)']) {
+    const mq = win.matchMedia?.(query);
+    if (!mq?.addEventListener) continue;
+    const changed = () => { if (!destroyed) followBackground(); };
+    mq.addEventListener('change', changed);
+    offs.push(() => mq.removeEventListener('change', changed));
   }
 
   function render() {
@@ -313,6 +351,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       if (moving) motion.after();
     }
     followPage();
+    followBackground();
     followToast();
     if (vm.ready) firstRender = false;
     for (const b of list) b.afterRender?.(vm, prev);
@@ -1038,6 +1077,13 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     },
     /** Where the theme's `<m-preview-page>` is now (ui/render.ts View.measurePeekPage): null when no card is drawn. */
     measurePeekPage: () => view.measurePeekPage(),
+    /**
+     * The space's background at a point of the window, as `rgb(r, g, b)` (ui/background.ts colorAt): what Margin.app
+     * is told is around the page's corners (host-app.ts cornerFill's `ground`). Null while the theme's own ground shows.
+     */
+    backgroundAt: (x: number, y: number) => background.colorAt(x, y),
+    /** What the background layer has drawn (ui/background.ts drawn), for the tests. */
+    backgroundDrawn: () => background.drawn(),
     /** The new-tab launcher's field focused, by the host's word (its overlay shown over a new window: behaviors/palette.js). */
     focusLauncher: () => !!behaviors.palette?.focusLauncher(),
     /** The tab list's scroll: saved now (before a switch), or set (a page prepared for a show). */
@@ -1064,6 +1110,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       for (const id of timers) clearTimeout(id);
       for (const fn of offs.splice(0)) fn();
       view.destroy();
+      background.destroy();
     },
   };
 }

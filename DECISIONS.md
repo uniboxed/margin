@@ -9559,3 +9559,53 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   Windows targets, so `scripts/rust-test.sh` skips their checks here).
 - Tests: Rust (`state_tests`, `spaces_tests`, `snapshot_tests`: reading, the three ways, the text and the stored value),
   TS (model, library, data-set), the vectors both sides; `npm run test:rust` green.
+
+## M2.9 step 2: a space's background drawn under every theme (`feat/space-backgrounds`, 2026-11-24)
+
+- **Margin draws it, not the theme** (docs/SPACE-BACKGROUNDS.md Part B §2): `app/shared/ui/background.ts`, one layer,
+  `<margin-background>` (not "backdrop": Margin.app has a `MarginBackdrop` window), fixed over the window at z-index
+  −2147483647, never taking the pointer, cut out of `<m-page>`'s border box and its four corner radii
+  (`View.measurePageOuter`, not in the layout Margin.app is told) with `clip-path: path(evenodd, …)`. Its content is
+  in a closed shadow root, its host pinned with `all: initial !important` (as the theme preview's bar). **Found the
+  first time:** the host's own style attribute can't carry `display` or `clip-path` (the shadow tree's `:host`
+  `!important` beats it): both are a rule inside the shadow root, after the pin. It's put in the container the first
+  time a background shows (before `<body>` in a document; after the theme's root in a shadow root, which stays its
+  container's first element: the theme harness's `rtPageHits` found the theme's root that way, and split view's test
+  caught the layer taking its place).
+- **What it's drawn from** (`background-look.ts`, pure, tested in Node): an underlay (OKLCH 0.975 or 0.17, a touch of
+  the key colour's hue), the colours as drawn (light: lightness at least 0.62; dark: 0.20–0.40, chroma 0.85×) at
+  `0.14 + 0.86 × intensity`, the texture at the amount. One description of the colours' layout gives the CSS and the
+  colour at any point (`groundAt`). The palette: `--m-fg` 4.5:1 against every sampled part of the ground (7:1 where it
+  can; with Increase contrast 7:1), `--m-fg-2` 4.5:1 (7:1), `--m-accent` 3:1; the colours' opacity lowered a twentieth
+  at a time where no text gets there. Margin's colour code: `color.ts` (OKLCH, WCAG luminance and contrast).
+- **What themes read**: `m-background` and `m-appearance` on the root (as `m-page-state`), and `--m-bg`, `--m-fg`,
+  `--m-fg-2`, `--m-accent`, `--m-hover`, `--m-selected` from Margin's own constructed sheet after the theme's settings
+  (each value checked again by `checkCssValue`); none of them while the space has no background. The view model has
+  `space.background`. The themes README's "A space's background" is the contract.
+- **Text colours on the surfaces that lie on the background, not the root** (a choice made while building): until
+  Margin.app sets the web view's appearance per space (step 3), menus and panels are drawn in the system's, which can
+  differ from the background's; Margin's text on the root would reach them (light on light, seen in Material's dark
+  shot). Each theme sets them on its docked sidebar. In Material a role mixed from another at the root comes resolved,
+  so the tonal surfaces are named one by one in the drawer. Liquid Glass needs none: every colour is `light-dark()`,
+  so it sets `color-scheme` from `m-appearance` and all of it follows.
+- **The five themes**: Arcadia and Material (the frame's spread and the docked sidebar clear, Margin's text and
+  translucent fills in the sidebar, the sidebar out over the page a card of `--m-bg`, Material's active indicator its
+  tonal container), Liquid Glass (ground `--m-bg`, lights gone, `color-scheme` followed), Neubrutalism (ink shadow
+  kept, dots gone, the space's name `--m-fg`), Pixel (pixel border kept, dots gone, its dark panel kept). Neubrutalism's
+  and Pixel's own dots become the Dots texture.
+- **A theme without the contract keeps its look**, all but a pixel's worth of the page card's rounded corners' edge
+  (both the cut and the theme's spread are smoothed there): a larger cut would leave a seam of the page round the
+  card in every theme that takes part, so the cut is exact (the test leaves those corners out, as Neubrutalism's own
+  "never paints over the page" test does).
+- **Corner fill**: `cornerFill`'s optional `ground` (the runtime's `backgroundAt`): outside the card a sharp shadow of
+  the theme's first, then Margin's colour there (`rgb(…)`, as `fill.rs` reads), then an ancestor's. The runtime says
+  when the ground changed (`onGround`); the overlay measures again.
+- **Textures**: Margin's own tiles drawn on a canvas from fixed seeds (the same pixels every load), `data:` PNGs (the
+  overlay's `img-src` allows `data:`); dots and grid CSS gradients in `--m-fg`. Two backgrounds cross-fade (0.3 s; at
+  once with reduced motion); to or from none it's at once.
+- **The CI plan**: a theme test that imports `types/margin.d.ts` by its full name reaches the extension's background
+  (the `.d.ts` imports its handlers' types) and so every theme test runs for any change there; `'…/types/margin'`, as
+  the other theme files write it, doesn't. `tests/ci-plan.test.ts` lists the new looping test.
+- **Browsers on this Mac**: Playwright 1.65 wants Chromium 1254 and WebKit 2388; the cache has Chromium 1248 and WebKit
+  2287. Not installed (CLAUDE.md). The theme tests ran in Chromium 1248 through a scratch `PLAYWRIGHT_BROWSERS_PATH`
+  of links; WebKit's halves couldn't launch (2287 hangs under 1.65). CI runs both.

@@ -341,7 +341,8 @@ function measureNow() {
   // (The mode too: Margin's own window learns it went full screen after its new size was measured, and the app
   // takes a layout as the window's only with the window's mode in it: MarginWindowController.)
   // (Margin's own window: the colour around the page's rounded corners too, the ground the app puts under the page area.)
-  const fills = host.appWindow ? cornerFill(runtime?.view.pageEl)?.fills ?? null : null;
+  // (A space's background: Margin's ground under the theme, its colour there: runtime.backgroundAt.)
+  const fills = host.appWindow ? cornerFill(runtime?.view.pageEl, { ground: runtime ? runtime.backgroundAt : null })?.fills ?? null : null;
   const key = JSON.stringify([g.insets, g.radius, g.radii, g.container, host.mode, !!host.pageOutside, !!(host as { pageHosted?: boolean }).pageHosted, fills, g.split ?? null, g.panes ?? null]);
   if (key === lastLayout) return;
   lastLayout = key;
@@ -547,6 +548,8 @@ async function mount(pkg: any, { fallback = false, preview: previewing = false }
     onSwitchRun: (run) => { const line = describeSwitchRun(run); if (line) log('note', line); },
     // (⌃⇧= with nothing else to split with: the palette's pick is the new pane, `addSplitPane`.)
     onPalette: (what) => { if (splitPick && what === 'close') splitPick = null; else if (splitPick && what === 'run') splitPick.picked = true; },
+    // (A space's background drawn, changed or gone: the colours around the page's corners told again.)
+    onGround: () => measureNow(),
   });
   // (The page's own hover: the theme's sheets and Margin's own, every :hover also [m-hover]; the marks start again.)
   for (const sheet of runtime.view.sheets ?? []) { try { withHoverAttr(sheet.cssRules); } catch { /* a sheet not readable: its :hover only */ } }

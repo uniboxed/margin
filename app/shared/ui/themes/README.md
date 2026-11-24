@@ -388,7 +388,8 @@ host. Immutable: rows that didn't change are the same objects.
   `folders[]` (`name`, `open`, `parentFolderId`, `depth`, `count`, `pins`, `shown`, `shownFlat`, `hasShown`), `pins`,
   `splits[]` (`id`, `axis`, `active`, `panes[]`, `ratios`, `count`, `title`) and `hasSplits`,
   `today` (the other tabs, newest first), `hasToday`, `hasPinned`,
-  `newTab.active`.
+  `newTab.active`, `background` (the space's background as stored, null for none: Margin draws it, "A space's
+  background" below).
 - `favorites`: `items[]` (web tabs & hosted apps, up to 12, sticky `open`/`active`/`drifted`/`rootUrl`/`audible`/`muted`), `hasItems`, `columns` (1–4).
 - `media` (the background mini player: null unless a tab not in front of this window is playing, or paused within the last 30 s; hosted Mac apps later): `title`, `subtitle`, `artwork` (a data URL, or null), `icon`, `letter`, `color`, `playing`, `paused`, `muted`, `canPrev`, `canNext`.
 - `toast` (null unless showing; guarded): `id`, `text`.
@@ -545,7 +546,48 @@ Classes and variables Margin sets for you to style:
   moving part: `transition: var(--m-swipe-transition, none)` (Arcadia does this);
 - `--m-menu-x`, `--m-menu-y` (`<m-menu>`), `--m-reveal-zone` (`m-peek`), `--m-page-left`, `--m-page-top`,
   `--m-page-right`, `--m-page-bottom`, `--m-page-radius` (on the root while the preview card is up: the page's place),
-  `--m-<setting>` (your settings).
+  `--m-<setting>` (your settings);
+- `m-background` and `m-appearance`, and `--m-bg`, `--m-fg`, `--m-fg-2`, `--m-accent`, `--m-hover`, `--m-selected`:
+  a space's background, below.
+
+## A space's background
+
+A space can have a background (Edit Theme Color: colours, intensity, a texture, light or dark). Margin draws it, not
+the theme: one layer under everything the theme draws, over the whole window except the page card, which it is cut
+out of exactly as `<m-page>` is drawn (its border box, its rounded corners). Your theme decides where it shows, by
+letting it through.
+
+While the space shown has one, Margin sets:
+
+- `m-background` on your root, and `m-appearance` (`light` or `dark`): the appearance the background is drawn in, its
+  own or the system's;
+- on the container (`:host`, or `:root` in a document), plain colours worked out for it:
+  - `--m-bg`, the background as one colour (its average), for anything solid that stands for the ground (a card over
+    the page, a divider, a patch behind a label);
+  - `--m-fg`, text on it: at least 4.5:1 against every part of it, 7:1 where it can (7:1 always with Increase
+    contrast);
+  - `--m-fg-2`, secondary text (4.5:1; 7:1 with Increase contrast);
+  - `--m-accent`, the key colour as an accent (3:1, for non-text);
+  - `--m-hover` and `--m-selected`, translucent fills for a row under the pointer and the row shown.
+
+None of these are set while the space has no background, so `var(--m-fg, <yours>)` falls back to your own. (Don't
+name a setting `bg`, `fg`, `accent`, `hover` or `selected`: its variable would have the same name.)
+
+To take part, under `[m-background]`:
+
+1. Stop painting your ground where the background should show: a spread `box-shadow` around the page card
+   (`0 0 0 100vmax …`), the sidebar's own background, a layer of dots or lights. Keep what's drawn on the card itself
+   (a border, an offset shadow).
+2. Give what lies on the background Margin's text colours, or fills that suit it (translucent white over it, as the
+   built-in themes do). Set them on the surfaces that lie on it, not on your root: menus and panels are still drawn
+   in the system's appearance, which can differ from the background's until Margin.app sets the window's own.
+3. Anything solid that stands in for the ground (a sidebar out over the page as a card, a split's divider) takes
+   `--m-bg`.
+
+A theme that does nothing keeps its own look: its ground covers the background, all but the smoothing of the page
+card's rounded corners, where a pixel's worth of the edge shows a little of it. Arcadia, Material, Liquid Glass,
+Neubrutalism and Pixel take part; their `[m-background]` rules are a short example each. Liquid Glass shows the other
+way: its colours are all `light-dark()`, so it sets `color-scheme` from `m-appearance` and its whole look follows.
 
 ## Motion
 

@@ -1025,6 +1025,28 @@ export class View {
   }
 
   /**
+   * The page card's outer box (`<m-page>`'s border box) in the window's pixels, and its corners' radii (top left,
+   * clockwise; a percentage of the box's width): what a space's background is cut out of (ui/background.ts). Not part
+   * of the layout Margin.app is told. Null with no page drawn (none in the theme, or no box).
+   */
+  measurePageOuter(): { left: number, top: number, width: number, height: number, radii: number[] } | null {
+    const el = this.pageEl;
+    if (!el || !el.isConnected) return null;
+    const r = el.getBoundingClientRect();
+    if (!(r.width > 0 && r.height > 0)) return null;
+    const cs = this.doc.defaultView!.getComputedStyle(el); // (as measure)
+    const radius = (v: string) => {
+      const first = String(v ?? '').trim().split(/\s+/)[0] ?? '';
+      const n = parseFloat(first) || 0;
+      return first.endsWith('%') ? (n / 100) * r.width : n;
+    };
+    return {
+      left: r.left, top: r.top, width: r.width, height: r.height,
+      radii: [cs.borderTopLeftRadius, cs.borderTopRightRadius, cs.borderBottomRightRadius, cs.borderBottomLeftRadius].map(radius),
+    };
+  }
+
+  /**
    * Where the preview card's window goes (docs/PEEK-SPLIT.md §2): the theme's `<m-preview-page>` (in its `preview` part) as the
    * page's own box is measured, its content box in the container's coordinates, and its inner corner radius. Laid out,
    * not as drawn: the card's open (a scale) and close never move it (offsets ignore transforms). Null with no card drawn

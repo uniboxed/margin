@@ -101,6 +101,29 @@
 @media (prefers-contrast: more) and (prefers-color-scheme: dark) {
   .arcadia { --muted: rgba(255, 255, 255, 0.8); --border: rgba(255, 255, 255, 0.45); --hover: color-mix(in srgb, #fff 14%, var(--frame)); --active: color-mix(in srgb, #fff 26%, var(--frame)); --active-shadow: 0 0 0 1px rgba(255, 255, 255, 0.7); --panel-muted: rgba(255, 255, 255, 0.78); --panel-edge: rgba(255, 255, 255, 0.5); }
 }
+/* A space's background (Margin draws it under the theme: the themes README, "A space's background"; the root has
+   m-background while one shows, m-appearance its light or dark). The ground gives way to it: the frame's spread and
+   the docked sidebar are clear. The frame's colour is the background as one colour (--m-bg), for what lies over the
+   page (the sidebar out as a card, a divider, the page's picture, Clear's patch) and the fills mixed from it. On the
+   docked sidebar, which lies on the background, the text is Margin's palette and the fills are translucent whites,
+   as Arcadia's own are over its tint (the menus and panels keep theirs: they're drawn in the system's appearance). */
+.arcadia[m-background] { --frame: var(--m-bg); }
+.arcadia[m-background] .margin-sidebar {
+  --fg: var(--m-fg);
+  --ink: var(--m-fg);
+  --muted: var(--m-fg-2);
+  --icon: var(--m-fg-2);
+  --hover: var(--m-hover);
+  --active: var(--m-selected);
+  --field: rgba(255, 255, 255, 0.4);
+  --field-hover: rgba(255, 255, 255, 0.55);
+  --behind: rgba(255, 255, 255, 0.5);
+}
+.arcadia[m-background][m-appearance="dark"] .margin-sidebar {
+  --field: rgba(255, 255, 255, 0.09);
+  --field-hover: rgba(255, 255, 255, 0.13);
+  --behind: rgba(255, 255, 255, 0.1);
+}
 .arcadia *, .arcadia *::before, .arcadia *::after { box-sizing: border-box; }
 .arcadia img { -webkit-user-drag: none; }
 .arcadia :is(input, textarea) { -webkit-user-select: text; user-select: text; cursor: auto; }
@@ -129,6 +152,7 @@
   border-radius: var(--card-radius);
 }
 .page { box-shadow: 0 0 0 100vmax var(--frame); }
+.arcadia[m-background] .page { box-shadow: none; }
 .arcadia:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .page { box-shadow: none; }
 /* The card's hairline and very soft shadow, above the sidebar so it also falls on its edge. */
 .card-edge { pointer-events: none; box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.14), 0 1px 3px rgba(0, 0, 0, 0.08); }
@@ -307,6 +331,9 @@
 }
 .arcadia.m-resizing .margin-sidebar, .arcadia.m-resizing .margin-sidebar * { transition: none !important; }
 @media (prefers-reduced-motion: reduce) { .margin-sidebar { transition: none !important; } }
+/* A space's background: the docked sidebar on it, clear; out over the page, a card of its one colour (--frame). */
+.arcadia[m-background] .margin-sidebar { background: transparent; }
+.arcadia[m-background]:is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .margin-sidebar { background: var(--frame); }
 
 /* The hover zone that brings a hidden sidebar out (Margin's m-peek). */
 .peek-zone { display: none; position: absolute; left: 0; top: 0; bottom: 0; width: var(--m-reveal-zone, 10px); }

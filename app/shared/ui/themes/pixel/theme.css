@@ -213,6 +213,13 @@ img.fav.app { width: 22px; height: 22px; margin: -2px; box-shadow: none; backgro
 /* The page: the browser's page goes in its box. Its pixel border and the
    ground around it are its shadows, outside the box. */
 .page { flex: 1; min-width: 0; position: relative; z-index: 0; box-shadow: var(--pxb), 0 0 0 100vmax var(--ground); }
+/* A space's background (Margin draws it under the theme: the themes README, "A space's background"; the root has
+   m-background while one shows). It is the ground: the card keeps its pixel border, not the ground around it, the
+   dots give way (Dots is one of the background's textures), and the ground's colour (a drag's ghost, the page's
+   picture, the start) is the background as one colour (--m-bg). The sidebar stays its own dark panel. */
+.pixel[m-background] { --ground: var(--m-bg); }
+.pixel[m-background]::before { display: none; }
+.pixel[m-background] .page { box-shadow: var(--pxb); }
 
 /* A hidden sidebar: the page takes the room; hovering the left edge (Margin's
    m-peek) shows the sidebar as a floating card over the page. */

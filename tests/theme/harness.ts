@@ -484,6 +484,17 @@ const withRuntime = Object.assign(T, {
   rtLayouts() { return rt.host.layouts.map((l) => ({ ...l.insets, radius: l.radius, width: l.container.width, height: l.container.height, windowId: l.windowId, mode: l.mode })); },
   // Margin.app's own window: what's drawn around <m-page>'s rounded corners (ui/host-app.ts cornerFill), and each corner's inner radius.
   rtCornerFill() { return cornerFill(rt.target.querySelector('m-page')); },
+  // A space's background (M2.9): what Margin's layer has drawn, the page's corners as Margin.app is told them (with
+  // its ground), the variables as the theme's root computes them.
+  rtBackground() { return rt.runtime!.backgroundDrawn(); },
+  rtCornerFillGround() { return cornerFill(rt.target.querySelector('m-page'), { ground: rt.runtime!.backgroundAt }); },
+  rtBackgroundAt(x: number, y: number) { return rt.runtime!.backgroundAt(x, y); },
+  rtVars(names: string[]) {
+    const root = rt.runtime!.view.rootElement();
+    if (!root) return null;
+    const cs = getComputedStyle(root);
+    return Object.fromEntries(names.map((n) => [n, cs.getPropertyValue(n).trim()]));
+  },
   // Margin.app's own window: the page card's state as the app says it (ui/host-app.ts pageState), drawn again.
   // `empty`: nothing hosted (the launcher); `loading`: an item opening (`name`; `bundleId`: the app whose icon the
   // loader shows, looked up in the state's `apps`: rtApps); `shown`: a hosted window shows through.

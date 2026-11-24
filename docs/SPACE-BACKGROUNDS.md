@@ -171,40 +171,67 @@ background?: {
 - The extension's data set carries the field through `data-set.ts` unchanged. The extension doesn't draw it.
 - The colours are stored as picked. The followers' angles are Margin's: 180°, 120°/240°, ±38°. A background from Arc import may not match them, so the picker shows stored colours as they are until a knob is dragged.
 
-### 2. Drawing: Margin's backdrop, under any theme
+### 2. Drawing: Margin's layer, under any theme (built: step 2)
 
-Margin draws the background itself, as one layer, so every theme gets the same result and only has to make room for it.
+Margin draws the background itself, as one layer, so every theme gets the same result and only has to make room for
+it. The code: `app/shared/ui/background.ts` (the layer), `background-look.ts` (what it's drawn from: pure),
+`color.ts` (OKLCH, WCAG contrast), `textures.ts` (the tiles); the runtime follows the shown space after each render.
 
-- **`<m-backdrop>`**, in Margin's own closed shadow root (like `theme-preview.ts`), behind the theme's root:
-  - Layers, bottom to top: the underlay (light or dark), the picture, the colours at the intensity's alpha, then the texture at the amount.
-  - It's masked out of the page's rect and corner radius, read from the theme's `.page` at layout, the same rect Margin already sends for the hole.
-- **What the runtime sets on the theme's root**, from its own constructed sheet built only from validated values:
+- **`<margin-background>`** (not "backdrop": Margin.app already has a `MarginBackdrop` window), in the theme's
+  container (before `<body>` in a document, first in a shadow root), fixed over the whole window at z-index
+  −2147483647, never taking the pointer:
+  - its content in a closed shadow root and its host's style pinned (`all: initial !important`), as
+    `theme-preview.ts`'s bar: the overlay's theme sheet reaches every element of the document, never this. Whether it
+    shows and its cut are a rule inside the shadow root, after the pin: a shadow tree's `!important` beats the host's
+    own style attribute (found the first time: the attribute's `display` and `clip-path` were overridden);
+  - layers, bottom to top: the underlay (near-white or near-black, a touch of the key colour's hue), the colours at
+    `0.14 + 0.86 × intensity`, the texture at the amount;
+  - cut out of the page card's outer box (`<m-page>`'s border box and its four corner radii: `View.measurePageOuter`,
+    not part of the layout Margin.app is told) with `clip-path: path(evenodd, …)`, placed again at every layout.
+- **The colours' layout** has one description (`layersOf`) for both the CSS and the colour at any point (`groundAt`):
+  one colour flat; two a 135° gradient; three a 160° gradient with a soft radial wash of each at three corners.
+- **What the runtime sets** while the space shown has a background (none otherwise, so a theme's `var(--m-…, own)`
+  falls back):
 
-  | Variable | Value |
+  | Where | What |
   |---|---|
-  | `--m-ground` | `transparent` while a background is set |
-  | `--m-bg` | the background flattened to one sRGB hex: the colours averaged over the underlay at the intensity |
-  | `--m-fg`, `--m-fg-2`, `--m-accent`, `--m-hover`, `--m-sel` | the palette, derived in OKLCH and written as sRGB hex |
-  | `--space-color` | as today |
+  | the theme's root | `m-background`; `m-appearance="light|dark"` |
+  | the container (`:host`, `:root`), Margin's own constructed sheet after the theme's settings | `--m-bg` (the background as one colour: its average), `--m-fg` (text: 4.5:1 against every part, 7:1 where it can), `--m-fg-2` (4.5:1), `--m-accent` (3:1), `--m-hover`, `--m-selected` (translucent fills); 7:1 for both texts under Increase contrast, the colours' opacity lowered where no text gets there |
 
-  Also `data-appearance="light|dark"` on the root.
-- **Corner fill:** `cornerFill` and `fill.rs` read the page corners. While a background is set, the corners take `--m-bg`, so they never read `transparent`.
-- **The theme contract** (themes README, "Classes and variables Margin sets"):
-  - A theme opts in by painting its ground (and any surface that should show the background) with `var(--m-ground, <its own>)`, and its text with `var(--m-fg, <its own>)`.
-  - All five built-in themes take it in this work: Arcadia, Material, Liquid Glass, Neubrutalism (its dots become what it draws with no background), and Pixel.
-  - A theme without the contract keeps its own look. Its ground covers the backdrop.
-- **Textures:**
-  - Grain, sand, denim and tweed are tiles generated once on a canvas and handed over as `blob:` URLs (CSP allows `blob:`). There are no files and nothing from Arc.
-  - Dots and grid are CSS gradients in `--m-fg`.
-- **Switching spaces** cross-fades the backdrop (Arc's `progress`), timed to the existing swipe and theme swap (`overlay.ts:638`). It's instant under reduced motion.
-- **More contrast:** the picker can't push text below WCAG AA. Under `prefers-contrast: more`, the intensity caps where `--m-fg` on `--m-bg` would fall below 7:1.
+  `--space-color` is as today. Every value is a plain colour, checked again with `checkCssValue`.
+- **Corner fill:** `cornerFill` takes an optional `ground` (the runtime's `backgroundAt`): outside the card, a sharp
+  shadow the theme still paints wins (Neubrutalism's ink), then Margin's colour at that point (`rgb(…)`, what
+  `fill.rs` reads), then an ancestor's background. The runtime tells the host each time the drawn ground changes
+  (`onGround`), and the overlay measures again.
+- **The theme contract** (themes README, "A space's background"): under `[m-background]` a theme stops painting its
+  ground where the background should show, gives what lies on it Margin's text colours or translucent fills, and
+  draws anything solid standing for the ground in `--m-bg`. Text colours go on the surfaces that lie on the background
+  (the docked sidebar), not the root: menus and panels are drawn in the system's appearance, which can differ from
+  the background's until step 3. Each built-in theme:
+  - Arcadia, Material: the frame's spread and the docked sidebar clear; in the sidebar Margin's text and translucent
+    fills (Material's tonal surfaces named one by one: a role mixed from another at the root comes resolved); the
+    sidebar out over the page a card of `--m-bg`; Material's active indicator keeps its tonal container.
+  - Liquid Glass: the ground is `--m-bg`, the lights go (the glass bends the background), and `color-scheme` follows
+    `m-appearance`: its colours are all `light-dark()`, so the whole theme, panels included, follows the background.
+  - Neubrutalism: the card keeps its ink shadow, its dots give way (Dots is a texture), the space's name takes
+    `--m-fg`; cards stay paper and ink.
+  - Pixel: the ground is `--m-bg`, the dots give way, the card keeps its pixel border; the sidebar stays its dark panel.
+- **A theme without the contract** keeps its own look: its ground covers the layer, all but the smoothing of the
+  page card's rounded corners (a pixel's worth of edge mixes in a little of the background). A larger cut would hide
+  that but leave a seam of the page round the card in every theme that takes part, so the cut is exact.
+- **Textures:** grain, sand, denim and tweed are Margin's own tiles, drawn on a canvas from a fixed seed (the same
+  pixels every load), as `data:` PNGs; dots and grid are CSS gradients in `--m-fg`.
+- **Switching spaces** between two with backgrounds cross-fades (0.3 s); at once with reduced motion. To or from none
+  it's at once: the theme's own ground is above the layer, nothing to fade under. Two themes: the theme swap's own
+  transition (`overlay.ts` swapTheme).
+- **A picture alone** draws the underlay and the texture until step 7 serves the picture.
 
 ### 3. Appearance per space
 
 - The effective appearance is the space's own value, or the system's under `auto`. Arc-style: a picture with no colours uses the picture's lightness.
 - **Mac:** the web view's `NSView.appearance` (`.aqua` or `.darkAqua`; `nil` for `auto`). This switches `prefers-color-scheme` for Arcadia and Material and `light-dark()` for Liquid Glass with no CSS change.
 - **Windows:** WebView2's `PreferredColorScheme`.
-- Neubrutalism (fixed light) and Pixel (fixed dark) keep their look. Only the backdrop and palette follow.
+- Neubrutalism (fixed light) and Pixel (fixed dark) keep their look. Only the background layer and its palette follow.
 - Safari's pages aren't affected, and the tooltip says so.
 
 ### 4. The picker: Margin's own component
@@ -218,7 +245,7 @@ Margin draws the background itself, as one layer, so every theme gets the same r
   - the wavy slider;
   - the dial (turn the ring, drag the centre, scroll; click or a sideways swipe changes texture);
   - the picture button and drop.
-- **Live:** dragging redraws the backdrop on every animation frame. Nothing is saved until the gesture ends.
+- **Live:** dragging redraws the background layer on every animation frame. Nothing is saved until the gesture ends.
 - **Saving:**
   - Closing (Done, a click outside) saves one `space.update {background, color}`. Escape restores the value from when the panel opened. ⌘Z undoes one gesture.
   - "Use for all spaces" sends the same `space.update` for every space of the profile, in one batch.
@@ -245,7 +272,7 @@ The spike's measurements, which decide between them:
 
 1. How each looks.
 2. What changes in the five themes, light and dark.
-3. The time from a drag to the backdrop's update, aiming under one frame at 120 Hz.
+3. The time from a drag to the background layer's update, aiming under one frame at 120 Hz.
 4. Opening while in a full-screen Space.
 
 **Lean: A if its side effect is invisible, else B.** The component from step 4 is the same either way.
@@ -315,7 +342,7 @@ The spike's measurements, which decide between them:
 |---|---|---|---|
 | 0 | Spikes (no product code; results in DECISIONS.md) | throwaway, on this branch | A small event logger Tirth runs on both trackpads (click, tap-to-click, force click, scroll); synthesized `CGEvent` mouse events through the same logger; A vs B measurements; `NSView.appearance` on the web view, with and without system appearance; reading Arc's file from Margin.app; the UI-sound preference |
 | 1 | `feat(m2.9)`: a space's background in the library | core `state.rs`, `model/spaces.rs`, `actions.rs` (`rename_space`), `values.rs`, `snapshot.rs` (an object-or-absent writer); TS `model.ts`, `library.ts`, `types/margin.d.ts`, `data-set.ts`; vectors (`generate.ts`, `edges.ts`, re-recorded); `docs/DATA.md` | Rust unit tests per rule, an edge case per wrong type, the vectors on both sides, data-set round-trip |
-| 2 | `feat(m2.9)`: Margin's backdrop and palette under every theme | `ui/backdrop.ts` (new), `runtime.ts`, `view-model.ts`, `host-app.ts` `cornerFill`, `page/fill.rs`, the five themes' CSS, themes README | Theme tests: each theme with and without a background, light, dark, more contrast, every texture, a theme without the contract, `--m-fg` on `--m-bg` ≥ 4.5:1, corner fill sRGB, cross-fade, reduced motion |
+| 2 | `feat(m2.9)`: Margin's background layer and palette under every theme | `ui/background.ts`, `background-look.ts`, `color.ts`, `textures.ts` (new), `runtime.ts`, `render.ts`, `view-model.ts`, `host-app.ts` `cornerFill`, `overlay.ts`, the five themes' CSS, themes README | Theme tests: each theme with and without a background, light, dark, more contrast, every texture, a theme without the contract, `--m-fg` on `--m-bg` ≥ 4.5:1, corner fill sRGB, cross-fade, reduced motion |
 | 3 | `feat(m2.9)`: appearance per space | `MarginWindowController.swift` (web view appearance), Windows `webview.rs`, runtime | Theme tests via `emulateMedia`; a Swift unit test that the appearance follows the shown space |
 | 4 | `feat(m2.9)`: the Edit Theme Color picker | `ui/picker/*` (new), `menu-items.ts`, `editor.ts`, `actions.ts` (`space.update` carries `background`), `runtime.ts` | Behaviour tests in Chromium and WebKit: drag, wheel, −/+, presets, slider, dial (turn, drag, scroll, click, swipe), undo, Escape, save as one request, Use for all spaces, keyboard |
 | 5 | `feat(m2.9)`: the picker on system glass (A or B per spike) | Swift; DECISIONS.md (the glass exception) | Swift unit tests; e2e: opens, places, closes, keeps focus |

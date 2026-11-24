@@ -150,6 +150,47 @@
 @media (prefers-contrast: more) {
   .m3 { --on-surface-variant: var(--on-surface); --outline-variant: var(--outline); --outline: var(--on-surface); --active-shadow: inset 0 0 0 1px var(--on-surface); }
 }
+/* A space's background (Margin draws it under the theme: the themes README, "A space's background"; the root has
+   m-background while one shows, m-appearance its light or dark). The drawer's surface gives way to it: the frame's
+   spread and the docked drawer are clear. The frame's colour is the background as one colour (--m-bg), for what lies
+   over the page (the drawer out as a card, a divider, the page's picture, Clear's patch) and the state layers mixed
+   from it. In the docked drawer, on the background, the content colours are Margin's palette and its surfaces (the
+   tonal containers: the search bar, the mini player, the editor; the state layers) translucent whites over it, in
+   the background's light or dark (a role mixed from another at the root comes resolved: each one named here). The
+   active indicator keeps its tonal container, its own content colour with it. Menus, the command bar and dialogs
+   keep their surfaces: they're drawn in the system's appearance. */
+.m3[m-background] { --frame: var(--m-bg); }
+.m3[m-background] .margin-sidebar {
+  --on-surface: var(--m-fg);
+  --on-surface-variant: var(--m-fg-2);
+  --fg: var(--m-fg);
+  --ink: var(--m-fg);
+  --muted: var(--m-fg-2);
+  --icon: var(--m-fg-2);
+  --hover: var(--m-hover);
+  --surface: rgba(255, 255, 255, 0.35);
+  --sc-lowest: rgba(255, 255, 255, 0.7);
+  --sc-low: rgba(255, 255, 255, 0.3);
+  --sc: rgba(255, 255, 255, 0.4);
+  --sc-high: rgba(255, 255, 255, 0.5);
+  --sc-highest: rgba(255, 255, 255, 0.55);
+  --input: rgba(255, 255, 255, 0.7);
+  --field: rgba(255, 255, 255, 0.55);
+  --field-hover: rgba(255, 255, 255, 0.7);
+  --behind: rgba(255, 255, 255, 0.5);
+}
+.m3[m-background][m-appearance="dark"] .margin-sidebar {
+  --surface: rgba(255, 255, 255, 0.06);
+  --sc-lowest: rgba(255, 255, 255, 0.14);
+  --sc-low: rgba(255, 255, 255, 0.05);
+  --sc: rgba(255, 255, 255, 0.08);
+  --sc-high: rgba(255, 255, 255, 0.1);
+  --sc-highest: rgba(255, 255, 255, 0.12);
+  --input: rgba(0, 0, 0, 0.22);
+  --field: rgba(255, 255, 255, 0.12);
+  --field-hover: rgba(255, 255, 255, 0.17);
+  --behind: rgba(255, 255, 255, 0.1);
+}
 .m3 *, .m3 *::before, .m3 *::after { box-sizing: border-box; }
 .m3 img { -webkit-user-drag: none; }
 .m3 :is(input, textarea) { -webkit-user-select: text; user-select: text; cursor: auto; }
@@ -178,6 +219,7 @@
   border-radius: var(--card-radius);
 }
 .page { box-shadow: 0 0 0 100vmax var(--frame); }
+.m3[m-background] .page { box-shadow: none; }
 .m3:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .page { box-shadow: none; }
 /* The card's hairline and very soft shadow, above the sidebar so it also falls on its edge. */
 .card-edge { pointer-events: none; box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.14), 0 1px 3px rgba(0, 0, 0, 0.08); }
@@ -1104,6 +1146,9 @@
 /* ---- The navigation drawer ------------------------------------------------- */
 .margin-sidebar { background: var(--frame); }
 .m3:is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .margin-sidebar { border-radius: 16px; background: var(--sc-low); box-shadow: var(--elev-3); }
+/* A space's background: the docked drawer on it, clear; out over the page, a card of its one colour (--frame). */
+.m3[m-background] .margin-sidebar { background: transparent; }
+.m3[m-background]:is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .margin-sidebar { background: var(--frame); }
 .margin-sidebar :is(.keep-open, .bar-button, .icon, .new-tab-row .plus) { color: var(--on-surface-variant); }
 .margin-sidebar :is(.keep-open, .bar-button, .icon, .new-tab-row .plus) :is(.line-icon, .fill-icon) { opacity: 1; }
 .margin-sidebar .line-icon { stroke-width: 1.7; }

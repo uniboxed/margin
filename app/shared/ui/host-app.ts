@@ -237,14 +237,17 @@ export function splitShadows(value: string): string[] {
  * card's sharp box shadows (no blur, not inset) the first that covers it, as they're painted (a frame drawn as a spread: Arcadia's, Pixel's; Neubrutalism's offset ink shadow at its bottom right), else
  * the nearest background an ancestor draws. A blurred shadow is left out (Arcadia's soft card shadow: a few levels
  * darker there on screen). Null: nothing found (the app's window colour is used). Computed styles only: no pixel read.
+ * `ground`: the colour Margin draws under the theme at a point of the window (a space's background: ui/runtime.ts
+ * backgroundAt; null where none shows), which is what's outside the card where no sharp shadow of the theme's covers it
+ * (a theme's shadow is painted over Margin's ground), before an ancestor's background.
  * */
-export function cornerFill(el: Element | null | undefined, { getStyle = (e: Element) => (e.ownerDocument.defaultView as any).getComputedStyle(e), getBox = (e: Element) => e.getBoundingClientRect() }: { getStyle?: (e: Element) => any, getBox?: (e: Element) => { width: number, height: number } } = {}): { fills: (string | null)[], edge: { width: number, color: string } | null } | null {
+export function cornerFill(el: Element | null | undefined, { getStyle = (e: Element) => (e.ownerDocument.defaultView as any).getComputedStyle(e), getBox = (e: Element) => e.getBoundingClientRect(), ground }: { getStyle?: (e: Element) => any, getBox?: (e: Element) => { width: number, height: number, left?: number, top?: number }, ground?: ((x: number, y: number) => string | null) | null } = {}): { fills: (string | null)[], edge: { width: number, color: string } | null } | null {
   if (!el) return null;
   const cs = getStyle(el);
   const px = (v: unknown) => parseFloat(String(v ?? '')) || 0;
   const width = px(cs.borderTopWidth);
   const edge = width > 0 && cs.borderTopStyle !== 'none' && cs.borderTopStyle !== 'hidden' && drawn(cs.borderTopColor) ? { width: Math.round(width * 100) / 100, color: String(cs.borderTopColor).trim() } : null;
-  const { width: w, height: h } = getBox(el);
+  const { width: w, height: h, left: boxLeft = 0, top: boxTop = 0 } = getBox(el);
   const radii = [cs.borderTopLeftRadius, cs.borderTopRightRadius, cs.borderBottomRightRadius, cs.borderBottomLeftRadius].map((v) => px(String(v ?? '0').split(' ')[0]));
   const inL = px(cs.borderLeftWidth) + px(cs.paddingLeft), inT = px(cs.borderTopWidth) + px(cs.paddingTop);
   const inR = px(cs.borderRightWidth) + px(cs.paddingRight), inB = px(cs.borderBottomWidth) + px(cs.paddingBottom);
@@ -279,7 +282,8 @@ export function cornerFill(el: Element | null | undefined, { getStyle = (e: Elem
     if (drawn(bg)) background = String(bg).trim();
   }
   // (A point inside the card itself: no shadow is painted under a box; its border there, else what's behind it.)
-  const fills = points.map((p) => covers({ x: 0, y: 0, spread: 0 }, p) ? edge?.color ?? background : shadows.find((s) => covers(s, p))?.color.trim() ?? background);
+  const outside = (p: number[]) => shadows.find((s) => covers(s, p))?.color.trim() ?? ground?.(boxLeft + p[0], boxTop + p[1]) ?? background;
+  const fills = points.map((p) => covers({ x: 0, y: 0, spread: 0 }, p) ? edge?.color ?? background : outside(p));
   return fills.some(Boolean) || edge ? { fills, edge } : null;
 }
 
