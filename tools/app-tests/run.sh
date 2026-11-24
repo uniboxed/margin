@@ -104,7 +104,7 @@ if [ "$WHAT" = unit ] || [ "$WHAT" = all ]; then
 fi
 if [ "$WHAT" = e2e ] || [ "$WHAT" = all ]; then
   [ -f ../../dist/app/overlay.js ] || { echo "dist/app/ is missing: run npm run build" >&2; exit 1; }
-  build e2e e2e.swift e2e-data.swift e2e-link.swift e2e-hosted.swift e2e-glue.swift e2e-split.swift "$FAKE_SAFARI" "${SHELL_SOURCES[@]}"
+  build e2e e2e.swift e2e-data.swift e2e-link.swift e2e-hosted.swift e2e-glue.swift e2e-split.swift e2e-resilience.swift "$FAKE_SAFARI" "${SHELL_SOURCES[@]}"
   MARGIN_APP_ROOT="$PWD/../../dist/app" MARGIN_FAKE_EXTENSION="$PWD/fake-extension.mts" MARGIN_NODE="$NODE" "$BUILD/e2e" || status=1
 fi
 exit $status

@@ -155,6 +155,11 @@ final class Runner: NSObject, NSApplicationDelegate {
         print(failures == 0 ? "all \(passed) link checks passed" : "\(failures) link checks failed")
         exit(failures == 0 ? 0 : 1)
       }
+      if env["MARGIN_E2E_ONLY"] == "resilience" {
+        await resilienceScenario()
+        print(failures == 0 ? "all \(passed) resilience checks passed" : "\(failures) resilience checks failed")
+        exit(failures == 0 ? 0 : 1)
+      }
       if env["MARGIN_E2E_ONLY"] == "hosted" {
         await hostedScenario()
         print(failures == 0 ? "all \(passed) Margin window checks passed" : "\(failures) Margin window checks failed")
@@ -167,6 +172,7 @@ final class Runner: NSObject, NSApplicationDelegate {
       await glueScenario() // e2e-glue.swift
       await glueResumeScenario()
       await glueSplitScenario() // e2e-split.swift
+      await resilienceScenario() // e2e-resilience.swift
       print(failures == 0 ? "all \(passed) end-to-end checks passed" : "\(failures) of \(passed + failures) end-to-end checks failed")
       exit(failures == 0 ? 0 : 1)
     }
