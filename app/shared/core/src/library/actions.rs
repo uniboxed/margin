@@ -625,10 +625,18 @@ fn create_space(s: &LibState, cx: &mut Cx) -> Done {
     Ok((next, json!({ "spaceId": id })))
 }
 
-/// LT:307 `renameSpace`: its name, emoji, colour (and theme, and profile, when given).
+/// LT:307 `renameSpace`: its name, emoji, colour (and theme, background and profile, when given).
 fn rename_space(s: &LibState, cx: &mut Cx) -> Done {
     let Some(space_id) = given_space(s, cx.get("spaceId")) else { return refuse("no such space") };
-    let next = spaces::update_space(s, space_id, cx.arg("name"), cx.arg("emoji"), cx.arg("color"), cx.arg("theme"));
+    let next = spaces::update_space(
+        s,
+        space_id,
+        cx.arg("name"),
+        cx.arg("emoji"),
+        cx.arg("color"),
+        cx.arg("theme"),
+        cx.arg("background"),
+    );
     if !cx.p.contains_key("profile") {
         return done(next);
     }
@@ -643,7 +651,7 @@ fn set_space_theme(s: &LibState, cx: &mut Cx) -> Done {
     if !theme.is_null() && !theme.as_str().is_some_and(theme_id_ok) {
         return refuse("not a theme id");
     }
-    done(spaces::update_space(s, space_id, Arg::Undefined, Arg::Undefined, Arg::Undefined, theme))
+    done(spaces::update_space(s, space_id, Arg::Undefined, Arg::Undefined, Arg::Undefined, theme, Arg::Undefined))
 }
 
 /// LT:320 `setSpaceProfile`: the space's browser profile (null: the browser's default) and browser, for its new web

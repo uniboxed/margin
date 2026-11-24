@@ -19,7 +19,7 @@ use serde_json::{Map, Value};
 
 use super::import::COLLECTIONS;
 use super::js;
-use super::state::{Imported, Item, LibState, Str, TargetView, js_key_order, theme_id_ok};
+use super::state::{Background, Imported, Item, LibState, Str, TargetView, js_key_order, theme_id_ok};
 
 /// One change for the store (LT:32 `Change`): a record's new value, or its deletion. Untimed: the store times it.
 #[derive(Clone, Debug, PartialEq)]
@@ -115,7 +115,7 @@ fn opt(o: &mut Map<String, Value>, key: &str, v: Option<&str>) {
     }
 }
 
-/// LT:141: `{ name, emoji, color, order: i, browser, profile, theme? }`.
+/// LT:141: `{ name, emoji, color, order: i, browser, profile, theme?, background? }`.
 #[derive(PartialEq)]
 struct SpaceRow<'a> {
     name: &'a str,
@@ -125,6 +125,7 @@ struct SpaceRow<'a> {
     browser: &'a str,
     profile: Option<&'a str>,
     theme: Option<&'a str>,
+    background: Option<&'a Background>,
 }
 
 impl Row for SpaceRow<'_> {
@@ -137,6 +138,9 @@ impl Row for SpaceRow<'_> {
         o.insert("browser".into(), self.browser.into());
         o.insert("profile".into(), self.profile.map_or(Value::Null, Value::from));
         opt(&mut o, "theme", self.theme);
+        if let Some(b) = self.background {
+            o.insert("background".into(), b.value());
+        }
         Value::Object(o)
     }
 }
@@ -371,6 +375,7 @@ fn space_rows(s: &LibState) -> Rows<'_, SpaceRow<'_>> {
                     browser: &sp.browser,
                     profile: sp.profile.as_deref(),
                     theme: sp.theme.as_deref().filter(|t| theme_id_ok(t)),
+                    background: sp.background.as_deref(),
                 },
             )
         })

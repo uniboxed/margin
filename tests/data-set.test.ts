@@ -244,3 +244,17 @@ test('a wiped extension cache recovers the highlighted saved tab from app data, 
   const refilled = stateFromDataSet(M.defaultState(), set);
   assert.equal(refilled.keptTabs[chosen.mid!].wasActive, true);
 });
+
+test('a space\'s background (M2.9) goes to the set and back as the model reads it; none, no key', () => {
+  const state = { ...M.defaultState(), spaces: [
+    { id: 'a', name: 'A', emoji: '', color: '#abcdef', background: { colors: ['#ABCDEF'], amount: 0.47 } },
+    { id: 'b', name: 'B', emoji: '', color: '', background: { colors: [] } },
+  ] } as any;
+  const values = collectionFrom(state, 'spaces');
+  const read = { colors: ['#abcdef'], wheel: 'analogous', intensity: 0.5, texture: 'grain', amount: 0.45, appearance: 'auto' };
+  assert.deepEqual(values.a.background, read);
+  assert.equal('background' in values.b, false);
+  const items = { spaces: Object.fromEntries(Object.entries(values).map(([id, value]) => [id, { updatedAt: 1, value }])) };
+  const back = stateFromDataSet(M.defaultState(), { items });
+  assert.deepEqual(back.spaces.map((s) => s.background ?? null), [read, null]);
+});

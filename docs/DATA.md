@@ -25,7 +25,7 @@ Every item is `{ updatedAt, value }`, or a tombstone `{ updatedAt, deleted: true
 
 | Collection | Id | Value |
 |---|---|---|
-| `spaces` | the space's id | `name`, `emoji`, `color`, `order` (its place among spaces, 0 first) |
+| `spaces` | the space's id | `name`, `emoji`, `color`, `order` (its place among spaces, 0 first); `theme` and `background` when it has them (a background: `colors`, `wheel`, `intensity`, `texture`, `amount`, `appearance`, `image?`, as `backgroundOf` in extension/state/model.ts reads it; docs/SPACE-BACKGROUNDS.md) |
 | `pins` | the pin's id | `spaceId`, `url`, `title`, `folderId` (or null), `pos` (its place at its level) |
 | `folders` | the folder's id | `spaceId`, `name`, `open`, `pos` |
 | `tabs` | the Margin tab's own id (`t-` and ten letters or digits) | `url`, `title`, `icon` (an address or `data:` image the browser gave, else empty), `spaceId`, `order` (its place in the list: higher is newer, shown higher), `lastUsed`, `selected` (boolean; absent in earlier data) |

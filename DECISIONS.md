@@ -9532,3 +9532,30 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   results and breaks, what's open), the order table's rows 7, 7a and 8 done.
 - Not run here: the screen suite, an install, `npm run gate` (Tirth's). `tools/app-tests/run.sh all`,
   `scripts/rust-test.sh`, `npm test` and the quick tests green.
+
+## M2.9 step 1: a space's background in the library (`feat/space-backgrounds`, 2026-11-24)
+
+- **The value** (docs/SPACE-BACKGROUNDS.md, Part B §1): a space's optional `background`, `{ colors, wheel, intensity,
+  texture, amount, appearance, image? }`, read by one rule in both copies: model.ts `backgroundOf` and margin-core's
+  `state::background_of`. Colours `#rrggbb` (lowercased, the first three); each other field its default when it isn't
+  one of its values; numbers clamped to 0–1 and rounded (intensity to 0.01, amount to 0.05, a picture's focus to
+  0.001, `Math.round`, -0 as 0); a picture only with a lowercase SHA-256 id. Neither a colour nor a picture: none (the
+  theme's own). Written only when there is one, as `theme` is, so data without one is as it was.
+- **Changed** with `renameSpace`'s `background`, `theme`'s three ways: an object sets it (as read: none when it reads
+  as none), null clears it, anything else (left out, a string, an array) leaves it. No new action (`ACTION_NAMES` stays
+  57). A new space has none, whatever the one it's made from has (it does take that one's theme). `setSpaceTheme` keeps
+  it. The extension's copies carry it (data-set.ts both ways, the `renameSpace` handler); the import of each profile's
+  set doesn't (as `theme`).
+- **The vectors re-recorded** (`npm run library:vectors`, the same commit as both copies' change): backgrounds in the
+  generated libraries and renames (drawn from a stream of their own, but a rename that now changes a space moves the
+  library's keys and so later shuffles: most sequences differ from their first such step), an edge for every reading
+  rule, and library.test.ts's new case. JavaScriptCore answers every step as Node does (`jsc: 0`); a second recording is
+  identical.
+- **The core's one decided difference moved** to a hand-written edge (edges.ts, `vectors::KNOWN`): the favorite renamed
+  through an emoji to the name it has (piece 2) was generated-11's sequence 299, which the re-recording no longer draws.
+  As an edge it has an address no re-recording moves. The known `createSpace` gap is 14 steps now (19 before): fewer
+  drawn, the rule unchanged.
+- **Rust on this Mac**: there was no toolchain; rustup's stable (1.100) installed with Tirth's OK (rustfmt, clippy; no
+  Windows targets, so `scripts/rust-test.sh` skips their checks here).
+- Tests: Rust (`state_tests`, `spaces_tests`, `snapshot_tests`: reading, the three ways, the text and the stored value),
+  TS (model, library, data-set), the vectors both sides; `npm run test:rust` green.

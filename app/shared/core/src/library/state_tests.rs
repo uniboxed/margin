@@ -299,3 +299,68 @@ fn small_readers() {
     assert_eq!(margin_page_title("settings"), Some("Settings"));
     assert_eq!((app_url("com.a"), margin_url("settings")), ("app://com.a".into(), "margin://settings".into()));
 }
+
+#[test]
+fn a_space_s_background_as_m_reads_it() {
+    let bg = |v: Value| background_of(Some(&v)).map(|b| b.value());
+    let id = "ab".repeat(32);
+    assert_eq!(
+        bg(json!({ "colors": ["#F7C7D3", "#cfe8f7"], "wheel": "complementary", "intensity": 0.373, "texture": "denim",
+                   "amount": 0.47, "appearance": "dark", "image": { "id": id, "fit": "tile", "focus": [0.12345, 1] } })),
+        Some(
+            json!({ "colors": ["#f7c7d3", "#cfe8f7"], "wheel": "complementary", "intensity": 0.37, "texture": "denim",
+                     "amount": 0.45, "appearance": "dark", "image": { "id": id, "fit": "tile", "focus": [0.123, 1] } })
+        ),
+        "every field as given: colours lowercased, numbers rounded (hundredths, twentieths, thousandths)"
+    );
+    assert_eq!(
+        bg(json!({ "colors": ["#abc", "f7c7d3", "#12345g", 5, null, "#000000"], "wheel": "triadic", "intensity": "x",
+                   "texture": "GRAIN", "amount": null, "appearance": 5, "extra": 1 })),
+        Some(json!({ "colors": ["#000000"], "wheel": "analogous", "intensity": 0.5, "texture": "grain", "amount": 0,
+                     "appearance": "auto" })),
+        "wrong types and values: each its default, unknown keys dropped, only #rrggbb colours"
+    );
+    let clamped =
+        bg(json!({ "colors": ["#111111", "#222222", "#333333", "#444444"], "intensity": 1.5, "amount": -0.0 }));
+    assert_eq!(
+        clamped,
+        Some(
+            json!({ "colors": ["#111111", "#222222", "#333333"], "wheel": "analogous", "intensity": 1, "texture": "grain",
+                     "amount": 0, "appearance": "auto" })
+        ),
+        "the first three colours, numbers clamped to 0–1, -0 as 0"
+    );
+    assert_eq!(
+        bg(json!({ "colors": ["#111111"], "intensity": 0.005 })).unwrap()["intensity"],
+        json!(0.01),
+        "Math.round"
+    );
+    assert_eq!(
+        bg(json!({ "image": { "id": "0".repeat(64), "fit": "stretch", "focus": [2, -1, 0] } })),
+        Some(json!({ "colors": [], "wheel": "analogous", "intensity": 0.5, "texture": "grain", "amount": 0,
+                     "appearance": "auto", "image": { "id": "0".repeat(64), "fit": "cover", "focus": [0.5, 0.5] } })),
+        "a picture alone"
+    );
+    for v in [
+        json!({}),
+        json!({ "colors": [], "texture": "dots" }),
+        json!({ "colors": "#111111" }),
+        json!({ "image": { "id": "AB".repeat(32) } }),
+        json!({ "image": { "id": "a".repeat(63) } }),
+        json!({ "image": "x" }),
+        json!(null),
+        json!([{ "colors": ["#111111"] }]),
+        json!("x"),
+        json!(5),
+    ] {
+        assert_eq!(bg(v.clone()), None, "{v}: no colour and no picture, or not an object");
+    }
+    assert!(bg_image_id_ok(&"f".repeat(64)) && !bg_image_id_ok(&"F".repeat(64)) && !bg_image_id_ok(&"g".repeat(64)));
+
+    let s = state(json!({ "spaces": {
+        "a": { "name": "A", "order": 0, "background": { "colors": ["#ABCDEF"] } },
+        "b": { "name": "B", "order": 1, "background": { "colors": "x" } },
+    } }));
+    assert_eq!(s.spaces[0].background.as_ref().map(|b| b.colors.clone()), Some(vec![Str::from("#abcdef")]));
+    assert_eq!(s.spaces[1].background, None, "stored but none to read: none");
+}

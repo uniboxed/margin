@@ -48,6 +48,7 @@ fn made() -> LibState {
                 browser: s(browser),
                 profile: profile.map(s),
                 theme: theme.map(s),
+                background: None,
             })
         };
     let kept: JsObject<Rc<Item>> = [

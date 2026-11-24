@@ -11,10 +11,13 @@
 // window ids, which tab is open in which window, each window's space, the
 // owner lease of Margin's copies), and what's this device's alone (a site's
 // page zoom, the sidebar's scroll, the theme package's cached copy).
-import { normalizeState, themeIdOk } from '../state/model.ts';
+import { backgroundOf, normalizeState, themeIdOk } from '../state/model.ts';
 import { fromStorage } from './stored.ts';
 import { DATA_FORMAT, isName, liveValues } from './data-merge.ts';
 import type { State } from '../../types/margin';
+
+// A space's background to spread into its value: `{ background }` when it reads as one, else nothing (as its theme).
+const backgroundKey = (v: unknown) => { const background = backgroundOf(v); return background ? { background } : {}; };
 
 // The collections, and for each the state keys it's made from (a change to
 // one of those keys is looked at again: background/store.ts flush). User
@@ -47,7 +50,7 @@ const finite = (v: unknown, or = 0): number => (Number.isFinite(v) ? v as number
 export function collectionFrom(state: State, collection: string): Record<string, any> {
   switch (collection) {
     case 'spaces':
-      return Object.fromEntries(state.spaces.map((s, i) => [s.id, { name: s.name ?? '', emoji: s.emoji ?? '', color: s.color ?? '', order: i, ...(themeIdOk(s.theme) ? { theme: s.theme } : {}) }]));
+      return Object.fromEntries(state.spaces.map((s, i) => [s.id, { name: s.name ?? '', emoji: s.emoji ?? '', color: s.color ?? '', order: i, ...(themeIdOk(s.theme) ? { theme: s.theme } : {}), ...backgroundKey(s.background) }]));
     case 'pins':
       return Object.fromEntries(state.pins.map((p, i) => [p.id, { spaceId: p.spaceId, url: p.url, title: p.title ?? '', folderId: p.folderId ?? null, pos: finite(p.pos, i) }]));
     case 'folders':
@@ -218,7 +221,7 @@ export function stateFromDataSet(state: State, set: { items?: Record<string, Rec
   const has = (c: string) => !!set?.items?.[c] && typeof set.items[c] === 'object';
   const next = { ...state };
   if (has('spaces')) {
-    const spaces = Object.entries(liveValues(set, 'spaces')).sort((a, b) => finite(a[1].order) - finite(b[1].order)).map(([id, s]) => ({ id, name: s.name, emoji: s.emoji, color: s.color, ...(themeIdOk(s.theme) ? { theme: s.theme } : {}) }));
+    const spaces = Object.entries(liveValues(set, 'spaces')).sort((a, b) => finite(a[1].order) - finite(b[1].order)).map(([id, s]) => ({ id, name: s.name, emoji: s.emoji, color: s.color, ...(themeIdOk(s.theme) ? { theme: s.theme } : {}), ...backgroundKey(s.background) }));
     if (spaces.length) next.spaces = spaces;
   }
   if (has('pins')) next.pins = Object.entries(liveValues(set, 'pins')).map(([id, p]) => ({ id, spaceId: p.spaceId, url: p.url, title: p.title, ...(p.folderId ? { folderId: p.folderId } : {}), pos: finite(p.pos) }));

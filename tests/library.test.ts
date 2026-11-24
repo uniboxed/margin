@@ -59,6 +59,29 @@ test('library: spaces are created, renamed, given a profile, ordered, and the la
   assert.deepEqual(spaces(lib), ['a']);
 });
 
+// A space's background (M2.9, Edit Theme Color: docs/SPACE-BACKGROUNDS.md): set with its rename (the picker sends its
+// colour with it), read as the model reads it, kept by other edits, none for a new space, cleared with null.
+test('library: a space\'s background: read, set, kept, none for a new space, cleared, as drawn and stored', () => {
+  const lib = library({ spaces: { a: { name: 'A', order: 0, background: { colors: ['#F7C7D3', '#cfe8f7'], intensity: 2, texture: 'denim' } }, b: { name: 'B', order: 1, background: 'x' } } });
+  assert.deepEqual(L.snapshot(lib.values).spaces.map((s: any) => s.background ?? null), [
+    { colors: ['#f7c7d3', '#cfe8f7'], wheel: 'analogous', intensity: 1, texture: 'denim', amount: 0, appearance: 'auto' }, null,
+  ], 'drawn as read');
+  lib.act('renameSpace', { spaceId: 'b', color: '#111111', background: { colors: ['#111111'], amount: 0.33, appearance: 'dark', image: { id: 'c'.repeat(64), fit: 'tile' } } });
+  assert.deepEqual(lib.values.spaces.b.background, { colors: ['#111111'], wheel: 'analogous', intensity: 0.5, texture: 'grain', amount: 0.35, appearance: 'dark', image: { id: 'c'.repeat(64), fit: 'tile', focus: [0.5, 0.5] } });
+  assert.equal(lib.values.spaces.b.color, '#111111', 'its colour with it');
+  lib.act('renameSpace', { spaceId: 'b', name: 'Renamed' });
+  assert.equal(lib.values.spaces.b.background.amount, 0.35, 'a rename without one keeps it');
+  lib.act('setSpaceTheme', { spaceId: 'b', theme: 'pixel' });
+  assert.equal(lib.values.spaces.b.background.appearance, 'dark', 'a theme keeps it');
+  lib.act('renameSpace', { spaceId: 'b', background: [1] });
+  assert.equal(lib.values.spaces.b.background.appearance, 'dark', 'not an object: kept');
+  lib.act('setSpace', { windowId: 7, spaceId: 'b' });
+  const made = lib.act('createSpace', { windowId: 7, name: 'New' }).result.spaceId;
+  assert.equal('background' in lib.values.spaces[made], false, 'a new space: none, not the one it was made from');
+  lib.act('renameSpace', { spaceId: 'b', background: null });
+  assert.equal('background' in lib.values.spaces.b, false, 'null: none, the theme\'s own');
+});
+
 // A theme per space (2026-11-20, Tirth): asked as it's made, the theme of the space it was made from by default; changed
 // in its editor (renameSpace), its menu or Settings (setSpaceTheme); none (spaces from before) is the profile's.
 test('library: a space\'s theme: the one it was made from by default, as asked, changed, cleared, kept in the set', () => {

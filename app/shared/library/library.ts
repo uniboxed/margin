@@ -49,6 +49,8 @@ const str = (v: unknown, max = 2000) => (typeof v === 'string' ? v.slice(0, max)
 const finite = (v: unknown, or = 0): number => (Number.isFinite(v) ? v as number : or);
 const isObject = (v: unknown): v is Record<string, any> => !!v && typeof v === 'object' && !Array.isArray(v);
 const own = (o: unknown, key: string) => isObject(o) && Object.hasOwn(o, key);
+// A space's background to spread: `{ background }` when the value reads as one (M.backgroundOf), else nothing.
+const bgOf = (v: unknown) => { const background = M.backgroundOf(v); return background ? { background } : {}; };
 
 // ---- targets -------------------------------------------------------------------------------------
 
@@ -92,7 +94,7 @@ const sorted = (list: Record<string, any>) => Object.entries(isObject(list) ? li
 export function stateOf(values: Values): LibState {
   const base = M.defaultState();
   const spaces = sorted(values?.spaces).sort((a, b) => finite(a[1].order) - finite(b[1].order) || a[0].localeCompare(b[0]))
-    .map(([id, s]) => ({ id, name: str(s.name, 200), emoji: str(s.emoji, 16), color: str(s.color, 32), browser: BROWSERS.has(s.browser) ? s.browser : 'safari', profile: typeof s.profile === 'string' && s.profile ? s.profile : null, ...(M.themeIdOk(s.theme) ? { theme: s.theme } : {}) }));
+    .map(([id, s]) => ({ id, name: str(s.name, 200), emoji: str(s.emoji, 16), color: str(s.color, 32), browser: BROWSERS.has(s.browser) ? s.browser : 'safari', profile: typeof s.profile === 'string' && s.profile ? s.profile : null, ...(M.themeIdOk(s.theme) ? { theme: s.theme } : {}), ...bgOf(s.background) }));
   const pins = sorted(values?.pins).filter(([, p]) => typeof p.spaceId === 'string' && typeof p.url === 'string')
     .map(([id, p]) => ({ id, spaceId: p.spaceId, url: p.url, title: str(p.title), ...(typeof p.customTitle === 'string' && p.customTitle ? { customTitle: str(p.customTitle, 200) } : {}), ...(typeof p.folderId === 'string' && p.folderId ? { folderId: p.folderId } : {}), pos: finite(p.pos), target: targetOf(p.target) ?? webTarget('safari', null) }));
   const favorites = sorted(values?.favorites).filter(([, f]) => typeof f.url === 'string')
@@ -143,7 +145,7 @@ export function stateOf(values: Values): LibState {
 
 export function valuesOf(state: LibState, imports: Record<string, any> = {}): Values {
   const out: Values = { spaces: {}, pins: {}, favorites: {}, airTraffic: {}, splits: {}, folders: {}, tabs: {}, archive: {}, windows: {}, imports: { ...imports } };
-  state.spaces.forEach((s, i) => { out.spaces[s.id] = { name: s.name ?? '', emoji: s.emoji ?? '', color: s.color ?? '', order: i, browser: s.browser ?? 'safari', profile: s.profile ?? null, ...(M.themeIdOk(s.theme) ? { theme: s.theme } : {}) }; });
+  state.spaces.forEach((s, i) => { out.spaces[s.id] = { name: s.name ?? '', emoji: s.emoji ?? '', color: s.color ?? '', order: i, browser: s.browser ?? 'safari', profile: s.profile ?? null, ...(M.themeIdOk(s.theme) ? { theme: s.theme } : {}), ...bgOf(s.background) }; });
   state.pins.forEach((p: any, i) => { out.pins[p.id] = { spaceId: p.spaceId, url: p.url, title: p.title ?? '', ...(p.customTitle ? { customTitle: p.customTitle } : {}), folderId: p.folderId ?? null, pos: finite(p.pos, i), target: targetOf(p.target) ?? webTarget('safari', null) }; });
   (state.favorites ?? []).forEach((f: any, i) => { out.favorites[f.id] = { scope: f.scope || 'global', url: f.url, title: f.title ?? '', ...(f.customTitle ? { customTitle: f.customTitle } : {}), pos: finite(f.pos, i), target: targetOf(f.target) ?? webTarget('safari', null) }; });
   (state.airTraffic ?? []).forEach((r: any, i) => { out.airTraffic[r.id] = { pattern: r.pattern, spaceId: r.spaceId, enabled: r.enabled !== false, order: finite(r.order, i) }; });
@@ -311,7 +313,7 @@ const ACTIONS: Record<string, Handler> = {
   },
   renameSpace({ s, p }) {
     if (!hasSpace(s, p?.spaceId)) return fail(s, 'no such space');
-    let next = M.updateSpace(s, p.spaceId, { name: p.name, emoji: p.emoji, color: p.color, ...(own(p, 'theme') ? { theme: p.theme } : {}) }) as LibState;
+    let next = M.updateSpace(s, p.spaceId, { name: p.name, emoji: p.emoji, color: p.color, ...(own(p, 'theme') ? { theme: p.theme } : {}), ...(own(p, 'background') ? { background: p.background } : {}) }) as LibState;
     if (own(p, 'profile')) next = ACTIONS.setSpaceProfile({ s: next, p, now: 0, ids: null as any, requests: [] }).s;
     return { s: next };
   },
