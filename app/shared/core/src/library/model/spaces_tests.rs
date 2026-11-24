@@ -4,7 +4,8 @@
 
 use super::*;
 use crate::library::js::{CodePointOrder, Collation, Ids};
-use crate::library::model::order::{self, Arg};
+use crate::library::model::Arg;
+use crate::library::model::order;
 use crate::library::state::{Item, Pin, state_of};
 use crate::library::values::{diff, values_of};
 use crate::library::vectors;

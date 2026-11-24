@@ -7,7 +7,8 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use super::order::{Arg, Entry, Kind, pin_order, write_order};
+use super::Arg;
+use super::order::{Entry, Kind, pin_order, write_order};
 use super::{has_space, settle_bindings};
 use crate::library::js;
 use crate::library::state::{ArchiveEntry, Folder, Item, LibState, Pin, Space, Split, Str, theme_id_ok};

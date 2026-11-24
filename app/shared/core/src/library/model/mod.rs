@@ -31,12 +31,15 @@ use std::rc::Rc;
 
 use super::state::{Item, LibState};
 
+mod arg;
 pub mod favorites;
 pub mod kept;
 pub mod links;
 pub mod order;
 pub mod spaces;
 pub mod splits;
+
+pub use arg::Arg;
 
 /// A folder's name and a favorite's custom title, at most (M:1250 `FOLDER_NAME_MAX`), in UTF-16 units.
 pub const FOLDER_NAME_MAX: usize = 40;

@@ -6,98 +6,18 @@
 //! `movePin`, M:1362 `createFolder`, M:1376-1407 `renameFolder`, `setFolderOpen`, `moveFolder` (the cycle guard,
 //! [`super::MAX_FOLDER_DEPTH`]), M:1410 `deleteFolder`; PR `folderDepth`.
 //!
-//! A parameter library.ts fills from an action's payload as it came (`p?.folderId ?? null`, `p?.name`) is an [`Arg`]:
+//! A parameter library.ts fills from an action's payload as it came (`p?.folderId ?? null`, `p?.name`) is an [`Arg`] (model/arg.rs):
 //! the JS value, so each rule tests it as M does (`folderId ? …`, `=== id`, `String(name ?? '')`); one library.ts
 //! always gives a string (an id it found, a space it checked) is a `&str`.
 
-use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use serde_json::Value;
 
-use super::{FOLDER_NAME_MAX, MAX_FOLDER_DEPTH, has_space, pos_of};
+use super::{Arg, FOLDER_NAME_MAX, MAX_FOLDER_DEPTH, has_space, pos_of};
 use crate::library::js;
 use crate::library::state::{Folder, Item, LibState, Pin, Str};
-
-// ---- a payload's value --------------------------------------------------------------------------------------------
-
-/// A value as a rule of M receives it from library.ts: `undefined` (a payload's missing field), a JSON value (any type:
-/// a payload's), or a string the caller has (an id, a title). The tests M makes of it are its methods.
-#[derive(Clone, Copy, Debug)]
-pub enum Arg<'a> {
-    Undefined,
-    Value(&'a Value),
-    Str(&'a str),
-}
-
-impl<'a> Arg<'a> {
-    /// `p?.field`: a payload's field as it came (missing: undefined).
-    pub fn of(v: Option<&'a Value>) -> Arg<'a> {
-        v.map_or(Arg::Undefined, Arg::Value)
-    }
-
-    /// `p?.field ?? null` (undefined as null).
-    pub fn or_null(self) -> Arg<'a> {
-        match self {
-            Arg::Undefined => Arg::Value(&Value::Null),
-            other => other,
-        }
-    }
-
-    /// The string it is (`typeof v === 'string'`): the only kind `=== id` can be true of.
-    pub fn as_str(self) -> Option<&'a str> {
-        match self {
-            Arg::Str(s) => Some(s),
-            Arg::Value(Value::String(s)) => Some(s),
-            _ => None,
-        }
-    }
-
-    /// `!!v`.
-    pub fn truthy(self) -> bool {
-        match self {
-            Arg::Undefined => false,
-            Arg::Str(s) => !s.is_empty(),
-            Arg::Value(v) => js::truthy(Some(v)),
-        }
-    }
-
-    /// `v == null`.
-    pub fn nullish(self) -> bool {
-        matches!(self, Arg::Undefined | Arg::Value(Value::Null))
-    }
-
-    /// `v === null` (not undefined).
-    pub fn is_null(self) -> bool {
-        matches!(self, Arg::Value(Value::Null))
-    }
-
-    /// `String(v ?? '')`.
-    pub fn text(self) -> Cow<'a, str> {
-        match self {
-            Arg::Undefined | Arg::Value(Value::Null) => Cow::Borrowed(""),
-            Arg::Str(s) => Cow::Borrowed(s),
-            Arg::Value(v) => js::to_string(v),
-        }
-    }
-
-    /// `v ? v : null` for an id: the string when it's a string and not empty, `Err(())` when it's truthy but no string
-    /// (an id no record has), `Ok(None)` when it's falsy.
-    fn truthy_id(self) -> Result<Option<&'a str>, ()> {
-        match (self.truthy(), self.as_str()) {
-            (false, _) => Ok(None),
-            (true, Some(s)) => Ok(Some(s)),
-            (true, None) => Err(()),
-        }
-    }
-}
-
-impl<'a> From<&'a str> for Arg<'a> {
-    fn from(s: &'a str) -> Arg<'a> {
-        Arg::Str(s)
-    }
-}
 
 impl<'a> From<Option<&'a str>> for Arg<'a> {
     /// A typed `string | null`.
