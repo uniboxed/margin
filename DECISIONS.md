@@ -9594,3 +9594,9 @@ docs/LINK-RESILIENCE.md §2 rules 1–4, Tirth's default: when the first item is
   an app last with the browser not ready: no "Getting you started"; the held-up, Try again, Continue without Safari and
   lifts-by-itself checks with a web item last; MarginResumeLast NO: the launcher at once; the extension that never
   links: with a web item last (stored for the check, removed after).
+
+## Link resilience: the waker's quit check pinned before it counts windows (2026-11-24)
+
+docs/LINK-RESILIENCE.md §3: 94bd90ab's fix, pinned by a unit check (hosted-tests.swift `safariWakeTests`): a quit
+begun between two looks, and no count of the woken windows once it's begun (the stand-in engine counts them while
+quitting), one press only. Caught by counting before the check (`_ = engine.wokenWindows(…)` above it).

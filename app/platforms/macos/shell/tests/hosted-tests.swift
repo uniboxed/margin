@@ -224,8 +224,12 @@ final class StubLaunchEngine: HostedEngine {
     var presses = 0
     var runs: Bool?
     var quitting = false
+    var countedQuitting = 0 // (the woken windows counted while Margin quits)
     func hideWoken(bundleId: String) { presses += 1 }
-    func wokenWindows(bundleId: String) -> Int { presses * windowsPerPress }
+    func wokenWindows(bundleId: String) -> Int {
+        if quitting { countedQuitting += 1 }
+        return presses * windowsPerPress
+    }
     func appRuns(bundleId: String) -> Bool? { runs }
     func open(app target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64, wanted: (@MainActor () -> Bool)?) async -> HostResult { .failed(.margin, "stub") }
     func show(_ id: HostID) async -> HostResult { .failed(.margin, "stub") }
@@ -667,6 +671,16 @@ func safariWakeTests(_ library: Library) {
         var again = true
         hostRun { again = await s.safariLinked("s-q2") }
         check("wake: asked while Margin quits: not pressed", !again && links.menuOpens == ["s-q"], "\(links.menuOpens)")
+    }
+    do {
+        // The quit begun between two looks (docs/LINK-RESILIENCE.md §3): the waker stops before it counts the windows its
+        // presses opened (the quit gives them back: a count then reads as a press that opened nothing, and presses again).
+        let (s, links, stub, _, at) = rig()
+        at(3) { stub.quitting = true; stub.windowsPerPress = 0 }
+        var ok = true
+        hostRun { ok = await s.safariLinked("s-q") }
+        check("wake: a quit between two looks stops the waker before it counts windows: none counted once it quits, no second press",
+              !ok && stub.countedQuitting == 0 && links.menuOpens == ["s-q"], "\(ok) \(stub.countedQuitting) \(links.menuOpens)")
     }
     do {
         // Safari's menu has no item by the name Margin has for the profile (its own names unreadable, 2026-11-18 23:02: four
