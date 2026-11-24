@@ -9575,3 +9575,22 @@ this part codes against those names.
   know (one warning a cancel), and `slow` is never reported. The page draws `slow` only as "no grace" (page/mod.rs
   `set_showing` ignores a change of `slow` alone): words for "Safari is slow" are a UI piece of their own. A pick in
   another Margin window still waits behind a show its copy never answers (overtaken is per window, as the design says).
+
+## Link resilience: the start waits only for what the first item shown needs (2026-11-24)
+
+docs/LINK-RESILIENCE.md §2 rules 1–4, Tirth's default: when the first item is an app, there's no start gate.
+
+- **The gate** (start.rs `resume_last`): only for a web item shown last, on its profile's preparation. An app, Margin's
+  own page or no item (the launcher; MarginResumeLast NO is no item): no start screen, shown at once, the browser's
+  preparation running out of sight with nothing waiting for it (it gives itself up once something's shown, as it did
+  when the person picked first).
+- **The profile prepared** (`prepare_browser`): the last item's own when it's a web item (`resolve` of its target's
+  profile, the one its show resolves), else the space's as before; the window made ready is the one the first show
+  uses. Other profiles link on first use (`show_web` → `host` → `ensure_linked_for`, unchanged).
+- **"Held up" stays feedback**: `hold_startup` unchanged; it ends the moment the preparation is over, whenever that is.
+- **Tests, each failing first** (start_tests.rs): an app last: no start screen, shown with the preparation not begun; no
+  item, or Settings: no start screen; a web item of s-p in a space of s-q: s-p woken for and made ready, not s-q. The
+  start screen's own tests now use a web item last (an app no longer gets one). Swift (hosted-tests.swift): Settings and
+  an app last with the browser not ready: no "Getting you started"; the held-up, Try again, Continue without Safari and
+  lifts-by-itself checks with a web item last; MarginResumeLast NO: the launcher at once; the extension that never
+  links: with a web item last (stored for the check, removed after).

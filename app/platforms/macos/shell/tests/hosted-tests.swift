@@ -459,6 +459,12 @@ func preparedBrowserTests(_ library: Library) {
         r.session.options.firstCopiesPace = 0
         r.session.options.startupWait = 600 // (the stand-in's preparation is many waits' turns long: never "taking longer" here)
         r.window.isFullScreen = true
+        // (A web item shown last: the start waits for its profile, docs/LINK-RESILIENCE.md §2; gone again after.)
+        if library.space(ofWindow: 1) == nil { _ = library.perform("createSpace", ["windowId": 1, "name": "Prepared", "emoji": "⚡"]) }
+        let waits: JSONObject = ["spaceId": library.space(ofWindow: 1) ?? "", "selected": true, "lastUsed": 9e12, "title": "Waits", "url": "https://waits.example/",
+                                 "target": ItemTarget.web(browser: "safari", profile: nil).json]
+        library.store([["collection": "tabs", "id": "t-waits", "value": waits]], at: 9e12)
+        defer { library.store([["collection": "tabs", "id": "t-waits", "deleted": true]], at: 9e12 + 1) }
         r.session.resumeLast(r.window)
         let screen = r.session.startupShown
         _ = prepare(r)
@@ -1423,18 +1429,17 @@ func hostedResumeTests() {
         let (w, engine, session, window, run) = launch()
         session.options.preparesBrowser = true
         session.resumeLast(window)
-        let first = window.slowShowings
-        session.preparationOver()
+        let screen = session.startupShown
         run {}
-        check("start: Settings last: \"Getting you started\" first, then Settings' page (no app's icon for it), nothing launched, hosting over",
-              first == [HostedSession.startupLabel] && window.marginPage == "settings" && session.shown[1] == settingsLast && !window.hosting && engine.shown == nil
-              && session.resuming == nil && window.showing == nil && !w.calls.contains { $0.hasPrefix("launch") } && window.showingApps.dropFirst().allSatisfy { $0 == nil },
-              "\(window.slowShowings) \(window.showingApps) \(String(describing: window.marginPage)) \(session.done.suffix(4))")
+        check("start: Settings last, the browser still being made ready: its page at once, no start screen (it needs no browser: docs/LINK-RESILIENCE.md §2), nothing launched",
+              !screen && window.slowShowings.isEmpty && window.marginPage == "settings" && session.shown[1] == settingsLast && !window.hosting && engine.shown == nil
+              && session.resuming == nil && !w.calls.contains { $0.hasPrefix("launch") }, "\(window.slowShowings) \(String(describing: window.marginPage)) \(session.done.suffix(4))")
         run { await engine.quitAll() }
     }
     _ = library.perform("removeItem", ["tabId": settingsLast])
 
-    // ---- the start (Tirth, 2026-11-18): the default browser first, behind "Getting you started", then the item ----
+    // ---- the start (Tirth, 2026-11-18; 2026-11-24, docs/LINK-RESILIENCE.md §2): only what the item shown last needs is
+    // waited for: an app nothing, a web item its profile's preparation, behind "Getting you started" ----
     let notes = library.items().first { $0.value["url"] as? String == "app://com.apple.Notes" }?.id ?? ""
     if notes.isEmpty { check("start: Notes is an item", false) }
     _ = library.perform("activateTab", ["windowId": 1, "tabId": notes])
@@ -1443,33 +1448,38 @@ func hostedResumeTests() {
         session.options.preparesBrowser = true
         window.isFullScreen = true
         session.resumeLast(window)
-        let first = window.slowShowings
-        let launchedEarly = w.calls.contains { $0.hasPrefix("launch com.apple.Notes") }
-        // (The browser's preparation over: ready, or not done.)
-        session.preparationOver()
+        let first = window.slowShowings, screen = session.startupShown
         run {}
-        check("start: \"Getting you started\" from the window's first frame while the default browser starts, nothing of the item launched yet; then the item's name, and the item shown",
-              first == [HostedSession.startupLabel] && !launchedEarly && window.slowShowings.prefix(2) == [HostedSession.startupLabel, "Notes"]
-              && engine.shown == HostTarget.app("com.apple.Notes").id && session.resuming == nil && window.showing == nil,
-              "first \(first) all \(window.slowShowings) shown \(String(describing: engine.shown))")
+        check("start: an app last, the browser not ready: no \"Getting you started\" (it needs no browser), its name at once, then the item shown",
+              first == ["Notes"] && !screen && w.calls.contains { $0.hasPrefix("launch com.apple.Notes") } && engine.shown == HostTarget.app("com.apple.Notes").id
+              && session.resuming == nil && window.showing == nil && !session.startupShown, "first \(first) all \(window.slowShowings) shown \(String(describing: engine.shown))")
         run { await engine.quitAll() }
     }
-    // (The start screen, Tirth 2026-11-19: held until the browser is ready; past its limit, what's wrong said with Try
-    // again and Continue without Safari, never the item shown on its own.)
+    // (The start screen, Tirth 2026-11-19, for a web item last: held until the browser is ready; past its limit, what's
+    // wrong said with Try again and Continue without Safari, never the item shown on its own.)
+    let lastPage = library.items().first { $0.value["url"] as? String == "https://last.example/" }?.id ?? ""
+    if lastPage.isEmpty { check("start: the web page is an item", false) }
+    _ = library.perform("activateTab", ["windowId": 1, "tabId": lastPage])
+    let safariHost = HostTarget.safariWindow("s-default").id
+    func linked() -> FakeHostedLinks {
+        let links = FakeHostedLinks()
+        links.profiles = ["s-default"] // (its copy links as Safari starts)
+        return links
+    }
     func spin(_ run: (@escaping () async -> Void) -> Void, _ done: () -> Bool) -> Bool {
         let until = Date().addingTimeInterval(3)
         while !done(), Date() < until { run {}; RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
         return done()
     }
     do {
-        let (_, engine, session, window, run) = launch()
+        let (_, engine, session, window, run) = launch(links: linked())
         session.options.preparesBrowser = true
         session.options.startupWait = 0.05
         window.isFullScreen = true
         session.resumeLast(window)
         // (The preparation never says it's over.)
         let held = spin(run) { window.stuck != nil }
-        check("start: a browser not ready within its limit: the start screen held up, saying so; the item NOT shown on its own, nothing usable",
+        check("start: a web item last, its browser not ready within its limit: the start screen held up, saying so; the item NOT shown on its own, nothing usable",
               held && window.stuck == HostedSession.startupSlow && engine.shown == nil && session.startupShown && window.slowShowings == [HostedSession.startupLabel],
               "\(String(describing: window.stuck)) \(String(describing: engine.shown)) \(window.slowShowings)")
         // (Tirth, 2026-11-23: held up, it re-checks only on events: no looks, nothing wakes while it's up and idle.)
@@ -1479,31 +1489,32 @@ func hostedResumeTests() {
         for _ in 0..<10 { run {}; RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
         check("start: held up and idle: nothing wakes (no look, no timer) while it's up", looks == 0 && window.stuck == HostedSession.startupSlow && session.startupShown,
               "\(looks) looks")
+        session.sleep = sleep
         let pushedBefore = window.stucks.count
         session.startupRetry()
         let again = spin(run) { window.stucks.count >= pushedBefore + 2 }
         check("start: Try again (still preparing): the words gone, its limit anew, then said again", again && Array(window.stucks.suffix(2)) == [nil, HostedSession.startupSlow]
               && session.startupRetries == 1 && engine.shown == nil, "\(window.stucks)")
         session.startupSkip()
-        let skipped = spin(run) { engine.shown == HostTarget.app("com.apple.Notes").id }
+        let skipped = spin(run) { engine.shown == safariHost && session.resuming == nil }
         check("start: Continue without Safari: the start screen gone, the item shown last shown", skipped && !session.startupShown && window.stuck == nil && session.resuming == nil
-              && window.slowShowings.last == "Notes", "\(String(describing: engine.shown)) \(window.slowShowings) \(window.stucks)")
+              && window.slowShowings.last == "Last page" && session.shown[1] == lastPage, "\(String(describing: engine.shown)) \(window.slowShowings) \(window.stucks)")
         session.startupRetry()
         session.startupSkip()
         check("start: the start screen gone: its choices do nothing", session.startupRetries == 1)
         run { await engine.quitAll() }
     }
     do {
-        let (_, engine, session, window, run) = launch()
+        let (_, engine, session, window, run) = launch(links: linked())
         session.options.preparesBrowser = true
         session.options.startupWait = 0.05
         window.isFullScreen = true
         session.resumeLast(window)
         _ = spin(run) { window.stuck != nil }
         session.preparationOver()
-        let ready = spin(run) { engine.shown == HostTarget.app("com.apple.Notes").id }
+        let ready = spin(run) { engine.shown == safariHost && session.resuming == nil }
         check("start: held up, then the browser ready after all: the start screen lifts by itself, the item shown", ready && window.stuck == nil && !session.startupShown
-              && window.stucks == [HostedSession.startupSlow, nil], "\(window.stucks)")
+              && window.stucks == [HostedSession.startupSlow, nil] && session.shown[1] == lastPage, "\(window.stucks)")
         run { await engine.quitAll() }
     }
     do {
@@ -1512,13 +1523,13 @@ func hostedResumeTests() {
         session.options.resumesLast = false
         window.isFullScreen = true
         session.resumeLast(window)
-        let screen = session.startupShown && window.slowShowings == [HostedSession.startupLabel] && window.hosting
-        session.preparationOver()
-        _ = spin(run) { !session.startupShown }
-        check("start: the item shown last not shown again (MarginResumeLast NO): the start screen still, then the launcher (nothing shown)",
-              screen && !session.startupShown && engine.shown == nil && !window.hosting && session.resuming == nil, "\(window.slowShowings) \(window.hostings)")
+        let screen = session.startupShown
+        run {}
+        check("start: the item shown last not shown again (MarginResumeLast NO): the launcher at once, no start screen (nothing shown needs the browser)",
+              !screen && !session.startupShown && window.slowShowings.isEmpty && engine.shown == nil && !window.hosting && session.resuming == nil, "\(window.slowShowings) \(window.hostings)")
         run { await engine.quitAll() }
     }
+    _ = library.perform("activateTab", ["windowId": 1, "tabId": notes]) // (Notes the item shown last again, for the tests after)
     // ---- an item in another Margin window (Tirth, 2026-11-18): its card there, the item back when that window's in front ----
     do {
         let (w, engine, session, window, run) = launch()
