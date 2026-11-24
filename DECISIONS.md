@@ -4882,9 +4882,9 @@ Phase 1 of `docs/MARGIN-APP.md`: with `MarginHosted` on (`defaults write com.uni
 
 **Items have a target.** `{ kind: 'web', browser: 'safari', profile }` or `{ kind: 'app', bundleId, name }`, on every item, pin and archive entry, so a space can mix pages of several Safari profiles and Mac apps. An app item's address is `app://<bundleId>`: the model matches by address, and only `http(s)` pages are ever archived, so closing an app forgets it.
 
-**One copy of the rules: the TypeScript model in JavaScriptCore, not a Swift port.** `app/shared/library/library.ts` turns the library's values into a model `State` (items as kept tabs: a Margin tab with no browser tab, which is what an item is to the app), runs `extension/state/model.ts`'s own functions (`createSpace`, `deleteSpace`'s cascade, `orderSpaces`, `placeKept`, `addPin`/`movePin`/`writeOrder`, the folder rules, `archiveKept`…), and answers with the values that changed. `scripts/build.ts` bundles it as `dist/app/library.js` (an IIFE, 33 KB, shipped in `Resources/app/` with the overlay's page); `LibraryRules.swift` runs it in a `JSContext`, JSON in and out. Why: the rules that matter here (pins' and folders' positions, the delete cascade, list places) are the subtle part of `model.ts`, already tested by the extension's suites; a Swift port would be a second copy that drifts, needing its own parity vectors forever (as the merge has). The cost is small: JavaScriptCore is a system framework, a call is a JSON round trip of the library's values (well under a few ms for hundreds of items), and the bundle has no DOM, clock or randomness (the app gives `now` and random letters, `env.ids`), so it runs the same in Node's tests and in the app. The merge, the files and the times stay Swift's (`DataSet.swift`), as they are for the profiles.
+**The library's rules are margin-core's** (since 2026-11-24, docs/CORE-REFACTOR.md step 4; this replaces 2026-11-15's "one copy of the rules: the TypeScript model in JavaScriptCore, not a Swift port"). One copy still: the rules are app/shared/core/src/library, a function-by-function port of `app/shared/library/library.ts` over `extension/state/model.ts` (with pinned-rules.ts, air-traffic.ts, front-item.ts), which Margin.app runs through margin-ffi and the Windows shell runs as it is, with no JavaScript engine (Tirth, 2026-11-22: the rules go into the core once the hosted design is the only one coming; no WebAssembly). The TS stays only as the shared vectors' reference (tests/fixtures/library: the TS tests' calls, generated sequences, the edges as JavaScriptCore answers them, every step checked against the core) and as the extension's own rules while the browsers' copies own their spaces; it's built into nothing. The merge, the files and the times are the core's store's (data/library.rs, data/store.rs), as they are for the profiles. Until step 4: `scripts/build.ts` bundled library.ts as `dist/app/library.js` and `LibraryRules.swift` ran it in a `JSContext`, JSON in and out (the reasons then: one copy of the subtle rules, already tested; JavaScriptCore a system framework). What the move decided (Tirth's answers): ICU collation exact through the system's sorter, ties by the ids' order, a cut through an emoji drops the broken half, addresses parsed as the browsers do, the no-rules fallback gone.
 
-**Times.** The rules give untimed values; `Library.apply` stamps each at now, or just after the item's own time when the clock went back, and merges them like any change.
+**Times.** The rules give untimed values; the store stamps each (`Library.apply` until step 4, data/library.rs since) at now, or just after the item's own time when the clock went back, and merges them like any change.
 
 **The import (decided by Tirth).** The first time the library opens with `MarginHosted` on, every profile's set the app keeps (every browser's) is imported once (`Library.importOnce`): spaces with the profile as their own, pins, folders, every Margin tab (open or kept) as a web item in that profile, and the archive. Ids are namespaced, `<browser>:<profile>:<id>` (an item: `t-` and a hash of the same, since the model and UI take only `t-` ids for tabs), so two profiles' `personal` stay two spaces. The order is `browser.json`'s through `BrowserProfiles.resolve` (the slots rule), read only; a forgotten profile's spaces are imported too, after the others. The marker (`imports.done`: when, which sets, counts) is saved with what it brought, and `set.json` is written last, so a crash before it reruns the import, which gives the same ids. Nothing in the profiles' files is written or deleted (checked file by file). Settings, theme settings and site icons are not imported: they stay each profile's for now.
 
@@ -9513,3 +9513,22 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   (a file's older text kept, a merged file written twice, `set.json`'s first always the later save's, or dropped after
   an acked alone, the older rev last, the later saves' results lost, another profile's save merged, merged under a
   test's crash, nothing merged).
+
+## Core refactor step 4, commit 8: step 4 done, the library's rules margin-core's (2026-11-24)
+
+- **The rule** ("Margin.app owns the spaces: the library", 2026-11-15, its rules paragraph replaced): the library's
+  rules are margin-core's; library.ts is the shared vectors' reference and the extension's own rules' companion while
+  the browsers' copies own their spaces, built into nothing (its header says so; `buildLibraryScript` builds
+  library.js for the vectors' recorder only, since commit 6).
+- **The test-only app API**: `Library.store(_:at:)` (values stored as given, no rule run) is out of the app: the
+  tests' own, over the core's `apply` call through `corePointer` (library-tests.swift for the unit checks,
+  e2e-hosted.swift for the end-to-end ones), since only tests store values in shapes the rules may never write (an
+  older Margin's, odd types: session-rules-tests' last items, margin-window-tests' themes) or 2,000 items at once (the
+  baseline); the app has no way past the rules now. HostedSession `request(_:)` is kept: it's the session's `library`
+  input, which the core keeps for request shapes the rules never make, and session-rules-tests pins the session's
+  handling of them through it (a pin or favorite with no item and no address: said, nothing shown); it needs the
+  facade's private `drive`, so it can't move to the tests without opening that. Not called by the app.
+- docs/CORE-REFACTOR.md: "Step 4: done (2026-11-24)" (what moved, what stayed and why, the totals, each commit's
+  results and breaks, what's open), the order table's rows 7, 7a and 8 done.
+- Not run here: the screen suite, an install, `npm run gate` (Tirth's). `tools/app-tests/run.sh all`,
+  `scripts/rust-test.sh`, `npm test` and the quick tests green.

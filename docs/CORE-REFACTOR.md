@@ -2305,7 +2305,7 @@ commit 7 only).
 | 6 | **The switch**: `Library.swift` over the core, LR and JavaScriptCore gone, `library.js` out of the app, `Command::Perform` and the Swift delegate path gone, the no-rules fallback gone, the Swift tests on the core, the stand-in shelf in requests_tests.rs replaced by the real library. **Done** (step4/switch, one commit: the sink registered by `margin_session_new` (`take_requests` for several sessions), a Swift perform followed by the `edited` input, not a tick; `Ports::perform` and the executor's `same_turn` gone too; `buildApp`'s half of commit 8 done; part 7's corrections there; the data check both ways on the vectors and Tirth's copy; `idle-cost` and a switch not measured: no screen suite here) | 330 app Swift out, 184 in (LR 74, L 116 → 127, SH 97 → 11, HS 17 → 25, SG 8 → 3, SL 11 → 7) | ~500 changed (~500 out: the shadow's, the stand-in's) | a perform 0.64 / 3.6 / 15.0 ms at 50 / 500 / 2,000 items (JSC 2.7 / 16.2 / 62.0), a draw's library part 1.1 / 6.8 / 25.7 (2.8 / 13.9 / 52.3) |
 | 7 | Part 6 per draw: `state_text` with `live` joined, `space_theme` typed, the settings' text spliced, `live`'s Swift and the snapshot's dictionaries gone. **Done** (step4/finish: `margin_session_state` with no window and the profile's text as its `tail`, part 6's corrections there; the profile's text kept in Swift between its changes; `idle-cost` not measured: no screen suite here) | 122 app Swift out, 87 in | ~250 + ~290 tests | a draw 0.01 / 0.07 / 0.26 ms at 50 / 500 / 2,000 items (commit 6's same draw 1.19 / 6.98 / 29.4, its library part 1.14 / 6.8 / 25.7; JSC's 2.8 / 13.9 / 52.3); footprint as commit 6's (the store writer's backlog: row 7a) |
 | 7a | Found by the switch: the data store's pending writes coalesce (data/store.rs `Job::merge`): a save handed over while the same profile's last job still waits for the writer becomes part of it, each file once with its newest text, `set.json` first with the newest rev and the acked from before, last as the newest save has it; each save's result in order once written; step 1's guarantees kept (DECISIONS.md "The data store's pending writes coalesce"). **Done** (step4/finish, its own commit) | 0 | ~140 + ~160 tests | a burst of 200 edits at 50 / 500 / 2,000 items: the footprint's highest 13.7 / 33.9 / 186 MB (was 53.7 / 357 / 466; 0.01–0.03 MB an edit, was up to 1.26) |
-| 8 | LT built into nothing (`buildApp`), its header saying it's the vectors' reference (**both done in commit 6**: `buildLibraryScript` builds it for the recorder only); DECISIONS.md "the library's rules are margin-core's" (replacing 2026-11-15's "one copy of the rules: the TypeScript model in JavaScriptCore"); this plan's step 4 marked done | ~5 TS (build) | 0 | |
+| 8 | LT built into nothing (`buildApp`), its header saying it's the vectors' reference (**both done in commit 6**: `buildLibraryScript` builds it for the recorder only); DECISIONS.md "the library's rules are margin-core's" (replacing 2026-11-15's "one copy of the rules: the TypeScript model in JavaScriptCore"); this plan's step 4 marked done. **Done** (step4/finish: LT's header says it whole; "Step 4: done" above; `Library.store(_:at:)` out of the app into the tests, HostedSession `request(_:)` kept for the tests' request shapes, with its reason) | 6 app Swift (`store`), the header's lines | 0 | |
 
 About 300 Swift lines deleted (~80 added), JavaScriptCore no longer used by the app (check: `otool -L` and the
 project's frameworks; WebKit's own JSC stays, the page needs it), 0 TS deleted now (LT's 954 lines stay as the
@@ -2388,12 +2388,101 @@ vectors pin the system one. 11 **fix it, as its own commit**: the rules move fir
 (`RULES_PARSE_URLS` false), then one commit turns URL parsing on with tests (link rules route in the app; `https://a.com`
 and `https://a.com/` match as the browsers' copies match them), the vectors' JSC answers re-recorded for it.
 
+### Step 4: done (2026-11-24)
+
+Every commit of the order table is done (each one's DECISIONS.md entry has its checks: the Rust against library.ts on
+the shared vectors and generated sequences, the edges against JavaScriptCore on this Mac, each harness proven by
+deliberate breaks). Margin.app's library is margin-core's; JavaScriptCore isn't linked for it any more. What moved into
+the core (app/shared/core/src/library/, the FFI in app/platforms/macos/ffi/src/data.rs, collation.rs, session.rs):
+
+- **The JavaScript the rules rely on** (commit 1, js.rs): UTF-16 cuts and order, JS's white space, doubles and their
+  spelling, truthiness, `String(x)` and property keys, the import's ids (`fingerprint`), WHATWG addresses (the `url`
+  crate); `localeCompare` the platform's sorter (the Mac's libicucore as JavaScriptCore set it, Windows' icu.dll).
+- **The typed state** (commit 2): `stateOf`/`valuesOf`, the typed diff (only what differs is written), `targetOf`, the
+  snapshot's text written from the state, the import's normalising.
+- **The model's rules** (commit 3): model.ts's spaces, pins, folders, items' places, the archive, favorites, splits
+  and link rules, pinned-rules.ts, air-traffic.ts, front-item.ts, function by function under their TS names.
+- **The 57 actions and `perform`** (commit 4), **the import** (commits 1, 5), **the library object** (commit 5: its
+  env, clock and observers the platform's, the session its requests' sink, the import once, the FFI), **addresses
+  parsed as the browsers do** (5a, Tirth's answer 11).
+- **The switch** (commit 6): Library.swift a facade over the core's object; LibraryRules.swift, the JSContext,
+  library.js in the app, `Command::Perform`, the delegate path and the no-rules fallback gone; the session's tests
+  over the real library.
+- **A draw** (commit 7): one call, the library's kept snapshot with the session's open items as tabs and the
+  profile's settings spliced in; the space's theme typed; `live`'s Swift and the snapshot's dictionaries gone.
+- Found on the way and fixed in its own commit (7a): the data store's pending writes coalesce, so a burst of edits
+  holds one text of each file (step 1's guarantees kept).
+
+What stayed, and why:
+
+- **library.ts** (built into nothing: `buildLibraryScript` builds library.js for the vectors' recorder only, which
+  runs it in JavaScriptCore), **model.ts**, pinned-rules.ts, air-traffic.ts, front-item.ts, data-set.ts: the
+  extension's own rules (the Safari, Chrome and Edge copies still own their spaces in the old design) and the
+  vectors' reference (Tirth's answer 7), until feat/hosted-windows-chromium retires the copies' spaces; then LT and
+  M's space-owning half go and the vectors are frozen as Rust's.
+- **The UI's predictions** (ui/intents.ts `nextFront`, ui/behaviors/split.ts `refusesAdd` with front-item.ts): they draw
+  a click's result before the library answers, over the snapshot; the vectors pin front-item.ts against the core.
+- **The session's `Target::read`** (session/target.rs): ItemTarget's lenient reader of what the library wrote, a rule of
+  its own.
+- **The profile's settings and site icons** (ShellHosted.swift DataSetWindowSource: UserDefaults keepers over a
+  profile's set): the Mac's; the core only splices their text into a draw.
+- **Library.swift** as the facade the app and the Swift tests read (each read one core call, never per frame), and its
+  `LibraryDelegate` for a library with no session (library-tests.swift's recorder).
+- **Two test-only entries, kept with a reason**: HostedSession `request(_:)`, the session's `library` input, gives the
+  session request shapes the rules never make (session-rules-tests' pin and favorite with no item and no address; the
+  session's handling of them is pinned there), and it needs the facade's private `drive`; `Library.store(_:at:)` moved
+  out of the app into the tests (library-tests.swift and e2e-hosted.swift, over the core's `apply` call through
+  `corePointer`): the libraries made as stored values in shapes the rules may never write (an older Margin's, odd
+  types) and the baseline's 2,000 items at once.
+
+Totals (from 232beaee, step 3's last commit, to step 4's last): app Swift 442 lines deleted, 255 added (LibraryRules.swift
+gone, Library.swift a facade over the core's calls, HostedSession's `live`, `liveTab` and delegate path, the no-rules
+fallback, `DataSetWindowSource.state`; the facade's callbacks and the kept settings text added): 187 fewer. Swift tests
+322 added, 189 deleted (the shadow and JSC's runs out, the costs and the draws' checks in). Rust 8,800 lines in (with
+inline test modules) and 4,900 of test files, ~490 out; 1,190 lines of TS and JS (the vectors' recorder and their
+tests: none of the app's or the extension's); the vectors, tests/fixtures/library (27 files, 7.6 MB: 360 cases, 9,395
+steps). Binary: +0.59 MB arm64 and +0.72 MB x86_64 for the rules (commit 5), +0.23 / +0.24 MB for the URL parser
+(5a), +52 KB at the switch; the bundle 68 KB smaller (no library.js); no collation data (the system's sorter).
+
+Results, step by step (the measures off screen; JSC: commit 0's JavaScriptCore baseline):
+
+| Commit | What it proved | Deliberate breaks |
+| --- | --- | --- |
+| 0 | The vectors from the TS in Node and JSC: ~70 tests' calls, generated sequences, js.json, the throw survey, the cut's outcome on the Mac; JSC's costs: a perform 2.7 / 16.2 / 62.0 ms at 50 / 500 / 2,000 items, a draw's library part 2.8 / 13.9 / 52.3 | 17 of the reference: 16 caught, 1 equivalent |
+| 1 | js.rs equal to JSC on every edge (js.json) and to Node and WebKit on addresses | 42, all caught |
+| 2 | 5,000 generated libraries and imports equal to library.ts; a snapshot's text 0.26 ms at 500 (JSC 4.7) | 64, 62 caught (2 change nothing) |
+| 3 | Every model rule on the vectors: 0.2–140 µs a rule at 2,000 items | 81 / 78 / 51: 78, 74, 50 caught (the rest change nothing or got tests) |
+| 4 | Every perform vector and the generated sequences (8,798 performs); a perform alone 0.007 / 0.034 / 0.13 ms on the kept state | 98: 90 caught (3 by tests added for them), 8 change nothing seen |
+| 5 | The Swift suite's 9,442 calls through JSC and the core the same (but the decided cuts and gap); a perform through the FFI 0.6 / 3.6 / 15.5 ms | 41: 35 caught (4 by checks added), 6 change nothing seen |
+| 5a | The `url` steps the browsers' answers; a match 0.55 µs an address | 26, all caught |
+| 6 | The data both ways (360 cases × 8,798 steps, Tirth's copy of his library, the import of his five Safari sets); a perform 0.64 / 3.6 / 15.0 ms (JSC 2.7 / 16.2 / 62.0) | 26, 21 caught |
+| 7 | A draw 0.01 / 0.07 / 0.26 ms (commit 6's whole draw 1.19 / 6.98 / 29.4; JSC's library part 2.8 / 13.9 / 52.3) | 21, 19 caught, the 2 missed answered |
+| 7a | A burst of 200 edits at 500 items: the footprint's highest 33.9 MB (was 357) | 9, all caught |
+
+Every step's budget held: a perform and a draw far cheaper than commit 0's, the footprint at 500 items below JSC's.
+
+Open, for later:
+
+- **The screen suite and an install**, never run on these branches (`idle-cost`, `idle-profile`, a switch, `live-resize`,
+  `page-frames`, `pane-clicks`, a peek open), nor `npm run gate`: Tirth runs them before the merge.
+- **What's left of a perform** is the store's apply (the library's set cloned, the changed collection's whole file
+  made: ~3.5 ms at 500 items, 15 ms at 2,000) and the perform's JSON over the FFI; a typed perform and a set that isn't
+  cloned per edit (the collection's file written from the set as it is) are the next levers, not step 4's (the store is
+  step 1's).
+- **A large library's footprint**: 2,000 items with 2 KB icons is ~185 MB after a burst (JSC's 354), over the 150 MB
+  budget; the icons inline in the set, the snapshot's text and each file's text are the bulk.
+- The vectors' recorder still runs library.js in JavaScriptCore (tools/library-vectors/jsc.swift): needed only to
+  record vectors again while LT lives.
+- Windows: the session's sink and `state_text` are ready (part 10); §10 items 9 and 10 (the import per set, Windows
+  apps as items) are Rust-only work after step 4 (open question 8).
+- Known gap kept as decided: `createSpace` given a truthy emoji or colour that's no string stores `""` (piece 1's).
+
 ## Order and checks
 
 1. Step 1 (1.1 → 1.5), merged after the gate and the screen suite.
 2. Step 2, the same.
 3. Step 3, with the Windows thread's plan read first.
-4. Step 4 (the sidebar's rules); then the Windows session plugs into the core's.
+4. Step 4 (the sidebar's rules), done 2026-11-24 ("Step 4: done"); then the Windows session plugs into the core's.
 
 Every merge: `npm run gate`, the screen suite's Chameleon parts, idle cost and live-resize numbers against the ones
 before, and the log lines tests read unchanged.

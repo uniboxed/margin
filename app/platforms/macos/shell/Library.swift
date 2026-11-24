@@ -238,12 +238,6 @@ final class Library {
         return outcome
     }
 
-    // Entries (`{ collection, id, value }` or `{ …, deleted: true }`) stored as given at `at` (ms): no rule run, no
-    // observer told (the store's own apply: a library made for a check or a measure; the app's edits are performs).
-    func store(_ entries: [Any], at: Double) {
-        _ = core.call(["type": "apply", "entries": entries, "at": at])
-    }
-
     // ---- the import (decided by Tirth, 2026-11-15) ----
 
     // Once: every profile's data set the app keeps (`profiles`: the shell's store) into the library, each browser's

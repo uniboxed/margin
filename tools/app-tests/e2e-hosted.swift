@@ -10,7 +10,17 @@
 // area; a press on a pin is a request of the source for this window; the source's change is drawn; New Window
 // makes a second window; the shell's windows draw the library.
 import AppKit
+import MarginCore
 import WebKit
+
+// Entries stored as given at `at` (ms), no rule run (the core's `apply` call; a test's only: library-tests.swift has the
+// unit checks' copy).
+extension Library {
+  func store(_ entries: [Any], at: Double) {
+    let request = KeysCore.json(["type": "apply", "entries": entries, "at": at] as JSONObject)
+    _ = KeysCore.bytes(request) { p, n in KeysCore.answer { margin_library_call(corePointer, p, n, $0) } }
+  }
+}
 
 final class FakeWindowSource: MarginWindowSource {
   var state: JSONObject

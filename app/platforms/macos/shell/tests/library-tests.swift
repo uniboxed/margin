@@ -4,6 +4,17 @@
 // profile's set (once, namespaced, in the person's order, the profiles' files left as they were), and the shell's.
 // The rules themselves: the core's (app/shared/core/src/library, the shared vectors tests/fixtures/library).
 import Foundation
+import MarginCore
+
+// Entries (`{ collection, id, value }` or `{ …, deleted: true }`) stored as given at `at` (ms), no rule run, no observer
+// told: the core's `apply` call (a test's only, so the app has no way past the rules): a library made for a check or a
+// measure, in shapes the rules may never write (an older Margin's, odd values), or of 2,000 items at once.
+extension Library {
+  func store(_ entries: [Any], at: Double) {
+    let request = KeysCore.json(["type": "apply", "entries": entries, "at": at] as JSONObject)
+    _ = KeysCore.bytes(request) { p, n in KeysCore.answer { margin_library_call(corePointer, p, n, $0) } }
+  }
+}
 
 final class RecordingLibraryDelegate: LibraryDelegate {
   var asked: [LibraryRequest] = []
