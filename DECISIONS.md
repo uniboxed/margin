@@ -10618,3 +10618,21 @@ failing first (the old code in a copy of the tree):
   (the browser's failing on the first version); a write before the wait takes
   the switch along; the page check the settled tab's only, failing alone with the old timer put back); link.test.ts
   (a tab shown sends no windows report and asks Safari for no tabs).
+
+## One copy of Margin's extension known to the system (2026-11-25)
+
+- **What Tirth saw:** Margin took longer than usual to open (the start screen's "Try again" at 15 s, Safari shown
+  at 20 s).
+- **Cause, from the logs:** at every Safari launch that day, Safari refused the Margin copy's native messages
+  (`runtime.sendNativeMessage`: "Other version in use", about once a second for 13 s at 12:24), so the copy
+  couldn't ask for its link to Margin.app until Safari settled on one version. Four Margin.app builds left in
+  scratch folders (screen-suite and gate builds) were registered with the system, each with the extension in it
+  (`pluginkit` listed five copies). The same day, at five of nine launches, Safari also deleted and recreated
+  the profile's extension storage while it was open (`file unlinked while open`, `Failed to open extension
+  storage database`); Margin.app put the data back over the link, nothing was lost. Whether that comes from the
+  same duplicate versions is to be seen at the next launches.
+- **The rule** (scripts/safari.sh): an install leaves only the installed copy known: any other registered
+  Margin.app with the extension in it, wherever it is, is unregistered (LaunchServices and its plug-in record),
+  besides Xcode's own build folders as before. The copies stay on disk; opening one makes it known again.
+- Done by hand that day: the four builds unregistered and deleted, and 16 other scratch Margin.app records
+  unregistered; `pluginkit` lists one copy.

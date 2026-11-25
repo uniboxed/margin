@@ -222,9 +222,24 @@ if launchctl print "$HELPER_AGENT" >/dev/null 2>&1; then
 fi
 [ "$REGISTERED" = true ] || echo "warning: the system doesn't list Margin's extension; open $DEST once so Safari sees it." >&2
 # Only this copy: one Xcode left elsewhere (its own build folder) would be a
-# second Margin in Safari, with storage of its own.
+# second Margin in Safari, with storage of its own. And any other copy with the
+# extension in it, wherever it is (a build made in a scratch folder, a worktree's):
+# with two versions of the extension known, Safari refuses the extension's native
+# messages ("Other version in use") until it settles on one, so the link to
+# Margin.app waited 13 s at a launch (2026-11-25, four such copies). The copies
+# stay on disk; opening one makes it known again.
 "$LSREGISTER" -dump 2>/dev/null | sed -n 's/^path: *\(.*Margin\.app\) (0x[0-9a-f]*)$/\1/p' | sort -u | while read -r other; do
-  case "$other" in "$DEST" | *.Trash*) ;; *DerivedData*|"$DERIVED"/*) "$LSREGISTER" -u "$other" && echo "Unregistered another copy: $other" ;; esac
+  case "$other" in
+    "$DEST" | *.Trash*) ;;
+    *DerivedData*|"$DERIVED"/*) "$LSREGISTER" -u "$other" && echo "Unregistered another copy: $other" ;;
+    *) [ -d "$other/Contents/PlugIns/Margin Extension.appex" ] || continue
+       pluginkit -r "$other/Contents/PlugIns/Margin Extension.appex" 2>/dev/null || true
+       "$LSREGISTER" -u "$other" && echo "Unregistered another copy with the extension: $other" ;;
+  esac
+done
+# (What the system still lists as an extension elsewhere, gone from LaunchServices' list: its plug-in record too.)
+pluginkit -mDAvvv -i com.unibox.margin.Extension 2>/dev/null | sed -n 's/^[[:space:]]*Path = \(.*Margin Extension\.appex\)$/\1/p' | while read -r appex; do
+  case "$appex" in "$DEST"/*) ;; *) pluginkit -r "$appex" 2>/dev/null && echo "Removed another copy of the extension: $appex" ;; esac
 done
 
 echo
