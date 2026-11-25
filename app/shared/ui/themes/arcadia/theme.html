@@ -236,10 +236,12 @@
         <svg class="fill-icon archive-icon" viewBox="0 0 18 18" aria-hidden="true"><rect x="2.5" y="6.5" width="13" height="9.5" rx="2.2"></rect><rect x="1.75" y="3.5" width="14.5" height="3.6" rx="1.3"></rect><rect x="6.5" y="9.2" width="5" height="1.6" rx=".8" fill-opacity=".35" fill="#fff"></rect></svg>
       </button>
       <!-- Arc's space switcher: every space's icon while they fit (each at least 24 pt), else (Margin's m-fit says so:
-           m-crowded) the space in front's icon and the others as dots; a dot under the pointer shows its icon. -->
+           m-crowded) the space in front's icon and the others as dots; a dot under the pointer shows its icon, and
+           after a moment Arc's tooltip over the bar: the space's name and its key (Margin.app's ⌃1–9). Arc shows no
+           tooltip over the icons: no title here either (its name is its aria-label). -->
       <nav class="spaces" aria-label="Spaces" m-fit="items">
         <m-for each="spaces" as="s">
-          <button class="chip" data-space-id="{{s.id}}" m-class:active="{{s.active}}" m-class:iconless="{{s.iconless}}" title="{{s.label}}" m-attr:aria-label="{{s.label}}" m-attr:aria-pressed="{{s.active}}" m-style:--chip-color="{{s.color}}" m-action="space.switch" m-arg="{{s.id}}" m-drop="space"><span class="chip-icon" aria-hidden="true">{{s.emoji}}</span></button>
+          <button class="chip" data-space-id="{{s.id}}" m-class:active="{{s.active}}" m-class:iconless="{{s.iconless}}" m-attr:aria-label="{{s.label}}" m-attr:aria-pressed="{{s.active}}" m-style:--chip-color="{{s.color}}" m-action="space.switch" m-arg="{{s.id}}" m-drop="space"><span class="chip-face"><span class="chip-icon" aria-hidden="true">{{s.emoji}}</span></span><span class="chip-tip" aria-hidden="true"><span class="tip-name">{{s.label}}</span><m-if test="s.hasKeys"><span class="tip-keys"><m-for each="s.keys" as="k"><span class="tip-key">{{k.label}}</span></m-for></span></m-if></span></button>
         </m-for>
       </nav>
       <button class="bar-button add" title="New folder or space" aria-label="New folder or space" m-action="menu.open" m-arg="add">

@@ -10664,3 +10664,23 @@ Arc's sidebar in Arcadia (docs/ARC-SIDEBAR.md: the study, measured in the runnin
 - **Tests**: tests/library.test.ts (removed, kept by a blank one, given back), tests/ui-view-model.test.ts
   (`iconless`), tests/ui-behaviors.test.ts (the menu's item and its action passing the checks),
   tests/theme/arcadia.test.ts (the dot with the icons roomy; "Remove Icon" sends `renameSpace` with `emoji: null`).
+
+## M2.10 step 6: Arc's tooltip over a space's dot (`feat/arc-sidebar`, 2026-11-25)
+
+- **Arc's** (measured, docs/ARC-SIDEBAR.md): over a dot (the crowded switcher), 470 ms after the pointer comes, at once
+  (no fade), gone at once; none over the icons (1.2 s waited). Over the bar, 7 pt in: a dark pill in the space's
+  colour holding its name (white, semibold), its profile as a chip, its key as caps (`⌃` `2`).
+- **Arcadia**: the same, drawn in each chip and placed by the bar (a chip's face holds the icon, the hover's square and
+  the dot now, so the tooltip isn't clipped or placed by the slot); shown by CSS alone (`visibility` after a 470 ms
+  delay, only under `m-crowded`). No `title` on the chips any more: Arc shows nothing over its icons, and a native
+  tooltip would come up under Arc's (the name stays the chip's `aria-label`).
+- **The keys**: the view model's chips have `keys` (a cap each: the space keys' modifiers as Settings has them,
+  `appKeys.spaceDigits`, then the digit) and `hasKeys`, for Margin.app's first nine spaces; none past nine, with the
+  keys off, or outside Margin.app (`platform.app`); extension/shared/app-keys.ts `spaceKeyCaps`.
+- **Not yet: the profile's chip.** The page knows a space's profile's id, not its name (Margin.app's
+  BrowserProfiles.swift keeps the names: Safari's own, or "Default" / "Profile N"); giving the page the names is
+  Margin.app's (a push of `{ id: name }` to the page, the view model's chip naming its profile) and is left for its own
+  step with its end-to-end check.
+- **Tests**: tests/theme/arcadia.test.ts (not at 300 ms, shown at 560, over the bar 7 pt in, its name, gone at once,
+  none over the icons, no `title`), tests/ui-view-model.test.ts (the caps: Margin.app's nine, none past nine, off, or
+  outside it; a moved key's modifiers).

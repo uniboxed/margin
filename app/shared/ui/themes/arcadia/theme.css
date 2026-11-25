@@ -665,12 +665,11 @@
      the ink at 26%;
    - crowded, a dot under the pointer grows into its icon as the front one's shrinks to a dot (230 ms, in and out;
      the slots swap at once, only the icon and the dot move: the compositor's). */
-.margin-sidebar .spaces { --dot: color-mix(in srgb, var(--fg) 30%, transparent); display: flex; align-items: center; justify-content: center; min-width: 0; height: 34px; overflow: hidden; }
+.margin-sidebar .bar { position: relative; }
+.margin-sidebar .spaces { --dot: color-mix(in srgb, var(--fg) 30%, transparent); display: flex; align-items: center; justify-content: center; min-width: 0; height: 34px; }
 .margin-sidebar .chip {
   flex: 1 1 0;
-  position: relative;
   display: grid;
-  place-items: center;
   min-width: 24px;
   max-width: 36px;
   height: 34px;
@@ -680,31 +679,63 @@
   line-height: 1;
 }
 .margin-sidebar .chip:first-child { margin-left: 0; }
-.margin-sidebar .chip::before { content: ""; position: absolute; inset: 3px max(0px, calc((100% - 28px) / 2)); border-radius: 8px; }
-.margin-sidebar .chip:not(.active):hover::before { background: var(--hover); }
-.margin-sidebar .chip::after { content: ""; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; background: var(--dot); opacity: 0; transform: scale(0.4); }
-.margin-sidebar .chip-icon { position: relative; display: block; transition: transform 230ms cubic-bezier(0.42, 0, 0.58, 1), opacity 230ms cubic-bezier(0.42, 0, 0.58, 1); }
-.margin-sidebar .chip::after { transition: transform 230ms cubic-bezier(0.42, 0, 0.58, 1), opacity 230ms cubic-bezier(0.42, 0, 0.58, 1); }
+/* (Its face holds what's drawn in its slot: the icon, the hover's square, the dot. The tooltip is the bar's.) */
+.margin-sidebar .chip-face { position: relative; display: grid; place-items: center; }
+.margin-sidebar .chip-face::before { content: ""; position: absolute; inset: 3px max(0px, calc((100% - 28px) / 2)); border-radius: 8px; }
+.margin-sidebar .chip:not(.active):hover .chip-face::before { background: var(--hover); }
+.margin-sidebar .chip-face::after { content: ""; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; background: var(--dot); opacity: 0; transform: scale(0.4); }
+.margin-sidebar .chip-icon { position: relative; display: block; }
+.margin-sidebar .chip-icon, .margin-sidebar .chip-face::after { transition: transform 230ms cubic-bezier(0.42, 0, 0.58, 1), opacity 230ms cubic-bezier(0.42, 0, 0.58, 1); }
 .margin-sidebar .chip:not(.active):not(:hover) .chip-icon { filter: grayscale(1); opacity: 0.65; }
 /* Crowded: the space in front's icon (24 pt), the others dots; a dot under the pointer and the front one swap. */
 .margin-sidebar .spaces[m-crowded] .chip { min-width: 0; }
 .margin-sidebar .spaces[m-crowded] .chip.active,
 .margin-sidebar .spaces[m-crowded] .chip:not(.active):hover { flex: 0 0 24px; }
 .margin-sidebar .spaces[m-crowded]:has(.chip:not(.active):hover) .chip.active { flex: 1 1 0; }
-.margin-sidebar .spaces[m-crowded] .chip:not(.active):hover::before { background: none; }
+.margin-sidebar .spaces[m-crowded] .chip:not(.active):hover .chip-face::before { background: none; }
 .margin-sidebar .spaces[m-crowded] .chip:not(.active):not(:hover) .chip-icon,
 .margin-sidebar .spaces[m-crowded]:has(.chip:not(.active):hover) .chip.active .chip-icon { opacity: 0; transform: scale(0.3); }
-.margin-sidebar .spaces[m-crowded] .chip:not(.active):not(:hover)::after,
-.margin-sidebar .spaces[m-crowded]:has(.chip:not(.active):hover) .chip.active::after { opacity: 1; transform: none; }
+.margin-sidebar .spaces[m-crowded] .chip:not(.active):not(:hover) .chip-face::after,
+.margin-sidebar .spaces[m-crowded]:has(.chip:not(.active):hover) .chip.active .chip-face::after { opacity: 1; transform: none; }
 /* A space with no icon (its emoji removed: the view model's iconless): a dot, roomy or crowded; under the pointer too
    (it has nothing else to show). In the title row, a dot in the icon's place. */
 .margin-sidebar .chip.iconless .chip-icon { display: none; }
-.margin-sidebar .chip.iconless::after { opacity: 1; transform: none; }
+.margin-sidebar .chip.iconless .chip-face::after { opacity: 1; transform: none; }
 .margin-sidebar .space-title.iconless .emoji { display: grid; place-items: center; }
 .margin-sidebar .space-title.iconless .emoji::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: color-mix(in srgb, var(--fg) 30%, transparent); }
 .margin-sidebar .space-title.iconless:hover .emoji { display: none; }
+/* Arc's tooltip over a dot (crowded; measured: none over the icons): 470 ms after the pointer comes, at once, no fade;
+   gone at once. Over the bar, 7 pt in: a dark pill in the space's colour, its name in white, its key as light caps.
+   (Arc's also shows the space's profile as a chip: Margin.app doesn't give the page its profiles' names yet.) */
+.margin-sidebar .chip-tip {
+  position: absolute;
+  z-index: 3;
+  left: 7px;
+  bottom: calc(100% - 5px);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 14px);
+  height: 27px;
+  padding: 0 4px 0 12px;
+  border-radius: 13.5px;
+  background: color-mix(in srgb, var(--space-color) 22%, #15120b);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  visibility: hidden;
+  pointer-events: none;
+}
+.margin-sidebar .chip-tip:not(:has(.tip-keys)) { padding-right: 12px; }
+.margin-sidebar .tip-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.margin-sidebar .tip-keys { display: flex; gap: 3px; }
+.margin-sidebar .tip-key { display: grid; place-items: center; min-width: 19px; height: 19px; padding: 0 4px; border-radius: 5px; background: color-mix(in srgb, var(--space-color) 18%, #f4efe1); color: color-mix(in srgb, var(--space-color) 35%, #2b2810); font-size: 12px; font-weight: 700; box-shadow: inset 0 -1.5px 0 rgba(0, 0, 0, 0.18); }
+.margin-sidebar .spaces[m-crowded] .chip:hover .chip-tip { visibility: visible; transition: visibility 0s linear 470ms; }
 @media (prefers-reduced-motion: reduce) {
-  .margin-sidebar .chip-icon, .margin-sidebar .chip::after { transition: none; }
+  .margin-sidebar .chip-icon, .margin-sidebar .chip-face::after { transition: none; }
 }
 
 /* The space editor (Margin's <m-editor>, the "space-editor" part), under the space's name. */

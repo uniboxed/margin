@@ -388,3 +388,19 @@ test('view model: a space without an icon is iconless', () => {
   assert.deepEqual(model.spaces.map((c) => c.iconless), model.spaces.map((_, i) => i === 1 || i === 2));
   assert.equal(model.space.iconless, model.spaces.find((c) => c.active)!.iconless);
 });
+
+// A space's key for Arc's tooltip (M2.10): Margin.app's ⌃1–9 as Settings has them, a cap each, for its first nine
+// spaces; none past nine, with the keys off, or outside Margin.app (a browser's extension has no such keys).
+test('view model: each space\'s key as caps, in Margin.app', () => {
+  const s = smallState();
+  const many = { ...s, spaces: Array.from({ length: 11 }, (_, i) => ({ id: `s${i}`, name: `S${i}`, emoji: '😀', color: '#000000' })) };
+  const caps = (state: any, platform: any) => buildViewModel({ state, ui: { windowId: W }, platform }).spaces.map((c) => c.keys.map((k) => k.label).join(' '));
+  const app = caps(many, { browser: 'safari', os: 'mac', app: true });
+  assert.deepEqual(app.slice(0, 3), ['⌃ 1', '⌃ 2', '⌃ 3']);
+  assert.deepEqual(app.slice(8), ['⌃ 9', '', ''], 'the first nine');
+  assert.deepEqual(caps(many, { browser: 'safari', os: 'mac' }).every((k) => k === ''), true, 'not Margin.app: none');
+  const off = { ...many, settings: { ...many.settings, appKeys: { spaceDigits: '' } } };
+  assert.deepEqual(caps(off, { browser: 'safari', os: 'mac', app: true }).every((k) => k === ''), true, 'turned off: none');
+  const moved = { ...many, settings: { ...many.settings, appKeys: { spaceDigits: 'Alt+Meta+Digit1' } } };
+  assert.equal(caps(moved, { browser: 'safari', os: 'mac', app: true })[1], '⌥ ⌘ 2', 'as Settings has them');
+});

@@ -599,7 +599,7 @@ for (const [engineName, engine] of ENGINES) {
         near(other.width, 23.6, 'at 300: a dot\'s slot');
         d = await at(260);
         near(d.chips.find((c) => !c.active)!.width, 19.1, 'at 260: 19 pt each, as Arc\'s');
-        const look = (i: number) => ev((n) => { const c = document.querySelectorAll('.spaces .chip')[n]; return { icon: getComputedStyle(c.querySelector('.chip-icon')!).opacity, dot: getComputedStyle(c, '::after').opacity, dotSize: getComputedStyle(c, '::after').width }; }, i);
+        const look = (i: number) => ev((n) => { const c = document.querySelectorAll('.spaces .chip')[n]; const face = c.querySelector('.chip-face')!; return { icon: getComputedStyle(c.querySelector('.chip-icon')!).opacity, dot: getComputedStyle(face, '::after').opacity, dotSize: getComputedStyle(face, '::after').width }; }, i);
         const frontIndex = d.chips.findIndex((c) => c.active), dotIndex = d.chips.findIndex((c) => !c.active);
         assert.deepEqual([await look(frontIndex), await look(dotIndex)], [{ icon: '1', dot: '0', dotSize: '4px' }, { icon: '0', dot: '1', dotSize: '4px' }], 'the front one\'s icon, the others\' 4 pt dots');
         const dot = (await rect('.spaces .chip', dotIndex))!;
@@ -611,6 +611,26 @@ for (const [engineName, engine] of ENGINES) {
         assert.deepEqual([await look(dotIndex), await look(frontIndex)], [{ icon: '1', dot: '0', dotSize: '4px' }, { icon: '0', dot: '1', dotSize: '4px' }], 'icon and dot swapped');
         await away();
         assert.deepEqual(await look(frontIndex), { icon: '1', dot: '0', dotSize: '4px' }, 'back once the pointer leaves');
+        // Arc's tooltip over a dot: after 470 ms, at once; its name; none over the icons (roomy).
+        // (Above the dots: Arc's tooltip's bottom 3 pt over them, which start 8 pt into the bar.)
+        const tip = (i: number) => ev((n) => { const t = document.querySelectorAll('.spaces .chip')[n].querySelector('.chip-tip')!; const b = t.getBoundingClientRect(); return { shown: getComputedStyle(t).visibility === 'visible', name: t.querySelector('.tip-name')!.textContent, keys: [...t.querySelectorAll('.tip-key')].map((k) => k.textContent), left: Math.round(b.left), above: b.bottom <= document.querySelector('.bar')!.getBoundingClientRect().top + 5.5 }; }, i);
+        assert.equal(await ev(() => document.querySelector('.spaces .chip')!.hasAttribute('title')), false, 'no title: Arc shows none over its icons');
+        await page.mouse.move(dot.x, dot.y);
+        await page.waitForTimeout(300);
+        assert.equal((await tip(dotIndex)).shown, false, 'not yet at 300 ms');
+        await page.waitForTimeout(260);
+        const t1 = await tip(dotIndex);
+        assert.deepEqual([t1.shown, t1.above, t1.left], [true, true, 7], `shown over the bar, 7 pt in (${JSON.stringify(t1)})`);
+        assert.equal(t1.name, await ev((n) => document.querySelectorAll('.spaces .chip')[n].getAttribute('aria-label'), dotIndex));
+        assert.deepEqual(t1.keys, [], 'no keys outside Margin.app');
+        await away();
+        assert.equal((await tip(dotIndex)).shown, false, 'gone at once');
+        await at(500);
+        const icon = (await rect('.spaces .chip', dotIndex))!;
+        await page.mouse.move(icon.x, icon.y);
+        await page.waitForTimeout(600);
+        assert.equal((await tip(dotIndex)).shown, false, 'none over the icons');
+        await away();
         await at(260);
       });
 
@@ -618,7 +638,7 @@ for (const [engineName, engine] of ENGINES) {
         await ev(() => { const rt = (window as any).__rt; rt.mock.state = { ...rt.mock.state, spaces: rt.mock.state.spaces.map((sp: any, i: number) => (i === 1 ? { ...sp, emoji: '' } : sp)), settings: { ...rt.mock.state.settings, themes: { arcadia: { sidebarWidth: 500 } } } }; rt.host.setState(rt.mock.state); });
         await page.waitForTimeout(80);
         await away();
-        const chip = await ev(() => { const c = document.querySelectorAll('.spaces .chip')[1]; return { iconless: c.classList.contains('iconless'), dot: getComputedStyle(c, '::after').opacity, icon: getComputedStyle(c.querySelector('.chip-icon')!).display, crowded: c.parentElement!.hasAttribute('m-crowded') }; });
+        const chip = await ev(() => { const c = document.querySelectorAll('.spaces .chip')[1]; return { iconless: c.classList.contains('iconless'), dot: getComputedStyle(c.querySelector('.chip-face')!, '::after').opacity, icon: getComputedStyle(c.querySelector('.chip-icon')!).display, crowded: c.parentElement!.hasAttribute('m-crowded') }; });
         assert.deepEqual(chip, { iconless: true, dot: '1', icon: 'none', crowded: false }, 'a dot, the others\' icons');
         // Its menu's "Remove Icon": the space's emoji sent as null (the model stores none).
         const front = (await ev(() => T.rtVmFull())).space;
