@@ -1700,8 +1700,6 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // `layoutText` and `saidText`), to the core as it comes; a body as an object (a test's, an older page) made JSON
     // first (a layout's report as `geometry`). Each op read and routed by the core (core/page/said.rs), carried out here.
     func pageSaid(_ op: String, _ body: JSONObject) {
-        // DIAG: each op within 200 ms of a press on the panel (its name only; a focus op's flag), with AppKit's word then.
-        if MarginPanel.diagWatching { MarginPanel.diag("page op \(op)\(op == "focus" ? " on \(((body["json"] as? String).map { $0.contains("true") } ?? (body["on"] as? Bool)) ?? false)" : "") \(MarginPanel.diagState(panel))") } // DIAG
         if var text = body["json"] as? String { return text.withUTF8 { said(op, $0) } }
         let data = op == "layout" ? (body["geometry"] as? JSONObject).flatMap { PageLayout.bytes($0) } : jsonText(SessionRules.json(body))
         guard let data else { return }
@@ -1869,30 +1867,6 @@ final class MarginWindows {
         activeObserver = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { for c in self?.controllers ?? [] { c.keepFront(); c.appBecameActive(); c.becameActive() } }
         }
-        // DIAG (GitHub #29, 2026-11-25; MarginPanel's DIAG block): Margin's windows becoming key or main and AppKit's
-        // activation, each with its caller; every mouse press AppKit hands Margin, with the window it's for.
-        if !options.harness { // DIAG
-            let center = NotificationCenter.default
-            for name in [NSWindow.didBecomeKeyNotification, NSWindow.didBecomeMainNotification, NSApplication.willBecomeActiveNotification, NSApplication.didBecomeActiveNotification] {
-                diagObservers.append(center.addObserver(forName: name, object: nil, queue: nil) { note in
-                    let stack = Thread.callStackSymbols
-                    MainActor.assumeIsolated {
-                        let w = note.object as? NSWindow
-                        MarginPanel.diag("\(note.name.rawValue)\(w.map { " \(type(of: $0)) \($0.windowNumber)" } ?? "") appkit active \(NSApp.isActive), from: \(MarginPanel.diagStack(stack))")
-                    }
-                })
-            }
-            for name in [NSWindow.didResignKeyNotification, NSApplication.didResignActiveNotification] {
-                diagObservers.append(center.addObserver(forName: name, object: nil, queue: nil) { note in
-                    MainActor.assumeIsolated { MarginPanel.diag("\(note.name.rawValue)\((note.object as? NSWindow).map { " \(type(of: $0)) \($0.windowNumber)" } ?? "")") }
-                })
-            }
-            diagPresses = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { e in
-                MarginPanel.diagUntil = Diagnostics.now() + 0.2
-                MarginPanel.diag("AppKit hands a press \(e.type.rawValue) #\(e.eventNumber) count \(e.clickCount) for window \(e.windowNumber) (\(e.window.map { "\(type(of: $0))" } ?? "none")), appkit active \(NSApp.isActive), key window \(NSApp.keyWindow.map { "\(type(of: $0)) \($0.windowNumber)" } ?? "none")")
-                return e
-            }
-        }
         // (Margin's menus open, any of them: the menu bar watch keeps the keys while one is.)
         menuObservers = [
             NotificationCenter.default.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main) { [weak self] _ in MainActor.assumeIsolated { self?.menusTracking += 1 } },
@@ -1916,15 +1890,11 @@ final class MarginWindows {
     }
 
     private var activeObserver: NSObjectProtocol?
-    private var diagObservers: [NSObjectProtocol] = [] // DIAG
-    private var diagPresses: Any? // DIAG
     private var menuObservers: [NSObjectProtocol] = []
     private(set) var menusTracking = 0
     private var frontObservers: [NSObjectProtocol] = []
     deinit {
         for o in menuObservers { NotificationCenter.default.removeObserver(o) }
-        for o in diagObservers { NotificationCenter.default.removeObserver(o) } // DIAG
-        if let diagPresses { NSEvent.removeMonitor(diagPresses) } // DIAG
         if let keyRelay { NSEvent.removeMonitor(keyRelay) }
         if let wheelPhases { NSEvent.removeMonitor(wheelPhases) }
         if let activeObserver { NotificationCenter.default.removeObserver(activeObserver) }

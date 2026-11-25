@@ -110,27 +110,8 @@ final class MarginWindow: NSWindow {
 final class MarginPanel: NSPanel {
     static let behavior: NSWindow.CollectionBehavior = [.fullScreenAuxiliary, .ignoresCycle]
     var harness = false
-    var allowKey = false {
-        didSet { if allowKey != oldValue { Self.diag("panel \(windowNumber) allowKey \(oldValue) → \(allowKey), from: \(Self.diagStack(12))") } } // DIAG
-    }
+    var allowKey = false
     weak var base: MarginWindow?
-
-    // DIAG (GitHub #29, the screen run of 2026-11-25: the panel keyed and AppKit active after a press the tap delivered;
-    // every line of this block and each line marked DIAG go once that's understood). Silent but for: each mouse event
-    // the panel takes (its type, number and count, AppKit's word on the panel, its base and the app before and after
-    // AppKit handles it), and for 200 ms after a press there, each `canBecomeKey` asked (with its caller) and each page op
-    // (MarginWindowController `pageSaid`); every change of `allowKey`; Margin's windows becoming key and AppKit's
-    // activation with their callers (MarginWindows' observers). Never a text, a title or an address.
-    nonisolated(unsafe) static var diagUntil: TimeInterval = 0 // DIAG
-    static var diagWatching: Bool { Diagnostics.now() < diagUntil } // DIAG
-    static func diag(_ s: String) { Diagnostics.note("DIAG " + s) } // DIAG
-    static func diagStack(_ n: Int = 25) -> String { diagStack(Thread.callStackSymbols, n) } // DIAG
-    nonisolated static func diagStack(_ stack: [String], _ n: Int = 25) -> String { // DIAG
-        stack.dropFirst(1).prefix(n).map { $0.split(separator: " ", omittingEmptySubsequences: true).dropFirst(1).joined(separator: " ") }.joined(separator: " | ")
-    }
-    static func diagState(_ p: MarginPanel) -> String { // DIAG
-        "(panel key \(p.isKeyWindow), base key \(p.base?.isKeyWindow ?? false), base main \(p.base?.isMainWindow ?? false), allow key \(p.allowKey), appkit active \(NSApp.isActive), key window \(NSApp.keyWindow.map { "\(type(of: $0)) \($0.windowNumber)" } ?? "none"))"
-    }
     // Where a press moves the window (the theme's <m-drag-region>s), top left in the content.
     var dragRegions: [CGRect] = []
     // Presses that moved or zoomed the window (the tests read it), and every press Margin's UI got (a press over the
@@ -160,10 +141,7 @@ final class MarginPanel: NSPanel {
         if harness { setFrame(ScreenGeometry.appKitRect(topLeft), display: false) }
     }
 
-    override var canBecomeKey: Bool {
-        if Self.diagWatching { Self.diag("panel \(windowNumber) asked canBecomeKey: \(allowKey), from: \(Self.diagStack(14))") } // DIAG
-        return allowKey
-    }
+    override var canBecomeKey: Bool { allowKey }
     override var canBecomeMain: Bool { false }
 
     var onADisplay: Bool { NSScreen.screens.contains { $0.frame.intersects(frame) } }
@@ -172,16 +150,6 @@ final class MarginPanel: NSPanel {
         guard harness, place != .out, onADisplay else { return super.order(place, relativeTo: otherWin) }
         refusedOrders += 1
         Diagnostics.warn("harness: not ordering Margin's panel in on a display (\(frame))")
-    }
-
-    // DIAG: AppKit making the panel key, and the panel resigning, with the caller.
-    override func becomeKey() { // DIAG
-        Self.diag("panel \(windowNumber) becomeKey \(Self.diagState(self)), from: \(Self.diagStack())")
-        super.becomeKey()
-    }
-    override func makeKey() { // DIAG
-        Self.diag("panel \(windowNumber) makeKey asked \(Self.diagState(self)), from: \(Self.diagStack(14))")
-        super.makeKey()
     }
 
     override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
@@ -196,11 +164,6 @@ final class MarginPanel: NSPanel {
     }
 
     override func sendEvent(_ event: NSEvent) {
-        // DIAG: each mouse button's event the panel takes, AppKit's word before and after it handles it.
-        let diagMouse = [NSEvent.EventType.leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp, .otherMouseDown, .otherMouseUp].contains(event.type) // DIAG
-        if [NSEvent.EventType.leftMouseDown, .rightMouseDown, .otherMouseDown].contains(event.type) { Self.diagUntil = Diagnostics.now() + 0.2 } // DIAG
-        let diagBefore = diagMouse ? Self.diagState(self) : "" // DIAG
-        defer { if diagMouse { Self.diag("panel \(windowNumber) took \(event.type.rawValue) #\(event.eventNumber) count \(event.clickCount) window \(event.windowNumber): before \(diagBefore), after \(Self.diagState(self))") } } // DIAG
         if event.type == .leftMouseDown { presses += 1 }
         if event.type == .leftMouseDown, !dragRegions.isEmpty {
             let p = event.locationInWindow

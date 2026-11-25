@@ -169,8 +169,8 @@ the field. No record is posted for the panel any more, and the panel part no lon
 The first press's record had 0x3a = 0, so the record wasn't it: a press made afresh and posted through the window server
 keyed the panel too, on the real screen only (off every display, the lab and the e2e never did). The tap now puts
 Margin's own presses in AppKit's queue in Margin (`PanelEvents.queue`), the window server never told of them;
-Temporary `DIAG` lines (MarginWindow.swift's MarginPanel, MarginWindowController.swift) log who keys the panel and
-who activates AppKit, with their callers.
+Temporary `DIAG` lines (MarginWindow.swift's MarginPanel, MarginWindowController.swift; removed after the fourth run)
+logged who keys the panel and who activates AppKit, with their callers.
 
 ## The third screen run (2026-11-25): who keyed the panel
 
@@ -182,3 +182,9 @@ since 2026-11-17), and what's "needed" is the hit view's `needsPanelToBecomeKey`
 answers yes. OverlayWebView now answers from its window (`needsKeyForPress`): no while the core's `keys_stay` holds (an
 app shown, no field of Margin's), yes otherwise, as before. A field the press focuses takes the keys by the page's
 `focus` (`takeKeys`, an explicit `makeKey`), as the palette's does. The `postToPid` way is gone.
+
+## The fourth screen run (2026-11-25)
+
+k1, k2 and k3 pass on the real screen: after a press on an empty spot of the sidebar the panel took the press and
+stayed non-key, AppKit inactive, no key window, the pane's window never resigned key (the DIAG lines' `took 1`,
+before and after the same). core 36 passed, cut-panes 14. The DIAG lines are removed.
