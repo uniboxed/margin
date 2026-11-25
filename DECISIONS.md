@@ -9671,3 +9671,45 @@ the core's session work, which isn't re-implemented here). Built on `feat/hosted
   uses it (`tests/theme/picker.test.ts`): opening from the menu, the field, a drag, −/+, the rule, presets, the
   slider, the dial (ring, centre, click, scroll, swipe), the appearance, the keys, ⌘Z, Tab kept inside, Use for All
   Spaces, Escape, the three ways it closes, and every built-in theme opening it.
+
+## M2.9 step 5 spike: the default picker's glass, approach A measured (`feat/space-backgrounds`, 2026-11-24)
+
+Plan Part B §5 left two ways to put real glass behind Margin's default picker: A, WebKit's
+`-apple-visual-effect: -apple-system-glass-material` inside Margin's own web view, with the private system-appearance
+switch on while the picker is open; B, a child `NSPanel` on `NSGlassEffectView` with a second web view. A was measured
+first, as the plan said ("A if its side effect is invisible, else B"). Off screen, on this Mac (macOS 27.2), with
+`tools/glass-shots/shot` and a variant of it (the web view's own appearance; the switch turned on live; an awaited
+script), over pages of the five built-in themes drawn by the real runtime with a background on the space and the picker
+open. The picker's CSS for the run: `@supports (-apple-visual-effect: …) { .panel { background: none; box-shadow:
+none; overflow: hidden; -apple-visual-effect: -apple-system-glass-material } }` (taken out again; it comes with step 5).
+
+- **It works where the picker is.** In a closed shadow root, in the top layer (a manual popover): one glass layer,
+  exactly the panel's box (300×461), in every theme, light and dark; none with the switch off.
+- **Turned on live, then the panel made:** the page knows the property at once (`CSS.supports` true right after the
+  switch), and a panel made after it gets its glass. So the switch goes on as the picker opens and off as it closes,
+  and the panel's sheet is made after it (the order rule from "Liquid Glass").
+- **The side effect, compared pixel by pixel** (3024×1964, switch on vs off; outside the panel and 72 px round it):
+  - every theme's sidebar, with the picker closed and open, light and dark: none. (Arcadia, Material, Neubrutalism:
+    identical, or a strip of 1/255 just past the excluded box, the solid panel's shadow tail. Pixel: 16 to 36 px at
+    its pixelated icons' corners, the same between two pictures with the same setting: noise, not the switch.
+    Liquid Glass: its own glass, its switch already on.)
+  - at the moment of switching, the picker not yet open: identical, except in the next case.
+  - **Margin.app's Settings tab on screen, in a dark appearance:** Neubrutalism's number fields lose their ⌃⌄ steppers
+    (912 px: light-only, so its native steppers are drawn dark on its white field and vanish), and Pixel's select
+    changes in a 119 px sliver at its edge. Arcadia's Settings, which differed in the 2026-11-17 measurement, no
+    longer does. Nothing in light.
+- **Light or dark: the space's.** The glass follows the web view's own appearance (what step 3 sets per space), not
+  the app's: the Mac in Light Mode with the space dark gives the same picture as the Mac in Dark Mode (3 px at 1/255),
+  and the reverse is identical. (This corrects "It's light or dark with the *app's* appearance" in "Liquid Glass",
+  which was found with the app's appearance alone.)
+- **Cost:** none measured. 240 frames, each a new background drawn behind the open picker: frame pacing 17 ms median,
+  18 p95 (an off-screen window's 60 Hz), the same with the switch on and off; the work of a frame, a full state
+  change and redraw (heavier than a drag's preview, which redraws Margin's layer alone), 7 ms median either way.
+- **Unchanged by A:** no second window, so no relay of the live preview, focus and placement as for the menus, and
+  nothing new in full-screen Spaces.
+
+**So: A.** B (a second web view, a relay every frame, a child window in full-screen Spaces) isn't built. The one
+visible effect, Settings' native controls in a dark appearance, is avoided by a rule in step 5: the picker is drawn
+solid (no switch) while Margin's Settings page is on screen. It's solid too where the system has no glass (Windows, the
+extension, the switch's selectors missing, `MarginSystemAppearance` NO) and with more contrast asked for, as Liquid
+Glass's own panels are.

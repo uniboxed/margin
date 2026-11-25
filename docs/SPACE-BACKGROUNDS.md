@@ -291,6 +291,8 @@ The spike's measurements, which decide between them:
 
 **Lean: A if its side effect is invisible, else B.** The component from step 4 is the same either way.
 
+**Settled (spike, 2026-11-24): A.** Real glass on the picker in its closed shadow root and the top layer, the space's own light or dark, no measurable cost, and nothing visible changes in any theme's sidebar when the switch turns on. The one effect, Settings' native controls in a dark appearance (Neubrutalism's steppers, a sliver of Pixel's select), is avoided by drawing the picker solid while Margin's Settings page is on screen. B isn't built. The measurements: DECISIONS.md "M2.9 step 5 spike".
+
 ### 6. Feedback: haptics or sound
 
 - **The page decides, natively informed.** The Mac side tells the picker which device the current gesture comes from (`pointerKind: "trackpad" | "mouse"`). The picker then either:
