@@ -2259,9 +2259,38 @@ func hostTests() {
         check("host: … out of full screen and on the Desktop meanwhile, in no full-screen Space", w.wins[copy.windowOf[7914] ?? 0]?.fullScreen == false && clean(w))
         copy.closes = true
         e.poll()
-        _ = hostRun { await e.pageRectChanged(placed(page)) } // the next operation, after the poll's try
+        _ = hostRun { while e.leftTrying { await Task.yield() } } // the poll's try, outside the engine's queue
         check("host: … closed by its copy on a later poll (normal first), the marker gone", !copy.isOpen(7914) && e.leftSafariWindows.isEmpty && !FileManager.default.fileExists(atPath: markerURL.path)
               && copy.fullScreens.last == "7914 off")
+    }
+    do {
+        // A copy that isn't reading (stalled): the poll's try at closing its left window holds no open up (the merge
+        // review, 2026-11-25: the try ran in the engine's queue, so every open and switch waited for that copy).
+        let (w, e, _) = world()
+        let safariPid = w.start("com.apple.Safari", policy: .regular, windows: 1)
+        let copy = FakeSafariCopy(w) { safariPid }
+        copy.wire(e)
+        copy.closes = false
+        w.fail = ["moveIn"]
+        _ = open(e, .safariWindow("Work"))
+        w.fail = []
+        final class Stalled { var asks: [CheckedContinuation<Void, Never>] = [] }
+        let stalled = Stalled()
+        e.closeSafariWindow = { [unowned copy] _, id in
+            await withCheckedContinuation { stalled.asks.append($0) }
+            return copy.close(id)
+        }
+        copy.closes = true
+        e.poll()
+        let r = open(e, textEdit)
+        check("host: a stalled copy's left window being closed: an open meanwhile not held up", r == .shown(textEdit.id, placed: true) && e.leftTrying
+              && stalled.asks.count == 1 && e.leftSafariWindows.count == 1, "\(String(describing: r)) \(stalled.asks.count)")
+        e.poll()
+        check("host: … one try at a time: a poll meanwhile asks nothing more", stalled.asks.count == 1)
+        for k in stalled.asks { k.resume() }
+        stalled.asks = []
+        _ = hostRun { while e.leftTrying { await Task.yield() } }
+        check("host: … closed once its copy answers, its entry gone", e.leftSafariWindows.isEmpty && !copy.isOpen(7914))
     }
     do {
         // Margin crashed while Margin's Safari window was shown: the next launch has it made normal and closed by its copy.
