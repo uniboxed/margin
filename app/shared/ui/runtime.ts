@@ -293,7 +293,8 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
 
   // The shown space's background (M2.9: ui/background.ts): Margin's layer under the theme, cut out of the page card at
   // every layout, its variables in a sheet of Margin's with the theme's.
-  const background = createBackground({ doc, container });
+  // (A space's picture loaded, or failed: drawn again.)
+  const background = createBackground({ doc, container, onChange: () => { if (!destroyed) followBackground(); } });
   const view = new View(container, theme.template, {
     sheets: [theme.sheet, theme.settingsSheet, background.sheet].filter(Boolean),
     onAction: (name, arg, info) => { themeClick(name, arg, info); },
@@ -334,11 +335,13 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   }
   function followBackground() {
     const space = vm?.space;
+    const shownBackground = backgroundShown(space);
     const was = background.active();
     const before = background.revision();
     const appearance = background.update({
-      spaceId: space?.id ?? '', background: backgroundShown(space),
+      spaceId: space?.id ?? '', background: shownBackground,
       systemDark: media('(prefers-color-scheme: dark)'), moreContrast: media('(prefers-contrast: more)'), reducedMotion: media('(prefers-reduced-motion: reduce)'),
+      picture: shownBackground?.image ? host.pictureUrl?.(shownBackground.image.id) ?? null : null,
     });
     if (appearance && !was) background.place(view.measurePageOuter());
     if (background.revision() !== before) onGround?.();

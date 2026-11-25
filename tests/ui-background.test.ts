@@ -151,3 +151,47 @@ test('cornerFill with Margin\'s ground: outside the card its colour, under a sha
   // None shown (null): the theme's own, as before.
   assert.deepEqual(cornerFill(el({ ...radius('10px'), boxShadow: 'rgb(40, 50, 60) 0px 0px 0px 1512px' }) as any, { getStyle, getBox, ground: () => null })?.fills, Array(4).fill('rgb(40, 50, 60)'));
 });
+
+// A picture under the colours (M2.9 step 7): its samples what text reads against, a wash of the underlay over it until
+// the text reads, the colours a tint over it.
+test('a picture: its samples the ground; the wash rises until the text reads; drawn as without until they\'re there', async () => {
+  const { pictureAt, SAMPLES, underlayOf } = await import('../app/shared/ui/background-look.ts');
+  const { pictureCss } = await import('../app/shared/ui/background.ts');
+  const n = SAMPLES.cols * SAMPLES.rows;
+  const flat = (c: { r: number, g: number, b: number }) => Array.from({ length: n }, () => c);
+  const black = { r: 0, g: 0, b: 0 }, white = { r: 1, g: 1, b: 1 };
+  const bg = backgroundOf({ colors: [], image: { id: 'a'.repeat(64) }, intensity: 0.5 })!;
+  // None yet: as without a picture (the underlay, no wash).
+  const none = lookOf(bg, 'light');
+  assert.deepEqual([none.samples, none.wash], [null, 0]);
+  assert.equal(rgbToHex(groundAt(none, 10, 10, 1440, 900)), rgbToHex(underlayOf(bg, 'light')));
+  // A black picture in light: the text is dark, so the wash rises until it reads (4.5:1; 7:1 with more contrast).
+  for (const [more, need] of [[false, 4.5], [true, 7]] as const) {
+    const l = lookOf(bg, 'light', { picture: flat(black), moreContrast: more });
+    assert.ok(l.wash > 0 && l.wash <= 0.9, `washed: ${l.wash}`);
+    const g = groundAt(l, 700, 450, 1440, 900);
+    assert.ok(contrast(hexToRgb(l.vars['--m-fg'])!, g) >= need - 0.01, `${more ? 'more' : 'plain'}: ${contrast(hexToRgb(l.vars['--m-fg'])!, g)}`);
+  }
+  // A white picture in light: dark text reads on it as it is: no wash.
+  assert.equal(lookOf(bg, 'light', { picture: flat(white) }).wash, 0);
+  // In dark, a white picture: washed with the dark underlay until light text reads.
+  const d = lookOf(bg, 'dark', { picture: flat(white) });
+  assert.ok(d.wash > 0 && contrast(hexToRgb(d.vars['--m-fg'])!, groundAt(d, 0, 0, 1440, 900)) >= 4.49);
+  // Its colour at a point: the samples' grid, in proportion between them.
+  const half = Array.from({ length: n }, (_, k) => (k % SAMPLES.cols === 0 ? black : white));
+  assert.deepEqual(pictureAt(half, 0, 0, 1200, 800), black);
+  const between = pictureAt(half, 100, 0, 1200, 800); // (half way to the second column: 1/12 of the width)
+  assert.ok(Math.abs(between.r - 0.5) < 1e-9, `${between.r}`);
+  assert.deepEqual(pictureAt(half, 1200, 800, 1200, 800), white);
+  // The colours over it: a tint (0.6 × intensity), not the colours' own opacity.
+  const tinted = lookOf(backgroundOf({ colors: ['#f7c7d3'], image: { id: 'a'.repeat(64) }, intensity: 0.5 })!, 'light', { picture: flat(white) });
+  assert.equal(tinted.alpha, 0.3);
+  assert.ok(Math.abs(lookOf(backgroundOf({ colors: ['#f7c7d3'], intensity: 0.5 })!, 'light').alpha - 0.57) < 1e-9, 'without a picture: as before (0.14 + 0.86 × intensity)');
+  // A wrong number of samples: as without.
+  assert.equal(lookOf(bg, 'light', { picture: flat(black).slice(1) }).samples, null);
+  // Drawn as its fit and focus say.
+  const url = `margin-app://app/background/${'a'.repeat(64)}`;
+  assert.equal(pictureCss(url, { fit: 'cover', focus: [0.5, 0.25] }), `url("${url}") 50% 25% / cover no-repeat`);
+  assert.equal(pictureCss(url, { fit: 'contain', focus: [0, 1] }), `url("${url}") 0% 100% / contain no-repeat`);
+  assert.equal(pictureCss(url, { fit: 'tile', focus: [0.5, 0.5] }), `url("${url}") 0 0 / auto repeat`);
+});

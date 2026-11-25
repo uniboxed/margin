@@ -13,6 +13,10 @@
 //   until it has the contrast WCAG asks for against every part of the colours (sampled): `--m-fg` 7:1 where it
 //   can, never under 4.5:1; `--m-fg-2` 4.5:1; `--m-accent` 3:1 (non-text). Under "Increase contrast" both texts 7:1.
 //   Where no text gets there, the colours' opacity is lowered until it does.
+// - A picture (M2.9 step 7): under the colours, over the underlay. What text reads against is its samples (a 7 × 5
+//   grid of the picture as it lies over the window, read by ui/background.ts from a small copy of it); a wash of the
+//   underlay over it rises (a twentieth at a time, to 0.9) until the text reads, then the colours' opacity is lowered.
+//   The colours are a tint over it (`0.6 × intensity`). Until the picture's samples are there, it's drawn as without.
 import { clamp01, contrast, hexToRgb, lerp, luminance, oklch, oklchOf, over, rgbCss, rgbToHex } from './color.ts';
 import type { Rgb } from './color.ts';
 import type { SpaceBackground } from '../../../types/margin';
@@ -104,9 +108,16 @@ const TEXTURE_K: Record<Texture, number> = { grain: 1, sand: 1, denim: 1, tweed:
 
 export type Palette = { fg: Rgb, fg2: Rgb, accent: Rgb, hover: string, selected: string };
 
+/** A picture's samples: 7 × 5 (`SAMPLES`), row by row, as it lies over the window, on the underlay. */
+export type PictureSamples = Rgb[];
+export const SAMPLES = Object.freeze({ cols: 7, rows: 5 });
+
 export type Look = {
   appearance: Appearance,
   underlay: Rgb,
+  /** A picture's samples (null: none drawn), and the wash of the underlay over it (0–0.9). */
+  samples: PictureSamples | null,
+  wash: number,
   /** The colours as drawn (0–3). */
   colors: Rgb[],
   /** The colours' opacity over the underlay (lowered where the text needed it). */
@@ -121,17 +132,37 @@ export type Look = {
   vars: Record<string, string>,
 };
 
-/** The ground at (x, y) of a w × h box: the underlay, the colours over it at their opacity (no texture). */
-export function groundAt(look: Pick<Look, 'underlay' | 'colors' | 'alpha'>, x: number, y: number, w: number, h: number): Rgb {
+type Ground = Pick<Look, 'underlay' | 'colors' | 'alpha'> & Partial<Pick<Look, 'samples' | 'wash'>>;
+
+/** A picture's colour at (x, y) of a w × h box: its samples' grid, between them in proportion. */
+export function pictureAt(samples: PictureSamples, x: number, y: number, w: number, h: number): Rgb {
+  const { cols, rows } = SAMPLES;
+  const fx = clamp01(w > 0 ? x / w : 0) * (cols - 1), fy = clamp01(h > 0 ? y / h : 0) * (rows - 1);
+  const i = Math.min(cols - 2, Math.floor(fx)), j = Math.min(rows - 2, Math.floor(fy));
+  const tx = fx - i, ty = fy - j;
+  const at = (a: number, b: number) => samples[b * cols + a];
+  return lerp(lerp(at(i, j), at(i + 1, j), tx), lerp(at(i, j + 1), at(i + 1, j + 1), tx), ty);
+}
+
+/** The ground at (x, y) of a w × h box: the underlay (a picture over it, the wash over that), the colours over it at their opacity (no texture). */
+export function groundAt(look: Ground, x: number, y: number, w: number, h: number): Rgb {
+  const base = look.samples ? over(look.underlay, look.wash ?? 0, pictureAt(look.samples, x, y, w, h)) : look.underlay;
   const layer = layerAt(look.colors, x, y, w, h);
-  return layer ? over(layer, look.alpha, look.underlay) : look.underlay;
+  return layer ? over(layer, look.alpha, base) : base;
 }
 
 /** The ground sampled over a w × h box (a 7 × 5 grid, its edges included): what text over it has to read against. */
-function samplesOf(look: Pick<Look, 'underlay' | 'colors' | 'alpha'>, w: number, h: number): Rgb[] {
+function samplesOf(look: Ground, w: number, h: number): Rgb[] {
   const out: Rgb[] = [];
-  for (let j = 0; j < 5; j++) for (let i = 0; i < 7; i++) out.push(groundAt(look, (i / 6) * w, (j / 4) * h, w, h));
+  for (let j = 0; j < SAMPLES.rows; j++) for (let i = 0; i < SAMPLES.cols; i++) out.push(groundAt(look, (i / (SAMPLES.cols - 1)) * w, (j / (SAMPLES.rows - 1)) * h, w, h));
   return out;
+}
+
+/** The opaque underlay in an appearance: near-white or near-black, a touch of the key colour's hue. */
+export function underlayOf(bg: Pick<SpaceBackground, 'colors'>, appearance: Appearance): Rgb {
+  const key = bg.colors?.[0] ? hexToRgb(bg.colors[0]) : null;
+  const [, keyC, keyH] = key ? oklchOf(key) : [0, 0, 0];
+  return appearance === 'dark' ? oklch(0.17, Math.min(keyC, 0.008), keyH) : oklch(0.975, Math.min(keyC, 0.006), keyH);
 }
 
 const worst = (fg: Rgb, grounds: Rgb[]) => Math.min(...grounds.map((g) => contrast(fg, g)));
@@ -152,23 +183,32 @@ function toward([L, C, h]: [number, number, number], down: boolean, grounds: Rgb
  * Everything a background is drawn from, in an appearance. `size`: the window's (the colours' layout depends on its
  * proportions; the contrast is checked over it). `moreContrast`: the system's "Increase contrast".
  */
-export function lookOf(bg: SpaceBackground, appearance: Appearance, { moreContrast = false, size = { width: 1440, height: 900 } }: { moreContrast?: boolean, size?: { width: number, height: number } } = {}): Look {
+export function lookOf(bg: SpaceBackground, appearance: Appearance, { moreContrast = false, size = { width: 1440, height: 900 }, picture = null }: {
+  moreContrast?: boolean, size?: { width: number, height: number },
+  /** The picture's samples, once read (none: drawn as without it). */
+  picture?: PictureSamples | null,
+} = {}): Look {
   const colors = (bg.colors ?? []).map((c) => drawnColor(c, appearance)).filter((c): c is Rgb => !!c).slice(0, 3);
   const keyHex = bg.colors?.[0];
   const key = keyHex ? hexToRgb(keyHex) : null;
   const [, keyC, keyH] = key ? oklchOf(key) : [0, 0, 0];
   const dark = appearance === 'dark';
-  const underlay = dark ? oklch(0.17, Math.min(keyC, 0.008), keyH) : oklch(0.975, Math.min(keyC, 0.006), keyH);
+  const underlay = underlayOf(bg, appearance);
   const w = Math.max(1, size.width), h = Math.max(1, size.height);
   const need = moreContrast ? 7 : 4.5;
-  // The text and its contrast, the colours' opacity lowered (a twentieth at a time) until the text reads.
-  let alpha = colors.length ? clamp01(0.14 + 0.86 * clamp01(bg.intensity)) : 0;
+  const samples = picture && picture.length === SAMPLES.cols * SAMPLES.rows ? picture : null;
+  // The text and its contrast: a picture's wash raised (a twentieth at a time, to 0.9), then the colours' opacity
+  // lowered (a twentieth at a time), until the text reads.
+  let alpha = colors.length ? clamp01((samples ? 0.6 : 0.86) * clamp01(bg.intensity) + (samples ? 0 : 0.14)) : 0;
+  let wash = 0;
   let grounds: Rgb[];
   let fg: Rgb;
   for (;;) {
-    grounds = samplesOf({ underlay, colors, alpha }, w, h);
+    grounds = samplesOf({ underlay, colors, alpha, samples, wash }, w, h);
     fg = toward(dark ? [0.96, Math.min(keyC, 0.02), keyH] : [0.26, Math.min(keyC, 0.05), keyH], !dark, grounds, 7);
-    if (worst(fg, grounds) >= need || alpha <= 0) break;
+    if (worst(fg, grounds) >= need) break;
+    if (samples && wash < 0.9) { wash = Math.min(0.9, Math.round((wash + 0.05) * 100) / 100); continue; }
+    if (alpha <= 0) break;
     alpha = Math.max(0, Math.round((alpha - 0.05) * 100) / 100);
   }
   const fg2 = toward(dark ? [0.8, Math.min(keyC, 0.04), keyH] : [0.45, Math.min(keyC, 0.06), keyH], !dark, grounds, need);
@@ -180,7 +220,7 @@ export function lookOf(bg: SpaceBackground, appearance: Appearance, { moreContra
   const flat = grounds.reduce((s, g) => ({ r: s.r + g.r / n, g: s.g + g.g / n, b: s.b + g.b / n }), { r: 0, g: 0, b: 0 });
   const opacity = clamp01(bg.amount) * TEXTURE_K[bg.texture];
   return {
-    appearance, underlay, colors, alpha, layer: layerCss(colors),
+    appearance, underlay, samples, wash, colors, alpha, layer: layerCss(colors),
     texture: { kind: bg.texture, opacity: Math.round(opacity * 1000) / 1000 },
     flat, palette,
     vars: {

@@ -482,6 +482,8 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
     platform,
     get windowId() { return windowId; },
     get appWindow() { return appWindow; },
+    // A space's picture: served by Margin.app's scheme by its id alone (OverlayWebView.swift `/background/<id>`).
+    pictureUrl: (id: string) => (/^[0-9a-f]{64}$/.test(id) ? `margin-app://app/background/${id}` : null),
     /** The page area is another window's, beside Margin's (Margin's own window hosting): the sidebar alone here. */
     get pageOutside() { return pageOutside; },
     /** The page area is a hosted app's window, under Margin's: no launcher there. */

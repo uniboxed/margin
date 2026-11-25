@@ -360,7 +360,7 @@ const withRuntime = Object.assign(T, {
 
   // `replies`: what the host answers a request of each type with (values);
   // `settings`: the stored settings changed first.
-  mountRuntime({ width = 1440, height = 900, container = 'shadow', closed = true, platform = { browser: 'chrome', os: 'linux', marginFullscreen: true }, replies = {}, settings = null, mode = 'fullscreen', inNewTab = false, focusLauncherAtMount = undefined, warnings = null, staysOnScreen = false, appWindow = false, hosted = false, materials = null }: {
+  mountRuntime({ width = 1440, height = 900, container = 'shadow', closed = true, platform = { browser: 'chrome', os: 'linux', marginFullscreen: true }, replies = {}, settings = null, mode = 'fullscreen', inNewTab = false, focusLauncherAtMount = undefined, warnings = null, staysOnScreen = false, appWindow = false, hosted = false, materials = null, pictures = false }: {
     width?: number, height?: number, container?: 'shadow' | 'document', closed?: boolean,
     platform?: { browser: string, os: string, marginFullscreen?: boolean }, replies?: Record<string, unknown>,
     settings?: Record<string, unknown> | null, mode?: 'fullscreen' | 'windowed' | 'inpage', inNewTab?: boolean,
@@ -375,6 +375,9 @@ const withRuntime = Object.assign(T, {
     // A host with the system's materials (Margin.app's, for Edit Theme Color's glass): it answers each ask after this
     // many ms (no glass here: Playwright's browsers don't know the property); the asks, in order: `rtMaterials`.
     materials?: number | null,
+    // A host that serves spaces' pictures (Margin.app's, M2.9 step 7): every id is the page's `__testPicture` (a data:
+    // URL the test made); without, none is served (a browser's extension).
+    pictures?: boolean,
   } = {}) {
     (T as typeof T & { unmountRuntime(): void }).unmountRuntime(); // (added with these steps)
     const mock = new MockState();
@@ -389,6 +392,7 @@ const withRuntime = Object.assign(T, {
     // (Margin.app's log lines from the page, `note`: as said, in order.)
     rt.notes = [];
     Object.assign(host, { note: (text: string) => { rt.notes.push(text); } });
+    if (pictures) Object.assign(host, { pictureUrl: () => ((window as unknown as { __testPicture?: string }).__testPicture ?? null) });
     let target: Target;
     let el: HTMLElement | null = null;
     if (container === 'document') {

@@ -589,6 +589,11 @@ To take part, under `[m-background]`:
 3. Anything solid that stands in for the ground (a sidebar out over the page as a card, a split's divider) takes
    `--m-bg`.
 
+In Margin.app a space's background can be a picture (its colours a tint over it). Nothing changes for your theme:
+Margin draws it in the same layer, and the variables are worked out against the picture as it's drawn (where text
+wouldn't read, Margin washes it with the background's light or dark until it does). Your CSS can't name it, and
+doesn't need to. In a browser's extension the space's colours are drawn without the picture.
+
 A theme that does nothing keeps its own look: its ground covers the background, all but the smoothing of the page
 card's rounded corners, where a pixel's worth of the edge shows a little of it. Arcadia, Material, Liquid Glass,
 Neubrutalism and Pixel take part; their `[m-background]` rules are a short example each. Liquid Glass shows the other

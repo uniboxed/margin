@@ -77,6 +77,11 @@ export type Host = {
   /** Drawn in Margin.app's own window (ui/host-app.ts): Settings is a tab of its own there (margin://settings). */
   readonly appWindow?: boolean,
   /**
+   * Where a space's picture is served, by its id (M2.9 step 7): Margin.app's `margin-app://app/background/<id>`; none
+   * in a browser's extension (the background drawn without it there).
+   */
+  pictureUrl?(id: string): string | null,
+  /**
    * Margin.app's own window (ui/host-app.ts): the page card's state, on the theme's root as `m-page-state`.
    * `shown`: a hosted window shows through the page's place; `loading`: an item is being opened there
    * (`pageOpening`: its name), the card opaque with the loader; `empty`: nothing to show, the launcher.

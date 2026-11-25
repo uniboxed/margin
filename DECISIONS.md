@@ -9886,3 +9886,31 @@ build's load. It passed 4 of 4 alone; this branch doesn't touch the swipe.
   camera and a note made a JPEG with none of them, a large one at 3840, a small one as it is, a sideways one upright,
   transparency a PNG, HEIC read, a GIF and garbage refused, too large refused, kept and found by its hash, near ids
   not found, pruned; served to a page as an image, a removed one, an encoded `..` and a query not).
+
+## M2.9 step 7b: a space's picture drawn (`feat/space-backgrounds`, 2026-11-25)
+
+- **Drawn by Margin's layer** (`ui/background.ts`), as the colours are: a part under them (underlay, picture, wash,
+  colours, texture), the page card cut out of it the same way. Its CSS is `background` at its fit (`cover`,
+  `contain` at the focus as `background-position` in percent; `tile` at its own size from the corner). The address is
+  the host's (`Host.pictureUrl`): Margin.app's `margin-app://app/background/<id>`; a browser's extension has none, and
+  draws the space's colours without it. An address that isn't one Margin makes is never written into CSS.
+- **Contrast against the picture as drawn**: the page reads a small copy of it (70 px wide, the window's shape, on the
+  underlay, as its fit and focus lay it out) into the 7 × 5 samples the look checks text against, each the average of
+  its 3 × 3 pixels. The copy is laid out against its own sides, not the window's scaled: its rounded height would
+  otherwise leave a sliver of underlay along an edge and the edge's samples lighter than what's drawn (WebKit showed
+  it). What Margin.app is told is on screen at a point (`groundAt`) is the samples between them, the wash over them.
+- **A wash, not a darker picture**: where the text doesn't read, a layer of the underlay rises over the picture (a
+  twentieth at a time, to 0.9), then the colours' opacity is lowered as before. The underlay keeps the space's light or
+  dark, and the picture stays recognisable under it. The colours are a tint over a picture (`0.6 × intensity`, none at
+  0), the whole ground without one.
+- **Until it's loaded** it's drawn as without (the colours, or the underlay alone), then again when it comes;
+  a picture that fails is never drawn (nothing thrown). Eight addresses kept loaded (the spaces switched between),
+  the one used longest ago dropped first; the samples read again only when the picture, its fit, its focus, the
+  window's size or the underlay change (a drag of a slider doesn't).
+- **Average colour**: `--m-bg` is the samples' average with the rest, so nothing went into the library's snapshot
+  (step 7a's note).
+- **Tests**: `tests/theme/background-picture.test.ts` in WebKit and Chromium (a half-black, half-white picture served
+  for every id: drawn as cover, washed until Arcadia's text reads 4.5:1 over both halves on screen, the colour told
+  within 6 of the screenshot's, both halves still showing; contain and tile written so; one that fails to load and a
+  host with no pictures drawn without it, no errors); `tests/ui-background.test.ts` (the samples' grid and wash in the
+  look). Mutation: the wash held at 0 fails the contrast checks in both engines.

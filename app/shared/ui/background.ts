@@ -20,8 +20,14 @@
 // A change of space with a background to another with one cross-fades (0.3 s; at once with reduced motion); the same
 // space redrawn (an edit, a drag in the picker) changes in place. To or from none it's at once (the theme's own ground
 // is above this layer: nothing to fade under).
-import { appearanceOf, groundAt, lookOf } from './background-look.ts';
-import type { Appearance, Look } from './background-look.ts';
+//
+// A picture (M2.9 step 7): drawn where the host serves it (`picture`: Margin.app's `margin-app://app/background/<id>`;
+// none in a browser's extension, which draws the background without it), as its fit and focus say (cover, contain,
+// tile; `background-position` at the focus). It's loaded once per address, and a small copy of it laid out over the
+// window as it's drawn (on the underlay) gives the samples the look reads its contrast against (`PictureSamples`);
+// until then it's drawn as without, and `onChange` says when it's ready, to be drawn again.
+import { SAMPLES, appearanceOf, groundAt, lookOf, underlayOf } from './background-look.ts';
+import type { Appearance, Look, PictureSamples } from './background-look.ts';
 import { rgbCss, rgbToHex } from './color.ts';
 import { checkCssValue } from './sanitize.ts';
 import { TILE_SIZE, tileUrl } from './textures.ts';
@@ -51,7 +57,63 @@ export type BackgroundInput = {
   systemDark: boolean,
   moreContrast: boolean,
   reducedMotion: boolean,
+  /** Where the background's picture is served (the host's address for its id), or null: not drawn here. */
+  picture?: string | null,
 };
+
+// An address Margin made for a picture (its own scheme's, or a test's data: URL): nothing in it that ends a CSS string.
+const PICTURE_URL = /^(margin-app:\/\/app\/background\/[0-9a-f]{64}|data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+)$/;
+
+/** A picture's samples (`SAMPLES`), as it lies over a w × h window drawn so (its fit and focus), on the underlay. */
+export function pictureSamples(doc: Document, img: HTMLImageElement, image: { fit: 'cover' | 'contain' | 'tile', focus: [number, number] }, w: number, h: number, underlay: string): PictureSamples | null {
+  const iw = img.naturalWidth, ih = img.naturalHeight;
+  if (!iw || !ih || w <= 0 || h <= 0) return null;
+  const cw = 70, ch = Math.max(2, Math.round((70 * h) / w));
+  const canvas = doc.createElement('canvas');
+  canvas.width = cw;
+  canvas.height = ch;
+  const g = canvas.getContext('2d', { willReadFrequently: true });
+  if (!g) return null;
+  g.fillStyle = underlay;
+  g.fillRect(0, 0, cw, ch);
+  if (image.fit === 'tile') {
+    // (At its own size, the copy's pixels per the window's.)
+    const tw = (iw * cw) / w, th = (ih * ch) / h;
+    let n = 0;
+    for (let y = 0; y < ch && n < 10_000; y += th) for (let x = 0; x < cw && n < 10_000; x += tw, n++) g.drawImage(img, x, y, tw, th);
+  } else {
+    // As CSS draws it: scaled to cover or to fit, and placed at the focus (`background-position` in percent). Against
+    // the copy's own sides, not the window's scaled: its height is rounded, and a picture that just covers the window
+    // would leave a sliver of underlay along an edge (the edge's samples then lighter than what's drawn).
+    const scale = image.fit === 'cover' ? Math.max(cw / iw, ch / ih) : Math.min(cw / iw, ch / ih);
+    const dw = iw * scale, dh = ih * scale;
+    g.drawImage(img, (cw - dw) * image.focus[0], (ch - dh) * image.focus[1], dw, dh);
+  }
+  let data: Uint8ClampedArray;
+  try { data = g.getImageData(0, 0, cw, ch).data; } catch { return null; } // (a picture from elsewhere: never drawn)
+  const out: PictureSamples = [];
+  for (let j = 0; j < SAMPLES.rows; j++) {
+    for (let i = 0; i < SAMPLES.cols; i++) {
+      // (Each sample the average of its 3 × 3 neighbourhood: a single pixel isn't what the eye sees there.)
+      const cx = Math.round((i / (SAMPLES.cols - 1)) * (cw - 1)), cy = Math.round((j / (SAMPLES.rows - 1)) * (ch - 1));
+      let r = 0, gr = 0, b = 0, n = 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const x = Math.min(cw - 1, Math.max(0, cx + dx)), y = Math.min(ch - 1, Math.max(0, cy + dy));
+        const o = (y * cw + x) * 4;
+        r += data[o]; gr += data[o + 1]; b += data[o + 2]; n++;
+      }
+      out.push({ r: r / n / 255, g: gr / n / 255, b: b / n / 255 });
+    }
+  }
+  return out;
+}
+
+/** The picture's CSS `background` as it's drawn (its fit and focus). */
+export function pictureCss(url: string, image: { fit: 'cover' | 'contain' | 'tile', focus: [number, number] }): string {
+  const at = `${Math.round(image.focus[0] * 1000) / 10}% ${Math.round(image.focus[1] * 1000) / 10}%`;
+  if (image.fit === 'tile') return `url("${url}") 0 0 / auto repeat`;
+  return `url("${url}") ${at} / ${image.fit} no-repeat`;
+}
 
 /** The page box's outside as an even-odd path over a w × h window: the whole window, and the box (its corners rounded) taken out. */
 export function cutOut(w: number, h: number, box: PageBox | null): string {
@@ -75,7 +137,11 @@ export function backgroundCss(vars: Record<string, string> | null): string {
 
 export type SpaceBackgroundLayer = ReturnType<typeof createBackground>;
 
-export function createBackground({ doc, container }: { doc: Document, container: ShadowRoot | Document }) {
+export function createBackground({ doc, container, onChange }: {
+  doc: Document, container: ShadowRoot | Document,
+  /** A picture came (loaded, or failed): to be drawn again. */
+  onChange?: () => void,
+}) {
   const win = doc.defaultView!; // (a page that draws a theme has a window)
   const sheet = new win.CSSStyleSheet();
   const host = doc.createElement(TAG);
@@ -107,11 +173,33 @@ export function createBackground({ doc, container }: { doc: Document, container:
   let current: HTMLElement | null = null;
   const leaving = new Set<HTMLElement>();
   const timers = new Set<ReturnType<typeof setTimeout>>();
+  // The pictures loaded (or loading, or failed), by address; the one drawn now.
+  const pictures = new Map<string, { img: HTMLImageElement, state: 'loading' | 'ready' | 'failed' }>();
+  let pictureUrl: string | null = null;
+  // The samples read last, and what they were read from (a drag of the intensity or the colours leaves them as they are).
+  let sampled: { key: string, samples: PictureSamples | null } | null = null;
+  let gone = false;
+  function picture(url: string) {
+    let p = pictures.get(url);
+    // (The one used last kept last: the first is the one gone longest.)
+    if (p) { pictures.delete(url); pictures.set(url, p); return p; }
+    const img = new win.Image();
+    p = { img, state: 'loading' };
+    pictures.set(url, p);
+    const entry = p;
+    img.decoding = 'async';
+    img.onload = () => { entry.state = 'ready'; if (!gone) onChange?.(); };
+    img.onerror = () => { entry.state = 'failed'; if (!gone) onChange?.(); };
+    img.src = url;
+    // (A few kept: the spaces' pictures switched between.)
+    if (pictures.size > 8) { const first = pictures.keys().next().value; if (first !== undefined && first !== url) pictures.delete(first); }
+    return p;
+  }
 
   function makeSet() {
     const set = doc.createElement('div');
     set.className = 'set';
-    for (const part of ['underlay', 'colors', 'texture']) {
+    for (const part of ['underlay', 'picture', 'wash', 'colors', 'texture']) {
       const el = doc.createElement('div');
       el.className = part;
       set.append(el);
@@ -120,10 +208,12 @@ export function createBackground({ doc, container }: { doc: Document, container:
   }
 
   /** Writes a look into a set, each part only where it changed (a picker's drag redraws it every frame). */
-  function paint(set: HTMLElement, l: Look) {
-    const [underlay, colors, texture] = [...set.children] as HTMLElement[];
+  function paint(set: HTMLElement, l: Look, pictureBg: string) {
+    const [underlay, pic, wash, colors, texture] = [...set.children] as HTMLElement[];
     const put = (el: HTMLElement, key: string, apply: () => void) => { if (el.dataset.k !== key) { el.dataset.k = key; apply(); } };
     put(underlay, rgbToHex(l.underlay), () => { underlay.style.background = rgbToHex(l.underlay); });
+    put(pic, l.samples ? pictureBg : 'none', () => { pic.style.background = l.samples ? pictureBg : 'none'; });
+    put(wash, `${rgbToHex(l.underlay)}|${l.samples ? l.wash : 0}`, () => { wash.style.background = rgbToHex(l.underlay); wash.style.opacity = String(l.samples ? l.wash : 0); });
     put(colors, `${l.layer}|${l.alpha}`, () => { colors.style.background = l.layer; colors.style.opacity = String(l.alpha); });
     const fg = l.vars['--m-fg'];
     const kind = l.texture.kind;
@@ -185,19 +275,31 @@ export function createBackground({ doc, container }: { doc: Document, container:
         return null;
       }
       const appearance = appearanceOf(bg, input.systemDark);
+      // The picture: where the host serves it, once it's loaded (its samples read as it lies over the window now).
+      const url = bg.image && typeof input.picture === 'string' && PICTURE_URL.test(input.picture) ? input.picture : null;
+      const pic = url ? picture(url) : null;
+      pictureUrl = url;
       // (Called after every render: drawn again only when something it's drawn from changed.)
-      const key = JSON.stringify([input.spaceId, bg, appearance, input.moreContrast, win.innerWidth, win.innerHeight]);
+      const key = JSON.stringify([input.spaceId, bg, appearance, input.moreContrast, win.innerWidth, win.innerHeight, url, pic?.state ?? null]);
       if (look && key === lastKey) return appearance;
       lastKey = key;
       size = { width: win.innerWidth, height: win.innerHeight };
-      const next = lookOf(bg, appearance, { moreContrast: input.moreContrast, size });
+      let samples: PictureSamples | null = null;
+      if (pic?.state === 'ready' && bg.image) {
+        const underlay = rgbToHex(underlayOf(bg, appearance));
+        const at = JSON.stringify([url, bg.image.fit, bg.image.focus, size.width, size.height, underlay]);
+        if (sampled?.key !== at) sampled = { key: at, samples: pictureSamples(doc, pic.img, bg.image, size.width, size.height, underlay) };
+        samples = sampled.samples;
+      }
+      const next = lookOf(bg, appearance, { moreContrast: input.moreContrast, size, picture: samples });
+      const pictureBg = url && bg.image ? pictureCss(url, bg.image) : 'none';
       const fade = !!current && shownId !== null && shownId !== input.spaceId && !input.reducedMotion;
       if (fade) {
         const old = current!;
         leaving.add(old);
         const set = makeSet();
         set.classList.add('entering');
-        paint(set, next);
+        paint(set, next, pictureBg);
         shadow.append(set);
         current = set;
         set.getBoundingClientRect(); // (its opacity 0 laid out first, so the change is a transition)
@@ -208,7 +310,7 @@ export function createBackground({ doc, container }: { doc: Document, container:
         // (Another space shown at once: what was still fading out goes; the same space redrawn lets a fade finish.)
         if (shownId !== input.spaceId) clearLeaving();
         if (!current) { current = makeSet(); shadow.append(current); }
-        paint(current, next);
+        paint(current, next, pictureBg);
       }
       look = next;
       revision++;
@@ -237,17 +339,21 @@ export function createBackground({ doc, container }: { doc: Document, container:
     /** What's drawn, read back from the layer itself (for the tests): shown, its cut, each set's parts, the variables. */
     drawn() {
       const sets = [...shadow.querySelectorAll('.set')].map((set) => {
-        const [underlay, colors, texture] = [...set.children] as HTMLElement[];
+        const [underlay, pic, wash, colors, texture] = [...set.children] as HTMLElement[];
         return {
           entering: set.classList.contains('entering'),
-          underlay: underlay.style.background, colors: colors.style.background, opacity: colors.style.opacity,
+          underlay: underlay.style.background, picture: pic.style.background, wash: wash.style.opacity,
+          colors: colors.style.background, opacity: colors.style.opacity,
           texture: texture.style.background, textureOpacity: texture.style.opacity,
         };
       });
       const computed = win.getComputedStyle(host);
-      return { shown: host.isConnected && computed.display !== 'none', clip: computed.clipPath, sets, css };
+      return { shown: host.isConnected && computed.display !== 'none', clip: computed.clipPath, sets, css, picture: pictureUrl, pictureState: pictureUrl ? pictures.get(pictureUrl)?.state ?? null : null };
     },
     destroy() {
+      gone = true;
+      pictures.clear();
+      sampled = null;
       clearLeaving();
       host.remove();
       look = null;
