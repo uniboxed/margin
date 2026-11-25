@@ -39,8 +39,9 @@ pub enum Said {
     FullScreen,
     /// The sidebar's edge (or a split's divider) dragged, or let go.
     Resizing { on: bool, divider: bool },
-    /// The trackpad's alignment tick.
-    Haptic,
+    /// The trackpad's tick: its alignment (a detent, a step), or a level's change (`level`: Edit Theme Color's texture,
+    /// M2.9 step 6).
+    Haptic { level: bool },
     /// A cut pane's arrow: its item, the side (0 left, 1 right, 2 up, 3 down).
     Slide { item: String, side: u8 },
     /// A request of the window's source: its name and argument (an object).
@@ -166,7 +167,8 @@ impl Page {
                     "sidebar.resizing" | "split.resizing" => {
                         Said::Resizing { on: flag(arg.and_then(|a| a.get("on"))), divider: name == "split.resizing" }
                     }
-                    "haptic.alignment" => Said::Haptic,
+                    "haptic.alignment" => Said::Haptic { level: false },
+                    "haptic.level" => Said::Haptic { level: true },
                     "split.slide" => {
                         let item = arg.and_then(|a| json::string(a.get("item")));
                         let side = arg.and_then(|a| json::string(a.get("side"))).and_then(|s| match s {
@@ -251,6 +253,8 @@ mod tests {
         assert_eq!((w.mode, w.zone), (WantMode::Edges, 1.0), "a boolean zone is 1 on the Mac");
         assert_eq!(pointer_want(&Object::new()).zone, 24.0);
         assert_eq!(said(&mut p, "perform", json!({ "name": "window.fullscreen" })), Said::FullScreen);
+        assert_eq!(said(&mut p, "perform", json!({ "name": "haptic.alignment" })), Said::Haptic { level: false });
+        assert_eq!(said(&mut p, "perform", json!({ "name": "haptic.level", "arg": 1 })), Said::Haptic { level: true });
         assert_eq!(
             said(&mut p, "perform", json!({ "name": "split.resizing", "arg": { "on": true } })),
             Said::Resizing { on: true, divider: true }

@@ -124,11 +124,12 @@ Margin's slots:
 | `<m-launcher>` | the `launcher` part (Margin's new-tab page) | `launcher` |
 | `<m-page-loader>` | the `page-loader` part (Margin.app: the page card while an item opens) | `pageLoader` (the page card is `loading`) |
 | `<m-settings>` | the `settings` part (put it in your launcher) | `settingsForm` (Settings open) |
+| `<m-picker>` | the `background-picker` part (guarded: Edit Theme Color drawn by your theme, below); placed by Margin at `--m-picker-x`, `--m-picker-y` | `picker` |
 | `<m-window-controls>`, `<m-drag-region>` | the window's buttons and where a drag moves it (windowed mode) | always |
 
 Parts are `<template m-part="name">` anywhere in the template: `menu`,
 `menu-item`, `space-editor`, `palette`, `palette-row`, `notice`, `prompt`,
-`toast`, `preview`, `launcher`, `settings`, `window-controls`, `page-loader`. What a theme puts
+`toast`, `preview`, `launcher`, `settings`, `window-controls`, `page-loader`, `background-picker`. What a theme puts
 inside a slot is used when it has no part for it.
 
 ### The preview card and Quick Tab (the `preview` part)
@@ -388,7 +389,8 @@ host. Immutable: rows that didn't change are the same objects.
   `folders[]` (`name`, `open`, `parentFolderId`, `depth`, `count`, `pins`, `shown`, `shownFlat`, `hasShown`), `pins`,
   `splits[]` (`id`, `axis`, `active`, `panes[]`, `ratios`, `count`, `title`) and `hasSplits`,
   `today` (the other tabs, newest first), `hasToday`, `hasPinned`,
-  `newTab.active`.
+  `newTab.active`, `background` (the space's background as stored, null for none: Margin draws it, "A space's
+  background" below).
 - `favorites`: `items[]` (web tabs & hosted apps, up to 12, sticky `open`/`active`/`drifted`/`rootUrl`/`audible`/`muted`), `hasItems`, `columns` (1–4).
 - `media` (the background mini player: null unless a tab not in front of this window is playing, or paused within the last 30 s; hosted Mac apps later): `title`, `subtitle`, `artwork` (a data URL, or null), `icon`, `letter`, `color`, `playing`, `paused`, `muted`, `canPrev`, `canNext`.
 - `toast` (null unless showing; guarded): `id`, `text`.
@@ -487,10 +489,12 @@ else is ignored and logged.
   split of the item in front, or split with it), `split.open` (a split's id: shown), `split.remove` (a pane out, the rest
   shown), `split.breakOut` (a pane out, shown alone), `split.closePane` (its tab closed: the split goes on), `split.swap`
   and `split.toggleAxis` (a split's id). `split.resize` is Margin's own (its dividers), never a button's.
-- Spaces: `space.switch`, `space.new`, `space.edit`, `space.rename`,
+- Spaces: `space.switch`, `space.new`, `space.edit`, `space.rename`, `space.editBackground` (Edit Theme Color,
+  Margin's own panel for the space's background, opened beside the button; the space's menu has it too),
   `today.clear`.
 - The palette: `palette.open`, `palette.close`, `palette.run` (a row).
 - Menus: `menu.open` (`add`), `menu.run` (an item), `menu.close`.
+- Edit Theme Color drawn by your theme: `picker.run` (one of `picker`'s items, by its `id`: below).
 - The space editor: `editor.save`, `editor.cancel`, `editor.delete` (asks
   first), `editor.color` (a swatch), `editor.theme` (one of `editor.themes`'
   ids: the space's theme, saved with the rest; a space's menu offers the
@@ -506,7 +510,7 @@ else is ignored and logged.
   `launcher.more`, `window.close`, `window.minimise`, `window.fullscreen`.
 - Only Margin's behaviors and menus run `tab.move`, `tab.pinAt`,
   `tab.moveToSpace`, `pin.move`, `folder.move`, `folder.setName`,
-  `space.setName`, `space.update`, `space.setTheme` and `space.delete`.
+  `space.setName`, `space.update`, `space.setTheme`, `space.setBackground` and `space.delete`.
 
 ## Behaviors
 
@@ -566,7 +570,106 @@ Classes and variables Margin sets for you to style:
   moving part: `transition: var(--m-swipe-transition, none)` (Arcadia does this);
 - `--m-menu-x`, `--m-menu-y` (`<m-menu>`), `--m-reveal-zone` (`m-peek`), `--m-page-left`, `--m-page-top`,
   `--m-page-right`, `--m-page-bottom`, `--m-page-radius` (on the root while the preview card is up: the page's place),
-  `--m-<setting>` (your settings).
+  `--m-<setting>` (your settings);
+- `m-background` and `m-appearance`, and `--m-bg`, `--m-fg`, `--m-fg-2`, `--m-accent`, `--m-hover`, `--m-selected`:
+  a space's background, below.
+
+## A space's background
+
+A space can have a background (Edit Theme Color: colours, intensity, a texture, light or dark). Margin draws it, not
+the theme: one layer under everything the theme draws, over the whole window except the page card, which it is cut
+out of exactly as `<m-page>` is drawn (its border box, its rounded corners). Your theme decides where it shows, by
+letting it through.
+
+While the space shown has one, Margin sets:
+
+- `m-background` on your root, and `m-appearance` (`light` or `dark`): the appearance the background is drawn in, its
+  own or the system's;
+- on the container (`:host`, or `:root` in a document), plain colours worked out for it:
+  - `--m-bg`, the background as one colour (its average), for anything solid that stands for the ground (a card over
+    the page, a divider, a patch behind a label);
+  - `--m-fg`, text on it: at least 4.5:1 against every part of it, 7:1 where it can (7:1 always with Increase
+    contrast);
+  - `--m-fg-2`, secondary text (4.5:1; 7:1 with Increase contrast);
+  - `--m-accent`, the key colour as an accent (3:1, for non-text);
+  - `--m-hover` and `--m-selected`, translucent fills for a row under the pointer and the row shown.
+
+None of these are set while the space has no background, so `var(--m-fg, <yours>)` falls back to your own. (Don't
+name a setting `bg`, `fg`, `accent`, `hover` or `selected`: its variable would have the same name.)
+
+To take part, under `[m-background]`:
+
+1. Stop painting your ground where the background should show: a spread `box-shadow` around the page card
+   (`0 0 0 100vmax …`), the sidebar's own background, a layer of dots or lights. Keep what's drawn on the card itself
+   (a border, an offset shadow).
+2. Give what lies on the background Margin's text colours, or fills that suit it (translucent white over it, as the
+   built-in themes do). Set them on the surfaces that lie on it, not on your root: menus and panels are drawn in the
+   page's appearance, `prefers-color-scheme`. In Margin.app's window that is the background's (the window's web view
+   takes the space's light or dark); in the extension's overlay over a browser's page, and on Windows for now, it is
+   the system's, which can differ.
+3. Anything solid that stands in for the ground (a sidebar out over the page as a card, a split's divider) takes
+   `--m-bg`.
+
+In Margin.app a space's background can be a picture (its colours a tint over it). Nothing changes for your theme:
+Margin draws it in the same layer, and the variables are worked out against the picture as it's drawn (where text
+wouldn't read, Margin washes it with the background's light or dark until it does). Your CSS can't name it, and
+doesn't need to. In a browser's extension the space's colours are drawn without the picture.
+
+A theme that does nothing keeps its own look: its ground covers the background, all but the smoothing of the page
+card's rounded corners, where a pixel's worth of the edge shows a little of it. Arcadia, Material, Liquid Glass,
+Neubrutalism and Pixel take part; their `[m-background]` rules are a short example each. Liquid Glass shows the other
+way: its colours are all `light-dark()`, so it sets `color-scheme` from `m-appearance` and its whole look follows.
+
+### Edit Theme Color drawn by your theme (the `background-picker` part)
+
+Edit Theme Color (the space's menu, or your `space.editBackground` button) is Margin's own glass panel unless your
+theme draws it: give it a `background-picker` part and put `<m-picker>` where it goes (beside `<m-menu>`). Without
+either, Margin's panel. The part is guarded, as a menu is: only Margin's words show in it (bound from `picker`), and
+text you write there is removed. Margin places `<m-picker>` where it was asked from, kept inside the window (as it
+places `<m-menu>`: `--m-picker-x`, `--m-picker-y`), gives it the keys (Escape puts back what the space had, ⌘Z a step back, Tab stays inside), and
+closes it at a press outside, another space shown, or the space gone. Each change is saved as Margin's panel saves it.
+Your picker is your look: Margin asks for no glass for it.
+
+Lay out any of these, in any order (leave out what you don't want):
+
+- Margin's controls, which Margin fills and works (the pointer, the keys, a drag drawn as it goes and saved once):
+  - `<m-picker-field m-variant="dots|wheel|cells">`: the colours' field. Its knobs are `[m-knob]` (the key
+    `[m-knob="key"]`, its colour `--m-knob-color`, an `<i>` inside); `[m-picker-empty]` says what to do while there's no
+    colour. `dots` draws nothing else (draw your own ground, e.g. a dot grid); `wheel` shows the hidden wheel
+    (`--m-field-wheel`, Margin's own colours); `cells` fills it with a 16 × 10 grid of `[m-cell]`s in those colours and
+    puts the knobs on the cells' centres. Give it a size.
+  - `<m-picker-slider m-value="intensity|amount" m-variant="wave|bar">`: a slider for the intensity or the texture's
+    amount: `wave` a wave (`[m-wave]`, its `[m-lit]` and `[m-dim]` paths), `bar` a track (`[m-track]`, `[m-fill]`);
+    then `[m-thumb]`; the value as `--m-value` (0–1).
+  - `<m-picker-dial>`: the dial (turn its ring, drag its centre or scroll for the amount; click it for the next
+    texture): `[m-dot]`s round it (lit: `[m-on]`), the face `[m-face]` (the texture: `--m-face`), `[m-shade]`,
+    `[m-pointer]`, the words `[m-dial-label]`.
+
+  An unknown `m-variant` or `m-value` is removed (and reported) and Margin draws the first one listed. Margin's base
+  rules give each a plain working look; yours win.
+- Your own buttons for the rest, each `m-action="picker.run" m-arg="{{…id}}"`, from `picker`:
+  - `title`; `appearances` (each `id`, `label`, `short`, `selected`: automatic, light, dark);
+  - `empty`, `emptyLabel`; `colors.count`, `colors.countLabel`, `colors.add` and `colors.remove` (`id`, `label`,
+    `disabled`), `colors.hasRule`, `colors.rule` (`id`, `label`, `text`: Analogous or Complementary);
+  - `presets` (each `id`, `color`, `label`, `selected`: nine a page), `prev` and `next` (another page);
+  - `intensity` (`label`, `value`, `text`, and `steps`: ten, each `id`, `label`, `on` up to the value, `selected`);
+  - `texture` (`label`, `name`, `amount`, `amountText`, `text`, `showing`, and `prev`, `next`: the texture before or
+    after), `textures` (each `id`, `label`, `selected` while it shows), `amounts` (off, 25 %, 50 %, 75 %, 100 %: each
+    `id`, `label`, `selected`);
+  - `picture` (Margin.app only, null elsewhere, so put it in `<m-if test="picker.picture">`): `label`, `has`, `fit`,
+    `choose` (Add Picture… or Change Picture…: Margin.app's file picker), `remove` (with `has`), `fits` (Fill, Fit, Tile:
+    each `id`, `label`, `selected`; with `has`), `note` and `hasNote` (adding one, or why one was refused: show it, it's
+    the only word of what went wrong), `dropping` (a file is being dragged over your picker: Margin takes it when it's
+    dropped there; e.g. `m-class:dropping="{{picker.picture.dropping}}"`);
+  - `all` (Use for All Spaces: its `label` says when it's done) and `done`.
+
+  A colour is a value for your CSS: `m-style:--swatch="{{p.color}}"`. `picker.run` runs only an item the picker shows
+  right now.
+- Margin ticks at each detent, your buttons' too: a haptic on a trackpad in Margin.app, else a soft click, as the
+  person's setting says. Nothing for your theme to do.
+
+Material (`material/`), Neubrutalism and Pixel have their own, each a short example (the wheel shown and M3's
+sliders and chips; a chunky bar and tiles; cells, blocks and a stepper); Arcadia and Liquid Glass use Margin's.
 
 ## Motion
 
@@ -590,6 +693,9 @@ glass. Liquid Glass (`liquid-glass/`) is the example.
 
 1. Say so in `theme.json`: `"systemMaterials": true`. Margin.app then turns
    WebKit's system appearance on for its page while your theme is drawn.
+   (It also turns it on for Margin's own Edit Theme Color panel while
+   that's open, its glass; your theme's sheet is never read then, so
+   without `systemMaterials` your theme never gets the materials.)
    That also changes two things in your theme: unstyled links take macOS's
    link colours, and in Dark Mode `color-scheme: light` is no longer
    honoured (use `light dark`, or `dark`).

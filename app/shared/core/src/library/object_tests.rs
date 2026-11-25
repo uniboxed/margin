@@ -194,6 +194,20 @@ fn a_windows_space_theme_and_state() {
     lib.apply(&[json!({ "collection": "spaces", "id": "a", "value": { "name": "a", "order": 0, "theme": 3 } })], 3.0);
     assert_eq!(lib.space_theme(9), None, "not a string: none");
 
+    // A space's appearance (M2.9 step 3): its background's light or dark, the space found as its theme is; none for
+    // automatic, an odd one, no background, no spaces.
+    assert_eq!(lib.space_appearance(1), None, "no background: the system's");
+    let bg = |id: &str, order: u32, appearance: serde_json::Value| json!({ "collection": "spaces", "id": id, "value": { "name": id, "order": order, "background": { "colors": ["#123456"], "appearance": appearance } } });
+    lib.apply(&[bg("a", 0, json!("dark")), bg("b", 1, json!("auto")), bg("c", 2, json!("light"))], 4.0);
+    assert_eq!(lib.space_appearance(1), Some("light"), "the window's space's own");
+    assert_eq!(lib.space_appearance(2), None, "automatic: the system's");
+    assert_eq!(lib.space_appearance(9), Some("dark"), "a window with no space of its own: the first space's");
+    assert_eq!(lib.space_appearance(3), Some("dark"), "its space gone: the first space's");
+    lib.apply(&[bg("c", 2, json!("Dark"))], 5.0);
+    assert_eq!(lib.space_appearance(1), None, "an odd one: read as automatic");
+    lib.apply(&[space("c", 2, None)], 6.0);
+    assert_eq!(lib.space_appearance(1), None, "its background gone: the system's");
+
     // The state with no session's open items: the kept snapshot, the tail before its last brace.
     let text = lib.snapshot().text.clone();
     assert_eq!(lib.state_text(None, ""), text);

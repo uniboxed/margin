@@ -18,8 +18,9 @@ import { themeChoices } from './space-theme.ts';
 import type { Host } from './host.ts';
 import type { LoadedTheme } from './theme-loader.ts';
 import type { UiState, ViewModel } from './view-model.ts';
-import type { State } from '../../../types/margin';
+import type { SpaceBackground, State } from '../../../types/margin';
 import { View } from './render.ts';
+import { createBackground } from './background.ts';
 import { checkIconUrl } from './sanitize.ts';
 import { buildViewModel, paletteItems } from './view-model.ts';
 import { BEHAVIOR_ONLY, checkAction, contextFromState, requestFor } from './actions.ts';
@@ -42,6 +43,9 @@ import { installPress } from './behaviors/press.ts';
 import { installSettings } from './behaviors/settings.ts';
 import { installEmpty } from './behaviors/empty.ts';
 import { emptySpot } from './empty.ts';
+import { installBackgroundPicker } from './behaviors/background-picker.ts';
+import { createTickFeedback, feedbackSetting } from './picker/feedback.ts';
+import { pickerItemIds } from './picker/view.ts';
 import { createIntents } from './intents.ts';
 import type { Front } from './intents.ts';
 import { createRowMotion } from './row-motion.ts';
@@ -105,6 +109,13 @@ export type Rt = {
   /** The palette as the host's palette key opens it (`paletteKeyOptions`), unless it's open: true, opened. `by`: what
    *  opened it, for the host's log (behaviors/empty.ts: a double-click on the sidebar). */
   openPaletteAsKey(by: string): boolean,
+  /**
+   * A space's background drawn ahead of the state (the picker: ui/behaviors/background-picker.ts): `held` while a
+   * gesture runs (until the next call), else until the state has it (PENDING_MS at most). Nothing else is drawn again.
+   */
+  previewBackground(spaceId: string, value: SpaceBackground | null, options: { held: boolean }): void,
+  /** Margin's own panel (the picker) opened or closed: the host is told (`onPanel`). */
+  panelChanged(): void,
   // Each behavior's own (createRuntime: set before any is installed).
   behaviors: Record<string, any>,
 };
@@ -120,7 +131,7 @@ export type Rt = {
  * pill and notice); `onSwitchRun`: each chain of switches as it ends, with a
  * host whose UI stays on screen (shared/switching.ts SwitchRun: Margin.app's log)
  */
-export function createRuntime({ host, theme, container, ui: start = {}, onWarn, log, onSwitchSlow, onSwitchFailed, onPalette, onSwitching, onSwitchRun, openPalette }: {
+export function createRuntime({ host, theme, container, ui: start = {}, onWarn, log, onSwitchSlow, onSwitchFailed, onPalette, onSwitching, onSwitchRun, openPalette, onGround, onPanel, materials }: {
   host: Host,
   theme: LoadedTheme,
   container: ShadowRoot | Document,
@@ -135,6 +146,16 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   /** How the host opens the palette for its own key and what the UI opens as that key does (Margin.app's overlay: timed
    *  and logged, app/shared/host/overlay.ts openPaletteTimed); left out, the runtime's own `palette.open`. */
   openPalette?: (options: { newTab: boolean }, by: string) => void,
+  /** The ground Margin draws under the theme changed (a space's background shown, changed or gone): what's around the page's corners may have (`backgroundAt`). */
+  onGround?: () => void,
+  /** Margin's own panel (Edit Theme Color) opened or closed: while it's open it takes the keys and the pointer where it is (`panelOpen`, `panelRect`). */
+  onPanel?: () => void,
+  /**
+   * The system's materials for Margin's own panel (Edit Theme Color's glass), asked for as it opens (true) and given
+   * back as it closes (false); resolves once the page has the answer. Margin.app's (app/shared/host/overlay.ts); none
+   * elsewhere: the panel is drawn solid.
+   */
+  materials?: (on: boolean) => Promise<unknown>,
 }) {
   // (Always with a palette: closed, or as it's open.)
   let ui: Ui = { sidebar: null, palette: CLOSED_PALETTE, menu: null, editing: null, editor: null, notice: null, prompt: null, toast: null, focused: true, switchingTo: null, newTabPending: false, opening: null, ...start };
@@ -169,7 +190,8 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   let expiryTimer: Timer | null = null;
   function expireLater() {
     const ends = [intents.nextDeadline() ?? undefined, pending.settings?.until, ...[...pending.folders.values()].map((p) => p.until), ...[...pending.spaces.values()].map((p) => p.until),
-      pending.space ? pending.space.since + PENDING_MS + 50 : undefined, pending.hold ? pending.hold.until + 1 : undefined, pending.themeSettings && !pending.themeSettings.live ? pending.themeSettings.until : undefined].filter((t) => t != null);
+      pending.space ? pending.space.since + PENDING_MS + 50 : undefined, pending.hold ? pending.hold.until + 1 : undefined, pending.themeSettings && !pending.themeSettings.live ? pending.themeSettings.until : undefined,
+      backgroundAhead?.until != null ? backgroundAhead.until + 5 : undefined].filter((t) => t != null);
     clearTimeout(expiryTimer);
     if (!ends.length) return;
     expiryTimer = setTimeout(() => render(), Math.max(0, Math.min(...ends) - Date.now()) + 5);
@@ -280,11 +302,15 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     front,
   });
 
+  // The shown space's background (M2.9: ui/background.ts): Margin's layer under the theme, cut out of the page card at
+  // every layout, its variables in a sheet of Margin's with the theme's.
+  // (A space's picture loaded, or failed: drawn again.)
+  const background = createBackground({ doc, container, onChange: () => { if (!destroyed) followBackground(); } });
   const view = new View(container, theme.template, {
-    sheets: [theme.sheet, theme.settingsSheet].filter(Boolean),
+    sheets: [theme.sheet, theme.settingsSheet, background.sheet].filter(Boolean),
     onAction: (name, arg, info) => { themeClick(name, arg, info); },
     onInput: (name, value) => { for (const b of list) b.onInput?.(name, value); },
-    onLayout: (geometry) => { placeLoader(); behaviors.card?.layout?.(); host.reportLayout({ ...geometry, windowId: windowId(), mode: host.mode ?? 'inpage' }); },
+    onLayout: (geometry) => { placeLoader(); behaviors.card?.layout?.(); background.place(view.measurePageOuter()); host.reportLayout({ ...geometry, windowId: windowId(), mode: host.mode ?? 'inpage' }); },
     onWarn: (message) => warn(message),
   });
   drawsSettingsNav = view.reads('settingsTab');
@@ -300,6 +326,52 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       if (agrees || Date.now() > p.until) pending.themeSettings = null;
     }
     return pending.themeSettings ? { ...(own ?? {}), ...pending.themeSettings.values } : own;
+  }
+
+  // The shown space's background drawn (or none), as the system asks now (dark, more contrast, less motion), and what
+  // it's drawn as on the theme's root: `m-background` while there's one, `m-appearance` its light or dark (themes
+  // README, "A space's background"). Placed at once the first time (later layouts place it: the view's onLayout).
+  const media = (query: string) => !!win.matchMedia?.(query).matches;
+  // A background drawn ahead of the state (rt.previewBackground): `until` null while held.
+  let backgroundAhead: { spaceId: string, value: SpaceBackground | null, until: number | null } | null = null;
+  function backgroundShown(space: ViewModel['space'] | undefined): SpaceBackground | null {
+    const stored = space?.background ?? null;
+    const ahead = backgroundAhead;
+    if (!ahead || !space || ahead.spaceId !== space.id) return stored;
+    if (ahead.until !== null && (JSON.stringify(stored) === JSON.stringify(ahead.value) || Date.now() > ahead.until)) {
+      backgroundAhead = null;
+      return stored;
+    }
+    return ahead.value;
+  }
+  function followBackground() {
+    const space = vm?.space;
+    const shownBackground = backgroundShown(space);
+    const was = background.active();
+    const before = background.revision();
+    const appearance = background.update({
+      spaceId: space?.id ?? '', background: shownBackground,
+      systemDark: media('(prefers-color-scheme: dark)'), moreContrast: media('(prefers-contrast: more)'), reducedMotion: media('(prefers-reduced-motion: reduce)'),
+      picture: shownBackground?.image ? host.pictureUrl?.(shownBackground.image.id) ?? null : null,
+    });
+    if (appearance && !was) background.place(view.measurePageOuter());
+    if (background.revision() !== before) onGround?.();
+    const root = view.rootElement() as HTMLElement | null;
+    if (!root) return;
+    if (appearance) {
+      if (!root.hasAttribute('m-background')) root.setAttribute('m-background', '');
+      if (root.getAttribute('m-appearance') !== appearance) root.setAttribute('m-appearance', appearance);
+    } else if (root.hasAttribute('m-background') || root.hasAttribute('m-appearance')) {
+      root.removeAttribute('m-background');
+      root.removeAttribute('m-appearance');
+    }
+  }
+  for (const query of ['(prefers-color-scheme: dark)', '(prefers-contrast: more)']) {
+    const mq = win.matchMedia?.(query);
+    if (!mq?.addEventListener) continue;
+    const changed = () => { if (!destroyed) followBackground(); };
+    mq.addEventListener('change', changed);
+    offs.push(() => mq.removeEventListener('change', changed));
   }
 
   function render() {
@@ -323,6 +395,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       if (moving) motion.after();
     }
     followPage();
+    followBackground();
     followToast();
     if (vm.ready) firstRender = false;
     for (const b of list) b.afterRender?.(vm, prev);
@@ -673,7 +746,9 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     const promptIds = vm?.prompt?.actions.map((a) => a.id) ?? [];
     const settingIds = vm?.settingsForm?.fields.filter((f) => f.isButton && !f.disabled).map((f) => f.id) ?? [];
     const themeIds = themeChoices((host.platform as any)?.features).map((c) => c.id);
-    const verdict = checkAction(name, arg, contextFromState(state, items.map((i) => i.id), { menuIds: menu.filter((i) => !i.separator).map((i) => i.id), colorIds: colors, noticeIds, promptIds, settingIds, themeIds }));
+    // (Edit Theme Color drawn by the theme: its items, as it shows them now.)
+    const pickerIds = vm?.picker ? pickerItemIds(vm.picker) : [];
+    const verdict = checkAction(name, arg, contextFromState(state, items.map((i) => i.id), { menuIds: menu.filter((i) => !i.separator).map((i) => i.id), colorIds: colors, noticeIds, promptIds, settingIds, themeIds, pickerIds }));
     if (!verdict.ok) return refuse(name, arg, (verdict as any).reason);
     // A pane that can't fit in Margin's window's page area beside the others (each one's minimum): not added, said.
     if (name === 'split.add' || name === 'split.addPane') {
@@ -735,6 +810,10 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
         return true;
       case 'folder.setName':
         pending.folders.set(arg.folder, { name: arg.name, until: Date.now() + PENDING_MS });
+        break;
+      case 'space.setBackground':
+        // (Its key colour, the space's colour: shown at once, as a rename's.)
+        if (typeof arg.color === 'string') pending.spaces.set(arg.space, { patch: { color: arg.color }, until: Date.now() + PENDING_MS });
         break;
       case 'space.setName': case 'space.update': {
         const patch = name === 'space.setName' ? { name: arg.name } : Object.fromEntries(Object.entries({ name: arg.name, emoji: arg.emoji, color: arg.color }).filter(([, v]) => typeof v === 'string' && v.trim()).map(([k, v]) => [k, v.trim()]));
@@ -842,6 +921,8 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       case 'preview.forward':
         return !!ui.peek && !ui.peek.littleArc && !!host.perform?.('peek.forward', {});
       case 'space.edit': return behaviors.editor.open(arg);
+      case 'space.editBackground': return behaviors.backgroundPicker.open(arg, info);
+      case 'picker.run': return behaviors.backgroundPicker.run(arg, info);
       case 'space.rename': return behaviors.rename.start('space', arg);
       case 'folder.rename': return behaviors.rename.start('folder', arg);
       case 'tab.rename': return behaviors.rename.start('tab', arg);
@@ -946,6 +1027,15 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     return width && root.offsetWidth ? root.offsetWidth / width : 1;
   };
 
+  // Edit Theme Color's ticks (M2.9 step 6, ui/picker/feedback.ts): a haptic or a click, as the setting and the device
+  // the host says the gesture comes from (Margin.app's, on the Mac) have it.
+  const feedback = createTickFeedback({
+    win,
+    setting: () => feedbackSetting((host.getState()?.settings as { pickerFeedback?: unknown } | undefined)?.pickerFeedback),
+    device: () => host.feedbackDevice ?? null,
+    haptic: (pattern) => host.perform?.(pattern === 'level' ? 'haptic.level' : 'haptic.alignment'),
+  });
+
   // (`behaviors`: set just below, before the behaviors are installed.)
   const rt = {
     host, theme, themeInfo, view, doc, win, container, scale,
@@ -981,6 +1071,12 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     },
     cancel(id: ReturnType<typeof setTimeout> | null | undefined) { clearTimeout(id); timers.delete(id); },
     get destroyed() { return destroyed; },
+    previewBackground(spaceId: string, value: SpaceBackground | null, { held }: { held: boolean }) {
+      backgroundAhead = { spaceId, value, until: held ? null : Date.now() + PENDING_MS };
+      followBackground();
+      if (!held) expireLater();
+    },
+    panelChanged() { onPanel?.(); },
     /** The model with space `id` shown in this window (one of vm.spaces), for a swipe drawing it beside the current
      *  one; null if it isn't one. */
     spaceView(id: string) {
@@ -1011,6 +1107,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     swipe: installSwipe(rt),
     empty: installEmpty(rt),
     settings: installSettings(rt),
+    backgroundPicker: installBackgroundPicker(rt, { materials, feedback }),
   });
   const list = Object.values(behaviors);
 
@@ -1091,6 +1188,20 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     },
     /** Where the theme's `<m-preview-page>` is now (ui/render.ts View.measurePeekPage): null when no card is drawn. */
     measurePeekPage: () => view.measurePeekPage(),
+    /**
+     * The space's background at a point of the window, as `rgb(r, g, b)` (ui/background.ts colorAt): what Margin.app
+     * is told is around the page's corners (host-app.ts cornerFill's `ground`). Null while the theme's own ground shows.
+     */
+    backgroundAt: (x: number, y: number) => background.colorAt(x, y),
+    /** What the background layer has drawn (ui/background.ts drawn), for the tests. */
+    backgroundDrawn: () => background.drawn(),
+    /** Edit Theme Color open (Margin's own panel: it takes the keys while it is), and where: [x, y, width, height] in the window's pixels (null: closed). */
+    get panelOpen() { return !!behaviors.backgroundPicker?.openFor; },
+    panelRect: (): number[] | null => behaviors.backgroundPicker?.rect() ?? null,
+    /** The picker's parts, for the tests (its content is closed to them). */
+    pickerParts: () => behaviors.backgroundPicker?.parts() ?? null,
+    /** How many of the picker's ticks played a haptic or a click (for the tests). */
+    pickerTicks: () => feedback.played,
     /** The new-tab launcher's field focused, by the host's word (its overlay shown over a new window: behaviors/palette.js). */
     focusLauncher: () => !!behaviors.palette?.focusLauncher(),
     /** The tab list's scroll: saved now (before a switch), or set (a page prepared for a show). */
@@ -1117,6 +1228,8 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       for (const id of timers) clearTimeout(id);
       for (const fn of offs.splice(0)) fn();
       view.destroy();
+      background.destroy();
+      feedback.destroy();
     },
   };
 }

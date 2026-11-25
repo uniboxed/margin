@@ -69,13 +69,15 @@ import WebKit
 
 // Where Margin's windows get their spaces (the library's, LibraryWindowSource). `stateText()`: the whole state as
 // its JSON text, in the shape pages draw (types/margin.d.ts State, as shared/stored.ts fromStorage gives it), pushed as
-// it is; `spaceTheme(window:)`: the theme of the space that window shows (nil: none of its own); `perform`: a request
+// it is; `spaceTheme(window:)`: the theme of the space that window shows (nil: none of its own); `spaceAppearance(window:)`:
+// that space's own light or dark (its background's; nil: the system's); `perform`: a request
 // of the UI's (its `send` type and payload, or a `perform` name and argument), the window's id in the payload as
 // `windowId`, answered as the page's request is (`{ ok, result }` or `{ ok: false, error }`; nil: done,
 // `{ ok: true, result: true }`); `onChange`: the state changed.
 protocol MarginWindowSource: AnyObject {
     func stateText() -> String
     func spaceTheme(window: Int) -> String?
+    func spaceAppearance(window: Int) -> SpaceAppearance?
     @discardableResult func perform(_ type: String, _ payload: JSONObject) -> JSONObject?
     var onChange: (() -> Void)? { get set }
 }
@@ -1617,10 +1619,23 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         }
     }
 
+    // The space's own light or dark (M2.9 step 3, docs/SPACE-BACKGROUNDS.md Part B §3): this window's web view draws
+    // in it, so the theme does (WebKit takes a web view's appearance as the page's `prefers-color-scheme` and
+    // `light-dark()`, its system appearance on or off: space-appearance-tests.swift); nil, the window's (the system's).
+    // Only Margin's own page: the hosted windows, Safari's pages among them, keep theirs. Set before the state that
+    // shows the space is pushed (both go to the page in order), so its background and its theme change together.
+    func followAppearance() {
+        guard let owner else { return }
+        let name: NSAppearance.Name? = owner.source.spaceAppearance(window: id).map { $0 == .dark ? .darkAqua : .aqua }
+        guard webView.appearance?.name != name else { return }
+        webView.appearance = name.flatMap { NSAppearance(named: $0) }
+    }
+
     // The source's state changed: drawn again; its theme too, if that changed (another theme chosen, or this window
-    // showing a space with another theme).
+    // showing a space with another theme), and its light or dark first.
     func stateChanged() {
         guard asked, let owner else { return }
+        followAppearance()
         let state = owner.source.stateText()
         push(#"{"type":"state","state":"# + state + #","windows":"# + windowsJSON + "}")
         if let theme = owner.theme(id, owner.source.spaceTheme(window: id)), theme != themeSent {
@@ -1640,6 +1655,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         asked = true
         sidebarResizing(false) // (a page loaded again mid-drag never says it's over)
         guard let owner else { return "null" }
+        followAppearance() // (before the page draws anything: its first frame is in the space's light or dark)
         // (The facts this window reads, in the order the Swift read them; the hello itself the core's: its fields, their
         // order, the card's state and words, core/page/hello.rs.)
         let state = owner.source.stateText()
@@ -1662,6 +1678,11 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             toggleFullScreen()
             return ["ok": true, "result": true]
         }
+        // A space's picture (Edit Theme Color's): the app's, not the source's.
+        if type == "backgroundChoose" || type == "backgroundAdd" {
+            guard let background = owner?.background else { return ["ok": false, "error": "Pictures aren’t available here."] }
+            return await background(type, payload)
+        }
         // A note's Allow (shared/notices.ts `safari-profile`): Safari's folder picked once, its profiles' names read.
         if type == "allowSafariProfiles" {
             SafariFolderGrant.ask(over: nil)
@@ -1681,19 +1702,32 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         if phase.contains(.cancelled) { return "cancelled" }
         return nil
     }
+    // The device a gesture over this window's UI comes from (PointerKind.swift), told to its page as each starts, with
+    // whether a trackpad that plays haptics is there and whether the system plays its interface sounds: Edit Theme
+    // Color's ticks (M2.9 step 6, ui/picker/feedback.ts). The tests read what was told (the last 20).
+    private(set) var pointersSaid: [String] = []
+    func tellPointer(_ kind: PointerKind, haptics: Bool, uiSounds: Bool) {
+        let message = PointerClassifier.message(kind, haptics: haptics, uiSounds: uiSounds)
+        pointersSaid.append(message)
+        if pointersSaid.count > 20 { pointersSaid.removeFirst(pointersSaid.count - 20) }
+        push(message)
+    }
     private(set) var wheelPhasesSaid: [String] = [] // (the tests read them; the last 20)
     func wheelPhase(_ name: String) {
         wheelPhasesSaid.append(name)
         if wheelPhasesSaid.count > 20 { wheelPhasesSaid.removeFirst(wheelPhasesSaid.count - 20) }
         push(#"{"type":"wheelPhase","phase":"\#(name)"}"#)
     }
-    // A space swipe's detent (ui/behaviors/swipe.ts, Arc's feel): the trackpad's alignment tick, at once, as Arc does it
-    // (NSHapticFeedbackManager, .alignment, .now). Only a Force Touch trackpad plays it.
+    // The trackpad's tick, at once (NSHapticFeedbackManager, .now): its alignment for a space swipe's detent
+    // (ui/behaviors/swipe.ts, Arc's feel, as Arc does it), a split's snap and Edit Theme Color's detents; a level's
+    // change for its texture (M2.9 step 6, ui/picker/feedback.ts). Only a Force Touch trackpad being touched plays it.
     private(set) var haptics = 0
-    private func alignmentTick() {
+    private(set) var hapticLevels = 0 // (of `haptics`, the level's changes: the tests read them)
+    private func hapticTick(level: Bool) {
         haptics += 1
+        if level { hapticLevels += 1 }
         guard !options.harness else { return }
-        NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+        NSHapticFeedbackManager.defaultPerformer.perform(level ? .levelChange : .alignment, performanceTime: .now)
     }
 
     // What the page said (`op`): its body's JSON as the page sent it (`json`: Margin.app's window's page, its hello's
@@ -1767,8 +1801,8 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             // The sidebar's width being dragged, or let go (ui/behaviors/resize.ts), or a split's divider
             // (ui/behaviors/split.ts): the session's (it holds the hosted window's placing, or every pane's follows).
             sidebarResizing(on, divider: divider)
-        case .haptic:
-            alignmentTick()
+        case .haptic(let level):
+            hapticTick(level: level)
         case .slide(let item, let side):
             // (A cut pane's arrow (ui/behaviors/split.ts): the session's, docs/PEEK-SPLIT.md §4b.)
             owner?.onPaneSlide?(self, item, side.rawValue)
@@ -1824,6 +1858,10 @@ final class MarginWindows {
     var theme: (Int, String?) -> String? = { _, _ in nil }
     var themes: () -> String = { "[]" }
     var apps: () -> String = { "null" } // the installed apps (ShellApps.swift), null with none read
+    // A space's picture (M2.9 step 7, ShellBackgrounds.swift): `backgroundChoose` (the file picker) or `backgroundAdd`
+    // (a dropped picture's bytes), answered `{ ok, result: { id } }`, `{ ok, result: null }` (cancelled) or `{ ok: false,
+    // error }`. None: not here (a test's windows).
+    var background: ((String, JSONObject) async -> JSONObject)?
     // A window's page area changed (MarginWindow.pageRect: hosting's own, or the hole's); its page drawn.
     var onPageRect: ((MarginWindowController, CGRect?) -> Void)?
     var onReady: ((MarginWindowController) -> Void)?
@@ -1860,7 +1898,7 @@ final class MarginWindows {
         menuTarget.handle = { [weak self] action in self?.perform(action) }
         menuTarget.enabled = { [weak self] action in action == .newWindow || self?.front != nil }
         pointer.onMove = { [weak self] at in for c in self?.controllers ?? [] { c.pointerMoved(at) } }
-        if !options.harness { startKeyRelay(); startWheelPhases() }
+        if !options.harness { startKeyRelay(); startWheelPhases(); startPointers() }
         pointer.onPress = { [weak self] at, number in for c in self?.controllers ?? [] { c.pressed(at, number: number) } }
         // Margin activated (its Dock icon, ⌘-Tab): each window in front of what it hosts (the `order` mechanism orders
         // it there again), and one still not in full screen, its toggle ignored while Margin wasn't active, asked again.
@@ -1897,6 +1935,7 @@ final class MarginWindows {
         for o in menuObservers { NotificationCenter.default.removeObserver(o) }
         if let keyRelay { NSEvent.removeMonitor(keyRelay) }
         if let wheelPhases { NSEvent.removeMonitor(wheelPhases) }
+        if let pointers { NSEvent.removeMonitor(pointers) }
         if let activeObserver { NotificationCenter.default.removeObserver(activeObserver) }
         if let quitObserver { NotificationCenter.default.removeObserver(quitObserver) }
         paneTap?.stop()
@@ -1930,6 +1969,26 @@ final class MarginWindows {
             c.wheelPhase(name)
             return event
         }
+    }
+    // The device each gesture over a window's UI comes from (PointerKind.swift), told to its page (`tellPointer`). Never
+    // consumed: the event goes on as is.
+    private var pointers: Any?
+    let gestureDevice = PointerClassifier()
+    private func startPointers() {
+        guard pointers == nil else { return }
+        pointers = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown, .pressure, .scrollWheel]) { [weak self] event in
+            guard let self, let c = self.controllers.first(where: { $0.panel === event.window }) else { return event }
+            self.pointerSaw(event: event, in: c)
+            return event
+        }
+    }
+    /// An event's facts over a window's UI: what's new told to its page.
+    func pointerSaw(_ facts: PointerFacts, in c: MarginWindowController) {
+        guard let kind = gestureDevice.see(facts) else { return }
+        c.tellPointer(kind, haptics: PointerClassifier.hapticTrackpad(), uiSounds: PointerClassifier.interfaceSounds())
+    }
+    private func pointerSaw(event: NSEvent, in c: MarginWindowController) {
+        if let facts = PointerFacts(event) { pointerSaw(facts, in: c) }
     }
     private(set) var keysRelayed = 0
     private func startKeyRelay() {

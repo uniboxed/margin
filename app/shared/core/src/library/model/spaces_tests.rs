@@ -89,31 +89,38 @@ fn ordering_spaces() {
 fn updating_a_space() {
     let s = three();
     let (null, five) = (json!(null), json!(5));
-    let next = update_space(&s, "a", Arg::Str(" New "), Arg::Str(" "), Arg::Value(&five), Arg::Undefined);
+    let next =
+        update_space(&s, "a", Arg::Str(" New "), Arg::Str(" "), Arg::Value(&five), Arg::Undefined, Arg::Undefined);
     let a = &next.spaces[0];
     assert_eq!((&*a.name, &*a.emoji, &*a.color, a.theme.as_deref()), ("New", "🅰", "red", Some("pixel")));
     assert!(Rc::ptr_eq(&next.spaces[1], &s.spaces[1]) && !Rc::ptr_eq(&next.spaces, &s.spaces));
     assert_eq!(
-        update_space(&s, "a", Arg::Undefined, Arg::Undefined, Arg::Undefined, Arg::Value(&null)).spaces[0].theme,
+        update_space(&s, "a", Arg::Undefined, Arg::Undefined, Arg::Undefined, Arg::Value(&null), Arg::Undefined).spaces
+            [0]
+        .theme,
         None
     );
     assert_eq!(
-        update_space(&s, "a", Arg::Undefined, Arg::Undefined, Arg::Undefined, Arg::Str("Pixel")).spaces[0]
+        update_space(&s, "a", Arg::Undefined, Arg::Undefined, Arg::Undefined, Arg::Str("Pixel"), Arg::Undefined).spaces
+            [0]
+        .theme
+        .as_deref(),
+        Some("pixel")
+    );
+    assert_eq!(
+        update_space(&s, "a", Arg::Undefined, Arg::Undefined, Arg::Undefined, Arg::Str(""), Arg::Undefined).spaces[0]
             .theme
             .as_deref(),
         Some("pixel")
     );
     assert_eq!(
-        update_space(&s, "a", Arg::Undefined, Arg::Undefined, Arg::Undefined, Arg::Str("")).spaces[0].theme.as_deref(),
-        Some("pixel")
-    );
-    assert_eq!(
-        update_space(&s, "b", Arg::Undefined, Arg::Undefined, Arg::Undefined, Arg::Str("liquid-glass")).spaces[1]
+        update_space(&s, "b", Arg::Undefined, Arg::Undefined, Arg::Undefined, Arg::Str("liquid-glass"), Arg::Undefined)
+            .spaces[1]
             .theme
             .as_deref(),
         Some("liquid-glass")
     );
-    let same = update_space(&s, "zz", Arg::Str("x"), Arg::Undefined, Arg::Undefined, Arg::Undefined);
+    let same = update_space(&s, "zz", Arg::Str("x"), Arg::Undefined, Arg::Undefined, Arg::Undefined, Arg::Undefined);
     assert!(!same.same(&s) && same == s, "no such space: a new list all the same (M's map)");
 }
 
@@ -184,4 +191,31 @@ fn delete_space_cascades_into_the_first_space_left() {
     let next = delete_space(&bare, "b");
     assert!(Rc::ptr_eq(&next.air_traffic, &bare.air_traffic) && Rc::ptr_eq(&next.splits, &bare.splits));
     assert!(!Rc::ptr_eq(&next.archive, &bare.archive));
+}
+
+#[test]
+fn a_space_s_background_set_cleared_or_kept() {
+    let s = three();
+    let set = |s: &LibState, b: Arg<'_>| {
+        update_space(s, "a", Arg::Undefined, Arg::Undefined, Arg::Undefined, Arg::Undefined, b)
+    };
+    let given = json!({ "colors": ["#F7C7D3"], "amount": 0.47 });
+    let next = set(&s, Arg::Value(&given));
+    let b = next.spaces[0].background.clone().expect("an object: set");
+    assert_eq!(
+        (&*b.colors[0], b.amount, b.wheel, b.intensity),
+        ("#f7c7d3", 0.45, "analogous", 0.5),
+        "as background_of reads it"
+    );
+    assert_eq!(next.spaces[0].theme, s.spaces[0].theme, "the rest as it was");
+    for keep in [json!("x"), json!(5), json!([{ "colors": ["#111111"] }]), json!(true)] {
+        assert_eq!(set(&next, Arg::Value(&keep)).spaces[0].background, next.spaces[0].background, "{keep}: kept");
+    }
+    assert_eq!(set(&next, Arg::Undefined).spaces[0].background, next.spaces[0].background, "left out: kept");
+    assert_eq!(set(&next, Arg::Str("{}")).spaces[0].background, next.spaces[0].background, "a string: kept");
+    let (null, none) = (json!(null), json!({ "colors": ["nope"] }));
+    assert_eq!(set(&next, Arg::Value(&null)).spaces[0].background, None, "null: none, the theme's own");
+    assert_eq!(set(&next, Arg::Value(&none)).spaces[0].background, None, "an object with no colour or picture: none");
+    let made = create_space(&next, "n", Arg::Str("N"), Arg::Undefined, Arg::Undefined, None).unwrap();
+    assert_eq!(made.spaces[3].background, None, "a new space: none, whatever the others have");
 }

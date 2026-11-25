@@ -10,6 +10,8 @@ import { neverSleeps, oldSleepPage, siteList } from '../shared/sleep.ts';
 import { isAwayPage } from '../shared/away.ts';
 import { normalizePattern } from '../shared/air-traffic.ts';
 import { FAVORITES_CAP, MAX_FOLDER_DEPTH, boundElsewhere, favoriteScopeOf, folderDepth } from '../shared/pinned-rules.ts';
+import { backgroundOf } from '../shared/space-background.ts';
+export { BG_APPEARANCES, BG_FITS, BG_TEXTURES, BG_WHEELS, backgroundOf } from '../shared/space-background.ts';
 import type { AirTrafficRule, ArchiveEntry, KeptTab, SplitGroup, State, TabRecord } from '../../types/margin';
 // A kept tab lost with its window: where it was (a window that comes back takes it back).
 type KeptFrom = KeptTab & { from: NonNullable<KeptTab['from']> };
@@ -60,6 +62,9 @@ const DEFAULT_SETTINGS = Object.freeze({
   favoritesScope: 'global' as 'global' | 'profile',
   // Auto-open external-domain links from Pinned tabs and Favorites in Peek (OAuth/SSO excluded).
   autoPeekPins: true,
+  // Edit Theme Color's ticks (M2.9 step 6, app/shared/ui/picker/feedback.ts): 'auto' (haptics on a trackpad that
+  // plays them in Margin.app, else a click), 'haptics', 'sound' or 'off'. Read where it's used (anything else: auto).
+  pickerFeedback: 'auto' as 'auto' | 'haptics' | 'sound' | 'off',
   // What Margin looks like (themes/index.ts), and each theme's own settings
   // ({ [themeId]: {...} }; Arcadia: sidebarWidth).
   theme: DEFAULT_THEME,
@@ -1110,6 +1115,8 @@ function recentTabOfSpace(state: State, windowId: number, spaceId: string | null
 export const THEME_ID = /^[a-z0-9][a-z0-9-]{0,40}$/;
 export const themeIdOk = (v: unknown): v is string => typeof v === 'string' && THEME_ID.test(v);
 
+// A space's background: extension/shared/space-background.ts (the UI reads it too).
+
 function createSpace(state: State, { id, name, emoji, color, theme }: { id: string; name?: string; emoji?: string; color?: string; theme?: string | null; }) {
   const space: State['spaces'][number] = {
     id,
@@ -1130,15 +1137,18 @@ function orderSpaces(state: State, ids: string[]) {
   return spaces.every((sp, i) => sp === state.spaces[i]) ? state : { ...state, spaces };
 }
 
-// Rename, re-emoji, recolor, or another theme (`theme`: an id; null: none, the profile's; left out or not an id:
-// unchanged).
-function updateSpace(state: State, spaceId: string, patch: { name?: string; emoji?: string; color?: string; theme?: string | null; }) {
+// Rename, re-emoji, recolor, another theme (`theme`: an id; null: none, the profile's; left out or not an id:
+// unchanged), or another background (`background`: an object, as backgroundOf reads it, none when it reads as null;
+// null: none, the theme's own; left out or not an object: unchanged).
+function updateSpace(state: State, spaceId: string, patch: { name?: string; emoji?: string; color?: string; theme?: string | null; background?: unknown; }) {
   const allowed: Record<string, string> = {};
   for (const key of ['name', 'emoji', 'color'] as const) {
     const value = typeof patch[key] === 'string' ? patch[key].trim() : '';
     if (value) allowed[key] = value;
   }
   const theme = themeIdOk(patch.theme) ? patch.theme : patch.theme === null ? null : undefined;
+  const b = patch.background;
+  const background = b && typeof b === 'object' && !Array.isArray(b) ? backgroundOf(b) : patch.background === null ? null : undefined;
   return {
     ...state,
     spaces: state.spaces.map((s) => {
@@ -1146,6 +1156,8 @@ function updateSpace(state: State, spaceId: string, patch: { name?: string; emoj
       const next = { ...s, ...allowed };
       if (theme === null) delete next.theme;
       else if (theme !== undefined) next.theme = theme;
+      if (background === null) delete next.background;
+      else if (background !== undefined) next.background = background;
       return next;
     }),
   };

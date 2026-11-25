@@ -24,7 +24,7 @@ const byId = (fields: SettingsField[]) => Object.fromEntries(fields.map((f) => [
 test('Settings covers today\'s form: theme, search engine, archive, sleep, never-sleep sites, gestures, frame, the ⌘T hint, shortcuts; Wake all where sleeping tabs are discarded', () => {
   const fields = settingsFields({ theme: 'arcadia', archiveAfterHours: 12, sleepAfterHours: 4, neverSleepSites: ['mail.example.com'] }, SAFARI);
   assert.deepEqual(fields.map((f) => `${f.id}:${f.kind}`), [
-    'theme:choice', 'engine:info', 'favoritesScope:choice', 'archiveAfterHours:number', 'sleepAfterHours:number', 'neverSleepSites:list',
+    'theme:choice', 'pickerFeedback:choice', 'engine:info', 'favoritesScope:choice', 'archiveAfterHours:number', 'sleepAfterHours:number', 'neverSleepSites:list',
     'blockGestures:toggle', 'swipeNavigation:toggle', 'pullToRefresh:toggle', 'frameWhenHidden:toggle', 'autoPeekPins:toggle', 'newTabHint:toggle',
     'shortcuts:group', 'sidebarShortcut:shortcut', 'nextTab:shortcut', 'prevTab:shortcut', 'nextSpace:shortcut', 'prevSpace:shortcut',
     'appShortcuts:group', 'focusAddress:shortcut', 'copyUrl:shortcut', 'togglePin:shortcut', 'reopenArchived:shortcut', 'littleArc:shortcut', 'addSplit:shortcut', 'spaceDigits:shortcut', 'itemDigits:shortcut', 'resetShortcuts:button',
@@ -137,7 +137,7 @@ test('the Settings page\'s categories (Tirth, 2026-11-20): Appearance, Tabs, Bro
   const theme = { id: 'arcadia', name: 'Arcadia', settings: { sidebarWidth: { type: 'number', label: 'Sidebar width', default: 260, min: 160, max: 500 } } };
   const all = settingsFields({ theme: 'arcadia' }, { ...DISCARDS, marginFullscreen: true, importThemes: true, userThemes: [{ id: 'mine', name: 'Mine', version: '1.0.0' }] }, { theme });
   const ids = (category: Parameters<typeof fieldsIn>[1]) => fieldsIn(all, category).map((f) => f.id);
-  assert.deepEqual(ids('appearance'), ['theme', 'themeImport', 'userTheme:mine', 'removeTheme:mine', 'themeSettings', 'themeSetting:sidebarWidth']);
+  assert.deepEqual(ids('appearance'), ['theme', 'themeImport', 'userTheme:mine', 'removeTheme:mine', 'pickerFeedback', 'themeSettings', 'themeSetting:sidebarWidth']);
   assert.deepEqual(ids('tabs'), ['favoritesScope', 'archiveAfterHours', 'sleepAfterHours', 'neverSleepSites', 'wakeAll']);
   assert.deepEqual(ids('browsing'), ['engine', 'blockGestures', 'swipeNavigation', 'pullToRefresh', 'marginFullscreenAuto', 'fullscreenOnly', 'frameWhenHidden', 'autoPeekPins', 'newTabHint']);
   assert.deepEqual(ids('keyboard'), ['sidebarShortcut', 'nextTab', 'prevTab', 'nextSpace', 'prevSpace', 'appShortcuts', 'focusAddress', 'copyUrl', 'togglePin', 'reopenArchived', 'littleArc', 'addSplit', 'spaceDigits', 'itemDigits', 'resetShortcuts'], 'its own heading goes: the page says Keyboard');
@@ -149,6 +149,23 @@ test('the Settings page\'s categories (Tirth, 2026-11-20): Appearance, Tabs, Bro
   assert.equal(categoryNamed(null), 'appearance');
 });
 
+test('Edit Theme Color\'s ticks (M2.9 step 6): haptics offered only where Margin.app plays them; a value not offered shown as Automatic; saved as chosen', () => {
+  const mac = byId(settingsFields({ pickerFeedback: 'haptics' }, { ...SAFARI, haptics: true })).pickerFeedback;
+  assert.deepEqual(mac.options.map((o) => [o.id, o.selected]), [['auto', false], ['haptics', true], ['sound', false], ['off', false]]);
+  assert.match(mac.options[0].label, /haptics on a trackpad/);
+  assert.match(mac.help, /Force Touch trackpad/);
+  assert.equal(categoryOf('pickerFeedback'), 'appearance');
+  const elsewhere = byId(settingsFields({ pickerFeedback: 'haptics' }, SAFARI)).pickerFeedback;
+  assert.deepEqual(elsewhere.options.map((o) => o.id), ['auto', 'sound', 'off'], 'no haptics where none play');
+  assert.deepEqual([elsewhere.value, elsewhere.options[0].label], ['auto', 'Automatic: a click'], 'haptics saved, none here: Automatic');
+  for (const bad of [undefined, 'loud', 3, null]) assert.equal(byId(settingsFields({ pickerFeedback: bad }, SAFARI)).pickerFeedback.value, 'auto', String(bad));
+  const saved = saveField(mac, 'off', { pickerFeedback: 'haptics' }) as Saved;
+  assert.deepEqual(saved.payload.patch, { pickerFeedback: 'off' });
+  assert.equal(saveField(elsewhere, 'haptics', {}), null, 'not offered: not saved');
+  assert.equal(saveField(mac, 'haptics', {}), null, 'the one chosen already: nothing to save');
+  assert.deepEqual((saveField(elsewhere, 'sound', {}) as Saved).payload.patch, { pickerFeedback: 'sound' });
+});
+
 test('the Settings page in the view model: its categories and the one shown; the fields of that one for a theme that draws them, all for one that doesn\'t', () => {
   const state = { ...smallState(), settings: { ...smallState().settings, theme: 'arcadia' } };
   const vm = (ui: UiState) => buildViewModel({ state, ui: { windowId: W, ...ui }, platform: { browser: 'safari', os: 'mac', features: SAFARI } });
@@ -158,7 +175,7 @@ test('the Settings page in the view model: its categories and the one shown; the
   assert.equal(page.settingsTab!.title, 'Settings');
   assert.deepEqual(page.settingsTab!.categories.map((c) => [c.id, c.selected]), [['appearance', true], ['tabs', false], ['browsing', false], ['keyboard', false]]);
   assert.equal(page.settingsTab!.current.id, 'appearance');
-  assert.deepEqual(page.settingsForm!.fields.map((f) => f.id), ['theme']);
+  assert.deepEqual(page.settingsForm!.fields.map((f) => f.id), ['theme', 'pickerFeedback']);
   const keys = vm({ launcherPage: true, settingsPage: true, settingsNav: true, settingsCategory: 'keyboard' });
   assert.equal(keys.settingsTab!.current.label, 'Keyboard');
   assert.ok(keys.settingsTab!.categories.find((c) => c.id === 'keyboard')!.isKeyboard);

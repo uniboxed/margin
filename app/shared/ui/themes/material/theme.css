@@ -150,6 +150,48 @@
 @media (prefers-contrast: more) {
   .m3 { --on-surface-variant: var(--on-surface); --outline-variant: var(--outline); --outline: var(--on-surface); --active-shadow: inset 0 0 0 1px var(--on-surface); }
 }
+/* A space's background (Margin draws it under the theme: the themes README, "A space's background"; the root has
+   m-background while one shows, m-appearance its light or dark). The drawer's surface gives way to it: the frame's
+   spread and the docked drawer are clear. The frame's colour is the background as one colour (--m-bg), for what lies
+   over the page (the drawer out as a card, a divider, the page's picture, Clear's patch) and the state layers mixed
+   from it. In the docked drawer, on the background, the content colours are Margin's palette and its surfaces (the
+   tonal containers: the search bar, the mini player, the editor; the state layers) translucent whites over it, in
+   the background's light or dark (a role mixed from another at the root comes resolved: each one named here). The
+   active indicator keeps its tonal container, its own content colour with it. Menus, the command bar and dialogs
+   keep their surfaces, drawn in the page's appearance (the background's in Margin.app's window, the
+   system's in the extension's overlay). */
+.m3[m-background] { --frame: var(--m-bg); }
+.m3[m-background] .margin-sidebar {
+  --on-surface: var(--m-fg);
+  --on-surface-variant: var(--m-fg-2);
+  --fg: var(--m-fg);
+  --ink: var(--m-fg);
+  --muted: var(--m-fg-2);
+  --icon: var(--m-fg-2);
+  --hover: var(--m-hover);
+  --surface: rgba(255, 255, 255, 0.35);
+  --sc-lowest: rgba(255, 255, 255, 0.7);
+  --sc-low: rgba(255, 255, 255, 0.3);
+  --sc: rgba(255, 255, 255, 0.4);
+  --sc-high: rgba(255, 255, 255, 0.5);
+  --sc-highest: rgba(255, 255, 255, 0.55);
+  --input: rgba(255, 255, 255, 0.7);
+  --field: rgba(255, 255, 255, 0.55);
+  --field-hover: rgba(255, 255, 255, 0.7);
+  --behind: rgba(255, 255, 255, 0.5);
+}
+.m3[m-background][m-appearance="dark"] .margin-sidebar {
+  --surface: rgba(255, 255, 255, 0.06);
+  --sc-lowest: rgba(255, 255, 255, 0.14);
+  --sc-low: rgba(255, 255, 255, 0.05);
+  --sc: rgba(255, 255, 255, 0.08);
+  --sc-high: rgba(255, 255, 255, 0.1);
+  --sc-highest: rgba(255, 255, 255, 0.12);
+  --input: rgba(0, 0, 0, 0.22);
+  --field: rgba(255, 255, 255, 0.12);
+  --field-hover: rgba(255, 255, 255, 0.17);
+  --behind: rgba(255, 255, 255, 0.1);
+}
 .m3 *, .m3 *::before, .m3 *::after { box-sizing: border-box; }
 .m3 img { -webkit-user-drag: none; }
 .m3 :is(input, textarea) { -webkit-user-select: text; user-select: text; cursor: auto; }
@@ -178,6 +220,7 @@
   border-radius: var(--card-radius);
 }
 .page { box-shadow: 0 0 0 100vmax var(--frame); }
+.m3[m-background] .page { box-shadow: none; }
 .m3:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .page { box-shadow: none; }
 /* The card's hairline and very soft shadow, above the sidebar so it also falls on its edge. */
 .card-edge { pointer-events: none; box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.14), 0 1px 3px rgba(0, 0, 0, 0.08); }
@@ -733,6 +776,78 @@
 .tab-menu .menu-item:focus { background: var(--accent); color: var(--on-accent); }
 .menu-separator { height: 1px; margin: 5px 10px; background: var(--panel-line); }
 
+/* ---- Edit Theme Color (Margin's <m-picker>, the "background-picker" part) -------- */
+
+/* A Material 3 dialog on the high tonal surface, 28 px corners, elevation 3. Margin places the slot and works the
+   field and the sliders; the rest are buttons. The key colour is seen through the field's knobs and the swatches. */
+.picker {
+  width: 332px;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  overscroll-behavior: none;
+  box-sizing: border-box;
+  padding: 20px;
+  border-radius: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--sc-high);
+  color: var(--on-surface);
+  font: 14px/1.3 var(--font);
+  box-shadow: 0 4px 8px 3px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.3);
+  -webkit-font-smoothing: antialiased;
+}
+.picker-slot:focus { outline: none; }
+/* (Over the theme's button reset, `.m3 button`: each button's own rules are under `.picker`.) */
+.picker button { box-sizing: border-box; margin: 0; font: inherit; cursor: pointer; }
+.picker svg { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.picker-title { margin: 0; font-size: 22px; line-height: 28px; font-weight: 400; }
+.picker-label { font-weight: 500; color: var(--on-surface-variant); }
+/* The appearance: a segmented button, the one chosen in the secondary container with a check. */
+.picker-segmented { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.picker .picker-segment { display: flex; align-items: center; justify-content: center; gap: 6px; height: 40px; margin-left: -1px; border: 1px solid var(--outline); background: transparent; font-weight: 500; }
+.picker .picker-segment:first-child { margin-left: 0; border-radius: 20px 0 0 20px; }
+.picker .picker-segment:last-child { border-radius: 0 20px 20px 0; }
+.picker .picker-segment[aria-checked="true"] { background: var(--secondary-container); color: var(--on-secondary-container); }
+.picker .picker-segment:not([aria-checked="true"]) .picker-check { display: none; }
+/* The field: the hidden wheel shown (Margin's own colours), its knobs at elevation 1. */
+.picker-field { height: 176px; border-radius: 16px; color: var(--on-surface-variant); }
+.picker-field [m-knob] { box-shadow: 0 2px 6px 2px rgba(0, 0, 0, 0.15), 0 1px 2px rgba(0, 0, 0, 0.3); }
+.picker-row { display: flex; align-items: center; gap: 8px; }
+.picker-row .picker-label { margin-right: auto; }
+.picker .picker-assist { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 14px 0 10px; border-radius: 8px; border: 1px solid var(--outline-variant); background: transparent; font-weight: 500; }
+.picker .picker-assist svg { color: var(--primary); }
+.picker .picker-tonal { display: grid; place-items: center; width: 40px; height: 40px; border: 0; border-radius: 20px; background: var(--secondary-container); color: var(--on-secondary-container); }
+.picker .picker-tonal:disabled { opacity: 0.38; cursor: default; }
+/* The presets: round swatches, the one shown ringed in the primary colour. */
+.picker-presets { display: flex; align-items: center; gap: 3px; }
+.picker .picker-page { display: grid; place-items: center; width: 24px; height: 32px; flex: none; border: 0; border-radius: 16px; background: transparent; color: var(--on-surface-variant); }
+.picker .picker-swatch { display: grid; place-items: center; flex: 1 1 0; min-width: 0; height: 26px; border: 0; border-radius: 13px; background: var(--swatch); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08); }
+.picker .picker-swatch[aria-checked="true"] { box-shadow: 0 0 0 2px var(--sc-high), 0 0 0 4px var(--primary); }
+.picker .picker-swatch .picker-check { width: 14px; height: 14px; color: #fff; stroke-width: 2.6; }
+.picker .picker-swatch:not([aria-checked="true"]) .picker-check { display: none; }
+/* The picture (Margin.app): an assist chip to choose one, the fit as a segmented button; a file dropped on the dialog
+   outlined in the primary colour. */
+.picker-note { color: var(--on-surface-variant); font-size: 12px; }
+.picker.picker-dropping { outline: 2px dashed var(--primary); outline-offset: -6px; }
+/* The sliders: M3's, a thick track, the active part in the primary colour, a bar of a handle with a gap each side. */
+.picker-slider { height: 44px; color: var(--primary); }
+.picker-slider [m-track] { height: 16px; border-radius: 8px; background: var(--secondary-container); }
+.picker-slider [m-fill] { border-radius: 8px 2px 2px 8px; background: var(--primary); }
+.picker-slider [m-thumb] { width: 4px; height: 44px; border-radius: 2px; background: var(--primary); box-shadow: 0 0 0 6px var(--sc-high); }
+/* The textures: filter chips, the one showing in the secondary container with a check. */
+.picker-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.picker .picker-chip { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--outline-variant); background: transparent; color: var(--on-surface-variant); font-weight: 500; }
+.picker .picker-chip[aria-pressed="true"] { padding-left: 8px; border-color: transparent; background: var(--secondary-container); color: var(--on-secondary-container); }
+.picker .picker-chip:not([aria-pressed="true"]) .picker-check { display: none; }
+.picker-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 4px; }
+.picker .picker-text, .picker .picker-filled { height: 40px; padding: 0 12px; border: 0; border-radius: 20px; background: transparent; color: var(--primary); font-weight: 500; }
+.picker .picker-filled { padding: 0 24px; background: var(--primary); color: var(--on-primary); }
+.picker button:focus-visible, .picker [m-knob="key"]:focus-visible, .picker m-picker-slider:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
+@media (prefers-reduced-motion: no-preference) {
+  .picker .picker-segment, .picker .picker-chip, .picker .picker-swatch, .picker .picker-tonal { transition: background-color 150ms var(--ease), box-shadow 150ms var(--ease); }
+}
+
 /* ---- Notices and prompts (Margin's <m-notice> and <m-prompt>) --------------- */
 
 /* A notice near the left edge (e.g. "Margin works in full screen"), above
@@ -1104,6 +1219,9 @@
 /* ---- The navigation drawer ------------------------------------------------- */
 .margin-sidebar { background: var(--frame); }
 .m3:is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .margin-sidebar { border-radius: 16px; background: var(--sc-low); box-shadow: var(--elev-3); }
+/* A space's background: the docked drawer on it, clear; out over the page, a card of its one colour (--frame). */
+.m3[m-background] .margin-sidebar { background: transparent; }
+.m3[m-background]:is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .margin-sidebar { background: var(--frame); }
 .margin-sidebar :is(.keep-open, .bar-button, .icon, .new-tab-row .plus) { color: var(--on-surface-variant); }
 .margin-sidebar :is(.keep-open, .bar-button, .icon, .new-tab-row .plus) :is(.line-icon, .fill-icon) { opacity: 1; }
 .margin-sidebar .line-icon { stroke-width: 1.7; }

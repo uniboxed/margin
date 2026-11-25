@@ -1,8 +1,9 @@
 // The pages tools/glass-shots/run.sh shows: a built-in theme drawn by the real runtime over the theme tests' mock
 // state (tests/theme/harness.ts), each a file that stands on its own (the harness, the package and its start in it).
 //   node pages.mts <out dir> [theme id]
-// One file per state and space: <state>-<space>-<light|dark>.html. A stand-in for a hosted window's page shows
-// through the page slot (which is a hole), so the glass has something beside it.
+// One file per state and space: <state>-<space>-<light|dark>.html (`picker`: Edit Theme Color open, M2.9 step 5).
+// A stand-in for a hosted window's page shows through the page slot (which is a hole), so the glass has something
+// beside it.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,7 +20,7 @@ const pkg = inline(JSON.stringify(themeForPage(fileURLToPath(new URL(`../../app/
 const MOCK = (dark: boolean) => {
   const ink = dark ? 'rgba(255,255,255,' : 'rgba(0,0,0,';
   const bar = (w: string) => `<div style="width:${w};height:10px;border-radius:5px;background:${ink}.09);margin:9px 0"></div>`;
-  return `<div style="position:fixed;inset:0;z-index:-1;background:${dark ? '#1d1d20' : '#fff'};font:16px/1.5 -apple-system,system-ui,sans-serif;color:${ink}.8);overflow:hidden">
+  return `<div id="mock" style="position:fixed;inset:0;z-index:-1;background:${dark ? '#1d1d20' : '#fff'};font:16px/1.5 -apple-system,system-ui,sans-serif;color:${ink}.8);overflow:hidden">
   <div style="position:absolute;left:calc(280px + (100% - 280px - 720px) / 2);top:0;width:720px;padding-top:26px">
     <div style="display:flex;align-items:center;gap:22px;font-size:13px;color:${ink}.5);padding-bottom:18px;border-bottom:1px solid ${ink}.08)"><b style="font-size:17px;color:${ink}.85)">The Lantern</b><span>Culture</span><span>Technology</span><span>Letters</span><span style="margin-left:auto">Subscribe</span></div>
     <div style="margin-top:54px;font-size:13px;font-weight:600;color:${dark ? '#ff9f6b' : '#c2410c'}">ESSAY</div>
@@ -45,6 +46,9 @@ const STATES: Record<string, { start: string, then?: string, page?: boolean, spa
   loading: { start: `T.mountRuntime({ container: 'document', platform: { browser: 'safari', os: 'mac' }, mode: 'fullscreen', hosted: true });`, then: `T.rtPageState('loading', 'Safari');` },
   // … and before its first data (the root's m-starting): the theme's skeleton, the loader's card with no words.
   starting: { start: `T.rtStartEmpty('empty');`, page: false, space: false },
+  // Edit Theme Color open over a background on the space (M2.9 step 5: its glass). The stand-in page starts where the
+  // page area does (the layout reported), so Margin's background layer shows under the sidebar.
+  picker: { start: MOUNT, then: `T.rtChange('setBackground', T.rtVmFull().space, { colors: ['#f7c7d3', '#cfe8f7'], intensity: 0.6, texture: 'grain', amount: 0.25 }); ${later} const left = T.rtLayouts().at(-1)?.left; if (left) document.getElementById('mock').style.left = left + 'px'; T.rtDispatch('space.editBackground', T.rtVmFull().space);` },
 };
 
 for (const [state, { start, then = '', page = true, space: spaces = true }] of Object.entries(STATES)) {

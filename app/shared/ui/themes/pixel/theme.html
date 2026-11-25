@@ -309,6 +309,76 @@
 
   <m-launcher class="launcher-slot"></m-launcher>
   <m-menu class="menu-slot"></m-menu>
+  <m-picker class="picker-slot"></m-picker>
+
+  <!-- Edit Theme Color (Margin's <m-picker>, the "background-picker" part): the board's dialog. Appearance tiles, the
+       colours' field as a grid of cells, pixel −/+ and the rule, square swatches, ten blocks for the intensity, a
+       stepper for the texture and blocks for its amount, then two pixel buttons. Every word is Margin's. -->
+  <template m-part="background-picker">
+    <div class="picker" role="dialog" m-attr:aria-label="{{picker.title}}" m-class:picker-dropping="{{picker.picture.dropping}}">
+      <div class="picker-head">
+        <h2 class="picker-title pf">{{picker.title}}</h2>
+        <div class="picker-looks" role="radiogroup" m-attr:aria-label="{{picker.appearanceLabel}}">
+          <m-for each="picker.appearances" as="a" key="id">
+            <button class="picker-look pf" role="radio" m-action="picker.run" m-arg="{{a.id}}" m-attr:aria-checked="{{a.selected}}" m-attr:title="{{a.label}}">{{a.short}}</button>
+          </m-for>
+        </div>
+      </div>
+      <m-picker-field class="picker-field" m-variant="cells"></m-picker-field>
+      <div class="picker-row">
+        <button class="picker-px" m-action="picker.run" m-arg="{{picker.colors.remove.id}}" m-attr:disabled="{{picker.colors.remove.disabled}}" m-attr:aria-label="{{picker.colors.remove.label}}"><svg viewBox="0 0 6 6" shape-rendering="crispEdges" aria-hidden="true"><path d="M0 2h6v2H0z"></path></svg></button>
+        <button class="picker-px" m-action="picker.run" m-arg="{{picker.colors.add.id}}" m-attr:disabled="{{picker.colors.add.disabled}}" m-attr:aria-label="{{picker.colors.add.label}}"><svg viewBox="0 0 6 6" shape-rendering="crispEdges" aria-hidden="true"><path d="M2 0h2v2h2v2H4v2H2V4H0V2h2z"></path></svg></button>
+        <span class="picker-count pf">{{picker.colors.countLabel}}</span>
+        <m-if test="picker.colors.hasRule">
+          <button class="picker-rule pf" m-action="picker.run" m-arg="{{picker.colors.rule.id}}" m-attr:title="{{picker.colors.rule.label}}">{{picker.colors.rule.text}}</button>
+        </m-if>
+      </div>
+      <div class="picker-presets" role="radiogroup" m-attr:aria-label="{{picker.presetsLabel}}">
+        <button class="picker-px" m-action="picker.run" m-arg="{{picker.prev.id}}" m-attr:aria-label="{{picker.prev.label}}"><svg viewBox="0 0 6 6" shape-rendering="crispEdges" aria-hidden="true"><path d="M3 0h1v6H3V5H2V4H1V2h1V1h1z"></path></svg></button>
+        <m-for each="picker.presets" as="p" key="id">
+          <button class="picker-swatch" role="radio" m-action="picker.run" m-arg="{{p.id}}" m-style:--swatch="{{p.color}}" m-attr:aria-checked="{{p.selected}}" m-attr:aria-label="{{p.label}}"></button>
+        </m-for>
+        <button class="picker-px" m-action="picker.run" m-arg="{{picker.next.id}}" m-attr:aria-label="{{picker.next.label}}"><svg viewBox="0 0 6 6" shape-rendering="crispEdges" aria-hidden="true"><path d="M2 0h1v1h1v1h1v2H4v1H3v1H2z"></path></svg></button>
+      </div>
+      <m-if test="picker.picture">
+        <div class="picker-row" role="group" m-attr:aria-label="{{picker.picture.label}}">
+          <button class="picker-all picker-pic pf" m-action="picker.run" m-arg="{{picker.picture.choose.id}}">{{picker.picture.choose.label}}</button>
+          <m-if test="picker.picture.has">
+            <button class="picker-px" m-action="picker.run" m-arg="{{picker.picture.remove.id}}" m-attr:aria-label="{{picker.picture.remove.label}}" m-attr:title="{{picker.picture.remove.label}}"><svg viewBox="0 0 6 6" shape-rendering="crispEdges" aria-hidden="true"><path d="M0 0h2v1h2V0h2v2H5v2h1v2H4V5H2v1H0V4h1V2H0z"></path></svg></button>
+          </m-if>
+        </div>
+        <m-if test="picker.picture.has">
+          <div class="picker-amounts picker-fits" role="radiogroup" m-attr:aria-label="{{picker.picture.fitLabel}}">
+            <m-for each="picker.picture.fits" as="f" key="id">
+              <button class="picker-amount pf" role="radio" m-action="picker.run" m-arg="{{f.id}}" m-attr:aria-checked="{{f.selected}}">{{f.label}}</button>
+            </m-for>
+          </div>
+        </m-if>
+        <m-if test="picker.picture.hasNote"><span class="picker-note pf" role="status">{{picker.picture.note}}</span></m-if>
+      </m-if>
+      <div class="picker-label pf">{{picker.intensity.label}}</div>
+      <div class="picker-blocks">
+        <m-for each="picker.intensity.steps" as="v" key="id">
+          <button class="picker-block" m-action="picker.run" m-arg="{{v.id}}" m-class:on="{{v.on}}" m-attr:aria-label="{{v.label}}"></button>
+        </m-for>
+      </div>
+      <div class="picker-label pf">{{picker.texture.label}}</div>
+      <div class="picker-stepper">
+        <button class="picker-px" m-action="picker.run" m-arg="{{picker.texture.prev.id}}" m-attr:aria-label="{{picker.texture.prev.label}}"><svg viewBox="0 0 6 6" shape-rendering="crispEdges" aria-hidden="true"><path d="M3 0h1v6H3V5H2V4H1V2h1V1h1z"></path></svg></button>
+        <span class="picker-texture pf">{{picker.texture.name}}</span>
+        <button class="picker-px" m-action="picker.run" m-arg="{{picker.texture.next.id}}" m-attr:aria-label="{{picker.texture.next.label}}"><svg viewBox="0 0 6 6" shape-rendering="crispEdges" aria-hidden="true"><path d="M2 0h1v1h1v1h1v2H4v1H3v1H2z"></path></svg></button>
+      </div>
+      <div class="picker-amounts" role="radiogroup" m-attr:aria-label="{{picker.texture.amountLabel}}">
+        <m-for each="picker.amounts" as="m" key="id">
+          <button class="picker-amount pf" role="radio" m-action="picker.run" m-arg="{{m.id}}" m-attr:aria-checked="{{m.selected}}">{{m.label}}</button>
+        </m-for>
+      </div>
+      <div class="picker-foot">
+        <button class="picker-all pf" m-action="picker.run" m-arg="{{picker.all.id}}">{{picker.all.label}}</button>
+        <button class="picker-done pf" m-action="picker.run" m-arg="{{picker.done.id}}">{{picker.done.label}}</button>
+      </div>
+    </div>
+  </template>
   <m-editor class="editor-slot"></m-editor>
   <m-notice class="notice-slot"></m-notice>
   <m-prompt class="prompt-slot"></m-prompt>

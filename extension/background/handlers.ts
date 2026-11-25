@@ -772,8 +772,8 @@ export const handlers = {
     });
     return { spaceId: id };
   },
-  async renameSpace({ spaceId, name, emoji, color, theme }: { spaceId: string, name?: string, emoji?: string, color?: string, theme?: string | null }) {
-    await mutate((s) => M.updateSpace(s, spaceId, { name, emoji, color, ...(theme !== undefined ? { theme } : {}) }));
+  async renameSpace({ spaceId, name, emoji, color, theme, background }: { spaceId: string, name?: string, emoji?: string, color?: string, theme?: string | null, background?: unknown }) {
+    await mutate((s) => M.updateSpace(s, spaceId, { name, emoji, color, ...(theme !== undefined ? { theme } : {}), ...(background !== undefined ? { background } : {}) }));
   },
   async setSpaceTheme({ spaceId, theme }: { spaceId: string, theme: string | null }) {
     if (theme !== null && !M.themeIdOk(theme)) throw new Error('not a theme id');

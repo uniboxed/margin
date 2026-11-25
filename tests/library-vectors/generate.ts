@@ -47,6 +47,34 @@ function target(r: Rand, browserish = true): any {
   return r.pick([null, 'web', { kind: 'other' }, {}]);
 }
 
+// A space's background (M2.9) is drawn from a stream of its own (`bg`, not the sequence's `r`), so `r`'s draws are
+// the ones they were. The recorded cases still changed when it came (2026-11-24): a rename that now sets a background
+// is a change, merged into the library, which can move its keys, and `spaceIds`' shuffle draws by their order; the
+// rest of that run of `r` differs from there. Right and wrong shapes: colours of each kind, every field's values and
+// others, numbers to round, clamp and -0, pictures with good and bad ids, values that aren't objects.
+const bg = random(0xb6c0de);
+const BG_HEXES = ['#f7c7d3', '#CFE8F7', '#000000', '#ffffff', '#abc', 'f7c7d3', '#12345g', '', 5, null];
+const BG_ID = 'ab'.repeat(32);
+export function background(b: Rand = bg): unknown {
+  if (b.chance(0.1)) return b.pick([null, 5, 'x', [], [{ colors: ['#111111'] }], true, {}]);
+  const o: Record<string, unknown> = {};
+  if (b.chance(0.9)) o.colors = b.chance(0.1) ? b.pick(['#ffffff', 5, null, {}]) : Array.from({ length: b.int(5) }, () => b.pick(BG_HEXES));
+  if (b.chance(0.8)) o.wheel = b.pick(['complementary', 'analogous', 'triadic', 5, null]);
+  if (b.chance(0.8)) o.intensity = b.pick([0, 1, 0.5, 0.373, 0.375, 0.005, 0.015, 0.1 + 0.2, 0.555, 1.5, -0.2, -0, 'x', null]);
+  if (b.chance(0.8)) o.texture = b.pick(['grain', 'sand', 'denim', 'tweed', 'dots', 'grid', 'none', 'GRAIN', 5]);
+  if (b.chance(0.8)) o.amount = b.pick([0, 0.45, 0.47, 0.475, 0.025, 0.125, 1, 2, -1, 'x', null]);
+  if (b.chance(0.8)) o.appearance = b.pick(['auto', 'light', 'dark', 'Dark', null, 5]);
+  if (b.chance(0.3)) {
+    o.image = b.pick([
+      { id: BG_ID, fit: 'cover', focus: [0.5, 0.5] }, { id: BG_ID.toUpperCase() }, { id: BG_ID.slice(1) },
+      { id: '0'.repeat(64), fit: 'stretch', focus: [2, -1] }, { id: 'f'.repeat(64), fit: 'tile', focus: [0.12345, 'x'] },
+      { id: BG_ID, fit: 'contain', focus: [1, 2, 3] }, null, 'x', {},
+    ]);
+  }
+  if (b.chance(0.1)) o.extra = 1;
+  return o;
+}
+
 /** A random library: collection → id → value, the shapes the app stores (and some it would refuse). */
 export function library(r: Rand) {
   const spaceIds = Array.from({ length: 1 + r.int(4) }, (_, i) => r.pick(['personal', 'work', `sp-${letters(r, 6)}`, `safari:Personal:${i}`, `chrome:Default:s${i}`]));
@@ -58,6 +86,7 @@ export function library(r: Rand) {
       ...(r.chance(0.8) ? { browser: r.pick(BROWSERS) } : {}),
       ...(r.chance(0.7) ? { profile: r.chance(0.3) ? null : r.pick(PROFILES) } : {}),
       ...(r.chance(0.3) ? { theme: r.pick(THEMES) } : {}),
+      ...(bg.chance(0.35) ? { background: background() } : {}),
     };
   }
   const ids = Object.keys(spaces);
@@ -231,6 +260,9 @@ export function payload(r: Rand, values: any, action: string): unknown {
     if (r.chance(0.15)) continue;
     out[f] = r.chance(0.1) ? r.pick(WRONG) : field(r, values, f);
   }
+  // A rename's background (not in FIELDS: drawn from `bg`, see background()). The throw survey has none to find: no
+  // value of it throws in either copy.
+  if (action === 'renameSpace' && bg.chance(0.6)) out.background = bg.chance(0.85) ? background() : bg.pick(WRONG);
   return out;
 }
 

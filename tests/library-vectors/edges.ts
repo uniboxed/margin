@@ -117,5 +117,32 @@ export function edges(): Edge[] {
         { perform: 'createSpace', payload: { name: 5 } }, { perform: 'createSpace', payload: { name: { a: 1 } } },
       ],
     },
+    {
+      about: 'a space\'s background (M2.9): read from each kind of stored value (cut to three colours, lowercased, rounded at the halves, clamped, ids checked); a rename sets, keeps and clears it; a theme keeps it; a new space has none',
+      values: { spaces: {
+        a: space('A', 0, { background: { colors: ['#F7C7D3', '#cfe8f7', 'x', '#111111', '#222222'], wheel: 'complementary', intensity: 0.555, texture: 'tweed', amount: 0.475, appearance: 'dark', image: { id: 'ab'.repeat(32), fit: 'tile', focus: [0.0005, 1.0005] }, extra: true } }),
+        b: space('B', 1, { background: { colors: [], image: { id: 'AB'.repeat(32) } } }),
+        c: space('C', 2, { background: { image: { id: '0'.repeat(64), focus: [0.5] } } }),
+        d: space('D', 3, { background: [{ colors: ['#111111'] }] }),
+      } },
+      steps: [
+        { snapshot: true }, { normal: true },
+        { perform: 'renameSpace', payload: { spaceId: 'b', background: { colors: ['#ABCDEF'], intensity: 0.005, amount: 0.025 } } },
+        { perform: 'renameSpace', payload: { spaceId: 'b', background: 'x' } },
+        { perform: 'renameSpace', payload: { spaceId: 'b', background: { colors: ['#abcdef'], intensity: -0.2, amount: 0.125, texture: 'none', wheel: 'Analogous', appearance: 'Dark' } } },
+        { perform: 'renameSpace', payload: { spaceId: 'a', background: null } },
+        { perform: 'renameSpace', payload: { spaceId: 'c', background: {} } },
+        { perform: 'setSpaceTheme', payload: { spaceId: 'b', theme: 'pixel' } },
+        { perform: 'createSpace', payload: { name: 'N', background: { colors: ['#111111'] } } },
+        { snapshot: true }, { normal: true },
+      ],
+    },
+    {
+      // The core's one decided difference (DECISIONS.md 2026-11-23 piece 2, vectors.rs KNOWN), here so it has an address
+      // no re-recording moves: it was a generated step until the backgrounds' re-recording (2026-11-24) drew others.
+      about: 'cuts: a favorite renamed through an emoji to the name it has (library.ts rewrites it, the half dropped; the core sees no change)',
+      values: { spaces: two, favorites: { 'fav-1': { scope: 'global', url: 'https://a.com/', title: 'A', customTitle: 'a'.repeat(39), pos: 0, target: web() } } },
+      steps: [{ perform: 'renameFavorite', payload: { favoriteId: 'fav-1', title: `${'a'.repeat(39)}😀tail` } }],
+    },
   ];
 }

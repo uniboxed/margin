@@ -155,6 +155,8 @@ export function menuItems(target: MenuTarget | null | undefined, { state, space,
       if (!sp) return [];
       item('Edit Space…', 'space.edit', sp.id);
       item('Rename Space', 'space.rename', sp.id);
+      // Its background (M2.9: ui/behaviors/background-picker.ts), as Arc names it.
+      item('Edit Theme Color…', 'space.editBackground', sp.id);
       // Its theme (ui/space-theme.ts), the one it's drawn with checked: where each space's is drawn.
       if (spaceThemesOn(features)) {
         separator();

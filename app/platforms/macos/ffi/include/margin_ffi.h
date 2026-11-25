@@ -425,6 +425,9 @@ uint8_t *margin_library_rules(MarginLibrary *library, const uint8_t *name, size_
 // The theme of the space a Margin window shows (its own space's, else the first's), typed (a draw's): its length (over
 // `cap`: ask again), -1: none (the profile's).
 ptrdiff_t margin_library_space_theme(const MarginLibrary *library, int64_t window, uint8_t *buf, size_t cap);
+// The appearance of the space a Margin window shows (its background's, the space found as its theme is): 1 light,
+// 2 dark, 0 none (the system's).
+int32_t margin_library_space_appearance(const MarginLibrary *library, int64_t window);
 
 // A browser's profiles (data/profiles.rs, ffi profiles.rs; the hosted file's shape): one object per browser over its
 // browser.json in `root` (NULL: in memory), one JSON call (`now` passed in, the log lines in each answer), and the
@@ -456,6 +459,17 @@ uint8_t *margin_link_state_value(MarginLink *link, uint64_t conn, const uint8_t 
 // else the answer as `send`'s (its `do` list, `refused`).
 uint8_t *margin_link_drawn(MarginLink *link, uint64_t conn, const uint8_t *epoch, size_t epoch_len, const int64_t *hosted, size_t hosted_len, const int64_t *windows, size_t windows_len, double now, double wall, size_t *out_len);
 uint8_t *margin_link_protocol(const uint8_t *request, size_t len, size_t *out_len);
+
+// Pictures as space backgrounds (data/backgrounds.rs, ffi backgrounds.rs; M2.9 step 7): one object over its folder.
+// A picture the platform made (JPEG or PNG) kept by its bytes (`add`: { id, type, width, height, bytes } or
+// { refused }); one JSON call for the rest (constants, path by id, ids, prune keeping the ids spaces name). Freed with
+// margin_buffer_free.
+typedef struct MarginBackgrounds MarginBackgrounds;
+
+MarginBackgrounds *margin_backgrounds_new(const uint8_t *root, size_t len);
+void margin_backgrounds_free(MarginBackgrounds *store);
+uint8_t *margin_backgrounds_add(MarginBackgrounds *store, const uint8_t *bytes, size_t len, size_t *out_len);
+uint8_t *margin_backgrounds_call(MarginBackgrounds *store, const uint8_t *request, size_t len, size_t *out_len);
 
 // The themes a person imported, the built-ins' packages, what the picker chose (data/themes.rs, ffi themes.rs). The
 // store: one object over its folder, one JSON call (list, has, save, remove), the package a window draws typed (its
@@ -720,7 +734,7 @@ ptrdiff_t margin_page_text(const MarginPage *page, uint8_t which, uint8_t *buf, 
 // What the page said (core/page/said.rs): an op and its body's JSON (a layout's: its report) → its route (`kind`: 0
 // nothing, 1 ready, 2 layout (flag taken, flag2 panes changed), 3 the card's rect (has_rect, rect), 4 hits (flag all;
 // `rects` of them), 5 chrome (has_rect: controls; drags as rects), 6 focus (flag; flag2: one wanted the keys before), 7 counts (a, b), 8 the pointer's
-// wants, 9 full screen, 10 resizing (flag on, flag2 divider), 11 haptic, 12 slide (a side; text item), 13 ask (text
+// wants, 9 full screen, 10 resizing (flag on, flag2 divider), 11 haptic (flag: a level's change), 12 slide (a side; text item), 13 ask (text
 // `{ name, arg }`), 14 log (flag warn; text)); `text` freed with margin_buffer_free. `said_rects`: the rects it read.
 // The hello: its JSON text (freed with margin_buffer_free).
 typedef struct MarginSaid { uint8_t kind; bool flag; bool flag2; bool has_rect; int64_t a; int64_t b; MarginRect rect; size_t rects; uint8_t *text; size_t text_len; } MarginSaid;

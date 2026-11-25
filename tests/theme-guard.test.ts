@@ -36,8 +36,8 @@ const find = (tree: Walked | null, pred: (n: CleanElement) => boolean) => {
 };
 const reasons = (r: { removed: Removed[] }) => r.removed.map((x) => `${x.kind} ${x.name}: ${x.reason}`);
 
-test('guarded parts: menus, notices, prompts, the space editor, Settings, the preview card, toast and the page card\'s loader', () => {
-  assert.deepEqual([...GUARDED_PARTS].sort(), ['menu', 'menu-item', 'notice', 'page-loader', 'preview', 'prompt', 'settings', 'space-editor', 'toast']);
+test('guarded parts: menus, notices, prompts, the space editor, Settings, the preview card, toast, the page card\'s loader and Edit Theme Color', () => {
+  assert.deepEqual([...GUARDED_PARTS].sort(), ['background-picker', 'menu', 'menu-item', 'notice', 'page-loader', 'preview', 'prompt', 'settings', 'space-editor', 'toast']);
   assert.ok(TEXT_ATTRS.includes('title') && TEXT_ATTRS.includes('aria-label') && TEXT_ATTRS.includes('alt') && TEXT_ATTRS.includes('placeholder'));
 });
 
@@ -51,6 +51,21 @@ test('the page card\'s loader: the `page-loader` part and its `<m-page-loader>` 
   assert.ok(html.includes('m-page-loader') && html.includes('page-loader') && html.includes('{{pageLoader.label}}'), 'the slot, the part and Margin\'s label kept');
   assert.ok(!html.includes('Sign in again') && !html.includes('Your session expired'), 'what the theme wrote there is gone');
   assert.ok(reasons(r).some((x) => x.includes('Sign in again')) || r.removed.length >= 2, `reported: ${reasons(r).join(' | ')}`);
+});
+
+test('Edit Theme Color: the `background-picker` part and its `<m-picker>` slot are a theme\'s to give; only Margin\'s bound words show in it, Margin\'s controls kept', () => {
+  const r = sanitizeTemplate(root(`
+    <m-picker></m-picker>
+    <template m-part="background-picker">
+      <div class="p" aria-label="Pick a vibe"><h2>{{picker.title}}</h2><p>Pick a vibe</p>
+        <m-picker-field m-variant="cells"></m-picker-field><m-picker-slider m-value="amount" m-variant="bar"></m-picker-slider><m-picker-dial></m-picker-dial>
+        <m-for each="picker.textures" as="t"><button m-action="picker.run" m-arg="{{t.id}}">{{t.label}}</button></m-for>
+      </div>
+    </template>`));
+  const html = JSON.stringify(r.tree);
+  for (const kept of ['"m-picker"', 'background-picker', '{{picker.title}}', '{{t.label}}', 'm-picker-field', '"cells"', 'm-picker-slider', '"amount"', '"bar"', 'm-picker-dial', 'picker.run']) assert.ok(html.includes(kept), `kept: ${kept}`);
+  assert.ok(!html.includes('Pick a vibe'), 'what the theme wrote there is gone (its text, its label)');
+  assert.equal(r.removed.length, 2, reasons(r).join(' | '));
 });
 
 test('guardText keeps the bindings and the space between them, nothing the theme wrote', () => {

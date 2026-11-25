@@ -2323,11 +2323,81 @@ On the real screen, with the kit's TestPane (a full-screen member), Calculator (
 8. **Kept.** Quit Margin and open it again: the sidebar as wide as it was left (`defaults read com.unibox.margin MarginWindowThemeSettings`).
 9. **Fast and odd drags.** A fast flick; a drag past the theme's minimum and maximum; ⌘-Tab away mid-drag; a drag while an app is still opening (its loading bar): the sidebar never sticks, Margin's window always ends right below the hosted one (the app takes clicks again), one placing at most per drag.
 
+## Edit Theme Color's ticks (M2.9 step 6, 2026-11-25)
+
+Margin.app, Arcadia's panel, then Material's picker; the built-in trackpad, then the Magic Trackpad; a mouse when one
+is at hand. The logic was tested off screen; nothing here was felt or heard. Note each step's answer, as these settle
+the spike's open question (which evidence tap-to-click gives).
+
+1. **A physical click.** Settings › Appearance › Edit Theme Color's ticks: Automatic. Open the panel and press each
+   appearance button with a real click: a haptic tick each time, no sound.
+2. **Tap-to-click.** The same with a tap (System Settings › Trackpad › Tap to click on): a haptic, or a click sound?
+   (Either is acceptable; note which.)
+3. **Dragging.** Drag the slider across its tenths, and the dial's ring round its steps: a tick at each, never a
+   buzz-pile, nothing doubled. A fast drag: fewer ticks, not late ones.
+4. **The dial's texture.** Click the dial: a different, firmer haptic (the level's change). Scroll on the dial with two
+   fingers: ticks as its amount steps.
+5. **A mouse** (when one is at hand), or the Magic Mouse: the same gestures give a soft click (or, on a Magic Mouse,
+   possibly silence: note it). Haptics only: nothing heard with the mouse.
+6. **Settings.** Sound: clicks on the trackpad too. Off: nothing. With System Settings › Sound › "Play user interface
+   sound effects" off: no clicks in Automatic or Sound, the haptics still in Automatic.
+7. **Material.** Its segmented buttons, chips and sliders tick the same.
+
+## A space's picture (M2.9 step 7, 2026-11-25)
+
+Margin.app, Arcadia first, then Material, Neubrutalism and Pixel (their own pickers); a hosted app shown, and the
+launcher. Off screen: the store, the scheme and the page's requests (`tools/app-tests/run.sh unit|e2e`), the panel and
+the drawing in WebKit and Chromium (`tests/theme/picker-picture.test.ts`, `background-picture.test.ts`); none of this
+was seen on the real screen. Stop at the first thing that's wrong and note which step.
+
+1. **Choose one.** Edit Theme Color… › Add Picture…: the file picker comes over Margin's full-screen window (not on
+   another Space), titled Choose a Picture; only pictures can be picked. Pick a large photo from Photos or an iPhone
+   HEIC: within a second or two the space's background is the photo, filling the window; the panel shows its
+   thumbnail, Fill chosen. The log says `backgrounds: a picture kept (chosen)`, no name or path.
+2. **The keys after.** With the file picker closed, the panel still open: Escape puts back what the space had (and
+   closes it); open it again, ⌘Z steps back. If a hosted app was shown, it has the keys again once the panel closes.
+3. **Text reads.** Sidebar text over a dark photo and a light one, in light and dark appearance: always readable (the
+   photo washed only as much as it needs); a busy photo still recognisable. The window resized (leave full screen if
+   needed): still right.
+4. **Fit, Tile, Fill.** Each drawn so (Fit: the whole photo, the underlay round it; Tile: at its own size from the
+   top left). Cancel the file picker: nothing changes. A GIF or a PDF: not pickable, or refused with words under the
+   row.
+5. **Drop.** Drag a photo from Finder onto the open panel: dashed outline while it's over, then the photo. A text file
+   dropped: "That isn't a picture.", nothing else changes; Margin's window never opens the file itself.
+6. **Remove, and after.** Remove Picture: the colours as they were (or the theme's own ground, with none). Quit and
+   open Margin: a picture still used is kept; one no space uses is gone from
+   `~/Library/Application Support/Margin/data/app/backgrounds/` (the log: `… picture file(s) no space names removed`).
+7. **Themes.** In Material, Neubrutalism and Pixel: their own Add Picture…, the fit and Remove Picture, the refusal's
+   words in their own look; in Safari's sidebar (the extension): no picture controls at all, a space with a picture
+   drawn with its colours only.
+
+## A theme's own Edit Theme Color (M2.9 step 5b, 2026-11-24)
+
+Margin.app (or Safari's sidebar), Material, then Neubrutalism, then Pixel; light and dark where the theme has both. Off screen they were drawn by the real runtime in WebKit (`tools/glass-shots/run.sh <dir> material`, the `picker` pictures); none of this was seen on the real screen.
+
+1. **Its own.** Right-click a space's chip › Edit Theme Color…: the theme's picker (Material's dialog, Neubrutalism's card, Pixel's dialog), not Margin's glass panel; where the menu was, inside the window; no `overlay system appearance … on` in the log.
+2. **Everything works.** Drag in the field (Pixel: the knobs jump from cell to cell); −/+; the rule; a preset; the pages; the intensity (Material and Neubrutalism: the bar, dragged; Pixel: a block); a texture (Material: a chip; Neubrutalism: a tile; Pixel: the arrows); an amount (Material: its slider; the others: a block); the background changes as you go, each change saved once.
+3. **Keys.** Tab moves through the picker and stays in it; Escape puts back what the space had; ⌘Z a step back; arrows on the field's key and on a slider.
+4. **Closing.** Done; a click outside; switching spaces.
+5. **Looks.** Material in its space's colours, light and dark; Neubrutalism light in both modes; Pixel dark in both. Labels readable everywhere, nothing clipped at the window's edge, the picker scrolls if the window is short.
+
+## Edit Theme Color's glass (M2.9 step 5, 2026-11-24)
+
+Margin.app on macOS 26 or later, Arcadia. Off screen it was measured (`DECISIONS.md` "M2.9 step 5 spike") and photographed (`tools/glass-shots/run.sh <dir> arcadia`, the `picker` pictures); none of this was seen on the real screen. Stop at the first thing that's wrong and note which step.
+
+1. **The glass.** Right-click the space's chip › Edit Theme Color…. The log says `overlay system appearance (system materials: a theme's, or Edit Theme Color's glass): on`. The panel is real glass: the sidebar and the space's colours blur through it, with a bright rim, and no shadow ring round it. Done: the log says `… off`, and nothing else in the window changed while it was open or as it closed.
+2. **Light and dark.** Give the space a dark appearance (☾) while the Mac is light, and the other way round: the glass follows the space (smoky with ☾, milky with ☀), every label readable on it.
+3. **Over the page.** With a Safari tab hosted beside it, open the picker so that it lies over the page area: what shows through is what's under it in Margin's window.
+4. **Settings.** Open Margin's Settings tab, then the picker from the space's menu: the panel is solid (no `on` in the log). Open the picker first and then Settings (⌘,): the picker closes, the log says `off`. With Neubrutalism in Dark Mode and Settings shown, the number fields keep their ⌃⌄ steppers throughout.
+5. **Accessibility.** Increase Contrast on: the panel is solid. Reduce Transparency on: the glass turns solid by macOS's own doing; text readable.
+6. **Liquid Glass.** The picker there is glass too (its switch is on throughout: no `on`/`off` lines as it opens and closes).
+7. **Off.** `defaults write com.unibox.margin MarginSystemAppearance -bool NO`, restart: the picker is solid. `defaults delete` it again.
+
 ## Liquid Glass (2026-11-17)
 
 Margin.app on macOS 26 or later, Settings › Theme › Liquid Glass. Nothing of this was seen on the real screen; off screen it's `tools/glass-shots/run.sh` (pictures and each glass layer's box). Stop at the first thing that's wrong and note which step.
 
-1. **The switch.** Choose Liquid Glass. The log says `overlay system appearance (a theme's system materials): on` once. The sidebar is real glass: it bends and blurs the ground's colors at its edges, with a bright rim. Choose Arcadia: the log says `… off`, Arcadia looks exactly as before. Back to Liquid Glass: glass again, at once, with no flash of the plain look.
+1. **The switch.** Choose Liquid Glass. The log says `overlay system appearance (system materials: a theme's, or Edit Theme Color's glass): on` once. The sidebar is real glass: it bends and blurs the ground's colors at its edges, with a bright rim. Choose Arcadia: the log says `… off`, Arcadia looks exactly as before. Back to Liquid Glass: glass again, at once, with no flash of the plain look.
 2. **Other themes untouched.** With Neubrutalism in Dark Mode, open Settings: the number fields' steppers and the page's scroll bars are light, as before this change (they'd be dark if the switch leaked).
 3. **The shapes.** The panel is 8 pt in from the window's left, top and bottom edges and stops 8 pt short of the page card; its glass is exactly that box (no glass under the gap or past the window's edge). The address pill, the back/forward/reload capsule and the space switcher are quieter glass inside it; the tab in front is a lit capsule; no other row has glass.
 4. **Light and dark, each space.** Switch spaces: the ground's colors change, the glass picks them up. Labels readable over every space color in both modes (dark text on the milky light glass, white on the smoky dark one), secondary text too.

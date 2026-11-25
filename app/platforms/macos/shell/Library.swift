@@ -190,6 +190,10 @@ final class Library {
     // shows the first), nil: none of its own (the profile's). Typed, a draw's (the core's `space_theme`).
     func spaceTheme(window: Int) -> String? { core.spaceTheme(window: window) }
 
+    // The appearance of the space a Margin window shows (M2.9 step 3: its background's light or dark, the space found
+    // as its theme is), nil: the system's (no background, or one that follows the system). The core's `space_appearance`.
+    func spaceAppearance(window: Int) -> SpaceAppearance? { core.spaceAppearance(window: window) }
+
     private func sortedValues(_ collection: String, by order: ((id: String, value: JSONObject), (id: String, value: JSONObject)) -> Bool) -> [(id: String, value: JSONObject)] {
         liveValues(collection).compactMap { id, v -> (id: String, value: JSONObject)? in (v as? JSONObject).map { (id, $0) } }.sorted(by: order)
     }
@@ -342,4 +346,18 @@ final class LibraryCore {
         guard len >= 0, len <= buf.count else { return nil } // (a theme's id is at most 41 bytes)
         return String(decoding: buf.prefix(len), as: UTF8.self)
     }
+
+    func spaceAppearance(window: Int) -> SpaceAppearance? {
+        switch margin_library_space_appearance(core, Int64(window)) {
+        case 1: return .light
+        case 2: return .dark
+        default: return nil
+        }
+    }
+}
+
+// A space's own light or dark (its background's: M2.9 step 3); a space without one follows the system. What a view
+// draws in for it is AppKit's (MarginWindowController).
+enum SpaceAppearance: Equatable {
+    case light, dark
 }

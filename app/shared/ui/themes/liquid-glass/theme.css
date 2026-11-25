@@ -116,6 +116,15 @@
 }
 :is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) { --page-left: var(--frame); }
 :is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab)::before { display: none; }
+/* A space's background (Margin draws it under the theme: the themes README, "A space's background"; the root has
+   m-background while one shows, m-appearance its light or dark). It is the ground: the card's spread gives way, the
+   lights go (the glass bends the background instead), and the ground's colour (the page card's hairline, a divider,
+   the card while an item opens) is the background as one colour (--m-bg). Every colour here is light-dark(), so the
+   whole theme takes the background's light or dark (its panels and labels too). */
+.lg[m-background] { --ground: var(--m-bg); }
+.lg[m-background][m-appearance="light"] { color-scheme: light; }
+.lg[m-background][m-appearance="dark"] { color-scheme: dark; }
+.lg[m-background]::before { display: none; }
 /* "With the sidebar hidden, keep the frame around pages" off: the page fills
    the window, square, no hairline; nothing drawn around it. */
 .lg:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) { --frame: 0px; --edge: 0px; --page-radius: 0px; }
@@ -257,6 +266,7 @@ img.fav.app { width: 20px; height: 20px; margin: -2px; border-radius: 0; object-
 /* ---- The page: a card with the panel's corner and a hairline. The page
    itself goes inside the hairline. Its spread shadow is the ground. --------- */
 .page { flex: 1; min-width: 0; position: relative; z-index: 0; border: var(--edge) solid var(--page-edge); border-radius: var(--page-radius); box-shadow: 0 0 0 100vmax var(--ground); }
+.lg[m-background] .page { box-shadow: none; }
 
 /* The page card while an item opens (Margin.app: the root's m-page-state):
    opaque, exactly over the page's place inside the card's hairline, whatever

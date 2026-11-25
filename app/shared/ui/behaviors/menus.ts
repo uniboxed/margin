@@ -116,7 +116,8 @@ export function installMenus(rt: Rt) {
         return true;
       }
       close();
-      return rt.dispatch(item.action as string, item.arg, 'menu'); // (not a separator: it has an action)
+      // (Where the menu was: what opens from it opens there, Edit Theme Color's panel.)
+      return rt.dispatch(item.action as string, item.arg, 'menu', { point: { x: menu.x, y: menu.y } }); // (not a separator: it has an action)
     },
     afterRender(vm: ViewModel) {
       if (rt.ui.menu && !vm.menu) { rt.setUi({ menu: null }); return; } // its row is gone

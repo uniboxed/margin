@@ -7,6 +7,7 @@
 // view model from it with ui/view-model.ts, passing the last model so that
 // what didn't change is shared. Runs in Node and in pages.
 import { buildViewModel } from '../../app/shared/ui/view-model.ts';
+import { backgroundOf } from '../../extension/state/model.ts';
 import type { UiState, ViewModel, ViewModelInput } from '../../app/shared/ui/view-model.ts';
 import type { Owner } from '../../extension/shared/owner.ts';
 import type { ArchiveEntry, Favicon, Folder, Pin, Settings, Space, TabRecord } from '../../types/margin';
@@ -266,6 +267,16 @@ export class MockState {
   }
   switchSpace(id: string) {
     this.state = { ...this.state, activeSpaceByWindow: { ...this.state.activeSpaceByWindow, [WINDOW]: id } };
+    return this.build();
+  }
+  /** A space's background (M2.9), as the model reads it (null: none, the theme's own). */
+  setBackground(id: string, background: Record<string, unknown> | null) {
+    const read = background ? backgroundOf(background) : null;
+    this.state = { ...this.state, spaces: this.state.spaces.map((s) => {
+      if (s.id !== id) return s;
+      const { background: _old, ...rest } = s as Space & { background?: unknown };
+      return read ? { ...rest, background: read } : rest;
+    }) };
     return this.build();
   }
   setSidebar(sidebar: UiState['sidebar']) { this.ui = { ...this.ui, sidebar }; return this.build(); }

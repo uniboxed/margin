@@ -176,6 +176,18 @@ impl Library {
         })
     }
 
+    /// The appearance of the space a Margin window shows (M2.9 step 3: its web view's, MarginWindowController), the
+    /// space as [`Self::space_theme`] finds it: its background's when that's `light` or `dark`; None (the system's): no
+    /// spaces, no background, or one that follows the system (`auto`).
+    pub fn space_appearance(&self, window: i64) -> Option<&'static str> {
+        self.cached(|c| {
+            let s = &c.state;
+            let id = s.windows.get(&window.to_string());
+            let space = s.spaces.iter().find(|sp| Some(&sp.id) == id).or_else(|| s.spaces.first())?;
+            space.background.as_ref().map(|b| b.appearance).filter(|a| *a == "light" || *a == "dark")
+        })
+    }
+
     /// The import ran (L:126 `isImported`: `imports.done` is there).
     pub fn is_imported(&self) -> bool {
         self.cached(|c| c.imported)

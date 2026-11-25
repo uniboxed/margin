@@ -323,7 +323,7 @@ const T = {
 
 // `host`, `mock`, `target` and `warnings` are set by mountRuntime and `theme` by loadBuiltin or loadPackage,
 // before any step that reads them (null until then); `runtime` is null again once unmounted.
-const rt: { runtime: Runtime | null, host: MockHost, mock: MockState, el: HTMLElement | null, target: Target, theme: ThemeResult, warnings?: string[], resizing: [boolean, number | null][], notes: string[], paletteOpens: [string, boolean][] } = { runtime: null, host: null!, mock: null!, el: null, target: null!, theme: null!, resizing: [], notes: [], paletteOpens: [] };
+const rt: { runtime: Runtime | null, host: MockHost, mock: MockState, el: HTMLElement | null, target: Target, theme: ThemeResult, warnings?: string[], resizing: [boolean, number | null][], notes: string[], paletteOpens: [string, boolean][], materials: boolean[] } = { runtime: null, host: null!, mock: null!, el: null, target: null!, theme: null!, resizing: [], notes: [], paletteOpens: [], materials: [] };
 
 const starting = () => rt.runtime!.view.rootElement()?.hasAttribute('m-starting') ?? false;
 function startEmpty(pageState: 'empty' | 'loading' | 'shown', name: string | null) {
@@ -360,7 +360,7 @@ const withRuntime = Object.assign(T, {
 
   // `replies`: what the host answers a request of each type with (values);
   // `settings`: the stored settings changed first.
-  mountRuntime({ width = 1440, height = 900, container = 'shadow', closed = true, platform = { browser: 'chrome', os: 'linux', marginFullscreen: true }, replies = {}, settings = null, mode = 'fullscreen', inNewTab = false, focusLauncherAtMount = undefined, warnings = null, staysOnScreen = false, appWindow = false, hosted = false }: {
+  mountRuntime({ width = 1440, height = 900, container = 'shadow', closed = true, platform = { browser: 'chrome', os: 'linux', marginFullscreen: true }, replies = {}, settings = null, mode = 'fullscreen', inNewTab = false, focusLauncherAtMount = undefined, warnings = null, staysOnScreen = false, appWindow = false, hosted = false, materials = null, pictures = false }: {
     width?: number, height?: number, container?: 'shadow' | 'document', closed?: boolean,
     platform?: { browser: string, os: string, marginFullscreen?: boolean }, replies?: Record<string, unknown>,
     settings?: Record<string, unknown> | null, mode?: 'fullscreen' | 'windowed' | 'inpage', inNewTab?: boolean,
@@ -372,6 +372,14 @@ const withRuntime = Object.assign(T, {
     // launcher, the theme's root marked as the app's page marks it (app/shared/host/overlay.ts followOutside), the
     // page card `shown` (ui/host-app.ts pageState: `rtPageState` changes it).
     hosted?: boolean,
+    // A host with the system's materials (Margin.app's, for Edit Theme Color's glass): it answers each ask after this
+    // many ms (no glass here: Playwright's browsers don't know the property); the asks, in order: `rtMaterials`.
+    materials?: number | null,
+    // A host that serves spaces' pictures (Margin.app's, M2.9 step 7): every id is the page's `__testPicture` (a data:
+    // URL the test made); without, none is served (a browser's extension). It answers `backgroundChoose` and
+    // `backgroundAdd` with the page's `__pictureReply` (a value, or a function of the type and payload: a promise
+    // waits), and says why one failed with `__pictureFailure` (taken once, as Margin.app's `takeFailure`).
+    pictures?: boolean,
   } = {}) {
     (T as typeof T & { unmountRuntime(): void }).unmountRuntime(); // (added with these steps)
     const mock = new MockState();
@@ -386,6 +394,22 @@ const withRuntime = Object.assign(T, {
     // (Margin.app's log lines from the page, `note`: as said, in order.)
     rt.notes = [];
     Object.assign(host, { note: (text: string) => { rt.notes.push(text); } });
+    // (The device Margin.app says the gestures come from, M2.9 step 6: the page's `__feedbackDevice`, none unless set.)
+    Object.defineProperty(host, 'feedbackDevice', { get: () => (window as unknown as { __feedbackDevice?: unknown }).__feedbackDevice ?? null, configurable: true });
+    if (pictures) {
+      const w = window as unknown as { __testPicture?: string, __pictureReply?: unknown, __pictureFailure?: { type: string, error: string } | null };
+      const send = host.send;
+      Object.assign(host, {
+        pictureUrl: () => w.__testPicture ?? null,
+        async send(type: string, payload: any = {}) {
+          if (type !== 'backgroundChoose' && type !== 'backgroundAdd') return send(type, payload);
+          host.sent.push({ type, payload });
+          const r = w.__pictureReply;
+          return typeof r === 'function' ? r(type, payload) : r;
+        },
+        takeFailure() { const f = w.__pictureFailure ?? null; w.__pictureFailure = null; return f; },
+      });
+    }
     let target: Target;
     let el: HTMLElement | null = null;
     if (container === 'document') {
@@ -401,8 +425,12 @@ const withRuntime = Object.assign(T, {
     // (A theme that loaded: the tests check that first.)
     // (What the UI opens as the palette's key does, said as the overlay's host hears it: ui/behaviors/empty.ts.)
     rt.paletteOpens = [];
-    const runtime = createRuntime({ host, theme: rt.theme as LoadedTheme, container: target, onWarn: (m) => rt.warnings!.push(m),
-      openPalette: (options, by) => { rt.paletteOpens.push([by, options.newTab]); rt.runtime!.openPalette(options); } });
+    rt.materials = [];
+    const runtime = createRuntime({
+      host, theme: rt.theme as LoadedTheme, container: target, onWarn: (m) => rt.warnings!.push(m),
+      openPalette: (options, by) => { rt.paletteOpens.push([by, options.newTab]); rt.runtime!.openPalette(options); },
+      ...(materials == null ? {} : { materials: (on: boolean) => { rt.materials.push(on); return new Promise<void>((done) => setTimeout(done, materials)); } }),
+    });
     Object.assign(rt, { runtime, host, mock, el, target });
     if (hosted) runtime.view.rootElement()?.toggleAttribute('m-sidebar-fixed', sidebarFixed(host as { pageOutside?: boolean }));
     w.__rt = rt;
@@ -487,6 +515,23 @@ const withRuntime = Object.assign(T, {
   rtLayouts() { return rt.host.layouts.map((l) => ({ ...l.insets, radius: l.radius, width: l.container.width, height: l.container.height, windowId: l.windowId, mode: l.mode })); },
   // Margin.app's own window: what's drawn around <m-page>'s rounded corners (ui/host-app.ts cornerFill), and each corner's inner radius.
   rtCornerFill() { return cornerFill(rt.target.querySelector('m-page')); },
+  // A space's background (M2.9): what Margin's layer has drawn, the page's corners as Margin.app is told them (with
+  // its ground), the variables as the theme's root computes them.
+  rtBackground() { return rt.runtime!.backgroundDrawn(); },
+  rtCornerFillGround() { return cornerFill(rt.target.querySelector('m-page'), { ground: rt.runtime!.backgroundAt }); },
+  rtBackgroundAt(x: number, y: number) { return rt.runtime!.backgroundAt(x, y); },
+  // Edit Theme Color (M2.9 step 4): its parts (boxes and states: its content is closed), whether it's open and where.
+  rtPicker() { return rt.runtime!.pickerParts(); },
+  rtPickerTicks() { return rt.runtime!.pickerTicks(); }, // (how many of its ticks played a haptic or a click)
+  // … and what it asked of a host with the system's materials (mountRuntime's `materials`): true on, false off, in order.
+  rtMaterials() { return [...rt.materials]; },
+  rtPanel() { return { open: rt.runtime!.panelOpen, rect: rt.runtime!.panelRect() }; },
+  rtVars(names: string[]) {
+    const root = rt.runtime!.view.rootElement();
+    if (!root) return null;
+    const cs = getComputedStyle(root);
+    return Object.fromEntries(names.map((n) => [n, cs.getPropertyValue(n).trim()]));
+  },
   // Margin.app's own window: the page card's state as the app says it (ui/host-app.ts pageState), drawn again.
   // `empty`: nothing hosted (the launcher); `loading`: an item opening (`name`; `bundleId`: the app whose icon the
   // loader shows, looked up in the state's `apps`: rtApps); `shown`: a hosted window shows through.

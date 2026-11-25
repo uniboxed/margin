@@ -74,7 +74,8 @@ final class PageCore {
     // An op's route (`Said`): what the window's mechanism does with it; the Page's own (its layout, the theme's hits,
     // the pointer's wants) kept in the core already.
     enum Said {
-        case none, ready, want, fullScreen, haptic
+        case none, ready, want, fullScreen
+        case haptic(level: Bool)
         case layout(taken: Bool, panesChanged: Bool)
         case peekRect(CGRect?)
         case hits([CGRect], all: Bool)
@@ -116,7 +117,7 @@ final class PageCore {
         case 8: return .want
         case 9: return .fullScreen
         case 10: return .resizing(on: out.flag, divider: out.flag2)
-        case 11: return .haptic
+        case 11: return .haptic(level: out.flag)
         case 12: return .slide(item: text ?? "", side: [PaneSide.left, .right, .up, .down][Int(out.a) & 3])
         case 13:
             let o = text.flatMap { (try? JSONSerialization.jsonObject(with: Data($0.utf8))) as? JSONObject } ?? [:]
