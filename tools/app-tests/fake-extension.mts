@@ -95,7 +95,7 @@ import { fromStorage } from '../../extension/shared/stored.ts';
 // What the host and the app send, and a copy's storage: parsed JSON, read field by field where it's used.
 type Msg = Record<string, any>;
 type Bounds = { left: number, top: number, width: number, height: number };
-type Win = Bounds & { windowId: number, state: string, focused?: boolean, focusedAt?: number, activeTabId?: number };
+type Win = Bounds & { windowId: number, state: string, focused?: boolean, focusedAt?: number };
 type DataSet = { format: number, items: Record<string, Record<string, unknown>> };
 // A copy on the link (connect).
 type Sock = {

@@ -10587,3 +10587,34 @@ failing first (the old code in a copy of the tree):
 - **Diagnostics added** (development, quiet unless slow): a reply carries the copy's own time on it (`took`); the
   link's line for a request over 100 ms says when it was acked and that time.
 
+
+## A tab switch's bookkeeping out of the next switch's way (2026-11-25)
+
+- **Why:** after the switches were paced one at a time per window, the rest of a fast run's lag was the copy's own
+  work per switch (acks read 60-340 ms late). Counted against the real background (a fake Safari, 20-30 tabs), each
+  switch the app made cost, besides its two Safari calls for the show: two reads of the owner record, a write of the
+  whole open-tab record (10 KB there; 15 KB in Tirth's main profile), which every open page takes (the hidden ones as
+  they're shown, on the next switch's way) and Margin.app takes as a delta and as a data-set change it saves to disk
+  and acks (its own storage write again); a window-list report (`windows.getAll` and `tabs.query`), only because the
+  tab in front changed; and, 300 ms later, the page check for each tab shown (`tabs.get`, `permissions.contains`, two
+  scripts run in the page), right in the next switches. Twelve shows 110 ms apart: 13 writes, 48 page-check calls.
+- **The rules** (the extension's own: extension/background.ts, background/link.ts):
+  - The activation of a tab Margin.app's show brought to the front (hosted.ts `raisedByShow`, marked just before its
+    `tabs.update`, as Safari's activation can come first) is in the state at once and written within
+    `ACTIVATION_WRITE_MS` (1 s), or with any write before then (store.ts `within`, as hidden tabs' titles are): the
+    app follows its own record of what it shows, and the background reads the state, not storage. Every other switch
+    is written at once, as before: one made in the browser (its tab bar, a link), whose sidebar follows the stored
+    state (the gate's e2e `one highlight only` caught the first version, which made those wait too: 1.05 s), Margin's
+    own (focusTab, whose asker follows the stored state to see it land), and one in a window that showed a tab away.
+    The same twelve shows: 3 writes. A background stopped within that second loses that switch's last-used time (the
+    next start matches which tab is in front from Safari's own).
+  - The windows report has no tab in front (`activeTabId`): no app read it (margin-core's binder parsed it into a
+    field nothing used, removed). So a tab shown sends no report and asks Safari for nothing, and the report's
+    once-a-second look asks only for the windows (docs/PROTOCOL.md "windows").
+  - A tab's copy of Margin is checked once its window has settled: the tab in front 300 ms after the last switch
+    there, not every tab a run passes (twelve shows: 4 calls, not 48).
+- **Tests, failing first:** quiet-switches.test.ts (a run of the app's shows written once it's over, with the state
+  right at once and the last tab stored in front; a switch made in the browser and Margin's own written at once
+  (the browser's failing on the first version); a write before the wait takes
+  the switch along; the page check the settled tab's only, failing alone with the old timer put back); link.test.ts
+  (a tab shown sends no windows report and asks Safari for no tabs).

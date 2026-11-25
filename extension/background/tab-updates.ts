@@ -7,9 +7,11 @@
 // chat counting messages, a page's timer) is written at most every
 // TITLE_EVERY_MS: its row shows them that much later. The state has each
 // change at once, in order with every other (store.ts mutate `within`), and
-// any write before then (a switch, a tab opened or closed, the tab in front
-// changing) takes them along. The tab in front, one not known yet, and a
-// hidden tab's new address are written at once.
+// any write before then (Margin's own switch, a tab opened or closed, the tab
+// in front's own change) takes them along; a switch Margin.app's show made
+// waits too (background.ts ACTIVATION_WRITE_MS), and the first due takes
+// both. The tab in front, one not known yet, and a hidden tab's new address
+// are written at once.
 import type { State } from '../../types/margin';
 import * as M from '../state/model.ts';
 import { mutate, now } from './store.ts';

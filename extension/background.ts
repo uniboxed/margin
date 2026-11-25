@@ -230,6 +230,21 @@ function stayInSpace(windowId: number, spaceId: string, closedId: number) {
     return M.setActiveSpace(s, windowId, spaceId);
   });
 }
+// A tab Margin.app's show brought to the front (background/hosted.ts `raisedByShow`: a run of them is a held key, a
+// fast run of picks): which tab is in front and when each was last used (and the space that follows it) are in the
+// state at once, and written within ACTIVATION_WRITE_MS, or sooner with any write before then (store.ts mutate
+// `within`). Every write reaches every open page (the hidden ones take it as they're shown, on the next switch's way:
+// background/tab-updates.ts) and Margin.app (the delta, and the data set's change it saves to disk and acks), so such
+// a run is a write or two, not one each; the app follows its own record of what it shows, not this one. Any other
+// switch is written at once: one made in the browser (its tab bar, a link), whose sidebar follows the stored state,
+// Margin's own (focusTab: its asker follows the stored state to see it land, shared/switching.ts), and one in a window
+// that showed a tab away (its stand-in goes: background/away.ts).
+const ACTIVATION_WRITE_MS = 1000;
+// A tab's copy of Margin checked (tabs.ts ensureCurrent) once its window's switches have settled: the tab in front
+// SETTLED_MS after the last one, not each tab a run of quick switches passes (each check asks Safari four times and
+// runs a script in the page, in the next switches' way).
+const SETTLED_MS = 300;
+const settling: Map<number, Timer> = new Map(); // windowId → the check of the tab it shows, due once it's settled
 // `left`: the tab it was shown in place of, as the activations came (not the
 // state's `active`, which lags a run of quick switches); null if not known.
 // Every activation waits for the state, so they go on in the order they came.
@@ -249,6 +264,7 @@ const activated = owned(async ({ tabId, windowId }: { tabId: number, windowId: n
   navActivated(windowId, tabId);
   const closed = closedShown.get(windowId);
   closedShown.delete(windowId);
+  const shown = hostedTabs.raisedByShow(tabId);
   mutate((s) => {
     const next = M.activateTab(s, tabId, windowId, now());
     if (closed && Date.now() - closed.at < STAY_MS && next.tabSpace[tabId] !== closed.spaceId) {
@@ -261,15 +277,19 @@ const activated = owned(async ({ tabId, windowId }: { tabId: number, windowId: n
       lastFollow.set(windowId, { from: V.activeSpaceId(next, windowId), at: Date.now(), prevTabId: prev?.id ?? null });
     }
     return followed;
-  });
+  }, { within: (s) => (shown && s.awayByWindow?.[windowId] == null ? ACTIVATION_WRITE_MS : null) });
   // A tab of its own in front: the window's stand-in goes.
   away.shownIn(windowId, tabId, wasAway);
   if (!api.alarms) {
     archiveStaleThrottled();
     sleepIdleThrottled();
   }
-  // After the switch has landed (not in its way).
-  setTimeout(() => isOwner() && ensureCurrent(tabId), 300);
+  // After the window's switches have settled (not in their way).
+  clearTimeout(settling.get(windowId));
+  settling.set(windowId, setTimeout(() => {
+    settling.delete(windowId);
+    if (isOwner()) ensureCurrent(tabId);
+  }, SETTLED_MS));
 });
 // The tab in front of each window as the activations come, in order (the tab
 // each one leaves): a tab closed or moved away is no longer in front.

@@ -426,7 +426,8 @@ async function flush() {
 // `within(state)`: ms the write may wait (null: none), from the state before
 // the change. The change is in the state at once, in order with every other,
 // and written within that time, or sooner with any write made before then
-// (background/tab-updates.ts: a hidden tab's title and address, gathered).
+// (background/tab-updates.ts: a hidden tab's title and address, gathered;
+// background.ts: a tab switch Margin.app's show made).
 // Every page hears each write (storage.onChanged), so fewer are cheaper.
 export function mutate(fn: (state: State) => State | void | Promise<State | void>, { within }: { within?: (state: State) => number | null } = {}): Promise<State> {
   const run = queue.then(async () => {
