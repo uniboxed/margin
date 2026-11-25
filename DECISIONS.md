@@ -10741,3 +10741,20 @@ through accessibility), so no access to Arc's data was given.
 - **Tests**: tests/theme/arcadia.test.ts (folding: Arc's closing curve; unfolding: its opening curve, the rows out from
   under, clipped, not faded; "+": Arc's items and order, its keys, its place over the button, the × , Easel doing
   nothing and keeping the menu, New Tab running and closing it, no New Split where the host has none).
+
+## M2.10 step 8, part 2: a tab closed, its ×, Arc's dark (`feat/arc-sidebar`, 2026-11-25)
+
+- **Measured in Arc** (a throwaway tab, example.com, opened, hovered and closed; nothing of Tirth's closed): the × is
+  26 pt, centred on the row, 4.5 pt in from its fill's right; under the pointer the title ends before it with an
+  ellipsis (177 pt for 199). Closing, the row stays where it was and fades while the rows after it slide up over it.
+- **Arcadia**: Arc's × and the title ending before it (it faded under the button before). For a theme with Arc's rows
+  (`--m-rows-feel: arc`), Margin's row motion keeps a copy of a closed tab's or pin's row where it was, inert and
+  under the rest, and fades it on Arc's closing curve as the rows after it close up (a folder's rows folding: none:
+  in Arc they're covered, not faded); ui/row-motion.ts `copyLeaving`, `ghosts`.
+- **Dark**: four of Tirth's test spaces are dark in Arc: a row's hover there lightens by white at 10% (every channel).
+  Arcadia's dark hover and address pill: white at 10% (a 7% mix before), over a dark space background too.
+- **Tried and left**: favorites (Arc adds them only by a drag to the top; the drop landed in the pinned list instead,
+  removed again with Remove Pin, Tirth's list as it was: checked), the media player (it needs something playing), an
+  iconless space's title row (it would mean making and deleting a space in Tirth's Arc).
+- **Tests**: tests/theme/arcadia.test.ts (the ×; dark's hover; a closed tab's copy where it was, inert, under the rest,
+  fading on Arc's curve, gone after; none for a folder folding).

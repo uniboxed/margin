@@ -88,8 +88,10 @@
     --muted: rgba(255, 255, 255, 0.55);
     --ink: #fff;
     --icon: rgba(255, 255, 255, 0.65);
-    --hover: color-mix(in srgb, #fff 7%, var(--frame));
-    --pill: var(--field);
+    /* Arc's dark (measured in a dark space: a row's hover lightens by white at 10%, every channel); the address pill as
+       its hover, as in light. */
+    --hover: rgba(255, 255, 255, 0.1);
+    --pill: rgba(255, 255, 255, 0.1);
     --rule: var(--border);
     --bar-rule: var(--border);
     --press: rgba(255, 255, 255, 0.12);
@@ -137,7 +139,8 @@
 }
 .arcadia[m-background]:not([m-appearance="dark"]) .margin-sidebar { --hover: rgba(0, 0, 0, 0.05); --pill: rgba(0, 0, 0, 0.05); }
 .arcadia[m-background][m-appearance="dark"] .margin-sidebar {
-  --pill: rgba(255, 255, 255, 0.09);
+  --hover: rgba(255, 255, 255, 0.1);
+  --pill: rgba(255, 255, 255, 0.1);
   --field: rgba(255, 255, 255, 0.09);
   --field-hover: rgba(255, 255, 255, 0.13);
   --behind: rgba(255, 255, 255, 0.1);
@@ -576,24 +579,23 @@
 .margin-sidebar .audible-icon { flex: none; width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; opacity: 0.55; }
 .margin-sidebar .audible-icon .speaker { fill: currentColor; stroke: none; }
 .margin-sidebar :is(.tab, .pin):hover .audible-icon { visibility: hidden; }
-/* × on a row: shown on hover, at the right, over the title's end (the title
-   fading out under it: Arc's fills are translucent, so the button has none
-   of its own), so showing it lays nothing out. */
+/* × on a row: shown on hover, at the right. Arc's (measured): 26 pt, 4.5 pt
+   in from the fill's right, the title ending before it (an ellipsis there). */
 .margin-sidebar .icon {
   position: absolute;
-  top: 4px;
-  right: 4px;
+  top: 5px;
+  right: 4.5px;
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   padding: 0;
   border-radius: 7px;
   visibility: hidden;
 }
 .margin-sidebar .icon .close-icon { width: 11px; height: 11px; stroke-width: 1.6; }
 .margin-sidebar :is(.tab, .pin):hover .icon { visibility: visible; }
-.margin-sidebar :is(.tab, .pin):hover:has(> .icon) .title { -webkit-mask-image: linear-gradient(to left, transparent 24px, #000 36px); mask-image: linear-gradient(to left, transparent 24px, #000 36px); }
+.margin-sidebar :is(.tab, .pin):hover:has(> .icon) { padding-right: 31px; }
 .margin-sidebar .icon:hover { background-image: linear-gradient(var(--press), var(--press)); }
 
 /* Drag and drop (Margin's m-drag and m-drop): a copy of the row follows the

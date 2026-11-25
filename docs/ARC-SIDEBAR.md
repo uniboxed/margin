@@ -159,6 +159,18 @@ Measured by dragging the sidebar from 500 to 260 pt with 10 spaces, reading ever
 The pages of a space switch: the outgoing one moves out as the incoming one comes in, both at the same speed; the space's
 colour changes with it (M2.9 draws that).
 
+## Measured in the second session (2026-11-25)
+
+- **A folder**: unfolding, the rows after it on `cubic-bezier(0.5, 0.8, 0.75, 1)` over 210 ms (0.31 pt RMS), its rows
+  out from under it; folding, `cubic-bezier(0.25, 0, 0.25, 1)` over 250 ms (0.27 pt).
+- **"+"**: a dark popover (≈ `#140f00` over the beige space), 210 pt wide, 8 pt in, 40 pt rows, its groups apart:
+  New Space, New Folder · New Easel ⌃⇧E, New Boost · New Split ⌃⇧=, New Tab ⌘T; the row under the pointer olive
+  (`#625729`); an arrow down to the button, which shows × while it's open.
+- **Closing a tab**: the × 26 pt, 4.5 pt in; the title ending before it; the row fading where it was as the rows after
+  it slide up over it.
+- **Dark** (a dark space): a row's hover, white at 10%.
+- Arc also shows a round ↑ (or ↓) over the list when it's scrolled away from its top or bottom.
+
 ## Still to measure (a second, shorter session)
 
 - A folder opening and closing (the attempt hit a stuck modifier key and opened the folder's menu instead; nothing

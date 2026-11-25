@@ -539,6 +539,14 @@ for (const [engineName, engine] of ENGINES) {
         await page.mouse.move(row.x, row.y);
         await page.waitForTimeout(30);
         assert.equal(await ev(() => getComputedStyle(document.querySelectorAll('.pin.nested')[1]).backgroundColor), 'rgba(0, 0, 0, 0.05)');
+        // Its ×: Arc's 26 pt, 4.5 pt in from the fill's right; the title ending before it.
+        const x = await ev(() => { const p = document.querySelectorAll('.pin.nested')[1]; const r = p.getBoundingClientRect(), i = p.querySelector('.icon')!.getBoundingClientRect(), t = p.querySelector('.title')!.getBoundingClientRect(); return { w: i.width, inset: Math.round((r.right - i.right) * 10) / 10, mid: Math.round((i.top + i.height / 2 - r.top) * 10) / 10, before: t.right <= i.left }; });
+        assert.deepEqual(x, { w: 26, inset: 4.5, mid: 18, before: true }, 'the ×');
+        // Dark (Arc's, measured in a dark space): white at 10%.
+        await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+        await page.waitForTimeout(30);
+        assert.equal(await ev(() => getComputedStyle(document.querySelectorAll('.pin.nested')[1]).backgroundColor), 'rgba(255, 255, 255, 0.1)', 'dark');
+        await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' });
         assert.equal(await ev(() => getComputedStyle(document.querySelectorAll('.pin.nested')[1]).transitionDuration.split(',').every((d) => d.trim() === '0s' || d.trim() === '0.18s')), true);
         await away();
       });
@@ -720,6 +728,28 @@ for (const [engineName, engine] of ENGINES) {
         assert.ok(pins.every((a) => /^translateY\(-\d/.test(String(a.first.transform)) && /^inset\(\d/.test(String(a.first.clip)) && a.first.opacity == null), `slid and clipped, not faded (${JSON.stringify(pins[0])})`);
         await page.waitForTimeout(300);
         assert.deepEqual(await anims(), [], 'nothing left running');
+        // A tab closed: where it was, fading (Arc's closing curve), under the rows closing up over it; gone after.
+        const closing2 = await ev(() => {
+          const rt = (window as any).__rt;
+          const today = rt.runtime.vm.space.today;
+          const victim = today[0];
+          const rows = [...document.querySelectorAll('.margin-sidebar .tab')];
+          const top = Math.round(rows[0].getBoundingClientRect().top);
+          const tabs = { ...rt.mock.state.tabs }; delete tabs[victim.id];
+          rt.mock.state = { ...rt.mock.state, tabs }; rt.host.setState(rt.mock.state);
+          const ghost = document.querySelector('.m-row-ghost') as HTMLElement | null;
+          const fade = ghost?.getAnimations()[0];
+          return { title: victim.title, ghost: ghost ? { text: ghost.textContent!.trim(), top: Math.round(ghost.getBoundingClientRect().top), inert: ghost.hasAttribute('inert'), z: getComputedStyle(ghost).zIndex } : null, timing: fade ? [fade.effect!.getTiming().duration, fade.effect!.getTiming().easing] : null, top };
+        });
+        assert.ok(closing2.ghost, 'a copy of the closed row');
+        assert.deepEqual([closing2.ghost!.text.startsWith(closing2.title.slice(0, 10)), closing2.ghost!.top, closing2.ghost!.inert, closing2.ghost!.z], [true, closing2.top, true, '-1'], 'where it was, inert, under the rest');
+        assert.deepEqual(closing2.timing, [250, 'cubic-bezier(0.25, 0, 0.25, 1)'], 'fading on Arc\'s closing curve');
+        await page.waitForTimeout(350);
+        assert.equal(await ev(() => document.querySelectorAll('.m-row-ghost').length), 0, 'gone once faded');
+        // A folder folding: its rows go at once (no copies).
+        await setOpen(false);
+        assert.equal(await ev(() => document.querySelectorAll('.m-row-ghost').length), 0, 'no copies for a folder folding');
+        await page.waitForTimeout(300);
         await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' });
       });
 
