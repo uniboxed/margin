@@ -11,10 +11,14 @@
        the "page-loader" part in it. Empty, and drawing nothing, otherwise. -->
   <m-page-loader class="page-loader"></m-page-loader>
 
+  <!-- The launcher (Margin's new-tab page, Margin.app's page area with nothing in it, its Settings tab), in the page
+       card: before the sidebar, so the sidebar out over the page lies over it as over any page. -->
+  <m-launcher class="launcher-slot"></m-launcher>
+
   <!-- The hover zone at the left edge that brings a hidden sidebar out (m-peek). -->
   <div class="peek-zone" m-peek="left" aria-hidden="true"></div>
 
-  <aside class="margin-sidebar" aria-label="Margin" m-swipe="spaces">
+  <aside class="margin-sidebar" aria-label="Margin" m-swipe="spaces" m-ground="float">
     <header class="top">
       <m-window-controls class="window-controls"></m-window-controls>
       <m-if test="window.pinnedOpen">
@@ -240,9 +244,6 @@
       </div>
     </m-if>
   </div>
-
-  <!-- The new-tab page's launcher, in the page card (while the UI is drawn in Margin's new-tab page). -->
-  <m-launcher class="launcher-slot"></m-launcher>
 
   <!-- The command bar. -->
   <m-if test="palette.open">

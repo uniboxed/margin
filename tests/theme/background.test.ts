@@ -29,13 +29,14 @@ const PAGE = [255, 0, 255, 255];
 const script = harnessScript();
 
 // Each theme: its package, its fonts, the elements of it that lie on the ground with text (drawn in Margin's text
-// colour), and whether its sidebar out over the page is a card of the background's one colour.
+// colour), whether its sidebar out over the page is a card of the background's one colour, and the panel it marks for
+// Margin to draw the background in while it's out (`m-ground="float"`: the same background, its grain too).
 const THEMES = themesInScope([
-  ['arcadia', ARCADIA, [], ['.margin-sidebar'], '.margin-sidebar'],
-  ['material', MATERIAL, ['Google Sans Flex'], ['.margin-sidebar'], '.margin-sidebar'],
-  ['liquid-glass', GLASS, [], [], null],
-  ['neubrutalism', NEO, [], ['.space-name'], '.sidebar'],
-  ['pixel', PIXEL, [], [], null],
+  ['arcadia', ARCADIA, [], ['.margin-sidebar'], null, '.margin-sidebar'],
+  ['material', MATERIAL, ['Google Sans Flex'], ['.margin-sidebar'], null, '.margin-sidebar'],
+  ['liquid-glass', GLASS, [], [], null, null],
+  ['neubrutalism', NEO, [], ['.space-name'], '.sidebar', null],
+  ['pixel', PIXEL, [], [], null, null],
 ] as const);
 
 const LIGHT = { colors: ['#f7c7d3', '#cfe8f7'], intensity: 0.6, texture: 'grain', amount: 0, appearance: 'light' };
@@ -47,7 +48,7 @@ for (const [engineName, engine] of ENGINES) {
   test(`a space's background in ${engineName}`, async (t) => {
     const browser = await engine.launch({ headless: true });
     try {
-      for (const [id, dir, fonts, onGround, peekCard] of THEMES) {
+      for (const [id, dir, fonts, onGround, peekCard, floatGround] of THEMES) {
         await t.test(id, async (tt) => {
           const context = await browser.newContext({ viewport: { width: W, height: H } });
           const page = await context.newPage();
@@ -193,6 +194,39 @@ for (const [engineName, engine] of ENGINES) {
               assert.equal(await ev(() => __rt.runtime!.sidebar.out()), true);
               const bg = await ev((s) => { const el = __rt.target.querySelector(s); return el ? getComputedStyle(el).backgroundColor : null; }, peekCard);
               assert.equal(bg && hex(bg), (await ev(() => T.rtVars(['--m-bg'])))!['--m-bg'], `${peekCard}: --m-bg`);
+            });
+          }
+
+          if (floatGround) {
+            // Tirth, 2026-11-25: a hidden sidebar brought out showed a flat colour, not the space's background and its grain.
+            await tt.test('the sidebar out over the page: the same background drawn in it, its grain too, lined up with the window\'s', async () => {
+              const GRAINY = { ...LIGHT, amount: 0.6 };
+              const settled = () => page.waitForFunction((sel) => document.querySelector(sel)!.getAnimations().length === 0, floatGround);
+              await mount('document', { sidebarPinnedOpen: false });
+              await set(GRAINY);
+              const hidden = await ev(() => T.rtBackground());
+              assert.ok(hidden.float, 'drawn in the panel while it\'s hidden (ready as it comes out)');
+              assert.equal(await ev((sel) => getComputedStyle(document.querySelector(sel)!.querySelector('margin-background')!).visibility, floatGround), 'hidden', 'hidden with it');
+              await ev(() => __rt.runtime!.sidebar.show('toggle'));
+              await settled();
+              assert.equal(await ev(() => __rt.runtime!.sidebar.out()), true);
+              const d = await ev(() => T.rtBackground());
+              const box = await ev((sel) => { const el = document.querySelector(sel) as HTMLElement; const r = el.getBoundingClientRect(); return { left: r.left + el.clientLeft, top: r.top + el.clientTop, right: r.right, bottom: r.bottom, isPanel: el.matches(`.${String(T.rtBackground().float?.in ?? '').trim().split(/\s+/).join('.')}`) }; }, floatGround);
+              assert.equal(box.isPanel, true, 'in the theme\'s panel');
+              assert.deepEqual([d.float!.left, d.float!.top, d.float!.width, d.float!.height], [`${-box.left}px`, `${-box.top}px`, `${W}px`, `${H}px`], 'the window\'s size, at the window\'s place');
+              assert.deepEqual(d.float!.sets, d.sets, 'the window\'s parts, texture and all');
+              assert.match(d.sets[0].texture, /^url\(/, 'the grain');
+              // Its pixels the window's ground's: the panel's content hidden, the same place drawn with the sidebar docked
+              // (clear, the window's background under it).
+              await page.addStyleTag({ content: `${floatGround} > :not(margin-background) { visibility: hidden !important; } ${floatGround} { outline: none !important; box-shadow: none !important; } .card-edge { box-shadow: none !important; }` });
+              const floated = await shot();
+              await mount('document', { sidebarPinnedOpen: true });
+              await set(GRAINY);
+              assert.equal((await ev(() => T.rtBackground())).float, null, 'docked: none in it');
+              const docked = await shot();
+              const bad: unknown[] = [];
+              for (let y = Math.ceil(box.top) + 14; y < box.bottom - 14; y += 9) for (let x = Math.ceil(box.left) + 14; x < Math.min(box.right, (await layout()).left) - 24; x += 9) if (!close(floated(x, y), docked(x, y), 1)) bad.push([x, y, floated(x, y), docked(x, y)]);
+              assert.deepEqual(bad.slice(0, 5), [], 'the panel\'s ground, pixel for pixel, the window\'s');
             });
           }
 

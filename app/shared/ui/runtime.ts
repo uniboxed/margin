@@ -347,6 +347,8 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     }
     return ahead.value;
   }
+  // The theme's panel the sidebar floats in (m-ground="float"), once looked up.
+  let groundPanel: HTMLElement | null = null;
   function followBackground() {
     const space = vm?.space;
     const shownBackground = backgroundShown(space);
@@ -358,6 +360,11 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       picture: shownBackground?.image ? host.pictureUrl?.(shownBackground.image.id) ?? null : null,
     });
     if (appearance && !was) background.place(view.measurePageOuter());
+    // The sidebar out over the page (hidden or out: it floats where the layer is cut out for the page card): the
+    // background drawn in the theme's panel too (`m-ground="float"`, ui/background.ts float). Looked up only then.
+    const floating = !!appearance && (vm?.window?.sidebar === 'hidden' || vm?.window?.sidebar === 'peek');
+    if (floating && !groundPanel?.isConnected) groundPanel = (view.marked('m-ground', 'float')[0] as HTMLElement | undefined) ?? null;
+    background.float(floating ? groundPanel : null);
     if (background.revision() !== before) onGround?.();
     const root = view.rootElement() as HTMLElement | null;
     if (!root) return;

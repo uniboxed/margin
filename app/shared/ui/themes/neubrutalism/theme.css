@@ -59,12 +59,11 @@
 [data-sidebar="hidden"], [data-sidebar="peek"] { --page-left: var(--frame); }
 /* "With the sidebar hidden, keep the frame around pages" off: the page
    fills the window, square, no border; nothing drawn around it. */
-.nb:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) { --frame: 0px; --edge: 0px; --radius: 0px; }
-.nb:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .page { box-shadow: none; }
-/* Margin's new-tab page: the sidebar always beside the launcher. */
-.nb.newtab { --page-left: calc(var(--frame) + var(--gutter) + var(--sidebar)); }
-.nb.newtab .sidebar { position: relative; left: auto; top: auto; bottom: auto; width: var(--sidebar); overflow: visible; margin-left: 0; padding: 0; border: 0; background: none; box-shadow: none; z-index: 2; }
-.nb.newtab .peek-zone { display: none; }
+.nb:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]) { --frame: 0px; --edge: 0px; --radius: 0px; }
+.nb:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]) .page { box-shadow: none; }
+/* Margin's new-tab page, its sidebar kept open: beside the launcher. (Hidden, it comes out over it as over any page.) */
+.nb.newtab[data-sidebar="open"] { --page-left: calc(var(--frame) + var(--gutter) + var(--sidebar)); }
+.nb.newtab[data-sidebar="open"] .sidebar { position: relative; left: auto; top: auto; bottom: auto; width: var(--sidebar); overflow: visible; margin-left: 0; padding: 0; border: 0; background: none; box-shadow: none; z-index: 2; }
 
 /* Margin's slots for what lies over everything: out of the row (their
    parts place themselves), so showing one takes no gap from the page. */
@@ -100,7 +99,7 @@
 /* The page in front loading: a stripe marching along the gutter above the page. */
 .load-bar { position: absolute; top: calc(var(--gutter) / 2 - 3px); left: calc(var(--page-left) + 18px); right: calc(var(--gutter) + 18px); height: 6px; z-index: 2; pointer-events: none; border: 2px solid var(--ink); border-radius: 3px; background: repeating-linear-gradient(-45deg, var(--ink) 0 6px, var(--yellow) 6px 12px) 0 0 / 17px 100%; opacity: 0; visibility: hidden; transition: opacity .2s, visibility 0s linear .2s; }
 /* No frame: along the page's top edge instead. */
-.nb:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .load-bar { top: 0; left: 0; right: 0; height: 5px; border-width: 0 0 2px; border-radius: 0; }
+.nb:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]) .load-bar { top: 0; left: 0; right: 0; height: 5px; border-width: 0 0 2px; border-radius: 0; }
 .load-bar.on { opacity: 1; visibility: visible; transition: opacity .2s; animation: nb-march .6s linear infinite; }
 @keyframes nb-march { to { background-position: 17px 0; } }
 /* Over the page, inside its border, under a peeking sidebar: the gestures' badges. */

@@ -56,13 +56,15 @@
   --drop: var(--accent);
   --danger: #d70015;
   --ease: cubic-bezier(0.2, 0, 0, 1);
-  /* Where the page card is: inside the frame, right of the sidebar when it's
-     docked. Arc's (docs/ARC-SIDEBAR.md, measured): 10 pt from the window's
-     edges, the corner 6 pt (Arc's continuous corner, matched by a plain 6 px
-     radius to a fifth of a pixel). */
+  /* Where the page card is: inside the frame (8 px), right of the sidebar when
+     it's docked; its corner 10 px. The sidebar out over the page sits in the
+     same frame with the same corner (Tirth's, 2026-11-25: the panel and the
+     page card the same height and the same corners), so both read these. */
+  --frame-inset: 8px;
+  --frame-radius: 10px;
   --card-left: var(--width);
-  --card-inset: 10px;
-  --card-radius: 6px;
+  --card-inset: var(--frame-inset);
+  --card-radius: var(--frame-radius);
   /* Arc's rows coming and going (Margin's row motion, ui/row-motion.ts ARC_ROWS: Arc's measured curves, a folder's
      rows out from under it). */
   --m-rows-feel: arc;
@@ -153,12 +155,10 @@
 .arcadia ul { list-style: none; margin: 0; padding: 0; }
 .arcadia .spacer { flex: 1; }
 
-/* Hidden: the page in the frame (10 px all round, as Arc's), or, with the
-   frame off, the whole window. */
-.arcadia:is([data-sidebar="hidden"], [data-sidebar="peek"]) { --card-left: 10px; }
+/* Hidden: the page in the frame (8 px all round), or, with the frame off,
+   the whole window. The same on every page, the launcher's and Settings' too. */
+.arcadia:is([data-sidebar="hidden"], [data-sidebar="peek"]) { --card-left: var(--frame-inset); }
 .arcadia:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]) { --card-left: 0px; --card-inset: 0px; --card-radius: 0px; }
-/* The new-tab page: the sidebar always beside the launcher. */
-.arcadia.newtab { --card-left: var(--width); --card-inset: 10px; --card-radius: 6px; }
 
 /* ---- The frame and the page card ------------------------------------------- */
 
@@ -174,13 +174,13 @@
 }
 .page { box-shadow: 0 0 0 100vmax var(--frame); }
 .arcadia[m-background] .page { box-shadow: none; }
-.arcadia:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .page { box-shadow: none; }
+.arcadia:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]) .page { box-shadow: none; }
 /* The card's depth, above the sidebar so it also falls on its edge: Arc's one shadow, no hairline (docs/ARC-SIDEBAR.md:
    measured on a white page, a Gaussian of black at 25%, 1 pt down, σ 3 pt; WebKit's blur is a little tighter, so
    7 px here: rendered at 2×, its darkening outside the card's left, top and bottom edges is within 0.5% of Arc's at
    every pixel). */
 .card-edge { pointer-events: none; box-shadow: 0 1px 7px rgba(0, 0, 0, 0.25); }
-.arcadia:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .card-edge { box-shadow: none; }
+.arcadia:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]) .card-edge { box-shadow: none; }
 
 /* The page card while an item opens (Margin.app: the root's m-page-state):
    opaque, exactly over the page's place with the card's corners, whatever
@@ -281,7 +281,7 @@
   pointer-events: none;
   transition: opacity 200ms var(--ease), transform 200ms var(--ease), visibility 0s linear 200ms;
 }
-.arcadia:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .loader { top: 2px; }
+.arcadia:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]) .loader { top: 2px; }
 .arcadia.loading .loader { opacity: 1; visibility: visible; transform: translateX(-50%) scaleX(1); transition: opacity 200ms var(--ease), transform 200ms var(--ease); }
 .loader-bar { width: 100%; height: 100%; border-radius: 2px; background: var(--ink); opacity: 0.6; }
 .arcadia.loading .loader-bar { animation: arcadia-pulse 1.2s ease-in-out 200ms infinite; }
@@ -336,38 +336,42 @@
   color: var(--fg);
   -webkit-font-smoothing: antialiased;
 }
-/* Hidden or out over the page: a floating card inset from the edges, which
-   never moves the page. Arc's (docs/ARC-SIDEBAR.md, measured): 5 pt from the
-   window's edges, a 12 pt corner, a 1 pt rim of white at 30% just inside its
-   edge, and a soft shadow (black at about 17%, σ 4 pt: 9 px in WebKit, as the
-   page card's 3 pt is 7 px). */
-.arcadia:is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .margin-sidebar {
-  top: 5px;
-  left: 5px;
-  height: calc(100% - 10px);
-  border-radius: 12px;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3), 0 1px 9px rgba(0, 0, 0, 0.17);
-  transform: translateX(calc(-100% - 10px));
+/* Hidden or out over the page: a floating card in the page card's frame, as
+   tall as the page card and with its corner (--frame-inset, --frame-radius),
+   which never moves the page. Arc's rim (a 1 pt line of white at 30% just
+   inside its edge: an outline, so it lies over the space's background Margin
+   draws in the panel, m-ground) and soft shadow (black at about 17%, σ 4 pt:
+   9 px in WebKit, as the page card's 3 pt is 7 px). */
+.arcadia:is([data-sidebar="hidden"], [data-sidebar="peek"]) .margin-sidebar {
+  top: var(--frame-inset);
+  left: var(--frame-inset);
+  height: calc(100% - 2 * var(--frame-inset));
+  border-radius: var(--frame-radius);
+  outline: 1px solid rgba(255, 255, 255, 0.3);
+  outline-offset: -1px;
+  box-shadow: 0 1px 9px rgba(0, 0, 0, 0.17);
+  transform: translateX(calc(-100% - 2 * var(--frame-inset)));
   visibility: hidden;
   transition: transform 180ms var(--ease), visibility 0s linear 180ms;
 }
 /* Out over the page: Arc's spring (measured frame by frame: response 205 ms, damping 0.79, a 1.7% overshoot: 4.5 pt
    past its place and back), sampled into one linear() easing the browser runs. (Going back in: Arcadia's own; Arc's
    wasn't measured.) */
-.arcadia[data-sidebar="peek"]:not(.newtab) .margin-sidebar {
+.arcadia[data-sidebar="peek"] .margin-sidebar {
   transform: none;
   visibility: visible;
   transition: transform 279ms linear(0, 0.0525, 0.1735, 0.3217, 0.4713, 0.6073, 0.7225, 0.8147, 0.8851, 0.9362, 0.9714, 0.9942, 1.0078, 1.0147, 1.0173, 1.0171, 1.0153, 1.0128, 1.0102, 1.0077, 1.0056, 1.0038, 1.0024, 1.0014, 1);
 }
 .arcadia.m-resizing .margin-sidebar, .arcadia.m-resizing .margin-sidebar * { transition: none !important; }
 @media (prefers-reduced-motion: reduce) { .margin-sidebar { transition: none !important; } }
-/* A space's background: the docked sidebar on it, clear; out over the page, a card of its one colour (--frame). */
+/* A space's background: the sidebar on it, clear: docked, the window's background under it; out over the page, the
+   same background Margin draws in the panel (m-ground="float": its colours, picture and grain, lined up with the
+   window's). */
 .arcadia[m-background] .margin-sidebar { background: transparent; }
-.arcadia[m-background]:is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .margin-sidebar { background: var(--frame); }
 
 /* The hover zone that brings a hidden sidebar out (Margin's m-peek). */
 .peek-zone { display: none; position: absolute; left: 0; top: 0; bottom: 0; width: var(--m-reveal-zone, 10px); }
-.arcadia[data-sidebar="hidden"]:not(.newtab) .peek-zone { display: block; }
+.arcadia[data-sidebar="hidden"] .peek-zone { display: block; }
 
 /* The icons, one flat tone: drawn in the ink and faded as a whole, so
    overlapping strokes don't come out darker. */
@@ -396,7 +400,6 @@
 .margin-sidebar :is(.keep-open, .bar-button):hover { background: var(--hover); }
 .margin-sidebar :is(.keep-open, .bar-button):active { background: var(--field-hover); }
 .margin-sidebar :is(.keep-open, .bar-button, .address, .clear):focus-visible { outline: 2px solid var(--drop); outline-offset: -2px; }
-.arcadia.newtab .keep-open { display: none; }
 /* Windowed: the window's buttons go at the row's start (Margin.app puts them in this box, centred). Not in full
    screen. Arc's: the first at 12 pt from the window's left, the sidebar toggle at 77. */
 .window-controls { display: none; }
@@ -813,7 +816,7 @@
 }
 .resizer:hover::after, .resizer.m-resizing::after { opacity: 0.22; }
 .arcadia.m-resizing { cursor: col-resize; }
-.arcadia:is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .resizer { display: none; }
+.arcadia:is([data-sidebar="hidden"], [data-sidebar="peek"]) .resizer { display: none; }
 
 /* ---- Right-click menus (Margin's <m-menu>, the "menu" part) ----------------- */
 

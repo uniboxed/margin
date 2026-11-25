@@ -161,12 +161,15 @@ func hostedScenario() async {
           await until(3, { source.asked.contains { $0.type == "openPin" && $0.payload["windowId"] as? Int == c.id } }), "\(source.asked.map(\.type))")
   } else { check("the pin's row", false) }
 
-  // ---- Toggle Sidebar: Keep open off; with nothing hosted, the sidebar stays beside the launcher ----
+  // ---- Toggle Sidebar: Keep open off; with nothing hosted (the launcher) the sidebar hides as on any page ----
+  // (Tirth, 2026-11-25: every page, Margin's own too, can hide the sidebar; until then the launcher kept it beside it.)
   let before = page
   windows.perform(.toggleSidebar)
   check("View › Toggle Sidebar: Keep open off, asked of the source", await until(3, { source.asked.contains { $0.type == "updateSettings" } }), "\(source.asked.map(\.type))")
-  check("with nothing hosted the sidebar stays beside the launcher (as on Margin's new-tab page): the page area as it was",
-        await waitJS(c.webView, "return document.querySelector('.arcadia')?.dataset.sidebar === 'open'") && c.window.pageRect == before, "\(String(describing: c.window.pageRect)) was \(before)")
+  let hiddenSidebar = await waitJS(c.webView, "return document.querySelector('.arcadia')?.dataset.sidebar === 'hidden'")
+  check("with nothing hosted the sidebar hides as on any page: the page area out to the frame on the left, the rest as it was",
+        await until(5, { guard let r = c.window.pageRect else { return false }; return hiddenSidebar && r.minX < before.minX && r.maxX == before.maxX && r.minY == before.minY && r.height == before.height }),
+        "\(String(describing: c.window.pageRect)) was \(before)")
   var settings = source.state["settings"] as? JSONObject ?? [:]
   settings["sidebarPinnedOpen"] = true
   source.state["settings"] = settings

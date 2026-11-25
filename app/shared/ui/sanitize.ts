@@ -392,6 +392,7 @@ const BEHAVIORS: Record<string, string[]> = {
   'm-swipe': ['spaces'],
   // (Margin says when the bar's items don't fit at their roomy size: `m-crowded`, ui/behaviors/fit.ts.)
   'm-fit': ['items'],
+  'm-ground': ['float'],
   // (Never empty: a double-click there doesn't open the palette, ui/empty.ts. Only ever less of a theme empty: no other value.)
   'm-empty': ['never'],
   'm-input': ['palette', 'space-name', 'space-emoji', 'launcher', 'preview', ...['number', 'toggle', 'choice', 'list', 'shortcut', 'color'].map((k) => `setting-${k}`)],

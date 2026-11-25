@@ -204,8 +204,6 @@
    the whole window. */
 .m3:is([data-sidebar="hidden"], [data-sidebar="peek"]) { --card-left: 8px; }
 .m3:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]) { --card-left: 0px; --card-inset: 0px; --card-radius: 0px; }
-/* The new-tab page: the sidebar always beside the launcher. */
-.m3.newtab { --card-left: var(--width); --card-inset: 8px; --card-radius: 10px; }
 
 /* ---- The frame and the page card ------------------------------------------- */
 
@@ -221,10 +219,10 @@
 }
 .page { box-shadow: 0 0 0 100vmax var(--frame); }
 .m3[m-background] .page { box-shadow: none; }
-.m3:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .page { box-shadow: none; }
+.m3:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]) .page { box-shadow: none; }
 /* The card's hairline and very soft shadow, above the sidebar so it also falls on its edge. */
 .card-edge { pointer-events: none; box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.14), 0 1px 3px rgba(0, 0, 0, 0.08); }
-.m3:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .card-edge { box-shadow: none; }
+.m3:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]) .card-edge { box-shadow: none; }
 
 /* The page card while an item opens (Margin.app: the root's m-page-state):
    opaque, exactly over the page's place with the card's corners, whatever
@@ -325,7 +323,7 @@
   pointer-events: none;
   transition: opacity 200ms var(--ease), transform 200ms var(--ease), visibility 0s linear 200ms;
 }
-.m3:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .loader { top: 2px; }
+.m3:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]) .loader { top: 2px; }
 .m3.loading .loader { opacity: 1; visibility: visible; transform: translateX(-50%) scaleX(1); transition: opacity 200ms var(--ease), transform 200ms var(--ease); }
 .loader-bar { width: 100%; height: 100%; border-radius: 2px; background: var(--ink); opacity: 0.6; }
 .m3.loading .loader-bar { animation: m3-pulse 1.2s ease-in-out 200ms infinite; }
@@ -382,7 +380,7 @@
 }
 /* Hidden or out over the page: a floating card inset from the edges, which
    never moves the page. */
-.m3:is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .margin-sidebar {
+.m3:is([data-sidebar="hidden"], [data-sidebar="peek"]) .margin-sidebar {
   top: 8px;
   left: 8px;
   height: calc(100% - 16px);
@@ -392,7 +390,7 @@
   visibility: hidden;
   transition: transform 180ms var(--ease), visibility 0s linear 180ms;
 }
-.m3[data-sidebar="peek"]:not(.newtab) .margin-sidebar {
+.m3[data-sidebar="peek"] .margin-sidebar {
   transform: none;
   visibility: visible;
   transition: transform 180ms var(--ease);
@@ -402,7 +400,7 @@
 
 /* The hover zone that brings a hidden sidebar out (Margin's m-peek). */
 .peek-zone { display: none; position: absolute; left: 0; top: 0; bottom: 0; width: var(--m-reveal-zone, 10px); }
-.m3[data-sidebar="hidden"]:not(.newtab) .peek-zone { display: block; }
+.m3[data-sidebar="hidden"] .peek-zone { display: block; }
 
 /* The icons, one flat tone: drawn in the ink and faded as a whole, so
    overlapping strokes don't come out darker. */
@@ -430,7 +428,6 @@
 .margin-sidebar :is(.keep-open, .bar-button):hover { background: var(--hover); }
 .margin-sidebar :is(.keep-open, .bar-button):active { background: var(--field-hover); }
 .margin-sidebar :is(.keep-open, .bar-button, .address, .clear):focus-visible { outline: 2px solid var(--drop); outline-offset: -2px; }
-.m3.newtab .keep-open { display: none; }
 /* Windowed: the window's buttons go at the row's start. Not in full screen. */
 .window-controls { display: none; }
 .m3[data-mode="windowed"] .window-controls { display: block; flex: none; width: 54px; height: 14px; margin: 0 8px 0 2px; }
@@ -737,7 +734,7 @@
 }
 .resizer:hover::after, .resizer.m-resizing::after { opacity: 0.22; }
 .m3.m-resizing { cursor: col-resize; }
-.m3:is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .resizer { display: none; }
+.m3:is([data-sidebar="hidden"], [data-sidebar="peek"]) .resizer { display: none; }
 
 /* ---- Right-click menus (Margin's <m-menu>, the "menu" part) ----------------- */
 
@@ -1218,10 +1215,10 @@
 
 /* ---- The navigation drawer ------------------------------------------------- */
 .margin-sidebar { background: var(--frame); }
-.m3:is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .margin-sidebar { border-radius: 16px; background: var(--sc-low); box-shadow: var(--elev-3); }
-/* A space's background: the docked drawer on it, clear; out over the page, a card of its one colour (--frame). */
+.m3:is([data-sidebar="hidden"], [data-sidebar="peek"]) .margin-sidebar { border-radius: 16px; background: var(--sc-low); box-shadow: var(--elev-3); }
+/* A space's background: the drawer on it, clear: docked, the window's background under it; out over the page, the same
+   background Margin draws in the drawer (m-ground="float": its colours, picture and texture, lined up with the window's). */
 .m3[m-background] .margin-sidebar { background: transparent; }
-.m3[m-background]:is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .margin-sidebar { background: var(--frame); }
 .margin-sidebar :is(.keep-open, .bar-button, .icon, .new-tab-row .plus) { color: var(--on-surface-variant); }
 .margin-sidebar :is(.keep-open, .bar-button, .icon, .new-tab-row .plus) :is(.line-icon, .fill-icon) { opacity: 1; }
 .margin-sidebar .line-icon { stroke-width: 1.7; }

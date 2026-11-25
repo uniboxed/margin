@@ -381,7 +381,9 @@ One versioned object (`ui/view-model.ts`, `VM_VERSION`), the same in every
 host. Immutable: rows that didn't change are the same objects.
 
 - `window`: `id`, `mode`, `focused`, `sidebar` (`open`, `hidden`, `peek`),
-  `sidebarOpen`, `peek`, `pinnedOpen` (Keep open), `frameWhenHidden`.
+  `sidebarOpen`, `peek`, `pinnedOpen` (Keep open), `frameWhenHidden`. Every page follows Keep open, Margin's own
+  too (the launcher, Settings: give them your sidebar's button and lay them out hidden as any page); only before the
+  first data does the launcher keep the sidebar `open` (your start skeleton).
 - `space`: `id`, `name`, `emoji` (`''` with its icon removed: `iconless`), `color`, `abbr`, `index` (from 0),
   `number` (its place counted from 1: Pixel's "WORLD 2-1"), `tabCount`,
   `pinned` (top-level folders and loose pins in order; `isFolder` tells them apart),
@@ -533,6 +535,7 @@ Opt in with attributes; they stay on the element, so CSS can select them.
 | `m-scroll` | `tabs`, `palette`, `archive` | the list's scroll is remembered per window |
 | `m-swipe` | `spaces` | a sideways swipe moves between spaces |
 | `m-fit` | `items` | Margin sets `m-crowded` on the bar while its items, laid out by your rules without it, would overflow its width (read again whenever the bar's size or its items change, before anything is painted): draw the crowded bar another way (Arcadia, as Arc: the space in front's icon, the others as dots) |
+| `m-ground` | `float` | your sidebar's panel: while Margin's sidebar is hidden or out over the page (where the background is cut out for the page card), Margin draws the space's background inside it too, lined up with the window's, under its content and clipped to its corners (see "A space's background") |
 | `m-empty` | `never` | a double-click here never opens the palette (see below) |
 
 Right-clicking a row with `m-drag` (or an action's row, or the space's
@@ -617,8 +620,13 @@ To take part, under `[m-background]`:
    page's appearance, `prefers-color-scheme`. In Margin.app's window that is the background's (the window's web view
    takes the space's light or dark); in the extension's overlay over a browser's page, and on Windows for now, it is
    the system's, which can differ.
-3. Anything solid that stands in for the ground (a sidebar out over the page as a card, a split's divider) takes
-   `--m-bg`.
+3. Anything solid that stands in for the ground (a split's divider, a patch behind a label) takes `--m-bg`.
+4. Your sidebar out over the page floats where the background is cut out for the page card. Mark its panel
+   `m-ground="float"` and leave it clear under `[m-background]` (as docked): while Margin's sidebar is hidden or out,
+   Margin draws the same background in the panel (its colours, picture and texture, lined up with the window's), as
+   its first layer under the content (the panel is isolated for it), clipped to the panel's corners and hidden with
+   it. It moves with the panel as it slides. Draw a rim over it with `outline` (an inset `box-shadow` lies under it).
+   Without the mark, give the floating panel `--m-bg` (a card of the background's one colour).
 
 In Margin.app a space's background can be a picture (its colours a tint over it). Nothing changes for your theme:
 Margin draws it in the same layer, and the variables are worked out against the picture as it's drawn (where text
@@ -627,7 +635,8 @@ doesn't need to. In a browser's extension the space's colours are drawn without 
 
 A theme that does nothing keeps its own look: its ground covers the background, all but the smoothing of the page
 card's rounded corners, where a pixel's worth of the edge shows a little of it. Arcadia, Material, Liquid Glass,
-Neubrutalism and Pixel take part; their `[m-background]` rules are a short example each. Liquid Glass shows the other
+Neubrutalism and Pixel take part; their `[m-background]` rules are a short example each (Arcadia and Material mark
+their sidebar `m-ground="float"`; Neubrutalism's floating sidebar is a card of `--m-bg`). Liquid Glass shows the other
 way: its colours are all `light-dark()`, so it sets `color-scheme` from `m-appearance` and its whole look follows.
 
 ### Edit Theme Color drawn by your theme (the `background-picker` part)

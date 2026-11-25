@@ -60,7 +60,7 @@ for (const [name, engine] of ENGINES) {
         assert.ok(await page.evaluate(() => T.rtCount('.tab.asleep')) > 0, 'sleeping tabs are marked');
         assert.equal(await page.evaluate(() => T.rtCount('[m-action], m-for, m-if')), 0, 'no template syntax left');
         // Keep open: the page's card beside the 260 px sidebar, in the 8 px frame, its corners 10 px.
-        assert.deepEqual(await layout(), { left: 260, top: 10, right: 10, bottom: 10, radius: 6, width: 1280, height: 800, windowId: 1, mode: 'inpage' });
+        assert.deepEqual(await layout(), { left: 260, top: 8, right: 8, bottom: 8, radius: 10, width: 1280, height: 800, windowId: 1, mode: 'inpage' });
       });
 
       await t.test('the width is the theme\'s setting (160–500, step 10); hidden, the page sits in the frame or fills the window', async () => {
@@ -69,13 +69,50 @@ for (const [name, engine] of ENGINES) {
         await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, mode: 'inpage', settings: { themes: { 'arcadia': { sidebarWidth: 900 } } } }));
         assert.equal((await layout())!.left, 260, 'out of range: the default');
         await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, mode: 'inpage', settings: { sidebarPinnedOpen: false } }));
-        assert.deepEqual(await layout(), { left: 10, top: 10, right: 10, bottom: 10, radius: 6, width: 1280, height: 800, windowId: 1, mode: 'inpage' }, 'the frame alone around the page');
+        assert.deepEqual(await layout(), { left: 8, top: 8, right: 8, bottom: 8, radius: 10, width: 1280, height: 800, windowId: 1, mode: 'inpage' }, 'the frame alone around the page');
         assert.equal(await page.evaluate(() => T.rtCount('.peek-zone')), 1);
         await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, mode: 'inpage', settings: { sidebarPinnedOpen: false, frameWhenHidden: false } }));
         assert.deepEqual(await layout(), { left: 0, top: 0, right: 0, bottom: 0, radius: 0, width: 1280, height: 800, windowId: 1, mode: 'inpage' }, 'no frame: the whole window');
         await page.evaluate(() => T.rtSetUi({ sidebar: 'peek' }));
         await page.waitForTimeout(50);
         assert.equal((await page.evaluate(() => T.rtLayouts())).at(-1)!.left, 0, 'out over the page, the sidebar moves nothing');
+      });
+
+      // Tirth, 2026-11-25: the sidebar out over the page as tall as the page card and with its corners (as before the Arc
+      // branch's 5 pt / 12 pt panel and 10 pt / 6 pt card); every page has the sidebar's button, Margin's own too.
+      await t.test('out over the page, the sidebar in the page card\'s frame: its top, bottom and corners the card\'s', async () => {
+        await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, mode: 'inpage', container: 'document', settings: { sidebarPinnedOpen: false } }));
+        const card = (await layout())!;
+        await page.evaluate(() => T.rtSetUi({ sidebar: 'peek' }));
+        await page.waitForFunction(() => document.querySelector('.margin-sidebar')!.getAnimations().length === 0);
+        const panel = await page.evaluate(() => { const el = document.querySelector('.margin-sidebar')!; const r = el.getBoundingClientRect(); return { left: r.left, top: r.top, bottom: innerHeight - r.bottom, radius: getComputedStyle(el).borderTopLeftRadius, corners: new Set(['borderTopLeftRadius', 'borderTopRightRadius', 'borderBottomRightRadius', 'borderBottomLeftRadius'].map((k) => (getComputedStyle(el) as any)[k])).size }; });
+        assert.deepEqual(panel, { left: card.left, top: card.top, bottom: card.bottom, radius: `${card.radius}px`, corners: 1 }, 'beside the card, its height and corners');
+        await page.evaluate(() => T.rtSetUi({ sidebar: null }));
+      });
+
+      await t.test('the launcher and Settings as any page: the sidebar\'s button there, the sidebar hidden with Keep open off and out at the edge', async () => {
+        const shown = (sel: string) => page.evaluate((s) => { const el = document.querySelector(s); return !!el && getComputedStyle(el).display !== 'none' && (el as HTMLElement).getBoundingClientRect().width > 0; }, sel);
+        const side = () => page.evaluate(() => document.querySelector('.arcadia')!.getAttribute('data-sidebar'));
+        // Margin.app's own window with nothing hosted: its page area the launcher.
+        await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, mode: 'windowed', container: 'document', appWindow: true, settings: { sidebarPinnedOpen: true } }));
+        assert.equal(await page.evaluate(() => document.querySelector('.arcadia')!.classList.contains('newtab')), true, 'the launcher');
+        assert.deepEqual([await side(), await shown('.keep-open')], ['open', true], 'Keep open on: docked, its button there');
+        await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, mode: 'windowed', container: 'document', appWindow: true, settings: { sidebarPinnedOpen: false } }));
+        assert.deepEqual([await side(), await shown('.peek-zone')], ['hidden', true], 'Keep open off: hidden, out at the left edge');
+        assert.deepEqual((await layout())!.left, 8, 'the launcher in the frame, as a page');
+        // Its Settings tab (margin://settings): the same.
+        await page.evaluate(() => { const rt = (window as any).__rt; rt.host.settingsAsked = true; rt.runtime.render(); });
+        assert.equal(await shown('.settings-page'), true, 'Settings drawn');
+        assert.equal(await side(), 'hidden');
+        await page.evaluate(() => T.rtSetUi({ sidebar: 'peek' }));
+        await page.waitForFunction(() => document.querySelector('.margin-sidebar')!.getAnimations().length === 0);
+        assert.equal(await shown('.keep-open'), true, 'out over Settings: its button, to keep it open');
+        const toggle = await page.evaluate(() => { const b = document.querySelector('.keep-open')!.getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; });
+        const sentBefore = (await page.evaluate(() => T.rtSent())).length;
+        await page.mouse.click(toggle.x, toggle.y);
+        assert.deepEqual((await page.evaluate(() => T.rtSent())).slice(sentBefore).find(([k]) => k === 'updateSettings')?.[1], { patch: { sidebarPinnedOpen: true } }, 'Keep open, from Settings');
+        await page.evaluate(() => T.rtSetUi({ sidebar: null }));
+        await page.mouse.move(900, 400);
       });
 
       await t.test('every part: the palette, a menu, the space editor, a notice, a prompt', async () => {
@@ -501,10 +538,11 @@ for (const [engineName, engine] of ENGINES) {
       const rect = (s: string, n = 0) => ev(([sel, i]) => T.rtRect(sel, i), [s, n] as const);
       const away = async () => { await page.mouse.move(900, 400); await page.waitForTimeout(40); };
 
-      await t.test('the page card: 10 pt in, a 6 pt corner, one shadow and no hairline', async () => {
+      // (8 pt in and a 10 pt corner, the sidebar out over the page's too: Tirth, 2026-11-25; Arc's is 10 pt and 6 pt.)
+      await t.test('the page card: 8 pt in, a 10 pt corner, one shadow and no hairline', async () => {
         const card = (await rect('.card-edge'))!;
-        assert.deepEqual([card.top, 1280 - card.right, 800 - card.bottom], [10, 10, 10]);
-        assert.equal(await ev(() => T.rtComputed('.card-edge', 'border-top-left-radius')), '6px');
+        assert.deepEqual([card.top, 1280 - card.right, 800 - card.bottom], [8, 8, 8]);
+        assert.equal(await ev(() => T.rtComputed('.card-edge', 'border-top-left-radius')), '10px');
         const shadow = await ev(() => T.rtComputed('.card-edge', 'box-shadow'));
         assert.match(shadow!, /^rgba\(0, 0, 0, 0\.25\) 0px 1px 7px( 0px)?$/, `Arc's one shadow (${shadow})`);
       });

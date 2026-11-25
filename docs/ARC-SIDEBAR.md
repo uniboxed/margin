@@ -60,6 +60,9 @@ Part A is the study; Part B is the plan. Built on the branch (2026-11-25): steps
 - **The sidebar is translucent**: the window's colour is the desktop behind it, blurred, under the space's colour and a
   grain image (the AX tree has an image named `grain` over the window). Margin draws the space's own colour and
   texture (M2.9), so the sidebar's colour is Margin's, not measured here.
+- **Not followed in Arcadia** (Tirth, 2026-11-25): the page card stays 8 pt in with a 10 pt corner, and the sidebar out
+  over the page sits in the same frame with the same corner (as tall as the card, its corners the card's), not Arc's
+  10 pt / 6 pt card and 5 pt / 12 pt panel below. Arc's card shadow and the panel's rim and shadow are kept.
 - **The sidebar out over the page (the peek)**: a floating panel 5 pt from the window's left, top and bottom, the
   sidebar's width; its corner about 12 pt (its inner contour fits a 23–24 px circle); a 1 pt rim just inside its edge,
   white at 30% (luma 188 over 160); a soft shadow over the page, black at about 16.5%, σ ≈ 4 pt (read on its right
