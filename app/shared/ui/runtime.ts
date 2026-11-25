@@ -42,6 +42,7 @@ import { installSwipe } from './behaviors/swipe.ts';
 import { installPress } from './behaviors/press.ts';
 import { installSettings } from './behaviors/settings.ts';
 import { installEmpty } from './behaviors/empty.ts';
+import { installFit } from './behaviors/fit.ts';
 import { emptySpot } from './empty.ts';
 import { installBackgroundPicker } from './behaviors/background-picker.ts';
 import { createTickFeedback, feedbackSetting } from './picker/feedback.ts';
@@ -1113,6 +1114,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     scroll: installScroll(rt),
     swipe: installSwipe(rt),
     empty: installEmpty(rt),
+    fit: installFit(rt),
     settings: installSettings(rt),
     backgroundPicker: installBackgroundPicker(rt, { materials, feedback }),
   });

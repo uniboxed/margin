@@ -527,6 +527,7 @@ Opt in with attributes; they stay on the element, so CSS can select them.
 | `m-rename` | `space`, `folder`, `tab` | double-click edits the name in place |
 | `m-scroll` | `tabs`, `palette`, `archive` | the list's scroll is remembered per window |
 | `m-swipe` | `spaces` | a sideways swipe moves between spaces |
+| `m-fit` | `items` | Margin sets `m-crowded` on the bar while its items, laid out by your rules without it, would overflow its width (read again whenever the bar's size or its items change, before anything is painted): draw the crowded bar another way (Arcadia, as Arc: the space in front's icon, the others as dots) |
 | `m-empty` | `never` | a double-click here never opens the palette (see below) |
 
 Right-clicking a row with `m-drag` (or an action's row, or the space's
@@ -561,6 +562,7 @@ Classes and variables Margin sets for you to style:
   `m-drop-after`, `m-drop-into`, `m-drop-end` (where it lands), `m-landing`
   (a dropped row while its copy glides in);
 - `m-resizing` (the handle, and the root);
+- `m-crowded` (an `m-fit` bar while its items don't fit at their roomy size);
 - `m-swiping`, `m-settling` and `--m-swipe-offset` (the `m-swipe` element). By default
   the offset jumps to its end under `m-settling`, for your own transition. Set
   `--m-swipe-feel: arc` or `dia` on the `m-swipe` element for Arc's or Dia's own feel

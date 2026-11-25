@@ -425,7 +425,7 @@
 /* The space's name: its icon and name, muted. Arc's (measured): a 36 pt row,
    the icon in a 26 pt box 5 pt in, the name 2 pt after it (13 px, 500).
    Under the pointer a pill, a chevron in the icon's place and the space's
-   menu (•••) at the right. */
+   menu (•••) at the right. The icon's ink as Arc's: 16.5 × 17.5 pt (16 px). */
 .margin-sidebar .space-title {
   position: relative;
   flex: none;
@@ -439,7 +439,7 @@
   font-size: 13px;
   font-weight: 500;
 }
-.margin-sidebar .space-title .emoji { flex: none; width: 26px; height: 26px; font-size: 20px; line-height: 26px; text-align: center; color: initial; }
+.margin-sidebar .space-title .emoji { flex: none; width: 26px; height: 26px; font-size: 16px; line-height: 26px; text-align: center; color: initial; }
 .margin-sidebar .space-title .title { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .margin-sidebar .space-title :is(.title-chevron, .title-more) { flex: none; display: none; place-items: center; width: 26px; height: 26px; padding: 0; border-radius: 7px; color: var(--muted); }
 .margin-sidebar .space-title .title-chevron .line-icon { width: 14px; height: 14px; stroke-width: 1.75; }
@@ -641,8 +641,8 @@
 .margin-sidebar .bar {
   flex: none;
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  column-gap: 4px;
+  grid-template-columns: 32px minmax(0, 1fr) 32px;
+  column-gap: 1px;
   align-items: center;
   height: 50px;
   margin: 0 calc(-1 * var(--pad));
@@ -655,21 +655,50 @@
 .margin-sidebar .bar .archive-icon { width: 18px; height: 18px; }
 .margin-sidebar .bar .plus-icon { width: 16px; height: 16px; stroke-width: 1.75; }
 .margin-sidebar .bar :is(.archive-icon, .plus-icon) { opacity: 0.75; }
-.margin-sidebar .spaces { display: flex; align-items: center; gap: 2px; min-width: 0; overflow-x: auto; overscroll-behavior: none; scrollbar-width: none; }
+/* The space switcher, Arc's (docs/ARC-SIDEBAR.md, measured with 10 spaces from a 500 pt sidebar down to 260):
+   - each space a slot sharing the room between the archive and "+", at most 36 pt, overlapping the next by 2 pt,
+     centred when they're at 36: (room − 2) / n + 2 each;
+   - every space's icon while each slot can be at least 24 pt (n × 22 + 2 ≤ room: these rules, with Margin's m-fit
+     saying when they overflow); else (m-crowded) the space in front's icon in a 24 pt slot and the others as dots
+     sharing the rest;
+   - the icons 12 px (their ink as Arc's, 14 × 15 pt); the others' greyed and faded, in colour under the pointer on a 28 pt rounded square; a dot 4 pt,
+     the ink at 26%;
+   - crowded, a dot under the pointer grows into its icon as the front one's shrinks to a dot (230 ms, in and out;
+     the slots swap at once, only the icon and the dot move: the compositor's). */
+.margin-sidebar .spaces { --dot: color-mix(in srgb, var(--fg) 30%, transparent); display: flex; align-items: center; justify-content: center; min-width: 0; height: 34px; overflow: hidden; }
 .margin-sidebar .chip {
-  flex: none;
+  flex: 1 1 0;
   position: relative;
-  width: 26px;
-  height: 26px;
+  display: grid;
+  place-items: center;
+  min-width: 24px;
+  max-width: 36px;
+  height: 34px;
+  margin-left: -2px;
   padding: 0;
-  border-radius: 7px;
-  font-size: 13px;
-  line-height: 26px;
-  text-align: center;
-  opacity: 0.42;
+  font-size: 12px;
+  line-height: 1;
 }
-.margin-sidebar .chip:hover { opacity: 0.8; background: var(--hover); }
-.margin-sidebar .chip.active { opacity: 1; }
+.margin-sidebar .chip:first-child { margin-left: 0; }
+.margin-sidebar .chip::before { content: ""; position: absolute; inset: 3px max(0px, calc((100% - 28px) / 2)); border-radius: 8px; }
+.margin-sidebar .chip:not(.active):hover::before { background: var(--hover); }
+.margin-sidebar .chip::after { content: ""; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; background: var(--dot); opacity: 0; transform: scale(0.4); }
+.margin-sidebar .chip-icon { position: relative; display: block; transition: transform 230ms cubic-bezier(0.42, 0, 0.58, 1), opacity 230ms cubic-bezier(0.42, 0, 0.58, 1); }
+.margin-sidebar .chip::after { transition: transform 230ms cubic-bezier(0.42, 0, 0.58, 1), opacity 230ms cubic-bezier(0.42, 0, 0.58, 1); }
+.margin-sidebar .chip:not(.active):not(:hover) .chip-icon { filter: grayscale(1); opacity: 0.65; }
+/* Crowded: the space in front's icon (24 pt), the others dots; a dot under the pointer and the front one swap. */
+.margin-sidebar .spaces[m-crowded] .chip { min-width: 0; }
+.margin-sidebar .spaces[m-crowded] .chip.active,
+.margin-sidebar .spaces[m-crowded] .chip:not(.active):hover { flex: 0 0 24px; }
+.margin-sidebar .spaces[m-crowded]:has(.chip:not(.active):hover) .chip.active { flex: 1 1 0; }
+.margin-sidebar .spaces[m-crowded] .chip:not(.active):hover::before { background: none; }
+.margin-sidebar .spaces[m-crowded] .chip:not(.active):not(:hover) .chip-icon,
+.margin-sidebar .spaces[m-crowded]:has(.chip:not(.active):hover) .chip.active .chip-icon { opacity: 0; transform: scale(0.3); }
+.margin-sidebar .spaces[m-crowded] .chip:not(.active):not(:hover)::after,
+.margin-sidebar .spaces[m-crowded]:has(.chip:not(.active):hover) .chip.active::after { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  .margin-sidebar .chip-icon, .margin-sidebar .chip::after { transition: none; }
+}
 
 /* The space editor (Margin's <m-editor>, the "space-editor" part), under the space's name. */
 .margin-sidebar .editor {

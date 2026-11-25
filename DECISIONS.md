@@ -10622,3 +10622,24 @@ Arc's sidebar in Arcadia (docs/ARC-SIDEBAR.md: the study, measured in the runnin
   colours (Arc's dark wasn't measured).
 - **Tests**: tests/theme/arcadia.test.ts, "Arcadia as Arc's sidebar": the card, every measured size, the hover, what
   shows under the pointer, the inert controls doing nothing, `•••`'s menu; ui-actions (`menu.open` `space`).
+
+## M2.10 step 4: Arc's space switcher in Arcadia, and Margin's `m-fit` (`feat/arc-sidebar`, 2026-11-25)
+
+- **What Arc does** (docs/ARC-SIDEBAR.md, measured by dragging its sidebar from 500 to 260 pt with 10 spaces and reading
+  every item's frame): the spaces share the room between Home and "+" as slots of at most 36 pt overlapping by 2;
+  every icon while each slot can be 24 pt (`n × 22 + 2 ≤ room`), else only the front space's (24 pt) and dots for the
+  others (sharing the rest); a dot under the pointer grows into its icon as the front one's shrinks (≈ 230 ms).
+- **What decides it, and where**: CSS can't count a list against its width, and themes run no script, so it's Margin's:
+  a behavior, `m-fit="items"` (ui/behaviors/fit.ts; the sanitizer's BEHAVIORS; the themes README), sets `m-crowded`
+  on the bar while its items, laid out by the theme's rules without it, overflow its width; read after every render and
+  as the bar's size changes (a ResizeObserver), with the attribute taken off and put back in the same task (nothing
+  painted roomy in between). Arcadia's roomy rules are Arc's slots (`flex: 1 1 0`, 24–36 pt, −2 pt each), so the
+  overflow is Arc's rule exactly; any theme can use it.
+- **Arcadia** (theme.css "The space switcher"): Arc's slots; the icons at Arc's ink (12 px: 14 × 15 pt), the others
+  greyed at 65%, in colour on a 28 pt rounded square under the pointer; crowded, the dots (4 pt, the ink at 30%: Arc's
+  measured 26% darkening) and the swap under the pointer, the slots at once and only the icon and dot animated (scale
+  and opacity, the compositor's). The space title's icon at Arc's ink too (16 px).
+- **Checked against Arc**: Arcadia's slots at 260–500 pt within half a point of Arc's at every width measured, dots
+  between 300 and 310 as Arc's; side-by-side screenshots of both modes and their hovers. tests/theme/arcadia.test.ts
+  "the space switcher" (fails with `m-fit` taken off: checked), tests/ui-behaviors.test.ts (`overflows`).
+- **Not yet**: a space with no icon as a dot (step 5), the tooltip (step 6).

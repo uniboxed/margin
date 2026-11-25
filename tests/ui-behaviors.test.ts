@@ -211,3 +211,13 @@ test('view model: the space editor\'s themes: the space\'s own, else the profile
   const elsewhere = buildViewModel({ state, ui: { windowId: W, editor: { spaceId: 'work', name: 'W', emoji: '', color: '' } } }).editor!;
   assert.deepEqual([elsewhere.themes, elsewhere.hasThemes], [[], false], 'where each space\'s theme isn\'t drawn: none offered');
 });
+
+// Whether a bar's items fit (ui/behaviors/fit.ts, M2.10): crowded only when its roomy layout overflows, never when it
+// isn't laid out. (In real engines, Arc's switcher's numbers: tests/theme/arcadia.test.ts.)
+test('m-fit: a bar is crowded only while its items overflow it laid out roomy', async () => {
+  const { overflows } = await import('../app/shared/ui/behaviors/fit.ts');
+  assert.equal(overflows({ scrollWidth: 222, clientWidth: 222 }), false, 'exactly fits');
+  assert.equal(overflows({ scrollWidth: 223, clientWidth: 222 }), true);
+  assert.equal(overflows({ scrollWidth: 0, clientWidth: 0 }), false, 'not laid out');
+  assert.equal(overflows({ scrollWidth: 40, clientWidth: 0 }), false, 'hidden');
+});

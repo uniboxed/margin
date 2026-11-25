@@ -566,6 +566,54 @@ for (const [engineName, engine] of ENGINES) {
         await away();
       });
 
+      await t.test('the space switcher, as Arc\'s with ten spaces: slots, icons while each gets 24 pt, else dots; a dot under the pointer swaps with the front one', async () => {
+        await ev(() => {
+          const rt = (window as any).__rt;
+          const extra = Array.from({ length: 10 - rt.mock.state.spaces.length }, (_, i) => ({ id: `extra${i}`, name: `Extra ${i}`, emoji: '😀', color: '#0a84ff' }));
+          rt.mock.state = { ...rt.mock.state, spaces: [...rt.mock.state.spaces, ...extra] };
+          rt.host.setState(rt.mock.state);
+        });
+        const at = async (w: number) => {
+          await ev((width) => { const rt = (window as any).__rt; rt.mock.state = { ...rt.mock.state, settings: { ...rt.mock.state.settings, themes: { arcadia: { sidebarWidth: width } } } }; rt.host.setState(rt.mock.state); }, w);
+          await page.waitForTimeout(80);
+          return ev(() => {
+            const nav = document.querySelector('.spaces')!;
+            const chips = [...nav.querySelectorAll('.chip')].map((c) => { const b = c.getBoundingClientRect(); return { left: Math.round(b.left * 10) / 10, width: Math.round(b.width * 10) / 10, active: c.classList.contains('active') }; });
+            return { crowded: nav.hasAttribute('m-crowded'), chips };
+          });
+        };
+        await away();
+        // (Arc, measured: 36 pt slots centred at 500; 33.5 at 400; icons at 310; dots at 300, the front one 24 pt.)
+        let d = await at(500);
+        assert.deepEqual([d.crowded, d.chips[0].left, d.chips[0].width, d.chips[1].left - d.chips[0].left], [false, 79, 36, 34], 'at 500: 36 pt slots, 2 pt overlap, centred');
+        d = await at(400);
+        const near = (a: number, b: number, what: string) => assert.ok(Math.abs(a - b) <= 0.2, `${what}: ${a} (want ${b})`);
+        assert.equal(d.crowded, false);
+        near(d.chips[0].left, 41, 'at 400: from 41 pt');
+        near(d.chips[0].width, 33.6, 'at 400: sharing the room');
+        d = await at(310);
+        assert.equal(d.crowded, false, 'at 310: every icon (each slot 24.6 pt)');
+        d = await at(300);
+        const front = d.chips.find((c) => c.active)!, other = d.chips.find((c) => !c.active)!;
+        assert.deepEqual([d.crowded, front.width], [true, 24], 'at 300: the front one 24 pt, the others dots');
+        near(other.width, 23.6, 'at 300: a dot\'s slot');
+        d = await at(260);
+        near(d.chips.find((c) => !c.active)!.width, 19.1, 'at 260: 19 pt each, as Arc\'s');
+        const look = (i: number) => ev((n) => { const c = document.querySelectorAll('.spaces .chip')[n]; return { icon: getComputedStyle(c.querySelector('.chip-icon')!).opacity, dot: getComputedStyle(c, '::after').opacity, dotSize: getComputedStyle(c, '::after').width }; }, i);
+        const frontIndex = d.chips.findIndex((c) => c.active), dotIndex = d.chips.findIndex((c) => !c.active);
+        assert.deepEqual([await look(frontIndex), await look(dotIndex)], [{ icon: '1', dot: '0', dotSize: '4px' }, { icon: '0', dot: '1', dotSize: '4px' }], 'the front one\'s icon, the others\' 4 pt dots');
+        const dot = (await rect('.spaces .chip', dotIndex))!;
+        await page.mouse.move(dot.x, dot.y);
+        await page.waitForTimeout(60);
+        const swapped = await ev(() => [...document.querySelectorAll('.spaces .chip')].map((c) => Math.round(c.getBoundingClientRect().width * 10) / 10));
+        assert.equal(swapped[dotIndex], 24, 'the dot under the pointer: its icon in a 24 pt slot');
+        assert.ok(swapped[frontIndex] < 24, 'and the front one\'s gives way');
+        assert.deepEqual([await look(dotIndex), await look(frontIndex)], [{ icon: '1', dot: '0', dotSize: '4px' }, { icon: '0', dot: '1', dotSize: '4px' }], 'icon and dot swapped');
+        await away();
+        assert.deepEqual(await look(frontIndex), { icon: '1', dot: '0', dotSize: '4px' }, 'back once the pointer leaves');
+        await at(260);
+      });
+
       await t.test('the inert controls do nothing; the space\'s ••• opens its menu under it', async () => {
         const before = [await ev(() => T.rtSent().length), await ev(() => T.rtPerformed().length)];
         const title = (await rect('.space-title'))!;
