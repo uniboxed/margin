@@ -10543,3 +10543,23 @@ failing first (the old code in a copy of the tree):
   answer while Safari is in the background (150-310 ms, once 1.2 s) is the wait; the next press overtakes it. Being
   measured (why the copy is slower with Safari in the background) before its fix.
 
+## A held tab key keeps repeating through a switch between Safari and an app (2026-11-25)
+
+- **What Tirth saw:** holding ⌥⌘↓ (or ↑) flew through the items at first; later holds stopped after a step or two.
+- **Found** (a line per hold in Margin's log, Shortcuts.swift: its repeats and why its repeat ended): the holds that
+  stopped all stopped as the run went from a Safari tab to an app or back, with ⌘⌥ still down and no release. The keys
+  Margin holds depend on the app in front (a browser's ⌘L, ⌘D… only for Safari: shortcuts.rs `held`), so each such
+  switch rebound them (ShellHostedGlue `updateHostedKeys` → `rebind`), and `rebind` let go of every key and took them
+  all again: the held key's repeat ended (`set_active(false)`) and the very key being held was unregistered and
+  registered again under a new id. Holds within Safari's tabs alone ran on (72 and 81 repeats).
+- **The rule** (margin-core shortcuts.rs, `AppShortcuts::rebind`, Mac and Windows alike): each binding keeps its hot
+  key's id across a rebind for the same combination and command; a rebind while held lets go only of the keys it drops
+  and takes only those it adds (a kept one another app held is tried again, as each time the keys are taken); a
+  running repeat goes on if its key is still bound, ends if it's dropped.
+- **Tests** (shortcuts.rs, failing first: 49 registrations, not 31): through a rebind that drops the browser's keys
+  and one that adds them back, nothing kept is registered again, the held key keeps its id and repeats on; a rebind
+  dropping the held key ends its repeat; a kept key another app held is taken again once free.
+- **Diagnostics kept** (development, quiet): one line per hold with repeats (`held next-tab: 72 repeats in 6486 ms
+  (the longest between two 502 ms), ended: its key released`), and the slow lines of 2026-11-25 (a request's ack and
+  answer, a slow tab show's Safari calls).
+
