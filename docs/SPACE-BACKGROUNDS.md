@@ -12,7 +12,9 @@ What Tirth asked for (2026-11-24):
 
 The prototype was approved (glass panel included): <https://claude.ai/artifact/7yzYiJesbzwzLcwVipM6uy>.
 
-Nothing is built yet. Part A is the study; Part B is the plan.
+Part A is the study; Part B is the plan. Built on the branch (2026-11-25): steps 1–7 and 9; step 8, the Arc import,
+waits for the onboarding screen (Tirth's choice). Where it stands: DECISIONS.md "M2.9: a space's background, where it
+stands".
 
 ---
 
@@ -375,14 +377,17 @@ requests (`send`), not `perform`. Windows' `serve.rs` route comes with its libra
 | 4 | `feat(m2.9)`: the Edit Theme Color picker (built) | `ui/picker/*`, `behaviors/background-picker.ts` (new), `extension/shared/space-background.ts` (the rule, out of `model.ts`), `menu-items.ts`, `menus.ts`, `actions.ts` (`space.editBackground`, `space.setBackground`), `runtime.ts`, `overlay.ts` | Behaviour tests in Chromium and WebKit: drag, wheel, −/+, presets, slider, dial (turn, drag, scroll, click, swipe), undo, Escape, save as one request, Use for all spaces, keyboard |
 | 5 | `feat(m2.9)`: Margin's default picker on system glass (built: A) | `host/materials.ts` (new), `overlay.ts`, `runtime.ts`, `behaviors/background-picker.ts`, `picker/panel.ts`; Swift words; `tools/glass-shots` (a `picker` state); `tools/app-tests/run.sh` (the page rebuilt for the e2e part too) | Node: the switch's rules; Chromium and WebKit: asked before the panel is made, given back, every way it ends, Settings, more contrast; e2e in Margin.app: on while open, the page knows the property, off when closed; the real glass photographed |
 | 5b | `feat(m2.9)`: a theme's own picker, the `background-picker` part (built: part 1 the mechanism, part 2 the three themes) | `ui/picker/panel.ts` (its elements as parts' slots: `<m-picker-field>`, `-appearance`, `-colors`, `-swatches`, `-intensity`, `-texture`, `-foot`), `render.ts`, `sanitize.ts`, themes README; Material's, Neubrutalism's and Pixel's parts | Theme tests: a part drawn and working in both engines, the default without one, an element left out, a part's bad CSS or markup refused; each built-in theme's picker opens, drags, saves |
-| 6 | `feat(m2.9)`: haptic or sound ticks | Swift device detection, `said.rs`/FFI/`PageCore.swift` (`haptic.level`), picker, settings (`model.ts` + core) | Unit tests of the choice table (kind × setting × platform); the rate limit; Swift tests of the classifier with synthesized events |
-| 7 | `feat(m2.9)`: pictures as backgrounds | core store (new), scheme route (Swift), `serve.rs`, picker button and drop, snapshot's average colour | Store tests (atomic, bad input, size cap, metadata stripped, cleanup); the route refuses everything but a stored id; security tests (a theme can't load it); e2e: add, show, remove |
-| 8 | `feat(m2.9)`: Arc import of spaces and their backgrounds | core importer (new), Settings entry | Fixture tests over the six real `windowTheme`s and malformed input |
-| 9 | `docs(m2.9)`: DECISIONS.md, themes README, TESTING.md manual checks | docs | |
+| 6 | `feat(m2.9)`: haptic or sound ticks (built; the spike's event log not taken: every kind of evidence counts) | Swift device detection, `said.rs`/FFI/`PageCore.swift` (`haptic.level`), picker, settings (`model.ts` + core) | Unit tests of the choice table (kind × setting × platform); the rate limit; Swift tests of the classifier with synthesized events |
+| 7 | `feat(m2.9)`: pictures as backgrounds (built in three: 7a the store and the route, 7b drawn, 7c the pickers; Windows' `serve.rs` with its library windows) | core store (new), scheme route (Swift), `serve.rs`, picker button and drop, snapshot's average colour | Store tests (atomic, bad input, size cap, metadata stripped, cleanup); the route refuses everything but a stored id; security tests (a theme can't load it); e2e: add, show, remove |
+| 8 | `feat(m2.9)`: Arc import of spaces and their backgrounds (later: with the onboarding screen) | core importer (new), Settings entry | Fixture tests over the six real `windowTheme`s and malformed input |
+| 9 | `docs(m2.9)`: DECISIONS.md, themes README, TESTING.md manual checks (built: each step's own, and the summary) | docs | |
 
 Steps 1, 2 and 4 contain no Swift and can run alongside the Mac session's work. Steps 3, 5, 6 and 7 touch `MarginWindowController.swift` and `OverlayWebView.swift`, so they rebase onto `refactor/hosted-only` first.
 
 ## What only a Mac can confirm (manual checks, TESTING.md)
+
+Written up in TESTING.md: "Edit Theme Color's glass", "A theme's own Edit Theme Color", "Edit Theme Color's ticks",
+"A space's picture". None has been done on the real screen yet.
 
 - Haptics on the built-in and Magic Trackpad, with click and tap-to-click, and nothing doubled.
 - **With a real mouse (when one is at hand; none on Tirth's Mac):** sound on a USB or Bluetooth mouse, and what a Magic Mouse gets.

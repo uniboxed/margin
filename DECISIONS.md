@@ -9989,3 +9989,31 @@ build's load. It passed 4 of 4 alone; this branch doesn't touch the swipe.
   a mouse's, a trackpad's scroll as a trackpad's, the classifier's sequence and what it tells, the IORegistry and the
   interface sounds read, the message); the app's e2e (`haptic.level` reaches Margin.app; a touch's press, then a notch,
   told to the page, which has the last).
+
+## M2.9: a space's background, where it stands (`feat/space-backgrounds`, 2026-11-25)
+
+Arc's Edit Theme Color in Margin (docs/SPACE-BACKGROUNDS.md, the study and the plan; each step's entry above).
+
+- **Built**:
+  - the value on a space (1);
+  - Margin's layer and palette under every theme (2);
+  - appearance per space on the Mac (3);
+  - the picker (4), on real glass (5), or drawn by a theme (5b: Material, Neubrutalism, Pixel);
+  - ticks, a haptic or a click (6);
+  - pictures: kept and served (7a), drawn (7b), chosen or dropped in every picker (7c).
+- **Left for later, by Tirth's choice**: the Arc import (step 8) comes with the onboarding screen.
+- **Not built on Windows yet**, with its library windows:
+  - appearance per space (`PreferredColorScheme`);
+  - pictures (WIC, `serve.rs`'s `/background/<id>`).
+
+  Until then, Windows draws a space's colours without its picture, and its ticks are clicks.
+- **Still to check by hand** (TESTING.md: "Edit Theme Color's glass", "A theme's own Edit Theme Color", "Edit Theme
+  Color's ticks", "A space's picture"):
+  - the glass and the themes' pickers on the real screen;
+  - the haptics on both trackpads (the spike's event log was never taken: tap-to-click's answer is the manual
+    check's);
+  - a real mouse;
+  - pictures from Photos and Finder.
+- **Merging**: `refactor/hosted-only` has moved on since `71e11707` (link resilience), and 13 files changed on both
+  sides (`MarginWindowController.swift`, `host-app.ts`, `runtime.ts`, `harness.ts`, `tests.swift`, `DECISIONS.md`
+  among them). The branch merges into it, its conflicts resolved, then `npm run gate` runs there before `main`.
