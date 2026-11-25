@@ -213,7 +213,9 @@ it. The code: `app/shared/ui/background.ts` (the layer), `background-look.ts` (w
   the background's until step 3. Each built-in theme:
   - Arcadia, Material: the frame's spread and the docked sidebar clear; in the sidebar Margin's text and translucent
     fills (Material's tonal surfaces named one by one: a role mixed from another at the root comes resolved); the
-    sidebar out over the page a card of `--m-bg`; Material's active indicator keeps its tonal container.
+    sidebar out over the page drawn on the same background (2026-11-25, Tirth: it was a card of `--m-bg`, no grain):
+    the panel marked `m-ground="float"`, Margin draws a copy of the layer in it while the sidebar is hidden or out,
+    lined up with the window's (ui/background.ts `float`); Material's active indicator keeps its tonal container.
   - Liquid Glass: the ground is `--m-bg`, the lights go (the glass bends the background), and `color-scheme` follows
     `m-appearance`: its colours are all `light-dark()`, so the whole theme, panels included, follows the background.
   - Neubrutalism: the card keeps its ink shadow, its dots give way (Dots is a texture), the space's name takes

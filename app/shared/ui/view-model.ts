@@ -401,12 +401,16 @@ function fresh(input: ViewModelInput): ViewModel {
   const platform = { browser: input.platform?.browser ?? 'unknown', os: input.platform?.os ?? 'unknown' };
   const settings = input.settings ?? {};
   const pinnedOpen = !!state?.settings?.sidebarPinnedOpen;
-  // Margin's own pages (the launcher) always show the sidebar beside it. With no page area of its own (Margin.app's
-  // window hosting another app's window beside it: `pageOutside`), the sidebar is all there is: always docked
-  // (`sidebarDocked`, the host's). An app's window in the page area leaves it as the person keeps it: Margin's window is
-  // in front of that window, so a hidden sidebar comes out over it (2026-11-20; docked until then: 2026-11-15, the
-  // hosted window above Margin's, FaceTime covered where the sidebar was).
-  const sidebar = ui.pageOutside || ui.sidebarDocked ? 'open' : ui.sidebar === 'open' || ui.sidebar === 'hidden' || ui.sidebar === 'peek' ? ui.sidebar : pinnedOpen || ui.launcherPage ? 'open' : 'hidden';
+  // Every page leaves the sidebar as the person keeps it (Keep open), Margin's own (the launcher, Settings) too
+  // (Tirth, 2026-11-25: every tab has the sidebar's button and can hide it; until then the launcher always showed it
+  // beside it). With no page area of its own (Margin.app's window hosting another app's window beside it:
+  // `pageOutside`), the sidebar is all there is: always docked (`sidebarDocked`, the host's). An app's window in the
+  // page area leaves it as the person keeps it: Margin's window is in front of that window, so a hidden sidebar comes
+  // out over it (2026-11-20; docked until then: 2026-11-15, the hosted window above Margin's, FaceTime covered where
+  // the sidebar was).
+  // (Before the first data, Keep open isn't known yet: the launcher keeps the sidebar beside it, its skeleton the start's
+  // look, as it always has.)
+  const sidebar = ui.pageOutside || ui.sidebarDocked ? 'open' : ui.sidebar === 'open' || ui.sidebar === 'hidden' || ui.sidebar === 'peek' ? ui.sidebar : pinnedOpen || (ui.launcherPage && !state) ? 'open' : 'hidden';
   const windowId = ui.windowId ?? null;
   const win = {
     id: windowId,

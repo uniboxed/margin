@@ -117,7 +117,9 @@ test('Settings in the view model: on Margin\'s own pages, while open; its button
   assert.equal(vm({}).settingsForm, null, 'a web page');
   assert.equal(vm({ launcherPage: true }).settingsForm, null, 'closed');
   assert.equal(vm({ launcherPage: true }).launcher!.settingsOpen, false); // a launcher page: it has its launcher
-  assert.equal(vm({ launcherPage: true }).window.sidebar, 'open', 'the sidebar beside the launcher, Keep open or not');
+  // (Every page as the person keeps the sidebar, Margin's own too: Tirth, 2026-11-25, every tab can hide it.)
+  assert.equal(vm({ launcherPage: true }).window.sidebar, 'hidden', 'the launcher as any page: Keep open off, hidden');
+  assert.equal(buildViewModel({ state: { ...state, settings: { ...state.settings, sidebarPinnedOpen: true } }, ui: { windowId: W, launcherPage: true }, platform: { browser: 'safari', os: 'mac', features: DISCARDS } }).window.sidebar, 'open', 'Keep open on: beside it');
   assert.equal(vm({}).window.sidebar, 'hidden');
   const open = vm({ launcherPage: true, settingsOpen: true });
   assert.equal(open.launcher!.settingsOpen, true);

@@ -26,6 +26,14 @@
 // tile; `background-position` at the focus). It's loaded once per address, and a small copy of it laid out over the
 // window as it's drawn (on the underlay) gives the samples the look reads its contrast against (`PictureSamples`);
 // until then it's drawn as without, and `onChange` says when it's ready, to be drawn again.
+//
+// The sidebar out over the page (Tirth, 2026-11-25: a hidden sidebar brought out showed a flat colour, not the space's
+// background with its grain): the layer is cut out where the page card is, and the panel floats there, over the page.
+// The theme marks the panel `m-ground="float"`; while Margin's sidebar is hidden or out (`float`), a second copy of the
+// layer is drawn inside it: the same parts, as large as the window and placed so they line up with the window's (its
+// place in the window as laid out, its slide's translation taken off), under the panel's content (`z-index: -1`, the
+// panel isolated), clipped to its corners, hidden with it. It moves with the panel, so its slide costs nothing more;
+// it's placed again at each layout.
 import { SAMPLES, appearanceOf, groundAt, lookOf, underlayOf } from './background-look.ts';
 import type { Appearance, Look, PictureSamples } from './background-look.ts';
 import { rgbCss, rgbToHex } from './color.ts';
@@ -38,12 +46,20 @@ const TAG = 'margin-background';
 const PINNED = 'all:initial!important;position:fixed!important;inset:0!important;margin:0!important;padding:0!important;border:0!important;'
   + 'z-index:-2147483647!important;pointer-events:none!important;opacity:1!important;visibility:visible!important;overflow:hidden!important;'
   + 'transform:none!important;filter:none!important;contain:strict!important;';
-const SHADOW_CSS = `:host{${PINNED}}:host::before,:host::after{display:none!important;content:none!important}
-.set{position:absolute;inset:0;opacity:1;transition:opacity .3s ease}
+const SETS_CSS = `.set{position:absolute;inset:0;opacity:1;transition:opacity .3s ease}
 .set.entering{opacity:0}
 .set>div{position:absolute;inset:0}
 .texture{background-repeat:repeat}
 @media (prefers-reduced-motion:reduce){.set{transition:none}}`;
+const SHADOW_CSS = `:host{${PINNED}}:host::before,:host::after{display:none!important;content:none!important}
+${SETS_CSS}`;
+// The copy in a panel out over the page: over its padding box, under its content, hidden when it is, its corners.
+const FLOAT_PINNED = 'all:initial!important;display:block!important;position:absolute!important;inset:0!important;margin:0!important;padding:0!important;'
+  + 'border:0!important;z-index:-1!important;pointer-events:none!important;opacity:1!important;visibility:inherit!important;overflow:hidden!important;'
+  + 'border-radius:inherit!important;transform:none!important;filter:none!important;contain:strict!important;';
+const FLOAT_CSS = `:host{${FLOAT_PINNED}}:host::before,:host::after{display:none!important;content:none!important}
+.window{position:absolute}
+${SETS_CSS}`;
 const FADE_MS = 300;
 
 /** The page card's outer box (its border's outer edge) in the window's pixels, and its corners' radii (top left, clockwise). */
@@ -170,7 +186,12 @@ export function createBackground({ doc, container, onChange }: {
   let css = '';
   let box: PageBox | null = null;
   let size = { width: 0, height: 0 };
-  let current: HTMLElement | null = null;
+  // Where the layer's sets are drawn: the window's (`main`), and the panel out over the page's copy (`float`).
+  type Surface = { holder: ParentNode, current: HTMLElement | null };
+  const main: Surface = { holder: shadow, current: null };
+  let float: (Surface & { el: HTMLElement, host: HTMLElement, frame: HTMLElement, isolation: string }) | null = null;
+  const surfaces = (): Surface[] => (float ? [main, float] : [main]);
+  let pictureBgNow = 'none';
   const leaving = new Set<HTMLElement>();
   const timers = new Set<ReturnType<typeof setTimeout>>();
   // The pictures loaded (or loading, or failed), by address; the one drawn now.
@@ -229,6 +250,43 @@ export function createBackground({ doc, container, onChange }: {
     });
   }
 
+  /** A look drawn on a surface: cross-faded from what it showed (a change of space), else in place. */
+  function drawInto(sf: Surface, next: Look, pictureBg: string, fade: boolean) {
+    if (fade && sf.current) {
+      const old = sf.current;
+      leaving.add(old);
+      const set = makeSet();
+      set.classList.add('entering');
+      paint(set, next, pictureBg);
+      sf.holder.append(set);
+      sf.current = set;
+      set.getBoundingClientRect(); // (its opacity 0 laid out first, so the change is a transition)
+      set.classList.remove('entering');
+      const t = setTimeout(() => { timers.delete(t); old.remove(); leaving.delete(old); }, FADE_MS + 50);
+      timers.add(t);
+    } else {
+      if (!sf.current) { sf.current = makeSet(); sf.holder.append(sf.current); }
+      paint(sf.current, next, pictureBg);
+    }
+  }
+
+  /** The panel's copy lined up with the window's: the window's size, at the panel's place as laid out (its slide's
+   *  translation taken off, its border's width added: the copy lies over its padding box). */
+  function placeFloat() {
+    if (!float) return;
+    const el = float.el;
+    const r = el.getBoundingClientRect();
+    const m = /^matrix(3d)?\(([^)]+)\)$/.exec(win.getComputedStyle(el).transform);
+    const v = m ? m[2].split(',').map(Number) : null;
+    const tx = v ? (m![1] ? v[12] : v[4]) : 0, ty = v ? (m![1] ? v[13] : v[5]) : 0;
+    const x = r.left - (Number.isFinite(tx) ? tx : 0) + el.clientLeft, y = r.top - (Number.isFinite(ty) ? ty : 0) + el.clientTop;
+    const st = float.frame.style;
+    st.left = `${Math.round(-x * 100) / 100}px`;
+    st.top = `${Math.round(-y * 100) / 100}px`;
+    st.width = `${win.innerWidth}px`;
+    st.height = `${win.innerHeight}px`;
+  }
+
   function writeState() {
     const text = shown ? `:host{display:block!important;clip-path:path(evenodd, "${cut}")!important}` : ':host{display:none!important}';
     if (state.textContent !== text) state.textContent = text;
@@ -265,8 +323,7 @@ export function createBackground({ doc, container, onChange }: {
       if (!bg) {
         if (look) revision++;
         clearLeaving();
-        current?.remove();
-        current = null;
+        for (const sf of surfaces()) { sf.current?.remove(); sf.current = null; }
         look = null;
         shownId = null;
         lastKey = '';
@@ -293,25 +350,11 @@ export function createBackground({ doc, container, onChange }: {
       }
       const next = lookOf(bg, appearance, { moreContrast: input.moreContrast, size, picture: samples });
       const pictureBg = url && bg.image ? pictureCss(url, bg.image) : 'none';
-      const fade = !!current && shownId !== null && shownId !== input.spaceId && !input.reducedMotion;
-      if (fade) {
-        const old = current!;
-        leaving.add(old);
-        const set = makeSet();
-        set.classList.add('entering');
-        paint(set, next, pictureBg);
-        shadow.append(set);
-        current = set;
-        set.getBoundingClientRect(); // (its opacity 0 laid out first, so the change is a transition)
-        set.classList.remove('entering');
-        const t = setTimeout(() => { timers.delete(t); old.remove(); leaving.delete(old); }, FADE_MS + 50);
-        timers.add(t);
-      } else {
-        // (Another space shown at once: what was still fading out goes; the same space redrawn lets a fade finish.)
-        if (shownId !== input.spaceId) clearLeaving();
-        if (!current) { current = makeSet(); shadow.append(current); }
-        paint(current, next, pictureBg);
-      }
+      const fade = !!main.current && shownId !== null && shownId !== input.spaceId && !input.reducedMotion;
+      // (Another space shown at once: what was still fading out goes; the same space redrawn lets a fade finish.)
+      if (!fade && shownId !== input.spaceId) clearLeaving();
+      for (const sf of surfaces()) drawInto(sf, next, pictureBg, fade);
+      pictureBgNow = pictureBg;
       look = next;
       revision++;
       shownId = input.spaceId;
@@ -325,6 +368,36 @@ export function createBackground({ doc, container, onChange }: {
     place(page: PageBox | null) {
       box = page;
       if (look) clip();
+      placeFloat();
+    },
+    /**
+     * The panel out over the page that Margin's sidebar is drawn in while it's hidden or out (the theme's
+     * `m-ground="float"`), the background drawn in it too; null: none (the sidebar docked, no background, no such
+     * panel). The same panel again: nothing to do (placed again at each layout, `place`).
+     */
+    float(el: HTMLElement | null) {
+      if (float && float.el === el && el.isConnected) return;
+      if (float) {
+        float.host.remove();
+        float.el.style.isolation = float.isolation;
+        float = null;
+      }
+      if (!el || !el.isConnected) return;
+      const host = doc.createElement(TAG);
+      host.setAttribute('aria-hidden', 'true');
+      host.setAttribute('style', FLOAT_PINNED);
+      const inner = host.attachShadow({ mode: 'closed' });
+      const sheetEl = doc.createElement('style');
+      sheetEl.textContent = FLOAT_CSS;
+      const frame = doc.createElement('div');
+      frame.className = 'window';
+      inner.append(sheetEl, frame);
+      // (Isolated, so its copy under the content stays inside it whatever the theme's stacking.)
+      float = { el, host, frame, holder: frame, current: null, isolation: el.style.isolation };
+      el.style.isolation = 'isolate';
+      el.append(host);
+      placeFloat();
+      if (look) drawInto(float, look, pictureBgNow, false);
     },
     /** The ground's colour at a point of the window (`rgb(r, g, b)`: as Margin.app reads it), null while none shows. */
     colorAt(x: number, y: number): string | null {
@@ -338,7 +411,7 @@ export function createBackground({ doc, container, onChange }: {
     revision: () => revision,
     /** What's drawn, read back from the layer itself (for the tests): shown, its cut, each set's parts, the variables. */
     drawn() {
-      const sets = [...shadow.querySelectorAll('.set')].map((set) => {
+      const read = (root: ParentNode) => [...root.querySelectorAll('.set')].map((set) => {
         const [underlay, pic, wash, colors, texture] = [...set.children] as HTMLElement[];
         return {
           entering: set.classList.contains('entering'),
@@ -348,7 +421,11 @@ export function createBackground({ doc, container, onChange }: {
         };
       });
       const computed = win.getComputedStyle(host);
-      return { shown: host.isConnected && computed.display !== 'none', clip: computed.clipPath, sets, css, picture: pictureUrl, pictureState: pictureUrl ? pictures.get(pictureUrl)?.state ?? null : null };
+      // (The panel's copy: what it's in, where its window-sized frame lies, its sets.)
+      const floated = float && float.host.isConnected
+        ? { in: typeof float.el.className === 'string' ? float.el.className : '', left: float.frame.style.left, top: float.frame.style.top, width: float.frame.style.width, height: float.frame.style.height, sets: read(float.frame) }
+        : null;
+      return { shown: host.isConnected && computed.display !== 'none', clip: computed.clipPath, sets: read(shadow), css, picture: pictureUrl, pictureState: pictureUrl ? pictures.get(pictureUrl)?.state ?? null : null, float: floated };
     },
     destroy() {
       gone = true;
@@ -356,6 +433,7 @@ export function createBackground({ doc, container, onChange }: {
       sampled = null;
       clearLeaving();
       host.remove();
+      if (float) { float.host.remove(); float.el.style.isolation = float.isolation; float = null; }
       look = null;
       sheet.replaceSync('');
     },

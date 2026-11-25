@@ -62,8 +62,9 @@ for (const [engineName, engine] of ENGINES) {
         const fg = hexToRgb(vars['--m-fg'])!;
         const shot = decodePng(await page.screenshot({ animations: 'disabled' }));
         const l = (await ev(() => T.rtLayouts())).at(-1)!;
-        // (The frame under the page card, where Arcadia lets the ground through: left (the black half), right (white).)
-        const y = H - Math.max(2, Math.floor(l.bottom / 2));
+        // (The frame under the page card, where Arcadia lets the ground through: left (the black half), right (white); its
+        // last row, clear of the card's shadow, which reaches the 8 pt frame's middle.)
+        const y = H - 1;
         for (const x of [Math.round(l.left + 40), Math.round(W - l.right - 40)]) {
           const [r, g, b] = shot(x, y);
           const told = (await ev(([px, py]) => T.rtBackgroundAt(px, py), [x, y] as const))!;

@@ -68,13 +68,12 @@
 }
 .pixel:is([data-sidebar="hidden"], [data-sidebar="peek"]) { --page-left: var(--gutter); }
 /* "Keep the frame when hidden" off: the page fills the window, no border. */
-.pixel:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) { --gutter: 0px; }
-.pixel:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .page { box-shadow: none; }
-.pixel:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab)::before { display: none; }
-/* Margin's new-tab page: the sidebar always beside the launcher. */
-.pixel.newtab { --page-left: calc(var(--gutter) + var(--sidebar) + var(--gap)); }
-.pixel.newtab .sidebar { position: relative; left: auto; top: auto; bottom: auto; width: var(--sidebar); margin-left: 0; overflow: visible; box-shadow: var(--pxb); z-index: 2; }
-.pixel.newtab .peek-zone { display: none; }
+.pixel:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]) { --gutter: 0px; }
+.pixel:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]) .page { box-shadow: none; }
+.pixel:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"])::before { display: none; }
+/* Margin's new-tab page, its sidebar kept open: beside the launcher. (Hidden, it comes out over it as over any page.) */
+.pixel.newtab[data-sidebar="open"] { --page-left: calc(var(--gutter) + var(--sidebar) + var(--gap)); }
+.pixel.newtab[data-sidebar="open"] .sidebar { position: relative; left: auto; top: auto; bottom: auto; width: var(--sidebar); margin-left: 0; overflow: visible; box-shadow: var(--pxb); z-index: 2; }
 
 /* Margin's slots for what lies over everything: out of the row (their parts place themselves). */
 .notice-slot, .prompt-slot, .editor-slot { display: contents; }
@@ -350,7 +349,7 @@ img.fav.app { width: 22px; height: 22px; margin: -2px; box-shadow: none; backgro
 .load-bar { position: absolute; top: calc(var(--gutter) - 3px); left: var(--page-left); right: var(--gutter); height: 3px; z-index: 4; pointer-events: none; background: repeating-linear-gradient(90deg, var(--yellow) 0 12px, var(--red) 12px 24px) 0 0 / 24px 100%; opacity: 0; visibility: hidden; transition: opacity .2s steps(2), visibility 0s linear .2s; }
 .load-bar.on { opacity: 1; visibility: visible; transition: opacity .2s steps(2); animation: px-march .4s steps(4) infinite; }
 @keyframes px-march { to { background-position: 24px 0; } }
-.pixel:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .load-bar { top: 0; }
+.pixel:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]) .load-bar { top: 0; }
 
 /* Over the page, under a peeking sidebar: the gestures' badges. */
 .page-over { position: absolute; top: var(--gutter); right: var(--gutter); bottom: var(--gutter); left: var(--page-left); z-index: 4; pointer-events: none; overflow: hidden; }

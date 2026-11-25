@@ -10942,3 +10942,37 @@ Arcadia with 170 tabs:
   kept): unit 1163, Rust 716, theme 995, security 248+37, Swift 2265, app end-to-end 375, browser end-to-end 109, all
   passed; the WebKit host's `update` ("selecting it cancels the hidden cleanup reload") failed once under the gate's
   load and passed alone three times out of three (the background's, nothing this branch changes).
+
+## The sidebar on every page, the panel in the card's frame, the background in it (`fix/sidebar-every-page`, 2026-11-25)
+
+Tirth's four asks, on main after the Arc sidebar:
+- **Every page has the sidebar's button and can hide it, Settings and the launcher too.** Margin's window treats its page
+  area as the launcher while nothing is hosted (Settings is drawn there), and the view model kept the sidebar `open`
+  beside the launcher whatever Keep open said (ui/view-model.ts, from the extension's new-tab page); the themes hid
+  the button there (`.newtab .keep-open`, Arcadia and Material) and laid the launcher out docked (`.newtab`, all five).
+  Now every page follows Keep open: the view model's rule (one copy, shared by Margin.app and the extension), and the
+  themes' `:not(.newtab)` exceptions gone (Neubrutalism's and Pixel's launcher keep their own docked look while it's
+  open). Only before the first data does the launcher keep the sidebar open (the start's skeleton: Keep open isn't
+  known yet). Found with it: the launcher's slot (`<m-launcher>`) came after the sidebar in Arcadia's and Material's
+  templates, so the sidebar out over Settings lay under it (its title over the button); it's now before the sidebar,
+  beside the page card it fills (the other three already lay their floating sidebar above it; all five checked over
+  the launcher and Settings, both engines).
+- **The sidebar out over the page as tall as the page card, with its corners**: the Arc branch made the card 10 pt in
+  with a 6 pt corner and the panel 5 pt in with 12 pt (Arc's); back to the card's 8 pt and 10 pt for both, from one
+  pair of variables (`--frame-inset`, `--frame-radius`) so they can't part again. Arc's card shadow, panel rim (now an
+  `outline`, so it lies over the background drawn in the panel) and panel shadow kept.
+- **The sidebar out over the page on the space's background, its grain too**: the background layer is cut out where
+  the page card is, and the panel floats there, so Arcadia and Material painted it a card of `--m-bg` (one flat
+  colour). Margin now draws the background in the panel too (ui/background.ts `float`, the runtime after each
+  drawing): the theme marks it `m-ground="float"` (sanitize.ts BEHAVIORS); while Margin's sidebar is hidden or out, a
+  second copy of the layer's parts goes in it, the window's size, placed so it lines up with the window's (the
+  panel's place as laid out, its slide's translation taken off), under its content (`z-index: -1`, the panel
+  isolated), clipped to its corners, hidden with it, cross-fading with the window's. It slides with the panel (no
+  per-frame work), placed again at each layout. Themes README: rule 4 and the attribute.
+- **Tests**: tests/theme/arcadia.test.ts (the panel's top, bottom and corners the card's; the launcher and Settings:
+  the button, hidden with Keep open off, out at the edge, Keep open clicked from Settings; the card 8 pt / 10 pt),
+  tests/theme/background.test.ts (Arcadia, Material, both engines: drawn in the panel while hidden and out, the
+  window's parts and grain, and the panel's ground pixel for pixel the window's with the sidebar docked),
+  tests/settings-form.test.ts (the launcher follows Keep open), tests/manifest.test.ts (the shared corner).
+  tests/theme/background-picture.test.ts reads the frame's last row (the 8 pt frame's middle is under Arc's card
+  shadow). `npm run test:quick` (unit and theme) and the app's end-to-end run.
