@@ -39,7 +39,7 @@ for (const [engineName, engine] of ENGINES) {
       await page.addScriptTag({ content: script });
       await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' });
       const ev = <A, R>(fn: (a: A) => R, a?: A) => page.evaluate(fn as any, a) as Promise<Awaited<R>>;
-      const mount = async (pkgDir: string, id: string, fonts: string[] = [], extra: { materials?: number } = {}) => {
+      const mount = async (pkgDir: string, id: string, fonts: string[] = [], extra: { materials?: number, replies?: Record<string, unknown> } = {}) => {
         assert.equal((await page.evaluate(([p, i, f]) => T.loadBuiltin(p, i, f), [themeForPage(pkgDir), id, fonts] as const)).ok, true);
         await ev((x) => T.mountRuntime({ width: 1280, height: 800, container: 'document', mode: 'fullscreen', ...x }), extra);
         await page.waitForFunction(() => T.rtLayouts().length > 0);
@@ -258,6 +258,77 @@ for (const [engineName, engine] of ENGINES) {
         assert.equal((await ev(() => T.rtPanel())).open, false, 'another space shown');
         assert.equal((await saves()).length, n, 'nothing sent');
         assert.deepEqual(await ev(() => T.rtMaterials()), [], 'a host without the system\'s materials: none asked for, made at once');
+      });
+
+      // (Found in review, 2026-11-25: each of these failed before its fix.)
+      const colorOf = (id: string) => ev((x) => (__rt.mock.state.spaces as { id: string, color: string }[]).find((sp) => sp.id === x)!.color, id);
+      await t.test('Escape and ⌘Z put back the space\'s own colour with the background it had', async () => {
+        await ev(() => T.rtChange('switchSpace', 'personal'));
+        await ev(() => T.rtFrames(2));
+        const own = await colorOf('personal');
+        await openFromMenu();
+        let p = (await parts())!;
+        await click(p.swatches.find((sw: any) => sw.color === SPACE_COLORS[2])!);
+        assert.equal((await saves()).at(-1).color, SPACE_COLORS[2], 'the key colour, the space\'s');
+        await page.keyboard.press('Escape');
+        assert.deepEqual([(await saves()).at(-1).background, (await saves()).at(-1).color], [null, own], 'none again, and its own colour');
+        await apply();
+        await openFromMenu();
+        p = (await parts())!;
+        await click(p.swatches.find((sw: any) => sw.color === SPACE_COLORS[3])!);
+        await click((await parts())!.swatches.find((sw: any) => sw.color === SPACE_COLORS[4])!);
+        await page.keyboard.press('ControlOrMeta+z');
+        assert.equal((await saves()).at(-1).color, SPACE_COLORS[3], 'a step back: that step\'s key colour');
+        await page.keyboard.press('ControlOrMeta+z');
+        assert.deepEqual([(await saves()).at(-1).background, (await saves()).at(-1).color], [null, own], 'back to the start: its own colour');
+        await page.keyboard.press('Escape');
+        await apply();
+      });
+
+      await t.test('closed in the middle of a burst (scrolling the dial, then a press outside): the change is saved', async () => {
+        await openFromMenu();
+        let p = (await parts())!;
+        await page.mouse.click(p.field.x + p.field.width * 0.7, p.field.y + p.field.height / 2);
+        await apply();
+        p = (await parts())!;
+        const n = (await saves()).length;
+        const dial = centre(p.dial);
+        await page.mouse.move(dial.x, dial.y);
+        await page.mouse.wheel(0, 66);
+        await page.mouse.click(700, 400); // (well within the burst's rest)
+        assert.equal((await ev(() => T.rtPanel())).open, false);
+        assert.equal((await saves()).length, n + 1, 'the scroll saved as it closed');
+        assert.equal((await saves()).at(-1).background.amount, 0.15, 'three steps');
+        await page.waitForTimeout(450);
+        assert.equal((await saves()).length, n + 1, 'once');
+        await apply();
+      });
+
+      await t.test('asked for a space not shown (its chip\'s menu): switched to, then opened for it; a switch that fails: not opened', async () => {
+        // (The switch's request answered as the app answers one that worked.)
+        await mount(ARCADIA, 'arcadia', [], { replies: { setSpace: { shown: null } } });
+        const openFor = async (space: string) => {
+          const chip = (await ev((x) => T.rtRect(`.chip[data-space-id="${x}"]`), space))!;
+          await page.mouse.click(chip.x, chip.y, { button: 'right' });
+          const item = await ev(() => T.rtBoxText('.menu-item', 'Edit Theme Color…'));
+          await page.mouse.click(item!.x, item!.y);
+          await page.waitForTimeout(100);
+        };
+        await openFor('work');
+        assert.deepEqual((await ev(() => T.rtSent())).filter(([type]) => type === 'setSpace').at(-1)?.[1]?.spaceId, 'work', 'switched to it');
+        assert.equal((await ev(() => T.rtVmFull())).space, 'work');
+        assert.equal((await ev(() => T.rtPanel())).open, true, 'opened once it\'s shown');
+        const n = (await saves()).length;
+        const p = (await parts())!;
+        await page.mouse.click(p.field.x + p.field.width * 0.3, p.field.y + p.field.height / 2);
+        assert.equal((await saves()).at(n)?.spaceId, 'work', 'for that space');
+        await page.keyboard.press('Escape');
+        // A switch the app doesn't make (no answer): the space it was asked for never shown, so never opened.
+        await mount(ARCADIA, 'arcadia');
+        await openFor('studio');
+        await page.waitForTimeout(200);
+        assert.equal((await ev(() => T.rtVmFull())).space, 'personal');
+        assert.equal((await ev(() => T.rtPanel())).open, false);
       });
 
       // Each built-in theme's picker (M2.9 step 5b): its own (the part), with its field's variant and its sliders, or

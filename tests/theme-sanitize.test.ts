@@ -279,9 +279,14 @@ test('-apple-visual-effect: the system\'s materials by name, one keyword from th
   const kept = sanitizeCss(pattern);
   assert.deepEqual(kept.removed, []);
   assert.equal(kept.css, '.panel{background:rgba(255,255,255,.6);}@supports (-apple-visual-effect: -apple-system-glass-material){.panel{background:none;-apple-visual-effect:-apple-system-glass-material;}}');
-  // Any case, `!important`, and a style attribute: the same rule.
+  // Any case and `!important`: the same rule.
   assert.equal(sanitizeCss('.a{-Apple-Visual-Effect: -APPLE-SYSTEM-BLUR-MATERIAL-THICK !important}').removed.length, 0);
-  assert.equal(sanitizeDeclarations('-apple-visual-effect: -apple-system-vibrancy-fill; color: red').css, '-apple-visual-effect:-apple-system-vibrancy-fill;color:red;');
+  // Never in a `style` attribute (M2.9 step 5): an element made while Edit Theme Color's panel holds the switch on
+  // would keep it, in a theme that never asked for the materials. Only in a stylesheet, read with the theme's switch.
+  const inline = sanitizeDeclarations('-apple-visual-effect: -apple-system-vibrancy-fill; color: red');
+  assert.equal(inline.css, 'color:red;');
+  assert.deepEqual(inline.removed.map((x) => [x.name, x.reason]), [['-apple-visual-effect', 'only in the theme\'s stylesheet, inside @supports']]);
+  assert.equal(sanitizeDeclarations('-Apple-Visual-Effect: none').css, '', 'any case');
   // Refused: a material not on the list, a variable (it could hold one), two values, a wide keyword, a string, nothing,
   // a name split by a comment.
   for (const bad of ['-apple-system-glass-material-clear', '-apple-system-hosted-material', 'var(--material)', '-apple-system-glass-material -apple-system-blur-material',

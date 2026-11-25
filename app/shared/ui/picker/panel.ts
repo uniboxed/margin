@@ -110,8 +110,10 @@ const ICONS: Record<string, { fill?: boolean, d: string[] }> = {
 
 export type PickerPanel = ReturnType<typeof createPickerPanel>;
 
-export function createPickerPanel({ doc, container, state: start, point, events }: {
+export function createPickerPanel({ doc, container, state: start, point, events, scale = () => 1 }: {
   doc: Document, container: ShadowRoot | Document, state: PickerState, point: { x: number, y: number }, events: PanelEvents,
+  /** Margin's pixels per page pixel (the runtime's `scale`: the page's zoom, which the in-page host scales Margin back from). */
+  scale?: () => number,
 }) {
   const win = doc.defaultView!; // (a page that draws has a window)
   const s = createSession({ win, state: start, events });
@@ -208,13 +210,17 @@ export function createPickerPanel({ doc, container, state: start, point, events 
   }
   const offDraw = s.onDraw(draw);
 
-  // Where it is: by the point it opened at (a menu's, a button's), kept in the window.
+  // Where it is: by the point it opened at (a menu's, a button's), kept in the window. The point and the window are in
+  // the page's pixels, the panel placed in Margin's (`scale`), as Margin's menus are placed (ui/behaviors/menus.ts).
   function position() {
+    const k = scale() || 1;
+    // (Its box as drawn, fractions kept (offsetWidth rounds them), in Margin's pixels.)
     const r = panel.getBoundingClientRect();
-    const vw = win.innerWidth, vh = win.innerHeight;
+    const w = r.width * k, h = r.height * k;
+    const vw = win.innerWidth * k, vh = win.innerHeight * k;
     // (Whole pixels, rounded down from the far edge: a fractional size never takes it past the margin.)
-    const x = Math.max(8, Math.floor(Math.min(point.x, vw - r.width - 8)));
-    const y = Math.max(8, Math.floor(Math.min(point.y, vh - r.height - 8)));
+    const x = Math.max(8, Math.floor(Math.min(point.x * k, vw - w - 8)));
+    const y = Math.max(8, Math.floor(Math.min(point.y * k, vh - h - 8)));
     place.textContent = `:host{left:${x}px!important;top:${y}px!important}`;
   }
 
@@ -265,6 +271,8 @@ export function createPickerPanel({ doc, container, state: start, point, events 
     /** Shows a state (an undo, the state's own value come back). */
     set(next: PickerState) { s.set(next); },
     get state() { return s.state; },
+    /** Closing: what's drawn and not saved yet, saved (a burst, a drag cut off). */
+    finish() { s.finish(); },
     /** Its box in the window's pixels, [x, y, width, height] (what Margin.app is told takes the pointer). */
     rect(): number[] | null {
       if (!host.isConnected) return null;

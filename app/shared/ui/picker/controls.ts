@@ -37,6 +37,8 @@ export function createSession({ win, state: start, events }: { win: Window, stat
   let state = start;
   let frame = 0;
   let restTimer: ReturnType<typeof setTimeout> | null = null;
+  // A change drawn (a gesture's, a burst's) and not committed yet.
+  let unsaved = false;
   const drawers = new Set<(live: boolean) => void>();
   const draw = (live: boolean) => { for (const d of drawers) d(live); };
 
@@ -47,6 +49,7 @@ export function createSession({ win, state: start, events }: { win: Window, stat
     /** A change while a gesture runs: drawn, and previewed once a frame. */
     live(next: PickerState) {
       state = next;
+      unsaved = true;
       if (frame) return;
       frame = win.requestAnimationFrame(() => { frame = 0; draw(true); events.preview(state); });
     },
@@ -54,6 +57,7 @@ export function createSession({ win, state: start, events }: { win: Window, stat
     commit(next: PickerState) {
       if (frame) { win.cancelAnimationFrame(frame); frame = 0; }
       state = next;
+      unsaved = false;
       draw(false);
       events.commit(state);
     },
@@ -66,7 +70,12 @@ export function createSession({ win, state: start, events }: { win: Window, stat
     /** A burst still running committed now (another gesture starts). */
     settle() { if (restTimer) { clearTimeout(restTimer); restTimer = null; s.commit(state); } },
     /** A burst still running dropped (Escape puts back what was there). */
-    drop() { if (restTimer) { clearTimeout(restTimer); restTimer = null; } },
+    drop() { if (restTimer) { clearTimeout(restTimer); restTimer = null; } unsaved = false; },
+    /** Closing: a change drawn and not committed yet (a burst at rest's wait, a drag cut off) committed now. */
+    finish() {
+      if (restTimer) { clearTimeout(restTimer); restTimer = null; }
+      if (unsaved) s.commit(state);
+    },
     /** Shown as it is (an undo, the state's own value come back), nothing committed. */
     set(next: PickerState) { state = next; draw(false); },
     redraw() { draw(false); },

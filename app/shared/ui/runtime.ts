@@ -883,7 +883,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
         return !!ui.peek && !ui.peek.littleArc && !!host.perform?.('peek.forward', {});
       case 'space.edit': return behaviors.editor.open(arg);
       case 'space.editBackground': return behaviors.backgroundPicker.open(arg, info);
-      case 'picker.run': return behaviors.backgroundPicker.run(arg);
+      case 'picker.run': return behaviors.backgroundPicker.run(arg, info);
       case 'space.rename': return behaviors.rename.start('space', arg);
       case 'folder.rename': return behaviors.rename.start('folder', arg);
       case 'tab.rename': return behaviors.rename.start('tab', arg);

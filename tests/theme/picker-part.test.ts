@@ -66,7 +66,9 @@ function testTheme({ part = PART(), slot = true } = {}) {
   const at = '<m-menu class="menu-slot"></m-menu>';
   assert.ok(pkg.html.includes(at), 'Arcadia has its menu slot');
   // (Inside the theme's root, as its other parts are: a template has one root element.)
-  return { ...pkg, html: pkg.html.replace(at, `${at}${slot ? '<m-picker class="picker-slot"></m-picker>' : ''}${part}`), css: pkg.css + CSS };
+  // (A button of the theme's outside the part naming one of its items: `.tp-outside`.)
+  const outside = '<button class="tp-outside" m-action="picker.run" m-arg="all">All</button>';
+  return { ...pkg, html: pkg.html.replace(at, `${at}${slot ? '<m-picker class="picker-slot"></m-picker>' : ''}${part}${outside}`), css: pkg.css + CSS };
 }
 
 for (const [engineName, engine] of ENGINES) {
@@ -197,6 +199,12 @@ for (const [engineName, engine] of ENGINES) {
         assert.equal(await ev(() => T.rtDispatch('picker.run', 'appearance:purple')), false);
         assert.equal(await ev(() => T.rtDispatch('picker.run', 'preset:99')), false);
         assert.equal((await saves()).length, n, 'nothing saved');
+        // A theme's button outside the picker naming one of its items (the keys taken to it, Return): refused.
+        await ev(() => (document.querySelector('.tp-outside') as HTMLElement).focus());
+        await page.keyboard.press('Enter');
+        assert.equal((await saves()).length, n, 'a button outside it: nothing saved (Use for All Spaces is no undo\'s)');
+        assert.equal(await isOpen(), true);
+        await ev(() => (document.querySelector('m-picker [m-knob="key"], m-picker button') as HTMLElement).focus());
         const before = (await saves()).filter((p) => p.spaceId === 'personal').at(-2).background;
         await page.keyboard.press('ControlOrMeta+z');
         assert.deepEqual((await saves()).at(-1).background, before, 'the one before');

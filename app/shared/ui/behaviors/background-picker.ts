@@ -30,7 +30,7 @@ import type { PickerState } from '../picker/model.ts';
 // What the panel (Margin's own) and a theme's part (its `background-picker`, M2.9 step 5b) both give this.
 type Picker = {
   set(next: PickerState): void, readonly state: PickerState, rect(): number[] | null, owns(target: EventTarget | null): boolean,
-  parts(): unknown, destroy(): void, run?(id: string): boolean, afterRender?(): void,
+  parts(): unknown, finish(): void, destroy(): void, run?(id: string): boolean, afterRender?(): void,
 };
 
 const same = (a: SpaceBackground | null, b: SpaceBackground | null) => JSON.stringify(a) === JSON.stringify(b);
@@ -40,7 +40,10 @@ export function installBackgroundPicker(rt: Rt, { onTick, materials }: {
   /** The system's materials asked for (true) or given back (false); resolves once the page has the answer. */
   materials?: (on: boolean) => Promise<unknown>,
 } = {}) {
-  let open: { spaceId: string, panel: Picker, origin: SpaceBackground | null, saved: SpaceBackground | null, undo: (SpaceBackground | null)[] } | null = null;
+  // (`color`: the space's own colour as it opened, put back with the background it had: Escape, ⌘Z to the start.)
+  let open: { spaceId: string, panel: Picker, origin: SpaceBackground | null, color: string | null, saved: SpaceBackground | null, undo: (SpaceBackground | null)[] } | null = null;
+  // Asked for a space not shown: switched to first, opened once it's shown (3 s at most).
+  let wanted: { spaceId: string, info: { point?: { x: number, y: number }, element?: Element } | null, until: number } | null = null;
   // Each open and close is a turn: an open waiting for the materials makes its panel only if it's still the last turn.
   let turn = 0;
   // The space an open is waiting for the materials for (no panel yet), or null.
@@ -67,17 +70,22 @@ export function installBackgroundPicker(rt: Rt, { onTick, materials }: {
 
   const stored = (spaceId: string): SpaceBackground | null => backgroundOf((rt.state?.spaces?.find((s) => s.id === spaceId) as { background?: unknown } | undefined)?.background) ?? null;
 
-  /** Saved, its key colour the space's colour too; the panel's own space drawn ahead until the state has it (one is:
-   *  the others aren't shown here). */
-  function save(spaceId: string, bg: SpaceBackground | null, { ahead = true } = {}) {
+  /** Saved, with the space's colour (`color`: its key colour, or what the space had); the panel's own space drawn ahead
+   *  until the state has it (one is: the others aren't shown here). */
+  function save(spaceId: string, bg: SpaceBackground | null, color: string | null, { ahead = true } = {}) {
     if (ahead) rt.previewBackground(spaceId, bg, { held: false });
-    rt.dispatch('space.setBackground', { space: spaceId, background: bg, color: bg?.colors[0] ?? null }, 'behavior');
+    rt.dispatch('space.setBackground', { space: spaceId, background: bg, color }, 'behavior');
   }
+  /** The space's colour with a background: what it had as the panel opened, with that background back; else the key colour. */
+  const colorWith = (bg: SpaceBackground | null) => (open && same(bg, open.origin) ? open.color : bg?.colors[0] ?? open?.color ?? null);
 
-  /** The panel (or an open still waiting) ended; the materials given back unless another open follows (`keep`). */
+  /** The panel (or an open still waiting) ended; the materials given back unless another open follows (`keep`). What
+   *  it drew and hadn't saved yet (a burst at rest's wait, a drag cut off) is saved first, however it closes (Escape
+   *  drops it before it comes here). */
   function end({ keep = false } = {}) {
     turn++;
     waitingFor = null;
+    open?.panel.finish();
     const was = open;
     open = null;
     if (was) {
@@ -94,7 +102,15 @@ export function installBackgroundPicker(rt: Rt, { onTick, materials }: {
 
   function show(spaceId: string, info: { point?: { x: number, y: number }, element?: Element } | null) {
     end({ keep: true });
+    wanted = null;
     if (!hasSpace(spaceId)) { void hold(false); return false; }
+    // (A space not shown: its background isn't drawn here, so it's switched to first, as Arc does, and opened then.)
+    if (rt.vm?.space?.id !== spaceId) {
+      void hold(false);
+      wanted = { spaceId, info, until: Date.now() + 3000 };
+      rt.dispatch('space.switch', spaceId, 'behavior');
+      return true;
+    }
     // (Asked from a menu: where it was; from a theme's button: beside it; else near the window's top left.)
     const box = info?.element?.getBoundingClientRect?.();
     const point = info?.point ?? (box ? { x: box.right + 8, y: box.top } : { x: 24, y: 56 });
@@ -119,6 +135,7 @@ export function installBackgroundPicker(rt: Rt, { onTick, materials }: {
 
   function makePanel(spaceId: string, point: { x: number, y: number }, themed: boolean) {
     const origin = stored(spaceId);
+    const color = (rt.state?.spaces?.find((s) => s.id === spaceId) as { color?: unknown } | undefined)?.color;
     const events: PanelEvents = {
       preview: (s) => rt.previewBackground(spaceId, backgroundFrom(s), { held: true }),
       commit: (s) => {
@@ -127,18 +144,18 @@ export function installBackgroundPicker(rt: Rt, { onTick, materials }: {
         if (same(bg, open.saved)) { rt.previewBackground(spaceId, bg, { held: false }); return; }
         open.undo.push(open.saved);
         open.saved = bg;
-        save(spaceId, bg);
+        save(spaceId, bg, colorWith(bg));
       },
       undo: () => {
         if (!open || !open.undo.length) return;
         const bg = open.undo.pop()!;
         open.saved = bg;
         open.panel.set(stateOf(bg));
-        save(spaceId, bg);
+        save(spaceId, bg, colorWith(bg));
       },
       escape: () => {
         if (!open) return;
-        if (!same(open.saved, open.origin)) save(spaceId, open.origin);
+        if (!same(open.saved, open.origin)) save(spaceId, open.origin, open.color);
         open.saved = open.origin;
         close();
       },
@@ -147,14 +164,15 @@ export function installBackgroundPicker(rt: Rt, { onTick, materials }: {
         if (!open) return;
         const bg = backgroundFrom(s);
         if (!same(bg, open.saved)) { open.undo.push(open.saved); open.saved = bg; }
-        for (const sp of rt.state?.spaces ?? []) save(sp.id, bg, { ahead: sp.id === spaceId });
+        for (const sp of rt.state?.spaces ?? []) save(sp.id, bg, sp.id === spaceId ? colorWith(bg) : bg?.colors[0] ?? null, { ahead: sp.id === spaceId });
       },
       tick: (kind) => onTick?.(kind),
     };
     const panel: Picker = themed
       ? createPickerPart({ rt, spaceId, state: stateOf(origin), point, events })
-      : createPickerPanel({ doc: rt.doc, container: rt.container, state: stateOf(origin), point, events });
-    open = { spaceId, panel, origin, saved: origin, undo: [] };
+      : createPickerPanel({ doc: rt.doc, container: rt.container, state: stateOf(origin), point, events, scale: () => rt.scale?.() || 1 });
+    // (Only a colour the action takes, `#rgb` or `#rrggbb`: another would have every save refused.)
+    open = { spaceId, panel, origin, color: typeof color === 'string' && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(color) ? color : null, saved: origin, undo: [] };
     rt.panelChanged();
   }
 
@@ -177,11 +195,20 @@ export function installBackgroundPicker(rt: Rt, { onTick, materials }: {
     rect: () => open?.panel.rect() ?? null,
     /** Its parts, for the tests. */
     parts: () => open?.panel.parts() ?? null,
-    /** A theme's button in its own picker (`picker.run`, the item checked first): what that item does. */
-    run: (id: string) => open?.panel.run?.(id) ?? false,
+    /** A theme's button in its own picker (`picker.run`, the item checked first): what that item does. Only a button in
+     *  the picker (a theme's button elsewhere can't, say, Use for All Spaces, which no undo takes back). */
+    run(id: string, info?: { element?: Element } | null) {
+      if (!open || (info?.element && !open.panel.owns(info.element))) return false;
+      return open.panel.run?.(id) ?? false;
+    },
     /** Another space shown, or the space gone: closed (what's saved kept); so is an open still waiting. Settings come
      *  while the materials are held for it: closed too. */
     afterRender(vm: ViewModel) {
+      // (Switched to the space it was asked for: opened now.)
+      if (wanted && !open && !waitingFor) {
+        if (Date.now() > wanted.until || !hasSpace(wanted.spaceId)) wanted = null;
+        else if (vm.space?.id === wanted.spaceId) { const w = wanted; wanted = null; show(w.spaceId, w.info); return; }
+      }
       const id = open?.spaceId ?? waitingFor;
       if (id && (vm.space?.id !== id || !hasSpace(id))) close();
       else if (open && holding && settingsShown()) close();

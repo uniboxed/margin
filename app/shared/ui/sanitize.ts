@@ -61,7 +61,8 @@ type Ctx = {
   previewPages?: { n: number }, // the <m-preview-page>s of the `preview` part so far (one: where the card's window goes)
 };
 // The files a style sheet may point to, and how their addresses are written.
-type CssOptions = { files?: string[], assetUrl?: (path: string) => string };
+// (`inline`: a `style` attribute's declarations, not a stylesheet's.)
+type CssOptions = { files?: string[], assetUrl?: (path: string) => string, inline?: boolean };
 
 const report = (list: Removed[], kind: string, name: string, reason: string, at?: number) => { list.push(at == null ? { kind, name, reason } : { kind, name, reason, at }); };
 
@@ -1060,6 +1061,7 @@ class CssBuilder {
   declare src: string;
   declare files: string[];
   declare assetUrl: (path: string) => string;
+  declare inline: boolean;
   declare removed: Removed[];
   declare errors: string[];
   declare rules: number;
@@ -1068,6 +1070,7 @@ class CssBuilder {
     this.src = source;
     this.files = options.files ?? [];
     this.assetUrl = options.assetUrl ?? ((p) => p);
+    this.inline = options.inline === true;
     this.removed = [];
     this.errors = [];
     this.rules = 0;
@@ -1192,6 +1195,9 @@ class CssBuilder {
     if (!isTok(items[b], ':')) { this.drop('css-declaration', name.v, 'no colon', name); return ''; }
     const prop = name.v.startsWith('--') ? name.v : name.v.toLowerCase();
     if (BLOCKED_PROPERTIES.has(prop)) { this.drop('css-declaration', prop, 'not allowed', name); return ''; }
+    // The system's materials only in a stylesheet (read once, with the switch as the theme's theme.json asks), never in
+    // a `style` attribute: an element made while Edit Theme Color's panel holds the switch on would keep it (M2.9 step 5).
+    if (prop === '-apple-visual-effect' && this.inline) { this.drop('css-declaration', prop, 'only in the theme\'s stylesheet, inside @supports', name); return ''; }
     const value = items.slice(b + 1);
     const reason = this.value(value) ?? (TEXT_PROPERTIES.has(prop) ? writesText(prop, value) : prop === '-apple-visual-effect' ? visualEffect(value) : null);
     if (reason) { this.drop('css-declaration', `${prop}: ${this.text(value).trim().slice(0, 80)}`, reason, name); return ''; }
@@ -1298,7 +1304,7 @@ export function sanitizeCss(css: string, options: { files?: string[], assetUrl?:
 export function sanitizeDeclarations(text: unknown, options: CssOptions = {}): { css: string, removed: Removed[] } {
   const source = String(text).replace(/\r\n?|\f/g, '\n');
   if (source.length > LIMITS.attrValue || source.includes('\u0000')) return { css: '', removed: [{ kind: 'css-declaration', name: 'style', reason: 'too long or NUL' }] };
-  const b = new CssBuilder(source, options);
+  const b = new CssBuilder(source, { ...options, inline: true });
   const out = b.block(components(tokenizeCss(source)), 0, 'declarations');
   return { css: b.errors.length ? '' : out, removed: b.removed };
 }

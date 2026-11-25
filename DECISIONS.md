@@ -9821,3 +9821,34 @@ Glass's own panels are.
   its own picker or Margin's; in the window; for its own, its field's variant and its sliders, a colour picked on its
   field, its appearance button saving, its Done closing it. Seen in WebKit through `tools/glass-shots` (`picker`),
   light and dark: TESTING.md "A theme's own Edit Theme Color".
+
+## M2.9: a review of steps 1 to 5b, and its fixes (`feat/space-backgrounds`, 2026-11-25)
+
+A second reader went through the branch against SPEC.md, the themes README, the plan and these entries, by reading
+the code (no tests run). It found no mismatch between the core's and the TS twin's rules, no stuck state in the glass
+switch, and no layering break. Six things were real, each checked by reading the path and then by a test that fails
+without its fix:
+
+1. **"Edit Theme Color…" on a space not shown closed at once.** Every space's chip has it in its menu, but the picker
+   draws only the shown space's background, so it closed on the next render. Now it switches to that space first (as
+   Arc does) and opens once it's shown (3 s at most); a switch that doesn't happen never opens it.
+2. **Escape and ⌘Z didn't put back the space's own colour.** A save carried the key colour only when there was a
+   background, and `renameSpace` keeps a colour not sent, so Escape to "none" left the last preset as the space's
+   colour. The space's colour is kept as the panel opens; a save with the background it had carries it.
+3. **Closing during a burst or a drag dropped the change.** The session's timer was cleared, never committed. Closing
+   now saves what's drawn and unsaved (`finish`), every way but Escape (which drops it first).
+4. **`-apple-visual-effect` in a `style` attribute.** The sanitizer let it through there for every theme, and an element
+   made while the picker holds the switch would keep it. Now refused in a `style` attribute (no theme used it there);
+   stylesheets keep it, read with the theme's own switch.
+5. **Margin's panel ignored the page's zoom** (the extension's in-page host): its point and the window are now turned
+   into Margin's pixels as the menu's and a theme's picker's are. Both now measure their box with its fractions
+   (`offsetWidth` rounded 461.5 down, half a pixel past the margin).
+6. **`picker.run` from a theme's button outside the picker** (keys moved there by a script, then Return) could run Use
+   for All Spaces, which no undo takes back. Only a button in the picker runs an item now.
+
+Not changed: the two small copies of the background's key (`library.ts bgOf`, `data-set.ts backgroundKey`) are each
+their module's own reading (the library and the data set's comparison), kept as they are.
+
+The full gate's run during the review failed once, in "space swipe: two fingers sideways…" (Liquid Glass, Chromium):
+a timing check that the old space is still drawn while the slide comes in, with the machine under the review's and a
+build's load. It passed 4 of 4 alone; this branch doesn't touch the swipe.

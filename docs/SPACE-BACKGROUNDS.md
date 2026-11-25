@@ -259,10 +259,10 @@ it. The code: `app/shared/ui/background.ts` (the layer), `background-look.ts` (w
 - **Live:** while a gesture runs, the background layer is redrawn once a frame (`rt.previewBackground`, held). Nothing is saved until the gesture ends.
 - **Saving:**
   - Each gesture's end (a click, a drag let go, a burst of scrolling or keys at rest, 350 ms) saves once: `space.setBackground {space, background, color}` (Margin's own action, behaviour-only), sent as `renameSpace {spaceId, background, color}`, the key colour the space's colour. It's drawn ahead until the state has it. (The plan said one save on close. Saving per gesture lets the window's appearance, which follows the state (step 3), change at the click, and loses nothing when the window goes. `space.update` wasn't used because it is the editor's whole save, with a name and an emoji.)
-  - ⌘Z goes back a saved step, saving it again. Escape restores the value from when the panel opened, then closes it.
+  - ⌘Z goes back a saved step, saving it again. Escape restores the value from when the panel opened, the space's own colour with it, then closes it. Closing any other way saves what's drawn and not saved yet (a burst, a drag).
   - Done, a press outside, another space shown, or the space gone: closed, what's saved kept.
   - "Use for all spaces" saves the same value to every space of the profile, one request each.
-- **Where it opens:** "Edit Theme Color…" in the space's menu (`menu-items.ts`, after Rename Space), where the menu was. `space.editBackground` is a theme's to name too (a theme's button: the picker opens beside it). The space editor has no button yet: its save sends the colour it shows and would overwrite the key colour the picker saved, so it waits until the editor shows the background's.
+- **Where it opens:** "Edit Theme Color…" in the space's menu (`menu-items.ts`, after Rename Space), where the menu was. For a space not shown, Margin switches to it first and opens once it's shown (its background is drawn only for the space shown). `space.editBackground` is a theme's to name too (a theme's button: the picker opens beside it). The space editor has no button yet: its save sends the colour it shows and would overwrite the key colour the picker saved, so it waits until the editor shows the background's.
 - **While it's open**, Margin.app gives the page the keys and is told the panel takes the pointer (`overlay.ts`: `panelOpen`, `panelRect`), as for Margin's menus.
 - **Its glass:** see step 5. **Its ticks:** an `onTick` hook, step 6.
 

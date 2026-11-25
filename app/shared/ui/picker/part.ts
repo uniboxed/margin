@@ -99,7 +99,8 @@ export function createPickerPart({ rt, spaceId, state: start, point, events }: {
   // Where it was asked from, kept inside the window (the point in the page's pixels, placed in Margin's: rt.scale).
   function place(sl: HTMLElement) {
     const box = (sl.firstElementChild as HTMLElement | null) ?? sl;
-    const w = box.offsetWidth, h = box.offsetHeight, k = rt.scale?.() || 1;
+    // (Its box as drawn, fractions kept (offsetWidth rounds them), in Margin's pixels.)
+    const k = rt.scale?.() || 1, r = box.getBoundingClientRect(), w = r.width * k, h = r.height * k;
     const key = `${point.x}:${point.y}:${w}:${h}:${k}:${win.innerWidth}:${win.innerHeight}`;
     if (key === placed) return;
     placed = key;
@@ -117,6 +118,8 @@ export function createPickerPart({ rt, spaceId, state: start, point, events }: {
     /** Shows a state (an undo, the state's own value come back). */
     set(next: PickerState) { s.set(next); },
     get state() { return s.state; },
+    /** Closing: what's drawn and not saved yet, saved (a burst, a drag cut off). */
+    finish() { s.finish(); },
     /** A theme's button: one of the picker's items (`picker.run`, checked against the items before it comes here). */
     run(id: string) {
       const r = runItem({ ...ui, state: s.state }, id);
