@@ -3,13 +3,17 @@
 // (`picker.run` with the item's id, checked against the open picker's items as `menu.run` is). Every word is Margin's
 // (the part is guarded: ui/sanitize.ts GUARDED_PARTS). The field, the sliders and the dial aren't items: they're
 // Margin's elements, worked by ui/picker/controls.ts. Pure: the Node tests run it, ui/picker/part.ts shows it.
-import { MAX_COLORS, PRESET_PAGES, TEXTURES, TEXTURE_NAMES, addColor, cycleTexture, pickPreset, removeColor, setAmount, setAppearance, setIntensity, setTexture, toggleWheel } from './model.ts';
-import type { Appearance, PickerState, Texture } from './model.ts';
+import { FITS, FIT_NAMES, MAX_COLORS, PRESET_PAGES, TEXTURES, TEXTURE_NAMES, addColor, cycleTexture, pickPreset, removeColor, removePicture, setAmount, setAppearance, setFit, setIntensity, setTexture, toggleWheel } from './model.ts';
+import type { Appearance, Fit, PickerState, Texture } from './model.ts';
 import { WORDS } from './words.ts';
 import type { TickKind } from './words.ts';
 
-/** What the runtime keeps while a theme's picker is open (ui state `picker`). */
-export type PickerUi = { spaceId: string, state: PickerState, page: number, all: boolean };
+/**
+ * What the runtime keeps while a theme's picker is open (ui state `picker`). `pictures`: the host serves them (Margin.app),
+ * so the picture's items are there; `note`: a line about the picture (adding one, why one was refused); `dropping`: a
+ * drag with a file is over the picker.
+ */
+export type PickerUi = { spaceId: string, state: PickerState, page: number, all: boolean, pictures?: boolean, note?: string, dropping?: boolean };
 
 const APPEARANCES: readonly Appearance[] = Object.freeze(['auto', 'light', 'dark']);
 const SHORT: Readonly<Record<Appearance, string>> = Object.freeze({ auto: 'Auto', light: 'Light', dark: 'Dark' });
@@ -61,6 +65,14 @@ export function pickerView(ui: PickerUi) {
     },
     textures: TEXTURES.map((t) => ({ id: `texture:${t}`, value: t, label: TEXTURE_NAMES[t], current: s.texture === t, selected: s.texture === t && s.amount > 0 })),
     amounts: AMOUNTS.map((v) => ({ id: `amount:${v}`, value: v, label: v === 0 ? 'Off' : `${v}%`, selected: pct(s.amount) === v })),
+    // (Margin.app only: null where the host serves no pictures.)
+    picture: ui.pictures ? {
+      label: WORDS.picture, has: !!s.image, fit: s.image?.fit ?? null, fitLabel: WORDS.pictureFit,
+      choose: { id: 'picture:choose', label: s.image ? WORDS.pictureChange : WORDS.pictureAdd },
+      remove: { id: 'picture:remove', label: WORDS.pictureRemove },
+      fits: FITS.map((f) => ({ id: `picture:fit:${f}`, value: f, label: FIT_NAMES[f], selected: s.image?.fit === f })),
+      note: ui.note ?? '', hasNote: !!ui.note, dropLabel: WORDS.pictureDrop, dropping: !!ui.dropping,
+    } : null,
     all: { id: 'all', label: ui.all ? WORDS.allDone : WORDS.all },
     done: { id: 'done', label: WORDS.done },
   };
@@ -77,16 +89,18 @@ export function pickerItemIds(vm: PickerVm): string[] {
     ...vm.intensity.steps.map((v) => v.id),
     ...vm.textures.map((t) => t.id), vm.texture.prev.id, vm.texture.next.id,
     ...vm.amounts.map((a) => a.id),
+    ...(vm.picture ? [vm.picture.choose.id, ...(vm.picture.has ? [vm.picture.remove.id, ...vm.picture.fits.map((f) => f.id)] : [])] : []),
     vm.all.id, vm.done.id,
   ];
 }
 
 /**
  * What an item does: a new state committed (`commit`, with the detent it ticks), another page of presets (`page`),
- * Use for All Spaces (`all`), Done (`done`); null for an id that isn't one.
+ * Margin.app's file picker for a picture (`choose`), Use for All Spaces (`all`), Done (`done`); null for an id that
+ * isn't one.
  */
 export function runItem(ui: PickerUi, id: string):
-  | { kind: 'commit', state: PickerState, tick: TickKind } | { kind: 'page', page: number } | { kind: 'all' } | { kind: 'done' } | null {
+  | { kind: 'commit', state: PickerState, tick: TickKind } | { kind: 'page', page: number } | { kind: 'choose' } | { kind: 'all' } | { kind: 'done' } | null {
   const s = ui.state;
   const [what, arg] = id.split(':') as [string, string | undefined];
   const num = (text: string | undefined) => (text !== undefined && /^\d{1,3}$/.test(text) ? Number(text) : NaN);
@@ -115,6 +129,15 @@ export function runItem(ui: PickerUi, id: string):
     case 'intensity': {
       const v = num(arg);
       return INTENSITY_STEPS.includes(v) ? { kind: 'commit', state: setIntensity(s, v / 100), tick: 'detent' } : null;
+    }
+    case 'picture': {
+      if (!ui.pictures) return null;
+      const rest = id.slice('picture:'.length);
+      if (rest === 'choose') return { kind: 'choose' };
+      if (!s.image) return null;
+      if (rest === 'remove') return { kind: 'commit', state: removePicture(s), tick: 'step' };
+      const fit = rest.startsWith('fit:') ? rest.slice(4) as Fit : null;
+      return fit && FITS.includes(fit) ? { kind: 'commit', state: setFit(s, fit), tick: 'step' } : null;
     }
     case 'all': return arg === undefined ? { kind: 'all' } : null;
     case 'done': return arg === undefined ? { kind: 'done' } : null;

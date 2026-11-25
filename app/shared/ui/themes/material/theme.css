@@ -826,6 +826,10 @@
 .picker .picker-swatch[aria-checked="true"] { box-shadow: 0 0 0 2px var(--sc-high), 0 0 0 4px var(--primary); }
 .picker .picker-swatch .picker-check { width: 14px; height: 14px; color: #fff; stroke-width: 2.6; }
 .picker .picker-swatch:not([aria-checked="true"]) .picker-check { display: none; }
+/* The picture (Margin.app): an assist chip to choose one, the fit as a segmented button; a file dropped on the dialog
+   outlined in the primary colour. */
+.picker-note { color: var(--on-surface-variant); font-size: 12px; }
+.picker.picker-dropping { outline: 2px dashed var(--primary); outline-offset: -6px; }
 /* The sliders: M3's, a thick track, the active part in the primary colour, a bar of a handle with a gap each side. */
 .picker-slider { height: 44px; color: var(--primary); }
 .picker-slider [m-track] { height: 16px; border-radius: 8px; background: var(--secondary-container); }

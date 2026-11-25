@@ -2323,6 +2323,34 @@ On the real screen, with the kit's TestPane (a full-screen member), Calculator (
 8. **Kept.** Quit Margin and open it again: the sidebar as wide as it was left (`defaults read com.unibox.margin MarginWindowThemeSettings`).
 9. **Fast and odd drags.** A fast flick; a drag past the theme's minimum and maximum; ⌘-Tab away mid-drag; a drag while an app is still opening (its loading bar): the sidebar never sticks, Margin's window always ends right below the hosted one (the app takes clicks again), one placing at most per drag.
 
+## A space's picture (M2.9 step 7, 2026-11-25)
+
+Margin.app, Arcadia first, then Material, Neubrutalism and Pixel (their own pickers); a hosted app shown, and the
+launcher. Off screen: the store, the scheme and the page's requests (`tools/app-tests/run.sh unit|e2e`), the panel and
+the drawing in WebKit and Chromium (`tests/theme/picker-picture.test.ts`, `background-picture.test.ts`); none of this
+was seen on the real screen. Stop at the first thing that's wrong and note which step.
+
+1. **Choose one.** Edit Theme Color… › Add Picture…: the file picker comes over Margin's full-screen window (not on
+   another Space), titled Choose a Picture; only pictures can be picked. Pick a large photo from Photos or an iPhone
+   HEIC: within a second or two the space's background is the photo, filling the window; the panel shows its
+   thumbnail, Fill chosen. The log says `backgrounds: a picture kept (chosen)`, no name or path.
+2. **The keys after.** With the file picker closed, the panel still open: Escape puts back what the space had (and
+   closes it); open it again, ⌘Z steps back. If a hosted app was shown, it has the keys again once the panel closes.
+3. **Text reads.** Sidebar text over a dark photo and a light one, in light and dark appearance: always readable (the
+   photo washed only as much as it needs); a busy photo still recognisable. The window resized (leave full screen if
+   needed): still right.
+4. **Fit, Tile, Fill.** Each drawn so (Fit: the whole photo, the underlay round it; Tile: at its own size from the
+   top left). Cancel the file picker: nothing changes. A GIF or a PDF: not pickable, or refused with words under the
+   row.
+5. **Drop.** Drag a photo from Finder onto the open panel: dashed outline while it's over, then the photo. A text file
+   dropped: "That isn't a picture.", nothing else changes; Margin's window never opens the file itself.
+6. **Remove, and after.** Remove Picture: the colours as they were (or the theme's own ground, with none). Quit and
+   open Margin: a picture still used is kept; one no space uses is gone from
+   `~/Library/Application Support/Margin/data/app/backgrounds/` (the log: `… picture file(s) no space names removed`).
+7. **Themes.** In Material, Neubrutalism and Pixel: their own Add Picture…, the fit and Remove Picture, the refusal's
+   words in their own look; in Safari's sidebar (the extension): no picture controls at all, a space with a picture
+   drawn with its colours only.
+
 ## A theme's own Edit Theme Color (M2.9 step 5b, 2026-11-24)
 
 Margin.app (or Safari's sidebar), Material, then Neubrutalism, then Pixel; light and dark where the theme has both. Off screen they were drawn by the real runtime in WebKit (`tools/glass-shots/run.sh <dir> material`, the `picker` pictures); none of this was seen on the real screen.

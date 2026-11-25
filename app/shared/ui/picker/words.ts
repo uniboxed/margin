@@ -24,4 +24,9 @@ export const WORDS = Object.freeze({
   presets: 'Presets', prev: 'Previous presets', next: 'Next presets', preset: 'Set space color to',
   intensity: 'Intensity', texture: 'Texture', amount: 'Texture amount', textureHint: 'Click for the next texture; turn, drag or scroll for its amount',
   all: 'Use for All Spaces', allDone: 'Used for all spaces', done: 'Done',
+  // A space's picture (M2.9 step 7: Margin.app only).
+  picture: 'Picture', pictureAdd: 'Add Picture…', pictureChange: 'Change Picture…', pictureRemove: 'Remove Picture',
+  pictureFit: 'How the picture fits', pictureDrop: 'Drop a picture here', pictureAdding: 'Adding the picture…',
+  pictureNotOne: 'That isn’t a picture.', pictureUnreadable: 'Margin couldn’t read that picture.',
+  pictureTooLarge: 'That picture is too large (over 40 MB).', pictureFailed: 'Margin couldn’t keep that picture.',
 });

@@ -635,6 +635,11 @@ Lay out any of these, in any order (leave out what you don't want):
   - `texture` (`label`, `name`, `amount`, `amountText`, `text`, `showing`, and `prev`, `next`: the texture before or
     after), `textures` (each `id`, `label`, `selected` while it shows), `amounts` (off, 25 %, 50 %, 75 %, 100 %: each
     `id`, `label`, `selected`);
+  - `picture` (Margin.app only, null elsewhere, so put it in `<m-if test="picker.picture">`): `label`, `has`, `fit`,
+    `choose` (Add Picture… or Change Picture…: Margin.app's file picker), `remove` (with `has`), `fits` (Fill, Fit, Tile:
+    each `id`, `label`, `selected`; with `has`), `note` and `hasNote` (adding one, or why one was refused: show it, it's
+    the only word of what went wrong), `dropping` (a file is being dragged over your picker: Margin takes it when it's
+    dropped there; e.g. `m-class:dropping="{{picker.picture.dropping}}"`);
   - `all` (Use for All Spaces: its `label` says when it's done) and `done`.
 
   A colour is a value for your CSS: `m-style:--swatch="{{p.color}}"`. `picker.run` runs only an item the picker shows

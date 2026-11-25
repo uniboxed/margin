@@ -376,7 +376,9 @@ const withRuntime = Object.assign(T, {
     // many ms (no glass here: Playwright's browsers don't know the property); the asks, in order: `rtMaterials`.
     materials?: number | null,
     // A host that serves spaces' pictures (Margin.app's, M2.9 step 7): every id is the page's `__testPicture` (a data:
-    // URL the test made); without, none is served (a browser's extension).
+    // URL the test made); without, none is served (a browser's extension). It answers `backgroundChoose` and
+    // `backgroundAdd` with the page's `__pictureReply` (a value, or a function of the type and payload: a promise
+    // waits), and says why one failed with `__pictureFailure` (taken once, as Margin.app's `takeFailure`).
     pictures?: boolean,
   } = {}) {
     (T as typeof T & { unmountRuntime(): void }).unmountRuntime(); // (added with these steps)
@@ -392,7 +394,20 @@ const withRuntime = Object.assign(T, {
     // (Margin.app's log lines from the page, `note`: as said, in order.)
     rt.notes = [];
     Object.assign(host, { note: (text: string) => { rt.notes.push(text); } });
-    if (pictures) Object.assign(host, { pictureUrl: () => ((window as unknown as { __testPicture?: string }).__testPicture ?? null) });
+    if (pictures) {
+      const w = window as unknown as { __testPicture?: string, __pictureReply?: unknown, __pictureFailure?: { type: string, error: string } | null };
+      const send = host.send;
+      Object.assign(host, {
+        pictureUrl: () => w.__testPicture ?? null,
+        async send(type: string, payload: any = {}) {
+          if (type !== 'backgroundChoose' && type !== 'backgroundAdd') return send(type, payload);
+          host.sent.push({ type, payload });
+          const r = w.__pictureReply;
+          return typeof r === 'function' ? r(type, payload) : r;
+        },
+        takeFailure() { const f = w.__pictureFailure ?? null; w.__pictureFailure = null; return f; },
+      });
+    }
     let target: Target;
     let el: HTMLElement | null = null;
     if (container === 'document') {

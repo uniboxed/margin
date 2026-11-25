@@ -81,6 +81,8 @@ export type Host = {
    * in a browser's extension (the background drawn without it there).
    */
   pictureUrl?(id: string): string | null,
+  /** Why the last request failed, if it did just now (taken once): Margin.app's (ui/host-app.ts). */
+  takeFailure?(): { type: string, error: string } | null,
   /**
    * Margin.app's own window (ui/host-app.ts): the page card's state, on the theme's root as `m-page-state`.
    * `shown`: a hosted window shows through the page's place; `loading`: an item is being opened there

@@ -4,7 +4,8 @@
 // the browsers: tests/theme/picker.test.ts.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { FIELD, FIRST_AMOUNT, MAX_COLORS, OFFSETS, PRESET_PAGES, TEXTURES, addColor, backgroundFrom, colorAt, cycleTexture, followers, knobs, moveKey, moveKnob, pickPreset, pointOf, removeColor, setAmount, setAppearance, setIntensity, stateOf, toggleWheel } from '../app/shared/ui/picker/model.ts';
+import { FIELD, FIRST_AMOUNT, FITS, MAX_COLORS, OFFSETS, PICTURE_MAX_BYTES, PRESET_PAGES, TEXTURES, addColor, backgroundFrom, colorAt, cycleTexture, followers, knobs, moveKey, moveKnob, pickPreset, pointOf, removeColor, removePicture, setAmount, setAppearance, setFit, setIntensity, setPicture, stateOf, toggleWheel } from '../app/shared/ui/picker/model.ts';
+import { droppedProblem } from '../app/shared/ui/picker/picture.ts';
 import { ACTIONS, BEHAVIOR_ONLY, checkAction, requestFor } from '../app/shared/ui/actions.ts';
 import { SPACE_COLORS } from '../app/shared/ui/behaviors/menu-items.ts';
 import { backgroundOf } from '../extension/state/model.ts';
@@ -94,6 +95,39 @@ test('picker: the rule switched, a preset (its exact colour), the slider, the di
   assert.equal(setAppearance(s, 'dark').appearance, 'dark');
   const saved = backgroundFrom(s)!;
   assert.deepEqual(backgroundOf(saved), saved, 'saved as the model reads it');
+});
+
+test('picker: a picture (M2.9 step 7): set by its id (fitting as the last one did, at its centre), its fit, removed', () => {
+  const ID = 'a'.repeat(64), ID2 = 'b'.repeat(64);
+  const none = stateOf(null);
+  const one = setPicture(none, ID);
+  assert.deepEqual(one.image, { id: ID, fit: 'cover', focus: [0.5, 0.5] }, 'Fill, at its centre');
+  assert.deepEqual(backgroundFrom(one)?.image, one.image, 'a picture alone is a background');
+  assert.equal(backgroundFrom(one)?.colors.length, 0);
+  for (const bad of ['', 'A'.repeat(64), 'a'.repeat(63), `${'a'.repeat(63)}/`, '../x']) assert.equal(setPicture(none, bad), none, `not an id: ${bad}`);
+  assert.deepEqual(FITS, ['cover', 'contain', 'tile']);
+  const tiled = setFit(one, 'tile');
+  assert.equal(tiled.image?.fit, 'tile');
+  assert.equal(setFit(one, 'stretch' as any), one, 'not a fit');
+  assert.equal(setFit(none, 'tile'), none, 'no picture: nothing to fit');
+  const held = { ...tiled, image: { ...tiled.image!, focus: [0.2, 0.8] as [number, number] } };
+  assert.deepEqual(setPicture(held, ID2).image, { id: ID2, fit: 'tile', focus: [0.5, 0.5] }, 'another: the fit kept, at its centre again');
+  assert.equal(removePicture(one).image, null);
+  assert.equal(backgroundFrom(removePicture(one)), null, 'no colours and no picture: none');
+  const colored = setPicture(addColor(none), ID);
+  assert.deepEqual(backgroundFrom(removePicture(colored))?.image, undefined, 'the colours stay');
+  assert.equal(backgroundFrom(removePicture(colored))?.colors.length, 1);
+  assert.equal(removePicture(none), none);
+});
+
+test('picker: a dropped file checked before it\'s read (a picture by its type, not empty, within the core\'s cap)', () => {
+  assert.equal(PICTURE_MAX_BYTES, 40 * 1024 * 1024, 'margin-core\'s MAX_INPUT_BYTES');
+  assert.equal(droppedProblem({ type: 'image/jpeg', size: 1000 }), null);
+  assert.equal(droppedProblem({ type: 'image/heic', size: PICTURE_MAX_BYTES }), null, 'HEIC: Margin.app reads it');
+  assert.equal(droppedProblem({ type: 'text/plain', size: 10 }), 'That isn’t a picture.');
+  assert.equal(droppedProblem({ type: '', size: 10 }), 'That isn’t a picture.');
+  assert.equal(droppedProblem({ type: 'image/png', size: 0 }), 'Margin couldn’t read that picture.');
+  assert.equal(droppedProblem({ type: 'image/png', size: PICTURE_MAX_BYTES + 1 }), 'That picture is too large (over 40 MB).');
 });
 
 test('picker: presets: five pages of nine, the space editor\'s colours on the first', () => {

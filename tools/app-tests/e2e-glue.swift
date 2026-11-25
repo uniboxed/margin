@@ -25,6 +25,8 @@
 // false for the person's own; ⌘Q with a hosted app in front is Margin's prompt (Cancel keeps everything, another app
 // in front takes it down, ⌘Q again quits), and quitting gives it all back.
 import AppKit
+import ImageIO
+import UniformTypeIdentifiers
 import WebKit
 
 // The window manager as the test kit measured it on the real Mac (2026-11-15, mc8/mc10), around Margin's real
@@ -1688,5 +1690,55 @@ func glueResumeScenario() async {
     let gone = await waitJS(c.webView, "return !document.querySelector('margin-background-picker')")
     let off = await until(3) { !switched() }
     check("edit theme color's glass: closed, the switch off again (Arcadia as before)", gone && off, "gone \(gone) off \(off)")
+  }
+
+  // ---- a space's picture (M2.9 step 7): asked for by the page, kept by the store, served, drawn ----
+  // (The page's own requests, as Edit Theme Color sends them: its buttons are in a closed root, worked by
+  // tests/theme/picker-picture.test.ts. The file picker: the store's stand-in, `pick`.)
+  do {
+    let file = root.appendingPathComponent("chosen-photo.png")
+    let ctx = CGContext(data: nil, width: 64, height: 40, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                        bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+    ctx.setFillColor(CGColor(red: 0.12, green: 0.25, blue: 0.38, alpha: 1))
+    ctx.fill(CGRect(x: 0, y: 0, width: 64, height: 40))
+    let png = NSMutableData()
+    let dest = CGImageDestinationCreateWithData(png, UTType.png.identifier as CFString, 1, nil)!
+    CGImageDestinationAddImage(dest, ctx.makeImage()!, nil)
+    CGImageDestinationFinalize(dest)
+    try? (png as Data).write(to: file)
+    let send = { (type: String, payload: String) async -> JSONObject? in
+      let text = await js(c.webView, "return await window.webkit.messageHandlers.margin.postMessage({ op: 'send', type: '\(type)', payload: \(payload) })") as? String
+      return text.flatMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? JSONObject }
+    }
+    let isId = { (v: Any?) in ((v as? JSONObject)?["id"] as? String).map { $0.count == 64 && $0.allSatisfy { $0.isHexDigit && !$0.isUppercase } } == true }
+    shell.backgrounds.pick = { file }
+    let chosen = await send("backgroundChoose", "{}")
+    let id = (chosen?["result"] as? JSONObject)?["id"] as? String ?? ""
+    check("a space's picture: chosen (the file picker's stand-in): kept, its id answered", chosen?["ok"] as? Bool == true && isId(chosen?["result"]) && shell.backgrounds.ids().contains(id), "\(String(describing: chosen))")
+    shell.backgrounds.pick = { nil }
+    let cancelled = await send("backgroundChoose", "{}")
+    check("a space's picture: the file picker cancelled: answered with nothing", cancelled?["ok"] as? Bool == true && cancelled?["result"] is NSNull, "\(String(describing: cancelled))")
+    shell.backgrounds.pick = nil
+    let dropped = await send("backgroundAdd", "{ bytes: '\((png as Data).base64EncodedString())' }")
+    check("a space's picture: dropped (its bytes): kept, its id answered", dropped?["ok"] as? Bool == true && isId(dropped?["result"]), "\(String(describing: dropped))")
+    let refused = await send("backgroundAdd", "{ bytes: 'aGVsbG8=' }")
+    check("a space's picture: what isn't one: refused with words for the page", refused?["ok"] as? Bool == false && (refused?["error"] as? String)?.isEmpty == false, "\(String(describing: refused))")
+    // Drawn: the shown space's background with it. Its ground (`--m-bg`, on the page's root) is the underlay's until
+    // the picture is served, loaded and read from (a canvas copy: a picture from Margin's own scheme isn't tainted).
+    let shown = ((library.snapshot()["openTabs"] as? JSONObject)?["activeSpaceByWindow"] as? JSONObject)?[String(c.id)] as? String ?? ""
+    let bg = { (image: String) -> JSONObject in
+      ["colors": [String](), "image": ["id": image, "fit": "cover", "focus": [0.5, 0.5]], "wheel": "analogous", "intensity": 0.5, "texture": "grain", "amount": 0, "appearance": "light"]
+    }
+    let ground = "return getComputedStyle(document.documentElement).getPropertyValue('--m-bg').trim()"
+    _ = library.perform("renameSpace", ["spaceId": shown, "background": bg(String(repeating: "f", count: 64))])
+    var unserved = ""
+    for _ in 0..<40 { unserved = await js(c.webView, ground) as? String ?? ""; if !unserved.isEmpty { break }; try? await Task.sleep(nanoseconds: 50_000_000) }
+    _ = library.perform("renameSpace", ["spaceId": shown, "background": bg(id)])
+    var drawn = ""
+    for _ in 0..<60 { drawn = await js(c.webView, ground) as? String ?? ""; if !drawn.isEmpty && drawn != unserved { break }; try? await Task.sleep(nanoseconds: 50_000_000) }
+    check("a space's picture: one not kept: drawn without it (the underlay)", !unserved.isEmpty, unserved)
+    check("a space's picture: served by Margin's scheme, loaded and read by the page: its ground the picture's", !drawn.isEmpty && drawn != unserved, "\(unserved) → \(drawn)")
+    _ = library.perform("renameSpace", ["spaceId": shown, "background": NSNull()])
+    try? FileManager.default.removeItem(at: file)
   }
 }

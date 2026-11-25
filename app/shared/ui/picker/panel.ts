@@ -1,6 +1,7 @@
 // Edit Theme Color: the panel (M2.9 step 4, docs/SPACE-BACKGROUNDS.md Part B §4), Margin's own, never the theme's.
 // Arc's panel, in Margin's words and drawing: the appearance (automatic, light, dark) over a dotted field with the
-// colours' knobs (−, + and the rule the others follow under it), pages of presets, the wavy slider (intensity) and the
+// colours' knobs (−, + and the rule the others follow under it), pages of presets, where the host serves them a picture
+// (M2.9 step 7: add one, by Margin.app's file picker or dropped on the panel; how it fits; remove it), the wavy slider (intensity) and the
 // dial (the texture: turn its ring, drag its centre up or down, or scroll over it for the amount; click it, press
 // Return or Space on it, or swipe sideways over it for the next texture), then Use for All Spaces and Done. The
 // field, slider and dial are the shared controls (ui/picker/controls.ts), as a theme's own picker has them (step 5b:
@@ -18,10 +19,12 @@
 // of scrolling, held keys), `commit` when it ends (or at once for a click), `undo` (⌘Z), `escape`, `done`, `all`,
 // `tick` at each detent (the dial's steps, the slider's tenths, a texture, an appearance: step 6's haptics or sound).
 // Saving, undoing and closing are ui/behaviors/background-picker.ts's.
-import { MAX_COLORS, PRESET_PAGES, addColor, pickPreset, removeColor, setAppearance, toggleWheel } from './model.ts';
-import type { Appearance, PickerState } from './model.ts';
+import { FITS, FIT_NAMES, MAX_COLORS, PRESET_PAGES, addColor, pickPreset, removeColor, removePicture, setAppearance, setFit, toggleWheel } from './model.ts';
+import type { Appearance, Fit, PickerState } from './model.ts';
 import { WORDS, createSession, dialControl, fieldControl, sliderControl } from './controls.ts';
 import type { PanelEvents } from './controls.ts';
+import { pictureDrop } from './picture.ts';
+import type { PictureRequests } from './picture.ts';
 
 export { WORDS };
 export type { PanelEvents, TickKind } from './controls.ts';
@@ -41,7 +44,7 @@ const CSS = `:host{${PINNED}}:host::before,:host::after,:host::backdrop{display:
 .panel{all:initial;box-sizing:border-box;display:flex;flex-direction:column;gap:8px;width:${W}px;padding:8px;border-radius:18px;color-scheme:light dark;
 --fg:light-dark(#1d1d1f,#f5f5f7);--fg2:light-dark(rgba(29,29,31,.58),rgba(245,245,247,.6));--surface:light-dark(#f6f6f8,#29292d);--well:light-dark(rgba(0,0,0,.035),rgba(255,255,255,.045));
 --dot:light-dark(rgba(0,0,0,.16),rgba(255,255,255,.15));--ctl:light-dark(rgba(0,0,0,.06),rgba(255,255,255,.09));--ctl-hover:light-dark(rgba(0,0,0,.1),rgba(255,255,255,.15));
---line:light-dark(rgba(0,0,0,.1),rgba(255,255,255,.12));--face:light-dark(#d9d9de,#3c3c41);--ring:light-dark(#0a6cff,#4c95ff);
+--line:light-dark(rgba(0,0,0,.1),rgba(255,255,255,.12));--face:light-dark(#d9d9de,#3c3c41);--ring:light-dark(#0a6cff,#4c95ff);--seg:light-dark(rgba(255,255,255,.92),rgba(255,255,255,.16));
 background:var(--surface);color:var(--fg);font:13px/1.3 -apple-system,BlinkMacSystemFont,system-ui,sans-serif;
 box-shadow:0 18px 50px rgba(0,0,0,.28),0 0 0 .5px light-dark(rgba(0,0,0,.2),rgba(0,0,0,.65)),inset 0 .5px 0 light-dark(rgba(255,255,255,.9),rgba(255,255,255,.18));
 user-select:none;-webkit-user-select:none;cursor:default}
@@ -73,6 +76,20 @@ box-shadow:0 2px 8px rgba(0,0,0,.3),0 0 0 .5px rgba(0,0,0,.2);transition:transfo
 .swatches{flex:1;display:grid;grid-template-columns:repeat(9,1fr);gap:4px;justify-items:center}
 .swatches button{width:24px;height:24px;border-radius:50%;background:var(--c);box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.3),0 1px 2px rgba(0,0,0,.28)}
 .swatches button[aria-checked="true"]{box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.3),0 0 0 2px var(--surface),0 0 0 3.5px var(--fg)}
+.picture{display:flex;align-items:center;gap:6px;min-height:34px;padding:0 2px}
+.picture .add{flex:1;height:32px;border-radius:9px;background:var(--ctl);display:flex;gap:6px;justify-content:center;font-size:12.5px}
+.picture .add:hover{background:var(--ctl-hover)}
+.picture .thumb{width:46px;height:32px;flex:none;border-radius:7px;overflow:hidden;background:var(--well);box-shadow:0 0 0 .5px var(--line)}
+.picture .thumb img{display:block;width:100%;height:100%;object-fit:cover}
+.fits{flex:1;display:flex;height:30px;padding:2px;border-radius:9px;background:var(--ctl)}
+.fits button{flex:1;border-radius:7px;font-size:11.5px;color:var(--fg2)}
+.fits button:hover{color:var(--fg)}
+.fits button[aria-checked="true"]{color:var(--fg);background:var(--seg);box-shadow:0 1px 2px rgba(0,0,0,.16)}
+.picture .remove{width:30px;height:30px;flex:none;border-radius:8px;color:var(--fg2)}
+.picture .remove:hover{background:var(--ctl);color:var(--fg)}
+.note{padding:0 4px;font-size:11.5px;color:var(--fg2)}
+.note:empty{display:none}
+.panel[m-dropping]{outline:2px dashed var(--ring);outline-offset:-5px}
 .controls{display:flex;align-items:center;gap:12px;padding:2px 2px 10px 4px}
 .slider{flex:1;min-width:0;position:relative;height:40px;border-radius:999px;background:var(--ctl);touch-action:none}
 .slider svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}
@@ -106,14 +123,18 @@ const ICONS: Record<string, { fill?: boolean, d: string[] }> = {
   plus: { d: ['M4 10h12M10 4v12'] },
   prev: { d: ['M12 4l-6 6 6 6'] },
   next: { d: ['M8 4l6 6-6 6'] },
+  picture: { d: ['M3.5 4.5h13v11h-13z', 'M3.5 13l4-4 3.2 3.2 2.1-2.1 3.7 3.4', 'M13.2 6.6a1.1 1.1 0 1 0 0 2.2 1.1 1.1 0 1 0 0-2.2z'] },
+  close: { d: ['M5.5 5.5l9 9M14.5 5.5l-9 9'] },
 };
 
 export type PickerPanel = ReturnType<typeof createPickerPanel>;
 
-export function createPickerPanel({ doc, container, state: start, point, events, scale = () => 1 }: {
+export function createPickerPanel({ doc, container, state: start, point, events, scale = () => 1, pictures = null }: {
   doc: Document, container: ShadowRoot | Document, state: PickerState, point: { x: number, y: number }, events: PanelEvents,
   /** Margin's pixels per page pixel (the runtime's `scale`: the page's zoom, which the in-page host scales Margin back from). */
   scale?: () => number,
+  /** Where the host serves pictures (Margin.app): how one comes in. None: no picture's controls. */
+  pictures?: PictureRequests | null,
 }) {
   const win = doc.defaultView!; // (a page that draws has a window)
   const s = createSession({ win, state: start, events });
@@ -176,9 +197,23 @@ export function createPickerPanel({ doc, container, state: start, point, events,
   const presets = el('div', 'presets', {}, prev, swatches, next);
   const sliderEl = el('div', 'slider');
   const dialEl = el('div', 'dial');
+  // The picture (where the host serves them): Add Picture…, or its thumbnail (Change Picture…), how it fits, remove it.
+  const addPicture = button('add', WORDS.pictureAdd, icon('picture', 16), WORDS.pictureAdd);
+  const thumbImg = el('img', '', { alt: '', draggable: 'false' });
+  const thumb = button('thumb', WORDS.pictureChange, thumbImg);
+  const fitButtons = FITS.map((f) => {
+    const b = button('', FIT_NAMES[f], FIT_NAMES[f]);
+    b.setAttribute('role', 'radio');
+    b.dataset.fit = f;
+    return b;
+  });
+  const fits = el('div', 'fits', { role: 'radiogroup', 'aria-label': WORDS.pictureFit }, ...fitButtons);
+  const removePic = button('remove', WORDS.pictureRemove, icon('close', 14));
+  const note = el('div', 'note', { role: 'status', 'aria-live': 'polite' });
+  const pictureRow = el('div', 'picture', { role: 'group', 'aria-label': WORDS.picture }, addPicture, thumb, fits, removePic);
   const all = button('all', WORDS.all, WORDS.all);
   const done = button('done', WORDS.done, WORDS.done);
-  panel.append(fieldEl, presets, el('div', 'controls', {}, sliderEl, dialEl), el('div', 'foot', {}, all, done));
+  panel.append(fieldEl, presets, ...(pictures ? [pictureRow, note] : []), el('div', 'controls', {}, sliderEl, dialEl), el('div', 'foot', {}, all, done));
   shadow.append(style, place, panel);
   // (In the page as Margin's own: after the theme's root, as ui/background.ts's layer; shown in the top layer.)
   if (container.nodeType === 9) doc.documentElement.append(host);
@@ -207,6 +242,14 @@ export function createPickerPanel({ doc, container, state: start, point, events,
     wheel.style.display = state.colors.length > 1 ? '' : 'none';
     wheel.textContent = state.wheel === 'complementary' ? WORDS.complementary : WORDS.analogous;
     for (const b of swatches.children as HTMLCollectionOf<HTMLElement>) b.setAttribute('aria-checked', String(!!state.colors.length && b.dataset.color === state.colors[0]));
+    if (pictures) {
+      const image = state.image;
+      addPicture.style.display = image ? 'none' : '';
+      for (const e of [thumb, fits, removePic]) e.style.display = image ? '' : 'none';
+      const src = image ? pictures.url(image.id) ?? '' : '';
+      if (thumbImg.getAttribute('src') !== src) { if (src) thumbImg.setAttribute('src', src); else thumbImg.removeAttribute('src'); }
+      for (const b of fitButtons) b.setAttribute('aria-checked', String(!!image && b.dataset.fit === image.fit));
+    }
   }
   const offDraw = s.onDraw(draw);
 
@@ -230,6 +273,17 @@ export function createPickerPanel({ doc, container, state: start, point, events,
   click(plus, () => { s.tick('step'); s.commit(addColor(s.state)); });
   click(minus, () => { s.tick('step'); s.commit(removeColor(s.state)); });
   click(wheel, () => { s.tick('step'); s.commit(toggleWheel(s.state)); });
+  if (pictures) {
+    click(addPicture, () => pictures.choose());
+    click(thumb, () => pictures.choose());
+    for (const b of fitButtons) click(b, () => { s.tick('step'); s.commit(setFit(s.state, b.dataset.fit as Fit)); });
+    click(removePic, () => { s.tick('step'); s.commit(removePicture(s.state)); addPicture.focus({ preventScroll: true }); });
+    // (On its host: a drop inside comes there, out of the closed root, as any composed event does.)
+    offs.push(pictureDrop(host, {
+      over: (on) => { panel.toggleAttribute('m-dropping', on); },
+      dropped: (file) => { s.settle(); pictures.drop(file); },
+    }));
+  }
   const turnPage = (dir: number) => { page = (page + dir + PRESET_PAGES.length) % PRESET_PAGES.length; drawSwatches(); draw(); };
   listen(prev, 'click', () => turnPage(-1));
   listen(next, 'click', () => turnPage(1));
@@ -271,6 +325,10 @@ export function createPickerPanel({ doc, container, state: start, point, events,
     /** Shows a state (an undo, the state's own value come back). */
     set(next: PickerState) { s.set(next); },
     get state() { return s.state; },
+    /** An edit from outside it (a picture that came): drawn and committed. */
+    apply(next: PickerState) { s.settle(); s.commit(next); },
+    /** A line under the picture (adding one, why one was refused), or none. */
+    note(text: string | null) { note.textContent = text ?? ''; position(); },
     /** Closing: what's drawn and not saved yet, saved (a burst, a drag cut off). */
     finish() { s.finish(); },
     /** Its box in the window's pixels, [x, y, width, height] (what Margin.app is told takes the pointer). */
@@ -294,6 +352,11 @@ export function createPickerPanel({ doc, container, state: start, point, events,
         prev: box(prev), next: box(next), all: { ...box(all), text: all.textContent }, done: box(done),
         empty: field.empty.style.display !== 'none', label: dial.label.textContent, focused: (shadow.activeElement as HTMLElement | null)?.getAttribute('aria-label') ?? null,
         dialValue: dialEl.getAttribute('aria-valuetext'), sliderValue: sliderEl.getAttribute('aria-valuenow'),
+        picture: pictures ? {
+          add: addPicture.style.display !== 'none' ? box(addPicture) : null, thumb: thumb.style.display !== 'none' ? { ...box(thumb), src: thumbImg.getAttribute('src') } : null,
+          fits: fitButtons.filter((b) => b.style.display !== 'none' && fits.style.display !== 'none').map((b) => ({ ...box(b), fit: b.dataset.fit, checked: b.getAttribute('aria-checked') === 'true' })),
+          remove: removePic.style.display !== 'none' ? box(removePic) : null, note: note.textContent, dropping: panel.hasAttribute('m-dropping'),
+        } : null,
       };
     },
     destroy() {

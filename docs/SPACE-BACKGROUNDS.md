@@ -255,7 +255,9 @@ it. The code: `app/shared/ui/background.ts` (the layer), `background-look.ts` (w
   - the wavy slider (the intensity);
   - the dial (turn the ring, drag the centre, scroll; a click or a sideways swipe the next texture; at 0 a texture starts at 25%);
   - Use for All Spaces, Done.
-  - The picture button and drop come with step 7.
+  - A picture (step 7, built): Add Picture… (Margin.app's file picker) or a file dropped on the panel; then its
+    thumbnail (Change Picture…), Fill / Fit / Tile, Remove Picture. Only where the host serves pictures (Margin.app);
+    a theme's own picker has the same items (`picker.picture`).
 - **Live:** while a gesture runs, the background layer is redrawn once a frame (`rt.previewBackground`, held). Nothing is saved until the gesture ends.
 - **Saving:**
   - Each gesture's end (a click, a drag let go, a burst of scrolling or keys at rest, 350 ms) saves once: `space.setBackground {space, background, color}` (Margin's own action, behaviour-only), sent as `renameSpace {spaceId, background, color}`, the key colour the space's colour. It's drawn ahead until the state has it. (The plan said one save on close. Saving per gesture lets the window's appearance, which follows the state (step 3), change at the click, and loses nothing when the window goes. `space.update` wasn't used because it is the editor's whole save, with a name and an emoji.)
@@ -316,7 +318,12 @@ The spike's measurements, which decide between them:
   - Sound also respects macOS's "Play user interface sound effects" if Margin can read it. That gets checked in the spike.
 - Ticks are limited to one per 20 ms, so a fast spin doesn't buzz.
 
-### 7. Pictures
+### 7. Pictures (built: step 7a, 7b, 7c)
+
+What was built differs from this plan in three places (DECISIONS.md "M2.9 step 7a", "7b", "7c"): the decoder is the
+platform's (ImageIO; WIC on Windows with its library windows), the average colour is worked out by the page from the
+picture as it draws it (nothing in the snapshot), and what the page asks is `backgroundChoose` / `backgroundAdd` as
+requests (`send`), not `perform`. Windows' `serve.rs` route comes with its library windows.
 
 - **The store:**
   - `data/app/backgrounds/<sha256>.<ext>`, next to the library's set, written atomically like `core/src/data/themes.rs`.

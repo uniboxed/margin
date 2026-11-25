@@ -410,6 +410,11 @@ img.fav.app { width: 22px; height: 22px; margin: -2px; box-shadow: none; backgro
 .picker-amounts { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; padding: 2px; }
 .picker .picker-amount { height: 20px; display: grid; place-items: center; background: var(--hover); box-shadow: var(--pxs); font-size: 7px; text-transform: uppercase; }
 .picker .picker-amount[aria-checked="true"] { background: var(--yellow); color: var(--deep); }
+/* The picture (Margin.app): a button to choose one, the fit as the amounts' steps; a file dropped on it dashed. */
+.picker .picker-pic { flex: 1; }
+.picker-fits { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.picker-note { font-size: 7px; color: var(--muted); text-transform: uppercase; line-height: 1.6; }
+.picker.picker-dropping { outline: 3px dashed var(--yellow); outline-offset: -7px; }
 .picker-foot { display: flex; justify-content: space-between; gap: 10px; padding: 4px 2px 0; }
 .picker .picker-all, .picker .picker-done { height: 32px; padding: 0 10px; display: grid; place-items: center; background: var(--blue); color: var(--deep); box-shadow: var(--pxd); font-size: 8px; text-transform: uppercase; }
 .picker .picker-done { padding: 0 16px; background: var(--green); }

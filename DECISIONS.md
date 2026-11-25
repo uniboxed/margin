@@ -9914,3 +9914,36 @@ build's load. It passed 4 of 4 alone; this branch doesn't touch the swipe.
   within 6 of the screenshot's, both halves still showing; contain and tile written so; one that fails to load and a
   host with no pictures drawn without it, no errors); `tests/ui-background.test.ts` (the samples' grid and wash in the
   look). Mutation: the wash held at 0 fails the contrast checks in both engines.
+
+## M2.9 step 7c: a picture in Edit Theme Color (`feat/space-backgrounds`, 2026-11-25)
+
+- **Only where the host serves pictures** (`Host.pictureUrl`: Margin.app): there, the behaviour gives both pickers
+  `PictureRequests` (`ui/picker/picture.ts`); a browser's extension gets none, and neither picker shows a picture's
+  controls (a theme's `picker.picture` is null).
+- **Margin's panel**: a row under the presets: Add Picture…, or the picture's thumbnail (Change Picture…), Fill / Fit /
+  Tile, Remove Picture; a line under it for what went wrong. A file dropped anywhere on the panel (on its host: drag
+  events come out of its closed root) is taken: dashed while one is over it.
+- **A theme's picker**: the same as items (`picture:choose`, `picture:fit:<fit>`, `picture:remove`, the last two only
+  with a picture), `note`, `dropping`; a drop on `<m-picker>` taken the same way. Material, Neubrutalism and Pixel draw
+  a row of their own (an assist chip, a push button, a pixel button; the fit as their segmented button or strip).
+- **The edits are the model's** (`setPicture`: fitting as the last one did, at its centre; `setFit`; `removePicture`:
+  with no colours either, the background is none). Each is saved as any edit is (⌘Z takes it back, Escape puts back
+  what the space had).
+- **The requests are the behaviour's** (`background-picker.ts addPicture`): `backgroundChoose` (Margin.app's file
+  picker), or `backgroundAdd` with a dropped file's bytes (base64), checked first by its type, not empty, at most
+  margin-core's 40 MB (`droppedProblem`). One at a time. The answer: an id, saved on the open picker; null (cancelled),
+  nothing; a refusal, Margin.app's words (`takeFailure`), shown in the picker. An answer that comes after the picker
+  closed, or after it opened again, isn't saved (that turn is gone; the file it kept goes as Margin.app next opens).
+- **The keys after the file picker**: the shell gives them back to the shown app as for a theme's import
+  (`keysBackToShown`); the panel stays open and keeps them while it's open, as Margin's fields do (TESTING.md, a
+  manual check).
+- **Tests**: `tests/theme/picker-picture.test.ts` in WebKit and Chromium (none without pictures; Add Picture… → the
+  request, the id saved as Fill at its centre, its thumbnail from the host, drawn; the fit saved and ⌘Z; cancelled;
+  refused with Margin.app's words; a dropped PNG sent as its exact base64 and saved, a text file refused before it's
+  sent; an answer after the panel closed and opened again not saved; Remove Picture: none; each built-in theme's own
+  picker: choose, Tile, remove, a refusal's words, none without pictures); `tests/ui-picker.test.ts` (the edits, the
+  drop's checks); `tests/ui-picker-part.test.ts` (the items, each only when it makes sense); the app's e2e
+  (`e2e-glue.swift`: the page's `backgroundChoose` through the real shell with the store's stand-in picker, cancelled,
+  a drop's bytes, garbage refused, and the picture served, loaded and read by the page: its `--m-bg` the picture's).
+  Mutations: the late answer saved, any file sent, the theme's items left out of `picker.run`'s check, a cancel shown
+  as a refusal: each fails its test.

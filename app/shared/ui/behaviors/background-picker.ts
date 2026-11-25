@@ -7,7 +7,11 @@
 //   (its key colour as the space's colour with it), drawn ahead until the state has it;
 // - ⌘Z goes back a saved step (each saved again); Escape puts back what the space had when the panel opened and
 //   closes; Done, a press outside it, another space shown or the space gone close it, what's saved kept;
-// - Use for All Spaces saves it to every space (one request each).
+// - Use for All Spaces saves it to every space (one request each);
+// - a picture (M2.9 step 7, where the host serves them: Margin.app): its file picker asked for (`backgroundChoose`), or
+//   a file dropped on the picker sent (`backgroundAdd`, its bytes), and the id that comes back saved as any edit is
+//   (⌘Z takes it back); a refusal's words shown in the picker. One at a time; one that comes after the picker closed
+//   (or opened again) isn't saved (the file it kept goes as Margin.app next opens).
 // While it's open the runtime says so (`onPanel`): Margin.app gives the page the keys and is told the panel takes the
 // pointer (app/shared/host/overlay.ts), as for Margin's menus.
 // Its glass (M2.9 step 5, DECISIONS.md "M2.9 step 5 spike"): with a host that has the system's materials (`materials`:
@@ -21,7 +25,10 @@ import type { Rt } from '../runtime.ts';
 import type { ViewModel } from '../view-model.ts';
 import type { SpaceBackground } from '../../../../types/margin';
 import { backgroundOf } from '../../../../extension/shared/space-background.ts';
-import { backgroundFrom, stateOf } from '../picker/model.ts';
+import { backgroundFrom, setPicture, stateOf } from '../picker/model.ts';
+import { droppedProblem, readBase64 } from '../picker/picture.ts';
+import type { PictureRequests } from '../picker/picture.ts';
+import { WORDS } from '../picker/words.ts';
 import { createPickerPanel } from '../picker/panel.ts';
 import type { PanelEvents, TickKind } from '../picker/panel.ts';
 import { createPickerPart, themeHasPicker } from '../picker/part.ts';
@@ -31,6 +38,7 @@ import type { PickerState } from '../picker/model.ts';
 type Picker = {
   set(next: PickerState): void, readonly state: PickerState, rect(): number[] | null, owns(target: EventTarget | null): boolean,
   parts(): unknown, finish(): void, destroy(): void, run?(id: string): boolean, afterRender?(): void,
+  apply(next: PickerState): void, note(text: string | null): void,
 };
 
 const same = (a: SpaceBackground | null, b: SpaceBackground | null) => JSON.stringify(a) === JSON.stringify(b);
@@ -51,6 +59,8 @@ export function installBackgroundPicker(rt: Rt, { onTick, materials }: {
   // The materials held for the panel: asked for and not given back; `answer`, the ask for them still on its way.
   let holding = false;
   let answer: Promise<unknown> | null = null;
+  // A picture being added (Margin.app's file picker open, or a dropped one on its way): the turn it was asked in.
+  let adding: number | null = null;
 
   const settingsShown = () => !!(rt.host.settingsAsked || rt.ui.settingsPage);
   const moreContrast = () => !!rt.win.matchMedia?.('(prefers-contrast: more)').matches;
@@ -133,6 +143,46 @@ export function installBackgroundPicker(rt: Rt, { onTick, materials }: {
     return true;
   }
 
+  /** How a picture comes in, where the host serves them (Margin.app); none elsewhere. */
+  function picturesFor(spaceId: string): PictureRequests | null {
+    if (!rt.host.pictureUrl) return null;
+    return {
+      url: (id) => rt.host.pictureUrl?.(id) ?? null,
+      choose: () => { void addPicture(spaceId, null); },
+      drop: (file) => { void addPicture(spaceId, file); },
+    };
+  }
+  /** Margin.app's file picker (`file` null), or a dropped file sent: the id that comes back saved on the open picker. */
+  async function addPicture(spaceId: string, file: File | null) {
+    if (!open || open.spaceId !== spaceId || adding === turn) return;
+    const mine = turn, panel = open.panel;
+    const problem = file ? droppedProblem(file) : null;
+    if (problem) { panel.note(problem); return; }
+    adding = mine;
+    panel.note(file ? WORDS.pictureAdding : null);
+    let result: unknown;
+    let why: string | null = null;
+    try {
+      if (file) {
+        const bytes = await readBase64(file, rt.win);
+        if (bytes === null) why = WORDS.pictureUnreadable;
+        else if (mine === turn) result = await rt.host.send('backgroundAdd', { bytes });
+      } else {
+        result = await rt.host.send('backgroundChoose');
+      }
+    } catch {
+      result = undefined;
+    } finally {
+      if (adding === mine) adding = null;
+    }
+    // (Closed, or opened again, meanwhile: not saved.)
+    if (mine !== turn || open?.panel !== panel) return;
+    const id = (result as { id?: unknown } | null | undefined)?.id;
+    if (typeof id === 'string' && /^[0-9a-f]{64}$/.test(id)) { panel.note(null); panel.apply(setPicture(panel.state, id)); return; }
+    if (result === null && !why) { panel.note(null); return; } // (the file picker cancelled)
+    panel.note(why ?? (rt.host.takeFailure?.()?.error || WORDS.pictureFailed));
+  }
+
   function makePanel(spaceId: string, point: { x: number, y: number }, themed: boolean) {
     const origin = stored(spaceId);
     const color = (rt.state?.spaces?.find((s) => s.id === spaceId) as { color?: unknown } | undefined)?.color;
@@ -168,9 +218,10 @@ export function installBackgroundPicker(rt: Rt, { onTick, materials }: {
       },
       tick: (kind) => onTick?.(kind),
     };
+    const pictures = picturesFor(spaceId);
     const panel: Picker = themed
-      ? createPickerPart({ rt, spaceId, state: stateOf(origin), point, events })
-      : createPickerPanel({ doc: rt.doc, container: rt.container, state: stateOf(origin), point, events, scale: () => rt.scale?.() || 1 });
+      ? createPickerPart({ rt, spaceId, state: stateOf(origin), point, events, pictures })
+      : createPickerPanel({ doc: rt.doc, container: rt.container, state: stateOf(origin), point, events, scale: () => rt.scale?.() || 1, pictures });
     // (Only a colour the action takes, `#rgb` or `#rrggbb`: another would have every save refused.)
     open = { spaceId, panel, origin, color: typeof color === 'string' && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(color) ? color : null, saved: origin, undo: [] };
     rt.panelChanged();

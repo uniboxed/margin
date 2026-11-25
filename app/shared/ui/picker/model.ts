@@ -18,6 +18,7 @@ import type { SpaceBackground } from '../../../../types/margin';
 export type Wheel = SpaceBackground['wheel'];
 export type Texture = SpaceBackground['texture'];
 export type Appearance = SpaceBackground['appearance'];
+export type Fit = NonNullable<SpaceBackground['image']>['fit'];
 /** A point of the field: its angle (degrees, 0 at the right, clockwise on screen) and distance from the centre (0–1). */
 export type Point = { angle: number, d: number };
 
@@ -33,7 +34,7 @@ export type PickerState = {
   texture: Texture,
   amount: number,
   appearance: Appearance,
-  /** A picture the background has (kept as it is: the picker shows no picture yet, M2.9 step 7). */
+  /** The background's picture (M2.9 step 7): its id in Margin.app's store, how it fits, where it's held. */
   image: SpaceBackground['image'] | null,
 };
 
@@ -157,6 +158,24 @@ export const setIntensity = (s: PickerState, v: number): PickerState => ({ ...s,
 /** The dial turned to a step (0–AMOUNT_STEPS). */
 export const setAmount = (s: PickerState, v: number): PickerState => ({ ...s, amount: Math.round(clamp01(v) * AMOUNT_STEPS) / AMOUNT_STEPS });
 export const setAppearance = (s: PickerState, appearance: Appearance): PickerState => ({ ...s, appearance });
+
+// ---- the picture (M2.9 step 7) -------------------------------------------------------------------------------
+
+/** How a picture fits the window, in the order the picker offers them. */
+export const FITS: readonly Fit[] = Object.freeze(['cover', 'contain', 'tile']);
+export const FIT_NAMES: Readonly<Record<Fit, string>> = Object.freeze({ cover: 'Fill', contain: 'Fit', tile: 'Tile' });
+/** What Margin takes as a picture at most, before it's made smaller (margin-core's data::backgrounds MAX_INPUT_BYTES). */
+export const PICTURE_MAX_BYTES = 40 * 1024 * 1024;
+
+/** A picture kept by Margin.app (its id): the background's, fitting as the last one did, held at its centre. */
+export function setPicture(s: PickerState, id: string): PickerState {
+  if (!/^[0-9a-f]{64}$/.test(id)) return s;
+  return { ...s, image: { id, fit: s.image?.fit ?? 'cover', focus: [0.5, 0.5] } };
+}
+/** How the picture fits (fill the window, fit in it, or tiled at its own size). */
+export const setFit = (s: PickerState, fit: Fit): PickerState => (s.image && FITS.includes(fit) ? { ...s, image: { ...s.image, fit } } : s);
+/** No picture (with no colours either: none, the theme's own). */
+export const removePicture = (s: PickerState): PickerState => (s.image ? { ...s, image: null } : s);
 
 /** A texture chosen; at amount 0 it starts showing (FIRST_AMOUNT). */
 export function setTexture(s: PickerState, texture: Texture): PickerState {

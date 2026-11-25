@@ -71,6 +71,31 @@ test('picker items: each does its edit; nothing for what isn\'t one', () => {
   assert.equal(INTENSITY_STEPS.length, 10);
 });
 
+test('picker items: a picture\'s, only where the host serves pictures (Margin.app); its fit and removal only with one', () => {
+  const ID = 'a'.repeat(64);
+  assert.equal(pickerView(ui()).picture, null, 'no pictures: none');
+  assert.ok(!pickerItemIds(pickerView(ui())).some((id) => id.startsWith('picture:')));
+  assert.equal(runItem(ui(), 'picture:choose'), null);
+  const without: PickerUi = { ...ui(), pictures: true };
+  let v = pickerView(without);
+  assert.deepEqual([v.picture?.has, v.picture?.choose.label, v.picture?.fit, v.picture?.hasNote], [false, 'Add Picture…', null, false]);
+  assert.deepEqual(pickerItemIds(v).filter((id) => id.startsWith('picture:')), ['picture:choose']);
+  assert.deepEqual(runItem(without, 'picture:choose'), { kind: 'choose' });
+  assert.equal(runItem(without, 'picture:remove'), null, 'nothing to remove');
+  assert.equal(runItem(without, 'picture:fit:tile'), null, 'nothing to fit');
+  const withOne: PickerUi = { ...without, state: { ...without.state, image: { id: ID, fit: 'cover', focus: [0.5, 0.5] } }, note: 'That isn’t a picture.' };
+  v = pickerView(withOne);
+  assert.deepEqual([v.picture?.has, v.picture?.choose.label, v.picture?.fit, v.picture?.note, v.picture?.hasNote], [true, 'Change Picture…', 'cover', 'That isn’t a picture.', true]);
+  assert.deepEqual(v.picture?.fits.map((f) => [f.id, f.label, f.selected]), [['picture:fit:cover', 'Fill', true], ['picture:fit:contain', 'Fit', false], ['picture:fit:tile', 'Tile', false]]);
+  assert.deepEqual(pickerItemIds(v).filter((id) => id.startsWith('picture:')), ['picture:choose', 'picture:remove', 'picture:fit:cover', 'picture:fit:contain', 'picture:fit:tile']);
+  const tile = runItem(withOne, 'picture:fit:tile');
+  assert.equal(tile?.kind, 'commit');
+  assert.equal(tile?.kind === 'commit' && tile.state.image?.fit, 'tile');
+  const gone = runItem(withOne, 'picture:remove');
+  assert.equal(gone?.kind === 'commit' && gone.state.image, null);
+  for (const bad of ['picture:fit:stretch', 'picture:fit', 'picture:', 'picture:choose:x', 'picture']) assert.equal(runItem(withOne, bad), null, bad);
+});
+
 test('picker page: the one the key colour is on, else the first', () => {
   assert.equal(pageOf(some({ colors: [PRESET_PAGES[3][4]] })), 3);
   assert.equal(pageOf(some({ colors: ['#010203'] })), 0);

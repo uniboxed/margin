@@ -379,6 +379,11 @@ img.fav.app, .tab.on img.fav.app { width: 22px; height: 22px; margin: -2px; bord
 .picker .picker-amount { display: grid; place-items: center; height: 30px; border-left: 2px solid var(--ink); font-size: 12px; font-weight: 700; }
 .picker .picker-amount:first-child { border-left: 0; }
 .picker .picker-amount[aria-checked="true"] { background: var(--ink); color: var(--paper); }
+/* The picture (Margin.app): a push button to choose one, the fit as the amounts' strip; a file dropped on the card dashed. */
+.picker .picker-pic { flex: 1; justify-content: center; gap: 8px; height: 34px; }
+.picker-fits { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.picker-note { font-size: 12px; font-weight: 700; }
+.picker.picker-dropping { outline: 3px dashed var(--ink); outline-offset: -8px; }
 .picker-foot { display: flex; justify-content: space-between; gap: 8px; padding-top: 2px; }
 .picker .picker-push { display: inline-flex; align-items: center; height: 38px; padding: 0 12px; border: 2.5px solid var(--ink); border-radius: 10px; background: var(--paper); box-shadow: 3px 3px 0 var(--ink); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
 .picker .picker-done { padding: 0 22px; background: var(--yellow); }

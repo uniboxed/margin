@@ -7,7 +7,8 @@
 //   `<m-picker-slider>` (its `m-value`), the `<m-picker-dial>`; mounted as they come and gone with them, their
 //   attributes read as Margin reads them (ui/picker/elements.ts: an unknown variant is the default).
 // - The theme's buttons run `picker.run` with an item's id (runItem: an appearance, a colour more or fewer, the rule,
-//   a preset, a page, a texture, an amount, an intensity, Use for All Spaces, Done).
+//   a preset, a page, a texture, an amount, an intensity, a picture (Margin.app: choose one, how it fits, remove it),
+//   Use for All Spaces, Done). Where the host serves pictures, a file dropped on the slot is taken as one.
 // - The slot is placed where the picker was asked from, kept inside the window (`--m-picker-x`, `--m-picker-y`, as
 //   Margin's menus place theirs: ui/behaviors/menus.ts), given the keys as it opens; Escape, ⌘Z and Tab as the panel.
 import { createSession, dialControl, fieldControl, sliderControl } from './controls.ts';
@@ -17,6 +18,8 @@ import type { FieldVariant, SliderValue, SliderVariant } from './elements.ts';
 import { pageOf, runItem } from './view.ts';
 import type { PickerUi } from './view.ts';
 import type { PickerState } from './model.ts';
+import { pictureDrop } from './picture.ts';
+import type { PictureRequests } from './picture.ts';
 import type { Rt } from '../runtime.ts';
 
 type Control = { el: Element, destroy: () => void };
@@ -26,12 +29,15 @@ export function themeHasPicker(rt: Pick<Rt, 'view'>): boolean {
   return !!rt.view.parts?.has('background-picker') && !!rt.view.rootElement()?.querySelector(PICKER_SLOT);
 }
 
-export function createPickerPart({ rt, spaceId, state: start, point, events }: {
+export function createPickerPart({ rt, spaceId, state: start, point, events, pictures = null }: {
   rt: Rt, spaceId: string, state: PickerState, point: { x: number, y: number }, events: PanelEvents,
+  /** Where the host serves pictures (Margin.app): how one comes in. None: no picture's items. */
+  pictures?: PictureRequests | null,
 }) {
   const win = rt.win;
   const s = createSession({ win, state: start, events });
-  let ui: PickerUi = { spaceId, state: start, page: pageOf(start), all: false };
+  let ui: PickerUi = { spaceId, state: start, page: pageOf(start), all: false, pictures: !!pictures, note: '', dropping: false };
+  let offDrop: (() => void) | null = null;
   let allTimer: ReturnType<typeof setTimeout> | null = null;
   let field: Control | null = null;
   const sliders = new Map<Element, Control>();
@@ -71,6 +77,11 @@ export function createPickerPart({ rt, spaceId, state: start, point, events }: {
       keysOn?.removeEventListener('keydown', onKey);
       keysOn = sl;
       sl.addEventListener('keydown', onKey);
+      offDrop?.();
+      offDrop = pictures ? pictureDrop(sl, {
+        over: (on) => { if (ui.dropping !== on) { ui = { ...ui, dropping: on }; sync(); } },
+        dropped: (file) => { s.settle(); pictures.drop(file); },
+      }) : null;
     }
     const f = sl.querySelector(PICKER_FIELD) as HTMLElement | null;
     if (f !== field?.el) {
@@ -118,6 +129,10 @@ export function createPickerPart({ rt, spaceId, state: start, point, events }: {
     /** Shows a state (an undo, the state's own value come back). */
     set(next: PickerState) { s.set(next); },
     get state() { return s.state; },
+    /** An edit from outside it (a picture that came): drawn and committed. */
+    apply(next: PickerState) { s.settle(); s.commit(next); },
+    /** A line about the picture (adding one, why one was refused), or none: the part's `picture.note`. */
+    note(text: string | null) { ui = { ...ui, note: text ?? '' }; sync(); },
     /** Closing: what's drawn and not saved yet, saved (a burst, a drag cut off). */
     finish() { s.finish(); },
     /** A theme's button: one of the picker's items (`picker.run`, checked against the items before it comes here). */
@@ -127,6 +142,7 @@ export function createPickerPart({ rt, spaceId, state: start, point, events }: {
       if (r.kind === 'commit') { s.settle(); s.tick(r.tick); s.commit(r.state); return true; }
       if (r.kind === 'page') { ui = { ...ui, page: r.page }; sync(); return true; }
       s.settle();
+      if (r.kind === 'choose') { pictures?.choose(); return true; }
       if (r.kind === 'done') { events.done(); return true; }
       events.all(s.state);
       ui = { ...ui, all: true };
@@ -164,6 +180,7 @@ export function createPickerPart({ rt, spaceId, state: start, point, events }: {
         dials: [...dials.keys()].map((el) => ({ ...box(el), value: el.getAttribute('aria-valuetext') })),
         focused: ((sl?.getRootNode() as Document | ShadowRoot | undefined)?.activeElement as HTMLElement | null)?.getAttribute('aria-label') ?? null,
         page: ui.page,
+        note: ui.note ?? '', dropping: !!ui.dropping,
       };
     },
     destroy() {
@@ -177,6 +194,8 @@ export function createPickerPart({ rt, spaceId, state: start, point, events }: {
       dials.clear();
       keysOn?.removeEventListener('keydown', onKey);
       keysOn = null;
+      offDrop?.();
+      offDrop = null;
       win.removeEventListener('resize', onResize);
       if (allTimer) clearTimeout(allTimer);
       s.destroy();

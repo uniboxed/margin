@@ -292,7 +292,7 @@
        the presets as round swatches, the intensity and the texture's amount as M3 sliders, the textures as filter
        chips, then a text button and a filled one. Every word is Margin's. -->
   <template m-part="background-picker">
-    <div class="picker" role="dialog" m-attr:aria-label="{{picker.title}}">
+    <div class="picker" role="dialog" m-attr:aria-label="{{picker.title}}" m-class:picker-dropping="{{picker.picture.dropping}}">
       <h2 class="picker-title">{{picker.title}}</h2>
       <div class="picker-segmented" role="radiogroup" m-attr:aria-label="{{picker.appearanceLabel}}">
         <m-for each="picker.appearances" as="a" key="id">
@@ -315,6 +315,23 @@
         </m-for>
         <button class="picker-page" m-action="picker.run" m-arg="{{picker.next.id}}" m-attr:aria-label="{{picker.next.label}}"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M7 4.5 11.5 9 7 13.5"></path></svg></button>
       </div>
+      <m-if test="picker.picture">
+        <div class="picker-row" role="group" m-attr:aria-label="{{picker.picture.label}}">
+          <span class="picker-label">{{picker.picture.label}}</span>
+          <button class="picker-assist" m-action="picker.run" m-arg="{{picker.picture.choose.id}}"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M3 4h12v10H3z"></path><path d="M3 12l3.5-3.5 3 3 2-2L15 13"></path></svg>{{picker.picture.choose.label}}</button>
+          <m-if test="picker.picture.has">
+            <button class="picker-tonal" m-action="picker.run" m-arg="{{picker.picture.remove.id}}" m-attr:aria-label="{{picker.picture.remove.label}}" m-attr:title="{{picker.picture.remove.label}}"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M5 5l8 8M13 5l-8 8"></path></svg></button>
+          </m-if>
+        </div>
+        <m-if test="picker.picture.has">
+          <div class="picker-segmented" role="radiogroup" m-attr:aria-label="{{picker.picture.fitLabel}}">
+            <m-for each="picker.picture.fits" as="f" key="id">
+              <button class="picker-segment" role="radio" m-action="picker.run" m-arg="{{f.id}}" m-attr:aria-checked="{{f.selected}}"><svg class="picker-check" viewBox="0 0 18 18" aria-hidden="true"><path d="M4 9.5l3.2 3.2L14 6"></path></svg><span>{{f.label}}</span></button>
+            </m-for>
+          </div>
+        </m-if>
+        <m-if test="picker.picture.hasNote"><span class="picker-note" role="status">{{picker.picture.note}}</span></m-if>
+      </m-if>
       <span class="picker-label">{{picker.intensity.label}}</span>
       <m-picker-slider class="picker-slider" m-value="intensity" m-variant="bar"></m-picker-slider>
       <span class="picker-label">{{picker.texture.label}}</span>
