@@ -10563,3 +10563,27 @@ failing first (the old code in a copy of the tree):
   (the longest between two 502 ms), ended: its key released`), and the slow lines of 2026-11-25 (a request's ack and
   answer, a slow tab show's Safari calls).
 
+## Tab switches in a fast run: one at a time in Safari's window, so each is drawn as Safari can (2026-11-25)
+
+- **What Tirth saw:** holding ⌥⌘↓ through Safari's tabs, the page didn't change until he let go ("the tab content
+  section stays where it is").
+- **Measured on the real Mac** (the dev hook's picks every ~110 ms, Margin's log with the copy's own times): every
+  tab show of the run was overtaken by the next pick and cancelled, yet its `tabs.update` was already under way in
+  Safari (a cancel stops a show only before its next Safari call). With switches overlapping in one window, each
+  `tabs.update` took Safari ~210 ms and none was drawn until the run ended; quiet, one at a time, the same tabs took
+  25-40 ms. (A tab not open in the window is made: `create` 200-280 ms; one Safari unloaded is reloaded: `update`
+  ~210 ms. Those are Safari's own.)
+- **The rule:** a window's tab shows run one at a time.
+  - The copy (extension/background/link.ts, its own rule): a newer `hostShow` for a window waits for the one running
+    there to finish; one overtaken while it waits is answered `overtaken`, with no Safari call; a running one is
+    stopped only by the app's cancel (docs/LINK-RESILIENCE.md §1 rule 13).
+  - margin-core (session/requests.rs `paced_by_copy`): a tab show overtaken by another web item of the same profile in
+    the same Margin window is left to its copy, not cancelled; one overtaken by anything else (an app, another
+    profile, a split, its window gone) is cancelled as before. Its answer changes nothing of the newer pick's (its
+    loader's words, its slow words, the item shown); the copy's `overtaken` is said as such in the log.
+- **Tests, failing first:** link.test.ts (the running show finishes, one overtaken while waiting never reaches Safari,
+  the newest runs after it); requests_tests.rs (overtaken by a tab of its profile: not cancelled, the newer asked, the
+  older's answer changes nothing, the copy's `overtaken` said; overtaken by an app: cancelled, as before).
+- **Diagnostics added** (development, quiet unless slow): a reply carries the copy's own time on it (`took`); the
+  link's line for a request over 100 ms says when it was acked and that time.
+

@@ -150,9 +150,11 @@ platform.
     reply comes); one answered gets its reply again.
 12. **Cancel.** `cancel { id }`: a request not started yet is dropped and answered nothing. One under way checks
     between its Safari calls (rule 13).
-13. **The newest show wins per window.** `hostShow` for window W marks any older `hostShow` for W as overtaken; an
-    overtaken show stops before its next Safari call. This follows the existing one-windows-call-per-window rule
-    (`WINDOW_CALLS`, `windowCallRefusal`, `link.ts:166,172`).
+13. **The newest show wins per window, one at a time.** A `hostShow` for window W waits for the one running in W to
+    finish (Safari switches one tab at a time: overlapping, each took ~210 ms and none was drawn during a held key's
+    run, 2026-11-25); one overtaken by a newer `hostShow` for W while it waits is answered `overtaken`, with no Safari
+    call. A running one goes on to its end unless the app cancels it (it then stops before its next Safari call). This
+    follows the existing one-windows-call-per-window rule (`WINDOW_CALLS`, `windowCallRefusal`, `link.ts:166,172`).
 14. **After a pause, the queue is read first.** A `req` read while the copy knows it was just paused (the check that
     logs `paused … ran late`, `link.ts:879`) is started only after one more turn of the event loop: the same "after
     the socket's queued messages" step the pause check already relies on (`setTimeout(judge, 0)`, `link.ts:883`). The

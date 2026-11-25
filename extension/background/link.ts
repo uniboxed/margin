@@ -948,6 +948,7 @@ export function createLink({
     heldReqs = [];
     holding = false;
     shows = new Map();
+    running = new Map();
     lastCheck = now();
     timers = [
       setInterval(() => {
@@ -1108,8 +1109,12 @@ export function createLink({
   // Requests read while the copy knows it was just paused, started one turn later (`release`).
   let heldReqs: Said[] = [];
   let holding = false;
-  // The newest `hostShow` started for each window: an older one still running for it stops at its next check.
+  // The newest `hostShow` asked for each window, and the one running there: Safari switches one tab at a time in a
+  // window (2026-11-25, measured on the real Mac: shows overlapping, every 110 ms of a held key, each took Safari
+  // ~210 ms and none was drawn until the run ended; one at a time, 25-40 ms), so a newer show waits for the running
+  // one to finish, and one overtaken while it waits is answered `overtaken` with no Safari call.
   let shows: Map<number, number> = new Map();
+  let running: Map<number, Promise<unknown>> = new Map();
   function remember(id: number, entry: Seen) {
     seen.delete(id);
     seen.set(id, entry);
@@ -1179,18 +1184,28 @@ export function createLink({
     if (windowId != null && !Number.isInteger(windowId)) return answer(id, { ok: false, error: 'no window' });
     const message = { ...(payload && typeof payload === 'object' ? payload : {}), type };
     if (message.windowId == null && windowId != null) message.windowId = windowId;
-    // The newest show for its window wins (as one windows call per window: WINDOW_CALLS): this one, until a newer one starts.
+    // A show for its window: after the one running there (one tab switch at a time), unless a newer one is asked first.
     const window = showWindow(m);
-    if (window != null) shows.set(window, id);
-    const stopped = () => entry.stop === true || (window != null && shows.get(window) !== id);
+    if (window != null) {
+      shows.set(window, id);
+      const before = running.get(window);
+      if (before) await before.catch(() => {});
+      if (epoch !== theirs) return;
+      if (entry.stop) return void (entry.state = 'cancelled');
+      if (shows.get(window) !== id) return answer(id, { ok: false, error: 'overtaken' });
+    }
+    const stopped = () => entry.stop === true;
     // The page's sender, as the app's window: handlers that use the page's
     // sender.tab.windowId get the window the UI was drawn for; nothing has a
     // tab id (the app's UI isn't a page). `stopped()` (not enumerable: the sender's shape is a page's): whether the app
-    // cancelled it or a newer show for its window started, checked between its Safari calls.
+    // cancelled it, checked between its Safari calls.
     const sender = { app: true, tab: windowId != null ? { windowId } : undefined };
     Object.defineProperty(sender, 'stopped', { value: stopped, enumerable: false });
     const at = epoch;
-    const result = await route(message, sender).catch((err) => ({ ok: false, error: String(err?.message ?? err) }));
+    const run = route(message, sender).catch((err) => ({ ok: false, error: String(err?.message ?? err) }));
+    if (window != null) running.set(window, run);
+    const result = await run;
+    if (window != null && running.get(window) === run) running.delete(window);
     if (window != null && shows.get(window) === id) shows.delete(window);
     if (epoch !== at) return;
     if (entry.stop) return void (entry.state = 'cancelled');

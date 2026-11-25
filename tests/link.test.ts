@@ -1174,7 +1174,9 @@ test('link: cancel — a req not started yet (held after a pause) is dropped; on
   }
 });
 
-test('link: two hostShows for one window — only the newer reaches the tabs API; the older answers overtaken', async () => {
+// (2026-11-25, measured on the real Mac: shows overlapping in one window, every 110 ms of a held key, each took Safari
+// ~210 ms and none was drawn until the run ended; one at a time each took 25-40 ms.)
+test('link: hostShows for one window run one at a time — the running one finishes, one overtaken while it waits answers overtaken with no Safari call, the newest runs after', async () => {
   const app = await startFakeApp();
   const api = browser({ app, local: STATE });
   const { link } = makeLink(api);
@@ -1200,12 +1202,18 @@ test('link: two hostShows for one window — only the newer reaches the tabs API
     app.send(req(hello.epoch, 1, 'hostShow', { windowId: 9, itemId: 'a', url: 'https://a.example/' }, null));
     await app.next('ack', { from, test: (m) => m.id === 1 });
     app.send(req(hello.epoch, 2, 'hostShow', { windowId: 9, itemId: 'b', url: 'https://b.example/' }, null));
-    assert.ok(await until(() => replies(app, from, 2).length === 1), 'the newer shown');
+    await app.next('ack', { from, test: (m) => m.id === 2 });
+    app.send(req(hello.epoch, 3, 'hostShow', { windowId: 9, itemId: 'c', url: 'https://c.example/' }, null));
+    await app.next('ack', { from, test: (m) => m.id === 3 });
+    await new Promise((r) => setTimeout(r, 50));
+    assert.deepEqual(calls, [], 'the newer ones wait for the one running (its Safari call under way)');
+    assert.equal(replies(app, from, 2).length + replies(app, from, 3).length, 0);
     release();
-    assert.ok(await until(() => replies(app, from, 1).length === 1));
-    assert.deepEqual(calls, ['create https://b.example/'], 'only the newer reached Safari');
-    assert.deepEqual(replies(app, from, 1)[0], { k: 'reply', id: 1, ok: false, error: 'overtaken' });
-    assert.equal(replies(app, from, 2)[0].ok, true);
+    assert.ok(await until(() => replies(app, from, 3).length === 1), 'the newest shown after it');
+    assert.equal(replies(app, from, 1)[0]?.ok, true, 'the running one finished: its tab shown');
+    assert.deepEqual(replies(app, from, 2)[0], { k: 'reply', id: 2, ok: false, error: 'overtaken' }, 'overtaken while it waited');
+    assert.equal(replies(app, from, 3)[0].ok, true);
+    assert.deepEqual(calls, ['create https://a.example/', 'create https://c.example/'], 'one at a time; the overtaken one never reached Safari');
   } finally {
     clearInterval(ticking);
     link.stop();

@@ -164,8 +164,8 @@ export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = asy
     /** Whether a tab shows a pin's or favorite's item in Margin.app (auto-preview). */
     isPinned: (tabId: number) => pinnedTabs.has(tabId),
     // `fresh` (the card's only): a new preview's page: the card's tab sent there if it shows another one.
-    // `stopped` (the link's: docs/LINK-RESILIENCE.md §1 rules 12–13): the app cancelled it, or a newer show for its
-    // window started. Checked before each of its Safari calls: an overtaken show makes no more of them (`overtaken`).
+    // `stopped` (the link's: docs/LINK-RESILIENCE.md §1 rules 12–13): the app cancelled it. Checked before each of its
+    // Safari calls: a cancelled show makes no more of them (`overtaken`). (A newer show for its window waits for it.)
     // A show over SLOW_SHOW_MS says in Margin.app's log how long each of its Safari calls took (development
     // diagnostics: with the link's line for its request, read late or worked on long; nothing is decided by it).
     async show(args: { windowId?: unknown, itemId?: unknown, url?: unknown, role?: unknown, fresh?: unknown, pinned?: unknown }, stopped: () => boolean = () => false) {

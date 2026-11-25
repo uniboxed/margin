@@ -617,7 +617,9 @@ impl Core {
     ) -> Option<Object> {
         let slowed = Cell::new(false);
         let shown = self.ask_show_tries(w, item, p, payload, label, pace, &slowed).await;
-        if slowed.get() {
+        // (Left to its copy and overtaken, it ends after the newer pick's loader may say the copy is slow: those words
+        // are the newer pick's, left as they are.)
+        if slowed.get() && (self.show_overtaken(w, item).is_none() || !self.paced_by_copy(w, item, p)) {
             // (Only the words: the loader's name and app are a newer pick's by now, if one overtook this.)
             self.ports.set_copy_slow(w, false);
         }
@@ -642,8 +644,12 @@ impl Core {
                     p,
                     "hostShow",
                     payload.clone(),
-                    || self.show_overtaken(w, item).is_some(),
+                    || self.show_overtaken(w, item).is_some() && !self.paced_by_copy(w, item, p),
                     |slow| {
+                        // (Overtaken, its copy's answer waited for: the loader is the newer pick's, left as it is.)
+                        if self.show_overtaken(w, item).is_some() {
+                            return;
+                        }
                         // (Slow: its loader at once, no grace, saying the copy is slow; no longer: its own pace.)
                         self.ports.set_showing(
                             w,
@@ -674,6 +680,14 @@ impl Core {
                 return Some(result);
             }
             let error = shown.error.unwrap_or_else(|| "no answer".into());
+            if error == "overtaken"
+                && let Some(why) = self.show_overtaken(w, item)
+            {
+                self.note(format!(
+                    "{item}: overtaken while its copy was asked for its tab ({why}): its copy showed the newer"
+                ));
+                return None;
+            }
             if !link_went_down(&error) {
                 self.note(format!("{item}: its tab wasn't shown ({error})"));
                 return None;
@@ -750,6 +764,21 @@ impl Core {
             return false;
         }
         true
+    }
+
+    /// Whether a tab show of `item` (profile `p`) overtaken in Margin window `w` is left to its copy rather than
+    /// cancelled: the item asked for since is a web item of the same profile, not a split's, and the window is still
+    /// there. Its show goes to the same copy for the same Safari window, where shows run one at a time (link.ts: a newer
+    /// one waits for the running one, one overtaken while it waits is answered `overtaken` with no Safari call), so the
+    /// tab under way is drawn as Safari can and none overlaps another (2026-11-25: cancelled every 110 ms of a held key,
+    /// none was drawn until the run ended). Its answer, when it comes, changes nothing of the newer pick's.
+    fn paced_by_copy(&self, w: i64, item: &str, p: &str) -> bool {
+        let Some(next) = self.requested_in(w).filter(|n| n != item) else { return false };
+        if self.ports.window(Some(w)).is_none() || self.split_of_item(&next).is_some() {
+            return false;
+        }
+        matches!(self.target_of(&next), Some(Target::Web { browser, profile })
+            if browser == "safari" && self.resolve(profile.as_deref()) == p)
     }
 
     /// Why a show of `item` in Margin window `w` is overtaken: another item asked for there since, or the window gone

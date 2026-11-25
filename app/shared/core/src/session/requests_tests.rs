@@ -794,6 +794,56 @@ fn a_host_show_never_answered_holds_no_pick_up_overtaken_it_is_cancelled_and_its
 }
 
 #[test]
+fn a_tab_show_overtaken_by_another_tab_of_its_profile_is_left_to_its_copy_not_cancelled() {
+    // (2026-11-25, measured on the real Mac: a held key's picks every 110 ms each cancelled the tab show before, and
+    // Safari, with every switch under way at once, drew none until the run ended. The copy runs a window's shows one
+    // at a time, link.ts; Margin no longer cancels a show another of the profile's tabs overtakes.)
+    let (s, world, lib) = tab_switch_world();
+    item(
+        &lib,
+        "w2",
+        json!({ "target": { "kind": "web", "browser": "safari", "profile": "s-default" }, "url": "https://b/", "title": "B page" }),
+    );
+    let (seen, held) = pump_holding(&s, &world, pick(&s, "w1", 1), 0, &mut host_show_held);
+    assert_eq!(kinds(&seen), ["ask hostShow"]);
+    let first = held[0].0;
+    // The next tab picked: asked of the copy too, the first not cancelled.
+    let (seen, held2) = pump_holding(&s, &world, pick(&s, "w2", 1), 0, &mut host_show_held);
+    assert_eq!(kinds(&seen), ["ask hostShow"], "the newer asked, the older not cancelled: {seen:?}");
+    // The copy's answer to the first (its tab shown in Safari as it came): nothing more of it here.
+    s.answer(first, json!({ "result": { "tabId": 501, "created": false } }));
+    pump(&s, &world, s.tick(0.0), &mut usual);
+    assert!(
+        s.done().iter().any(|l| l.starts_with("w1: its copy showed its tab, but it's overtaken")),
+        "{:?}",
+        s.done()
+    );
+    assert_eq!(s.core().requested_in(1).as_deref(), Some("w2"));
+    // The newer's answer: shown.
+    s.answer(held2[0].0, json!({ "result": { "tabId": 502, "created": false } }));
+    pump(&s, &world, s.tick(0.0), &mut usual);
+    assert_eq!(s.core().shown_in(1).as_deref(), Some("w2"));
+    assert_eq!(s.done().last().map(String::as_str), Some("w2: shown in Safari window 90"));
+    // The copy answering the older `overtaken` (a newer one asked while it waited): said so.
+    let (s, world, lib) = tab_switch_world();
+    item(
+        &lib,
+        "w2",
+        json!({ "target": { "kind": "web", "browser": "safari", "profile": "s-default" }, "url": "https://b/", "title": "B page" }),
+    );
+    let (_, held) = pump_holding(&s, &world, pick(&s, "w1", 1), 0, &mut host_show_held);
+    pump_holding(&s, &world, pick(&s, "w2", 1), 0, &mut host_show_held);
+    s.answer(held[0].0, json!({ "error": "overtaken" }));
+    pump(&s, &world, s.tick(0.0), &mut usual);
+    assert!(
+        s.done().iter().any(|l| l
+            == "w1: overtaken while its copy was asked for its tab (w2 asked for since): its copy showed the newer"),
+        "{:?}",
+        s.done()
+    );
+}
+
+#[test]
 fn a_show_waiting_for_a_closed_windows_pick_is_cancelled() {
     let (s, world, _) = tab_switch_world();
     world.windows.borrow_mut().push(2);
