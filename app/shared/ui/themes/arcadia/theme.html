@@ -241,7 +241,7 @@
            tooltip over the icons: no title here either (its name is its aria-label). -->
       <nav class="spaces" aria-label="Spaces" m-fit="items">
         <m-for each="spaces" as="s">
-          <button class="chip" data-space-id="{{s.id}}" m-class:active="{{s.active}}" m-class:iconless="{{s.iconless}}" m-attr:aria-label="{{s.label}}" m-attr:aria-pressed="{{s.active}}" m-style:--chip-color="{{s.color}}" m-action="space.switch" m-arg="{{s.id}}" m-drop="space"><span class="chip-face"><span class="chip-icon" aria-hidden="true">{{s.emoji}}</span></span><span class="chip-tip" aria-hidden="true"><span class="tip-name">{{s.label}}</span><m-if test="s.hasKeys"><span class="tip-keys"><m-for each="s.keys" as="k"><span class="tip-key">{{k.label}}</span></m-for></span></m-if></span></button>
+          <button class="chip" data-space-id="{{s.id}}" m-class:active="{{s.active}}" m-class:iconless="{{s.iconless}}" m-attr:aria-label="{{s.label}}" m-attr:aria-pressed="{{s.active}}" m-style:--chip-color="{{s.color}}" m-action="space.switch" m-arg="{{s.id}}" m-drop="space"><span class="chip-face"><span class="chip-icon" aria-hidden="true">{{s.emoji}}</span></span><span class="chip-tip" aria-hidden="true"><span class="tip-name">{{s.label}}</span><m-if test="s.hasProfile"><span class="tip-profile">{{s.profile}}</span></m-if><m-if test="s.hasKeys"><span class="tip-keys"><m-for each="s.keys" as="k"><span class="tip-key">{{k.label}}</span></m-for></span></m-if></span></button>
         </m-for>
       </nav>
       <button class="bar-button add" title="New folder or space" aria-label="New folder or space" m-action="menu.open" m-arg="add">

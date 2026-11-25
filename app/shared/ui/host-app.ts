@@ -770,6 +770,15 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           pagePicture = next;
           return pageState === 'elsewhere' ? emit() : undefined;
         }
+        case 'profiles': {
+          // The profiles' names (MarginWindowController.tellProfiles, M2.10): a space's tooltip shows its profile's, as
+          // Arc's does (ui/view-model.ts). `{ names: { browser: { id: name } }, fallback: { browser: id } }`.
+          const p = msg.profiles;
+          if (!p || typeof p !== 'object' || !p.names || typeof p.names !== 'object') return;
+          (platform.features as any).profileNames = { names: p.names, fallback: p.fallback && typeof p.fallback === 'object' ? p.fallback : {} };
+          rebuild();
+          return emit();
+        }
         case 'themes':
           // Margin.app's index of imported themes changed (Settings lists them).
           if (!Array.isArray(msg.list)) return;

@@ -855,3 +855,19 @@ test("the app host in Margin's own window: the start screen held up (`stuck` wit
   const browserPage = createAppHost({ hello: hello({ pageState: 'loading', pageStarting: true, pageStuck: 'held' }), post: bridge().post });
   assert.equal(browserPage.perform('startup.skip'), false, 'over a browser (not Margin\'s own window): never');
 });
+
+// The profiles' names Margin.app tells (M2.10: a space's tooltip shows its profile): kept as the platform's
+// `profileNames`, drawn again; what isn't them, ignored.
+test('the app host: the profiles\' names as told (`profiles`), for the view model', () => {
+  const b = bridge();
+  let emitted = 0;
+  const host = createAppHost({ hello: hello(), post: b.post });
+  host.onState(() => { emitted++; });
+  assert.equal(host.platform.features.profileNames, undefined, 'none until told');
+  host.receive({ type: 'profiles', profiles: { names: { safari: { 's-default': 'Personal' } }, fallback: { safari: 's-default' } } });
+  assert.deepEqual(host.platform.features.profileNames, { names: { safari: { 's-default': 'Personal' } }, fallback: { safari: 's-default' } });
+  assert.ok(emitted > 0, 'drawn again');
+  host.receive({ type: 'profiles', profiles: 'evil' });
+  host.receive({ type: 'profiles', profiles: { names: 5 } });
+  assert.deepEqual((host.platform.features.profileNames as any).names, { safari: { 's-default': 'Personal' } }, 'not names: ignored');
+});

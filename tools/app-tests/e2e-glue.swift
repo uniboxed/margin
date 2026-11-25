@@ -409,6 +409,15 @@ func glueScenario() async {
   let pageHas = await waitJS(c.webView, "const d = marginApp.stats().device; return !!d && d.pointer === 'mouse' && typeof d.haptics === 'boolean'")
   let pageDevice = await js(c.webView, "return JSON.stringify(marginApp.stats().device)") as? String ?? "?"
   check("…the page has the last (its host's device: a mouse)", pageHas, pageDevice)
+  // The profiles' names told to the page (M2.10: a space's tooltip shows its profile): as they change, once each.
+  made.profiles = { #"{"names":{"safari":{"s-default":"Personal","s-work":"Work"}},"fallback":{"safari":"s-default"}}"# }
+  made.tellProfiles()
+  let toldOnce = c.profilesSaid
+  made.tellProfiles()
+  check("the profiles' names told to a drawn page, not again unchanged", toldOnce?.contains(#""s-work":"Work""#) == true && c.profilesSaid == toldOnce, "\(String(describing: c.profilesSaid))")
+  let pageNames = await waitJS(c.webView, "const p = marginApp.stats().profileNames; return !!p && p.names.safari['s-work'] === 'Work' && p.fallback.safari === 's-default'")
+  let pageNamesSaid = await js(c.webView, "return JSON.stringify(marginApp.stats().profileNames)") as? String ?? "?"
+  check("…the page has them (its host's platform: the view model names each space's profile)", pageNames, pageNamesSaid)
 
   // ---- its card (its item in another Margin window) and the item coming back (bug of 2026-11-20: the launcher was
   // drawn for the loader's grace between the card and the loader) ----

@@ -1040,7 +1040,7 @@ document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) s
   },
   // The counts above (the app's tests read them).
   // (With the device the last gesture came from, as the app told it: Edit Theme Color's ticks.)
-  stats: () => ({ ...JSON.parse(JSON.stringify(stats)), device: host?.feedbackDevice ?? null }),
+  stats: () => ({ ...JSON.parse(JSON.stringify(stats)), device: host?.feedbackDevice ?? null, profileNames: (host?.platform as any)?.features?.profileNames ?? null }),
   // DEV-HOOK: an action run as a theme's behaviour would (DevHooks.swift `host { ui }`, the on-screen checks of the preview card
   // and split view), and what the page shows of them: its tab in front, its card, its split. Never addresses.
   devDispatch: (action: string, arg?: unknown) => (runtime ? !!runtime.dispatch(action, arg, 'behavior') : false), // DEV-HOOK

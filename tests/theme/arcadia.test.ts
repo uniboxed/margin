@@ -753,6 +753,30 @@ for (const [engineName, engine] of ENGINES) {
         await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' });
       });
 
+      await t.test('the tooltip in Margin.app: the space\'s profile as a chip, its key as caps', async () => {
+        const features = { profileNames: { names: { safari: { 's-default': 'Personal', 's-work': 'Work' } }, fallback: { safari: 's-default' } } };
+        await ev((f) => T.mountRuntime({ width: 1280, height: 800, container: 'document', mode: 'windowed', platform: { browser: 'safari', os: 'mac', app: true, features: f } }), features);
+        await page.waitForFunction(() => T.rtLayouts().length > 0);
+        await ev(() => {
+          const rt = (window as any).__rt;
+          const extra = Array.from({ length: 10 - rt.mock.state.spaces.length }, (_, i) => ({ id: `extra${i}`, name: `Extra ${i}`, emoji: '😀', color: '#0a84ff' }));
+          const spaces = [...rt.mock.state.spaces, ...extra].map((sp: any, i: number) => ({ ...sp, browser: 'safari', profile: i === 1 ? 's-work' : null }));
+          rt.mock.state = { ...rt.mock.state, spaces, settings: { ...rt.mock.state.settings, themes: { arcadia: { sidebarWidth: 260 } } } };
+          rt.host.setState(rt.mock.state);
+        });
+        await page.waitForTimeout(100);
+        await away();
+        const tipOf = (i: number) => ev((n) => { const t = document.querySelectorAll('.spaces .chip')[n].querySelector('.chip-tip')!; return { shown: getComputedStyle(t).visibility === 'visible', profile: t.querySelector('.tip-profile')?.textContent ?? null, keys: [...t.querySelectorAll('.tip-key')].map((k) => k.textContent).join(' ') }; }, i);
+        const front = await ev(() => [...document.querySelectorAll('.spaces .chip')].findIndex((c) => c.classList.contains('active')));
+        const other = front === 1 ? 2 : 1;
+        const dot = (await rect('.spaces .chip', other))!;
+        await page.mouse.move(dot.x, dot.y);
+        await page.waitForTimeout(560);
+        const t = await tipOf(other);
+        assert.deepEqual(t, { shown: true, profile: other === 1 ? 'Work' : 'Personal', keys: `⌃ ${other + 1}` }, 'its profile and its key');
+        await away();
+      });
+
       await t.test('"+" as Arc\'s: its popover over the button, its items; Easel and Boost do nothing; New Tab does', async () => {
         await ev(() => T.mountRuntime({ width: 1280, height: 800, container: 'document', mode: 'windowed', platform: { browser: 'safari', os: 'mac', features: { newSplit: true } } }));
         await page.waitForFunction(() => T.rtLayouts().length > 0);

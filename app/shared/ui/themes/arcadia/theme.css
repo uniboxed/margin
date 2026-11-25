@@ -714,7 +714,7 @@
 .margin-sidebar .space-title.iconless:hover .emoji { display: none; }
 /* Arc's tooltip over a dot (crowded; measured: none over the icons): 470 ms after the pointer comes, at once, no fade;
    gone at once. Over the bar, 7 pt in: a dark pill in the space's colour, its name in white, its key as light caps.
-   (Arc's also shows the space's profile as a chip: Margin.app doesn't give the page its profiles' names yet.) */
+   Its profile as a light chip between them (Margin.app's profiles' names; none elsewhere). */
 .margin-sidebar .chip-tip {
   position: absolute;
   z-index: 3;
@@ -739,6 +739,7 @@
 }
 .margin-sidebar .chip-tip:not(:has(.tip-keys)) { padding-right: 12px; }
 .margin-sidebar .tip-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.margin-sidebar .tip-profile { flex: none; max-width: 120px; height: 21px; padding: 0 9px; overflow: hidden; border-radius: 10.5px; background: color-mix(in srgb, var(--space-color) 18%, #f4efe1); color: color-mix(in srgb, var(--space-color) 35%, #2b2810); font-size: 12px; line-height: 21px; text-overflow: ellipsis; }
 .margin-sidebar .tip-keys { display: flex; gap: 3px; }
 .margin-sidebar .tip-key { display: grid; place-items: center; min-width: 19px; height: 19px; padding: 0 4px; border-radius: 5px; background: color-mix(in srgb, var(--space-color) 18%, #f4efe1); color: color-mix(in srgb, var(--space-color) 35%, #2b2810); font-size: 12px; font-weight: 700; box-shadow: inset 0 -1.5px 0 rgba(0, 0, 0, 0.18); }
 .margin-sidebar .spaces[m-crowded] .chip:hover .chip-tip { visibility: visible; transition: visibility 0s linear 470ms; }

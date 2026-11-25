@@ -422,7 +422,9 @@ host. Immutable: rows that didn't change are the same objects.
   as an open tab's. It's never `active`, `audible`, `asleep` or `loading`.
 - `space.tabCount` counts the space's tabs open in this window and its tabs
   that aren't open.
-- `spaces[]` (chips: `active` and `number` too; `label`, the name; `iconless`, its icon removed: Arc draws it as a dot).
+- `spaces[]` (chips: `active` and `number` too; `label`, the name; `iconless`, its icon removed: Arc draws it as a dot;
+  for Arc's tooltip, in Margin.app: `keys` (its key, a cap each: `⌃`, `2`) and `hasKeys`, `profile` (its profile's
+  name) and `hasProfile`).
 - `tab` (the one in front), `archive[]`
   (`ago` too), `palette` (`open`, `query`, `rows[]`: `title`, `subtitle`,
   `badge`, `spaceColor` (the badge's space's color, `''` for Archived,

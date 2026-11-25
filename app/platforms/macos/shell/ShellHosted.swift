@@ -189,6 +189,7 @@ extension Shell {
         let windows = MarginWindows(pages: pages, source: source, options: o)
         windows.theme = { [weak self] _, own in self?.hostedTheme(spaceTheme: own) }
         windows.themes = { [weak self] in self?.themesListJSON ?? "[]" }
+        windows.profiles = { [weak self] in self?.profilesJSON() ?? "null" }
         windows.background = { [weak self] type, payload in await self?.performBackground(type, payload) ?? ["ok": false, "error": "Pictures aren’t available here."] }
         windows.browser = options.lastBrowser()
         marginWindows = windows

@@ -16,6 +16,8 @@ export type Send = <K extends MessageType>(type: K, payload?: Request<K>) => Pro
 
 export interface Space {
   id: string; name: string; emoji: string; color: string;
+  /** Margin.app's: the browser and profile its web items open in (margin-core's library; null: the browser's default) */
+  browser?: string; profile?: string | null;
   /** its theme's id (state/model.ts spaceTheme); none: the profile's settings.theme (spaces from before 2026-11-20) */
   theme?: string;
   /** its background (Edit Theme Color, M2.9: docs/SPACE-BACKGROUNDS.md), as state/model.ts backgroundOf reads it;

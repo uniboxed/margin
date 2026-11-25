@@ -10758,3 +10758,20 @@ through accessibility), so no access to Arc's data was given.
   iconless space's title row (it would mean making and deleting a space in Tirth's Arc).
 - **Tests**: tests/theme/arcadia.test.ts (the ×; dark's hover; a closed tab's copy where it was, inert, under the rest,
   fading on Arc's curve, gone after; none for a folder folding).
+
+## M2.10 step 6b: the tooltip's profile chip (`feat/arc-sidebar`, 2026-11-25)
+
+- **Tirth's call** (2026-11-25): yes, the profile as Arc shows it; and the swipe keeps Dia's feel (decided, not Arc's).
+- **The names are Margin.app's** (BrowserProfiles.swift: Safari's own names with the folder grant or Full Disk Access,
+  else "Default" / "Profile N"); the page knew a space's profile's id only. Margin.app tells each window's page
+  `{"type":"profiles","profiles":{ names: { browser: { id: name } }, fallback: { browser: id } }}` as it's drawn and
+  again when they change (Safari's names read or dropped, the profiles refreshed: ShellProfiles.swift `profilesJSON`,
+  MarginWindows `profiles` and `tellProfiles`; the controller tells only a change). `fallback`: the profile a space with
+  none of its own opens in (HostedSession `resolve(nil)`).
+- **The page**: the app host keeps them as the platform's `profileNames` and draws again; the view model's chips have
+  `profile` (its profile's name, 40 characters at most; a space with none: the fallback's; unknown: '') and
+  `hasProfile`; the README. Arcadia's tooltip shows it as Arc's light chip between the name and the key (no icon:
+  Margin's profiles have none). A browser's extension has no names to tell: no chip.
+- **Tests**: tests/ui-view-model.test.ts (named, the fallback for none, unknown: nothing), tests/ui-host-app.test.ts
+  (kept, drawn again, not-names ignored), tests/theme/arcadia.test.ts (the chip and the key in the tooltip), the app's
+  end-to-end run (told to a drawn page once, the page has them: 375 checks, all passed); `marginApp.stats()` has them.

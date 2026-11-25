@@ -154,6 +154,9 @@ export type SpaceChip = {
   /** Its key (Margin.app's ⌃1–9: its first nine spaces), a cap each (`⌃`, `2`), for Arc's tooltip; none elsewhere. */
   keys: { id: string, label: string }[],
   hasKeys: boolean,
+  /** Its profile's name, for Arc's tooltip (Margin.app: the profiles' names it tells, M2.10); '' unknown. */
+  profile: string,
+  hasProfile: boolean,
 };
 export type SpaceView = SpaceChip & {
   pinned: (FolderRow | PinRow)[], pinnedFlat: (FolderRow | PinRow)[], folders: FolderRow[], pins: PinRow[],
@@ -438,7 +441,7 @@ function fresh(input: ViewModelInput): ViewModel {
   if (!state) {
     return {
       version: VM_VERSION, ready: false, window: win,
-      space: { id: '', name: '', emoji: '', color: '', abbr: '', index: 0, number: 1, active: true, tabCount: 0, label: '', iconless: true, keys: [], hasKeys: false, pinned: [], pinnedFlat: [], folders: [], pins: [], splits: [], hasSplits: false, today: [], hasToday: false, hasPinned: false, newTab: { active: false }, background: null },
+      space: { id: '', name: '', emoji: '', color: '', abbr: '', index: 0, number: 1, active: true, tabCount: 0, label: '', iconless: true, keys: [], hasKeys: false, profile: '', hasProfile: false, pinned: [], pinnedFlat: [], folders: [], pins: [], splits: [], hasSplits: false, today: [], hasToday: false, hasPinned: false, newTab: { active: false }, background: null },
       spaces: [], favorites: { items: [], hasItems: false, columns: 3 }, tab: null, archive: [], hasArchive: false,
       palette: { open: !!paletteUi.open, query: paletteUi.query ?? '', newTab: !!paletteUi.newTab, rows: [], hasRows: false, selected: null },
       menu: null, picker: null, editing, editor: null, notice, prompt, toast, media: null, preview: null, split: null, gesture, launcher: null, pageLoader, settingsForm: null, settingsTab: null, settings, platform,
@@ -565,6 +568,14 @@ function fresh(input: ViewModelInput): ViewModel {
   // (Margin.app's keys for the first nine spaces, as Settings has them: Arc's tooltip shows each space's.)
   const keyCaps = input.platform?.app ? spaceKeyCaps(state.settings) : null;
   const keysOf = (index: number) => (keyCaps && index < 9 ? [...keyCaps, String(index + 1)].map((label, i) => ({ id: `k${i}`, label })) : []);
+  // (Its profile's name, as Margin.app names its profiles: the one a space with none of its own opens in for null.)
+  const known = input.platform?.features?.profileNames as { names?: Record<string, Record<string, unknown>>, fallback?: Record<string, unknown> } | undefined;
+  const profileOf = (sp: { browser?: string, profile?: string | null }) => {
+    const browser = typeof sp.browser === 'string' && sp.browser ? sp.browser : 'safari';
+    const id = typeof sp.profile === 'string' && sp.profile ? sp.profile : known?.fallback?.[browser];
+    const name = typeof id === 'string' ? known?.names?.[browser]?.[id] : null;
+    return typeof name === 'string' ? name.slice(0, 40) : '';
+  };
   const spaces = state.spaces.map((s, index) => ({
     id: s.id,
     name: s.name ?? '',
@@ -580,6 +591,8 @@ function fresh(input: ViewModelInput): ViewModel {
     iconless: !(s.emoji ?? '').trim(),
     keys: keysOf(index),
     hasKeys: !!keyCaps && index < 9,
+    profile: profileOf(s),
+    hasProfile: !!profileOf(s),
   }));
   const chip = spaces.find((s) => s.active) ?? spaces[0];
   const space: SpaceView = {

@@ -225,13 +225,9 @@ colour changes with it (M2.9 draws that).
 Each step is checked side by side: Arcadia rendered in WebKit at 2× with the same tabs, folders and spaces as the
 measured window, against Arc's screenshot.
 
-## Open (2026-11-25)
+## Open (2026-11-25), answered
 
-- **The space swipe's feel**: Arcadia keeps Dia's (Tirth's choice of 2026-11-20: 0.25 s, its haptic); Arc's own is
-  0.4 s with none (the M2.8 study, from Arc's code). Arc's, as this branch's aim, or Dia's, as chosen then?
-- **The tooltip's profile chip** needs Margin.app to give the page its profiles' names (BrowserProfiles.swift has
-  them): a push of `{ id: name }`, the view model's chip naming its space's profile.
-- **The second session** (step 8; Arc driven again, hands off): a folder opening and closing, favorites, the "+"
-  menu (where Arc offers Easel, Notes, Boost: drawn inert, as Tirth chose), the media player, a tab closed, Arc's
-  dark mode, an iconless space's title row.
-
+- **The space swipe's feel**: Dia's stays (Tirth, 2026-11-25).
+- **The tooltip's profile chip**: built (step 6b; Margin.app tells the page its profiles' names).
+- **The second session**: done (DECISIONS.md "M2.10 step 8"): folders, "+", closing a tab, dark. Not measured:
+  favorites (a drop landed in the pinned list; undone), the media player, an iconless space's title row.
