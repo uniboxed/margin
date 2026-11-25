@@ -379,3 +379,39 @@ test('the page card\'s loader: the opening item\'s icon (the app\'s, Safari\'s f
     'its item in another Margin window: its card\'s words, the app\'s icon');
   assert.equal(loader({ name: 'Notes', bundleId: 'com.apple.Notes' }, { ...state, apps: [{ bundleId: 'com.apple.Notes', name: 'Notes', icon: 'data:text/html;base64,PHA+' }] })?.icon, null, 'never anything but a data: image');
 });
+
+// A space with its icon removed (M2.10: `emoji` ''; Arc draws it as a dot): `iconless`, on its chip and as the space.
+test('view model: a space without an icon is iconless', () => {
+  const s = smallState();
+  const bare = { ...s, spaces: s.spaces.map((sp, i) => (i === 1 ? { ...sp, emoji: '' } : i === 2 ? { ...sp, emoji: '  ' } : sp)) };
+  const model = buildViewModel({ state: bare, ui: { windowId: W } });
+  assert.deepEqual(model.spaces.map((c) => c.iconless), model.spaces.map((_, i) => i === 1 || i === 2));
+  assert.equal(model.space.iconless, model.spaces.find((c) => c.active)!.iconless);
+});
+
+// A space's key for Arc's tooltip (M2.10): Margin.app's ⌃1–9 as Settings has them, a cap each, for its first nine
+// spaces; none past nine, with the keys off, or outside Margin.app (a browser's extension has no such keys).
+test('view model: each space\'s key as caps, in Margin.app', () => {
+  const s = smallState();
+  const many = { ...s, spaces: Array.from({ length: 11 }, (_, i) => ({ id: `s${i}`, name: `S${i}`, emoji: '😀', color: '#000000' })) };
+  const caps = (state: any, platform: any) => buildViewModel({ state, ui: { windowId: W }, platform }).spaces.map((c) => c.keys.map((k) => k.label).join(' '));
+  const app = caps(many, { browser: 'safari', os: 'mac', app: true });
+  assert.deepEqual(app.slice(0, 3), ['⌃ 1', '⌃ 2', '⌃ 3']);
+  assert.deepEqual(app.slice(8), ['⌃ 9', '', ''], 'the first nine');
+  assert.deepEqual(caps(many, { browser: 'safari', os: 'mac' }).every((k) => k === ''), true, 'not Margin.app: none');
+  const off = { ...many, settings: { ...many.settings, appKeys: { spaceDigits: '' } } };
+  assert.deepEqual(caps(off, { browser: 'safari', os: 'mac', app: true }).every((k) => k === ''), true, 'turned off: none');
+  const moved = { ...many, settings: { ...many.settings, appKeys: { spaceDigits: 'Alt+Meta+Digit1' } } };
+  assert.equal(caps(moved, { browser: 'safari', os: 'mac', app: true })[1], '⌥ ⌘ 2', 'as Settings has them');
+});
+
+// A space's profile for Arc's tooltip (M2.10): named as Margin.app names its profiles (`profileNames`, told by the app);
+// a space with none of its own: the one it opens in (`fallback`); unknown, nothing.
+test('view model: each space\'s profile named, as Margin.app tells them', () => {
+  const s = smallState();
+  const state = { ...s, spaces: [{ id: 'a', name: 'A', emoji: '😀', color: '#000000', browser: 'safari', profile: 's-work' }, { id: 'b', name: 'B', emoji: '😀', color: '#000000', browser: 'safari', profile: null }, { id: 'c', name: 'C', emoji: '😀', color: '#000000', browser: 'safari', profile: 's-gone' }] };
+  const named = (features: any) => buildViewModel({ state: state as any, ui: { windowId: W }, platform: { browser: 'safari', os: 'mac', app: true, features } }).spaces.map((c) => [c.profile, c.hasProfile]);
+  assert.deepEqual(named({ profileNames: { names: { safari: { 's-work': 'Work', 's-default': 'Personal' } }, fallback: { safari: 's-default' } } }), [['Work', true], ['Personal', true], ['', false]]);
+  assert.deepEqual(named({}), [['', false], ['', false], ['', false]], 'none told: none');
+});
+

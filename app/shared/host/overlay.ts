@@ -541,6 +541,8 @@ async function mount(pkg: any, { fallback = false, preview: previewing = false }
     // (What the UI opens as the palette's key does, a double-click on the sidebar's empty part: timed and logged as the
     // key's own, ui/behaviors/empty.ts.)
     openPalette: (options, by) => openPaletteTimed(options, by),
+    // (Arc's "+" New Split (M2.10): as ⌃⇧= makes one.)
+    addSplit: () => addSplitPane(),
     // (A space's background drawn, changed or gone: the colours around the page's corners told again.)
     onGround: () => measureNow(),
     // (Edit Theme Color opened or closed: the keys taken or given back with it, and what takes the pointer told again.)
@@ -1038,7 +1040,7 @@ document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) s
   },
   // The counts above (the app's tests read them).
   // (With the device the last gesture came from, as the app told it: Edit Theme Color's ticks.)
-  stats: () => ({ ...JSON.parse(JSON.stringify(stats)), device: host?.feedbackDevice ?? null }),
+  stats: () => ({ ...JSON.parse(JSON.stringify(stats)), device: host?.feedbackDevice ?? null, profileNames: (host?.platform as any)?.features?.profileNames ?? null }),
   // DEV-HOOK: an action run as a theme's behaviour would (DevHooks.swift `host { ui }`, the on-screen checks of the preview card
   // and split view), and what the page shows of them: its tab in front, its card, its split. Never addresses.
   devDispatch: (action: string, arg?: unknown) => (runtime ? !!runtime.dispatch(action, arg, 'behavior') : false), // DEV-HOOK

@@ -24,6 +24,7 @@ import { hostOf } from '../../../extension/shared/dom.ts';
 import { rankPalette } from '../../../extension/shared/search.ts';
 import { checkIconUrl } from './sanitize.ts';
 import { appIcon, appOfItem, isBundleId } from '../../../extension/shared/apps.ts';
+import { spaceKeyCaps } from '../../../extension/shared/app-keys.ts';
 import type { InstalledApp } from '../../../extension/shared/apps.ts';
 import { CONFIRM_LABEL, SPACE_COLORS, menuItems } from './behaviors/menu-items.ts';
 import type { MenuTarget } from './behaviors/menu-items.ts';
@@ -51,7 +52,7 @@ export type UiState = {
   // runtime's own names, `peek` and `littleArc`, kept): `loading` until its window is in place, `closing` as it goes,
   // `query` Quick Tab's field. Themes see it as `preview` (PreviewView).
   peek?: { url: string, title?: string, spaceId?: string | null, littleArc?: boolean, loading?: boolean, closing?: boolean, canGoBack?: boolean | null, canGoForward?: boolean | null, query?: string } | null,
-  menu?: { kind: MenuTarget['kind'], id?: string | number | null, x?: number, y?: number, above?: boolean, confirming?: string | null } | null,
+  menu?: { kind: MenuTarget['kind'], id?: string | number | null, x?: number, y?: number, above?: boolean, confirming?: string | null, look?: string | null } | null,
   // Edit Theme Color drawn by the theme (its `background-picker` part, M2.9 step 5b: ui/picker/part.ts); null with
   // Margin's own panel or none open. Themes see it as `picker` (ui/picker/view.ts PickerVm).
   picker?: PickerUi | null,
@@ -100,7 +101,7 @@ export type ViewModelInput = {
   state: Omit<Partial<State>, 'settings'> & { settings?: Partial<State['settings']> } & Record<string, any> | null,
   now?: number,
   ui?: UiState,
-  platform?: { browser?: string, os?: string, marginFullscreen?: boolean, features?: Record<string, any> },
+  platform?: { browser?: string, os?: string, app?: boolean, marginFullscreen?: boolean, features?: Record<string, any> },
   settings?: Record<string, string | number | boolean>,
 };
 /**
@@ -148,6 +149,14 @@ export type SpaceChip = {
   id: string, name: string, emoji: string, color: string, abbr: string,
   index: number, number: number, active: boolean, tabCount: number,
   label: string,
+  /** No icon (its emoji removed, M2.10): Arc draws such a space as a dot. */
+  iconless: boolean,
+  /** Its key (Margin.app's ⌃1–9: its first nine spaces), a cap each (`⌃`, `2`), for Arc's tooltip; none elsewhere. */
+  keys: { id: string, label: string }[],
+  hasKeys: boolean,
+  /** Its profile's name, for Arc's tooltip (Margin.app: the profiles' names it tells, M2.10); '' unknown. */
+  profile: string,
+  hasProfile: boolean,
 };
 export type SpaceView = SpaceChip & {
   pinned: (FolderRow | PinRow)[], pinnedFlat: (FolderRow | PinRow)[], folders: FolderRow[], pins: PinRow[],
@@ -168,7 +177,9 @@ export type PaletteRow = {
   /** an installed app (Margin.app, hosting on): its icon is the app's own shape, drawn without a tile */
   isApp: boolean,
 };
-export type MenuRow = { id: string, label: string, separator: boolean, danger: boolean, confirming: boolean };
+export type MenuRow = { id: string, label: string, separator: boolean, danger: boolean, confirming: boolean,
+  /** Drawn, doing nothing (Arc's Easel and Boost), `hint` saying so; its key (`⌘T`); its glyph's name. */
+  inert: boolean, hint: string, keys: string, hasKeys: boolean, icon: string };
 export type EditorView = {
   id: string, name: string, emoji: string, color: string,
   colors: { id: string, color: string, selected: boolean }[],
@@ -229,7 +240,7 @@ export type ViewModel = {
   archive: ArchiveRow[],
   hasArchive: boolean,
   palette: { open: boolean, query: string, newTab: boolean, rows: PaletteRow[], hasRows: boolean, selected: string | null },
-  menu: { kind: string, id: string | number | null, x: number, y: number, label: string, items: MenuRow[], hasItems: boolean } | null,
+  menu: { kind: string, id: string | number | null, x: number, y: number, label: string, items: MenuRow[], hasItems: boolean, /** Arc's "+" (the theme's `--m-add-menu: arc`). */ arc: boolean } | null,
   picker: PickerVm | null,
   editing: { kind: 'space' | 'folder' | 'tab' | 'pin' | 'favorite', id: string | number } | null,
   editor: EditorView | null,
@@ -430,7 +441,7 @@ function fresh(input: ViewModelInput): ViewModel {
   if (!state) {
     return {
       version: VM_VERSION, ready: false, window: win,
-      space: { id: '', name: '', emoji: '', color: '', abbr: '', index: 0, number: 1, active: true, tabCount: 0, label: '', pinned: [], pinnedFlat: [], folders: [], pins: [], splits: [], hasSplits: false, today: [], hasToday: false, hasPinned: false, newTab: { active: false }, background: null },
+      space: { id: '', name: '', emoji: '', color: '', abbr: '', index: 0, number: 1, active: true, tabCount: 0, label: '', iconless: true, keys: [], hasKeys: false, profile: '', hasProfile: false, pinned: [], pinnedFlat: [], folders: [], pins: [], splits: [], hasSplits: false, today: [], hasToday: false, hasPinned: false, newTab: { active: false }, background: null },
       spaces: [], favorites: { items: [], hasItems: false, columns: 3 }, tab: null, archive: [], hasArchive: false,
       palette: { open: !!paletteUi.open, query: paletteUi.query ?? '', newTab: !!paletteUi.newTab, rows: [], hasRows: false, selected: null },
       menu: null, picker: null, editing, editor: null, notice, prompt, toast, media: null, preview: null, split: null, gesture, launcher: null, pageLoader, settingsForm: null, settingsTab: null, settings, platform,
@@ -554,6 +565,17 @@ function fresh(input: ViewModelInput): ViewModel {
     counts.set(s, (counts.get(s) ?? 0) + 1);
   }
   for (const k of Object.values(state.keptTabs ?? {})) counts.set(k.spaceId, (counts.get(k.spaceId) ?? 0) + 1);
+  // (Margin.app's keys for the first nine spaces, as Settings has them: Arc's tooltip shows each space's.)
+  const keyCaps = input.platform?.app ? spaceKeyCaps(state.settings) : null;
+  const keysOf = (index: number) => (keyCaps && index < 9 ? [...keyCaps, String(index + 1)].map((label, i) => ({ id: `k${i}`, label })) : []);
+  // (Its profile's name, as Margin.app names its profiles: the one a space with none of its own opens in for null.)
+  const known = input.platform?.features?.profileNames as { names?: Record<string, Record<string, unknown>>, fallback?: Record<string, unknown> } | undefined;
+  const profileOf = (sp: { browser?: string, profile?: string | null }) => {
+    const browser = typeof sp.browser === 'string' && sp.browser ? sp.browser : 'safari';
+    const id = typeof sp.profile === 'string' && sp.profile ? sp.profile : known?.fallback?.[browser];
+    const name = typeof id === 'string' ? known?.names?.[browser]?.[id] : null;
+    return typeof name === 'string' ? name.slice(0, 40) : '';
+  };
   const spaces = state.spaces.map((s, index) => ({
     id: s.id,
     name: s.name ?? '',
@@ -566,6 +588,11 @@ function fresh(input: ViewModelInput): ViewModel {
     active: s.id === view.spaceId,
     tabCount: counts.get(s.id) ?? 0,
     label: s.name ?? '',
+    iconless: !(s.emoji ?? '').trim(),
+    keys: keysOf(index),
+    hasKeys: !!keyCaps && index < 9,
+    profile: profileOf(s),
+    hasProfile: !!profileOf(s),
   }));
   const chip = spaces.find((s) => s.active) ?? spaces[0];
   const space: SpaceView = {
@@ -654,9 +681,10 @@ function fresh(input: ViewModelInput): ViewModel {
         label: MENU_LABELS[ui.menu.kind] ?? 'Menu',
         items: items.map((i) => {
           const confirming = !!i.confirm && ui.menu?.confirming === i.id;
-          return { id: i.id, label: confirming ? CONFIRM_LABEL : i.label, separator: i.separator, danger: i.danger, confirming };
+          return { id: i.id, label: confirming ? CONFIRM_LABEL : i.label, separator: i.separator, danger: i.danger, confirming, inert: !!i.inert, hint: i.hint ?? '', keys: i.keys ?? '', hasKeys: !!i.keys, icon: i.icon ?? '' };
         }),
         hasItems: true,
+        arc: ui.menu.look === 'arc',
       };
     }
   }

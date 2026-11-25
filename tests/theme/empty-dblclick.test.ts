@@ -103,8 +103,9 @@ for (const [name, engine] of ENGINES) for (const [id, dir] of themesInScope(THEM
         assert.ok(chips.length >= 2, 'two chips');
         const [a, b] = chips.slice().sort((p, q) => p.left - q.left);
         assert.ok(a.top < b.bottom && b.top < a.bottom, 'side by side');
+        // (Between them: a gap, the bar's; or, where the chips touch or overlap (Arcadia's, as Arc's slots: 2 pt over
+        // each other), where they meet: a chip. Neither is ever empty.)
         const gap = { x: (a.right + b.left) / 2, y: (a.y + b.y) / 2 };
-        assert.ok(b.left - a.right >= 1, `a gap between them (${b.left - a.right} px)`);
         await dbl(gap.x, gap.y);
         assert.deepEqual(await opens(), [], `between the chips at ${gap.x},${gap.y} (${(await ev(({ x, y }) => T.rtBusyAt(x, y), gap)).at})`);
         await settle();

@@ -147,7 +147,8 @@ test('each window has its own space', async (t) => {
   await ui2.click(chip('sp-work'));
   await m.until(async () => (await spaceOfWindow(second)) === 'sp-work', { what: 'Work in the second window' });
   assert.equal(await spaceOfWindow(first), 'sp-home', 'the first window keeps Home');
-  assert.equal((await sidebar(ui2)).space, 'Work');
+  // (Arcadia slides the space in, as Arc does: its tab asked for at once, the space drawn as it lands.)
+  await m.until(async () => (await sidebar(ui2)).space === 'Work', { what: 'Work drawn in the second window' });
   assert.equal((await view()).space, 'Home');
   await m.shoot(t, 'second-window', { windowId: second });
   await m.bg((id) => chrome.windows.remove(id), second);

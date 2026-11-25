@@ -42,6 +42,7 @@ import { installSwipe } from './behaviors/swipe.ts';
 import { installPress } from './behaviors/press.ts';
 import { installSettings } from './behaviors/settings.ts';
 import { installEmpty } from './behaviors/empty.ts';
+import { installFit } from './behaviors/fit.ts';
 import { emptySpot } from './empty.ts';
 import { installBackgroundPicker } from './behaviors/background-picker.ts';
 import { createTickFeedback, feedbackSetting } from './picker/feedback.ts';
@@ -131,7 +132,7 @@ export type Rt = {
  * pill and notice); `onSwitchRun`: each chain of switches as it ends, with a
  * host whose UI stays on screen (shared/switching.ts SwitchRun: Margin.app's log)
  */
-export function createRuntime({ host, theme, container, ui: start = {}, onWarn, log, onSwitchSlow, onSwitchFailed, onPalette, onSwitching, onSwitchRun, openPalette, onGround, onPanel, materials }: {
+export function createRuntime({ host, theme, container, ui: start = {}, onWarn, log, onSwitchSlow, onSwitchFailed, onPalette, onSwitching, onSwitchRun, openPalette, addSplit, onGround, onPanel, materials }: {
   host: Host,
   theme: LoadedTheme,
   container: ShadowRoot | Document,
@@ -146,6 +147,8 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   /** How the host opens the palette for its own key and what the UI opens as that key does (Margin.app's overlay: timed
    *  and logged, app/shared/host/overlay.ts openPaletteTimed); left out, the runtime's own `palette.open`. */
   openPalette?: (options: { newTab: boolean }, by: string) => void,
+  /** A new Split View as the host's own key makes one (Margin.app's overlay: ⌃⇧=, app/shared/host/overlay.ts addSplitPane): `split.new`, Arc's "+" New Split (M2.10). */
+  addSplit?: () => void,
   /** The ground Margin draws under the theme changed (a space's background shown, changed or gone): what's around the page's corners may have (`backgroundAt`). */
   onGround?: () => void,
   /** Margin's own panel (Edit Theme Color) opened or closed: while it's open it takes the keys and the pointer where it is (`panelOpen`, `panelRect`). */
@@ -691,16 +694,18 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   // switches to it, and the UI shows it at once, from the top of its list
   // (sidebar.js askSpace, switchSpace). Its own space with no switch away
   // under way: only the window's space, as before.
-  function switchSpace(spaceId: string, payload: Record<string, any>) {
+  // `asked`: the request for it already sent (a swipe's or a slide's settle asked for it as it slid in: its own switch
+  // as it lands takes that one, never asking again).
+  function switchSpace(spaceId: string, payload: Record<string, any>, asked: Promise<unknown> | null = null) {
     const state = host.getState();
     if (!state) return null;
     const own = ownTab() ?? frontTab();
     const shownSpace = vm?.space?.id;
-    if (!pending.space && state.tabSpace?.[own] === spaceId && ui.switchingTo == null && shownSpace === spaceId) return host.send('setSpace', payload);
+    if (!pending.space && state.tabSpace?.[own] === spaceId && ui.switchingTo == null && shownSpace === spaceId) return asked ?? host.send('setSpace', payload);
     behaviors.scroll?.reset();
     pending.hold = null;
     switchAskedAt = Date.now();
-    const request = host.send('setSpace', payload);
+    const request = asked ?? host.send('setSpace', payload);
     const selection = { spaceId, since: Date.now(), windowId: windowId() };
     pending.space = selection;
     // A failed request rolls back only its own selection; an older answer
@@ -796,7 +801,13 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   function sent(name: string, arg: any, type: string, payload: Record<string, any>) {
     switch (name) {
       case 'space.switch':
-        switchSpace(arg, payload);
+        // A click's or a key's switch slides the space in as Arc's does, where the theme moves its space (its swipe's
+        // feel): the slide asks for the space and switches as it lands (ui/behaviors/swipe.ts slideTo). Else at once.
+        if (behaviors.swipe?.slideTo?.(arg)) return true;
+        // (A switch while a settle is still coming in: its own switch at the end dropped, this one drawn at once.)
+        behaviors.swipe?.cancelSettle?.();
+        // (The swipe's or slide's own switch as it lands: the request its settle sent, not another.)
+        switchSpace(arg, payload, behaviors.swipe?.askedFor?.(arg) ?? null);
         return true;
       case 'space.new': {
         // A new space opens in the editor once it's there (Arcadia); shown
@@ -816,7 +827,9 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
         if (typeof arg.color === 'string') pending.spaces.set(arg.space, { patch: { color: arg.color }, until: Date.now() + PENDING_MS });
         break;
       case 'space.setName': case 'space.update': {
-        const patch = name === 'space.setName' ? { name: arg.name } : Object.fromEntries(Object.entries({ name: arg.name, emoji: arg.emoji, color: arg.color }).filter(([, v]) => typeof v === 'string' && v.trim()).map(([k, v]) => [k, v.trim()]));
+        const patch: Record<string, string> = name === 'space.setName' ? { name: arg.name } : Object.fromEntries(Object.entries({ name: arg.name, emoji: arg.emoji, color: arg.color }).filter(([, v]) => typeof v === 'string' && v.trim()).map(([k, v]) => [k, v.trim()]));
+        // (Its icon removed, `emoji: null`: shown at once as none.)
+        if (name === 'space.update' && arg.emoji === null) patch.emoji = '';
         if (Object.keys(patch).length) pending.spaces.set(arg.space, { patch, until: Date.now() + PENDING_MS });
         break;
       }
@@ -928,8 +941,16 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       case 'tab.rename': return behaviors.rename.start('tab', arg);
       case 'pin.rename': return behaviors.rename.start('pin', arg);
       case 'favorite.rename': return behaviors.rename.start('favorite', arg);
+      case 'split.new': if (!addSplit) return false; addSplit(); return true;
       case 'menu.open': {
         const box = info?.element?.getBoundingClientRect?.();
+        // The space's menu (a button beside its name, at the sidebar's top): the space in front's, under the button.
+        // "add" (the bottom bar's "+"): above it.
+        if (arg === 'space') {
+          const id = vm?.space?.id;
+          if (!id) return false;
+          return behaviors.menus.open({ kind: 'space', id }, box ? { x: box.left, y: box.bottom } : { x: 0, y: 0 }, { above: false });
+        }
         return behaviors.menus.open({ kind: arg, id: null }, box ? { x: box.left, y: box.top } : { x: 0, y: 0 }, { above: true });
       }
       case 'menu.run': return behaviors.menus.run(arg);
@@ -1106,6 +1127,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     scroll: installScroll(rt),
     swipe: installSwipe(rt),
     empty: installEmpty(rt),
+    fit: installFit(rt),
     settings: installSettings(rt),
     backgroundPicker: installBackgroundPicker(rt, { materials, feedback }),
   });

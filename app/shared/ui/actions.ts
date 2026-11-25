@@ -75,7 +75,8 @@ export const ACTIONS = Object.freeze({
   'space.edit': 'space',
   'space.rename': 'space',
   'space.setName': Object.freeze({ space: 'space', name: 'name' }),
-  'space.update': Object.freeze({ space: 'space', name: 'name', emoji: 'emoji', color: 'hex?', theme: 'theme?' }),
+  // (`emoji: null` removes the space's icon: Arc's space with none, a dot in the switcher; M2.10.)
+  'space.update': Object.freeze({ space: 'space', name: 'name', emoji: 'emoji?', color: 'hex?', theme: 'theme?' }),
   // A space's theme (ui/space-theme.ts; null: none, the profile's): its menu's Theme items, Settings' Theme.
   'space.setTheme': Object.freeze({ space: 'space', theme: 'theme?' }),
   // A space's background (M2.9: Edit Theme Color, ui/behaviors/background-picker.ts): the picker opened for it, and
@@ -127,6 +128,8 @@ export const ACTIONS = Object.freeze({
   'split.add': 'tab',
   // (Its name in themes/README.md: the same action.)
   'split.addPane': 'tab',
+  // (A new Split View as the host's ⌃⇧= makes one: Arc's "+" New Split; only a host that gives the runtime `addSplit`.)
+  'split.new': 'none',
   'split.open': 'split',
   'split.focus': 'tab',
   'split.breakOut': 'tab',
@@ -166,8 +169,9 @@ export const BEHAVIOR_ONLY = Object.freeze(new Set([
   'space.delete',
 ]));
 
-// The menus a button can open (`menu.open`): "add" is New Folder and New Space.
-export const MENUS = Object.freeze(['add']);
+// The menus a button can open (`menu.open`): "add" is New Folder and New Space; "space" is the space in front's own
+// menu (the one its name's right-click opens: Arc's `•••` beside the space's name).
+export const MENUS = Object.freeze(['add', 'space']);
 // The Settings page's categories (`settings.category`), as ui/settings-form.ts SETTINGS_CATEGORIES lists them.
 export const SETTINGS_CATEGORY_IDS: readonly string[] = Object.freeze(['appearance', 'tabs', 'browsing', 'keyboard']);
 
@@ -383,7 +387,7 @@ export function contextFromState(state: any, paletteIds: Iterable<string> = [], 
 // |                    |                   |                               | toggleFullscreen; or local:             |
 // |                    |                   |                               | toggleSidebar, navigate, search; or     |
 // |                    |                   |                               | host: app.open { bundleId, name }       |
-// | menu.open          | 'add'             | local: that menu, at the button |                                       |
+// | menu.open          | 'add', 'space'    | local: that menu, at the button (the space's: the one in front) |        |
 // | menu.run           | item id           | the item's own action         | (ui/behaviors/menu-items.ts)            |
 // | menu.close         | none              | local                         |                                         |
 // | picker.run         | picker item id    | local: Edit Theme Color's     | (ui/picker/view.ts runItem)             |
@@ -496,6 +500,7 @@ export const ACTION_MAP = Object.freeze({
   'linkRules.toggle': 'toggleAirTrafficRule',
   'split.add': 'addToSplit',
   'split.addPane': 'addToSplit',
+  'split.new': 'local',
   'split.open': 'openSplit',
   'split.focus': 'activateTab',
   'split.breakOut': 'breakOutSplit',
@@ -517,7 +522,7 @@ export const ACTION_MAP = Object.freeze({
   'settings.category': 'local',
 });
 
-const LOCAL = new Set(['space.edit', 'space.editBackground', 'space.rename', 'folder.rename', 'tab.rename', 'pin.rename', 'favorite.rename', 'palette.open', 'palette.close', 'menu.open', 'menu.run', 'menu.close', 'picker.run', 'editor.save', 'editor.cancel', 'editor.delete', 'editor.color', 'editor.theme',
+const LOCAL = new Set(['split.new', 'space.edit', 'space.editBackground', 'space.rename', 'folder.rename', 'tab.rename', 'pin.rename', 'favorite.rename', 'palette.open', 'palette.close', 'menu.open', 'menu.run', 'menu.close', 'picker.run', 'editor.save', 'editor.cancel', 'editor.delete', 'editor.color', 'editor.theme',
   'notice.run', 'notice.close', 'prompt.run', 'prompt.close', 'launcher.more', 'settings.run', 'settings.category', 'tab.copyUrl', 'pin.copyUrl', 'favorite.copyUrl', 'preview.close', 'preview.expand', 'preview.copyUrl', 'preview.setSpace', 'preview.back', 'preview.forward', 'quickTab.open']);
 const NAV = { 'nav.back': 'goBack', 'nav.forward': 'goForward', 'nav.reload': 'reload' };
 

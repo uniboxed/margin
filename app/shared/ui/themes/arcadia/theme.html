@@ -40,13 +40,26 @@
       </button>
     </header>
 
-    <!-- The address pill: the site of the tab in front; a click opens the command bar. -->
-    <button class="address" title="{{tab.url}}" aria-label="Search or enter address" m-action="palette.open">
+    <!-- The address pill: the site of the tab in front; a click opens the command bar. Under the pointer, Arc's
+         tools at its right: Copy URL, and site controls (not in Margin yet: drawn, inert). -->
+    <div class="address-bar">
+      <button class="address" title="{{tab.url}}" aria-label="Search or enter address" m-action="palette.open">
+        <m-if test="tab.host">
+          <span class="host">{{tab.host}}</span>
+          <m-else><span class="host hint">Search or Enter URL…</span></m-else>
+        </m-if>
+      </button>
       <m-if test="tab.host">
-        <span class="host">{{tab.host}}</span>
-        <m-else><span class="host hint">Search or Enter URL…</span></m-else>
+        <span class="address-tools">
+          <button class="address-tool" title="Copy URL" aria-label="Copy URL" m-action="tab.copyUrl">
+            <svg class="line-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.6 9.4a2.9 2.9 0 0 0 4.1 0l2.2-2.2a2.9 2.9 0 0 0-4.1-4.1l-.9.9"></path><path d="M9.4 6.6a2.9 2.9 0 0 0-4.1 0L3.1 8.8a2.9 2.9 0 0 0 4.1 4.1l.9-.9"></path></svg>
+          </button>
+          <button class="address-tool inert" title="Site controls (coming soon)" aria-label="Site controls (coming soon)" aria-disabled="true">
+            <svg class="line-icon" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.25" y="2.25" width="11.5" height="11.5" rx="3"></rect><path d="M5 6h6M5 10h6"></path><circle cx="9.5" cy="6" r="1.1"></circle><circle cx="6.5" cy="10" r="1.1"></circle></svg>
+          </button>
+        </span>
       </m-if>
-    </button>
+    </div>
 
     <!-- Favorites grid (Track 2 M2.3): fixed above Space swipes, supports web tabs & macOS apps. -->
     <m-if test="favorites.hasItems">
@@ -67,9 +80,17 @@
 
     <!-- The space's part (its name, the editor, the list): what a sideways swipe moves. -->
     <div class="space-pane">
-      <div class="space-title">
+      <!-- The space's name. Under the pointer (Arc's): a pill, a chevron in the icon's place (collapsing the pinned
+           tabs: not in Margin yet, inert) and the space's menu at the right. -->
+      <div class="space-title" m-class:iconless="{{space.iconless}}">
         <span class="emoji" aria-hidden="true">{{space.emoji}}</span>
+        <button class="title-chevron inert" title="Collapse pinned tabs (coming soon)" aria-label="Collapse pinned tabs (coming soon)" aria-disabled="true">
+          <svg class="line-icon" viewBox="0 0 14 14" aria-hidden="true"><path d="M3.5 5.25 7 8.75l3.5-3.5"></path></svg>
+        </button>
         <span class="title" m-rename="space">{{space.name}}</span>
+        <button class="title-more" title="Space options" aria-label="Space options" m-action="menu.open" m-arg="space">
+          <svg class="fill-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.25"></circle><circle cx="8" cy="8" r="1.25"></circle><circle cx="12.5" cy="8" r="1.25"></circle></svg>
+        </button>
       </div>
 
       <m-editor class="editor-slot"></m-editor>
@@ -82,9 +103,9 @@
                 <a class="folder" role="button" tabindex="0" data-folder-id="{{g.id}}" m-class:open="{{g.open}}" m-style:--depth="{{g.depth}}" m-attr:aria-expanded="{{g.open}}" m-action="folder.toggle" m-arg="{{g.id}}" m-drag="folder" m-drop="folder">
                   <span class="folder-toggle">
                     <m-if test="g.open">
-                      <svg class="folder-icon open" viewBox="0 0 16 16" aria-hidden="true"><path class="folder-back" d="M1.75 10.6V4.25a1.5 1.5 0 0 1 1.5-1.5h2.5a1.5 1.5 0 0 1 1.1.48l.8.84a1.5 1.5 0 0 0 1.1.48h3.5a1.5 1.5 0 0 1 1.5 1.5v.45"></path><path class="folder-front" d="M4.9 7h8.75a.9.9 0 0 1 .85 1.2l-1.4 4.05a1.5 1.5 0 0 1-1.42 1H3.05a1.3 1.3 0 0 1-1.22-1.75l1.2-3.3A1.95 1.95 0 0 1 4.9 7Z"></path></svg>
+                      <svg class="folder-icon open" viewBox="0 0 22 16" aria-hidden="true"><path class="folder-back" d="M1.6 13.6V2.7a1.1 1.1 0 0 1 1.1-1.1h4.25a1.1 1.1 0 0 1 .86.41l.98 1.24h8.05a1.1 1.1 0 0 1 1.1 1.1v.5"></path><path class="folder-front" d="M5.3 4.7h14.4a1 1 0 0 1 .95 1.32l-2.6 7.9a1.2 1.2 0 0 1-1.14.83H2.6a.9.9 0 0 1-.85-1.2L4.2 5.45a1.15 1.15 0 0 1 1.1-.75Z"></path></svg>
                       <m-else>
-                        <svg class="folder-icon" viewBox="0 0 16 16" aria-hidden="true"><path class="folder-front" d="M1.75 4.25a1.5 1.5 0 0 1 1.5-1.5h2.5a1.5 1.5 0 0 1 1.1.48l.8.84a1.5 1.5 0 0 0 1.1.48h4a1.5 1.5 0 0 1 1.5 1.5v5.7a1.5 1.5 0 0 1-1.5 1.5h-9.5a1.5 1.5 0 0 1-1.5-1.5Z"></path></svg>
+                        <svg class="folder-icon" viewBox="0 0 22 16" aria-hidden="true"><path class="folder-back" d="M1.6 13.3V2.7a1.1 1.1 0 0 1 1.1-1.1h4.25a1.1 1.1 0 0 1 .86.41l.98 1.24h8.05a1.1 1.1 0 0 1 1.1 1.1v8.95a1.1 1.1 0 0 1-1.1 1.1H2.7a1.1 1.1 0 0 1-1.1-1.1Z"></path><path class="folder-front" d="M1.6 6h17.35v7.3a1.1 1.1 0 0 1-1.1 1.1H2.7a1.1 1.1 0 0 1-1.1-1.1Z"></path></svg>
                       </m-else>
                     </m-if>
                     <span class="title" m-rename="folder">{{g.name}}</span>
@@ -121,7 +142,7 @@
         <!-- The line between the pinned area and today's tabs; "Clear" on it shows on hover (it archives today's tabs). -->
         <div class="today-split">
           <span class="rule"></span>
-          <m-if test="space.hasToday"><button class="clear" title="Archive today’s tabs" aria-label="Clear today’s tabs" m-action="today.clear">Clear</button></m-if>
+          <m-if test="space.hasToday"><button class="clear" title="Archive today’s tabs" aria-label="Clear today’s tabs" m-action="today.clear"><svg class="line-icon clear-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1.75v8.5M2.5 6.75 6 10.25l3.5-3.5"></path></svg>Clear</button></m-if>
         </div>
 
         <div class="tabs" role="list" aria-label="Tabs" m-drop="tabs">
@@ -212,11 +233,15 @@
     <!-- The bottom bar: archive at the left, the spaces in the middle, "+" at the right. -->
     <footer class="bar">
       <button class="bar-button archive" title="Archived tabs" aria-label="Archived tabs" m-action="archive.open">
-        <svg class="line-icon archive-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.25 2.75h11.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-.75.75H2.25A.75.75 0 0 1 1.5 5V3.5a.75.75 0 0 1 .75-.75ZM2.75 5.75v6a1.5 1.5 0 0 0 1.5 1.5h7.5a1.5 1.5 0 0 0 1.5-1.5v-6M6.25 8.75h3.5"></path></svg>
+        <svg class="fill-icon archive-icon" viewBox="0 0 18 18" aria-hidden="true"><rect x="2.5" y="6.5" width="13" height="9.5" rx="2.2"></rect><rect x="1.75" y="3.5" width="14.5" height="3.6" rx="1.3"></rect><rect x="6.5" y="9.2" width="5" height="1.6" rx=".8" fill-opacity=".35" fill="#fff"></rect></svg>
       </button>
-      <nav class="spaces" aria-label="Spaces">
+      <!-- Arc's space switcher: every space's icon while they fit (each at least 24 pt), else (Margin's m-fit says so:
+           m-crowded) the space in front's icon and the others as dots; a dot under the pointer shows its icon, and
+           after a moment Arc's tooltip over the bar: the space's name and its key (Margin.app's ⌃1–9). Arc shows no
+           tooltip over the icons: no title here either (its name is its aria-label). -->
+      <nav class="spaces" aria-label="Spaces" m-fit="items">
         <m-for each="spaces" as="s">
-          <button class="chip" data-space-id="{{s.id}}" m-class:active="{{s.active}}" title="{{s.label}}" m-attr:aria-label="{{s.label}}" m-attr:aria-pressed="{{s.active}}" m-style:--chip-color="{{s.color}}" m-action="space.switch" m-arg="{{s.id}}" m-drop="space">{{s.emoji}}</button>
+          <button class="chip" data-space-id="{{s.id}}" m-class:active="{{s.active}}" m-class:iconless="{{s.iconless}}" m-attr:aria-label="{{s.label}}" m-attr:aria-pressed="{{s.active}}" m-style:--chip-color="{{s.color}}" m-action="space.switch" m-arg="{{s.id}}" m-drop="space"><span class="chip-face"><span class="chip-icon" aria-hidden="true">{{s.emoji}}</span></span><span class="chip-tip" aria-hidden="true"><span class="tip-name">{{s.label}}</span><m-if test="s.hasProfile"><span class="tip-profile">{{s.profile}}</span></m-if><m-if test="s.hasKeys"><span class="tip-keys"><m-for each="s.keys" as="k"><span class="tip-key">{{k.label}}</span></m-for></span></m-if></span></button>
         </m-for>
       </nav>
       <button class="bar-button add" title="New folder or space" aria-label="New folder or space" m-action="menu.open" m-arg="add">
@@ -298,12 +323,14 @@
   <!-- Right-click menus on tabs, pins, folders and spaces, and "+" (macOS-style). -->
 
   <template m-part="menu">
-    <div class="tab-menu" role="menu" m-attr:aria-label="{{menu.label}}">
+    <!-- "+" as Arc's (Margin's menu.arc, the theme's --m-add-menu): a dark popover over the button, a glyph and a key
+         by each row; Easel and Boost drawn, doing nothing (inert, their hint saying so). -->
+    <div class="tab-menu" role="menu" m-class:arc="{{menu.arc}}" m-attr:aria-label="{{menu.label}}">
       <m-for each="menu.items" as="i">
         <m-if test="i.separator">
           <div class="menu-separator" role="separator"></div>
           <m-else>
-            <button class="menu-item" role="menuitem" m-class:danger="{{i.danger}}" m-class:confirming="{{i.confirming}}" m-action="menu.run" m-arg="{{i.id}}">{{i.label}}</button>
+            <button class="menu-item" role="menuitem" title="{{i.hint}}" m-attr:data-icon="{{i.icon}}" m-class:danger="{{i.danger}}" m-class:confirming="{{i.confirming}}" m-class:inert="{{i.inert}}" m-attr:aria-disabled="{{i.inert}}" m-action="menu.run" m-arg="{{i.id}}"><span class="menu-icon" aria-hidden="true"><svg class="line-icon mi mi-space" viewBox="0 0 24 24"><rect x="8" y="3.5" width="12.5" height="12.5" rx="3"></rect><path d="M4.5 8.5v8a3 3 0 0 0 3 3h8"></path><path d="M14.25 6.75v6M11.25 9.75h6"></path></svg><svg class="line-icon mi mi-folder" viewBox="0 0 24 24"><path d="M3.5 7.5a2 2 0 0 1 2-2h3.6a2 2 0 0 1 1.5.67l1 1.13h7.4a2 2 0 0 1 2 2v7.7a2 2 0 0 1-2 2H5.5a2 2 0 0 1-2-2z"></path></svg><svg class="line-icon mi mi-easel" viewBox="0 0 24 24"><path d="M4 18.5c2.6-5.2 4.8-10.6 6.8-10 2.1.6-1.6 7.9.4 8.6 2 .7 3.5-5.6 5.6-5.1 1.8.4-.2 4.6 2.7 5.6"></path></svg><svg class="line-icon mi mi-boost" viewBox="0 0 24 24"><path d="M13.6 4.4l6 6-8.3 8.3a2 2 0 0 1-1.4.6H5.5v-4.4a2 2 0 0 1 .6-1.4z"></path><path d="M11.6 6.4l6 6"></path><path d="M4 4.5l.5 1.6 1.6.5-1.6.5-.5 1.6-.5-1.6-1.6-.5 1.6-.5z"></path></svg><svg class="line-icon mi mi-split" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="3"></rect><path d="M12 4.5v15"></path><path d="M16.25 10v4M14.25 12h4"></path></svg><svg class="line-icon mi mi-tab" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="4"></rect><path d="M12 8v8M8 12h8"></path></svg></span><span class="menu-label">{{i.label}}</span><m-if test="i.hasKeys"><span class="menu-keys">{{i.keys}}</span></m-if></button>
           </m-else>
         </m-if>
       </m-for>

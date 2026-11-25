@@ -30,6 +30,7 @@ extension Shell {
             // (Safari's own names read, or gone: a profile Margin couldn't open by name may open now.)
             self.hosted?.profileNamesChanged()
             self.profilesSoon()
+            self.marginWindows?.tellProfiles()
         }
         // Each read (changed or not): the linked copies checked against it.
         watcher.onRead = { [weak self] outcome in
@@ -138,7 +139,23 @@ extension Shell {
             for browser in Set(self.links.values.map(\.connection.hello.browser)) {
                 self.profilesOf(browser).refresh(spaces: self.ownSpaces(browser), linked: self.linkedProfiles(browser))
             }
+            self.marginWindows?.tellProfiles()
         } }
+    }
+
+    // The profiles' names for Margin's pages (M2.10: a space's tooltip shows its profile, as Arc's does): each browser's
+    // known profiles by id, named as Margin names them (Safari's own names when it can read them; else "Default",
+    // "Profile N", BrowserProfiles), and the profile a space with none of its own opens in.
+    func profilesJSON() -> String {
+        var names: [String: [String: String]] = [:]
+        for browser in Set(browserProfiles.keys).union(["safari"]).sorted() {
+            let p = profilesOf(browser)
+            var list: [String: String] = [:]
+            for id in p.profiles { let n = p.name(id); if !n.isEmpty { list[id] = n } }
+            names[browser] = list
+        }
+        let fallback = ["safari": hosted?.resolve(nil) ?? BrowserProfiles.defaultProfile]
+        return jsonString(["names": names, "fallback": fallback]) ?? "null"
     }
 
     func linkedProfiles(_ browser: String) -> Set<String> {

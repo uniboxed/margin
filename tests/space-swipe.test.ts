@@ -1,7 +1,7 @@
 // shared/space-swipe.ts: the sidebar's swipe between spaces.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createSpaceSwipe, settle, rubberBand, settleArc, rubberBandArc, rubberBandArcInverse, springArc, springKeyframes, ARC, FEELS } from '../extension/shared/space-swipe.ts';
+import { createSpaceSwipe, settle, rubberBand, settleArc, rubberBandArc, rubberBandArcInverse, springArc, springKeyframes, switchEasing, ARC, ARC_SWITCH, FEELS } from '../extension/shared/space-swipe.ts';
 
 type Swipe = ReturnType<typeof createSpaceSwipe>;
 
@@ -256,4 +256,23 @@ test('keyframes: the spring every 1/240 s as progress from where it\'s drawn (0)
 
 test('arc rubber band\'s inverse: the overflow a drawn place stands for (a settle caught past an end, the band not applied twice)', () => {
   for (const v of [0, 1, 40, 300, -120, 5000]) assert.ok(Math.abs(rubberBandArcInverse(rubberBandArc(v)) - v) < 1e-6 * Math.max(1, Math.abs(v)), `${v}`);
+});
+
+// Arc's switch by a click or a key (M2.10, docs/ARC-SIDEBAR.md "Motion"): its spring sampled for one linear() easing;
+// at 60 Hz within 3 pt (RMS) of where Arc drew the incoming space (a 259 pt sidebar, measured; 7 at worst), never past it.
+test('Arc\'s switch spring: about 251 ms, rising only, within 3 pt of Arc\'s frames', () => {
+  const { duration, points } = switchEasing();
+  assert.equal(duration, 251);
+  assert.equal(points.length, ARC_SWITCH.steps + 1);
+  assert.deepEqual([points[0], points.at(-1)], [0, 1]);
+  assert.ok(points.every((p, i) => i === 0 || p >= points[i - 1]) && points.every((p) => p <= 1), 'rising, never past');
+  // Arc's frames after the switch began (the start at frame 67.8 of the recording): the incoming space's offset, pt.
+  const arc: [number, number][] = [[68, 211], [69, 82.5], [70, 56.5], [71, 38], [72, 25], [73, 16.5], [74, 10.5], [75, 7], [76, 4.5], [77, 3], [78, 2], [79, 1]];
+  const at = (t: number) => { const x = Math.min(1, t / duration) * ARC_SWITCH.steps; const i = Math.floor(x); const a = points[i], b = points[Math.min(i + 1, points.length - 1)]; return a + (b - a) * (x - i); };
+  for (const [frame, offset] of arc) {
+    const ours = 259 * (1 - at(((frame - 67.8) * 1000) / 60));
+    assert.ok(Math.abs(ours - offset) <= 7, `frame ${frame}: ${ours.toFixed(1)} pt, Arc ${offset}`); // (the fit's worst frame: 5.8 pt)
+  }
+  const rms = Math.sqrt(arc.reduce((sum, [frame, offset]) => sum + (259 * (1 - at(((frame - 67.8) * 1000) / 60)) - offset) ** 2, 0) / arc.length);
+  assert.ok(rms <= 3, `RMS ${rms.toFixed(2)} pt`);
 });

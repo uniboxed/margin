@@ -172,6 +172,7 @@ test('menu items, swatches and menus a button opens are checked too', () => {
   assert.equal(ok('editor.color', 'c0'), true);
   assert.equal(ok('editor.color', 'c9'), false);
   assert.equal(ok('menu.open', 'add'), true);
+  assert.equal(ok('menu.open', 'space'), true, 'the space in front\'s menu (Arc\'s ••• beside its name)');
   assert.equal(ok('menu.open', 'tab'), false);
   assert.equal(ok('folder.rename', 'f1'), true);
   assert.equal(ok('folder.delete', 'f9'), false);

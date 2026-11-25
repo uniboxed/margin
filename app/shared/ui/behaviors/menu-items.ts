@@ -10,13 +10,22 @@ import type { FavoriteRow, FolderRow, PinRow, SpaceView } from '../view-model.ts
 import { FAVORITES_CAP, MAX_FOLDER_DEPTH, favoriteScopeOf, folderDepth } from '../../../../extension/shared/pinned-rules.ts';
 import { normalizeUrl } from '../../../../extension/shared/view.ts';
 import { themeChoices, spaceThemeId, spaceThemesOn } from '../space-theme.ts';
+import { appKeysFor, formatAppKey } from '../../../../extension/shared/app-keys.ts';
+
+// Margin.app's key for a new split (Settings' `appKeys.addSplit`, ⌃⇧= by default), '' when it's off.
+const splitKeys = (settings: unknown) => formatAppKey('addSplit', appKeysFor(settings).addSplit);
 import { matchAirTrafficRule } from '../../../../extension/shared/air-traffic.ts';
 
 // The space editor's swatches (Arcadia's).
 export const SPACE_COLORS = Object.freeze(['#6c5ce7', '#0984e3', '#00b894', '#fdcb6e', '#e17055', '#d63031', '#e84393', '#636e72']);
 
-export type MenuItem = { id: string, label: string, separator: boolean, danger: boolean, confirm: boolean, action: string | null, arg?: any };
-export type MenuTarget = { kind: 'tab' | 'pin' | 'favorite' | 'folder' | 'space' | 'add', id?: string | number | null };
+export type MenuItem = { id: string, label: string, separator: boolean, danger: boolean, confirm: boolean, action: string | null, arg?: any,
+  /** Drawn, doing nothing (a feature Margin doesn't have yet: Arc's "+"); `hint` says so. */
+  inert?: boolean, hint?: string,
+  /** Its key, shown at its right (`⌘T`); its glyph's name, for a theme that draws one (`space`, `folder`, `easel`, `boost`, `split`, `tab`). */
+  keys?: string, icon?: string };
+/** `look`: the theme's way of drawing it (`arc`: Arc's "+" menu, the theme's `--m-add-menu`; ui/behaviors/menus.ts). */
+export type MenuTarget = { kind: 'tab' | 'pin' | 'favorite' | 'folder' | 'space' | 'add', id?: string | number | null, look?: string | null };
 
 /**
  * The items of the menu for `target`, from the stored state and the space
@@ -155,6 +164,13 @@ export function menuItems(target: MenuTarget | null | undefined, { state, space,
       if (!sp) return [];
       item('Edit Space…', 'space.edit', sp.id);
       item('Rename Space', 'space.rename', sp.id);
+      // (Its icon removed: Arc's space with none, a dot in the switcher; M2.10. Edit Space… gives one back.)
+      // (Its name, colour and theme as they are: `space.update` takes them all; its theme kept as the editor keeps it,
+      // none when the one it had isn't there any more.)
+      if (sp.emoji) {
+        const own = sp.theme && themeChoices(features).some((c) => c.id === sp.theme) ? sp.theme : null;
+        item('Remove Icon', 'space.update', { space: sp.id, name: sp.name || 'Space', emoji: null, color: /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(sp.color ?? '') ? sp.color : null, theme: own });
+      }
       // Its background (M2.9: ui/behaviors/background-picker.ts), as Arc names it.
       item('Edit Theme Color…', 'space.editBackground', sp.id);
       // Its theme (ui/space-theme.ts), the one it's drawn with checked: where each space's is drawn.
@@ -174,6 +190,20 @@ export function menuItems(target: MenuTarget | null | undefined, { state, space,
       break;
     }
     case 'add':
+      // Arc's "+" (M2.10, docs/ARC-SIDEBAR.md: its popover, read from Arc), for a theme that asks for it: its order, its
+      // glyphs and keys; Easel and Boost drawn, doing nothing (Tirth's choice: Margin has neither yet); New Split where
+      // the host can make one (Margin.app's ⌃⇧=), New Tab.
+      if (target.look === 'arc') {
+        item('New Space', 'space.new', undefined, { icon: 'space' });
+        item('New Folder', 'folder.new', undefined, { icon: 'folder' });
+        separator();
+        item('New Easel', '', undefined, { icon: 'easel', inert: true, hint: 'Easels aren’t in Margin yet: coming soon' });
+        item('New Boost', '', undefined, { icon: 'boost', inert: true, hint: 'Boosts aren’t in Margin yet: coming soon' });
+        separator();
+        if (features?.newSplit) item('New Split', 'split.new', undefined, { icon: 'split', keys: splitKeys(state.settings) });
+        item('New Tab', 'tab.new', undefined, { icon: 'tab', keys: '⌘T' });
+        break;
+      }
       item('New Folder', 'folder.new');
       item('New Space', 'space.new');
       break;

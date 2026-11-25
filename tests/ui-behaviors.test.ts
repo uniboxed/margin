@@ -140,18 +140,24 @@ test('menus: a folder\'s, a pin\'s, a tab\'s, as today\'s right-click menu', () 
 
 test('menus: a space\'s, the "+" menu, and nothing for what isn\'t there', () => {
   const s = menuItems({ kind: 'space', id: 'work' }, { state, space });
-  assert.deepEqual(labels(s), ['Edit Space…', 'Rename Space', 'Edit Theme Color…', '—', 'New Space', '—', 'Delete Space'], 'where each space\'s theme isn\'t drawn: no themes');
-  assert.deepEqual(s.at(-1), { id: 'i4', label: 'Delete Space', separator: false, danger: true, confirm: true, action: 'space.delete', arg: 'work' }, 'deleting asks first');
+  assert.deepEqual(labels(s), ['Edit Space…', 'Rename Space', 'Remove Icon', 'Edit Theme Color…', '—', 'New Space', '—', 'Delete Space'], 'where each space\'s theme isn\'t drawn: no themes');
+  assert.deepEqual(s.at(-1), { id: 'i5', label: 'Delete Space', separator: false, danger: true, confirm: true, action: 'space.delete', arg: 'work' }, 'deleting asks first');
+  // Its icon removed (M2.10: Arc's space with none, a dot): its name and colour kept, the emoji null; none offered once it has none.
+  const work = state.spaces.find((x) => x.id === 'work')!;
+  assert.deepEqual(s.find((i) => i.label === 'Remove Icon'), { id: 'i2', label: 'Remove Icon', separator: false, danger: false, confirm: false, action: 'space.update', arg: { space: 'work', name: work.name, emoji: null, color: work.color, theme: null } });
+  assert.equal(checkAction('space.update', s.find((i) => i.label === 'Remove Icon')!.arg, contextFromState(state)).ok, true, 'its action passes the checks');
+  const bare = { ...state, spaces: state.spaces.map((x) => (x.id === 'work' ? { ...x, emoji: '' } : x)) };
+  assert.equal(labels(menuItems({ kind: 'space', id: 'work' }, { state: bare, space })).includes('Remove Icon'), false, 'none to remove');
   const one = { ...state, spaces: state.spaces.slice(0, 1) };
-  assert.deepEqual(labels(menuItems({ kind: 'space', id: 'home' }, { state: one, space })), ['Edit Space…', 'Rename Space', 'Edit Theme Color…', '—', 'New Space'], 'the last space can\'t be deleted');
+  assert.deepEqual(labels(menuItems({ kind: 'space', id: 'home' }, { state: one, space })), ['Edit Space…', 'Rename Space', 'Remove Icon', 'Edit Theme Color…', '—', 'New Space'], 'the last space can\'t be deleted');
   // Its theme (2026-11-20, a theme per space; Margin.app's window: `spaceThemes`): every built-in one, the one it's
   // drawn with checked (none of its own: the profile's, Arcadia here).
   const on = { spaceThemes: true };
   const themes = ['Theme: Arcadia ✓', 'Theme: Neubrutalism', 'Theme: Pixel', 'Theme: Liquid Glass', 'Theme: Material'];
   const t = menuItems({ kind: 'space', id: 'work' }, { state, space, features: on });
-  assert.deepEqual(labels(t), ['Edit Space…', 'Rename Space', 'Edit Theme Color…', '—', ...themes, '—', 'New Space', '—', 'Delete Space']);
-  assert.deepEqual(t.find((i) => i.label === 'Theme: Pixel'), { id: 'i5', label: 'Theme: Pixel', separator: false, danger: false, confirm: false, action: 'space.setTheme', arg: { space: 'work', theme: 'pixel' } });
-  assert.equal(t.at(-1)!.id, 'i9');
+  assert.deepEqual(labels(t), ['Edit Space…', 'Rename Space', 'Remove Icon', 'Edit Theme Color…', '—', ...themes, '—', 'New Space', '—', 'Delete Space']);
+  assert.deepEqual(t.find((i) => i.label === 'Theme: Pixel'), { id: 'i6', label: 'Theme: Pixel', separator: false, danger: false, confirm: false, action: 'space.setTheme', arg: { space: 'work', theme: 'pixel' } });
+  assert.equal(t.at(-1)!.id, 'i10');
   // Its own theme checked; an imported one (Margin.app's) offered too; one removed since: drawn with the profile's.
   const themed = { ...state, spaces: state.spaces.map((sp) => (sp.id === 'work' ? { ...sp, theme: 'my-theme' } : sp)), settings: { ...state.settings, theme: 'pixel' } };
   const features = { ...on, userThemes: [{ id: 'my-theme', name: 'Mine' }] };
@@ -173,11 +179,11 @@ test('menus: a space\'s, the "+" menu, and nothing for what isn\'t there', () =>
 test('view model: a menu shows its labels, not what they run; a confirming item asks', () => {
   // Each asked for, of something there: shown.
   const m = vm({ menu: { kind: 'space', id: 'work', x: 30, y: 40 } }).menu!;
-  assert.deepEqual(m.items.map((i) => i.label), ['Edit Space…', 'Rename Space', 'Edit Theme Color…', '', 'New Space', '', 'Delete Space']);
-  assert.deepEqual(Object.keys(m.items[0]).sort(), ['confirming', 'danger', 'id', 'label', 'separator'], 'no action, no argument');
+  assert.deepEqual(m.items.map((i) => i.label), ['Edit Space…', 'Rename Space', 'Remove Icon', 'Edit Theme Color…', '', 'New Space', '', 'Delete Space']);
+  assert.deepEqual(Object.keys(m.items[0]).sort(), ['confirming', 'danger', 'hasKeys', 'hint', 'icon', 'id', 'inert', 'keys', 'label', 'separator'], 'no action, no argument');
   assert.deepEqual([m.kind, m.id, m.x, m.y, m.hasItems], ['space', 'work', 30, 40, true]);
-  const asked = vm({ menu: { kind: 'space', id: 'work', x: 30, y: 40, confirming: 'i4' } }).menu!;
-  assert.deepEqual(asked.items.at(-1), { id: 'i4', label: CONFIRM_LABEL, separator: false, danger: true, confirming: true });
+  const asked = vm({ menu: { kind: 'space', id: 'work', x: 30, y: 40, confirming: 'i5' } }).menu!;
+  assert.deepEqual(asked.items.at(-1), { id: 'i5', label: CONFIRM_LABEL, separator: false, danger: true, confirming: true, inert: false, hint: '', keys: '', hasKeys: false, icon: '' });
   const themed = buildViewModel({ state, ui: { windowId: W, menu: { kind: 'space', id: 'work', x: 30, y: 40 } }, platform: { features: { spaceThemes: true } } }).menu!;
   assert.deepEqual(themed.items.map((i) => i.label).filter((l) => l.startsWith('Theme:')).length, 5, 'Margin.app\'s window: its themes');
   assert.equal(vm({ menu: { kind: 'tab', id: 99 } }).menu, null, 'its tab is gone: no menu');
@@ -210,4 +216,14 @@ test('view model: the space editor\'s themes: the space\'s own, else the profile
   assert.equal(at('pixel').hasThemes, true);
   const elsewhere = buildViewModel({ state, ui: { windowId: W, editor: { spaceId: 'work', name: 'W', emoji: '', color: '' } } }).editor!;
   assert.deepEqual([elsewhere.themes, elsewhere.hasThemes], [[], false], 'where each space\'s theme isn\'t drawn: none offered');
+});
+
+// Whether a bar's items fit (ui/behaviors/fit.ts, M2.10): crowded only when its roomy layout overflows, never when it
+// isn't laid out. (In real engines, Arc's switcher's numbers: tests/theme/arcadia.test.ts.)
+test('m-fit: a bar is crowded only while its items overflow it laid out roomy', async () => {
+  const { overflows } = await import('../app/shared/ui/behaviors/fit.ts');
+  assert.equal(overflows({ scrollWidth: 222, clientWidth: 222 }), false, 'exactly fits');
+  assert.equal(overflows({ scrollWidth: 223, clientWidth: 222 }), true);
+  assert.equal(overflows({ scrollWidth: 0, clientWidth: 0 }), false, 'not laid out');
+  assert.equal(overflows({ scrollWidth: 40, clientWidth: 0 }), false, 'hidden');
 });

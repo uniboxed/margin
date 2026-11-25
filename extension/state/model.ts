@@ -1139,13 +1139,15 @@ function orderSpaces(state: State, ids: string[]) {
 
 // Rename, re-emoji, recolor, another theme (`theme`: an id; null: none, the profile's; left out or not an id:
 // unchanged), or another background (`background`: an object, as backgroundOf reads it, none when it reads as null;
-// null: none, the theme's own; left out or not an object: unchanged).
-function updateSpace(state: State, spaceId: string, patch: { name?: string; emoji?: string; color?: string; theme?: string | null; background?: unknown; }) {
+// null: none, the theme's own; left out or not an object: unchanged). Its icon removed with `emoji: null` (M2.10,
+// Arc's: the space then shows as a dot): stored as ''; a blank or missing emoji leaves it.
+function updateSpace(state: State, spaceId: string, patch: { name?: string; emoji?: string | null; color?: string; theme?: string | null; background?: unknown; }) {
   const allowed: Record<string, string> = {};
   for (const key of ['name', 'emoji', 'color'] as const) {
     const value = typeof patch[key] === 'string' ? patch[key].trim() : '';
     if (value) allowed[key] = value;
   }
+  if (patch.emoji === null) allowed.emoji = '';
   const theme = themeIdOk(patch.theme) ? patch.theme : patch.theme === null ? null : undefined;
   const b = patch.background;
   const background = b && typeof b === 'object' && !Array.isArray(b) ? backgroundOf(b) : patch.background === null ? null : undefined;

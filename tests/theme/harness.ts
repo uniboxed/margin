@@ -362,7 +362,7 @@ const withRuntime = Object.assign(T, {
   // `settings`: the stored settings changed first.
   mountRuntime({ width = 1440, height = 900, container = 'shadow', closed = true, platform = { browser: 'chrome', os: 'linux', marginFullscreen: true }, replies = {}, settings = null, mode = 'fullscreen', inNewTab = false, focusLauncherAtMount = undefined, warnings = null, staysOnScreen = false, appWindow = false, hosted = false, materials = null, pictures = false }: {
     width?: number, height?: number, container?: 'shadow' | 'document', closed?: boolean,
-    platform?: { browser: string, os: string, marginFullscreen?: boolean }, replies?: Record<string, unknown>,
+    platform?: { browser: string, os: string, app?: boolean, marginFullscreen?: boolean, features?: Record<string, unknown> }, replies?: Record<string, unknown>,
     settings?: Record<string, unknown> | null, mode?: 'fullscreen' | 'windowed' | 'inpage', inNewTab?: boolean,
     focusLauncherAtMount?: boolean, warnings?: unknown,
     staysOnScreen?: boolean,

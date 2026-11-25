@@ -19,7 +19,8 @@ const script = harnessScript();
 type Lefts = { row: number, icon: number, title: number };
 // Measured on the base tree (93722290), the same in both engines (Pixel's folder glyph: 30 in WebKit, 29.75 in Chromium).
 const BASE: Record<string, { loosePin: Lefts, folder: Lefts, folderPin: Lefts, step: number }> = {
-  arcadia: { loosePin: { row: 10, icon: 20, title: 46 }, folder: { row: 10, icon: 20, title: 46 }, folderPin: { row: 26, icon: 36, title: 62 }, step: 16 },
+  // (Arc's, measured: docs/ARC-SIDEBAR.md.)
+  arcadia: { loosePin: { row: 8, icon: 18, title: 43 }, folder: { row: 8, icon: 16.5, title: 43 }, folderPin: { row: 24, icon: 34, title: 59 }, step: 16 },
   'liquid-glass': { loosePin: { row: 18, icon: 27, title: 51 }, folder: { row: 18, icon: 43, title: 65 }, folderPin: { row: 32, icon: 41, title: 65 }, step: 14 },
   neubrutalism: { loosePin: { row: 22.5, icon: 30.5, title: 57.5 }, folder: { row: 18, icon: 28, title: 51 }, folderPin: { row: 22, icon: 30, title: 57 }, step: 14 },
   pixel: { loosePin: { row: 26, icon: 52, title: 78 }, folder: { row: 26, icon: 30, title: 46 }, folderPin: { row: 26, icon: 52, title: 78 }, step: 14 },

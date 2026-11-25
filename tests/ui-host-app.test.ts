@@ -51,7 +51,7 @@ test('the app host: the state from the hello, in the pages\' shape, drawable', (
   const { features, ...platform } = host.platform;
   assert.deepEqual(platform, { browser: 'safari', os: 'mac', app: true });
   // What Settings offers: the build's profile (Safari's in dist/app), as the new-tab page gave it.
-  assert.deepEqual(Object.keys(features).sort(), ['blockGestures', 'haptics', 'importThemes', 'marginFullscreen', 'newTabHint', 'search', 'sleepTabs', 'spaceThemes', 'userThemes']);
+  assert.deepEqual(Object.keys(features).sort(), ['blockGestures', 'haptics', 'importThemes', 'marginFullscreen', 'newSplit', 'newTabHint', 'search', 'sleepTabs', 'spaceThemes', 'userThemes']);
   assert.equal(features.haptics, false, 'a browser\'s overlay plays no haptics (Edit Theme Color\'s ticks)');
   assert.equal((createAppHost({ hello: hello({ host: 'app-window' }), post: b.post }).platform.features as any).haptics, true, 'Margin.app\'s own window on the Mac does');
   assert.equal(features.spaceThemes, false, 'a browser\'s overlay draws its profile\'s theme');
@@ -854,4 +854,20 @@ test("the app host in Margin's own window: the start screen held up (`stuck` wit
   assert.equal(host.perform('startup.retry'), false, 'not starting: its choices refused');
   const browserPage = createAppHost({ hello: hello({ pageState: 'loading', pageStarting: true, pageStuck: 'held' }), post: bridge().post });
   assert.equal(browserPage.perform('startup.skip'), false, 'over a browser (not Margin\'s own window): never');
+});
+
+// The profiles' names Margin.app tells (M2.10: a space's tooltip shows its profile): kept as the platform's
+// `profileNames`, drawn again; what isn't them, ignored.
+test('the app host: the profiles\' names as told (`profiles`), for the view model', () => {
+  const b = bridge();
+  let emitted = 0;
+  const host = createAppHost({ hello: hello(), post: b.post });
+  host.onState(() => { emitted++; });
+  assert.equal(host.platform.features.profileNames, undefined, 'none until told');
+  host.receive({ type: 'profiles', profiles: { names: { safari: { 's-default': 'Personal' } }, fallback: { safari: 's-default' } } });
+  assert.deepEqual(host.platform.features.profileNames, { names: { safari: { 's-default': 'Personal' } }, fallback: { safari: 's-default' } });
+  assert.ok(emitted > 0, 'drawn again');
+  host.receive({ type: 'profiles', profiles: 'evil' });
+  host.receive({ type: 'profiles', profiles: { names: 5 } });
+  assert.deepEqual((host.platform.features.profileNames as any).names, { safari: { 's-default': 'Personal' } }, 'not names: ignored');
 });

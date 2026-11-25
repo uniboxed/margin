@@ -409,6 +409,15 @@ func glueScenario() async {
   let pageHas = await waitJS(c.webView, "const d = marginApp.stats().device; return !!d && d.pointer === 'mouse' && typeof d.haptics === 'boolean'")
   let pageDevice = await js(c.webView, "return JSON.stringify(marginApp.stats().device)") as? String ?? "?"
   check("…the page has the last (its host's device: a mouse)", pageHas, pageDevice)
+  // The profiles' names told to the page (M2.10: a space's tooltip shows its profile): as they change, once each.
+  made.profiles = { #"{"names":{"safari":{"s-default":"Personal","s-work":"Work"}},"fallback":{"safari":"s-default"}}"# }
+  made.tellProfiles()
+  let toldOnce = c.profilesSaid
+  made.tellProfiles()
+  check("the profiles' names told to a drawn page, not again unchanged", toldOnce?.contains(#""s-work":"Work""#) == true && c.profilesSaid == toldOnce, "\(String(describing: c.profilesSaid))")
+  let pageNames = await waitJS(c.webView, "const p = marginApp.stats().profileNames; return !!p && p.names.safari['s-work'] === 'Work' && p.fallback.safari === 's-default'")
+  let pageNamesSaid = await js(c.webView, "return JSON.stringify(marginApp.stats().profileNames)") as? String ?? "?"
+  check("…the page has them (its host's platform: the view model names each space's profile)", pageNames, pageNamesSaid)
 
   // ---- its card (its item in another Margin window) and the item coming back (bug of 2026-11-20: the launcher was
   // drawn for the loader's grace between the card and the loader) ----
@@ -534,7 +543,9 @@ func glueScenario() async {
   let holePoints = [CGPoint(x: local.midX, y: local.midY), CGPoint(x: local.minX + 16, y: local.midY), CGPoint(x: local.maxX - 3, y: local.midY), CGPoint(x: local.midX, y: local.minY + 3),
                     CGPoint(x: local.midX, y: local.maxY - 3), CGPoint(x: local.minX + radius - r2 + 3, y: local.minY + radius - r2 + 3), CGPoint(x: local.maxX - radius + r2 - 3, y: local.maxY - radius + r2 - 3)]
   let solidPoints = [CGPoint(x: 60, y: local.midY), CGPoint(x: local.minX - 4, y: local.midY), CGPoint(x: local.midX, y: local.minY - 4), CGPoint(x: local.maxX + 4, y: local.midY),
-                     CGPoint(x: local.midX, y: local.maxY + 4), CGPoint(x: local.minX + 1, y: local.minY + 1), CGPoint(x: local.maxX - 1, y: local.maxY - 1)]
+                     CGPoint(x: local.midX, y: local.maxY + 4), CGPoint(x: local.minX + 0.5, y: local.minY + 0.5), CGPoint(x: local.maxX - 0.5, y: local.maxY - 0.5)]
+  // (The corners' points: 0.5 pt in along the diagonal, well outside the curve for any card's corner (Arcadia's is Arc's
+  // 6 pt since M2.10: 1.8 pt outside it; 1 pt in was 1.1 pt outside, its edge's antialiasing showing).)
   _ = await until(3) { windowAlpha(c.panel, at: holePoints)?.allSatisfy { $0 == 0 } == true }
   let holeAlpha = windowAlpha(c.panel, at: holePoints), solidAlpha = windowAlpha(c.panel, at: solidPoints)
   check("shown, as the window server pictures Margin's window: see-through (alpha 0) across the page area, up to its edges and inside its corners' curves",

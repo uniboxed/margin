@@ -21,6 +21,9 @@ for (const [engineName, engine] of [['webkit', webkit], ['chromium', chromium]] 
         await page.route('**/*', (route) => route.abort());
         await page.setContent('<!doctype html><html><body></body></html>');
         await page.addScriptTag({ content: script });
+        // (The switch itself, drawn at once: with motion allowed, Arcadia slides a clicked space in first, as Arc's does,
+        // and lands through this same switch: tests/theme/arcadia.test.ts.)
+        await page.emulateMedia({ reducedMotion: 'reduce' });
         assert.equal((await page.evaluate(([pkg, name]) => T.loadBuiltin(pkg, name), [themeForPage(dir), id] as const)).ok, true);
         await page.evaluate(() => T.mountRuntime({ staysOnScreen: true, replies: { setSpace: {} } }));
         // Click the real Work chip: the native host has not committed the selected space yet.
