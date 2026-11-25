@@ -1283,14 +1283,13 @@ export function createLink({
     const sent = send(message);
     if ('openTabs' in message.changes) switchLog.delta(sent);
   }
+  // Each window's place, state and focus. Not its tab in front: the app never read it, and asking Safari for it (and
+  // for the list on every tab switch, to keep it current) was in the next switch's way (docs/PROTOCOL.md "windows").
   async function windowList() {
-    const [wins, fronts] = await Promise.all([
-      Promise.resolve(api.windows?.getAll?.()).catch((): BrowserWindow[] | null => null),
-      Promise.resolve(api.tabs.query({ active: true })).catch((): BrowserTab[] => []),
-    ]);
+    const wins = await Promise.resolve(api.windows?.getAll?.()).catch((): BrowserWindow[] | null => null);
     return (wins ?? ([] as BrowserWindow[])).filter((w) => w?.id != null).map((w) => known({
       windowId: w.id, left: w.left ?? 0, top: w.top ?? 0, width: w.width ?? 0, height: w.height ?? 0,
-      state: w.state ?? 'normal', focused: !!w.focused, activeTabId: (fronts ?? []).find((t) => t.windowId === w.id)?.id ?? null,
+      state: w.state ?? 'normal', focused: !!w.focused,
       ...(focusedAt.has(w.id) ? { focusedAt: focusedAt.get(w.id) } : {}),
       ...(createdAt.has(w.id) ? { createdAt: createdAt.get(w.id) } : {}),
     }));
@@ -1622,8 +1621,8 @@ export function createLink({
       if (Number.isInteger(windowId) && windowId >= 0) createdAt.set(windowId, at);
       void windowsNow();
     },
-    // A tab shown in its window (tabs.onActivated): the window list looked at now.
-    tabActivated() { due(); void windowsNow(); },
+    // A tab shown in its window (tabs.onActivated): an event heard (the window list doesn't change with it).
+    tabActivated() { due(); },
     // A switch's timeline (background/switch-log.ts) and other lines for Margin.app's log.
     note: (...args: any[]) => note(...args),
     windowClosed(windowId: number) {

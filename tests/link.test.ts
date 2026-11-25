@@ -194,7 +194,7 @@ test('link: linked — the port kept used, wantLink, the key checked, hello, sna
     assert.equal(snap.epoch, hello.epoch);
     assert.equal(snap.seq, 1);
     assert.deepEqual(Object.keys(snap.state).sort(), Object.keys(STATE).filter((k) => STATE_KEYS.includes(k)).sort(), 'the state as pages read it, no theme package or data times');
-    assert.deepEqual(snap.windows, [{ windowId: 7, left: 0, top: 0, width: 1280, height: 800, state: 'fullscreen', focused: true, activeTabId: 13 }]);
+    assert.deepEqual(snap.windows, [{ windowId: 7, left: 0, top: 0, width: 1280, height: 800, state: 'fullscreen', focused: true }], 'no tab in front (no app reads it)');
     assert.ok(await until(() => app.received.filter((m) => m.k === 'theme').length >= 2));
     const pieces = app.received.filter((m) => m.k === 'theme');
     const whole = Buffer.concat(pieces.sort((a, b) => a.part - b.part).map((p) => Buffer.from(p.data, 'base64')));
@@ -516,6 +516,14 @@ test('link: ticks, requests as the window\'s, deltas, windows, resync', async ()
     assert.equal(win.list[0].width, 1440);
     await wait(120);
     assert.equal(app.received.filter((m) => m.k === 'windows').length, 1, 'only on a change');
+    // Another tab shown in front (tabs.onActivated): no report, as the list says no tab in front, and Safari isn't
+    // asked for its tabs (each tab switch did, in the next one's way).
+    let queried = 0;
+    api.tabs.query = async () => { queried++; return [{ id: 14, windowId: 7, active: true }]; };
+    link.tabActivated();
+    await wait(120);
+    assert.equal(app.received.filter((m) => m.k === 'windows').length, 1, 'a tab shown sends no report');
+    assert.equal(queried, 0, 'no tab in front asked for');
     // A window focused, one created: when the copy heard each, for the app to tell same-bounds windows apart.
     api.windowList = [...api.windowList, { id: 8, left: 0, top: 0, width: 1440, height: 800, state: 'fullscreen', focused: false }];
     link.windowCreated(8, 1_800_000_000_000);

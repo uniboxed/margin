@@ -76,8 +76,8 @@ final class Harness: ExtensionLinkDelegate {
       case .delta:
         say(["ev": "delta", "seq": state.seq, "keys": state.keys.sorted()])
       case .windows:
-        // Each window's tab in front (ids only).
-        let each: [[String: Any]] = windows.map { w in ["windowId": w["windowId"] ?? NSNull(), "activeTabId": w["activeTabId"] ?? NSNull()] }
+        // Each window's id and focus.
+        let each: [[String: Any]] = windows.map { w in ["windowId": w["windowId"] ?? NSNull(), "focused": w["focused"] ?? NSNull()] }
         say(["ev": "windows", "seq": state.seq, "count": windows.count, "list": each])
       }
     case .theme(let epoch, let theme):

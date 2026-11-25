@@ -62,6 +62,9 @@ function timedTabs(api: HostedTabsApi, steps: string[]): HostedTabsApi {
   };
 }
 
+/** How long after a show asked Safari to bring a tab to the front its activation is taken for the show's. */
+const RAISED_MS = 1500;
+
 export const PICTURE = { width: 1600, quality: 60 } as const;
 const PICTURE_URL = /^data:image\/(jpeg|png);base64,/;
 
@@ -107,6 +110,8 @@ export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = asy
     setTimeout(() => { const n = (blanking.get(windowId) ?? 1) - 1; if (n > 0) blanking.set(windowId, n); else blanking.delete(windowId); }, 1000);
   }
   const tagged = (tabId: number) => [...byItem.values()].includes(tabId);
+  // The tabs a show brought to the front, and when it asked Safari to (`raisedByShow`).
+  const raising = new Map<number, number>();
   // The windows the app has shown items in (its hosted windows of this profile: main, a card, a split's panes; docs/
   // PEEK-SPLIT.md §1): a tab of an item in one of them, asked for in another, is moved there, never made again.
   const shownIn = new Set<number>();
@@ -147,6 +152,14 @@ export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = asy
       if (win?.id == null) return null;
       shownIn.add(win.id);
       return win;
+    },
+    /** Whether a show brought this tab to the front within RAISED_MS (its activation is the app's own: background.ts). */
+    raisedByShow(tabId: number) {
+      const at = raising.get(tabId);
+      if (at == null) return false;
+      if (Date.now() - at < RAISED_MS) return true;
+      raising.delete(tabId);
+      return false;
     },
     /** For the tests: the item each tab is tagged with. */
     tags: () => new Map(byItem),
@@ -244,7 +257,10 @@ export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = asy
       }
       if (tab?.id == null) throw new Error('no tab');
       byItem.set(itemId, tab.id);
-      if (!created) await tabsNow().update(tab.id, { active: true }); // (one made or sent there is in front already)
+      if (!created) {
+        raising.set(tab.id, Date.now()); // (before the call: Safari's activation can come before its answer)
+        await tabsNow().update(tab.id, { active: true }); // (one made or sent there is in front already)
+      }
       return moved ? { tabId: tab.id, created, moved } : { tabId: tab.id, created };
     },
     async picture({ windowId, itemId }: { windowId?: unknown, itemId?: unknown }) {

@@ -82,7 +82,6 @@ pub struct ExtWindow {
     /// normal, fullscreen, maximized, minimized
     pub state: String,
     pub focused: bool,
-    pub active_tab_id: Option<i64>,
     /// Seconds since 1970 (the copy's Date.now(), the same clock as the app's): when its copy last heard
     /// windows.onFocusChanged name it, and windows.onCreated (None: not heard since the copy started).
     pub focused_at: Option<Secs>,
@@ -112,7 +111,6 @@ impl ExtWindow {
             bounds,
             state: state.to_string(),
             focused,
-            active_tab_id: None,
             focused_at: None,
             created_at: None,
             viewport: None,
@@ -160,7 +158,6 @@ impl ExtWindow {
                     json::string(w.get("state")).unwrap_or("normal"),
                     json::boolean(w.get("focused")).unwrap_or(false),
                 );
-                e.active_tab_id = json::int(w.get("activeTabId"));
                 e.focused_at = ms(w.get("focusedAt"));
                 e.created_at = ms(w.get("createdAt"));
                 e.viewport = Self::viewport_of(w.get("viewport"));
@@ -2764,7 +2761,7 @@ mod tests {
     fn parsing() {
         let list = vec![
             json!({"windowId": 7, "left": 0, "top": 0, "width": 1512, "height": 982, "state": "fullscreen", "focused": true,
-                   "activeTabId": 3, "focusedAt": 1_800_000_000_500u64, "createdAt": 1_800_000_000_000u64}),
+                   "focusedAt": 1_800_000_000_500u64, "createdAt": 1_800_000_000_000u64}),
             json!({"id": 8, "state": "minimized"}),
             json!({"nope": 1}),
             json!("not a window"),
@@ -2773,7 +2770,6 @@ mod tests {
         assert_eq!(p.len(), 2, "windows parsed (id or windowId; none without one)");
         assert_eq!(p[0].bounds, Some(SCREEN));
         assert!(p[0].focused);
-        assert_eq!(p[0].active_tab_id, Some(3));
         assert_eq!(p[0].focused_at, Some(1_800_000_000.5));
         assert_eq!(p[0].created_at, Some(1_800_000_000.0));
         assert_eq!(p[1].bounds, None);
