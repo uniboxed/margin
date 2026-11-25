@@ -60,6 +60,15 @@ final class OverlayWebView: WKWebView {
         return super.performKeyEquivalent(with: event)
     }
 
+    // Whether a click on it makes its panel key (Margin's panel becomes key only if needed: `becomesKeyOnlyIfNeeded`).
+    // WebKit's own answer is yes, and AppKit's left-mouse-down handling of a non-activating panel then keyed Margin's
+    // panel (`_NSShowNonActivatingKeyWindow`, whatever its `canBecomeKey`) and took Margin for active while the hosted app
+    // stayed the front one (the screen run of 2026-11-25, its DIAG lines; docs/SIDEBAR-PRESS.md). Its window's answer
+    // (MarginWindowController: the core's `keys_stay`, an app shown and no field of Margin's: no; anything else: yes, as
+    // before). A field the press focuses takes the keys by the page's word (`takeKeys`), not by the click.
+    var needsKeyForPress: () -> Bool = { true }
+    override var needsPanelToBecomeKey: Bool { needsKeyForPress() }
+
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override func shouldDelayWindowOrdering(for event: NSEvent) -> Bool { true }
 

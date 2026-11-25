@@ -27,6 +27,7 @@ pub mod fill;
 pub mod front;
 pub mod hello;
 pub mod holes;
+pub mod press;
 pub mod report;
 pub mod said;
 
@@ -166,6 +167,8 @@ pub struct Page {
     full_screen: bool,
     hosting: bool,
     hosted: Option<i64>,
+    /// A field of Margin's wants the keys (the page's `focus`: press.rs).
+    field_keys: bool,
     hosted_frame: Option<Rect>,
     loading: Option<String>,
     loading_app: Option<String>,
@@ -224,6 +227,7 @@ impl Page {
             full_screen: false,
             hosting: false,
             hosted: None,
+            field_keys: false,
             hosted_frame: None,
             loading: None,
             loading_app: None,

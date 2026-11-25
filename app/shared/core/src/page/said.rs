@@ -28,8 +28,9 @@ pub enum Said {
     Hits { all: bool },
     /// The theme's window controls (None: none) and its drag regions (in `rects`).
     Chrome { controls: Option<Rect> },
-    /// A field of Margin's wants the keys, or let go.
-    Focus(bool),
+    /// A field of Margin's wants the keys, or let go (`on`), kept (`Page::set_field_keys`); `was`: whether one
+    /// wanted them before.
+    Focus { on: bool, was: bool },
     /// Its sidebar's spaces and numbered rows.
     Counts { spaces: i64, items: i64 },
     /// The positions the page wants, kept (the pointer's).
@@ -145,7 +146,10 @@ impl Page {
                 self.said_rects = list;
                 Said::Chrome { controls }
             }
-            "focus" => Said::Focus(flag(body.get("on"))),
+            "focus" => {
+                let on = flag(body.get("on"));
+                Said::Focus { on, was: self.set_field_keys(on) }
+            }
             "counts" => match (swift_int(body.get("spaces")), swift_int(body.get("items"))) {
                 (Some(spaces), Some(items)) if spaces >= 0 && items >= 0 => Said::Counts { spaces, items },
                 _ => Said::None,
@@ -232,8 +236,8 @@ mod tests {
             Said::Chrome { controls: Some(Rect { x: 1.0, y: 2.0, width: 3.0, height: 4.0 }) }
         );
         assert_eq!(p.said_rects().len(), 2);
-        assert_eq!(said(&mut p, "focus", json!({ "on": 1 })), Said::Focus(true));
-        assert_eq!(said(&mut p, "focus", json!({})), Said::Focus(false));
+        assert_eq!(said(&mut p, "focus", json!({ "on": 1 })), Said::Focus { on: true, was: false });
+        assert_eq!(said(&mut p, "focus", json!({})), Said::Focus { on: false, was: true });
         assert_eq!(said(&mut p, "counts", json!({ "spaces": 2, "items": 3.0 })), Said::Counts { spaces: 2, items: 3 });
         assert_eq!(said(&mut p, "counts", json!({ "spaces": 2, "items": 3.5 })), Said::None);
         assert_eq!(said(&mut p, "counts", json!({ "spaces": -1, "items": 3 })), Said::None);

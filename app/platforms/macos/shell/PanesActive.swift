@@ -45,6 +45,13 @@ nonisolated protocol PaneFronting: AnyObject, Sendable {
     // A mouse event delivered to `window` of `pid` as its own record, at its point less `origin` (the window's top left),
     // never routed by the window server (which would raise it). True: taken.
     func deliver(_ event: CGEvent, pid: pid_t, window: Int, origin: CGPoint) -> Bool
+    // An event's own record as the window server keeps it (nil: unread): only ever said (the press tap's first press on
+    // Margin's panel, PaneClickTap.swift `PanelEvents`), never posted from there.
+    func record(of event: CGEvent) -> [UInt8]?
+}
+
+extension PaneFronting {
+    nonisolated func record(of event: CGEvent) -> [UInt8]? { nil }
 }
 
 nonisolated struct PaneWindow: Hashable, Sendable, CustomStringConvertible {
@@ -238,6 +245,8 @@ nonisolated final class PaneActivator: PaneFronting, @unchecked Sendable {
         _ = send(PaneRecords.makeKey(window: window, down: false), to: pid)
         return true
     }
+
+    func record(of event: CGEvent) -> [UInt8]? { refused ? nil : calls.record(of: event) }
 
     func deliver(_ event: CGEvent, pid: pid_t, window: Int, origin: CGPoint) -> Bool {
         let p = event.location

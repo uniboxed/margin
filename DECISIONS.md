@@ -9765,3 +9765,165 @@ Both parts merged (`fix/link-resilience-link` into the session's part): one canc
   pages see, which the link resilience design doesn't ask for.
 - `npm run test:webkit` (41 scenarios), `npm test` (1112), `tools/app-tests/run.sh all` (2156 unit, 339 e2e) and
   `scripts/rust-test.sh` green.
+
+## A press on Margin's sidebar never takes the keyboard from the hosted app (GitHub #29, 2026-11-24)
+
+- **Why**: the window server moved the keyboard to Margin at every press in its panel, a non-activating panel that
+  refuses to be key included, so the hosted app's window resigned key and drew its unfocused look until Margin handed
+  the keys back (`pressSettle`, 80 ms after the release: 185-193 ms in all on the real screen). Tirth accepts that a
+  page's field loses its focus to a sidebar press, as in Arc; not the app's unfocused look for any time. This is the
+  event tap the 2026-11-22 entry ("A sidebar click hands the keys back") left as not done. Design: docs/SIDEBAR-PRESS.md.
+- **The core decides** (core/page/press.rs): `keys_stay` (hosting, a hosted window shown, no field of Margin's wanting
+  the keys: the rule Windows' `MA_NOACTIVATE` is too, which it can read once its window has a core page) and
+  `press_way` (outside, through to what's hosted or the window's own buttons, Margin's UI with the keys staying,
+  Margin's UI as before), over `passthrough::passes`, now a free function `PagePointer::passes` calls. The page keeps
+  the field's word as it reads the `focus` op (`Page::set_field_keys`; `Said::Focus { on, was }`); the Swift's
+  `pageWantsKeyboard` reads it (no second copy).
+- **The Mac's mechanism** is the pane click tap, not a second tap (a second would be a second round trip per press):
+  its scene carries every hosting Margin window's panel (`PaneClickScene.panels`); a press of any button the core's
+  way says is Margin's UI with the keys staying, with no other button held and no other window over the panel there
+  (the window server's list read for that press only), is taken and delivered to the panel as the window server's own
+  record (`PaneFronting.deliver`, as a cut pane's press, proven on the real screen 2026-11-22), at the panel's own
+  point; its drags and release follow it there, and another button's press until the last is up. A press under way
+  whose release the tap never heard (macOS turned it off a moment) is dropped at the next press. The tap now lives
+  while a Margin window on the current Space hosts (it lived only while a split was shown).
+- **`pressSettle`**: a press the tap delivered is known at its release by its event number (`claimedPanel`) and skips
+  `afterPress` at once: no hand-back, nothing waited for. `pressSettle` is left only for a press the window server
+  still routed (no tap: Accessibility not granted, the records' layout refused at launch, `MarginSidebarTap` off;
+  covered there by another window) and for `menuItemRan`, unchanged.
+- **Off**: `defaults write com.unibox.margin MarginSidebarTap -bool NO` (today's hand-back). The dev hook's `say: front`
+  says `delivered N`, the presses delivered without the keyboard moving.
+- **Cost**: nothing at rest (a mach port on the tap's own thread, no timer, no poll; moves, scrolls and keys never
+  reach it). Per press: one round trip to the tap's thread, the core's way (11.1 ns, ffi tests/press_cost.rs in
+  release), and for a press on Margin's UI the window server's list of the windows above the panel. Per drag of a
+  press it took: a round trip and a record posted.
+- **Tests, each failing first**: core page/press.rs (the rule's cases, the field's word kept by `said`), said.rs, the
+  FFI's no-allocation run of `margin_press_way`; panel-press-tests.swift (12 of its checks failed with the panel branch
+  off); e2e-glue.swift's press tap block (a delivered press: no hand-back; a routed one: as before; a field's keys told;
+  the part off; 2 failed with the claim off). The screen suite's k1 is tightened back (see the screen-suite entry).
+
+## A double-click on the sidebar's empty part opens the palette, as Arc's does (2026-11-24)
+
+- **Where**: the shared UI, for every theme and host (Windows' web view too): the rule in app/shared/ui/empty.ts, the
+  behaviour in app/shared/ui/behaviors/empty.ts, the palette key's rule in the runtime (`paletteKeyOptions`,
+  `openPaletteAsKey`), which Margin.app's overlay's own `command palette` now reads too: one rule for the key and the
+  double-click (in Margin's own window the new-tab palette). Nothing in Swift, nothing per theme. In Margin.app the
+  press reaches the page through the press tap as the window server's own record, so it's the page's own `dblclick`.
+- **Empty**, walking up from the element under the pointer: no Margin slot or `m-empty="never"` on the way; up to the
+  nearest element holding a control or a row, no control (a link, a button, a field, an action, a handle, focusable,
+  draggable, an interactive role), no `<m-for>` row, no bar (two or more controls or rows side by side: the space
+  switcher's gaps, a header's, a favourites grid's); and that nearest holder is the sidebar's own surface, its column
+  (`m-swipe`) or a list (`m-scroll`, `m-drop`). A first version without that last rule found its empty point on the
+  mini player's background in every theme (the theme tests' diagnostic said so): a widget's background isn't the
+  sidebar's, and neither is the decoration beside the space's name or the frame around the page card.
+- **When**: both clicks on empty points, the main button, no modifier, a real press, nothing of Margin's open at the
+  first press (the palette, a menu, the editor, a rename, a prompt, the preview card) nor under way (a drag, a resize,
+  a swipe). It never closes the palette.
+- **The contract**: `m-empty="never"` (its only value; anything else is removed and reported by the sanitizer) marks a
+  decoration as never empty. No theme can make anything empty. themes/README.md says what's empty and why.
+- **The dev hook** `say: spot` and the app's e2e use the same rule (`marginApp.devEmptySpot`, DEV-HOOK).
+- **Tests, each failing first**: tests/theme/empty-dblclick.test.ts (5 themes × WebKit and Chromium, 190 checks: an
+  empty point's double-click opens the palette as the key does; a tab's, a folder's, a pin's, the space's name's, the
+  active chip's, the gap between chips, the address field's, a drag region's, the resize handle's, the mini player's,
+  the decoration beside the space's name, the frame's, the editor's field don't; one click of two on a row doesn't; a
+  menu open at the first click: nothing; the root marked never: nothing). With the behaviour off its 10 opening
+  checks and the marked-root checks failed; with a rule that took everything but the page as empty, 72 failed.
+  tests/theme-sanitize.test.ts (`m-empty` values). e2e-glue.swift: two presses with click counts 1 and 2 on the real
+  page open the palette, its field taking the keys; on the page area nothing (both failed with the behaviour off).
+
+## The screen suite's k1 tightened back, k2 and k3 added (2026-11-24; not run here: Tirth runs it)
+
+- **k1** (tools/screen-tests/suite/Core.swift): a click on an empty spot of the sidebar with the pane active now passes
+  only if the pane's window never resigned key (no `resignedKey` line at all; 2026-11-22's "key again within 0.5 s" is
+  gone), the dev hook says the press was delivered by the tap (`delivered` +1) and nothing was handed back (`keys
+  back` unchanged), AppKit never took Margin for active (`appkit active false`), and as before the pane the front app,
+  the panel's press counted, Margin never made active, a plain key after it reaching the pane.
+- **k2**: a double-click on that spot (two presses, the second with click count 2, Person.swift `doubleClick`): the
+  palette opened by it (Margin's log: "palette opened (a double-click on the sidebar)"), the panel key with its field,
+  the pane still the front app, Margin never made active, the pane's window resigning key once at most (for the
+  palette's field); then Escape, as c2.
+- **k3**: a double-click in the pane's own content: its two clicks (counts 1 and 2) the pane's, no palette.
+- The dev hook's `say: spot` now finds its spot by the double-click's own rule (app/shared/ui/empty.ts), so k1's spot
+  and k2's are the same kind of point. The suite type-checks (`swiftc -typecheck`); it was not run.
+- The tap's own work per event, on the unit checks' stand-in, is printed by panel-press-tests.swift (a sidebar click,
+  a click through the hole, a drag of a press it took).
+
+## The sidebar press delivered as an event made afresh; the split's pane clicks said apart (2026-11-24, after the first screen run)
+
+- **Seen** (core k1, 20261124-232233): the pane never resigned key and nothing was handed back, but after the first
+  delivered press (b2's, on the frame) Margin's dev hook said `panel … key true`, `allow key false`, `appkit active
+  true`, `active false`: AppKit keyed the panel (its `canBecomeKey` false) and took Margin for active while the window
+  server kept the pane the front app, and k1's plain key then went to Margin ("a key reached Margin … (Margin's key
+  window: panel)"), relayed and handed back. A person would have seen the hosted app keep its active look and its menu
+  bar (the window server's front app), Margin's panel drawn as key, and the first key typed after a sidebar click
+  reach the app only through the relay; AppKit's own `didBecomeActive` (which Margin hears: `keepFront`,
+  `tryFullScreen`, the menu bar watch) could fire; NSWorkspace's never did (the front app never changed).
+- **Why, as far as can be seen from here**: an off-screen lab (its own accessory process, a non-activating panel that
+  refuses key, with and without a web view; nothing posted to another process or to the HID stream) delivered a press
+  made afresh three ways (as a record through `SLPSPostEventRecordTo`, through AppKit's queue, `postToPid`): the panel
+  got the press and the page its mousedown and double-click, AppKit stayed inactive and the panel not key every time.
+  So neither the posting nor the panel nor WebKit does it; the real press's own record does (its window server's word
+  on a click, most likely the make-key flag at 0x3a, 0x10, that yabai and AltTab set by hand). No lab here can read a
+  real press's record; the first press's bytes 0x38-0x3b are now said in Margin's log, never posted, and k1's detail
+  shows that line.
+- **Fix**: the tap delivers a press on the panel, and its drags and release, as an event made afresh from its public
+  fields (type, point in the panel, modifiers, event number, click count, pressure, button, movement:
+  `NSEvent.mouseEvent` for the panel, `cgEvent.postToPid` to Margin's own process; PaneClickTap.swift `PanelEvents`).
+  Public calls only: the panel part no longer needs the records' layout (`sidebarTap` is the setting alone). Cut panes
+  keep their records (another app's window, made key first).
+- **Logs**: one tap, two modes said apart. `press tap: on` / `off` is the tap (it runs while a Margin window on the
+  current Space hosts); `pane clicks: on` / `off` is the split's part of it (the tap running and a split's panes in its
+  scene), each said once as it changes, from the tap's own thread or the scene's. The screen suite's split step
+  (PaneClicks.swift `splitWith`, read by pane-clicks, panes-active and cut-panes) still waits for `pane clicks: on`,
+  now meaning exactly that; it was the only suite reader of the tap's lines.
+- **Covers**: a press where another window covers the panel (Notification Center, pid 793, layer 23, in the
+  pane-clicks run) goes as before: the window server's list read for that press, any window above the panel with
+  alpha above 0 below the assistive-technology level counts, as for a pane.
+- **Tests, failing first**: panel-press-tests.swift (5 checks failed with the panel delivered as records again: each
+  press must go out as an event made afresh; `PanelEvents.make` keeps the window, its point, click count, event
+  number, modifiers, button and movement; the `pane clicks` lines said once each way, only while running with a
+  split); e2e-glue.swift (a double-click made afresh and posted to the e2e's own process through the window server
+  reaches the panel and opens the palette, AppKit not active before or after, no `didBecomeActive`, the panel never
+  keyed: the records path can't run in the tests, so this pins the new path, not the old failure); e2e-split.swift (the
+  split over: the tap stays for the panel, told no panes).
+
+## The second screen run: still keyed, a cut pane's click lost; AppKit's queue, and DIAG lines (2026-11-25)
+
+- **Seen** (d1f7ad8c): the first press's own record says 0x38-0x3b `00 00 00 20` (0x3a is 0: no make-key flag), and
+  the panel still went key (`panel … key true`, AppKit active) right after a press made afresh and posted to Margin
+  through the window server: the record theory is wrong. The off-screen lab and the e2e (both off every display) never
+  key the panel, by either way; only the real, on-screen Margin does. cut-panes: the click into the cut pane (its
+  records to Chameleon 1, delivered as before) reached no view, right after two arrow presses on Margin's panel that
+  went out through `postToPid`; in the first run, the same presses as records, it passed. That is the only change on
+  that path (the cut pane's own delivery, its decision and its cover read are the same code; `record(of:)` is read for
+  the first panel press only). The part's exit 6 is the suite's own guard: the Mac was in use before idle-cost
+  ("the Mac is in use before idle cost (idle 1 s)"), so it restored and stopped; not Margin's.
+- **Changed**: a press on the panel is now put in AppKit's own queue in Margin (`PanelEvents.queue`: the event made
+  afresh, handed to the main run loop's common modes in the tap's order, then `NSApp.postEvent`), so the window server
+  hears nothing of Margin's own presses. `MarginSidebarDelivery post` keeps the window-server way for comparison (DIAG:
+  one goes once the runs tell them apart). Both ways pass the e2e off every display; only the real screen decides.
+- **DIAG** (every line marked, to go): each mouse event the panel takes with AppKit's word before and after it
+  handles it; every press AppKit hands Margin and the window it's for; for 200 ms after a press, each `canBecomeKey`
+  asked with its caller and each page op (its name; a focus op's flag); every `allowKey` change, the panel's
+  `becomeKey` and `makeKey`, Margin's windows becoming key or main and AppKit's will/did become active, each with its
+  caller (25 frames). Lines start `DIAG `; nothing at rest, no text, title or address.
+
+## The panel keyed by AppKit's own click handling: the web view now answers whether a click needs the panel key (2026-11-25)
+
+- **Found** (dac51c93's DIAG lines, the core run at 00:35): the press reached the panel as a queued event (`AppKit
+  hands a press … for window 6554 (MarginPanel), appkit active false, key window none`), then AppKit's own
+  left-mouse-down handling of a non-activating panel keyed it (`MarginPanel.becomeKey` ← `_NSShowNonActivatingKeyWindow`
+  ← `-[NSWindow _handleLeftMouseDownEvent:isDelayedEvent:]` ← `_reallySendEvent:` ← `MarginPanel.sendEvent`), and only
+  after that asked `canBecomeKey` (false); a key non-activating panel makes AppKit report the app active. The delivery
+  was never the cause; cut-panes passed with the queue (14/0).
+- **Fix, public API only**: the panel already becomes key only if needed (`becomesKeyOnlyIfNeeded`); "needed" is the hit
+  view's `needsPanelToBecomeKey`, and the hit view at the sidebar is Margin's web view, which WebKit answers yes.
+  OverlayWebView now answers from its window (`needsKeyForPress`): the core's `keys_stay` (an app shown, no field of
+  Margin's) says no; anything else says yes, as before (a field wanting the keys, the launcher, an item loading). A field
+  the press focuses still takes the keys by the page's `focus` (`takeKeys`'s explicit `makeKey`, as k2's palette did).
+- **Removed**: the `postToPid` way and `MarginSidebarDelivery` (the queue stays). The DIAG lines stay for one more run.
+- **Tests, failing first**: e2e-glue.swift, what AppKit asks: the press at the empty spot hits Margin's web view in a
+  panel that becomes key only if needed; while the keys stay, that view doesn't need the panel key (failed before the
+  fix: WebKit's own answer, true); with the palette's field wanting the keys, it does. `_NSShowNonActivatingKeyWindow`
+  itself isn't reproduced in the e2e: it needs a process that was the active app, and making the e2e process active
+  would take the front from the person's own app, which these runs never do.

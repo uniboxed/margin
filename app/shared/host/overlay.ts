@@ -547,6 +547,9 @@ async function mount(pkg: any, { fallback = false, preview: previewing = false }
     onSwitchRun: (run) => { const line = describeSwitchRun(run); if (line) log('note', line); },
     // (⌃⇧= with nothing else to split with: the palette's pick is the new pane, `addSplitPane`.)
     onPalette: (what) => { if (splitPick && what === 'close') splitPick = null; else if (splitPick && what === 'run') splitPick.picked = true; },
+    // (What the UI opens as the palette's key does, a double-click on the sidebar's empty part: timed and logged as the
+    // key's own, ui/behaviors/empty.ts.)
+    openPalette: (options, by) => openPaletteTimed(options, by),
   });
   // (The page's own hover: the theme's sheets and Margin's own, every :hover also [m-hover]; the marks start again.)
   for (const sheet of runtime.view.sheets ?? []) { try { withHoverAttr(sheet.cssRules); } catch { /* a sheet not readable: its :hover only */ } }
@@ -830,7 +833,7 @@ function onMessage(msg: any) {
       if (host?.pageStarting) return;
       if (msg.name === 'palette') {
         if (runtime?.paletteOpen) runtime.closePalette();
-        else openPaletteTimed({ newTab: !!host?.appWindow || !host?.launcher }, 'the app\'s key');
+        else if (runtime) openPaletteTimed(runtime.paletteKeyOptions(), 'the app\'s key');
       } else if (msg.name === 'toggle-sidebar') runtime?.sidebar.toggle();
       else if (msg.name === 'next-tab' || msg.name === 'prev-tab') navTab(msg.name);
       // Margin's own window: the next or previous space (the copy picks it over a browser: background/navigation.ts).
@@ -1038,6 +1041,8 @@ document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) s
   // DEV-HOOK: an action run as a theme's behaviour would (DevHooks.swift `host { ui }`, the on-screen checks of the preview card
   // and split view), and what the page shows of them: its tab in front, its card, its split. Never addresses.
   devDispatch: (action: string, arg?: unknown) => (runtime ? !!runtime.dispatch(action, arg, 'behavior') : false), // DEV-HOOK
+  // DEV-HOOK: an empty point of the sidebar, by the double-click's own rule (ui/empty.ts): DevHooks.swift `say: spot`.
+  devEmptySpot: () => { const p = runtime?.emptySpot(); return p ? `${p.x},${p.y}` : 'none'; }, // DEV-HOOK
   devState: () => { // DEV-HOOK
     const vm: any = runtime?.vm;
     if (!vm) return 'no view model';

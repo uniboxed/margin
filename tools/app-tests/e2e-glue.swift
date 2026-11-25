@@ -240,6 +240,8 @@ func key(_ window: NSWindow, _ characters: String, code: UInt16) {
 @MainActor
 func emptySidebarSpot(_ web: WKWebView) async -> CGPoint? {
   let found = await js(web, """
+    // (The double-click's own rule, as the dev hook's `say: spot`: app/shared/ui/empty.ts.)
+    if (window.marginApp && marginApp.devEmptySpot) { const s = marginApp.devEmptySpot(); return s === 'none' ? null : s.split(',').map(Number); }
     const page = document.querySelector('m-page')?.getBoundingClientRect();
     if (!page || page.left < 40) return null;
     const busy = 'a, button, input, textarea, select, [contenteditable], [m-action], [m-input], [m-drag], [m-resize], [m-drag-region], [m-rename], [m-editor], [m-menu], [m-notice], [m-prompt], [m-window-controls], [draggable="true"], [role="button"], [tabindex]';
@@ -757,11 +759,144 @@ func glueScenario() async {
     let takes = !c.panel.ignoresMouseEvents
     press(c.panel, at: spot)
     let back = await until(3) { world.calls.filter { $0 == "activate \(GlueHostWorld.calculator)" }.count == calcBefore + 1 }
-    check("a press on an empty spot of the sidebar with Calculator shown: Margin's panel took it (a non-activating panel), Margin not made active, the panel not asked to be key, the keys back to Calculator once it's over",
+    check("no press tap (the window server routes the press): a press on an empty spot of the sidebar with Calculator shown: Margin's panel took it (a non-activating panel), Margin not made active, the panel not asked to be key, the keys back to Calculator once it's over",
           takes && c.panel.presses == pressesBefore + 1 && c.panel.styleMask.contains(.nonactivatingPanel) && c.activations.count == marginBefore && c.keyAsks == asksBefore && !c.panel.canBecomeKey
             && back && c.keysGivenBack == backBefore + 1 && !c.pageWantsKeyboard && !c.panel.allowKey && !c.hasKeys
             && c.handBacks.count == handsBefore + 1 && c.handBacks.last == shownCalcPid,
           "hand-backs \(c.handBacks.suffix(2)) (Calculator \(shownCalcPid)) allow \(c.panel.allowKey) takes \(takes) presses \(c.panel.presses - pressesBefore) Margin active \(c.activations.suffix(2)) key asks \(c.keyAsks - asksBefore) can be key \(c.panel.canBecomeKey) back \(back) \(world.calls.suffix(2))")
+    // ---- the press tap (docs/SIDEBAR-PRESS.md): a press on Margin's panel delivered to it, the keyboard never moved ----
+    // (A stand-in tap: the real one never runs in a test. The records the real one delivers with: the stand-in's word.)
+    var taps: [FakePaneTap] = []
+    made.makePaneTap = { _, _ in let t = FakePaneTap(); taps.append(t); return t }
+    made.paneTapTrusted = { true }
+    made.paneTapGrace = 0
+    made.sidebarTap = { true }
+    made.paneSceneChanged()
+    let told = taps.last?.scenes.last ?? nil
+    let panelTold = told?.panels.first
+    check("the press tap: made with Calculator shown alone (no split), started, told this window's panel: its number, Margin's pid, its content, its slot, the keys staying with Calculator",
+          taps.count == 1 && taps.last?.started == 1 && told?.panes.isEmpty == true && told?.panels.count == 1 && panelTold?.window == c.panel.windowNumber
+            && panelTold?.pid == ProcessInfo.processInfo.processIdentifier && panelTold?.content == MarginWindowGeometry.content(of: c.panel.frame) && panelTold?.slot == c.slot
+            && panelTold?.keysStay == true && panelTold?.fullScreen == c.isFullScreen,
+          "\(taps.count) \(String(describing: told))")
+    check("the press tap: the core's way over what it was told: the empty spot Margin's UI with the keys staying, the page area Calculator's",
+          panelTold.map { PanelPress.way(CGPoint(x: display.minX + spot.x, y: display.minY + spot.y), $0) } == .ui
+            && panelTold.map { p in c.hole.map { PanelPress.way(CGPoint(x: $0.midX, y: $0.midY), p) } } == .some(.through))
+    do {
+      taps.last?.panelClaims = [7001]
+      let backs = c.keysGivenBack, hands = c.handBacks.count, delivered = c.deliveredPresses, presses = c.panel.presses, asks = c.keyAsks, active = c.activations.count
+      let calc = world.calls.filter { $0 == "activate \(GlueHostWorld.calculator)" }.count
+      press(c.panel, at: spot, number: 7001)
+      try? await Task.sleep(nanoseconds: 300_000_000)
+      check("the press tap: a press it delivered to the panel (its number): the panel got it, nothing handed back (the keyboard never moved), nothing waited for, Margin never made active, the panel not asked to be key",
+            c.panel.presses == presses + 1 && c.deliveredPresses == delivered + 1 && c.keysGivenBack == backs && c.handBacks.count == hands && c.keyAsks == asks
+              && c.activations.count == active && world.calls.filter { $0 == "activate \(GlueHostWorld.calculator)" }.count == calc && taps.last?.panelClaims.isEmpty == true,
+            "delivered \(c.deliveredPresses - delivered) keys back \(c.keysGivenBack - backs) hand-backs \(c.handBacks.count - hands) \(world.calls.suffix(2))")
+      // One it didn't deliver (another window covered the panel there, the window server routed it): handed back as before.
+      press(c.panel, at: spot, number: 7002)
+      let routedBack = await until(3) { c.keysGivenBack == backs + 1 }
+      check("the press tap: a press it didn't deliver (routed): the keys back to Calculator as before", routedBack && c.deliveredPresses == delivered + 1 && c.handBacks.last == shownCalcPid,
+            "\(c.keysGivenBack - backs) \(c.handBacks.suffix(2))")
+    }
+    // A field of Margin's takes the keys (the palette, as ⌘T opens it): the panel told the keys don't stay; let go: they do.
+    c.run(.newTab)
+    let fieldTold = await until(5) { c.pageWantsKeyboard && (taps.last?.scenes.last ?? nil)?.panels.first?.keysStay == false }
+    c.push(#"{"type":"pressOutside"}"#)
+    let fieldGone = await until(5) { !c.pageWantsKeyboard && (taps.last?.scenes.last ?? nil)?.panels.first?.keysStay == true }
+    check("the press tap: a field of Margin's with the keys told as the keys not staying (its presses routed, as before), and as staying once it lets go", fieldTold && fieldGone,
+          "\(fieldTold) \(fieldGone) \(String(describing: (taps.last?.scenes.last ?? nil)?.panels))")
+    // The part off (`MarginSidebarTap` NO, or no records): no panel told, the tap gone with no split.
+    made.sidebarTap = { false }
+    made.paneSceneChanged()
+    check("the press tap: the part off (no records, or MarginSidebarTap NO): no panel, and with no split the tap ended", taps.last?.stopped == 1 && (taps.last?.scenes.last ?? nil) == nil && made.paneTap == nil,
+          "\(String(describing: taps.last?.scenes.last)) \(taps.last?.stopped ?? -1)")
+    made.makePaneTap = { _, _ in nil }
+    made.sidebarTap = { false }
+    // ---- a double-click on the sidebar's empty part opens the palette (docs/SIDEBAR-PRESS.md), the real page's own ----
+    // (Two presses at the spot, the second with its click count 2, as the press tap delivers the window server's own: the
+    // page's dblclick. The palette as Margin's key opens it, its field taking the keys; on the page area: nothing.)
+    do {
+      let byBefore = await js(c.webView, "return marginApp.stats().palette.filter((p) => p.by === 'a double-click on the sidebar').length") as? Int ?? -1
+      press(c.panel, at: spot, number: 7101, clicks: 1)
+      press(c.panel, at: spot, number: 7102, clicks: 2)
+      let opened = await waitJS(c.webView, "return marginApp.appWindow().palette")
+      // (Said by the page once it's drawn: its timing's entry, `by` what opened it.)
+      let said = await waitJS(c.webView, "return marginApp.stats().palette.filter((p) => p.by === 'a double-click on the sidebar').length === \(byBefore + 1)")
+      let field = await until(3) { c.pageWantsKeyboard }
+      check("a double-click on the sidebar's empty part (the page's own dblclick): the palette open as Margin's key opens it, said as a double-click's, its field taking the keys",
+            opened && said && field, "opened \(opened) said \(said) field \(field)")
+      c.push(#"{"type":"pressOutside"}"#)
+      let closed = await waitJS(c.webView, "return !marginApp.appWindow().palette")
+      // The page area's double-click (`<m-page>`: what's hosted, never Margin's empty part): never the palette. (The rows,
+      // the folders, the switcher, the address field and the rest: tests/theme/empty-dblclick.test.ts, every theme, both
+      // engines; a press on them here would switch or rename what the rest of this run reads.)
+      let row = await js(c.webView, "const r = document.querySelector('m-page')?.getBoundingClientRect(); return r ? [r.left + r.width / 2, r.top + r.height / 2] : null") as? [Double]
+      if let row, row.count == 2 {
+        let at = CGPoint(x: row[0], y: row[1])
+        press(c.panel, at: at, number: 7103, clicks: 1)
+        press(c.panel, at: at, number: 7104, clicks: 2)
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        let none = await js(c.webView, "return !marginApp.appWindow().palette && marginApp.stats().palette.length") as? Int ?? -1
+        let byNow = await js(c.webView, "return marginApp.stats().palette.filter((p) => p.by === 'a double-click on the sidebar').length") as? Int ?? -1
+        check("the page area's double-click (what's hosted): never the palette", closed && none >= 0 && byNow == byBefore + 1, "closed \(closed) by a double-click \(byNow - byBefore)")
+      } else { check("the page area to double-click", false) }
+    }
+    // ---- what AppKit asks before it keys the panel for a press (the screen run of 2026-11-25, its DIAG lines: AppKit's own
+    // left-mouse-down handling of a non-activating panel, `_NSShowNonActivatingKeyWindow`, keyed it whatever its
+    // `canBecomeKey`, Margin having been the active app at launch). The panel becomes key on a click only if needed
+    // (`becomesKeyOnlyIfNeeded`): the view the press hits says whether (`needsPanelToBecomeKey`). That view, at the empty
+    // spot, is Margin's web view; it says no while the keys stay with the app shown, yes while a field of Margin's wants
+    // them (the core's `keys_stay`, one rule). Not reproduced here (this process was never active): the question AppKit
+    // asks is. ----
+    do {
+      _ = await until(3) { !c.pageWantsKeyboard }
+      let local = NSPoint(x: spot.x, y: c.panel.frame.height - spot.y)
+      let hit = c.panel.contentView?.hitTest(local)
+      check("a press at the empty spot hits Margin's web view (the view AppKit asks), in a panel that becomes key only if needed",
+            hit === c.webView && c.panel.becomesKeyOnlyIfNeeded, "\(String(describing: hit.map { type(of: $0) }))")
+      check("…while the keys stay with the app shown (an app shown, no field of Margin's): it doesn't need the panel to become key",
+            c.webView.needsPanelToBecomeKey == false && hit?.needsPanelToBecomeKey == false, "\(c.webView.needsPanelToBecomeKey)")
+      c.run(.newTab)
+      let fieldWants = await until(5) { c.pageWantsKeyboard }
+      check("…a field of Margin's wanting the keys (the palette): it does, as before", fieldWants && c.webView.needsPanelToBecomeKey, "\(fieldWants) \(c.webView.needsPanelToBecomeKey)")
+      c.push(#"{"type":"pressOutside"}"#)
+      _ = await waitJS(c.webView, "return !marginApp.appWindow().palette")
+      _ = await until(3) { !c.pageWantsKeyboard }
+    }
+    // ---- the press tap's own delivery (PaneClickTap.swift `PanelEvents`): a double-click on the empty spot made afresh,
+    // put in AppKit's own queue in this process: the page's dblclick, the palette; AppKit never keys the panel nor takes the
+    // process for active for it (here, off every display) ----
+    do {
+      _ = await until(3) { !c.pageWantsKeyboard }
+      let content = MarginWindowGeometry.content(of: c.panel.frame)
+      let at = CGPoint(x: content.minX + spot.x, y: content.minY + spot.y)
+      final class Heard { var active = 0, key = 0 }
+      let heard = Heard()
+      let observers = [
+        NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in heard.active += 1 },
+        NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: c.panel, queue: .main) { _ in heard.key += 1 },
+      ]
+      defer { for o in observers { NotificationCenter.default.removeObserver(o) } }
+      let activeBefore = NSApp.isActive, pressesBefore = c.panel.presses
+      let byBefore = await js(c.webView, "return marginApp.stats().palette.filter((p) => p.by === 'a double-click on the sidebar').length") as? Int ?? -1
+      var posted = true
+      for (type, count) in [(CGEventType.leftMouseDown, 1), (.leftMouseUp, 1), (.leftMouseDown, 2), (.leftMouseUp, 2)] {
+        guard let e = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: at, mouseButton: .left) else { posted = false; continue }
+        e.setIntegerValueField(.mouseEventClickState, value: Int64(count))
+        e.setIntegerValueField(.mouseEventNumber, value: 7200 + Int64(count))
+        posted = PanelEvents.queue(e, window: c.panel.windowNumber, content: content) && posted
+      }
+      let reached = await until(3) { c.panel.presses == pressesBefore + 2 }
+      let said = await waitJS(c.webView, "return marginApp.stats().palette.filter((p) => p.by === 'a double-click on the sidebar').length === \(byBefore + 1)")
+      check("the press tap's delivery: a double-click made afresh reaches the panel (both presses) and its page (the palette, as a double-click's)",
+            posted && reached && said, "posted \(posted) presses \(c.panel.presses - pressesBefore) said \(said)")
+      check("the press tap's delivery: AppKit never took Margin for active for it (as before the presses: \(activeBefore)), never said it became active, never keyed the panel for it",
+            NSApp.isActive == activeBefore && heard.active == 0 && heard.key == 0 && !c.panel.isKeyWindow,
+            "active \(NSApp.isActive) (before \(activeBefore)), became active \(heard.active), panel key \(heard.key) \(c.panel.isKeyWindow)")
+      c.push(#"{"type":"pressOutside"}"#)
+      _ = await waitJS(c.webView, "return !marginApp.appWindow().palette")
+      _ = await until(3) { !c.pageWantsKeyboard }
+    }
   } else { check("an empty spot of the sidebar", false) }
   // (The engine asks Margin's window's page to measure at every look while it waits for a layout at its whole width:
   // a size the window took isn't measured until a frame is drawn, which can be seconds late. The page measures at once.)

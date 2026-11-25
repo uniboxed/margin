@@ -129,7 +129,9 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // What its sidebar has behind the numbered keys (overlay.ts reportCounts): its spaces, and its rows ⌘1–9 reach
     // (favorites, pins, today's). Nil until its page says: then every numbered key is held (Shell.updateHostedKeys).
     private(set) var rowCounts: (spaces: Int, items: Int)?
-    private(set) var pageWantsKeyboard = false
+    // A field of Margin's wants the keys (its page's `focus`: the palette, a rename, an editor, a menu or prompt open),
+    // as the core keeps it (core/page/press.rs).
+    var pageWantsKeyboard: Bool { core.fieldKeys }
     private var themeSent: String?
     // What was pushed into the page, the last 50 (the tests read it), and how many in all.
     private(set) var pushed: [String] = []
@@ -267,8 +269,10 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         base.layer?.backgroundColor = .clear
         window.contentView = base
         panel.base = window
-        panel.pressEnded = { [weak self] at in self?.pressEnded(at: at) }
+        panel.pressEnded = { [weak self] at, number in self?.pressEnded(at: at, number: number) }
         webView.takesEditKeys = { [weak self] in self.map { $0.hasKeys && $0.pageWantsKeyboard && !$0.appActive() } ?? false }
+        // (A click makes the panel key only when the keys shouldn't stay with the app shown: the core's one rule.)
+        webView.needsKeyForPress = { [weak self] in self.map { !$0.core.keysStay } ?? true }
         let content = NSView(frame: NSRect(origin: .zero, size: frame.size))
         content.wantsLayer = true
         content.layer?.backgroundColor = .clear
@@ -710,6 +714,15 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         guard !panes.isEmpty else { return nil }
         let own = [window.windowNumber, panel.windowNumber, backdrop?.windowNumber ?? 0].filter { $0 > 0 }
         return PaneClickScene(panes: panes, focused: visibleHosts.first { $0.focused }?.window, slot: slot, marginWindows: own, fieldHasKeys: pageWantsKeyboard)
+    }
+    // Its panel as the press tap reads it (docs/SIDEBAR-PRESS.md; PaneClickTap.swift `PanelPress`): while it hosts, on
+    // screen in the current Space, with what the core decides a press's way with (its content, slot, window controls,
+    // full screen, and whether a press on Margin's UI leaves the keyboard where it is now: an app shown, no field of
+    // Margin's). Nil otherwise. Published as `paneScene` is (each change of the holes, a field's keys, the Space).
+    var panelScene: PaneClickScene.Panel? {
+        guard hosting, !isClosed, options.harness || window.isVisible, onCurrentSpace(), panel.windowNumber > 0 else { return nil }
+        return PaneClickScene.Panel(window: panel.windowNumber, pid: ProcessInfo.processInfo.processIdentifier, content: MarginWindowGeometry.content(of: panel.frame),
+                                    slot: slot, controls: controls, fullScreen: isFullScreen, keysStay: core.keysStay)
     }
     // A card open (one of the visible hosts is one): its content's hole, nil: none.
     private var cardHole: CGRect? { visibleHosts.contains { $0.role == .card } ? slot?.holes?.first : nil }
@@ -1211,19 +1224,25 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         NSWorkspace.shared.frontmostApplication?.processIdentifier == ProcessInfo.processInfo.processIdentifier
     }
 
-    // A press in Margin's UI ended (the panel's): looked at `pressSettle` later, once the page has had the chance to say
-    // a field took the focus. Not if a field of Margin's has or wants the keys, or Margin is the front app (its keys
-    // are its own then). A hosted app shown: the keys back to it (a press in a non-activating panel moves the keyboard
-    // to Margin without making it the front app: a key after a click in the sidebar went to Margin, check10 k1,
-    // 2026-11-17, and 2026-11-08 before). Nothing hosted, nothing opening (its launcher): Margin is made the front app,
-    // as a press in its own window always made it (there's no app whose look it could take away).
-    // `at`: where, top left in the panel's content. A press on its card (`elsewhere`: its item in another Margin window)
-    // takes the item back here, as this window brought in front does: on another display the window can be the one in
-    // use without ever becoming key (its panel never does for a press), and the card says "Click to show it here".
+    // A press in Margin's UI ended (the panel's). One the press tap delivered to the panel (docs/SIDEBAR-PRESS.md: an app
+    // shown, no field of Margin's; known by its event number) never moved the keyboard: nothing to hand back, nothing
+    // waited for. One the window server routed (no tap: Accessibility not granted, the records' layout refused,
+    // `MarginSidebarTap` off; or covered there by another window) is looked at `pressSettle` later, once the page has had
+    // the chance to say a field took the focus. Not if a field of Margin's has or wants the keys, or Margin is the front
+    // app (its keys are its own then). A hosted app shown: the keys back to it (a routed press in a non-activating panel
+    // moves the keyboard to Margin without making it the front app: a key after a click in the sidebar went to Margin,
+    // check10 k1, 2026-11-17, and 2026-11-08 before). Nothing hosted, nothing opening (its launcher): Margin is made the
+    // front app, as a press in its own window always made it (there's no app whose look it could take away).
+    // `at`: where, top left in the panel's content; `number`: the press's event number (its release's is the same). A
+    // press on its card (`elsewhere`: its item in another Margin window) takes the item back here, as this window
+    // brought in front does: on another display the window can be the one in use without ever becoming key (its panel
+    // never does for a press), and the card says "Click to show it here".
     static let pressSettle: TimeInterval = 0.08
-    func pressEnded(at p: CGPoint) {
+    private(set) var deliveredPresses = 0 // presses the tap delivered to the panel: no hand-back (the tests and the dev hook read it)
+    func pressEnded(at p: CGPoint, number: Int = 0) {
         let at = CGPoint(x: contentFrame.minX + p.x, y: contentFrame.minY + p.y)
         if !isClosed, pageState == .elsewhere, let page = window.pageRect, page.contains(at) { owner?.cardPressed(self) }
+        if owner?.panelTapClaimed(number: number) == true { deliveredPresses += 1; return }
         guard !options.harness else { return afterPress() } // (a test's clock: at once)
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.pressSettle) { [weak self] in self?.afterPress() }
     }
@@ -1719,12 +1738,14 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             captureAll = all
             updatePage()
         case .chrome(let controls, let drags):
+            let had = self.controls
             self.controls = controls
             panel.dragRegions = drags
             placeButtons()
-        case .focus(let on):
-            let had = pageWantsKeyboard
-            pageWantsKeyboard = on
+            // (The window's own buttons are the base's while windowed: a press there isn't the panel's.)
+            if had != controls { owner?.paneSceneChanged() }
+        case .focus(_, let had):
+            // (The core kept the field's word as it read the op: `pageWantsKeyboard` is it now.)
             if had != pageWantsKeyboard { owner?.paneSceneChanged() }
             // A field of Margin's wants the keys (the palette, ⌘T or the menu's New Tab; a rename, an editor): the panel
             // takes them, Margin isn't made active (before 2026-11-17 it was, and the hosted app went to its inactive
@@ -2024,8 +2045,15 @@ final class MarginWindows {
     // it held comes back on the main thread (`onPaneClick`), its own lines into the log.
     lazy var makePaneTap: (_ report: @escaping @Sendable (PaneClickResult) -> Void, _ said: @escaping @Sendable (String) -> Void) -> PaneClickTapping? = { [weak self] report, said in
         guard !PrivateCalls.inTests else { return nil }
-        return PaneClickTap(core: PaneClickCore(focuser: AXPaneFocus(fronting: self?.paneFronting(), delivery: self?.paneDelivery()), report: report), said: said)
+        let core = PaneClickCore(focuser: AXPaneFocus(fronting: self?.paneFronting(), delivery: self?.paneDelivery()), report: report)
+        core.said = said
+        return PaneClickTap(core: core, said: said)
     }
+    // A press on Margin's own panel through the same tap (docs/SIDEBAR-PRESS.md): wanted while a Margin window on the
+    // current Space hosts and the part isn't off (`defaults write com.unibox.margin MarginSidebarTap -bool NO`: today's
+    // hand-back after a routed press). Its delivery is public calls only (PaneClickTap.swift `PanelEvents`): no records
+    // needed. A test's stand-in answers its own.
+    var sidebarTap: () -> Bool = { UserDefaults.standard.object(forKey: "MarginSidebarTap") as? Bool != false }
     // All panes active (PanesActive.swift): the window server's front process for the tap (the engine's; nil: none), the
     // split as the engine is told it (each change of the scene), each change of the front app (NSWorkspace's, the tap's
     // focus), and the apps kept active as the engine says them (the tap's scene carries them).
@@ -2057,18 +2085,25 @@ final class MarginWindows {
     private var quitObserver: NSObjectProtocol?
 
     // A Margin window's panes changed (its holes, a field of Margin's took or let go of the keys, the Space changed, a
-    // window closed): the tap made, told, or let go.
+    // window closed): the tap made, told, or let go. The split's panes as before (all panes active hears only them);
+    // every hosting window's panel with them, or alone (docs/SIDEBAR-PRESS.md).
     func paneSceneChanged() {
-        var scene = closingAll ? nil : controllers.lazy.compactMap { $0.paneScene }.first
-        onPanesActive?(scene)
+        let split = closingAll ? nil : controllers.lazy.compactMap { $0.paneScene }.first
+        onPanesActive?(split)
+        let panels = closingAll || !sidebarTap() ? [] : controllers.compactMap { $0.panelScene }
+        var scene = split
+        if !panels.isEmpty {
+            if scene == nil { scene = PaneClickScene(marginWindows: controllers.flatMap { [$0.window.windowNumber, $0.panel.windowNumber] }.filter { $0 > 0 }) }
+            scene?.panels = panels
+        }
         scene?.kept = keptActive
         paneSceneTold = scene
         guard let scene else {
             guard let tap = paneTap else { return }
             tap.update(nil)
             guard paneTapEnd == nil else { return }
-            if paneTapGrace <= 0 { return endPaneTap("no split shown on the current Space") }
-            let end = DispatchWorkItem { [weak self] in self?.endPaneTap("no split shown on the current Space") }
+            if paneTapGrace <= 0 { return endPaneTap("nothing hosted or split on the current Space") }
+            let end = DispatchWorkItem { [weak self] in self?.endPaneTap("nothing hosted or split on the current Space") }
             paneTapEnd = end
             DispatchQueue.main.asyncAfter(deadline: .now() + paneTapGrace, execute: end)
             return
@@ -2077,7 +2112,7 @@ final class MarginWindows {
         paneTapEnd = nil
         if let tap = paneTap { return tap.update(scene) }
         guard paneTapTrusted() else {
-            if !paneTapRefusedSaid { Diagnostics.note("pane clicks: Accessibility isn't granted: a first click in another pane only focuses it, as before") }
+            if !paneTapRefusedSaid { Diagnostics.note("press tap: Accessibility isn't granted: a first click in another pane only focuses it, and a press on Margin's sidebar hands the keys back after it, as before") }
             paneTapRefusedSaid = true
             return
         }
@@ -2105,11 +2140,13 @@ final class MarginWindows {
         tap.stop()
         paneTap = nil
         paneTapsEnded += 1
-        Diagnostics.note("pane clicks: off (\(why))")
+        Diagnostics.note("press tap: off (\(why))")
     }
 
     // A press the tap gave its pane's window the keys for (the monitor's press of `number` at `at`), consumed.
     func paneTapClaimed(number: Int, at: CGPoint) -> Bool { paneTap?.claimed(number: number, at: at) ?? false }
+    // A press the tap delivered to a Margin window's panel (its release's `number`), consumed: the keyboard never moved.
+    func panelTapClaimed(number: Int) -> Bool { paneTap?.claimedPanel(number: number) ?? false }
 
     private func paneClicked(_ r: PaneClickResult) {
         if case .delivered = r.outcome, r.crossApp { onFrontApp?(r.pid) } // (its app the front one: the one before kept active)

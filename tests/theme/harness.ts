@@ -323,7 +323,7 @@ const T = {
 
 // `host`, `mock`, `target` and `warnings` are set by mountRuntime and `theme` by loadBuiltin or loadPackage,
 // before any step that reads them (null until then); `runtime` is null again once unmounted.
-const rt: { runtime: Runtime | null, host: MockHost, mock: MockState, el: HTMLElement | null, target: Target, theme: ThemeResult, warnings?: string[], resizing: [boolean, number | null][], notes: string[] } = { runtime: null, host: null!, mock: null!, el: null, target: null!, theme: null!, resizing: [], notes: [] };
+const rt: { runtime: Runtime | null, host: MockHost, mock: MockState, el: HTMLElement | null, target: Target, theme: ThemeResult, warnings?: string[], resizing: [boolean, number | null][], notes: string[], paletteOpens: [string, boolean][] } = { runtime: null, host: null!, mock: null!, el: null, target: null!, theme: null!, resizing: [], notes: [], paletteOpens: [] };
 
 const starting = () => rt.runtime!.view.rootElement()?.hasAttribute('m-starting') ?? false;
 function startEmpty(pageState: 'empty' | 'loading' | 'shown', name: string | null) {
@@ -399,7 +399,10 @@ const withRuntime = Object.assign(T, {
     }
     rt.warnings = [];
     // (A theme that loaded: the tests check that first.)
-    const runtime = createRuntime({ host, theme: rt.theme as LoadedTheme, container: target, onWarn: (m) => rt.warnings!.push(m) });
+    // (What the UI opens as the palette's key does, said as the overlay's host hears it: ui/behaviors/empty.ts.)
+    rt.paletteOpens = [];
+    const runtime = createRuntime({ host, theme: rt.theme as LoadedTheme, container: target, onWarn: (m) => rt.warnings!.push(m),
+      openPalette: (options, by) => { rt.paletteOpens.push([by, options.newTab]); rt.runtime!.openPalette(options); } });
     Object.assign(rt, { runtime, host, mock, el, target });
     if (hosted) runtime.view.rootElement()?.toggleAttribute('m-sidebar-fixed', sidebarFixed(host as { pageOutside?: boolean }));
     w.__rt = rt;
@@ -910,6 +913,23 @@ const withRuntime = Object.assign(T, {
   rtText(selector: string) { return [...rt.target.querySelectorAll(selector)].map((e) => e.textContent!.trim()); },
   rtTodayIds(n = 3) { return rt.runtime!.vm!.space.today.slice(0, n).map((t) => t.id); },
   rtDispatch(name: string, arg?: unknown) { return rt.runtime!.dispatch(name, arg); },
+  // --- The sidebar's empty part (ui/empty.ts, ui/behaviors/empty.ts: a double-click there opens the palette) ---
+  // An empty point of the sidebar, by the rule; what's at a point as the dev hook's old selector saw it (an independent
+  // look: inside a control or one of Margin's slots); the palette closed; the centre of every element a selector finds,
+  // and the gaps between the first ones side by side (a bar's).
+  rtEmptySpot() { return rt.runtime!.emptySpot(); },
+  rtBusyAt(x: number, y: number) {
+    const el = rt.target.elementFromPoint(x, y);
+    const busy = 'a, button, input, textarea, select, [contenteditable], [m-input], [m-drag], [m-resize], [m-drag-region], [m-rename], m-drag-region, m-window-controls, m-page, m-palette, m-menu, m-editor, m-notice, m-prompt, [draggable="true"], [role="button"], [tabindex]';
+    return { at: el ? el.localName + (el.className && typeof el.className === 'string' ? `.${el.className.trim().split(/\s+/).join('.')}` : '') : null, busy: !el || !!el.closest(busy) };
+  },
+  rtClosePalette() { rt.runtime!.closePalette(); },
+  // Each palette the UI opened as the palette's key does (what opened it, and whether for a new tab), taken.
+  rtPaletteOpens() { return rt.paletteOpens.splice(0); },
+  rtCentres(selector: string) {
+    return [...rt.target.querySelectorAll(selector)].map((el) => el.getBoundingClientRect()).filter((r) => r.width > 0 && r.height > 0)
+      .map((r) => ({ x: r.left + r.width / 2, y: r.top + r.height / 2, left: r.left, right: r.right, top: r.top, bottom: r.bottom }));
+  },
   // As Margin's own behaviors run it (the overlay's keys): its answer, awaited when it's a request's.
   rtBehavior(name: string, arg?: unknown) { return rt.runtime!.dispatch(name, arg, 'behavior'); },
   // --- Rows by what they are (every theme: their classes differ), for the pending intents and the rows' motion ----

@@ -107,10 +107,10 @@ final class Runner {
     return (ok, lines.isEmpty ? "kept the keys" : open != nil ? "resigned key and never got it back (\(lines.count) changes)" : "resigned key \(gaps.count) time(s), key again after \(said.joined(separator: ", "))")
   }
 
-  // ---- b1 a3 b2 k1 ----
+  // ---- b1 a3 b2 k1 k2 k3 ----
   func clicks(_ n: Int) {
-    guard canPost else { return skip("b1/a3/b2/k1 the clicks", "this suite can't post events (give the terminal Accessibility to run them)") }
-    guard let pane = copyApp(n), let f = front(), let pageArea = rectIn(f, "page area"), let hole = rectIn(f, "hole") else { return skip("b1/a3/b2/k1 the clicks", "no hosted pane or no page area") }
+    guard canPost else { return skip("b1/a3/b2/k1/k2/k3 the clicks", "this suite can't post events (give the terminal Accessibility to run them)") }
+    guard let pane = copyApp(n), let f = front(), let pageArea = rectIn(f, "page area"), let hole = rectIn(f, "hole") else { return skip("b1/a3/b2/k1/k2/k3 the clicks", "no hosted pane or no page area") }
     let inPane = CGPoint(x: hole.midX + 180, y: hole.midY + 120)
     let onFrame = CGPoint(x: min(pageArea.maxX + 4, marginWindow.r.maxX - 2), y: pageArea.midY)
     gate("the click in the pane")
@@ -133,26 +133,69 @@ final class Runner {
     pane.activate()
     spin(1.5) { NSWorkspace.shared.frontmostApplication?.processIdentifier == pane.processIdentifier }
     if let sp = spot(), let top = under(sp).first, top.pid == m.processIdentifier, NSWorkspace.shared.frontmostApplication?.processIdentifier == pane.processIdentifier {
-      let pressesBefore = Int(word(front(), "presses") ?? "") ?? -1, keysBefore = copySaid(n, "EVENT keyDown code 7 ")
+      let fb = front()
+      let pressesBefore = Int(word(fb, "presses") ?? "") ?? -1, keysBefore = copySaid(n, "EVENT keyDown code 7 ")
+      let deliveredBefore = Int(word(fb, "delivered") ?? "") ?? -1, backBefore = Int(word(fb, "back") ?? "") ?? -1
       let keyLinesBefore = copyLines(n, "Key ").count
       let activeBefore = said("Margin made the active app").count
       click(sp)
       let frontAfter = NSWorkspace.shared.frontmostApplication
       let fk = front()
       let pressesAfter = Int(word(fk, "presses") ?? "") ?? -1
+      let deliveredAfter = Int(word(fk, "delivered") ?? "") ?? -1, backAfter = Int(word(fk, "back") ?? "") ?? -1
       spin(0.3)
       plainKey(7) // x: to the pane (no field focused: a beep at most)
       let got = gotKey(n, 7, after: keysBefore)
-      // (A press in Margin's panel moves the keyboard to Margin and Margin hands it back once the press ends, as a click
-      // in Arc's sidebar takes the focus from the page: Tirth, 2026-11-22. So the pane's window may resign key; it
-      // must be key again within half a second each time, and key at the end.)
+      // (A press on Margin's sidebar never takes the keyboard from the app shown: the press tap delivers it to Margin's
+      // panel as the window server's own record, docs/SIDEBAR-PRESS.md, GitHub #29. Tightened back from 2026-11-22's
+      // "key again within 0.5 s": the pane's window never resigns key, nothing is handed back.)
       let keyLines = Array(copyLines(n, "Key ").dropFirst(keyLinesBefore))
-      let back = keyBack(keyLines, within: 0.5)
-      step("k1 a click on an empty spot of Margin's sidebar with the pane active: the pane STILL the frontmost app, Margin's panel got the press, the pane's window key again within 0.5 s if it resigned, and a plain key after it reaches the pane",
-           frontAfter?.processIdentifier == pane.processIdentifier && pressesAfter == pressesBefore + 1 && top.n == panelN && back.ok && got
-             && said("Margin made the active app").count == activeBefore && word(fk, "active") == "false",
-           "at \(Int(sp.x)),\(Int(sp.y)) (the top window there \(top.n), Margin's panel \(panelN.map(String.init) ?? "?")); front app after \(frontAfter?.bundleIdentifier ?? "?"); Margin's panel's presses \(pressesBefore) → \(pressesAfter); the pane's window \(back.text); the plain key reached the pane \(got); Margin active \(word(fk, "active") ?? "?")")
+      let back = keyBack(keyLines, within: 0)
+      step("k1 a click on an empty spot of Margin's sidebar with the pane active: the pane STILL the frontmost app, Margin's panel got the press (the press tap's: delivered, nothing handed back), the pane's window NEVER resigned key, AppKit never took Margin for active, and a plain key after it reaches the pane",
+           frontAfter?.processIdentifier == pane.processIdentifier && pressesAfter == pressesBefore + 1 && top.n == panelN && keyLines.isEmpty && got
+             && deliveredAfter == deliveredBefore + 1 && backAfter == backBefore
+             && said("Margin made the active app").count == activeBefore && word(fk, "active") == "false" && (fk?.contains("appkit active false") ?? false),
+           "at \(Int(sp.x)),\(Int(sp.y)) (the top window there \(top.n), Margin's panel \(panelN.map(String.init) ?? "?")); front app after \(frontAfter?.bundleIdentifier ?? "?"); Margin's panel's presses \(pressesBefore) → \(pressesAfter); delivered by the tap \(deliveredBefore) → \(deliveredAfter); keys handed back \(backBefore) → \(backAfter); the pane's window \(back.text); the plain key reached the pane \(got); Margin active \(word(fk, "active") ?? "?"), \(fk.flatMap { match($0, #"appkit active (\w+)"#)?.first }.map { "AppKit's word \($0)" } ?? "AppKit's word unread"); Margin: \(said("sidebar presses: delivered").first.map { String($0.suffix(120)) } ?? "no `sidebar presses: delivered`")")
     } else { skip("k1 the click on Margin's sidebar", "no empty spot from Margin's dev hook, the top window there isn't Margin's, or the pane isn't the front app (\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "?"))") }
+
+    // ---- k2: a double-click on the sidebar's empty part opens the palette (docs/SIDEBAR-PRESS.md) ----
+    gate("the double-click on Margin's sidebar")
+    pane.activate()
+    spin(1.5) { NSWorkspace.shared.frontmostApplication?.processIdentifier == pane.processIdentifier }
+    if let sp = spot(), let top = under(sp).first, top.pid == m.processIdentifier, NSWorkspace.shared.frontmostApplication?.processIdentifier == pane.processIdentifier {
+      let opened = said("palette opened (a double-click on the sidebar)").count, anyOpened = said("palette opened").count
+      let activeBefore = said("Margin made the active app").count
+      let keyLinesBefore = copyLines(n, "Key ").count
+      doubleClick(sp)
+      spin(5) { said("palette opened").count > anyOpened }
+      spin(0.6)
+      let f2 = front()
+      let pw = panelWords(f2)
+      let byDoubleClick = said("palette opened (a double-click on the sidebar)").count == opened + 1
+      // (The palette's field takes the keys: then, and only then, the pane's window resigns key, once.)
+      let resigns = Array(copyLines(n, "Key ").dropFirst(keyLinesBefore)).filter { $0.contains("resignedKey") }.count
+      step("k2 a double-click on an empty spot of Margin's sidebar with the pane active: the palette opens as its key opens it (said as a double-click's), its field has the keys (Margin's panel key), the pane STILL the frontmost app, Margin never made active; the pane's window resigned key once at most (for the palette's field)",
+           byDoubleClick && pw?.key == true && word(f2, "keys") == "true" && word(f2, "active") == "false" && said("Margin made the active app").count == activeBefore
+             && NSWorkspace.shared.frontmostApplication?.processIdentifier == pane.processIdentifier && resigns <= 1,
+           "at \(Int(sp.x)),\(Int(sp.y)); opened by a double-click \(byDoubleClick) (\(said("palette opened").count - anyOpened) opened in all); panel key \(pw.map { "\($0.key)" } ?? "?"); keys Margin's \(word(f2, "keys") ?? "?"); Margin active \(word(f2, "active") ?? "?"); front app \(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "?"); the pane's window resigned key \(resigns) time(s)")
+      // (Closed again: Escape, as c2's.)
+      for down in [true, false] { post { let e = CGEvent(keyboardEventSource: nil, virtualKey: 53, keyDown: down); e?.flags = []; return e }; spin(0.06) }
+      spin(4) { NSWorkspace.shared.frontmostApplication?.processIdentifier == pane.processIdentifier && panelWords(front())?.key == false }
+    } else { skip("k2 the double-click on Margin's sidebar", "no empty spot from Margin's dev hook, the top window there isn't Margin's, or the pane isn't the front app (\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "?"))") }
+
+    // ---- k3: a double-click in the pane's own content is the pane's: never the palette ----
+    gate("the double-click in the pane")
+    pane.activate()
+    spin(1.5) { NSWorkspace.shared.frontmostApplication?.processIdentifier == pane.processIdentifier }
+    if marginThenApp(under(inPane), m.processIdentifier, pane.processIdentifier) {
+      let anyOpened = said("palette opened").count, clicksBefore = copySaid(n, "click at")
+      doubleClick(inPane)
+      spin(0.6)
+      let lines = copyLines(n, "click at").suffix(2)
+      step("k3 a double-click in the pane's content: the pane's own (its clicks with counts 1 and 2), the palette never opened",
+           said("palette opened").count == anyOpened && copySaid(n, "click at") == clicksBefore + 2 && lines.last?.hasSuffix("count 2") == true,
+           "the pane's clicks \(clicksBefore) → \(copySaid(n, "click at")) (\(lines.map { String($0.suffix(7)) })); palettes opened \(said("palette opened").count - anyOpened)")
+    } else { skip("k3 the double-click in the pane", "the windows under the point aren't Margin's then the pane's") }
   }
 
   // ---- c1 c1b c2 ----

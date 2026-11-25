@@ -73,6 +73,14 @@ final class FakePaneFocus: PaneFocusing, @unchecked Sendable {
         return true
     }
     func windowOrigin(_ window: Int) -> CGPoint? { origins[window] }
+    // A press on Margin's own panel (panel-press-tests.swift): an event made afresh (`PanelEvents.make`, checked made),
+    // logged at its point in the panel (top left); `panelDelivers` false: refused.
+    var panelDelivers = true
+    func deliverToPanel(_ event: CGEvent, pid: pid_t, window: Int, content: CGRect) -> Bool {
+        guard panelDelivers, PanelEvents.make(from: event, window: window, content: content) != nil else { return false }
+        log.append("panel \(event.type.rawValue) to \(window) at \(Int(event.location.x - content.minX)),\(Int(event.location.y - content.minY))")
+        return true
+    }
 }
 
 nonisolated final class PaneBox<T>: @unchecked Sendable {
@@ -82,6 +90,7 @@ nonisolated final class PaneBox<T>: @unchecked Sendable {
 
 func paneClickTests() {
     paneClickTuckTests()
+    panelPressTests() // panel-press-tests.swift: a press on Margin's own panel never takes the keyboard (docs/SIDEBAR-PRESS.md)
     paneClickDecisionTests()
     paneClickHoldTests()
     paneClickKeptTests()

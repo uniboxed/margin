@@ -16,6 +16,7 @@ use margin_core::host::layout::Placement;
 use margin_core::page::fill::{self, Rgba};
 use margin_core::page::front::{FrontCounts, FrontOp, Mechanism};
 use margin_core::page::holes::{self, Piece};
+use margin_core::page::press::{self, PressWay};
 use margin_core::page::{Ground, GroundHole, HostedSaid, Page, PageState, Settled, Shown, area};
 use margin_core::passthrough::{
     CatchBuf, CatchRef, Cg, Cut, Edges, PassThrough, Push, SlotInsets, SlotRef, Want, WantMode,
@@ -435,6 +436,55 @@ pub unsafe extern "C" fn margin_pass_page_gets(at: MarginPoint, slot: *const Mar
     // SAFETY: the contract above.
     PassThrough::gets::<Cg>(at.into(), unsafe { self::slot(slot) })
 }
+
+/// A field of Margin's wants the keys (the page's `focus`, kept as it's read: page/press.rs).
+///
+/// # Safety
+/// `page` null or a live page (one thread at a time).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_field_keys(page: *const MarginPage) -> bool {
+    // SAFETY: the contract above.
+    unsafe { page.as_ref() }.is_some_and(|p| p.page.field_keys())
+}
+
+/// Whether a press on Margin's UI leaves the keyboard where it is now (hosting, an app shown, no field of Margin's
+/// wanting the keys: page/press.rs `keys_stay`).
+///
+/// # Safety
+/// `page` null or a live page (one thread at a time).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_page_keys_stay(page: *const MarginPage) -> bool {
+    // SAFETY: the contract above.
+    unsafe { page.as_ref() }.is_some_and(|p| p.page.presses_keep_keys())
+}
+
+/// The way of a press at `at` on a Margin window whose content is at `content`, with this slot (null: none), the
+/// theme's window controls (in the content; null: none), its full screen and its `keys_stay` (page/press.rs
+/// `press_way`): 0 outside it, 1 through to what it hosts, 2 Margin's UI with the keyboard staying, 3 Margin's UI as
+/// before. The press tap's, on its own thread, over the copy its scene holds.
+///
+/// # Safety
+/// `slot` null or a readable view, its rects as long as said; `controls` null or readable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_press_way(
+    at: MarginPoint,
+    content: MarginRect,
+    slot: *const MarginSlotView,
+    controls: *const MarginRect,
+    full_screen: bool,
+    keys_stay: bool,
+) -> u8 {
+    // SAFETY: the contract above.
+    let (slot, controls) = unsafe { (self::slot(slot), controls.as_ref().map(|&c| Rect::from(c))) };
+    press::press_way(at.into(), content.into(), slot, controls, full_screen, keys_stay) as u8
+}
+
+const _: () = assert!(
+    PressWay::Outside as u8 == 0
+        && PressWay::Through as u8 == 1
+        && PressWay::Ui as u8 == 2
+        && PressWay::Routed as u8 == 3
+);
 
 /// What the overlay does now (true: lets the pointer through): `ignoring` while a button is held, else the slot's
 /// answer.
@@ -1711,8 +1761,8 @@ pub unsafe extern "C" fn margin_page_said(
             out.rects = rects;
             5
         }
-        Said::Focus(on) => {
-            out.flag = on;
+        Said::Focus { on, was } => {
+            (out.flag, out.flag2) = (on, was);
             6
         }
         Said::Counts { spaces, items } => {

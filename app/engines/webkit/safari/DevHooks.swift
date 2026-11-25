@@ -25,7 +25,9 @@
 //   long, summed up by page state in one line at the end. For Margin's UI that never makes the hosted app inactive
 //   (2026-11-17): `host { say: field }`: whether a field of Margin's page has the focus and how many characters it
 //   holds (its length only, never its text); `host { say: spot }`: a point of the front window's sidebar where a
-//   press does nothing (no row, button, field, handle or drag region under it), in the window server's coordinates.
+//   press does nothing (no row, button, field, handle or drag region under it), in the window server's coordinates:
+//   the sidebar's empty part by the double-click's own rule (app/shared/ui/empty.ts, the page's `devEmptySpot`),
+//   where a double-click opens the palette (docs/SIDEBAR-PRESS.md).
 // - Each notification is one log line, honoured or refused: the kind, ids and the sender's pid (as it says it). The
 //   address itself is never logged.
 
@@ -277,6 +279,8 @@ extension Shell: DevHookWorld {
             const a = document.activeElement, field = !!a && (a.matches('input, textarea') || a.isContentEditable);
             return 'focused ' + field + ', length ' + (field ? String((a.value ?? a.textContent ?? '').length) : '-1') + ', palette ' + (!!document.querySelector('[m-input="palette"]'));
             """ : """
+            // (The double-click's own rule, ui/empty.ts: where a press does nothing and a double-click opens the palette.)
+            if (window.marginApp && window.marginApp.devEmptySpot) return window.marginApp.devEmptySpot();
             const page = document.querySelector('m-page')?.getBoundingClientRect();
             if (!page || page.left < 40) return 'none';
             const busy = 'a, button, input, textarea, select, [contenteditable], [m-action], [m-input], [m-drag], [m-resize], [m-drag-region], [m-rename], [m-editor], [m-menu], [m-notice], [m-prompt], [m-window-controls], [draggable="true"], [role="button"], [tabindex]';
@@ -417,12 +421,13 @@ extension MarginWindowController {
 
     // How it's in front, the page card and the hole (numbers only). `window`: the base (the full-screen one, its Space
     // Margin's); `panel`: Margin's UI over it, the window that takes Margin's presses and, for a field, the keys.
-    // `active`: Margin the front app (the workspace's word); `appkit active`: AppKit's, true too after a press in the
-    // non-activating panel.
+    // `active`: Margin the front app (the workspace's word); `appkit active`: AppKit's, true too after a routed press in
+    // the non-activating panel; `delivered`: presses the press tap delivered to the panel, the keyboard never moved
+    // (docs/SIDEBAR-PRESS.md), and `keys back` the hand-backs after a routed one.
     var devFront: String {
         func r(_ c: CGRect?) -> String { c.map { "\(Int($0.minX)),\(Int($0.minY)) \(Int($0.width))x\(Int($0.height))" } ?? "none" }
         return "mechanism \(mechanism.rawValue), level \(window.level.rawValue) (server \(serverLevel(window.windowNumber).map(String.init) ?? "?")), window \(window.windowNumber), page \(pageState.rawValue), hole \(r(hole)), "
             + "page area \(r(window.pageRect)), hosted \(hosted.map(String.init) ?? "none"), ignoring \(panel.ignoresMouseEvents), keys \(pageWantsKeyboard), full screen \(isFullScreen), presses \(panel.presses), "
-            + "panel \(panel.windowNumber) (level \(panel.level.rawValue), server \(serverLevel(panel.windowNumber).map(String.init) ?? "?"), key \(panel.isKeyWindow), child \(panel.parent === window)), active \(MarginWindowController.isFrontApp()), appkit active \(NSApp.isActive), allow key \(panel.allowKey), hand-backs \(handBacks.count), activations \(activations.count), keys back \(keysGivenBack)"
+            + "panel \(panel.windowNumber) (level \(panel.level.rawValue), server \(serverLevel(panel.windowNumber).map(String.init) ?? "?"), key \(panel.isKeyWindow), child \(panel.parent === window)), active \(MarginWindowController.isFrontApp()), appkit active \(NSApp.isActive), allow key \(panel.allowKey), hand-backs \(handBacks.count), activations \(activations.count), keys back \(keysGivenBack), delivered \(deliveredPresses)"
     }
 }

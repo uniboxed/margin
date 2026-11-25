@@ -15,7 +15,7 @@
 //   m-action + m-arg        a click runs one of Margin's actions (actions.ts)
 //   m-icon                  an <img>'s src from a data: image in the view model
 //   <m-page>                the page's place, reported as insets and a radius
-//   m-drag, m-drop, m-peek, m-resize, m-rename, m-scroll, m-swipe, m-input
+//   m-drag, m-drop, m-peek, m-resize, m-rename, m-scroll, m-swipe, m-input, m-empty
 //                           behaviors (ui/behaviors/): kept on the element, which
 //                           the view knows with its scope (behaviorOf, subjectOf)
 //   <template m-part>       a named part, shown in its slot (<m-menu>: `menu`,
@@ -751,10 +751,30 @@ function collectRows(block: Block, out: Element[]) {
   }
 }
 
+// Every list's rows (View.rowNodes): each row's top-level elements, whatever its list shows, nested lists too.
+function collectListRows(block: Block, out: Set<Element>) {
+  for (const part of block.parts) {
+    if (part instanceof ForBinding) {
+      for (const row of part.rows) {
+        for (let n: ChildNode | null = row.first; n; n = n.nextSibling) {
+          if (n.nodeType === 1) out.add(n as Element);
+          if (n === row.last) break;
+        }
+        collectListRows(row, out);
+      }
+    } else if (part instanceof IfBinding) {
+      const shown = part.state === null ? null : part.blocks[part.state ? 0 : 1];
+      if (shown) collectListRows(shown, out);
+    } else if (part instanceof SlotBinding) {
+      if (part.shown && part.block) collectListRows(part.block, out);
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // The view.
 
-type Edges = { left: number, top: number, right: number, bottom: number };
+type Edges ={ left: number, top: number, right: number, bottom: number };
 // Where the page goes (View.measure).
 export type Layout = {
   insets: Edges, radius: number, radii: number[], outer: Edges & { radius: number }, container: { width: number, height: number },
@@ -938,6 +958,15 @@ export class View {
   rowElements(): Element[] {
     const out: Element[] = [];
     if (this.block) collectRows(this.block, out);
+    return out;
+  }
+  /**
+   * Every row of every list drawn now (each `<m-for>` item's own top-level elements, nested lists' too, in what's
+   * shown): what's part of a row wherever its parts are drawn (ui/empty.ts).
+   * */
+  rowNodes(): Set<Element> {
+    const out = new Set<Element>();
+    if (this.block) collectListRows(this.block, out);
     return out;
   }
   /** The connected elements with behavior `name` (`value`), in document order. */

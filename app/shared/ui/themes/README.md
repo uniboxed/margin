@@ -522,10 +522,31 @@ Opt in with attributes; they stay on the element, so CSS can select them.
 | `m-rename` | `space`, `folder`, `tab` | double-click edits the name in place |
 | `m-scroll` | `tabs`, `palette`, `archive` | the list's scroll is remembered per window |
 | `m-swipe` | `spaces` | a sideways swipe moves between spaces |
+| `m-empty` | `never` | a double-click here never opens the palette (see below) |
 
 Right-clicking a row with `m-drag` (or an action's row, or the space's
 name) opens its menu. A mouse press on a tab, an open pin or a chip
 switches at once.
+
+A double-click on an empty part of your sidebar opens the command palette,
+as the palette's key does (Arc's sidebar does this). You have nothing to
+opt into. The empty part is your sidebar's own background: your `m-swipe`
+column and the room in your lists (`m-scroll`, `m-drop`) below their rows.
+Nothing you draw that does something is ever empty: Margin's slots
+(`<m-page>`, `<m-palette>`, `<m-menu>`, `<m-window-controls>`,
+`<m-drag-region>`…), anything with an action or one of the behaviours
+above (`m-drag`, `m-resize`, `m-rename`, `m-input`, `m-peek`), links,
+buttons, fields, anything focusable (`tabindex`), draggable or with an
+interactive `role`, every row of an `<m-for>` (all of what it draws), a
+bar (an element two or more of whose children are controls or rows side by
+side, as your space switcher, a header of buttons or a favourites grid
+are: the gaps between its controls are the bar's), and a widget's
+background (anything else that holds a control: a mini player, the space's
+title beside its name). Both clicks must be on empty points, with nothing
+of Margin's open (the palette, a menu, the space editor, a rename, a
+prompt, the preview card). Mark a decoration you want left alone
+`m-empty="never"` (a heading drawn as a button would be); it's the
+attribute's only value: nothing can be made empty.
 
 Classes and variables Margin sets for you to style:
 

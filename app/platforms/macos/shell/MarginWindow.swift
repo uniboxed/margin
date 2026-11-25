@@ -119,8 +119,9 @@ final class MarginPanel: NSPanel {
     private(set) var drags = 0
     private(set) var presses = 0
     private(set) var refusedOrders = 0
-    // A press in it ended (the main button let go), where (top left in its content).
-    var pressEnded: ((CGPoint) -> Void)?
+    // A press in it ended (the main button let go), where (top left in its content), and its event number (the press's:
+    // a release has its press's number), how a press the press tap delivered here is known (docs/SIDEBAR-PRESS.md).
+    var pressEnded: ((CGPoint, Int) -> Void)?
 
     init(frame topLeft: CGRect, harness: Bool) {
         self.harness = harness
@@ -175,7 +176,7 @@ final class MarginPanel: NSPanel {
             }
         }
         super.sendEvent(event)
-        if event.type == .leftMouseUp { pressEnded?(CGPoint(x: event.locationInWindow.x, y: frame.height - event.locationInWindow.y)) }
+        if event.type == .leftMouseUp { pressEnded?(CGPoint(x: event.locationInWindow.x, y: frame.height - event.locationInWindow.y), event.eventNumber) }
     }
 }
 

@@ -69,7 +69,7 @@ The stand-in world plays the same switches off screen: `app/platforms/macos/shel
 
 ## Scenarios (`suite/Scenarios.swift`, as data)
 
-- `core`: check10's steps L, 0, d1-d4, a1-a4, m1-m2, b1-b2, k1, c1-c2, e1-e6, f, s0-s5, w, x1-x2, R, with Chameleon 1
+- `core`: check10's steps L, 0, d1-d4, a1-a4, m1-m2, b1-b2, k1-k3, c1-c2, e1-e6, f, s0-s5, w, x1-x2, R, with Chameleon 1
   and 2 as its two test panes.
 - `behaviours-1…4`: each part opens Margin and hosts Chameleon 1 plain, then one scenario per behaviour class with
   Chameleon 3: set its switches (prime it for `restore`), host it, check it read them, check the design's desired
