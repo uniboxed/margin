@@ -161,8 +161,8 @@ lab here can read (a real press through an event tap on the real screen). The li
 word on a click (a click on a window that isn't key makes it key: the make-key flag yabai and AltTab set, 0x3a = 0x10),
 which AppKit would honour over `canBecomeKey`; the next screen run's log line says the bytes.
 The tap now makes the event afresh from the press's public fields (`PanelEvents`) and posts it to Margin's own process;
-the first press's own record is read only to be said in the log (its bytes 0x38-0x3b), so the next screen run shows
-the field. No record is posted for the panel any more, and the panel part no longer needs the records' layout check.
+the first press's own record was read only to be said in the log (its bytes 0x38-0x3b), so the next screen run showed
+the field (that read went on 2026-11-25, its question answered). No record is posted for the panel any more, and the panel part no longer needs the records' layout check.
 
 ## The second screen run (2026-11-25)
 

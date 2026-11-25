@@ -10457,3 +10457,45 @@ Arc's Edit Theme Color in Margin (docs/SPACE-BACKGROUNDS.md, the study and the p
 - **Tests**: the stored value read (0, false: off; 1, none, not a number: on), the switch read where System Settings
   keeps it, haptics only with both. The real switch's effect on a tick: TESTING.md's manual check.
 
+## Link resilience and the sidebar press: the merge review's findings, fixed (2026-11-25)
+
+An independent review of both (after their merge into `refactor/hosted-only`) found no architecture breaks: each rule
+in margin-core once, Swift mechanism only, the double-click shared UI. It found these, fixed here, each test written
+failing first (the old code in a copy of the tree):
+
+- **A close at Margin's quit given up on "not acked yet".** `ask_held` took a request not acked by the quit as its copy
+  not reading (`unread_at_quit`), so a close sent a moment before the quit was cancelled though the copy read it the
+  next moment, and its window was left in the marker. Not acked isn't evidence. Now a close at the quit ends on the
+  link's evidence (its answer, the link down, lost: read past twice) or at the engine's own bound, `quitWait` after the
+  quit began (as the approved design had it). A stalled copy holds the quit up to `quitWait` (6 s), no longer. The
+  shell's `linkHeard` (each read of a copy's link told to the session while quitting) only served that judgement and
+  is gone. Tests: requests_tests.rs (a close not acked as the quit comes answered by its copy; a stalled copy's close
+  given up at `quitWait`, not before; one asked during the quit the same).
+- **"Safari is slow" outlived its ask.** The words a slow show put on its window's loader stayed when the show was
+  answered or overtaken, so a next item with the same name and app drew them until its own first look. Now they go
+  with the ask that said them (only the words: the loader's name and app may be a newer pick's by then).
+- **Nothing said while a show waited for its link to come back.** `relinked` waited with no feedback, so a copy that
+  never relinked gave an endless loader. Now, after `slowSay` of waiting, the loader says the copy is slow (feedback
+  only: nothing is decided by it), gone with the show.
+- **The start's deferred preparation ran after a show had made the window.** With an app shown first, the browser's
+  window was left to be made ready once nothing is shown (`later`); a web item of that profile shown meanwhile made the
+  window, and the deferred preparation then found it hosted and said the preparation over a second time. Now a show
+  making the profile's main window clears it (`window_made`, start.rs).
+- **The poll's retry of Safari windows whose close wasn't confirmed held the engine's queue.** It ran in `serial`, so
+  a copy not reading held every open and switch meanwhile (up to the link's 40 s). Now it runs outside the queue, one
+  try at a time; each entry stays in the marker until its copy says it's closed. Tested in host-tests.swift: an open
+  while a stalled copy is asked returns at once (on the old engine it waited past the test's 10 s).
+- **Cleanups:** a stale comment (`behaviors/empty.ts`: the press comes as an event made afresh, not the window
+  server's record) and the private record read for one log line (PaneClickTap's first panel press; PRIVATE-APIS row 41
+  no longer used for it).
+- **Not changed, and why:**
+  - The engine's own close of a hosted Safari window (`HostEngine.close`, a profile's window given back) still waits
+    for its copy in the engine's queue, bounded by the link (40 s of silence) or `quitWait` at the quit. Taking it out of
+    the queue needs the pattern app quits already have (`closeNow(exit: .watched)`: the queue released, the answer heard
+    in the background, the marker keeping it, an open of the same window waiting for it): its own change, designed
+    with Tirth first.
+  - The engine's `quitting` gates (`HostEngine.start`, SafariWaker) stay engine mechanism (the engine's own lifecycle,
+    as recorded with the link resilience): the core takes Margin's quit as an input.
+  - `pressSettle` (the fallback path with the press tap off) and Windows' `MA_NOACTIVATE` on hosting alone: as before,
+    noted in page/press.rs.
+
