@@ -2342,6 +2342,9 @@ the spike's open question (which evidence tap-to-click gives).
 6. **Settings.** Sound: clicks on the trackpad too. Off: nothing. With System Settings › Sound › "Play user interface
    sound effects" off: no clicks in Automatic or Sound, the haptics still in Automatic.
 7. **Material.** Its segmented buttons, chips and sliders tick the same.
+8. **macOS's haptics off.** System Settings › Trackpad › Point & Click › "Force Click and haptic feedback" off, then
+   within 10 s press in the panel on the trackpad: a click sound in Automatic, not silence; nothing in Haptics only.
+   Turn it on again: haptics again in Automatic (within 10 s).
 
 ## A space's picture (M2.9 step 7, 2026-11-25)
 

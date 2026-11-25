@@ -8,6 +8,11 @@
 //   mouse's. A precise scroll with no phase (a Magic Mouse may send them) says nothing.
 // - Whether a trackpad that plays haptics is there at all: the IORegistry's multitouch devices with
 //   `ActuationSupported` (read again at most every 10 s: a Magic Trackpad comes and goes). None: always sound.
+// - Whether macOS plays haptics at all: System Settings › Trackpad › Point & Click › "Force Click and haptic feedback".
+//   Off, macOS drops every haptic an app asks for, so the page is told there are none and a tick is a click. Read where
+//   System Settings keeps it, `com.apple.AppleMultitouchTrackpad`'s `ActuateDetents` (seen on macOS 27, 2026-11-25: the
+//   switch off wrote 0 there, `ForceSuppressed` 1 and the global `com.apple.trackpad.forceClick` 0; on again 1, 0, 1),
+//   afresh at most every 10 s as the devices are (it may change while Margin runs). Absent: on, macOS's default.
 // - Whether the system plays its interface sounds (System Settings › Sound › "Play user interface sound effects",
 //   `com.apple.sound.uiaudio.enabled`): off, no sound either.
 // Which evidence tells tap-to-click apart is the spike's (docs/SPACE-BACKGROUNDS.md step 0's event logger); a wrong
@@ -102,6 +107,30 @@ final class PointerClassifier {
             service = IOIteratorNext(iterator)
         }
         return found
+    }
+
+    /// Haptics play here: a trackpad that plays them is connected and the system's "Force Click and haptic feedback" is
+    /// on, each read again at most every 10 s. What the page is told as `haptics`.
+    static func hapticsPlay(now: Date = Date()) -> Bool { hapticTrackpad(now: now) && hapticFeedback(now: now) }
+
+    private static var feedback: (at: Date, on: Bool)?
+    /// The system's "Force Click and haptic feedback" is on, read again at most every 10 s.
+    static func hapticFeedback(now: Date = Date()) -> Bool {
+        if let f = feedback, now.timeIntervalSince(f.at) < 10 { return f.on }
+        let on = hapticFeedbackOn(trackpadSetting("ActuateDetents"))
+        feedback = (now, on)
+        return on
+    }
+    /// `ActuateDetents` as stored: 0 (or false) off; anything else, or nothing, on (macOS's default).
+    static func hapticFeedbackOn(_ value: Any?) -> Bool {
+        guard let n = value as? NSNumber else { return true }
+        return n.boolValue
+    }
+    /// A key of the trackpad's settings as System Settings left it (read afresh: another process writes them).
+    static func trackpadSetting(_ key: String) -> Any? {
+        let domain = "com.apple.AppleMultitouchTrackpad" as CFString
+        CFPreferencesAppSynchronize(domain)
+        return CFPreferencesCopyAppValue(key as CFString, domain)
     }
 
     /// The system plays its interface sounds (absent: it does, macOS's default).

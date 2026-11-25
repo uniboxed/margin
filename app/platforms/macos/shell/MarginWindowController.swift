@@ -1985,7 +1985,7 @@ final class MarginWindows {
     /// An event's facts over a window's UI: what's new told to its page.
     func pointerSaw(_ facts: PointerFacts, in c: MarginWindowController) {
         guard let kind = gestureDevice.see(facts) else { return }
-        c.tellPointer(kind, haptics: PointerClassifier.hapticTrackpad(), uiSounds: PointerClassifier.interfaceSounds())
+        c.tellPointer(kind, haptics: PointerClassifier.hapticsPlay(), uiSounds: PointerClassifier.interfaceSounds())
     }
     private func pointerSaw(event: NSEvent, in c: MarginWindowController) {
         if let facts = PointerFacts(event) { pointerSaw(facts, in: c) }

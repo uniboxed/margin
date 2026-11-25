@@ -10440,3 +10440,20 @@ Arc's Edit Theme Color in Margin (docs/SPACE-BACKGROUNDS.md, the study and the p
   and `transitionend` doesn't come in a window that draws no frames); the picture id's check written in the UI twice
   besides the core's (the transition's TypeScript twin); the light/dark rule's TypeScript copy for the extension.
 
+## Edit Theme Color's ticks: a click when macOS's haptic feedback is off (2026-11-25)
+
+- **What was wrong** (found explaining the ticks to Tirth): with System Settings › Trackpad › Point & Click › "Force
+  Click and haptic feedback" off, macOS plays no haptic an app asks for. Automatic chose a haptic for a finger on the
+  trackpad all the same, so a tick played nothing at all (the setting's "A click" was the only way out).
+- **Where the switch is** (read on this Mac with Tirth turning it off and on again, macOS 27): off, System Settings
+  wrote `com.apple.AppleMultitouchTrackpad` `ActuateDetents` 0 and `ForceSuppressed` 1 (the driver's own
+  `MultitouchPreferences` in the IORegistry the same) and the global `com.apple.trackpad.forceClick` 0, and moved Look
+  Up to a three-finger tap; on again, all back (1, 0, 1). `ActuateDetents` is the haptics one; reading it needs no
+  permission.
+- **The change** (OS mechanism, the Mac's: PointerKind.swift): the page's `haptics` is now `hapticsPlay`, a trackpad
+  that plays them connected and `ActuateDetents` not 0 (absent: on, macOS's default), read afresh
+  (`CFPreferencesAppSynchronize`) at most every 10 s as the devices are. The rule that picks a click without haptics is
+  unchanged and stays the page's (`ui/picker/feedback.ts` `tickPlays`). Windows has no haptics: unchanged.
+- **Tests**: the stored value read (0, false: off; 1, none, not a number: on), the switch read where System Settings
+  keeps it, haptics only with both. The real switch's effect on a tick: TESTING.md's manual check.
+

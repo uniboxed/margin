@@ -1,7 +1,8 @@
 // Which device a gesture comes from (M2.9 step 6, docs/SPACE-BACKGROUNDS.md Part B §6; PointerKind.swift), for Edit
 // Theme Color's ticks: a mouse unless proven a trackpad. The events a plain mouse sends, made as CGEvents (a press, a
 // wheel's notch: no touch, no precise deltas, no phase), read as a mouse's; a trackpad's scroll (precise, with its
-// phase) and a pressure event as a trackpad's; what's told and when; the Mac's haptics and interface sounds read; the
+// phase) and a pressure event as a trackpad's; what's told and when; the Mac's haptics (the trackpad, and the system's
+// "Force Click and haptic feedback" switch) and interface sounds read; the
 // message the page gets. The real trackpads (a click, tap-to-click, a force click, the dial scrolled) and a real
 // mouse: TESTING.md's manual checks.
 
@@ -52,6 +53,17 @@ import AppKit
     // ---- what the Mac has, and the message ----
     let hasActuator = PointerClassifier.readActuators()
     check("pointer: the IORegistry read (a trackpad that plays haptics here: \(hasActuator))", PointerClassifier.hapticTrackpad() == hasActuator)
+    // The system's "Force Click and haptic feedback" (ActuateDetents) as System Settings stores it: off, no haptics.
+    check("pointer: haptic feedback switched off (0): none", !PointerClassifier.hapticFeedbackOn(NSNumber(value: 0)))
+    check("pointer: switched off as false: none", !PointerClassifier.hapticFeedbackOn(kCFBooleanFalse))
+    check("pointer: switched on (1): on", PointerClassifier.hapticFeedbackOn(NSNumber(value: 1)))
+    check("pointer: never set: on (macOS's default)", PointerClassifier.hapticFeedbackOn(nil))
+    check("pointer: not a number: on", PointerClassifier.hapticFeedbackOn("0"))
+    let actuate = PointerClassifier.trackpadSetting("ActuateDetents")
+    check("pointer: the switch read where System Settings keeps it (here: \(String(describing: actuate)))",
+          PointerClassifier.hapticFeedback() == PointerClassifier.hapticFeedbackOn(actuate))
+    check("pointer: haptics play only with both the trackpad and the switch",
+          PointerClassifier.hapticsPlay() == (hasActuator && PointerClassifier.hapticFeedbackOn(actuate)))
     let suite = "margin-tests-\(UUID().uuidString)"
     if let defaults = UserDefaults(suiteName: suite) {
         check("pointer: interface sounds: on unless said off", PointerClassifier.interfaceSounds(defaults))

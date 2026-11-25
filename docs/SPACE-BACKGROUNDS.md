@@ -320,6 +320,9 @@ of evidence counts. The setting is read where it's used, since the core has no s
 - **Windows and Linux:** always sound (no haptics API used).
 - **Setting** `pickerFeedback: "auto" | "haptics" | "sound" | "off"` (default `auto`), in Settings, validated in `model.ts`'s settings and the core's twin.
   - It covers the case where the system's "Force Click and haptic feedback" is off and haptics are silently suppressed.
+    Automatic covers it too since 2026-11-25: Margin.app reads that switch (`com.apple.AppleMultitouchTrackpad`
+    `ActuateDetents`, 0 when off, seen on this Mac by turning it off and on) and tells the page there are no haptics,
+    so a tick is a click (`PointerClassifier.hapticsPlay`).
   - Sound also respects macOS's "Play user interface sound effects" if Margin can read it. That gets checked in the spike.
 - Ticks are limited to one per 20 ms, so a fast spin doesn't buzz.
 
