@@ -1651,6 +1651,11 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             toggleFullScreen()
             return ["ok": true, "result": true]
         }
+        // A space's picture (Edit Theme Color's): the app's, not the source's.
+        if type == "backgroundChoose" || type == "backgroundAdd" {
+            guard let background = owner?.background else { return ["ok": false, "error": "Pictures aren’t available here."] }
+            return await background(type, payload)
+        }
         // A note's Allow (shared/notices.ts `safari-profile`): Safari's folder picked once, its profiles' names read.
         if type == "allowSafariProfiles" {
             SafariFolderGrant.ask(over: nil)
@@ -1811,6 +1816,10 @@ final class MarginWindows {
     var theme: (Int, String?) -> String? = { _, _ in nil }
     var themes: () -> String = { "[]" }
     var apps: () -> String = { "null" } // the installed apps (ShellApps.swift), null with none read
+    // A space's picture (M2.9 step 7, ShellBackgrounds.swift): `backgroundChoose` (the file picker) or `backgroundAdd`
+    // (a dropped picture's bytes), answered `{ ok, result: { id } }`, `{ ok, result: null }` (cancelled) or `{ ok: false,
+    // error }`. None: not here (a test's windows).
+    var background: ((String, JSONObject) async -> JSONObject)?
     // A window's page area changed (MarginWindow.pageRect: hosting's own, or the hole's); its page drawn.
     var onPageRect: ((MarginWindowController, CGRect?) -> Void)?
     var onReady: ((MarginWindowController) -> Void)?

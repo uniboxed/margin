@@ -453,6 +453,17 @@ uint8_t *margin_link_state_value(MarginLink *link, uint64_t conn, const uint8_t 
 uint8_t *margin_link_drawn(MarginLink *link, uint64_t conn, const uint8_t *epoch, size_t epoch_len, const int64_t *hosted, size_t hosted_len, const int64_t *windows, size_t windows_len, double now, double wall, size_t *out_len);
 uint8_t *margin_link_protocol(const uint8_t *request, size_t len, size_t *out_len);
 
+// Pictures as space backgrounds (data/backgrounds.rs, ffi backgrounds.rs; M2.9 step 7): one object over its folder.
+// A picture the platform made (JPEG or PNG) kept by its bytes (`add`: { id, type, width, height, bytes } or
+// { refused }); one JSON call for the rest (constants, path by id, ids, prune keeping the ids spaces name). Freed with
+// margin_buffer_free.
+typedef struct MarginBackgrounds MarginBackgrounds;
+
+MarginBackgrounds *margin_backgrounds_new(const uint8_t *root, size_t len);
+void margin_backgrounds_free(MarginBackgrounds *store);
+uint8_t *margin_backgrounds_add(MarginBackgrounds *store, const uint8_t *bytes, size_t len, size_t *out_len);
+uint8_t *margin_backgrounds_call(MarginBackgrounds *store, const uint8_t *request, size_t len, size_t *out_len);
+
 // The themes a person imported, the built-ins' packages, what the picker chose (data/themes.rs, ffi themes.rs). The
 // store: one object over its folder, one JSON call (list, has, save, remove), the package a window draws typed (its
 // UTF-8 JSON's bytes, NULL: none). The built-ins: one object over the app's folder (NULL: none), the package typed.

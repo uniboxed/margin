@@ -6,6 +6,7 @@
 //! The Swift shell logs through `Diagnostics`; margin-core has no logger, so what Swift logs is handed back as
 //! [`Note`]s for the shell to write (never a name, an address or content, as in Swift).
 
+pub mod backgrounds;
 pub mod library;
 pub mod profiles;
 pub mod set;

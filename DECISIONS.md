@@ -9852,3 +9852,37 @@ their module's own reading (the library and the data set's comparison), kept as 
 The full gate's run during the review failed once, in "space swipe: two fingers sideways…" (Liquid Glass, Chromium):
 a timing check that the old space is still drawn while the slide comes in, with the machine under the review's and a
 build's load. It passed 4 of 4 alone; this branch doesn't touch the swipe.
+
+## M2.9 step 7a: pictures kept and served (`feat/space-backgrounds`, 2026-11-25)
+
+- **The store is the core's** (`data/backgrounds.rs`, margin-ffi's `margin_backgrounds_*`), beside Margin.app's library
+  (`data/app/backgrounds/`): a picture kept as `<sha256>.jpg|png`, content-addressed (the same picture twice is one
+  file, a file never written over), each written as the data sets' files are. What it's given is checked again by its
+  bytes, never a name: a JPEG or a PNG by its signature, at most 10 MB, its sides read from its own header (a PNG's
+  IHDR, a JPEG's first frame header) and at most 3840. No index: a picture's id is its name.
+- **Decoding is the platform's, not a crate's** (the plan left the choice to this step): on the Mac, ImageIO
+  (`BackgroundStore.swift prepare`), which reads HEIC (an iPhone's photos; Rust's `image` crate can't), is the
+  system's own hardened decoder, and leaves the core without an image dependency. What the person chose: one of JPEG,
+  PNG, HEIC, WebP, TIFF by ImageIO's own reading (a GIF, a PDF refused before decoding), at most 40 MB and 200
+  megapixels; made upright by its orientation, at most 3840 on its long side (never made larger), encoded again (JPEG
+  at 0.9; PNG when the file says it has transparency: a decoded HEIC always has an alpha channel, so the decoded image's
+  wasn't used), smaller sides or a lower quality until it's within 10 MB; none of its metadata copied (GPS, the camera,
+  notes: checked). Windows: WIC, with its library windows.
+- **Served by id alone**: `margin-app://app/background/<id>` (`OverlaySchemeHandler`), the id checked by the core and
+  the file looked up there, nothing made of the address (a `..` encoded, a query: not served), the page's policy on it,
+  `nosniff`, cached for good (the id is the bytes' hash). The page's policy already let images come from its own place;
+  nothing new is allowed to a theme (its CSS can name only its own files).
+- **Pruned as the library opens** (`Shell.openBackgrounds`): the pictures no space names removed, and anything a write
+  left there; never as a space changes, so ⌘Z and Escape can bring one back while Margin runs.
+- **What the page asks** (its `send`, through `MarginWindows.background` to `Shell.performBackground`):
+  `backgroundChoose` (the file picker, as a theme's import has it: on the active Space, Margin made active for it and
+  the keys given back after) and `backgroundAdd { bytes }` (a dropped picture, base64, capped before it's decoded),
+  answered `{ id }`, null (cancelled) or words for the page.
+- **The average colour** (the plan: computed at ingest, sent with the snapshot): the page works it out from the
+  picture as it draws it (step 7b), so nothing new goes through the library's snapshot, and it's right wherever the
+  picture can be drawn.
+- **Tests**: Rust (`data::backgrounds`: kinds and sides by the bytes, kept once, refused, found by id alone, pruned with
+  what a write left; the FFI through its calls); Swift (`background-store-tests.swift`: a photo with a place, a
+  camera and a note made a JPEG with none of them, a large one at 3840, a small one as it is, a sideways one upright,
+  transparency a PNG, HEIC read, a GIF and garbage refused, too large refused, kept and found by its hash, near ids
+  not found, pruned; served to a page as an image, a removed one, an encoded `..` and a query not).

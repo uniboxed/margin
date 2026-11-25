@@ -90,10 +90,31 @@ final class OverlaySchemeHandler: NSObject, WKURLSchemeHandler {
     private static let types = ["html": "text/html; charset=utf-8", "js": "text/javascript; charset=utf-8", "css": "text/css; charset=utf-8"]
 
     let root: URL
-    init(root: URL) { self.root = root }
+    // The pictures spaces' backgrounds name (M2.9 step 7: BackgroundStore.swift), served at `/background/<id>`.
+    let backgrounds: BackgroundStore?
+    init(root: URL, backgrounds: BackgroundStore? = nil) {
+        self.root = root
+        self.backgrounds = backgrounds
+    }
 
     func webView(_ webView: WKWebView, start task: any WKURLSchemeTask) {
         guard let url = task.request.url else { return task.didFailWithError(URLError(.badURL)) }
+        // A space's picture: by its id alone (64 hex characters, checked by the core, the file looked up there; no path
+        // made of anything in the address), its type the stored one's. A picture is its bytes' hash, so it never changes.
+        if url.host == "app", url.path.hasPrefix("/background/") {
+            let id = String(url.path.dropFirst("/background/".count))
+            guard task.request.httpMethod == nil || task.request.httpMethod == "GET", url.query == nil,
+                  let found = backgrounds?.file(id: id), let data = try? Data(contentsOf: found.url) else {
+                task.didReceive(HTTPURLResponse(url: url, statusCode: 404, httpVersion: nil, headerFields: ["Content-Security-Policy": Self.policy])!)
+                return task.didFinish()
+            }
+            task.didReceive(HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: [
+                "Content-Type": found.mime, "Content-Length": String(data.count), "Content-Security-Policy": Self.policy,
+                "Cache-Control": "private, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff",
+            ])!)
+            task.didReceive(data)
+            return task.didFinish()
+        }
         let name = url.path.split(separator: "/").last.map(String.init) ?? ""
         let file = root.appendingPathComponent(name)
         guard url.host == "app", url.path == "/" + name, !name.hasPrefix("."), let type = Self.types[file.pathExtension],
@@ -185,11 +206,11 @@ final class OverlayPages {
      {"trigger":{"url-filter":"^ftp:"},"action":{"type":"block"}}]
     """#
 
-    init(root: URL) {
+    init(root: URL, backgrounds: BackgroundStore? = nil) {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
         configuration.suppressesIncrementalRendering = true
-        configuration.setURLSchemeHandler(OverlaySchemeHandler(root: root), forURLScheme: OverlaySchemeHandler.scheme)
+        configuration.setURLSchemeHandler(OverlaySchemeHandler(root: root, backgrounds: backgrounds), forURLScheme: OverlaySchemeHandler.scheme)
         configuration.userContentController.addScriptMessageHandler(bridge, contentWorld: .page, name: "margin")
         configuration.preferences.isElementFullscreenEnabled = false
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
