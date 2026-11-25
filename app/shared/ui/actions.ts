@@ -166,8 +166,9 @@ export const BEHAVIOR_ONLY = Object.freeze(new Set([
   'space.delete',
 ]));
 
-// The menus a button can open (`menu.open`): "add" is New Folder and New Space.
-export const MENUS = Object.freeze(['add']);
+// The menus a button can open (`menu.open`): "add" is New Folder and New Space; "space" is the space in front's own
+// menu (the one its name's right-click opens: Arc's `•••` beside the space's name).
+export const MENUS = Object.freeze(['add', 'space']);
 // The Settings page's categories (`settings.category`), as ui/settings-form.ts SETTINGS_CATEGORIES lists them.
 export const SETTINGS_CATEGORY_IDS: readonly string[] = Object.freeze(['appearance', 'tabs', 'browsing', 'keyboard']);
 
@@ -383,7 +384,7 @@ export function contextFromState(state: any, paletteIds: Iterable<string> = [], 
 // |                    |                   |                               | toggleFullscreen; or local:             |
 // |                    |                   |                               | toggleSidebar, navigate, search; or     |
 // |                    |                   |                               | host: app.open { bundleId, name }       |
-// | menu.open          | 'add'             | local: that menu, at the button |                                       |
+// | menu.open          | 'add', 'space'    | local: that menu, at the button (the space's: the one in front) |        |
 // | menu.run           | item id           | the item's own action         | (ui/behaviors/menu-items.ts)            |
 // | menu.close         | none              | local                         |                                         |
 // | picker.run         | picker item id    | local: Edit Theme Color's     | (ui/picker/view.ts runItem)             |

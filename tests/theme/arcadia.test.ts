@@ -471,3 +471,130 @@ for (const [name, engine] of ENGINES) {
     }
   });
 }
+
+// Arcadia as Arc's sidebar (M2.10, docs/ARC-SIDEBAR.md: every number below was measured in Arc 1.174.2), in WebKit
+// and Chromium through the runtime: the page card (10 pt in, a 6 pt corner, Arc's one shadow, no hairline); the
+// sidebar's sizes (32 pt top buttons, the 36 pt address pill and title row, rows 41 pt apart with 36 pt fills, a
+// folder's 22 × 16 glyph and its pins 16 pt in, titles 35 pt into their row, the 50 pt bottom bar under its edge);
+// a row's hover (black at 5%, at once); what shows only under the pointer (the space's chevron and •••, the address
+// pill's tools, "↓ Clear" while the pointer is anywhere in the sidebar); the inert controls doing nothing; and the
+// space's ••• opening the space's own menu under it.
+for (const [engineName, engine] of ENGINES) {
+  test(`Arcadia as Arc's sidebar in ${engineName}`, async (t) => {
+    const browser = await engine.launch({ headless: true });
+    try {
+      const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+      const page = await context.newPage();
+      const errors: string[] = [];
+      page.on('pageerror', (e) => errors.push(e.message));
+      await context.route('**/*', (route) => route.abort());
+      await page.setContent('<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0"></body></html>');
+      await page.addScriptTag({ content: script });
+      await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' });
+      const ev = <A, R>(fn: (a: A) => R, a?: A) => page.evaluate(fn as any, a) as Promise<Awaited<R>>;
+      assert.equal((await page.evaluate(([p]) => T.loadBuiltin(p, 'arcadia', []), [themeForPage(ARCADIA)] as const)).ok, true);
+      await ev(() => T.mountRuntime({ width: 1280, height: 800, container: 'document', mode: 'windowed' }));
+      await page.waitForFunction(() => T.rtLayouts().length > 0);
+      const rect = (s: string, n = 0) => ev(([sel, i]) => T.rtRect(sel, i), [s, n] as const);
+      const away = async () => { await page.mouse.move(900, 400); await page.waitForTimeout(40); };
+
+      await t.test('the page card: 10 pt in, a 6 pt corner, one shadow and no hairline', async () => {
+        const card = (await rect('.card-edge'))!;
+        assert.deepEqual([card.top, 1280 - card.right, 800 - card.bottom], [10, 10, 10]);
+        assert.equal(await ev(() => T.rtComputed('.card-edge', 'border-top-left-radius')), '6px');
+        const shadow = await ev(() => T.rtComputed('.card-edge', 'box-shadow'));
+        assert.match(shadow!, /^rgba\(0, 0, 0, 0\.25\) 0px 1px 7px( 0px)?$/, `Arc's one shadow (${shadow})`);
+      });
+
+      await t.test('the sizes Arc measures: top buttons, the address pill, the title row, rows, folders, the bottom bar', async () => {
+        const toggle = (await rect('.keep-open'))!;
+        assert.deepEqual([toggle.width, toggle.height, toggle.top], [32, 32, 7.5], 'the top bar\'s buttons: 32 pt, 7.5 pt down');
+        const controls = (await rect('.window-controls'))!;
+        assert.deepEqual([controls.left, controls.y], [12, 23.5], 'the window\'s buttons from 12 pt, centred on the bar');
+        assert.equal(toggle.left, 77, 'the sidebar toggle at 77 pt, as Arc\'s');
+        const pill = (await rect('.address'))!;
+        assert.deepEqual([pill.left, pill.top, pill.height], [8, 46, 36], 'the address pill');
+        const title = (await rect('.space-title'))!;
+        assert.deepEqual([title.top, title.height], [90, 36], 'the title row under it');
+        const emoji = (await rect('.space-title .emoji'))!;
+        assert.deepEqual([emoji.left, emoji.width, emoji.height], [13, 26, 26], 'the space\'s icon in a 26 pt box');
+        const folder = (await rect('.folder'))!, glyph = (await rect('.folder .folder-icon'))!;
+        assert.deepEqual([folder.left, folder.top, folder.height], [8, 131, 36], 'the first row: its fill at 131, 36 tall');
+        assert.deepEqual([glyph.width, glyph.height, glyph.left - folder.left], [22, 16, 8.5], 'a folder\'s glyph');
+        const folderTitle = (await rect('.folder .title'))!;
+        assert.equal(folderTitle.left - folder.left, 35, 'a folder\'s name 35 pt in');
+        const pin = (await rect('.pin.nested'))!, pinTitle = (await rect('.pin.nested .title'))!;
+        assert.equal(pin.left - folder.left, 16, 'a folder\'s pins 16 pt in');
+        assert.deepEqual([pin.height, pinTitle.left - pin.left], [36, 35], 'a pin: 36 pt, its title 35 pt in');
+        const rows = await ev(() => [...document.querySelectorAll('.margin-sidebar :is(.pins > .folder, .pins > .pin)')].slice(0, 6).map((e) => e.getBoundingClientRect().top));
+        assert.deepEqual(rows.slice(1).map((y, i) => y - rows[i]), [41, 41, 41, 41, 41], 'rows 41 pt apart');
+        assert.equal(await ev(() => T.rtComputed('.margin-sidebar .pin .title', 'font-size')), '13.5px');
+        const bar = (await rect('.bar'))!, archive = (await rect('.bar .archive'))!, add = (await rect('.bar .add'))!;
+        assert.deepEqual([bar.height, archive.left, archive.width, bar.right - add.right, add.width], [50, 8, 32, 8, 32], 'the bottom bar');
+        assert.match((await ev(() => T.rtComputed('.bar', 'box-shadow')))!, /rgba\(0, 0, 0, 0\.05\) 0px -1px 0px/, 'its edge');
+      });
+
+      await t.test('a row under the pointer: black at 5%, at once', async () => {
+        const row = (await rect('.pin.nested', 1))!;
+        await page.mouse.move(row.x, row.y);
+        await page.waitForTimeout(30);
+        assert.equal(await ev(() => getComputedStyle(document.querySelectorAll('.pin.nested')[1]).backgroundColor), 'rgba(0, 0, 0, 0.05)');
+        assert.equal(await ev(() => getComputedStyle(document.querySelectorAll('.pin.nested')[1]).transitionDuration.split(',').every((d) => d.trim() === '0s' || d.trim() === '0.18s')), true);
+        await away();
+      });
+
+      await t.test('only under the pointer: the title\'s chevron and •••, the address tools, "↓ Clear" anywhere in the sidebar', async () => {
+        const visible = (s: string) => ev((sel) => { const e = document.querySelector(sel); return !!e && getComputedStyle(e).display !== 'none' && getComputedStyle(e).visibility !== 'hidden' && e.getBoundingClientRect().width > 0; }, s);
+        await away();
+        assert.deepEqual([await visible('.title-more'), await visible('.title-chevron'), await visible('.space-title .emoji')], [false, false, true]);
+        const title = (await rect('.space-title'))!;
+        await page.mouse.move(title.x, title.y);
+        await page.waitForTimeout(30);
+        assert.deepEqual([await visible('.title-more'), await visible('.title-chevron'), await visible('.space-title .emoji')], [true, true, false], 'the chevron in the icon\'s place, ••• at the right');
+        await away();
+        assert.equal(await visible('.address-tools'), false);
+        const pill = (await rect('.address'))!;
+        await page.mouse.move(pill.x, pill.y);
+        await page.waitForTimeout(30);
+        assert.equal(await visible('.address-tools'), true);
+        await away();
+        assert.equal(await visible('.clear'), false, 'Clear: not while the pointer is over the page');
+        const row = (await rect('.pin.nested'))!;
+        await page.mouse.move(row.x, row.y);
+        await page.waitForTimeout(30);
+        assert.equal(await visible('.clear'), true, 'Clear: while it\'s anywhere in the sidebar');
+        await away();
+      });
+
+      await t.test('the inert controls do nothing; the space\'s ••• opens its menu under it', async () => {
+        const before = [await ev(() => T.rtSent().length), await ev(() => T.rtPerformed().length)];
+        const title = (await rect('.space-title'))!;
+        await page.mouse.move(title.x, title.y);
+        const chevron = (await rect('.title-chevron'))!;
+        await page.mouse.click(chevron.x, chevron.y);
+        const pill = (await rect('.address'))!;
+        await page.mouse.move(pill.x, pill.y);
+        const site = (await rect('.address-tool.inert'))!;
+        await page.mouse.click(site.x, site.y);
+        await page.waitForTimeout(40);
+        assert.deepEqual([await ev(() => T.rtSent().length), await ev(() => T.rtPerformed().length)], before, 'nothing asked of the host');
+        assert.equal((await ev(() => T.rtUi())).menu, null, 'and no menu');
+        assert.equal(await ev(() => T.rtAttr('.title-chevron', 'aria-disabled')), 'true');
+        await page.mouse.move(title.x, title.y);
+        const more = (await rect('.title-more'))!;
+        await page.mouse.click(more.x, more.y);
+        await page.waitForTimeout(40);
+        const ui = (await ev(() => T.rtUi())).menu as { kind: string, id: string, y: number } | null;
+        assert.equal(ui?.kind, 'space');
+        assert.equal(ui?.id, (await ev(() => T.rtVmFull())).space, 'the space in front\'s');
+        assert.ok(Math.abs(ui!.y - more.bottom) < 1, `under the button (${ui!.y}, ${more.bottom})`);
+        assert.ok((await ev(() => T.rtVmFull())).menu?.includes('Edit Space…'), 'the space\'s own menu');
+        await page.keyboard.press('Escape');
+      });
+
+      assert.deepEqual(errors, []);
+    } finally {
+      await browser.close();
+    }
+  });
+}

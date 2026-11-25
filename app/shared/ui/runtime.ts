@@ -930,6 +930,13 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       case 'favorite.rename': return behaviors.rename.start('favorite', arg);
       case 'menu.open': {
         const box = info?.element?.getBoundingClientRect?.();
+        // The space's menu (a button beside its name, at the sidebar's top): the space in front's, under the button.
+        // "add" (the bottom bar's "+"): above it.
+        if (arg === 'space') {
+          const id = vm?.space?.id;
+          if (!id) return false;
+          return behaviors.menus.open({ kind: 'space', id }, box ? { x: box.left, y: box.bottom } : { x: 0, y: 0 }, { above: false });
+        }
         return behaviors.menus.open({ kind: arg, id: null }, box ? { x: box.left, y: box.top } : { x: 0, y: 0 }, { above: true });
       }
       case 'menu.run': return behaviors.menus.run(arg);

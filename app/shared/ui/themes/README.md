@@ -493,7 +493,8 @@ else is ignored and logged.
   Margin's own panel for the space's background, opened beside the button; the space's menu has it too),
   `today.clear`.
 - The palette: `palette.open`, `palette.close`, `palette.run` (a row).
-- Menus: `menu.open` (`add`), `menu.run` (an item), `menu.close`.
+- Menus: `menu.open` (`add`: New Folder and New Space; `space`: the space in front's menu, as its name's right-click
+  opens it), `menu.run` (an item), `menu.close`.
 - Edit Theme Color drawn by your theme: `picker.run` (one of `picker`'s items, by its `id`: below).
 - The space editor: `editor.save`, `editor.cancel`, `editor.delete` (asks
   first), `editor.color` (a swatch), `editor.theme` (one of `editor.themes`'

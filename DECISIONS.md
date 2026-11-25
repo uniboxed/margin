@@ -10587,3 +10587,38 @@ failing first (the old code in a copy of the tree):
 - **Diagnostics added** (development, quiet unless slow): a reply carries the copy's own time on it (`took`); the
   link's line for a request over 100 ms says when it was acked and that time.
 
+
+## M2.10 steps 2–3: Arcadia's page card and sidebar at Arc's sizes (`feat/arc-sidebar`, 2026-11-25)
+
+Arc's sidebar in Arcadia (docs/ARC-SIDEBAR.md: the study, measured in the running Arc 1.174.2, and the plan).
+
+- **The page card** (step 2): 10 pt from the window's edges (8 before), a 6 pt corner (10 before: Arc's continuous
+  corner fits a plain 6 px circle to a fifth of a pixel; CSS `corner-shape` stays out, the earlier decision), Arc's one
+  shadow and no hairline (`0 1px 7px rgba(0,0,0,.25)`: Arc's is a Gaussian of σ 3 pt, WebKit draws a CSS blur
+  tighter, and 7 px rendered at 2× lands within 0.5% of Arc's falloff at every pixel; 6 px was 0.9%). The peek panel:
+  5 pt in, a 12 pt corner, a 1 pt rim of white at 30%, a softer shadow (`0 1px 9px rgba(0,0,0,.17)`). Its motion is
+  step 7's.
+- **The sidebar** (step 3), compared element by element with Arc's accessibility frames (Tirth's Work space rebuilt in
+  the harness, 1710 × 980, WebKit at 2×): every frame within half a point but the 1 pt the sidebar's width rounds to
+  (Arcadia's widths go by 10). 8 pt sides; 32 pt top buttons 7.5 pt down, the window's buttons from 12 pt (Margin.app
+  centres them in `<m-window-controls>`: 62 × 16), the nav 6 pt from the edge; the address pill and the title row 36 pt;
+  rows 41 pt apart with 36 pt fills and an 11.5 px corner; titles 13.5 px at weight 450 on a 19 px line (fitted in
+  WebKit against Arc's ink widths and cap heights), folders' names 600; a folder's 22 × 16 glyph in the space's colour
+  (Margin's own drawing, as every icon here: none of Arc's); the Today line a 0.5 pt hairline in a 30 pt gap; the
+  bottom bar 50 pt under a 1 pt edge, its buttons 32 pt.
+- **Colours** (light): a row's hover and the address pill darken by 5% (black at 5%, as Arc's, measured: × 0.949 on
+  every channel), at once, in place of Arcadia's lighter fill, also over a light space background (the palette's
+  white fill stays for every other theme, and for dark, which Arc wasn't measured in); the tab shown 78% white over the
+  ground, a crisp shadow and a brighter top edge. A row's × now has no fill of its own (the fills are translucent): the
+  title fades out under it.
+- **Under the pointer, as Arc's**: the space's name gets a pill, a chevron in its icon's place and `•••`; the address
+  pill its tools (Copy URL, site controls); "↓ Clear" shows while the pointer is anywhere in the sidebar.
+- **`menu.open` takes `space`** (the space in front's own menu, under the button: Arc's `•••`). Runtime and README.
+- **Inert, as Tirth chose** (drawn as Arc's, doing nothing, `aria-disabled`, their tooltips saying "coming soon"): the
+  title's chevron (collapsing the pinned tabs) and the address pill's site controls. Arc's latest download over its
+  Home button isn't drawn: Margin has no downloads to show, and a made-up one would be a lie.
+- **Not yet**: Arc's back and forward greyed with no history (the view model has no such state for a tab); a pinned
+  tab off its URL drawn with Arc's `/` (Arcadia keeps its reset button); the space switcher (step 4); dark mode's
+  colours (Arc's dark wasn't measured).
+- **Tests**: tests/theme/arcadia.test.ts, "Arcadia as Arc's sidebar": the card, every measured size, the hover, what
+  shows under the pointer, the inert controls doing nothing, `•••`'s menu; ui-actions (`menu.open` `space`).

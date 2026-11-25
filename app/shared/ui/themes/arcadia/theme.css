@@ -17,7 +17,8 @@
   --frame: color-mix(in srgb, var(--space-color) 30%, #f1f0f3);
   /* The sidebar's width: the sidebarWidth setting (px), 160–500, step 10. */
   --width: calc(var(--m-sidebar-width, 260) * 1px);
-  --pad: 10px;
+  /* Arc's (docs/ARC-SIDEBAR.md, measured): the sidebar's rows, pills and bars 8 pt from its edges. */
+  --pad: 8px;
   /* Dark on the light ground. The fills are the ground with white in it,
      more or less (what a translucent white over it comes to, as one colour:
      a row's × stands on the same): a faint one under the pointer, a
@@ -26,13 +27,19 @@
   --muted: rgba(0, 0, 0, 0.5);
   --ink: #000;
   --icon: rgba(0, 0, 0, 0.6);
-  --hover: color-mix(in srgb, #fff 30%, var(--frame));
+  /* Arc's, measured: a row under the pointer, and the address pill, darken what's under them by 5% (black at 5%,
+     every channel × 0.95); the tab shown is the ground with about 78% white in it, a crisp shadow under it and a
+     brighter top edge; the Today line a hairline of black at 15%, the bottom bar's edge 1 pt of black at 5%. */
+  --hover: rgba(0, 0, 0, 0.05);
+  --pill: rgba(0, 0, 0, 0.05);
+  --rule: rgba(0, 0, 0, 0.15);
+  --bar-rule: rgba(0, 0, 0, 0.05);
   --press: rgba(0, 0, 0, 0.07);
   --field: color-mix(in srgb, #fff 40%, var(--frame));
   --field-hover: color-mix(in srgb, #fff 55%, var(--frame));
   --input: rgba(255, 255, 255, 0.65);
-  --active: color-mix(in srgb, #fff 92%, var(--frame));
-  --active-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+  --active: color-mix(in srgb, #fff 78%, var(--frame));
+  --active-shadow: 0 0.75px 2px rgba(0, 0, 0, 0.2), inset 0 1px 1.5px rgba(255, 255, 255, 0.5);
   --behind: color-mix(in srgb, #fff 50%, var(--frame));
   --border: rgba(0, 0, 0, 0.1);
   --cover: color-mix(in srgb, var(--frame) 55%, #fff);
@@ -79,6 +86,9 @@
     --ink: #fff;
     --icon: rgba(255, 255, 255, 0.65);
     --hover: color-mix(in srgb, #fff 7%, var(--frame));
+    --pill: var(--field);
+    --rule: var(--border);
+    --bar-rule: var(--border);
     --press: rgba(255, 255, 255, 0.12);
     --field: color-mix(in srgb, #fff 9%, var(--frame));
     --field-hover: color-mix(in srgb, #fff 13%, var(--frame));
@@ -122,7 +132,9 @@
   --field-hover: rgba(255, 255, 255, 0.55);
   --behind: rgba(255, 255, 255, 0.5);
 }
+.arcadia[m-background]:not([m-appearance="dark"]) .margin-sidebar { --hover: rgba(0, 0, 0, 0.05); --pill: rgba(0, 0, 0, 0.05); }
 .arcadia[m-background][m-appearance="dark"] .margin-sidebar {
+  --pill: rgba(255, 255, 255, 0.09);
   --field: rgba(255, 255, 255, 0.09);
   --field-hover: rgba(255, 255, 255, 0.13);
   --behind: rgba(255, 255, 255, 0.1);
@@ -358,59 +370,84 @@
 /* The top: a slim row. The window's buttons' room (windowed), the sidebar
    toggle (Keep open / Auto-hide), and back, forward, reload at the right.
    It wraps and shows one line, so in a narrow sidebar the last buttons
-   give way instead of squeezing. */
-.margin-sidebar .top { flex: none; display: flex; flex-wrap: wrap; align-items: center; column-gap: 2px; height: 28px; margin: 8px 0 6px; overflow: hidden; }
+   give way instead of squeezing. Arc's (measured): 32 pt buttons 2 pt apart,
+   7.5 pt from the window's top, the last 6 pt from the sidebar's edge. */
+.margin-sidebar .top { flex: none; display: flex; flex-wrap: wrap; align-items: center; column-gap: 2px; height: 32px; margin: 7.5px -2px 6.5px 0; overflow: hidden; }
 .margin-sidebar :is(.keep-open, .bar-button) {
   flex: none;
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 7px;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
 }
-.margin-sidebar .top .spacer { align-self: stretch; height: 28px; }
+.margin-sidebar .top .spacer { align-self: stretch; height: 32px; }
 .margin-sidebar .toggle-icon { width: 18.5px; height: 14.5px; }
 .margin-sidebar .nav-icon { width: 16px; height: 16px; }
 .margin-sidebar :is(.keep-open, .bar-button):hover { background: var(--hover); }
 .margin-sidebar :is(.keep-open, .bar-button):active { background: var(--field-hover); }
 .margin-sidebar :is(.keep-open, .bar-button, .address, .clear):focus-visible { outline: 2px solid var(--drop); outline-offset: -2px; }
 .arcadia.newtab .keep-open { display: none; }
-/* Windowed: the window's buttons go at the row's start. Not in full screen. */
+/* Windowed: the window's buttons go at the row's start (Margin.app puts them in this box, centred). Not in full
+   screen. Arc's: the first at 12 pt from the window's left, the sidebar toggle at 77. */
 .window-controls { display: none; }
-.arcadia[data-mode="windowed"] .window-controls { display: block; flex: none; width: 54px; height: 14px; margin: 0 8px 0 2px; }
+.arcadia[data-mode="windowed"] .window-controls { display: block; flex: none; width: 62px; height: 16px; margin: 0 1px 0 4px; }
 
-/* The address pill: the site of the tab in front, on a translucent lighter
-   fill; a click opens the command bar. */
+/* The address pill: the site of the tab in front; a click opens the command
+   bar. Arc's (measured): 36 pt tall, the rows' width and corner, the ground
+   darkened 5%, its text 12 pt in (12.5 px); under the pointer its tools at
+   the right (Copy URL, site controls), over the text's end. */
+.margin-sidebar .address-bar { position: relative; flex: none; height: 36px; margin-bottom: 8px; }
 .margin-sidebar .address {
-  flex: none;
   display: flex;
   align-items: center;
-  height: 36px;
-  margin-bottom: 6px;
+  width: 100%;
+  height: 100%;
   padding: 0 12px;
-  border-radius: 10px;
-  background: var(--field);
-  font-weight: 500;
+  border-radius: 11.5px;
+  background: var(--pill);
+  font-size: 12.5px;
+  font-weight: 450;
   text-align: left;
 }
-.margin-sidebar .address:hover { background: var(--field-hover); }
-.margin-sidebar .address .host { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; opacity: 0.8; }
+.margin-sidebar .address .host { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.margin-sidebar .address-tools { position: absolute; top: 4px; right: 6px; display: none; gap: 0; }
+.margin-sidebar .address-bar:hover .address-tools { display: flex; }
+.margin-sidebar .address-bar:hover .host { -webkit-mask-image: linear-gradient(to left, transparent 54px, #000 66px); mask-image: linear-gradient(to left, transparent 54px, #000 66px); }
+.margin-sidebar .address-tool { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border-radius: 7px; color: var(--ink); }
+.margin-sidebar .address-tool .line-icon { width: 16px; height: 16px; opacity: 0.6; }
+.margin-sidebar .address-tool:not(.inert):hover { background: var(--hover); }
+/* Arc's controls for what Margin doesn't have yet (Tirth's choice, 2026-11-25): drawn as Arc's, doing nothing, their
+   tooltips saying so. */
+.margin-sidebar .inert { cursor: default; }
 .margin-sidebar .address .hint { color: var(--muted); font-weight: 400; opacity: 1; }
 
-/* The space's name: its emoji and name, small and muted. */
+/* The space's name: its icon and name, muted. Arc's (measured): a 36 pt row,
+   the icon in a 26 pt box 5 pt in, the name 2 pt after it (13 px, 500).
+   Under the pointer a pill, a chevron in the icon's place and the space's
+   menu (•••) at the right. */
 .margin-sidebar .space-title {
+  position: relative;
   flex: none;
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 30px;
-  margin-bottom: 2px;
-  padding-left: 10px;
+  gap: 2px;
+  height: 36px;
+  padding: 0 6px 0 5px;
+  border-radius: 11.5px;
   color: var(--muted);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 500;
 }
-.margin-sidebar .space-title .emoji { flex: none; width: 16px; font-size: 14px; line-height: 16px; text-align: center; color: initial; }
+.margin-sidebar .space-title .emoji { flex: none; width: 26px; height: 26px; font-size: 20px; line-height: 26px; text-align: center; color: initial; }
+.margin-sidebar .space-title .title { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.margin-sidebar .space-title :is(.title-chevron, .title-more) { flex: none; display: none; place-items: center; width: 26px; height: 26px; padding: 0; border-radius: 7px; color: var(--muted); }
+.margin-sidebar .space-title .title-chevron .line-icon { width: 14px; height: 14px; stroke-width: 1.75; }
+.margin-sidebar .space-title .title-more .fill-icon { width: 16px; height: 16px; }
+.margin-sidebar .space-title:hover { background: var(--hover); }
+.margin-sidebar .space-title:hover .emoji { display: none; }
+.margin-sidebar .space-title:hover :is(.title-chevron, .title-more) { display: grid; }
+.margin-sidebar .space-title .title-more:hover { background: var(--hover); color: var(--fg); }
 
 /* The space's part (name, editor, list), which a sideways swipe drags
    (Margin's m-swipe), with Dia's own feel (`--m-swipe-feel: dia`: half the
@@ -424,30 +461,38 @@
 
 /* One list for the pinned area and the tabs; it scrolls under the top and
    the bottom bar, never the page. The one place that rubber-bands. */
-.margin-sidebar .tabs-section { flex: 1; min-height: 0; margin: 0 calc(-1 * var(--pad)); padding: 0 var(--pad) 8px; overflow-y: auto; overscroll-behavior: contain; }
-.margin-sidebar :is(.pins, .tabs) { display: flex; flex-direction: column; gap: 4px; }
+.margin-sidebar .tabs-section { flex: 1; min-height: 0; margin: 0 calc(-1 * var(--pad)); padding: 5px var(--pad) 8px; overflow-y: auto; overscroll-behavior: contain; }
+/* Arc's rows: 41 pt apart (a 36 pt fill, 5 pt between). */
+.margin-sidebar :is(.pins, .tabs) { display: flex; flex-direction: column; gap: 5px; }
 .margin-sidebar .pins { position: relative; }
 .margin-sidebar .pins:not(.has) { display: none; }
 .margin-sidebar .divider { height: 1px; margin: 10px 10px; background: var(--border); }
-/* The line above today's tabs; "Clear" shows on it under the pointer. */
-.margin-sidebar .today-split { position: relative; flex: none; display: flex; align-items: center; height: 21px; padding: 0 10px; }
-.margin-sidebar .today-split .rule { flex: 1; height: 1px; background: var(--border); }
-.margin-sidebar .clear { position: absolute; top: 2px; right: 6px; height: 17px; padding: 0 4px 0 8px; border-radius: 4px; background: var(--frame); color: var(--muted); font-size: 11px; font-weight: 600; opacity: 0; transition: opacity 150ms var(--ease); }
-.margin-sidebar .today-split:hover .clear, .margin-sidebar .clear:focus-visible { opacity: 1; }
+/* The line above today's tabs. Arc's (measured): 30 pt between the rows
+   around it, a hairline in the middle 10 pt in from the rows' edges; "↓ Clear"
+   at its right while the pointer is anywhere in the sidebar, at once. */
+.margin-sidebar .today-split { position: relative; flex: none; display: flex; align-items: center; height: 30px; padding: 0 10px; }
+.margin-sidebar .today-split .rule { flex: 1; height: 0.5px; background: var(--rule); }
+.margin-sidebar .clear { position: absolute; top: 6.5px; right: 6px; display: flex; align-items: center; gap: 3px; height: 17px; padding: 0 4px 0 6px; border-radius: 4px; background: var(--frame); color: var(--muted); font-size: 11px; font-weight: 600; visibility: hidden; }
+.margin-sidebar .clear-icon { width: 10px; height: 10px; stroke-width: 1.6; }
+.margin-sidebar:hover .clear, .margin-sidebar .clear:focus-visible { visibility: visible; }
 .margin-sidebar .clear:hover { color: var(--fg); }
 
-/* Rows: 36 high, 4 apart, radius 10; icon 16, 10 before the 13 px title. */
+/* Rows, Arc's (measured): 36 high, 5 apart, the corner 11.5; the icon 16
+   (in Arc's 18 pt box), 10 in, the title 9 after it: the system font at
+   13.5 px, weight 450, on a 19 px line. */
 .margin-sidebar :is(.tab, .pin, .new-tab-row, .folder) {
   position: relative;
   flex: none;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 9px;
   height: 36px;
   padding: 0 10px;
-  border-radius: 10px;
+  border-radius: 11.5px;
   background: var(--row, none);
-  font-weight: 500;
+  font-size: 13.5px;
+  font-weight: 450;
+  line-height: 19px;
   outline: none;
 }
 .margin-sidebar :is(.tab, .pin, .new-tab-row, .folder):hover { --row: var(--hover); }
@@ -467,11 +512,15 @@
 /* Chosen here, live in another window (docs/BROWSER-WINDOWS.md §9): still highlighted, faded. */
 .margin-sidebar :is(.tab, .pin).away { opacity: 0.55; }
 
-/* A folder: its glyph (a line drawing in the row's colour), then its name;
-   its pins indented beneath. */
-.margin-sidebar .folder-toggle { flex: 1; min-width: 0; height: 100%; display: flex; align-items: center; gap: 10px; }
-.margin-sidebar .folder-icon { flex: none; width: 16px; height: 16px; overflow: visible; fill: none; stroke: var(--ink); stroke-opacity: 0.62; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
-.margin-sidebar .folder-icon .folder-front { fill: var(--ink); fill-opacity: 0.14; }
+/* A folder: its glyph, then its name (semibold); its pins indented 16 pt
+   beneath. Arc's (measured): a 22 × 16 glyph 8.5 pt into the row, the space's
+   colour in its back and a pale front, a dark outline; the name 35 pt in, as
+   a tab's title. */
+.margin-sidebar .folder-toggle { flex: 1; min-width: 0; height: 100%; display: flex; align-items: center; gap: 4.5px; }
+.margin-sidebar .folder > .folder-toggle > .title { font-weight: 600; }
+.margin-sidebar .folder-icon { flex: none; width: 22px; height: 16px; margin-left: -1.5px; overflow: visible; stroke: color-mix(in srgb, var(--space-color) 50%, #000); stroke-width: 1.3; stroke-linejoin: round; }
+.margin-sidebar .folder-icon .folder-back { fill: var(--space-color); }
+.margin-sidebar .folder-icon .folder-front { fill: color-mix(in srgb, var(--space-color) 6%, #fbf8ee); }
 .margin-sidebar .pin.nested { margin-left: 16px; }
 /* A name edited in place (Margin's m-rename): a field. */
 .margin-sidebar .m-renaming {
@@ -521,24 +570,24 @@
 .margin-sidebar .audible-icon { flex: none; width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; opacity: 0.55; }
 .margin-sidebar .audible-icon .speaker { fill: currentColor; stroke: none; }
 .margin-sidebar :is(.tab, .pin):hover .audible-icon { visibility: hidden; }
-/* × on a row: shown on hover, at the right, over the title's end (on the
-   row's own colour, fading in from the left), so showing it lays nothing out. */
+/* × on a row: shown on hover, at the right, over the title's end (the title
+   fading out under it: Arc's fills are translucent, so the button has none
+   of its own), so showing it lays nothing out. */
 .margin-sidebar .icon {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  top: 4px;
+  right: 4px;
   display: grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   padding: 0;
-  border-radius: 6px;
-  background: var(--row);
-  box-shadow: -6px 0 6px var(--row);
+  border-radius: 7px;
   visibility: hidden;
 }
-.margin-sidebar .icon .close-icon { width: 10px; height: 10px; stroke-width: 1.75; }
+.margin-sidebar .icon .close-icon { width: 11px; height: 11px; stroke-width: 1.6; }
 .margin-sidebar :is(.tab, .pin):hover .icon { visibility: visible; }
+.margin-sidebar :is(.tab, .pin):hover:has(> .icon) .title { -webkit-mask-image: linear-gradient(to left, transparent 24px, #000 36px); mask-image: linear-gradient(to left, transparent 24px, #000 36px); }
 .margin-sidebar .icon:hover { background-image: linear-gradient(var(--press), var(--press)); }
 
 /* Drag and drop (Margin's m-drag and m-drop): a copy of the row follows the
@@ -586,21 +635,26 @@
 .arcadia.m-drag-tab .margin-sidebar .pins:not(.has) .drop-hint { display: block; line-height: 33px; text-align: center; color: var(--muted); font-size: 13px; }
 
 /* The bottom bar: archive at the left, the spaces in the middle (the
-   current one strong, the others faded), "+" at the right. */
+   current one strong, the others faded), "+" at the right. Arc's (measured):
+   50 pt tall under a 1 pt edge across the sidebar, its buttons 32 pt, 8 pt
+   from the sidebar's sides. */
 .margin-sidebar .bar {
   flex: none;
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   column-gap: 4px;
   align-items: center;
-  height: 44px;
+  height: 50px;
   margin: 0 calc(-1 * var(--pad));
   padding: 0 var(--pad);
+  box-shadow: 0 -1px 0 var(--bar-rule);
 }
 .margin-sidebar .bar .archive { justify-self: start; }
 .margin-sidebar .bar .add { justify-self: end; }
-.margin-sidebar .bar .archive-icon { width: 16px; height: 16px; }
-.margin-sidebar .bar .plus-icon { width: 13px; height: 13px; stroke-width: 1.6; }
+/* Arc's (measured): a solid box with its lid at the left, a heavy 16 pt "+" at the right, both dark. */
+.margin-sidebar .bar .archive-icon { width: 18px; height: 18px; }
+.margin-sidebar .bar .plus-icon { width: 16px; height: 16px; stroke-width: 1.75; }
+.margin-sidebar .bar :is(.archive-icon, .plus-icon) { opacity: 0.75; }
 .margin-sidebar .spaces { display: flex; align-items: center; gap: 2px; min-width: 0; overflow-x: auto; overscroll-behavior: none; scrollbar-width: none; }
 .margin-sidebar .chip {
   flex: none;
