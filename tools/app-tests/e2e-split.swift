@@ -281,19 +281,24 @@ func glueSplitScenario() async {
         && library.items(space: space).contains { $0.id == editItem },
         "byId \(byId) byRow \(byRow) \(ended) \(String(describing: library.split(sp))) \(engine.visible) \(String(describing: world.bounds(window: notesWindow))) \(world.inMargin) \(menu) \(session.done.suffix(4))")
   check("…the page's state names each pane by its row's number too (what an on-screen check dispatches with)", menu.contains("\"tabId\":\(row)"), menu)
-  check("the pane click tap: the split ended, one window shown: no tap (stopped)", made.paneTap == nil && taps.last?.stopped == 1, "\(taps.map(\.stopped))")
+  // (One tap for both, docs/SIDEBAR-PRESS.md: it stays for Margin's panel while the window hosts; the split's part of it,
+  // the first click in another pane, is over: its scene has no panes.)
+  let toldAlone = taps.last?.scenes.last ?? nil
+  check("the pane click tap: the split ended, one window shown: the tap stays (Margin's panel's presses), told no panes (the split's pane clicks over) and this window's panel",
+        made.paneTap != nil && taps.last?.stopped == 0 && toldAlone?.panes.isEmpty == true && toldAlone?.panels.map(\.window) == [c.panel.windowNumber],
+        "\(taps.map(\.stopped)) \(String(describing: toldAlone))")
   _ = await until(3) { made.keptActive.isEmpty }
   check("all panes active: the split ended: every app kept let go (deactivated), none kept", made.keptActive.isEmpty && engine.keptActive.isEmpty
         && world.activeCalls.contains { $0.hasPrefix("release ") }, "\(world.activeCalls) \(made.keptActive)")
 
   // A split again, then Margin quits: the tap goes at once.
   _ = library.perform("createSplit", ["windowId": c.id, "panes": [notesItem, editItem]])
-  let again = await until(15) { engine.visible.count == 2 && made.paneTap != nil }
+  let again = await until(15) { engine.visible.count == 2 && made.paneTap != nil && (taps.last?.scenes.last ?? nil)?.panes.count == 2 }
   let last = taps.last
   _ = await until(3) { !engine.keptActive.isEmpty }
   let keptAgain = !engine.keptActive.isEmpty
   made.closeAll()
-  check("the pane click tap: a split again: a tap again; Margin quits (its windows closed): stopped at once", again && last?.stopped == 1 && made.paneTap == nil,
+  check("the pane click tap: a split again: the tap told its panes again; Margin quits (its windows closed): stopped at once", again && last?.stopped == 1 && made.paneTap == nil,
         "\(again) \(String(describing: last?.stopped))")
   _ = await until(3) { engine.keptActive.isEmpty }
   check("all panes active: a split again: kept again; Margin's windows closed: let go", keptAgain && engine.keptActive.isEmpty, "\(world.activeCalls)")

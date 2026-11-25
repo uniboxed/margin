@@ -2048,12 +2048,10 @@ final class MarginWindows {
         return PaneClickTap(core: core, said: said)
     }
     // A press on Margin's own panel through the same tap (docs/SIDEBAR-PRESS.md): wanted while a Margin window on the
-    // current Space hosts, the window server's records are there (their layout checked at launch: `paneDelivery`) and
-    // the part isn't off (`defaults write com.unibox.margin MarginSidebarTap -bool NO`: today's hand-back after a
-    // routed press). A test's stand-in answers its own.
-    lazy var sidebarTap: () -> Bool = { [weak self] in
-        UserDefaults.standard.object(forKey: "MarginSidebarTap") as? Bool != false && self?.paneDelivery() != nil
-    }
+    // current Space hosts and the part isn't off (`defaults write com.unibox.margin MarginSidebarTap -bool NO`: today's
+    // hand-back after a routed press). Its delivery is public calls only (PaneClickTap.swift `PanelEvents`): no records
+    // needed. A test's stand-in answers its own.
+    var sidebarTap: () -> Bool = { UserDefaults.standard.object(forKey: "MarginSidebarTap") as? Bool != false }
     // All panes active (PanesActive.swift): the window server's front process for the tap (the engine's; nil: none), the
     // split as the engine is told it (each change of the scene), each change of the front app (NSWorkspace's, the tap's
     // focus), and the apps kept active as the engine says them (the tap's scene carries them).
@@ -2112,7 +2110,7 @@ final class MarginWindows {
         paneTapEnd = nil
         if let tap = paneTap { return tap.update(scene) }
         guard paneTapTrusted() else {
-            if !paneTapRefusedSaid { Diagnostics.note("pane clicks: Accessibility isn't granted: a first click in another pane only focuses it, and a press on Margin's sidebar hands the keys back after it, as before") }
+            if !paneTapRefusedSaid { Diagnostics.note("press tap: Accessibility isn't granted: a first click in another pane only focuses it, and a press on Margin's sidebar hands the keys back after it, as before") }
             paneTapRefusedSaid = true
             return
         }
@@ -2140,7 +2138,7 @@ final class MarginWindows {
         tap.stop()
         paneTap = nil
         paneTapsEnded += 1
-        Diagnostics.note("pane clicks: off (\(why))")
+        Diagnostics.note("press tap: off (\(why))")
     }
 
     // A press the tap gave its pane's window the keys for (the monitor's press of `number` at `at`), consumed.

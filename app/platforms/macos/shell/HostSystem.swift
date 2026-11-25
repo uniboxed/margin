@@ -555,6 +555,12 @@ nonisolated final class AXPaneFocus: PaneFocusing, @unchecked Sendable {
     func focusWithoutRaise(pid: pid_t, window: Int) -> Bool { !refuses && delivery?.focusWithoutRaise(pid: pid, window: window) == true }
     func deliver(_ event: CGEvent, pid: pid_t, window: Int, origin: CGPoint) -> Bool { !refuses && delivery?.deliver(event, pid: pid, window: window, origin: origin) == true }
     // Its window's top left as the window server has it now (nil: unread).
+    // A press on Margin's own panel: an event made afresh, posted to Margin's own process (public calls only: no records,
+    // nothing to another app). The window server's own record of it read only to be said.
+    func deliverToPanel(_ event: CGEvent, pid: pid_t, window: Int, content: CGRect) -> Bool {
+        !refuses && pid == getpid() && PanelEvents.post(event, pid: pid, window: window, content: content)
+    }
+    func record(of event: CGEvent) -> [UInt8]? { refuses ? nil : delivery?.record(of: event) }
     func windowOrigin(_ window: Int) -> CGPoint? {
         guard !refuses, let n = CGWindowID(exactly: window), let info = (CGWindowListCopyWindowInfo(.optionIncludingWindow, n) as? [[String: Any]])?.first,
               let b = info[kCGWindowBounds as String] as? [String: Double], let x = b["X"], let y = b["Y"] else { return nil }

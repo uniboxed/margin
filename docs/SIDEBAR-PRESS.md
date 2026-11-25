@@ -47,11 +47,11 @@ off `refactor/hosted-only` (e5650a99). File and line references are to that comm
 |---|---|---|
 | When a press on Margin's UI must leave the keyboard where it is: hosting, a hosted window shown (`shown`), no field of Margin's wanting the keys | margin-core, `core/page/press.rs` (`keys_stay`, `Page::presses_keep_keys`); the page keeps the field's word (`Page::set_field_keys`), the Swift's `pageWantsKeyboard` reads it | A rule both platforms need: Windows' `MA_NOACTIVATE` is the same decision (today `hosting` only; it can read this once its window has a core page) |
 | Which way a press at a point goes: through to what's hosted (the slot, the window's buttons while windowed), Margin's UI with the keyboard staying, Margin's UI as before, or outside the window | margin-core, `core/page/press.rs` (`press_way`), over the existing `PassThrough::gets`; `PagePointer::passes` becomes a free function both use | The pointer's own rules are the core's already; the tap's thread reads them from a copy (as `PaneClick.decide` reads `PassThrough.pageGets`) |
-| The event tap: presses of every button, and the drags and release of a press it took; a press on Margin's panel taken and delivered to the panel as the window server's own record, its drags and release after it | Swift, `PaneClickTap.swift` (`PaneClickCore.event`, the tap's existing thread, mask and callback); the panels told in its scene (`PaneClickScene.panels`, from `MarginWindowController.panelScene`) | OS mechanism: CGEventTap, SkyLight's records. One tap for both jobs: a second tap would be a second round trip per press |
+| The event tap: presses of every button, and the drags and release of a press it took; a press on Margin's panel taken and delivered to the panel as an event made afresh from it (`PanelEvents`: `NSEvent.mouseEvent` for the panel, `postToPid` to Margin's own process; public calls only, never the window server's own record of the press), its drags and release after it | Swift, `PaneClickTap.swift` (`PaneClickCore.event`, the tap's existing thread, mask and callback); the panels told in its scene (`PaneClickScene.panels`, from `MarginWindowController.panelScene`) | OS mechanism: CGEventTap, SkyLight's records. One tap for both jobs: a second tap would be a second round trip per press |
 | Another window over the panel at the point (a hosted app's menu, a sheet, the Dock, a system dialog, a notification, Margin's quit prompt): the press as before | Swift, the tap's existing `cover` read (`AXPaneFocus.cover`, the window server's list for that press only) | The window server's own list |
 | A press the tap delivered needs no hand-back: `pressEnded` skips `afterPress` for it (by its event number, as the tap's claims are known today) | Swift, MarginWindowController / MarginWindows | AppKit's keys, the panel's |
 | A field focused by the press: `takeKeys` as today (the panel made key; the keyboard moves only then) | unchanged | The page's `focus` op is unchanged |
-| The tap's lifetime: while a Margin window on the current Space shows a hosted app (or a split, as today), Accessibility granted, the records' layout checked at launch; off with `defaults write com.unibox.margin MarginSidebarTap -bool NO` (today's hand-back then) | Swift, `MarginWindows.paneSceneChanged` | OS permissions and settings |
+| The tap's lifetime: while a Margin window on the current Space shows a hosted app (or a split, as today), Accessibility granted; off with `defaults write com.unibox.margin MarginSidebarTap -bool NO` (today's hand-back then) | Swift, `MarginWindows.paneSceneChanged` | OS permissions and settings |
 | The double-click: on an empty part of the sidebar, both clicks of it, nothing of Margin's open, the palette opens as the palette's key opens it | app/shared/ui: `ui/empty.ts` (the rule: what's empty), `behaviors/empty.ts` (the behaviour), the runtime's `openPaletteAsKey` (the key's rule, which overlay.ts's `command palette` now uses too) | The sidebar's behaviour is the shared UI's: every theme, every host, Windows' web view too |
 | A theme marking an area as never empty: `m-empty="never"` | the theme contract: ui/sanitize.ts `BEHAVIORS`, themes/README.md | Only ever less empty: no theme can make a row, a button or a field "empty" |
 | The dev hook's `say: spot`: the shared rule's own scan (`marginApp.devEmptySpot`), its old selector when the page has none | DevHooks.swift calls the page | One rule for the screen checks and the behaviour |
@@ -60,18 +60,18 @@ off `refactor/hosted-only` (e5650a99). File and line references are to that comm
 
 1. The scene (main thread, at each change of the holes, the page's state, a field's keys, the Space): every Margin
    window on the current Space that's on screen, with its panel's number, its content's frame (top left), its slot, its
-   window controls and full screen, and the core's `presses_keep_keys`. No panel in it while the records' layout
-   failed its launch check, the part is off, or Accessibility isn't granted.
+   window controls and full screen, and the core's `presses_keep_keys`. No panel in it while the part is off or
+   Accessibility isn't granted.
 2. A press (any button) on the tap's thread, no press of the tap's under way:
    - with another button held: as before;
    - `press_way` for the panel whose content holds the point: anything but `ui` (keys staying): as before;
    - another window over the panel at the point (`cover`): as before;
-   - else delivered to the panel as its own record (`PaneFronting.deliver` to Margin's own pid, the panel's number, its
+   - else delivered to the panel as an event made afresh (`PanelEvents.post` to Margin's own pid: the panel's number, its
      point in the panel), the event swallowed; its number kept for `pressEnded`; said to the main thread.
 3. While a press it took is under way: every mouse button's drag and release goes to the same panel the same way, and
    another button's press there too; the last button up ends it. Moves, scrolls, the trackpad's swipes and every key
    never come through the tap.
-4. Delivery refused (no records): the press goes on as before, routed, and today's hand-back follows.
+4. Delivery refused (no such process, not a mouse event): the press goes on as before, routed, and today's hand-back follows.
 
 Order: the callback delivers each event before it returns, and the window server hands the tap its events one at a
 time, so a press, its drags and its release reach the panel in the order they came. Keys typed meanwhile go to the
@@ -81,7 +81,7 @@ hosted app, which kept the keyboard: nothing to order against.
 
 The press the tap delivered never moved the keyboard, so nothing is handed back and nothing waits: `pressEnded` skips
 `afterPress` for it at once. `pressSettle` is left only where the window server still routed the press (no tap:
-Accessibility not granted, the records' layout refused by a later macOS, `MarginSidebarTap` off; or a press the tap
+Accessibility not granted, `MarginSidebarTap` off; or a press the tap
 let go because another window covered the panel there) and for `menuItemRan`, a menu item of Margin's run while Margin
 is the front app; both unchanged. Its comment says so.
 
@@ -91,7 +91,7 @@ is the front app; both unchanged. Its comment says so.
   no mouse button changes. Mouse moves and scrolls aren't in its mask.
 - Per press: one round trip to Margin's tap thread (as the split's tap has today), the core's `press_way` (a few
   comparisons), and for a press on Margin's UI the window server's list of the windows above the panel.
-- Per drag event of a press the tap took: one round trip and one record posted. Other presses' drags pass at one
+- Per drag event of a press the tap took: one round trip and one event made and posted. Other presses' drags pass at one
   comparison.
 - Measured in `app/platforms/macos/ffi/tests/press_cost.rs` (the core's part) and the report's numbers (the list read).
 
@@ -146,3 +146,20 @@ A theme with no `m-swipe` column has only its lists' empty room (`m-scroll`, `m-
   `m-empty="never"` honoured, any other value refused by the sanitizer.
 - Screen suite (run by Tirth): k1 tightened back to "the pane's window never resigned key"; k2, a double-click on an
   empty spot opens the palette with the pane still the front app; k3, a double-click in the pane's content doesn't.
+
+## Delivered afresh, never as the window server's record (2026-11-24, after the first screen run)
+
+The first build delivered each sidebar press as the window server's own record of it (as a cut pane's press). On the
+real screen (the core part's k1) the pane never resigned key, but AppKit in Margin then keyed the panel, whose
+`canBecomeKey` was false, and took Margin for active (`appkit active true`, `panel … key true`, `allow key false`),
+while the window server kept the pane the front app; the next key went to Margin, which relayed it and handed the keys
+back. The same delivery of a press made afresh, to an off-screen non-activating panel with a web view in a process of
+its own, left AppKit inactive and the panel not key, whether posted as a record made from a fresh event, put in
+AppKit's queue or posted to the process (`postToPid`); the page got its mousedown and double-click each time (the lab
+in the report). The posting, the panel and WebKit are ruled out; what's left is the real press's own record, which no
+lab here can read (a real press through an event tap on the real screen). The likely field is the window server's
+word on a click (a click on a window that isn't key makes it key: the make-key flag yabai and AltTab set, 0x3a = 0x10),
+which AppKit would honour over `canBecomeKey`; the next screen run's log line says the bytes.
+The tap now makes the event afresh from the press's public fields (`PanelEvents`) and posts it to Margin's own process;
+the first press's own record is read only to be said in the log (its bytes 0x38-0x3b), so the next screen run shows
+the field. No record is posted for the panel any more, and the panel part no longer needs the records' layout check.

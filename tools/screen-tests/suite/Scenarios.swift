@@ -141,7 +141,7 @@ enum Step: Equatable {
     case .overflow(let t, let s): return "overflow: \(t.text), wider by its own minimum than the page area, held \(Int(s)) s in Margin's Space at its minimum width, its right edge the page area's"
     case .animations(let label): return "animations (\(label)): Margin's page's running animations and its own frame requests in a second (dev hook), said"
     case .idleCost(let label, let s): return "idle-cost (\(label)): nothing done for \(Int(s)) s: Margin's CPU time, its idle wakeups a second and its memory footprint (the kernel's own counts), said; the budget: under 0.5% CPU"
-    case .splitWith(let main, let adding): return "split: Chameleon \(adding) added beside Chameleon \(main) (each shown once for its item id, dev hook `ui split.add`, as the row's menu): side by side in Margin's Space, Margin says `pane clicks: on`"
+    case .splitWith(let main, let adding): return "split: Chameleon \(adding) added beside Chameleon \(main) (each shown once for its item id, dev hook `ui split.add`, as the row's menu): side by side in Margin's Space, Margin says `pane clicks: on` (the press tap, running since the first app was hosted, in its split mode)"
     case .paneClick(let n, let kind):
       let what: String
       switch kind {

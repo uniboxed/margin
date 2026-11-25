@@ -114,11 +114,12 @@ Notes on the rows:
   pane's app with its window at 0x3c and its point in that window (top left) as doubles at 0x20 and 0x28
   (`PaneRecords.delivered`, `PaneActivator.deliver`): the press, its drags and its release reach that window, nothing
   raised (2026-11-22, 26B131, Chameleon test copies in Margin's Space). Refused: the press routed as before.
-- **Rows 40 and 41 also serve a press on Margin's own panel (docs/SIDEBAR-PRESS.md, GitHub #29), with the same
-  `paneDelivery`.** Row 41 reads the press's own record and row 40 posts it to Margin's own process with the panel's
-  number at 0x3c and its point in the panel (`PaneActivator.deliver`), its drags and release after it: the window
-  server never routes the press, so it never moves the keyboard from the hosted app. No record to another app. Refused
-  or `MarginSidebarTap` NO: the press routed as before, the keys handed back after it.
+- **Row 41 is read once for a press on Margin's own panel (docs/SIDEBAR-PRESS.md, GitHub #29), only to be said.** The
+  press is delivered to Margin's panel as an event made afresh with public calls (`NSEvent.mouseEvent` for the panel,
+  `CGEvent.postToPid` to Margin's own process: PaneClickTap.swift `PanelEvents`), never as its own record: posted as
+  its record (row 40, the first build), the press keyed the panel inside AppKit and took Margin for active (the real
+  screen, 2026-11-24). The first press's record (row 41, `PaneActivator.record`, when the records' layout passed) gives
+  its bytes 0x38-0x3b to the log line `sidebar presses: delivered …`. Nothing is posted with it; no record to any app.
 - **Rows 40-45 (all panes active).** Their own words at the end of the host's line: `…; anchors ok; panes active ok`, or `panes active off: SLPSPostEventRecordTo missing` / `…: the event records' layout isn't the one checked (an AppKit-defined event's window at 0x3c 0x0, expected 0x5a17)`. The make-key flag (0x3a = 0x10) can't be built with a public call, so the check can't see it change: it's yabai's and AltTab's, and the research's. Two panes of one app can't both be active (one key window per app): never tried. Not used, and why: `SLSSetWindowHasKeyAppearance` and `SLSSetWindowActive` sent from another process do nothing (allfocus e3f, e4c); `SLPSStealKeyFocus`/`SLPSReleaseKeyFocus` not needed (the keyboard stays the front process's); `SLPSGetKeyFocusProcess` not called (it takes two pointers: declared with one it crashes).
 - **The macOS build** (`kern.osversion`) is kept in `UserDefaults` as `MarginPrivateCallsBuild`. A new one adds `private calls: macOS build changed from 26B123 to 26C45: private calls checked again`. Every launch checks everything anyway.
 - **The freeze can't be verified by the product**: whether the screen really holds still needs a screen capture, and screen recording is ruled out of the mechanism.

@@ -9847,3 +9847,42 @@ Both parts merged (`fix/link-resilience-link` into the session's part): one canc
   and k2's are the same kind of point. The suite type-checks (`swiftc -typecheck`); it was not run.
 - The tap's own work per event, on the unit checks' stand-in, is printed by panel-press-tests.swift (a sidebar click,
   a click through the hole, a drag of a press it took).
+
+## The sidebar press delivered as an event made afresh; the split's pane clicks said apart (2026-11-24, after the first screen run)
+
+- **Seen** (core k1, 20261124-232233): the pane never resigned key and nothing was handed back, but after the first
+  delivered press (b2's, on the frame) Margin's dev hook said `panel … key true`, `allow key false`, `appkit active
+  true`, `active false`: AppKit keyed the panel (its `canBecomeKey` false) and took Margin for active while the window
+  server kept the pane the front app, and k1's plain key then went to Margin ("a key reached Margin … (Margin's key
+  window: panel)"), relayed and handed back. A person would have seen the hosted app keep its active look and its menu
+  bar (the window server's front app), Margin's panel drawn as key, and the first key typed after a sidebar click
+  reach the app only through the relay; AppKit's own `didBecomeActive` (which Margin hears: `keepFront`,
+  `tryFullScreen`, the menu bar watch) could fire; NSWorkspace's never did (the front app never changed).
+- **Why, as far as can be seen from here**: an off-screen lab (its own accessory process, a non-activating panel that
+  refuses key, with and without a web view; nothing posted to another process or to the HID stream) delivered a press
+  made afresh three ways (as a record through `SLPSPostEventRecordTo`, through AppKit's queue, `postToPid`): the panel
+  got the press and the page its mousedown and double-click, AppKit stayed inactive and the panel not key every time.
+  So neither the posting nor the panel nor WebKit does it; the real press's own record does (its window server's word
+  on a click, most likely the make-key flag at 0x3a, 0x10, that yabai and AltTab set by hand). No lab here can read a
+  real press's record; the first press's bytes 0x38-0x3b are now said in Margin's log, never posted, and k1's detail
+  shows that line.
+- **Fix**: the tap delivers a press on the panel, and its drags and release, as an event made afresh from its public
+  fields (type, point in the panel, modifiers, event number, click count, pressure, button, movement:
+  `NSEvent.mouseEvent` for the panel, `cgEvent.postToPid` to Margin's own process; PaneClickTap.swift `PanelEvents`).
+  Public calls only: the panel part no longer needs the records' layout (`sidebarTap` is the setting alone). Cut panes
+  keep their records (another app's window, made key first).
+- **Logs**: one tap, two modes said apart. `press tap: on` / `off` is the tap (it runs while a Margin window on the
+  current Space hosts); `pane clicks: on` / `off` is the split's part of it (the tap running and a split's panes in its
+  scene), each said once as it changes, from the tap's own thread or the scene's. The screen suite's split step
+  (PaneClicks.swift `splitWith`, read by pane-clicks, panes-active and cut-panes) still waits for `pane clicks: on`,
+  now meaning exactly that; it was the only suite reader of the tap's lines.
+- **Covers**: a press where another window covers the panel (Notification Center, pid 793, layer 23, in the
+  pane-clicks run) goes as before: the window server's list read for that press, any window above the panel with
+  alpha above 0 below the assistive-technology level counts, as for a pane.
+- **Tests, failing first**: panel-press-tests.swift (5 checks failed with the panel delivered as records again: each
+  press must go out as an event made afresh; `PanelEvents.make` keeps the window, its point, click count, event
+  number, modifiers, button and movement; the `pane clicks` lines said once each way, only while running with a
+  split); e2e-glue.swift (a double-click made afresh and posted to the e2e's own process through the window server
+  reaches the panel and opens the palette, AppKit not active before or after, no `didBecomeActive`, the panel never
+  keyed: the records path can't run in the tests, so this pins the new path, not the old failure); e2e-split.swift (the
+  split over: the tap stays for the panel, told no panes).

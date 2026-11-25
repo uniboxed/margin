@@ -26,6 +26,66 @@ private let inSidebar = CGPoint(x: 120, y: 500), inPage = CGPoint(x: 900, y: 500
 func panelPressTests() {
     panelPressDecisionTests()
     panelPressPipeTests()
+    panelEventTests()
+    panelTapLineTests()
+}
+
+// One tap, two modes said apart (the screen suite reads them: PaneClicks.swift `splitWith`): `pane clicks: on` only
+// while the tap runs and its scene has a split's panes, `off` once either is over, each once. A tap made, never started:
+// its thread's word (`splitSaid(running:)`) given by hand.
+private func panelTapLineTests() {
+    let lines = PaneBox<[String]>([])
+    let tap = PaneClickTap(core: PaneClickCore(focuser: FakePaneFocus(), report: { _ in }), said: { lines.value.append($0) })
+    let left = CGRect(x: 276, y: 41, width: 610, height: 933), right = CGRect(x: 894, y: 41, width: 610, height: 933)
+    var split = PaneClickScene(panes: [.init(rect: left, pid: 501, window: 10), .init(rect: right, pid: 502, window: 20)], focused: 10, slot: Slot(rect: hole, radius: 12, holes: [left, right]))
+    split.panels = [panel()]
+    tap.update(panelScene())
+    tap.update(split)
+    let beforeRunning = lines.value
+    tap.splitSaid(running: true)
+    let started = lines.value
+    tap.update(split)
+    tap.update(panelScene())
+    let alone = lines.value
+    tap.update(split)
+    tap.stop()
+    let stopped = lines.value
+    check("press tap: `pane clicks: on` only once it runs with a split's panes (not for the sidebar alone, not before it runs), said once; `off` as the split goes and as the tap stops",
+          beforeRunning.isEmpty && started.count == 1 && started[0].hasPrefix("pane clicks: on (")
+            && alone.count == 2 && alone[1].hasPrefix("pane clicks: off (") && stopped.count == 4 && stopped[2].hasPrefix("pane clicks: on (") && stopped[3].hasPrefix("pane clicks: off ("),
+          "\(stopped)")
+}
+
+// The event made afresh for the panel (PaneClickTap.swift `PanelEvents`): the press's own public fields, the panel's
+// window and its point there; never the window server's record (which keyed the panel and took Margin for active in
+// AppKit on the real screen, 2026-11-24). Made here, never posted.
+private func panelEventTests() {
+    func ev(_ t: CGEventType, _ p: CGPoint, _ b: CGMouseButton = .left) -> CGEvent { CGEvent(mouseEventSource: nil, mouseType: t, mouseCursorPosition: p, mouseButton: b)! }
+    let down = ev(.leftMouseDown, inSidebar)
+    down.setIntegerValueField(.mouseEventClickState, value: 2)
+    down.setIntegerValueField(.mouseEventNumber, value: 41)
+    down.flags = [.maskShift]
+    let made = PanelEvents.make(from: down, window: 6, content: content)
+    let ns = made.flatMap { NSEvent(cgEvent: $0) }
+    check("panel event: a press made afresh for the panel: its type, the panel's window, its click count, its event number (how pressEnded knows it), its modifiers",
+          ns?.type == .leftMouseDown && ns?.windowNumber == 6 && ns?.clickCount == 2 && ns?.eventNumber == 41 && ns?.modifierFlags.contains(.shift) == true && made !== down,
+          "\(String(describing: ns))")
+    check("panel event: …its point in the panel (AppKit's, from its bottom left): the press's less the content's top left",
+          ns.map { abs($0.locationInWindow.x - 120) < 0.5 && abs($0.locationInWindow.y - (content.height - 467)) < 0.5 } == true,
+          "\(String(describing: ns?.locationInWindow))")
+    let other = ev(.otherMouseDown, inSidebar, .center)
+    other.setIntegerValueField(.mouseEventButtonNumber, value: 3)
+    let drag = ev(.leftMouseDragged, inSidebar)
+    drag.setIntegerValueField(.mouseEventDeltaX, value: 7)
+    drag.setIntegerValueField(.mouseEventDeltaY, value: -4)
+    let madeOther = PanelEvents.make(from: other, window: 6, content: content), madeDrag = PanelEvents.make(from: drag, window: 6, content: content)
+    check("panel event: another button's press keeps its button (a mouse's fourth), a drag its movement",
+          madeOther?.getIntegerValueField(.mouseEventButtonNumber) == 3 && madeOther?.type == .otherMouseDown
+            && madeDrag?.getIntegerValueField(.mouseEventDeltaX) == 7 && madeDrag?.getIntegerValueField(.mouseEventDeltaY) == -4 && madeDrag?.type == .leftMouseDragged)
+    let key = CGEvent(keyboardEventSource: nil, virtualKey: 7, keyDown: true)!
+    check("panel event: never a key, a move or a scroll; never for no window", PanelEvents.make(from: key, window: 6, content: content) == nil
+          && PanelEvents.make(from: ev(.mouseMoved, inSidebar), window: 6, content: content) == nil && PanelEvents.make(from: down, window: 0, content: content) == nil
+          && !PanelEvents.post(down, pid: 0, window: 6, content: content))
 }
 
 private func panelPressDecisionTests() {
@@ -70,7 +130,7 @@ private func panelPressPipeTests() {
     let up = core.event(.leftMouseUp, ev(.leftMouseUp, CGPoint(x: 130, y: 510), number: 41))
     let after = core.event(.leftMouseDragged, ev(.leftMouseDragged, inSidebar))
     check("panel press: a click on the sidebar: the press, its drags (one out over the page area) and its release delivered to Margin's panel at the panel's own points, in order, each taken",
-          down && drag && dragOut && up && f.log == ["deliver 1 to 6 at 120,467", "deliver 6 to 6 at 130,477", "deliver 6 to 6 at 900,467", "deliver 2 to 6 at 130,477"], "\(f.log)")
+          down && drag && dragOut && up && f.log == ["panel 1 to 6 at 120,467", "panel 6 to 6 at 130,477", "panel 6 to 6 at 900,467", "panel 2 to 6 at 130,477"], "\(f.log)")
     check("panel press: …the window server's list read once, for the press (whatever's over the panel there)", f.coverAsks == 1, "\(f.coverAsks)")
     check("panel press: …once released, the next drag goes on as it came", !after)
     check("panel press: …the claim pressEnded reads: its number, once", core.claimedPanel(number: 41) && !core.claimedPanel(number: 41) && core.panelPresses == 1)
@@ -84,7 +144,7 @@ private func panelPressPipeTests() {
     f.log = []
     let rd = core.event(.rightMouseDown, ev(.rightMouseDown, inSidebar, .right))
     let ru = core.event(.rightMouseUp, ev(.rightMouseUp, inSidebar, .right))
-    check("panel press: a right click on the sidebar (its menu): delivered and taken", rd && ru && f.log == ["deliver 3 to 6 at 120,467", "deliver 4 to 6 at 120,467"], "\(f.log)")
+    check("panel press: a right click on the sidebar (its menu): delivered and taken", rd && ru && f.log == ["panel 3 to 6 at 120,467", "panel 4 to 6 at 120,467"], "\(f.log)")
     // Another button pressed during a press on the panel: the panel's too; the press under way ends with the last.
     f.log = []
     let a = core.event(.leftMouseDown, ev(.leftMouseDown, inSidebar))
@@ -94,7 +154,7 @@ private func panelPressPipeTests() {
     let e = core.event(.rightMouseUp, ev(.rightMouseUp, inPage, .right))
     let g = core.event(.leftMouseDragged, ev(.leftMouseDragged, inSidebar))
     check("panel press: another button's press during one on the panel: the panel's too, the press under way over at the last release",
-          a && b && c && d && e && !g && f.log == ["deliver 1 to 6 at 120,467", "deliver 3 to 6 at 900,467", "deliver 2 to 6 at 120,467", "deliver 7 to 6 at 900,467", "deliver 4 to 6 at 900,467"], "\(f.log)")
+          a && b && c && d && e && !g && f.log == ["panel 1 to 6 at 120,467", "panel 3 to 6 at 900,467", "panel 2 to 6 at 120,467", "panel 7 to 6 at 900,467", "panel 4 to 6 at 900,467"], "\(f.log)")
     // A press under way whose release the tap never heard (macOS turned it off a moment): dropped at the next press,
     // which is decided afresh.
     f.log = []
@@ -103,7 +163,7 @@ private func panelPressPipeTests() {
     let fresh = core.event(.leftMouseDown, ev(.leftMouseDown, inPage))
     let freshUp = core.event(.leftMouseUp, ev(.leftMouseUp, inPage))
     check("panel press: a press under way whose release was never heard: dropped at the next press, decided afresh (through the hole: as it came)",
-          !fresh && !freshUp && f.log == ["deliver 1 to 6 at 120,467"], "\(f.log)")
+          !fresh && !freshUp && f.log == ["panel 1 to 6 at 120,467"], "\(f.log)")
     core.buttonHeld = { _ in true }
     // Covered there by another window (a hosted app's menu, the Dock, a notification): as before.
     f.log = []
@@ -117,11 +177,11 @@ private func panelPressPipeTests() {
     _ = core.event(.leftMouseUp, ev(.leftMouseUp, inSidebar))
     // No records (delivery refused): as before, today's hand-back after it.
     let h = FakePaneFocus()
-    h.delivers = false
+    h.panelDelivers = false
     let core2 = PaneClickCore(focuser: h, report: { _ in })
     core2.buttonHeld = { _ in true }
     core2.update(panelScene())
-    check("panel press: no records: the press goes on as it came (routed, handed back as before), nothing claimed",
+    check("panel press: its delivery refused (no such process): the press goes on as it came (routed, handed back as before), nothing claimed",
           !core2.event(.leftMouseDown, ev(.leftMouseDown, inSidebar, number: 9)) && !core2.event(.leftMouseUp, ev(.leftMouseUp, inSidebar, number: 9)) && !core2.claimedPanel(number: 9))
     // A split up: the divider (Margin's) delivered to the panel; a press in the pane without the keys still held.
     let left = CGRect(x: 276, y: 41, width: 610, height: 933), right = CGRect(x: 894, y: 41, width: 610, height: 933)

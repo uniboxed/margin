@@ -841,6 +841,41 @@ func glueScenario() async {
         check("the page area's double-click (what's hosted): never the palette", closed && none >= 0 && byNow == byBefore + 1, "closed \(closed) by a double-click \(byNow - byBefore)")
       } else { check("the page area to double-click", false) }
     }
+    // ---- the press tap's own delivery (PaneClickTap.swift `PanelEvents`): a double-click on the empty spot made afresh
+    // and posted to this process through the window server, as the tap posts it: the page's dblclick, the palette; AppKit
+    // never keys the panel nor takes the process for active for it (the real screen, 2026-11-24: delivered as the window
+    // server's own record, the press did both) ----
+    do {
+      _ = await until(3) { !c.pageWantsKeyboard }
+      let content = MarginWindowGeometry.content(of: c.panel.frame)
+      let at = CGPoint(x: content.minX + spot.x, y: content.minY + spot.y)
+      final class Heard { var active = 0, key = 0 }
+      let heard = Heard()
+      let observers = [
+        NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in heard.active += 1 },
+        NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: c.panel, queue: .main) { _ in heard.key += 1 },
+      ]
+      defer { for o in observers { NotificationCenter.default.removeObserver(o) } }
+      let activeBefore = NSApp.isActive, pressesBefore = c.panel.presses
+      let byBefore = await js(c.webView, "return marginApp.stats().palette.filter((p) => p.by === 'a double-click on the sidebar').length") as? Int ?? -1
+      var posted = true
+      for (type, count) in [(CGEventType.leftMouseDown, 1), (.leftMouseUp, 1), (.leftMouseDown, 2), (.leftMouseUp, 2)] {
+        guard let e = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: at, mouseButton: .left) else { posted = false; continue }
+        e.setIntegerValueField(.mouseEventClickState, value: Int64(count))
+        e.setIntegerValueField(.mouseEventNumber, value: 7200 + Int64(count))
+        posted = PanelEvents.post(e, pid: ProcessInfo.processInfo.processIdentifier, window: c.panel.windowNumber, content: content) && posted
+      }
+      let reached = await until(3) { c.panel.presses == pressesBefore + 2 }
+      let said = await waitJS(c.webView, "return marginApp.stats().palette.filter((p) => p.by === 'a double-click on the sidebar').length === \(byBefore + 1)")
+      check("the press tap's delivery: a double-click made afresh and posted to Margin's own process reaches its panel (both presses) and its page (the palette, as a double-click's)",
+            posted && reached && said, "posted \(posted) presses \(c.panel.presses - pressesBefore) said \(said)")
+      check("the press tap's delivery: AppKit never took Margin for active for it (as before the presses: \(activeBefore)), never said it became active, never keyed the panel for it",
+            NSApp.isActive == activeBefore && heard.active == 0 && heard.key == 0 && !c.panel.isKeyWindow,
+            "active \(NSApp.isActive) (before \(activeBefore)), became active \(heard.active), panel key \(heard.key) \(c.panel.isKeyWindow)")
+      c.push(#"{"type":"pressOutside"}"#)
+      _ = await waitJS(c.webView, "return !marginApp.appWindow().palette")
+      _ = await until(3) { !c.pageWantsKeyboard }
+    }
   } else { check("an empty spot of the sidebar", false) }
   // (The engine asks Margin's window's page to measure at every look while it waits for a layout at its whole width:
   // a size the window took isn't measured until a frame is drawn, which can be seconds late. The page measures at once.)

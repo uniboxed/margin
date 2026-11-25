@@ -48,7 +48,7 @@ extension Runner {
     let b = copyApp(adding).flatMap { placedWindow($0.processIdentifier, minWidth: 300, minHeight: 300) }
     let apart = a.flatMap { a in b.map { b in a.on && b.on && a.spaces == [marginSpace] && b.spaces == [marginSpace] && a.r.intersection(b.r).isNull } } ?? false
     let tap = mark.since("pane clicks: on")
-    step("split: Chameleon \(main) and \(adding) side by side in Margin's Space (dev hook `ui split.add`), the pane click tap on", made && apart && !tap.isEmpty,
+    step("split: Chameleon \(main) and \(adding) side by side in Margin's Space (dev hook `ui split.add`), the press tap's split mode on (Margin says `pane clicks: on`)", made && apart && !tap.isEmpty,
          "\(said.map { String($0.suffix(80)) } ?? "no answer"); layout \(line.map { String($0.suffix(220)) } ?? "none"); windows \(a.map { "#\($0.n) \(rect($0.r))" } ?? "none"), \(b.map { "#\($0.n) \(rect($0.r))" } ?? "none"); Margin: \(tap.last.map { String($0.suffix(120)) } ?? "no `pane clicks: on`")")
   }
 

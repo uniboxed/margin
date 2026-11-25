@@ -40,15 +40,21 @@
 // included), so the hosted app's window resigned key and drew its unfocused look until Margin handed the keys back
 // (`pressSettle`, 185-193 ms on the real screen). Now a press of any button on Margin's UI in a Margin window that shows
 // an app with no field of Margin's wanting the keys (the core's way, core/page/press.rs `press_way`, over the scene's
-// copy of its slot: `PanelPress`) is taken here and delivered to Margin's panel as the window server's own record, at
-// the panel's own point (PaneRecords.swift `delivered`, as a cut pane's), with its drags and release after it, and any
-// other button's press until the last is up; so the window server never routes it and never moves the keyboard. The
-// panel's web view gets the click, the double-click, the drag, the right-click's menu as before; a field the press
-// focuses takes the keys then (MarginWindowController `takeKeys`), and only then. As before: a press through the hole,
-// on the window's own buttons while windowed, with another button held, on another window over the panel there (a
-// hosted app's menu, the Dock, a notification, Margin's quit prompt: the window server's list read for that press only),
-// and every press when the records aren't there (their layout refused at launch, `paneDelivery` nil) or the part is off
-// (`MarginSidebarTap` NO): routed, the keys handed back after it as before.
+// copy of its slot: `PanelPress`) is taken here and delivered to Margin's panel as an event made afresh from it, at the
+// panel's own point, posted to Margin's own process (`PanelEvents`: public calls only; never the window server's own
+// record of the press, which carries its word that the click keys the panel), with its drags and release after it, and
+// any other button's press until the last is up; so the window server never routes it and never moves the keyboard,
+// and AppKit in Margin neither keys the panel nor takes Margin for active. The panel's web view gets the click, the
+// double-click, the drag, the right-click's menu as before; a field the press focuses takes the keys then
+// (MarginWindowController `takeKeys`), and only then. As before: a press through the hole, on the window's own buttons
+// while windowed, with another button held, on another window over the panel there (a hosted app's menu, the Dock, a
+// notification or Notification Center, Margin's quit prompt: the window server's list read for that press only; an
+// overlay at the assistive-technology level and above lets it through, as for a pane), and every press when the part is
+// off (`MarginSidebarTap` NO): routed, the keys handed back after it as before.
+//
+// One tap, two modes said apart in the log: `press tap: on` / `off` (the tap itself: while a Margin window on the
+// current Space hosts), and `pane clicks: on` / `off` (a split shown while the tap is running: the first click in
+// another pane goes through), each once as it changes.
 //
 // Costs: no tap at all unless a Margin window on the current Space shows a hosted app, or two or more hosted windows
 // (nothing hosted, another Space current: none). With one: a round trip per press anywhere (any button), the core's way
@@ -200,6 +206,12 @@ nonisolated protocol PaneFocusing: AnyObject, Sendable {
     func focusWithoutRaise(pid: pid_t, window: Int) -> Bool
     func deliver(_ event: CGEvent, pid: pid_t, window: Int, origin: CGPoint) -> Bool
     func windowOrigin(_ window: Int) -> CGPoint?
+    // A press on Margin's own panel (docs/SIDEBAR-PRESS.md): an event made afresh from it for the panel `window` of `pid`
+    // whose content is at `content` (top left), posted to that process (`PanelEvents`); never the window server's own
+    // record of it. True: posted.
+    func deliverToPanel(_ event: CGEvent, pid: pid_t, window: Int, content: CGRect) -> Bool
+    // The window server's own record of an event, read (nil: unread): said once, for the first press on the panel.
+    func record(of event: CGEvent) -> [UInt8]?
 }
 
 extension PaneFocusing {
@@ -208,6 +220,44 @@ extension PaneFocusing {
     nonisolated func focusWithoutRaise(pid: pid_t, window: Int) -> Bool { false }
     nonisolated func deliver(_ event: CGEvent, pid: pid_t, window: Int, origin: CGPoint) -> Bool { false }
     nonisolated func windowOrigin(_ window: Int) -> CGPoint? { nil }
+    nonisolated func deliverToPanel(_ event: CGEvent, pid: pid_t, window: Int, content: CGRect) -> Bool { false }
+    nonisolated func record(of event: CGEvent) -> [UInt8]? { nil }
+}
+
+// A press on Margin's own panel, and its drags and release, as the press tap delivers them (docs/SIDEBAR-PRESS.md):
+// made afresh for the panel, with the press's own public fields (its type, its point in the panel, its modifiers, its
+// event number, its click count, its pressure, its button, its movement), and posted to Margin's own process
+// (`postToPid`: the window server hands it on, in order with every other event of Margin's, without routing it). Never
+// the window server's own record of the press: delivered as it came (the real screen, 2026-11-24, k1), that record made
+// AppKit key the panel (its `canBecomeKey` false) and take Margin for active while the hosted app stayed the window
+// server's front one, and the next key went to Margin; the same delivery of a press made afresh, to an off-screen
+// non-activating panel with a web view in a process of its own, left both as they were (the lab, 2026-11-24), so it's the
+// real press's own record: most likely its window server's word on a click (a click on a window that isn't key makes it
+// key: yabai's and AltTab's make-key flag, 0x3a = 0x10), which a press made afresh doesn't carry. The first press's
+// record is said in the log (its bytes 0x38-0x3b), never posted. All public API.
+nonisolated enum PanelEvents {
+    // The event made for the panel `window` whose content is at `content` (top left); nil: not a mouse button's event.
+    static func make(from e: CGEvent, window: Int, content: CGRect) -> CGEvent? {
+        let mouse: [CGEventType] = [.leftMouseDown, .leftMouseUp, .leftMouseDragged, .rightMouseDown, .rightMouseUp, .rightMouseDragged,
+                                    .otherMouseDown, .otherMouseUp, .otherMouseDragged]
+        guard mouse.contains(e.type), let kind = NSEvent.EventType(rawValue: UInt(e.type.rawValue)), window > 0 else { return nil }
+        let at = e.location
+        // (AppKit's window coordinates: from the panel's bottom left.)
+        let local = NSPoint(x: at.x - content.minX, y: content.height - (at.y - content.minY))
+        guard let made = NSEvent.mouseEvent(with: kind, location: local, modifierFlags: NSEvent.ModifierFlags(rawValue: UInt(e.flags.rawValue)),
+                                            timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window, context: nil,
+                                            eventNumber: Int(e.getIntegerValueField(.mouseEventNumber)), clickCount: Int(e.getIntegerValueField(.mouseEventClickState)),
+                                            pressure: Float(e.getDoubleValueField(.mouseEventPressure)))?.cgEvent else { return nil }
+        for field: CGEventField in [.mouseEventButtonNumber, .mouseEventDeltaX, .mouseEventDeltaY] { made.setIntegerValueField(field, value: e.getIntegerValueField(field)) }
+        return made
+    }
+
+    // Made and posted to `pid` (Margin's own). True: posted.
+    static func post(_ e: CGEvent, pid: pid_t, window: Int, content: CGRect) -> Bool {
+        guard pid > 0, let made = make(from: e, window: window, content: content) else { return false }
+        made.postToPid(pid)
+        return true
+    }
 }
 
 // The hold, apart from the event tap (the tests drive it with a stand-in focuser and a pipe of presses). A press comes in
@@ -238,6 +288,11 @@ nonisolated final class PaneClickCore: @unchecked Sendable {
         var origin: CGPoint
         var buttons: Set<Int64>
         var panel: Bool
+        var content: CGRect = .zero // (a panel's: its content, top left)
+    }
+    // (Where a press under way's events go: a cut pane's window as records, a panel as events made afresh.)
+    private func send(_ e: CGEvent, _ r: Redirect) -> Bool {
+        r.panel ? focuser.deliverToPanel(e, pid: r.pid, window: r.window, content: r.content) : focuser.deliver(e, pid: r.pid, window: r.window, origin: r.origin)
     }
     private var redirect: Redirect?
     // Whether a mouse button is held now (a press under way whose release the tap never heard, macOS having turned it
@@ -294,7 +349,7 @@ nonisolated final class PaneClickCore: @unchecked Sendable {
         // (One under way: its own buttons' drags and releases, then over at the last.)
         if let r, !down {
             guard r.buttons.contains(button) else { return false }
-            let taken = focuser.deliver(e, pid: r.pid, window: r.window, origin: r.origin)
+            let taken = send(e, r)
             if up {
                 lock.lock()
                 redirect?.buttons.remove(button)
@@ -306,28 +361,31 @@ nonisolated final class PaneClickCore: @unchecked Sendable {
         guard down else { return false }
         // (A press on Margin's panel under way: another button's press is the panel's too.)
         if let r, r.panel {
-            guard focuser.deliver(e, pid: r.pid, window: r.window, origin: r.origin) else { return false }
+            guard send(e, r) else { return false }
             lock.lock(); redirect?.buttons.insert(button); lock.unlock()
             return true
         }
         let p = Press(point: e.location, flags: e.flags, number: Int(e.getIntegerValueField(.mouseEventNumber)), otherButtons: otherButtons)
-        // A press on Margin's own UI with an app shown (docs/SIDEBAR-PRESS.md): delivered to the panel, the keyboard where
-        // it is; covered there by another window, or no records: as it came.
+        // A press on Margin's own UI with an app shown (docs/SIDEBAR-PRESS.md): delivered to the panel as an event made
+        // afresh (`PanelEvents`), the keyboard where it is; covered there by another window: as it came.
         lock.lock()
         let now = self.scene
         lock.unlock()
         if r == nil, let panel = PanelPress.target(p.point, scene: now, otherButtons: otherButtons) {
             if focuser.cover(at: p.point, above: panel.window, except: now?.marginWindows ?? []) == nil,
-               focuser.deliver(e, pid: panel.pid, window: panel.window, origin: panel.content.origin) {
+               focuser.deliverToPanel(e, pid: panel.pid, window: panel.window, content: panel.content) {
                 lock.lock()
-                redirect = Redirect(pid: panel.pid, window: panel.window, origin: panel.content.origin, buttons: [button], panel: true)
+                redirect = Redirect(pid: panel.pid, window: panel.window, origin: panel.content.origin, buttons: [button], panel: true, content: panel.content)
                 panelClaims.append(p.number)
                 if panelClaims.count > 16 { panelClaims.removeFirst(panelClaims.count - 16) }
                 panelPresses += 1
                 let n = panelPresses
                 lock.unlock()
                 if n == 1 || n % 500 == 0 {
-                    said?("sidebar presses: delivered to Margin's panel as the window server's records, the keyboard left with the app shown (\(n) so far)")
+                    // (The first: what the window server's own record of it said, never posted: its bytes 0x38-0x3b, where
+                    // a click's make-key flag is, 0x3a.)
+                    let own = n == 1 ? focuser.record(of: e).map { r in " (the window server's own record of it, not posted: 0x38-0x3b " + r.dropFirst(0x38).prefix(4).map { String(format: "%02x", $0) }.joined(separator: " ") + ")" } ?? "" : ""
+                    said?("sidebar presses: delivered to Margin's panel as events made afresh, the keyboard left with the app shown (\(n) so far)\(own)")
                 }
                 return true
             }
@@ -513,7 +571,7 @@ nonisolated final class PaneClickTap: PaneClickTapping, @unchecked Sendable {
     private func run() {
         guard let port = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap, eventsOfInterest: Self.mask,
                                            callback: paneClickTapCallback, userInfo: Unmanaged.passUnretained(self).toOpaque()) else {
-            said("pane clicks: the event tap wasn't made (Accessibility refused it?): a first click in another pane only focuses it, as before")
+            said("press tap: the event tap wasn't made (Accessibility refused it?): a press on Margin's sidebar hands the keys back after it, and a first click in another pane only focuses it, as before")
             return
         }
         let source = CFMachPortCreateRunLoopSource(nil, port, 0)
@@ -528,7 +586,8 @@ nonisolated final class PaneClickTap: PaneClickTapping, @unchecked Sendable {
         lock.unlock()
         if !early {
             CGEvent.tapEnable(tap: port, enable: true)
-            said("pane clicks: on (an event tap on left presses, its own thread): a first click in another pane goes through")
+            said("press tap: on (an event tap on mouse presses and the drags and releases of a press it took, its own thread): a press on Margin's sidebar keeps the app shown's keyboard")
+            splitSaid(running: true)
             CFRunLoopRun()
         }
         CGEvent.tapEnable(tap: port, enable: false)
@@ -546,6 +605,7 @@ nonisolated final class PaneClickTap: PaneClickTapping, @unchecked Sendable {
         stopped = true
         let port = self.port, loop = self.loop
         lock.unlock()
+        splitSaid(running: false)
         if let port { CGEvent.tapEnable(tap: port, enable: false) }
         // (A block on its run loop: taken even if it isn't running yet, unlike CFRunLoopStop alone.)
         if let loop {
@@ -554,8 +614,28 @@ nonisolated final class PaneClickTap: PaneClickTapping, @unchecked Sendable {
         }
     }
 
-    func update(_ scene: PaneClickScene?) { core.update(scene) }
+    func update(_ scene: PaneClickScene?) {
+        core.update(scene)
+        splitSaid(running: nil)
+    }
     func claimed(number: Int, at point: CGPoint) -> Bool { core.claimed(number: number, at: point) }
+
+    // `pane clicks: on` while the tap runs and its scene has a split's panes, `off` once either is over: said once each
+    // way, from whichever thread saw the change (the main thread's scene, the tap's own thread starting). `running`: the
+    // tap's thread's own word (nil: as it is).
+    private var running = false
+    private var splitOn = false
+    func splitSaid(running now: Bool?) {
+        lock.lock()
+        if let now { running = now }
+        let on = running && !stopped && !(core.current?.panes.isEmpty ?? true)
+        let changed = on != splitOn
+        splitOn = on
+        lock.unlock()
+        guard changed else { return }
+        said(on ? "pane clicks: on (a split shown, the press tap's): a first click in another pane goes through"
+                : "pane clicks: off (no split shown, or the press tap off)")
+    }
     func claimedPanel(number: Int) -> Bool { core.claimedPanel(number: number) }
 
     // On its thread: a press (held while its pane's window is made key, or a cut pane's taken), a drag or a release (a cut
@@ -570,7 +650,7 @@ nonisolated final class PaneClickTap: PaneClickTapping, @unchecked Sendable {
             guard let port else { return false }
             CGEvent.tapEnable(tap: port, enable: true)
             if n == 1 || n % 100 == 0 {
-                said("pane clicks: macOS turned the event tap off (\(type == .tapDisabledByTimeout ? "too slow" : "user input")): on again (\(n) so far)")
+                said("press tap: macOS turned the event tap off (\(type == .tapDisabledByTimeout ? "too slow" : "user input")): on again (\(n) so far)")
             }
             return false
         }
