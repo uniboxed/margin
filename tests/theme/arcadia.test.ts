@@ -742,6 +742,7 @@ for (const [engineName, engine] of ENGINES) {
           return { title: victim.title, ghost: ghost ? { text: ghost.textContent!.trim(), top: Math.round(ghost.getBoundingClientRect().top), inert: ghost.hasAttribute('inert'), z: getComputedStyle(ghost).zIndex } : null, timing: fade ? [fade.effect!.getTiming().duration, fade.effect!.getTiming().easing] : null, top };
         });
         assert.ok(closing2.ghost, 'a copy of the closed row');
+        assert.equal(await ev(() => [...document.querySelectorAll('.m-row-ghost, .m-row-ghost *')].some((n) => [...n.attributes].some((a) => a.name.startsWith('data-')))), false, 'none of its ids: nothing takes it for a row');
         assert.deepEqual([closing2.ghost!.text.startsWith(closing2.title.slice(0, 10)), closing2.ghost!.top, closing2.ghost!.inert, closing2.ghost!.z], [true, closing2.top, true, '-1'], 'where it was, inert, under the rest');
         assert.deepEqual(closing2.timing, [250, 'cubic-bezier(0.25, 0, 0.25, 1)'], 'fading on Arc\'s closing curve');
         await page.waitForTimeout(350);

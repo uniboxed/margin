@@ -96,6 +96,8 @@ export function createRowMotion(view: View, win: Window & typeof globalThis, { s
       copy.setAttribute('aria-hidden', 'true');
       copy.setAttribute('inert', '');
       copy.removeAttribute('id');
+      // (Only a picture of the row: none of its ids (`data-tab-id`…), so nothing takes it for a row while it fades.)
+      for (const n of [copy, ...copy.querySelectorAll('*')]) for (const a of [...n.attributes]) if (a.name.startsWith('data-') || a.name === 'id') n.removeAttribute(a.name);
       Object.assign(copy.style, { position: 'absolute', left: `${g.left}px`, top: `${g.top}px`, width: `${g.width}px`, height: `${g.height}px`, margin: '0', zIndex: '-1', pointerEvents: 'none' });
       g.parent.append(copy);
       let a: Animation;

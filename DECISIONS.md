@@ -10775,3 +10775,18 @@ through accessibility), so no access to Arc's data was given.
 - **Tests**: tests/ui-view-model.test.ts (named, the fallback for none, unknown: nothing), tests/ui-host-app.test.ts
   (kept, drawn again, not-names ignored), tests/theme/arcadia.test.ts (the chip and the key in the tooltip), the app's
   end-to-end run (told to a drawn page once, the page has them: 375 checks, all passed); `marginApp.stats()` has them.
+
+## M2.10: the gate's findings, fixed (`feat/arc-sidebar`, 2026-11-25)
+
+- **A closed row's copy counted as a row**: the browser's end-to-end run read the sidebar's rows by class (`a.tab`)
+  and found the fading copy (`m-row-ghost`) of a row that had just gone (a new tab turned into Margin's new-tab page),
+  first with its id, then as a row with none. The copy now keeps none of the row's ids (`data-*`, `id`: only a picture
+  of it), and the run's harness skips `.m-row-ghost` (tests/e2e/harness/ui.ts); the README names the class, for a
+  theme's own tests. tests/theme/arcadia.test.ts checks the copy has no ids.
+- **A space clicked in a second window**: tests/e2e/spaces.test.ts read the sidebar's space the moment the copy's state
+  had it; Arcadia slides it in as Arc does (its tab asked at once, the space drawn as it lands), so the test now waits
+  for it to be drawn.
+- **Not this branch's**: tests/link.test.ts's "an older app's tick" failed once under the gate's load and passed alone
+  five times out of five (nothing of the link's is changed here), as the Swift loop guard's timing check before it.
+- **Run**: every stage of `npm run gate` passed: unit, Rust, theme, security and the app's (2260 Swift checks, 375
+  end-to-end) in the second run; the browser's end-to-end (109) and the WebKit host after these fixes.

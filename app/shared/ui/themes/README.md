@@ -568,6 +568,8 @@ Classes and variables Margin sets for you to style:
   (a dropped row while its copy glides in);
 - `m-resizing` (the handle, and the root);
 - `m-crowded` (an `m-fit` bar while its items don't fit at their roomy size);
+- `m-row-ghost` (with `--m-rows-feel: arc`: a closed row's copy fading where it was, inert, none of its ids; a
+  test that counts your rows skips it);
 - `m-swiping`, `m-settling` and `--m-swipe-offset` (the `m-swipe` element). By default
   the offset jumps to its end under `m-settling`, for your own transition. Set
   `--m-swipe-feel: arc` or `dia` on the `m-swipe` element for Arc's or Dia's own feel
