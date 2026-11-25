@@ -42,10 +42,11 @@ export function installSwipe(rt: Rt) {
   // `shown`: the offset drawn now; `detent`: the space nearest it (-1, 0, 1), its change a haptic tick.
   // `anchor`: the space drawn (the swipe's own); `origin`: the offset the gesture started from (where a settle was
   // caught; else 0), `rebase` its next event its base; `caught`: a caught settle, its gesture not started or let go
-  // yet; `requested`: the space asked of the copy for it (at the lift, before the slide is in); `spring` and
+  // yet; `requested`: the space asked of the copy for it (at the lift, before the slide is in), `asked` that request
+  // (its own switch as it lands takes it, never asking again: ui/runtime.ts switchSpace); `spring` and
   // `settledAt`: the settle under way (its curve, when it began, its `token`: a caught one's end never comes).
   let swiping: { el: HTMLElement, neighbours: Record<string, string | undefined>, width: number, base: { offset: number, events: number }, settling: boolean, frame: number, offset: number, panes: HTMLElement[], bases: { left: number, top: number, width: number, height: number }[], ghosts: Record<string, HTMLElement[] | null>, position: string, overflow: string, target: string | null, dispatched: boolean, arc: boolean, scale: number, response: number, haptics: boolean, shown: number, detent: number,
-    anchor: string | null, origin: number, rebase: boolean, caught: boolean, requested: string | null, spring: ReturnType<typeof springArc> | null, settledAt: number, token: number } | null = null;
+    anchor: string | null, origin: number, rebase: boolean, caught: boolean, requested: string | null, asked: Promise<unknown> | null, spring: ReturnType<typeof springArc> | null, settledAt: number, token: number } | null = null;
   // The trackpad's phases (Margin.app tells them: `m-wheel-phase`): known at all, the fingers down, the momentum after a
   // lift under way, and a touch since the last wheel event (the next one starts a new gesture).
   const phases = { known: false, fingers: false, momentum: false, touched: false };
@@ -160,7 +161,7 @@ export function installSwipe(rt: Rt) {
     const arc = !!feel;
     swiping = { el, neighbours: { [-1]: spaces[at - 1]?.id, [1]: spaces[at + 1]?.id }, width: er.width || 1, base: { offset: 0, events: 0 }, settling: false, frame: 0, offset: 0,
       panes, bases, ghosts: {}, overflow: el.style.overflow, position, target: null, dispatched: false, arc, scale: arc ? ARC.SCALE : 1, response: feel?.response ?? ARC.RESPONSE, haptics: feel?.haptics ?? false, shown: 0, detent: 0,
-      anchor: typeof rt.vm?.space?.id === 'string' ? rt.vm.space.id : null, origin: 0, rebase: false, caught: false, requested: null, spring: null, settledAt: 0, token: 0 };
+      anchor: typeof rt.vm?.space?.id === 'string' ? rt.vm.space.id : null, origin: 0, rebase: false, caught: false, requested: null, asked: null, spring: null, settledAt: 0, token: 0 };
     el.style.overflow = 'clip'; // the neighbours sit outside it until they slide in
     el.classList.add('m-swiping');
   }
@@ -247,10 +248,12 @@ export function installSwipe(rt: Rt) {
       rt.holdSpace(s.anchor, duration + 100);
       if (s.requested !== s.target) {
         s.requested = s.target;
-        void Promise.resolve(rt.send('setSpace', { windowId: rt.windowId(), spaceId: s.target })).catch(() => {});
+        s.asked = Promise.resolve(rt.send('setSpace', { windowId: rt.windowId(), spaceId: s.target }));
+        s.asked.catch(() => {});
       }
     } else if (!s.target && s.requested && s.anchor) {
       s.requested = null;
+      s.asked = null;
       switchOwn(s.anchor);
     }
     // The neighbour slides fully in first; then the space is switched to, and the copy goes in the same frame the
@@ -296,6 +299,7 @@ export function installSwipe(rt: Rt) {
     const dir = near > 0 ? 1 : near < 0 ? -1 : 0;
     const to = dir ? s.neighbours[dir] : undefined;
     if (to) {
+      const asked = s.requested === to ? s.asked : null;
       switchOwn(to);
       if (rt.vm?.space?.id === to) {
         const el = s.el;
@@ -304,6 +308,7 @@ export function installSwipe(rt: Rt) {
         const n = swiping!;
         n.origin = x + dir * s.width;
         n.requested = to;
+        n.asked = asked;
         n.caught = true;
         n.rebase = true;
         n.offset = n.origin;
@@ -444,6 +449,13 @@ export function installSwipe(rt: Rt) {
 
   const api = {
     slideTo,
+    /** The request its own switch (`switchOwn`) to `spaceId` is: the one its settle already sent (that space asked of
+     *  the copy as it slid in, Margin.app showing its item), which the switch takes rather than asking again (each ask
+     *  shows the item again: a second Safari show of the same tab a slide later). Null for any other switch. */
+    askedFor(spaceId: string) {
+      const s = swiping;
+      return own && s && s.requested === spaceId ? s.asked : null;
+    },
     /** Another switch while a settle (a swipe's or a slide's) is still coming in: its own switch at the end dropped
      *  and the copy beside it gone (the new switch is drawn at once). Its own end's switch is never dropped. */
     cancelSettle() {

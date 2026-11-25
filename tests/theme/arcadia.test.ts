@@ -180,6 +180,9 @@ for (const [name, engine] of ENGINES) {
         assert.ok(drawn.every((x, i) => i === 0 || x <= drawn[i - 1] + 0.05) && drawn.every((x) => x >= -width - 0.5), `toward the next space, never past it: ${drawn.slice(0, 4)} … ${drawn.slice(-2)}`);
         assert.equal(await page.evaluate(() => T.rtSent().filter(([k]) => k === 'setSpace').at(-1)?.[1].spaceId), 'work', 'the next space asked for at the lift');
         await page.waitForFunction(() => T.rtVmFull().spaceName === 'Work', null, { timeout: 2000 });
+        // (Asked once: its switch as it lands takes the lift's request; each ask has Margin.app show the space's item
+        // again, a second Safari show of the same tab, 2026-11-25.)
+        assert.deepEqual(await page.evaluate(() => T.rtSent().filter(([k]) => k === 'setSpace').map(([, p]) => p.spaceId)), ['work'], 'asked for once');
         assert.equal(await page.evaluate(() => T.rtComputed('.space-pane', 'transition-duration')), '0s', 'no transition of the theme\'s on the moving part');
         await page.evaluate(() => T.unmountRuntime());
       });
@@ -631,6 +634,23 @@ for (const [engineName, engine] of ENGINES) {
         assert.deepEqual([t1.shown, t1.above, t1.left], [true, true, 7], `shown over the bar, 7 pt in (${JSON.stringify(t1)})`);
         assert.equal(t1.name, await ev((n) => document.querySelectorAll('.spaces .chip')[n].getAttribute('aria-label'), dotIndex));
         assert.deepEqual(t1.keys, [], 'no keys outside Margin.app');
+        // A drawing that leaves the bar as it was (a tab's title, a page loading: Safari's changes come all the time)
+        // measures nothing: `m-crowded` never taken off, the tooltip kept shown (2026-11-25: measured after every
+        // drawing, each laid the sidebar out twice and restarted the tooltip's delay under the pointer).
+        const kept = await ev((n) => new Promise<{ toggles: number, shown: boolean }>((done) => {
+          const nav = document.querySelector('.spaces')!;
+          let toggles = 0;
+          const mo = new MutationObserver((rs) => { toggles += rs.filter((r) => r.attributeName === 'm-crowded').length; });
+          mo.observe(nav, { attributes: true });
+          const rt = (window as any).__rt;
+          const id = Object.keys(rt.mock.state.tabs)[0];
+          for (let i = 0; i < 5; i++) {
+            rt.mock.state = { ...rt.mock.state, tabs: { ...rt.mock.state.tabs, [id]: { ...rt.mock.state.tabs[id], title: `Retitled ${i}` } } };
+            rt.host.setState(rt.mock.state);
+          }
+          requestAnimationFrame(() => { mo.disconnect(); done({ toggles, shown: getComputedStyle(document.querySelectorAll('.spaces .chip')[n].querySelector('.chip-tip')!).visibility === 'visible' }); });
+        }), dotIndex);
+        assert.deepEqual(kept, { toggles: 0, shown: true }, 'nothing measured, the tooltip kept');
         await away();
         assert.equal((await tip(dotIndex)).shown, false, 'gone at once');
         await at(500);
@@ -639,6 +659,15 @@ for (const [engineName, engine] of ENGINES) {
         await page.waitForTimeout(600);
         assert.equal((await tip(dotIndex)).shown, false, 'none over the icons');
         await away();
+        // Its items changed, its size not: read again (fewer spaces fit, more don't).
+        const crowdedNow = () => ev(() => document.querySelector('.spaces')!.hasAttribute('m-crowded'));
+        assert.equal((await at(300)).crowded, true);
+        const all = await ev(() => (window as any).__rt.mock.state.spaces);
+        const withSpaces = (list: unknown[]) => ev((l) => { const rt = (window as any).__rt; rt.mock.state = { ...rt.mock.state, spaces: l }; rt.host.setState(rt.mock.state); }, list);
+        await withSpaces(all.slice(0, 3));
+        assert.equal(await crowdedNow(), false, 'three spaces: every icon');
+        await withSpaces(all);
+        assert.equal(await crowdedNow(), true, 'ten again: dots');
         await at(260);
       });
 
@@ -685,6 +714,8 @@ for (const [engineName, engine] of ENGINES) {
         assert.equal((await ev(() => T.rtVmFull())).space, front, 'still drawn while it slides in');
         await page.waitForFunction((id) => (window as any).__rt.runtime.vm.space.id === id, next, { timeout: 2000 });
         await page.waitForFunction(() => !document.querySelector('.margin-sidebar')!.classList.contains('m-swiping'), null, { timeout: 2000 });
+        // (Asked once: its landing takes the request its slide sent, never a second show of the same tab, 2026-11-25.)
+        assert.deepEqual((await ev(() => T.rtSent())).slice(sentBefore).filter(([k]) => k === 'setSpace').map(([, p]) => p.spaceId), [next], 'asked for once');
         // A second switch while one slides in: drawn at once, never undone by the first one's end (from a fresh start, as
         // the slide's end would otherwise switch back to its own).
         await ev(() => T.mountRuntime({ width: 1280, height: 800, container: 'document', mode: 'windowed', replies: { setSpace: { shown: null } } }));

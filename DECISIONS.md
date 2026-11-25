@@ -10790,3 +10790,32 @@ through accessibility), so no access to Arc's data was given.
   five times out of five (nothing of the link's is changed here), as the Swift loop guard's timing check before it.
 - **Run**: every stage of `npm run gate` passed: unit, Rust, theme, security and the app's (2260 Swift checks, 375
   end-to-end) in the second run; the browser's end-to-end (109) and the WebKit host after these fixes.
+
+## M2.10: the review's speed fixes (`fix/arc-sidebar-review` on `feat/arc-sidebar`, 2026-11-25)
+
+Tirth felt the branch made a few things slow; measured in Playwright's WebKit and Chromium against its base (2ffe0327),
+Arcadia with 170 tabs:
+- **The switcher measured after every drawing** (ui/behaviors/fit.ts): with its spaces crowded (dots: ten spaces at
+  260 pt), each drawing took `m-crowded` off, laid the sidebar out to read its width, and put it back: a drawing of a
+  changed tab 1 → 3 ms, one that changed nothing 0.8 → 4.4 ms (WebKit; Chromium alike), on every change Safari sends.
+  And it took the theme's hover rules off and on: the dot's tooltip went under the pointer at each drawing and came
+  back 470 ms later. Now read only when the bar is first drawn, when its items change (a MutationObserver on the bar:
+  spaces came, went, were renamed or switched; never its own `m-crowded`) and when its size changes (the
+  ResizeObserver, as before); the same numbers as the base, the tooltip kept.
+- **A slid switch asked for its space twice** (ui/behaviors/swipe.ts, ui/runtime.ts): the settle sends `setSpace` as
+  it starts (its tab coming while it slides), and its own switch as it lands sent another; in Margin.app each one has
+  the session show the space's front item again (session/requests.rs `show`: no shortcut for the item already shown),
+  so every click's and key's switch (now slid, Arc's) showed the same Safari tab twice, the second a slide later. A
+  swipe did the same before this branch. The settle keeps its request (`asked`) and the landing's switch takes it
+  (`askedFor`, switchSpace's `asked`): one ask per switch, its failure still rolling the switch back.
+- **Kept, by design**: a click's or key's switch now settles the sidebar in about 270–300 ms (Arc's slide, 251 ms, plus
+  the copy drawn first) where it was drawn at once; the tab is asked for at once as before. Rows' opening and closing
+  (210/250 ms, Arc's) cost the same as before; the six `:has()` rules cost nothing measurable (a tab opened or closed:
+  the same as the base).
+- **Tests** (failing first on the branch, in both engines): tests/theme/arcadia.test.ts: a swipe and a click's slide
+  ask for the space once; five drawings that leave the bar as it was take nothing off, the tooltip stays; the bar read
+  again when only its spaces change.
+- **Run**: `npm run gate` on this branch merged with `refactor/hosted-only` (9d7bc7bc; only DECISIONS.md conflicts, both
+  kept): unit 1163, Rust 716, theme 995, security 248+37, Swift 2265, app end-to-end 375, browser end-to-end 109, all
+  passed; the WebKit host's `update` ("selecting it cancels the hidden cleanup reload") failed once under the gate's
+  load and passed alone three times out of three (the background's, nothing this branch changes).

@@ -694,16 +694,18 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   // switches to it, and the UI shows it at once, from the top of its list
   // (sidebar.js askSpace, switchSpace). Its own space with no switch away
   // under way: only the window's space, as before.
-  function switchSpace(spaceId: string, payload: Record<string, any>) {
+  // `asked`: the request for it already sent (a swipe's or a slide's settle asked for it as it slid in: its own switch
+  // as it lands takes that one, never asking again).
+  function switchSpace(spaceId: string, payload: Record<string, any>, asked: Promise<unknown> | null = null) {
     const state = host.getState();
     if (!state) return null;
     const own = ownTab() ?? frontTab();
     const shownSpace = vm?.space?.id;
-    if (!pending.space && state.tabSpace?.[own] === spaceId && ui.switchingTo == null && shownSpace === spaceId) return host.send('setSpace', payload);
+    if (!pending.space && state.tabSpace?.[own] === spaceId && ui.switchingTo == null && shownSpace === spaceId) return asked ?? host.send('setSpace', payload);
     behaviors.scroll?.reset();
     pending.hold = null;
     switchAskedAt = Date.now();
-    const request = host.send('setSpace', payload);
+    const request = asked ?? host.send('setSpace', payload);
     const selection = { spaceId, since: Date.now(), windowId: windowId() };
     pending.space = selection;
     // A failed request rolls back only its own selection; an older answer
@@ -804,7 +806,8 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
         if (behaviors.swipe?.slideTo?.(arg)) return true;
         // (A switch while a settle is still coming in: its own switch at the end dropped, this one drawn at once.)
         behaviors.swipe?.cancelSettle?.();
-        switchSpace(arg, payload);
+        // (The swipe's or slide's own switch as it lands: the request its settle sent, not another.)
+        switchSpace(arg, payload, behaviors.swipe?.askedFor?.(arg) ?? null);
         return true;
       case 'space.new': {
         // A new space opens in the editor once it's there (Arcadia); shown
