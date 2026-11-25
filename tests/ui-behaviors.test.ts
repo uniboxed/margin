@@ -180,10 +180,10 @@ test('view model: a menu shows its labels, not what they run; a confirming item 
   // Each asked for, of something there: shown.
   const m = vm({ menu: { kind: 'space', id: 'work', x: 30, y: 40 } }).menu!;
   assert.deepEqual(m.items.map((i) => i.label), ['Edit Space…', 'Rename Space', 'Remove Icon', 'Edit Theme Color…', '', 'New Space', '', 'Delete Space']);
-  assert.deepEqual(Object.keys(m.items[0]).sort(), ['confirming', 'danger', 'id', 'label', 'separator'], 'no action, no argument');
+  assert.deepEqual(Object.keys(m.items[0]).sort(), ['confirming', 'danger', 'hasKeys', 'hint', 'icon', 'id', 'inert', 'keys', 'label', 'separator'], 'no action, no argument');
   assert.deepEqual([m.kind, m.id, m.x, m.y, m.hasItems], ['space', 'work', 30, 40, true]);
   const asked = vm({ menu: { kind: 'space', id: 'work', x: 30, y: 40, confirming: 'i5' } }).menu!;
-  assert.deepEqual(asked.items.at(-1), { id: 'i5', label: CONFIRM_LABEL, separator: false, danger: true, confirming: true });
+  assert.deepEqual(asked.items.at(-1), { id: 'i5', label: CONFIRM_LABEL, separator: false, danger: true, confirming: true, inert: false, hint: '', keys: '', hasKeys: false, icon: '' });
   const themed = buildViewModel({ state, ui: { windowId: W, menu: { kind: 'space', id: 'work', x: 30, y: 40 } }, platform: { features: { spaceThemes: true } } }).menu!;
   assert.deepEqual(themed.items.map((i) => i.label).filter((l) => l.startsWith('Theme:')).length, 5, 'Margin.app\'s window: its themes');
   assert.equal(vm({ menu: { kind: 'tab', id: 99 } }).menu, null, 'its tab is gone: no menu');

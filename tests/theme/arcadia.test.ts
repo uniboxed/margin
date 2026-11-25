@@ -695,6 +695,69 @@ for (const [engineName, engine] of ENGINES) {
         await page.waitForFunction((id) => (window as any).__rt.runtime.vm.space.id === id, front, { timeout: 2000 });
       });
 
+      await t.test('a folder folded and unfolded: Arc\'s curves, its pins out from under it (not faded)', async () => {
+        await ev(() => T.mountRuntime({ width: 1280, height: 800, container: 'document', mode: 'windowed' }));
+        await page.waitForFunction(() => T.rtLayouts().length > 0);
+        await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'no-preference' });
+        assert.equal((await ev(() => T.rtComputed('.arcadia', '--m-rows-feel')))?.trim(), 'arc');
+        const folderId = await ev(() => document.querySelector('.folder')!.getAttribute('data-folder-id')!);
+        const setOpen = (open: boolean) => ev(([id, o]) => { const rt = (window as any).__rt; rt.mock.state = { ...rt.mock.state, folders: rt.mock.state.folders.map((f: any) => (f.id === id ? { ...f, open: o } : f)) }; rt.host.setState(rt.mock.state); }, [folderId, open] as const);
+        const anims = () => ev(() => document.getAnimations().filter((a) => (a.effect as KeyframeEffect)?.target instanceof Element && ((a.effect as KeyframeEffect).target as Element).closest('.margin-sidebar')).map((a) => {
+          const e = a.effect as KeyframeEffect;
+          const t = e.getTiming();
+          const k = e.getKeyframes();
+          return { cls: (e.target as Element).className.split(' ')[0], duration: t.duration, easing: t.easing, first: { transform: k[0].transform ?? null, clip: (k[0] as any).clipPath ?? null, opacity: k[0].opacity ?? null }, frames: k.length };
+        }));
+        await setOpen(false);
+        const closing = await anims();
+        assert.ok(closing.length > 0 && closing.every((a) => a.duration === 250 && a.easing === 'cubic-bezier(0.25, 0, 0.25, 1)'), `folded: the rows after it close up on Arc's closing curve (${JSON.stringify(closing.slice(0, 2))})`);
+        await page.waitForTimeout(320);
+        await setOpen(true);
+        const opening = await anims();
+        assert.ok(opening.length > 0 && opening.every((a) => a.duration === 210 && a.easing === 'cubic-bezier(0.5, 0.8, 0.75, 1)'), `unfolded: Arc's opening curve (${JSON.stringify(opening.slice(0, 2))})`);
+        const pins = opening.filter((a) => a.first.clip);
+        assert.ok(pins.length >= 1, 'its pins come out from under it');
+        assert.ok(pins.every((a) => /^translateY\(-\d/.test(String(a.first.transform)) && /^inset\(\d/.test(String(a.first.clip)) && a.first.opacity == null), `slid and clipped, not faded (${JSON.stringify(pins[0])})`);
+        await page.waitForTimeout(300);
+        assert.deepEqual(await anims(), [], 'nothing left running');
+        await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' });
+      });
+
+      await t.test('"+" as Arc\'s: its popover over the button, its items; Easel and Boost do nothing; New Tab does', async () => {
+        await ev(() => T.mountRuntime({ width: 1280, height: 800, container: 'document', mode: 'windowed', platform: { browser: 'safari', os: 'mac', features: { newSplit: true } } }));
+        await page.waitForFunction(() => T.rtLayouts().length > 0);
+        const add = (await rect('.bar .add'))!;
+        await page.mouse.click(add.x, add.y);
+        await page.waitForTimeout(220); // (the "+" turns in 150 ms)
+        const menu = await ev(() => { const m = document.querySelector('.tab-menu')!; const b = m.getBoundingClientRect(); return { arc: m.classList.contains('arc'), labels: [...m.querySelectorAll('.menu-label')].map((l) => l.textContent), keys: [...m.querySelectorAll('.menu-item')].map((i) => i.querySelector('.menu-keys')?.textContent ?? ''), right: Math.round(b.right), bottom: Math.round(b.bottom), width: Math.round(b.width) }; });
+        assert.equal(menu.arc, true);
+        assert.deepEqual(menu.labels, ['New Space', 'New Folder', 'New Easel', 'New Boost', 'New Split', 'New Tab'], 'Arc\'s items, in its order');
+        assert.deepEqual(menu.keys, ['', '', '', '', '⌃⇧=', '⌘T']);
+        assert.deepEqual([menu.width, menu.right], [210, Math.round(add.right)], 'its right edge on the button\'s');
+        assert.ok(menu.bottom <= add.top - 10, `over the button, its arrow between (${menu.bottom}, ${add.top})`);
+        assert.equal(await ev(() => getComputedStyle(document.querySelector('.bar .add .plus-icon')!).rotate), '45deg', '"+" as ×');
+        const inert = await ev(() => [...document.querySelectorAll('.tab-menu .menu-item')].filter((i) => i.getAttribute('aria-disabled') === 'true').map((i) => [i.querySelector('.menu-label')!.textContent, i.getAttribute('title')]));
+        assert.deepEqual(inert, [['New Easel', 'Easels aren’t in Margin yet: coming soon'], ['New Boost', 'Boosts aren’t in Margin yet: coming soon']]);
+        const sent = (await ev(() => T.rtSent())).length;
+        const easel = await ev(() => T.rtBoxText('.tab-menu .menu-label', 'New Easel'));
+        await page.mouse.click(easel!.x, easel!.y);
+        await page.waitForTimeout(40);
+        assert.deepEqual([(await ev(() => T.rtSent())).length, (await ev(() => T.rtUi())).menu?.kind], [sent, 'add'], 'Easel: nothing, the menu stays');
+        const tab = await ev(() => T.rtBoxText('.tab-menu .menu-label', 'New Tab'));
+        await page.mouse.click(tab!.x, tab!.y);
+        await page.waitForTimeout(60);
+        assert.equal((await ev(() => T.rtUi())).menu, null, 'New Tab: the menu goes');
+        assert.equal((await ev(() => T.rtUi())).palette.open, true, 'and the new tab\'s palette opens');
+        await page.keyboard.press('Escape');
+        // A host that can't make a split: no New Split.
+        await ev(() => T.mountRuntime({ width: 1280, height: 800, container: 'document', mode: 'windowed' }));
+        await page.waitForFunction(() => T.rtLayouts().length > 0);
+        await page.mouse.click(add.x, add.y);
+        await page.waitForTimeout(80);
+        assert.deepEqual(await ev(() => [...document.querySelectorAll('.tab-menu .menu-label')].map((l) => l.textContent)), ['New Space', 'New Folder', 'New Easel', 'New Boost', 'New Tab']);
+        await page.keyboard.press('Escape');
+      });
+
       await t.test('the inert controls do nothing; the space\'s ••• opens its menu under it', async () => {
         const before = [await ev(() => T.rtSent().length), await ev(() => T.rtPerformed().length)];
         const title = (await rect('.space-title'))!;

@@ -132,7 +132,7 @@ export type Rt = {
  * pill and notice); `onSwitchRun`: each chain of switches as it ends, with a
  * host whose UI stays on screen (shared/switching.ts SwitchRun: Margin.app's log)
  */
-export function createRuntime({ host, theme, container, ui: start = {}, onWarn, log, onSwitchSlow, onSwitchFailed, onPalette, onSwitching, onSwitchRun, openPalette, onGround, onPanel, materials }: {
+export function createRuntime({ host, theme, container, ui: start = {}, onWarn, log, onSwitchSlow, onSwitchFailed, onPalette, onSwitching, onSwitchRun, openPalette, addSplit, onGround, onPanel, materials }: {
   host: Host,
   theme: LoadedTheme,
   container: ShadowRoot | Document,
@@ -147,6 +147,8 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   /** How the host opens the palette for its own key and what the UI opens as that key does (Margin.app's overlay: timed
    *  and logged, app/shared/host/overlay.ts openPaletteTimed); left out, the runtime's own `palette.open`. */
   openPalette?: (options: { newTab: boolean }, by: string) => void,
+  /** A new Split View as the host's own key makes one (Margin.app's overlay: ⌃⇧=, app/shared/host/overlay.ts addSplitPane): `split.new`, Arc's "+" New Split (M2.10). */
+  addSplit?: () => void,
   /** The ground Margin draws under the theme changed (a space's background shown, changed or gone): what's around the page's corners may have (`backgroundAt`). */
   onGround?: () => void,
   /** Margin's own panel (Edit Theme Color) opened or closed: while it's open it takes the keys and the pointer where it is (`panelOpen`, `panelRect`). */
@@ -936,6 +938,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       case 'tab.rename': return behaviors.rename.start('tab', arg);
       case 'pin.rename': return behaviors.rename.start('pin', arg);
       case 'favorite.rename': return behaviors.rename.start('favorite', arg);
+      case 'split.new': if (!addSplit) return false; addSplit(); return true;
       case 'menu.open': {
         const box = info?.element?.getBoundingClientRect?.();
         // The space's menu (a button beside its name, at the sidebar's top): the space in front's, under the button.

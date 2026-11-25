@@ -541,6 +541,8 @@ async function mount(pkg: any, { fallback = false, preview: previewing = false }
     // (What the UI opens as the palette's key does, a double-click on the sidebar's empty part: timed and logged as the
     // key's own, ui/behaviors/empty.ts.)
     openPalette: (options, by) => openPaletteTimed(options, by),
+    // (Arc's "+" New Split (M2.10): as ⌃⇧= makes one.)
+    addSplit: () => addSplitPane(),
     // (A space's background drawn, changed or gone: the colours around the page's corners told again.)
     onGround: () => measureNow(),
     // (Edit Theme Color opened or closed: the keys taken or given back with it, and what takes the pointer told again.)

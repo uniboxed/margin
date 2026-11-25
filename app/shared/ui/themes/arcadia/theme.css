@@ -63,6 +63,9 @@
   --card-left: var(--width);
   --card-inset: 10px;
   --card-radius: 6px;
+  /* Arc's rows coming and going (Margin's row motion, ui/row-motion.ts ARC_ROWS: Arc's measured curves, a folder's
+     rows out from under it). */
+  --m-rows-feel: arc;
 
   position: relative;
   width: 100%;
@@ -845,6 +848,44 @@
 }
 .tab-menu .menu-item:focus { background: var(--accent); color: var(--on-accent); }
 .menu-separator { height: 1px; margin: 5px 10px; background: var(--panel-line); }
+
+/* "+" as Arc's (the theme's --m-add-menu: arc; Margin's menu.arc; M2.10, docs/ARC-SIDEBAR.md, read from Arc's popover):
+   a dark panel in the space's colour (Arc's #140f00 over its beige space) over the "+", its right edge on the
+   button's, an arrow down to it; rows 40 pt, 8 pt in, a glyph (Margin's own drawings, inline: the package loads nothing) in their first 39 pt, the
+   label white and semibold, the key at the right, muted; the row under the pointer or the keys in the space's colour,
+   dimmed (Arc's olive #625729); the groups apart by a hairline. Easel and Boost look as Arc's (Tirth's choice) and do
+   nothing: their tooltips say so. The "+" turns into × while it's open. */
+.arcadia { --m-add-menu: arc; }
+.tab-menu.arc {
+  --arc-menu: color-mix(in srgb, var(--space-color) 10%, #0f0b00);
+  position: relative;
+  overflow: visible;
+  width: 210px;
+  min-width: 0;
+  max-height: none;
+  padding: 8px;
+  border-radius: 14px;
+  background: var(--arc-menu);
+  box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.08), 0 10px 30px rgba(0, 0, 0, 0.3), 0 2px 6px rgba(0, 0, 0, 0.15);
+  color: #fff;
+  translate: calc(-100% + 32px) -10px;
+}
+.tab-menu.arc::after { content: ""; position: absolute; right: 10px; bottom: -6px; width: 12px; height: 6px; background: var(--arc-menu); clip-path: polygon(0 0, 100% 0, 50% 100%); }
+.tab-menu .menu-item { display: flex; align-items: center; }
+.tab-menu .menu-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.tab-menu:not(.arc) .menu-icon { display: none; }
+.tab-menu.arc .menu-item { height: 40px; padding: 0 7px 0 0; border-radius: 9px; font-size: 14px; font-weight: 600; color: #fff; }
+.tab-menu.arc .menu-icon { flex: none; display: grid; align-items: center; width: 39px; height: 22px; padding-left: 9px; }
+.tab-menu.arc .menu-icon .mi { display: none; width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.tab-menu.arc .menu-item:is([data-icon="space"]) .mi-space, .tab-menu.arc .menu-item:is([data-icon="folder"]) .mi-folder,
+.tab-menu.arc .menu-item:is([data-icon="easel"]) .mi-easel, .tab-menu.arc .menu-item:is([data-icon="boost"]) .mi-boost,
+.tab-menu.arc .menu-item:is([data-icon="split"]) .mi-split, .tab-menu.arc .menu-item:is([data-icon="tab"]) .mi-tab { display: block; }
+.tab-menu.arc .menu-keys { flex: none; color: rgba(255, 255, 255, 0.5); font-size: 13px; font-weight: 500; letter-spacing: 0.04em; }
+.tab-menu.arc .menu-item:is(:hover, :focus) { background: color-mix(in srgb, var(--space-color) 45%, #2a2410); color: #fff; }
+.tab-menu.arc .menu-separator { height: 1px; margin: 8px 6px; background: rgba(255, 255, 255, 0.1); }
+.tab-menu.arc .menu-item.inert { cursor: default; }
+.margin-sidebar .bar .add .plus-icon { transition: rotate 150ms var(--ease); }
+.arcadia:has(.tab-menu.arc) .margin-sidebar .bar .add .plus-icon { rotate: 45deg; }
 
 /* ---- Notices and prompts (Margin's <m-notice> and <m-prompt>) --------------- */
 

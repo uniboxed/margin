@@ -128,6 +128,8 @@ export const ACTIONS = Object.freeze({
   'split.add': 'tab',
   // (Its name in themes/README.md: the same action.)
   'split.addPane': 'tab',
+  // (A new Split View as the host's ⌃⇧= makes one: Arc's "+" New Split; only a host that gives the runtime `addSplit`.)
+  'split.new': 'none',
   'split.open': 'split',
   'split.focus': 'tab',
   'split.breakOut': 'tab',
@@ -498,6 +500,7 @@ export const ACTION_MAP = Object.freeze({
   'linkRules.toggle': 'toggleAirTrafficRule',
   'split.add': 'addToSplit',
   'split.addPane': 'addToSplit',
+  'split.new': 'local',
   'split.open': 'openSplit',
   'split.focus': 'activateTab',
   'split.breakOut': 'breakOutSplit',
@@ -519,7 +522,7 @@ export const ACTION_MAP = Object.freeze({
   'settings.category': 'local',
 });
 
-const LOCAL = new Set(['space.edit', 'space.editBackground', 'space.rename', 'folder.rename', 'tab.rename', 'pin.rename', 'favorite.rename', 'palette.open', 'palette.close', 'menu.open', 'menu.run', 'menu.close', 'picker.run', 'editor.save', 'editor.cancel', 'editor.delete', 'editor.color', 'editor.theme',
+const LOCAL = new Set(['split.new', 'space.edit', 'space.editBackground', 'space.rename', 'folder.rename', 'tab.rename', 'pin.rename', 'favorite.rename', 'palette.open', 'palette.close', 'menu.open', 'menu.run', 'menu.close', 'picker.run', 'editor.save', 'editor.cancel', 'editor.delete', 'editor.color', 'editor.theme',
   'notice.run', 'notice.close', 'prompt.run', 'prompt.close', 'launcher.more', 'settings.run', 'settings.category', 'tab.copyUrl', 'pin.copyUrl', 'favorite.copyUrl', 'preview.close', 'preview.expand', 'preview.copyUrl', 'preview.setSpace', 'preview.back', 'preview.forward', 'quickTab.open']);
 const NAV = { 'nav.back': 'goBack', 'nav.forward': 'goForward', 'nav.reload': 'reload' };
 

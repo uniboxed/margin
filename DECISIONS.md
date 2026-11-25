@@ -10711,3 +10711,33 @@ Arc's sidebar in Arcadia (docs/ARC-SIDEBAR.md: the study, measured in the runnin
   through). The app's end-to-end run, all 373: its check that the frame is painted outside the card's rounded corners
   sampled 1 pt in along the diagonal, which assumed a 10 pt corner (Arc's 6 pt left it 1.1 pt outside the curve, its
   antialiasing at 252): 0.5 pt in now, 1.8 pt outside it (tools/app-tests/e2e-glue.swift).
+
+## M2.10 step 8, part 1: Arc's folders opening and closing, and its "+" (`feat/arc-sidebar`, 2026-11-25)
+
+The second session in the running Arc (Tirth away, Arc driven). A permission prompt came up on the way ("Visual Studio
+Code wants access to control Arc", from an AppleScript call): answered Don't Allow (nothing needed it; Arc is driven
+through accessibility), so no access to Arc's data was given.
+
+- **A folder** (measured frame by frame, folding and unfolding one of three): unfolding, the rows after it make room
+  on `cubic-bezier(0.5, 0.8, 0.75, 1)` over 210 ms (every frame within 0.31 pt RMS) and its rows come out from under it
+  as they go down; folding, the rows close up on `cubic-bezier(0.25, 0, 0.25, 1)` over 250 ms (0.27 pt; one frame the
+  recording held three frames, dropped). Margin's row motion stays its own (200 ms, Tirth's) for every theme; a theme
+  asks for Arc's with `--m-rows-feel: arc` (ui/row-motion.ts `ARC_ROWS`, the README's Motion): its two curves, and new
+  rows coming out from under the edge above them (each slid down the room with the rest and clipped at that edge,
+  keyframes in the curve's progress so it stays exact), not faded in. Arcadia asks for it. Not copied: Arc's folding
+  rows slide up behind the folder (Margin's leave at once and the rows after close up over them).
+- **"+"** (read from Arc's popover: its accessibility frames and pixels): a dark panel over the button (its right edge
+  on the button's, an arrow down to it), New Space, New Folder · New Easel, New Boost · New Split ⌃⇧=, New Tab ⌘T, a
+  glyph by each, the row under the pointer in a dimmed space colour; the "+" turns into ×. The menu part is guarded (only
+  Margin's words show there), so the items are Margin's: a theme asks for Arc's "+" with `--m-add-menu: arc`
+  (ui/behaviors/menus.ts reads it as it opens: the menu's `look`); menu-items.ts gives Arc's list then, and every row has
+  `inert`, `hint`, `keys` and `icon` (the README). Easel and Boost are inert (Tirth's choice: drawn, doing nothing,
+  `aria-disabled`, their hint "… aren't in Margin yet: coming soon"; `menu.run` refuses them, the menu stays); Arc's
+  ⌃⇧E by Easel isn't shown (no such key in Margin: a key that does nothing would mislead). New Split is Margin.app's
+  ⌃⇧= (a new local action, `split.new`, running the overlay's `addSplitPane` through the runtime's new `addSplit`
+  option; only where the host has it: `features.newSplit`, Margin.app's page), its key as Settings has it
+  (`appKeys.addSplit`). Every other theme's "+" is as it was. The glyphs are Margin's own drawings (inline SVG in the menu part, the
+  row's `icon` choosing one: Arcadia's package loads nothing, no `url()`, tests/manifest.test.ts), not Arc's.
+- **Tests**: tests/theme/arcadia.test.ts (folding: Arc's closing curve; unfolding: its opening curve, the rows out from
+  under, clipped, not faded; "+": Arc's items and order, its keys, its place over the button, the × , Easel doing
+  nothing and keeping the menu, New Tab running and closing it, no New Split where the host has none).

@@ -16,6 +16,16 @@ import type { ViewModel } from './view-model.ts';
 export const MOTION_MS = 200;
 /** A standard ease-out: quick to start, settling into place. */
 export const MOTION_EASING = 'cubic-bezier(0.2, 0, 0, 1)';
+/**
+ * Arc's rows, for a theme that asks for them (`--m-rows-feel: arc` on its root: Arcadia; M2.10, docs/ARC-SIDEBAR.md
+ * "Motion", measured frame by frame in Arc 1.174.2 folding and unfolding a folder of three): rows making room for new
+ * ones slide on its opening curve (each frame within 0.31 pt RMS), rows closing up on its closing curve (0.27 pt); the
+ * new rows come out from under the row above them (clipped at its edge as they slide down with the rest), not faded in.
+ */
+export const ARC_ROWS = Object.freeze({
+  open: Object.freeze({ duration: 210, easing: 'cubic-bezier(0.5, 0.8, 0.75, 1)' }),
+  close: Object.freeze({ duration: 250, easing: 'cubic-bezier(0.25, 0, 0.25, 1)' }),
+});
 
 // The sidebar's rows by kind and id, in a set: today's tabs, the pinned area's folders and pins (a folder's shown ones),
 // the launcher's pins.
@@ -62,12 +72,18 @@ export function createRowMotion(view: View, win: Window & typeof globalThis, { s
   let unpainted: Map<Element, Box> | null = null;
   let frame = 0;
   const boxOf = (el: Element): Box => { const r = el.getBoundingClientRect(); return { left: r.left, top: r.top, bottom: r.bottom }; };
-  const play = (el: Element, from: Keyframe) => {
+  const play = (el: Element, frames: Keyframe | Keyframe[], timing: { duration: number, easing: string } = { duration, easing: MOTION_EASING }) => {
     let a: Animation;
-    // One keyframe: from there to the row's own value (a theme's transform or opacity), whatever it is.
-    try { a = el.animate([from], { duration, easing: MOTION_EASING }); } catch { return; }
+    // One keyframe: from there to the row's own value (a theme's transform or opacity), whatever it is; or a row's own
+    // keyframes (Arc's new rows).
+    try { a = el.animate(Array.isArray(frames) ? frames : [frames], timing); } catch { return; }
     running.add(a);
     a.onfinish = a.oncancel = () => running.delete(a);
+  };
+  // The theme's feel for its rows, asked at each change (`--m-rows-feel` on its root): Arc's, or Margin's own.
+  const arcRows = () => {
+    const root = view.rootElement?.();
+    return !!root && win.getComputedStyle(root).getPropertyValue('--m-rows-feel').trim() === 'arc';
   };
   return {
     /** Called with the model on screen and the one about to be drawn: true when the rows' boxes were read (call after()). */
@@ -112,9 +128,34 @@ export function createRowMotion(view: View, win: Window & typeof globalThis, { s
         if ((Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) || (away(was) && away(now)) || Math.abs(dy) > height) continue;
         moves.push([el, dx, dy]);
       }
+      const arc = arcRows();
+      // (Arc's: new rows given room, its opening curve; only rows closing up, its closing curve. The new rows' own: where
+      // they come out, under the edge of the block's room: how far the rows after them went down, else the block's
+      // height and the gap after it.)
+      const timing = arc ? (fresh.length ? ARC_ROWS.open : ARC_ROWS.close) : { duration, easing: MOTION_EASING };
+      let reveal: { top: number, room: number, boxes: Map<Element, Box> } | null = null;
+      if (arc && fresh.length) {
+        const boxes = new Map(fresh.map((el): [Element, Box] => [el, boxOf(el)]));
+        const top = Math.min(...[...boxes.values()].map((b) => b.top));
+        const pushed = Math.max(0, ...moves.map(([, , dy]) => -dy));
+        const room = pushed > 0.5 ? pushed : Math.max(...[...boxes.values()].map((b) => b.bottom)) - top + 5;
+        reveal = { top, room, boxes };
+      }
       // (All the reads above, the writes here.)
-      for (const [el, dx, dy] of moves) play(el, { transform: `translate(${Math.round(dx * 100) / 100}px, ${Math.round(dy * 100) / 100}px)` });
-      for (const el of fresh) play(el, { opacity: 0 });
+      for (const [el, dx, dy] of moves) play(el, { transform: `translate(${Math.round(dx * 100) / 100}px, ${Math.round(dy * 100) / 100}px)` }, timing);
+      for (const el of fresh) {
+        if (!reveal) { play(el, { opacity: 0 }, timing); continue; }
+        // Out from under the block's edge: down the room with the rows after it, hidden above that edge (its clip
+        // shrinking with it, to nothing once it's out: keyframes in the curve's progress, so it stays exact).
+        const b = reveal.boxes.get(el)!;
+        const below = Math.max(0, b.top - reveal.top);
+        const out = Math.min(1, below / reveal.room);
+        const r = (v: number) => Math.round(v * 100) / 100;
+        const frames: Keyframe[] = [{ offset: 0, transform: `translateY(${r(-reveal.room)}px)`, clipPath: `inset(${r(Math.max(0, reveal.room - below))}px 0 0 0)` }];
+        if (out > 0 && out < 1) frames.push({ offset: r(1 - out), transform: `translateY(${r(-below)}px)`, clipPath: 'inset(0px 0 0 0)' });
+        frames.push({ offset: 1, transform: 'translateY(0px)', clipPath: 'inset(0px 0 0 0)' });
+        play(el, frames, timing);
+      }
       unpainted = old;
       if (!frame) frame = win.requestAnimationFrame(() => { frame = 0; unpainted = null; });
     },

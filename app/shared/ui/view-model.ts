@@ -52,7 +52,7 @@ export type UiState = {
   // runtime's own names, `peek` and `littleArc`, kept): `loading` until its window is in place, `closing` as it goes,
   // `query` Quick Tab's field. Themes see it as `preview` (PreviewView).
   peek?: { url: string, title?: string, spaceId?: string | null, littleArc?: boolean, loading?: boolean, closing?: boolean, canGoBack?: boolean | null, canGoForward?: boolean | null, query?: string } | null,
-  menu?: { kind: MenuTarget['kind'], id?: string | number | null, x?: number, y?: number, above?: boolean, confirming?: string | null } | null,
+  menu?: { kind: MenuTarget['kind'], id?: string | number | null, x?: number, y?: number, above?: boolean, confirming?: string | null, look?: string | null } | null,
   // Edit Theme Color drawn by the theme (its `background-picker` part, M2.9 step 5b: ui/picker/part.ts); null with
   // Margin's own panel or none open. Themes see it as `picker` (ui/picker/view.ts PickerVm).
   picker?: PickerUi | null,
@@ -174,7 +174,9 @@ export type PaletteRow = {
   /** an installed app (Margin.app, hosting on): its icon is the app's own shape, drawn without a tile */
   isApp: boolean,
 };
-export type MenuRow = { id: string, label: string, separator: boolean, danger: boolean, confirming: boolean };
+export type MenuRow = { id: string, label: string, separator: boolean, danger: boolean, confirming: boolean,
+  /** Drawn, doing nothing (Arc's Easel and Boost), `hint` saying so; its key (`⌘T`); its glyph's name. */
+  inert: boolean, hint: string, keys: string, hasKeys: boolean, icon: string };
 export type EditorView = {
   id: string, name: string, emoji: string, color: string,
   colors: { id: string, color: string, selected: boolean }[],
@@ -235,7 +237,7 @@ export type ViewModel = {
   archive: ArchiveRow[],
   hasArchive: boolean,
   palette: { open: boolean, query: string, newTab: boolean, rows: PaletteRow[], hasRows: boolean, selected: string | null },
-  menu: { kind: string, id: string | number | null, x: number, y: number, label: string, items: MenuRow[], hasItems: boolean } | null,
+  menu: { kind: string, id: string | number | null, x: number, y: number, label: string, items: MenuRow[], hasItems: boolean, /** Arc's "+" (the theme's `--m-add-menu: arc`). */ arc: boolean } | null,
   picker: PickerVm | null,
   editing: { kind: 'space' | 'folder' | 'tab' | 'pin' | 'favorite', id: string | number } | null,
   editor: EditorView | null,
@@ -666,9 +668,10 @@ function fresh(input: ViewModelInput): ViewModel {
         label: MENU_LABELS[ui.menu.kind] ?? 'Menu',
         items: items.map((i) => {
           const confirming = !!i.confirm && ui.menu?.confirming === i.id;
-          return { id: i.id, label: confirming ? CONFIRM_LABEL : i.label, separator: i.separator, danger: i.danger, confirming };
+          return { id: i.id, label: confirming ? CONFIRM_LABEL : i.label, separator: i.separator, danger: i.danger, confirming, inert: !!i.inert, hint: i.hint ?? '', keys: i.keys ?? '', hasKeys: !!i.keys, icon: i.icon ?? '' };
         }),
         hasItems: true,
+        arc: ui.menu.look === 'arc',
       };
     }
   }
