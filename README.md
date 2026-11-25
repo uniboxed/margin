@@ -103,6 +103,7 @@ app/                Margin.app
   engines/          the app's per-browser side
   platforms/        macos (Swift), windows (Rust), linux (later)
 docs/               the protocol, the data, the profile switch, the Windows notes
+brand/              Margin's logo: the app icon, the mark, the lockups, web icons (and how to use them)
 ```
 
 ## Contributing

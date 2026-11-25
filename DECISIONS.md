@@ -10499,3 +10499,20 @@ failing first (the old code in a copy of the tree):
   - `pressSettle` (the fallback path with the press tap off) and Windows' `MA_NOACTIVATE` on hosting alone: as before,
     noted in page/press.rs.
 
+## Margin's logo (2026-11-25)
+
+- **The pack** (Tirth's, `margin-logo`): kept in `brand/margin-logo/` as he gave it (its README says which file is for
+  what: printed at 64 px and up, flat below), but for `macos/Margin.icns` (2 MB; the build makes Margin.app's icon from
+  the icon set). Its SVGs checked first: no scripts, no outside references.
+- **Margin.app** (`scripts/make-xcode.sh`): the pack's `macos/AppIcon.appiconset` replaces the one the Safari converter
+  makes from the extension's largest icon, so Finder, the Dock, the set-up window and the quit prompt (both draw
+  `NSApp.applicationIconImage`) show it, flat at 32 px and below. `scripts/safari.sh` makes the Xcode project again
+  when the icon set changes (it's in the project's `.made-from` hash).
+- **The extension** (`extension/icons/icon-<size>.png`, both builds, Safari's and Chrome's extension lists, the
+  converter's `Icon.png`): from the pack's PNGs by `npm run icons` (scripts/make-icons.ts, now copying the logo instead
+  of drawing the old purple square): 16 and 32 flat, 48 the flat drawing scaled, 96 the printed 128 scaled, 128-512
+  printed.
+- **Not yet:** the Windows app has no icon resource (its `.exe` needs one compiled in; with the Windows app's packaging,
+  from `brand/margin-logo/web/favicon.ico` or the PNGs); the Chrome Web Store listing's images (uploaded by hand); the
+  Liquid Glass layers (`macos/icon-composer-layers/`, for Icon Composer, untested by the pack's own note).
+
