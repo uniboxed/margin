@@ -10969,3 +10969,8 @@ landed, a background cross-faded 0.3 s after it).
   the two mid-slide and the landed one after, nothing left; with backgrounds the next one's set part of the way and the
   only set as it lands; a swipe held 60 px in: the blend 60 / width. The slide's test fails with the settle's
   following taken out.
+- **On screen** (Margin.app, Tirth's four spaces, each a background with its own colours and texture; ⌃2 and ⌃3,
+  recorded at 60 fps): the list slides and the sidebar's colour and texture change with it, the next space's mixed in
+  mid-slide; the colour 29%, 95%, then 96 → 100% over the next six frames, done as the slide lands (Arc: about 90% in
+  its first frames, the rest by ≈ 200 ms), where it used to start a 0.3 s cross-fade once the slide was in. (A
+  synthetic click on the switcher never reached Margin's page with a hosted Safari in front; the app's keys did.)
