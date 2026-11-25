@@ -328,6 +328,63 @@ img.fav.app, .tab.on img.fav.app { width: 22px; height: 22px; margin: -2px; bord
 /* A name edited in place (Margin's m-rename). */
 .m-renaming { outline: 2.5px solid currentColor; outline-offset: 2px; border-radius: 4px; background: var(--paper); color: var(--ink); min-width: 2ch; text-transform: none; }
 
+/* Edit Theme Color (Margin's <m-picker>, the "background-picker" part): the board's card, cream with a thick border
+   and a hard shadow; everything in it pushed out the same way, the chosen thing yellow. Margin places the slot and
+   works the field and the bar. Each button's rules are under `.picker` (over the reset each button takes here). */
+.picker { width: 340px; max-height: calc(100vh - 16px); overflow-y: auto; overscroll-behavior: none; box-sizing: border-box; padding: 14px; display: flex; flex-direction: column; gap: 12px; border: 2.5px solid var(--ink); border-radius: 14px; background: var(--cream); color: var(--ink); box-shadow: 7px 7px 0 var(--ink); font-family: 'Space Grotesk', system-ui, sans-serif; font-size: 14px; }
+.picker-slot:focus { outline: none; }
+.picker button { all: unset; box-sizing: border-box; cursor: pointer; }
+.picker svg { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+.picker svg .fill { fill: currentColor; stroke: none; }
+.picker-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.picker-title { margin: 0; font-family: 'Archivo Black', sans-serif; font-weight: 400; font-size: 16px; text-transform: uppercase; letter-spacing: .02em; }
+.picker-label { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.picker-looks { display: flex; gap: 6px; }
+.picker .picker-look { display: grid; place-items: center; width: 34px; height: 32px; border: 2px solid var(--ink); border-radius: 8px; background: var(--paper); }
+.picker .picker-look .look { display: none; }
+.picker .picker-look[data-look="auto"] .look-auto, .picker .picker-look[data-look="light"] .look-light, .picker .picker-look[data-look="dark"] .look-dark { display: block; }
+.picker .picker-look[aria-checked="true"] { background: var(--yellow); box-shadow: 2px 2px 0 var(--ink); }
+/* The field: the hidden wheel shown, in a thick frame; the knobs ringed in ink with an offset shadow. */
+.picker-field { height: 176px; border: 2.5px solid var(--ink); border-radius: 10px; }
+.picker-field [m-knob] { padding: 0; border: 2.5px solid var(--ink); box-shadow: 2px 2px 0 var(--ink); }
+.picker-field [m-knob="key"] { width: 30px; height: 30px; }
+.picker-field [m-knob]:not([m-knob="key"]) { width: 22px; height: 22px; }
+.picker-field [m-picker-empty] { font-weight: 700; }
+.picker-row { display: flex; align-items: center; gap: 8px; }
+.picker .picker-square { display: grid; place-items: center; width: 36px; height: 32px; border: 2px solid var(--ink); border-radius: 8px; background: var(--paper); box-shadow: 2px 2px 0 var(--ink); }
+.picker .picker-square:disabled { opacity: .4; cursor: default; box-shadow: none; }
+.picker .picker-tag { height: 32px; padding: 0 12px; display: inline-flex; align-items: center; border: 2px solid var(--ink); border-radius: 999px; background: var(--yellow); box-shadow: 2px 2px 0 var(--ink); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.picker-presets { display: flex; align-items: center; gap: 4px; }
+.picker .picker-page { display: grid; place-items: center; width: 24px; height: 26px; flex: none; border: 2px solid var(--ink); border-radius: 6px; background: var(--paper); }
+.picker .picker-swatch { flex: 1 1 0; min-width: 0; height: 24px; border: 2px solid var(--ink); border-radius: 6px; background: var(--swatch); }
+.picker .picker-swatch[aria-checked="true"] { transform: translate(-2px, -2px); box-shadow: 3px 3px 0 var(--ink); }
+/* The intensity: a chunky bar, filled with the space's accent, its thumb a yellow block. */
+.picker-bar { height: 30px; color: var(--m-accent, var(--ink)); }
+.picker-bar [m-track] { height: 22px; border: 2.5px solid var(--ink); border-radius: 8px; background: var(--paper); box-sizing: border-box; }
+.picker-bar [m-fill] { border-right: 2.5px solid var(--ink); }
+.picker-bar [m-thumb] { width: 30px; height: 30px; box-sizing: border-box; border: 2.5px solid var(--ink); border-radius: 7px; background: var(--yellow); box-shadow: 2px 2px 0 var(--ink); }
+/* The textures: tiles, each with a swatch of its pattern (the board's own), the one showing yellow and lifted. */
+.picker-tiles { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
+.picker .picker-tile { display: flex; flex-direction: column; align-items: center; gap: 3px; height: 60px; padding: 4px 2px; border: 2px solid var(--ink); border-radius: 8px; background: var(--paper); }
+.picker .picker-tile[aria-pressed="true"] { background: var(--yellow); transform: translate(-2px, -2px); box-shadow: 3px 3px 0 var(--ink); }
+.picker-sample { display: block; width: 34px; height: 28px; box-sizing: border-box; border: 2px solid var(--ink); border-radius: 5px; background-color: var(--paper); }
+.picker-tile-name { font-size: 10px; font-weight: 700; }
+.picker-tile[data-texture="grain"] .picker-sample { background-image: radial-gradient(rgba(17, 17, 17, .45) .7px, transparent 1px), radial-gradient(rgba(17, 17, 17, .25) .7px, transparent 1px); background-size: 3px 3px, 4px 4px; background-position: 0 0, 1px 2px; }
+.picker-tile[data-texture="sand"] .picker-sample { background-image: radial-gradient(rgba(17, 17, 17, .5) 1px, transparent 1.5px), radial-gradient(rgba(17, 17, 17, .3) 1px, transparent 1.4px); background-size: 7px 7px, 5px 5px; background-position: 0 0, 3px 4px; }
+.picker-tile[data-texture="denim"] .picker-sample { background-image: repeating-linear-gradient(45deg, rgba(17, 17, 17, .5) 0 1px, transparent 1px 4px); }
+.picker-tile[data-texture="tweed"] .picker-sample { background-image: repeating-linear-gradient(0deg, rgba(17, 17, 17, .3) 0 2px, transparent 2px 6px), repeating-linear-gradient(90deg, rgba(17, 17, 17, .45) 0 1px, transparent 1px 5px); }
+.picker-tile[data-texture="dots"] .picker-sample { background-image: radial-gradient(var(--ink) 1.6px, transparent 1.9px); background-size: 8px 8px; }
+.picker-tile[data-texture="grid"] .picker-sample { background-image: linear-gradient(var(--ink) 1px, transparent 1px), linear-gradient(90deg, var(--ink) 1px, transparent 1px); background-size: 8px 8px; }
+.picker-amounts { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border: 2.5px solid var(--ink); border-radius: 8px; overflow: hidden; background: var(--paper); }
+.picker .picker-amount { display: grid; place-items: center; height: 30px; border-left: 2px solid var(--ink); font-size: 12px; font-weight: 700; }
+.picker .picker-amount:first-child { border-left: 0; }
+.picker .picker-amount[aria-checked="true"] { background: var(--ink); color: var(--paper); }
+.picker-foot { display: flex; justify-content: space-between; gap: 8px; padding-top: 2px; }
+.picker .picker-push { display: inline-flex; align-items: center; height: 38px; padding: 0 12px; border: 2.5px solid var(--ink); border-radius: 10px; background: var(--paper); box-shadow: 3px 3px 0 var(--ink); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+.picker .picker-done { padding: 0 22px; background: var(--yellow); }
+.picker button:active:not(:disabled) { transform: translate(2px, 2px); box-shadow: none; }
+.picker button:focus-visible, .picker [m-knob="key"]:focus-visible, .picker m-picker-slider:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+
 /* Context menus (Margin's <m-menu>, the "menu" part) */
 .menu { min-width: 200px; max-width: 300px; box-sizing: border-box; padding: 6px; display: flex; flex-direction: column; gap: 2px; border: 2.5px solid var(--ink); border-radius: 12px; background: var(--paper); box-shadow: 5px 5px 0 var(--ink); font-family: 'Space Grotesk', system-ui, sans-serif; font-size: 13.5px; color: var(--ink); }
 .menu-item { display: block; height: 30px; line-height: 30px; padding: 0 10px; border-radius: 7px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }

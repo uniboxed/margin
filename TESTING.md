@@ -2323,6 +2323,16 @@ On the real screen, with the kit's TestPane (a full-screen member), Calculator (
 8. **Kept.** Quit Margin and open it again: the sidebar as wide as it was left (`defaults read com.unibox.margin MarginWindowThemeSettings`).
 9. **Fast and odd drags.** A fast flick; a drag past the theme's minimum and maximum; ⌘-Tab away mid-drag; a drag while an app is still opening (its loading bar): the sidebar never sticks, Margin's window always ends right below the hosted one (the app takes clicks again), one placing at most per drag.
 
+## A theme's own Edit Theme Color (M2.9 step 5b, 2026-11-24)
+
+Margin.app (or Safari's sidebar), Material, then Neubrutalism, then Pixel; light and dark where the theme has both. Off screen they were drawn by the real runtime in WebKit (`tools/glass-shots/run.sh <dir> material`, the `picker` pictures); none of this was seen on the real screen.
+
+1. **Its own.** Right-click a space's chip › Edit Theme Color…: the theme's picker (Material's dialog, Neubrutalism's card, Pixel's dialog), not Margin's glass panel; where the menu was, inside the window; no `overlay system appearance … on` in the log.
+2. **Everything works.** Drag in the field (Pixel: the knobs jump from cell to cell); −/+; the rule; a preset; the pages; the intensity (Material and Neubrutalism: the bar, dragged; Pixel: a block); a texture (Material: a chip; Neubrutalism: a tile; Pixel: the arrows); an amount (Material: its slider; the others: a block); the background changes as you go, each change saved once.
+3. **Keys.** Tab moves through the picker and stays in it; Escape puts back what the space had; ⌘Z a step back; arrows on the field's key and on a slider.
+4. **Closing.** Done; a click outside; switching spaces.
+5. **Looks.** Material in its space's colours, light and dark; Neubrutalism light in both modes; Pixel dark in both. Labels readable everywhere, nothing clipped at the window's edge, the picker scrolls if the window is short.
+
 ## Edit Theme Color's glass (M2.9 step 5, 2026-11-24)
 
 Margin.app on macOS 26 or later, Arcadia. Off screen it was measured (`DECISIONS.md` "M2.9 step 5 spike") and photographed (`tools/glass-shots/run.sh <dir> arcadia`, the `picker` pictures); none of this was seen on the real screen. Stop at the first thing that's wrong and note which step.

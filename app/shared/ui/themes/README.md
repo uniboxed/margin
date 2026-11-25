@@ -635,7 +635,8 @@ Lay out any of these, in any order (leave out what you don't want):
   A colour is a value for your CSS: `m-style:--swatch="{{p.color}}"`. `picker.run` runs only an item the picker shows
   right now.
 
-The built-in themes use Margin's for now.
+Material (`material/`), Neubrutalism and Pixel have their own, each a short example (the wheel shown and M3's
+sliders and chips; a chunky bar and tiles; cells, blocks and a stepper); Arcadia and Liquid Glass use Margin's.
 
 ## Motion
 

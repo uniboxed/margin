@@ -375,6 +375,47 @@ img.fav.app { width: 22px; height: 22px; margin: -2px; box-shadow: none; backgro
 @keyframes pixel-gesture-blink { 50% { background: var(--ink); color: var(--deep); } }
 @keyframes pixel-gesture-turn { to { rotate: 360deg; } }
 
+/* Edit Theme Color (Margin's <m-picker>, the "background-picker" part): the board's dialog on the night side, a
+   notched light border and a deep drop; labels in Press Start 2P, the chosen thing yellow, steps of colour in blocks.
+   Margin places the slot and works the field (its cells). Each button's rules are under `.picker` (over the reset). */
+.picker { width: 330px; max-height: calc(100vh - 24px); overflow-y: auto; overscroll-behavior: none; box-sizing: border-box; margin: 3px; padding: 14px 18px 16px; display: flex; flex-direction: column; gap: 12px; background: var(--side); color: var(--ink); box-shadow: var(--pxb), 9px 9px 0 var(--deep); font-family: 'Pixelify Sans', ui-monospace, monospace; font-size: 16px; }
+.picker-slot:focus { outline: none; }
+.picker button { all: unset; box-sizing: border-box; cursor: pointer; }
+.picker svg { width: 12px; height: 12px; fill: currentColor; }
+.picker-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.picker-title { margin: 0; font-size: 9px; line-height: 1.4; color: var(--yellow); text-transform: uppercase; }
+.picker-label { font-size: 8px; color: var(--muted); text-transform: uppercase; }
+.picker-looks { display: flex; gap: 8px; padding: 2px; }
+.picker .picker-look { height: 22px; padding: 0 6px; display: grid; place-items: center; background: var(--hover); box-shadow: var(--pxs); font-size: 7px; text-transform: uppercase; }
+.picker .picker-look[aria-checked="true"] { background: var(--yellow); color: var(--deep); }
+/* The field: a grid of cells in the hidden wheel's colours, the knobs square on the cells' centres. */
+.picker-field { height: 180px; margin: 3px; box-shadow: var(--pxd); }
+.picker-field [m-knob] { padding: 0; border-radius: 0; width: 12px; height: 12px; box-shadow: var(--pxd); }
+.picker-field [m-knob="key"] { width: 18px; height: 18px; box-shadow: var(--pxb); }
+.picker-field [m-picker-empty] { font-family: 'Press Start 2P', ui-monospace, monospace; font-size: 8px; color: var(--deep); text-transform: uppercase; }
+.picker-row { display: flex; align-items: center; gap: 10px; padding: 0 2px; }
+.picker .picker-px { display: grid; place-items: center; width: 28px; height: 24px; flex: none; background: var(--hover); box-shadow: var(--pxs); }
+.picker .picker-px:disabled { opacity: .4; cursor: default; }
+.picker-count { font-size: 8px; color: var(--muted); text-transform: uppercase; }
+.picker .picker-rule { margin-left: auto; height: 24px; padding: 0 8px; display: grid; place-items: center; background: var(--blue); color: var(--deep); box-shadow: var(--pxs); font-size: 7px; text-transform: uppercase; }
+.picker-presets { display: flex; align-items: center; gap: 6px; padding: 2px; }
+.picker .picker-swatch { flex: 1 1 0; min-width: 0; height: 20px; background: var(--swatch); box-shadow: var(--pxs); }
+.picker .picker-swatch[aria-checked="true"] { box-shadow: 0 -2px 0 var(--yellow), 0 2px 0 var(--yellow), -2px 0 0 var(--yellow), 2px 0 0 var(--yellow); }
+.picker-blocks { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 4px; padding: 2px; }
+.picker .picker-block { height: 16px; background: var(--hover); box-shadow: var(--pxs); }
+.picker .picker-block.on { background: var(--m-accent, var(--green)); }
+.picker-stepper { display: flex; align-items: center; gap: 8px; padding: 2px; }
+.picker-stepper .picker-px { width: 30px; height: 30px; color: var(--yellow); }
+.picker-texture { flex: 1; height: 30px; display: grid; place-items: center; background: var(--field); box-shadow: var(--pxs); font-size: 9px; text-transform: uppercase; }
+.picker-amounts { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; padding: 2px; }
+.picker .picker-amount { height: 20px; display: grid; place-items: center; background: var(--hover); box-shadow: var(--pxs); font-size: 7px; text-transform: uppercase; }
+.picker .picker-amount[aria-checked="true"] { background: var(--yellow); color: var(--deep); }
+.picker-foot { display: flex; justify-content: space-between; gap: 10px; padding: 4px 2px 0; }
+.picker .picker-all, .picker .picker-done { height: 32px; padding: 0 10px; display: grid; place-items: center; background: var(--blue); color: var(--deep); box-shadow: var(--pxd); font-size: 8px; text-transform: uppercase; }
+.picker .picker-done { padding: 0 16px; background: var(--green); }
+.picker button:active:not(:disabled) { transform: translate(2px, 2px); }
+.picker button:focus-visible, .picker [m-knob="key"]:focus-visible, .picker m-picker-slider:focus-visible { outline: 3px dashed var(--yellow); outline-offset: 4px; }
+
 /* Context menus (Margin's <m-menu>, the "menu" part) */
 .menu { min-width: 210px; max-width: 300px; box-sizing: border-box; padding: 8px; display: flex; flex-direction: column; gap: 2px; background: var(--ground); font-family: 'Pixelify Sans', ui-monospace, monospace; font-size: 16px; color: var(--ink); }
 .menu-item { display: flex; justify-content: flex-start; gap: 8px; height: 30px; padding: 0 8px; white-space: nowrap; }

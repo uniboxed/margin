@@ -9794,3 +9794,30 @@ Glass's own panels are.
     item; both sliders and the dial; a forged item refused; ⌘Z, Use for All Spaces, Escape, Done, a press outside, Tab
     kept inside; the theme's own words dropped; an element left out, an unknown variant, a part with no slot. Three
     deliberate breaks of the driver each caught.
+
+## M2.9 step 5b, part 2: Material, Neubrutalism and Pixel draw their own Edit Theme Color (`feat/space-backgrounds`, 2026-11-24)
+
+- **What it is**: each of the three has a `background-picker` part and an `<m-picker>` beside its `<m-menu>`, drawn
+  from its board on the per-theme prototype (the canvas "Edit Theme Color — per-theme pickers"); Arcadia and Liquid
+  Glass keep Margin's panel (Arcadia stays Arc's; Liquid Glass gets the system's glass).
+  - **Material**: an M3 dialog on the high tonal surface: the appearance as a segmented button, the field with the
+    hidden wheel shown (`wheel`), tonal −/+ and an assist chip for the rule, round swatches ringed in the primary
+    colour, both sliders as M3's (a thick track, a bar of a handle with a gap each side: `bar`), the textures as
+    filter chips, a text button and a filled one. In the space's dynamic colour, light and dark.
+  - **Neubrutalism**: the board's cream card, 2.5 px borders and hard shadows, the chosen thing yellow: square
+    appearance buttons (an icon each), the wheel in a thick frame, square −/+ and a yellow tag for the rule, square
+    swatches, a chunky intensity bar (`bar`, filled with the space's accent), texture tiles each with a sample of its
+    pattern (the theme's own CSS), a strip of amounts, two push buttons. Light only, as the theme.
+  - **Pixel**: the board's night dialog, notched borders: appearance tiles, the field as cells (`cells`), pixel −/+
+    and the rule, square swatches, ten blocks for the intensity (`intensity.steps`, lit in the space's accent), a
+    stepper for the texture (`texture.prev`, `texture.next`), blocks for the amount. Dark only, as the theme.
+- **Words**: Margin's only (the part is guarded), so each board's own words ("DAY", "NITE", "POWER") are Margin's
+  labels here, shaped by each theme's CSS (uppercase, its fonts).
+- **Found while drawing them**: a theme's button reset outranks one class (`.m3 button { background: none }`, and
+  each theme's `.btn { all: unset }` pattern), so each part's button rules are under `.picker`, its own reset
+  `.picker button` kept to layout. And `<m-picker>` is placed by Margin's base rule, as `<m-menu>` is (part 1 had left
+  it to the theme; no theme places its menu itself).
+- **Tests**: `tests/theme/picker.test.ts`'s check of each built-in theme (in scope) now asks, in WebKit and Chromium:
+  its own picker or Margin's; in the window; for its own, its field's variant and its sliders, a colour picked on its
+  field, its appearance button saving, its Done closing it. Seen in WebKit through `tools/glass-shots` (`picker`),
+  light and dark: TESTING.md "A theme's own Edit Theme Color".

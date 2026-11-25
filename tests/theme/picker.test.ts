@@ -6,8 +6,8 @@
 // once at rest), a sideways swipe the next texture); the appearance; the keyboard (a burst of keys saved once); ⌘Z a
 // step back; Use for All Spaces; Escape what was there before; Done, a press outside, another space shown: closed.
 // Each save is `renameSpace` with the background as the model reads it and its key colour; the app's part (the state
-// having it) is played here (`apply`). Then each built-in theme: the menu has it and it opens. The model and the
-// actions: tests/ui-picker.test.ts.
+// having it) is played here (`apply`). Then each built-in theme: the menu has it, it opens (its own picker, step
+// 5b, or Margin's), and its own works. The model and the actions: tests/ui-picker.test.ts.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium, webkit } from 'playwright';
@@ -260,7 +260,15 @@ for (const [engineName, engine] of ENGINES) {
         assert.deepEqual(await ev(() => T.rtMaterials()), [], 'a host without the system\'s materials: none asked for, made at once');
       });
 
-      await t.test('each built-in theme (in scope): the menu has it, and it opens', async () => {
+      // Each built-in theme's picker (M2.9 step 5b): its own (the part), with its field's variant and its sliders, or
+      // Margin's panel.
+      const OWN: Record<string, { variant: string, sliders: string[][] } | null> = {
+        arcadia: null, 'liquid-glass': null,
+        material: { variant: 'wheel', sliders: [['intensity', 'bar'], ['amount', 'bar']] },
+        neubrutalism: { variant: 'wheel', sliders: [['intensity', 'bar']] },
+        pixel: { variant: 'cells', sliders: [] },
+      };
+      await t.test('each built-in theme (in scope): the menu has it; it opens, its own picker or Margin\'s, works and closes', async () => {
         for (const [id, dir, fonts] of THEMES) {
           await mount(dir, id, [...fonts]);
           await ev(() => T.rtSetUi({ menu: { kind: 'space', id: 'personal', x: 40, y: 80 } } as any));
@@ -268,6 +276,29 @@ for (const [engineName, engine] of ENGINES) {
           await ev(() => T.rtSetUi({ menu: null } as any));
           await ev(() => T.rtDispatch('space.editBackground', 'personal'));
           assert.equal((await ev(() => T.rtPanel())).open, true, `${id}: open`);
+          const p = (await parts()) as any;
+          const own = OWN[id];
+          assert.equal(!!p.themed, !!own, `${id}: ${own ? 'its own picker' : 'Margin\'s panel'}`);
+          const [x, y, w, h] = (await ev(() => T.rtPanel())).rect!;
+          assert.ok(x >= 8 && y >= 8 && x + w <= W - 8 && y + h <= H - 8, `${id}: in the window: ${[x, y, w, h]}`);
+          if (own) {
+            assert.equal(p.variant, own.variant, `${id}: its field`);
+            assert.deepEqual(p.sliders.map((sl: any) => [sl.value, sl.variant]), own.sliders, `${id}: its sliders`);
+            const n = (await saves()).length;
+            await page.mouse.click(p.field.x + p.field.width * 0.75, p.field.y + p.field.height / 2);
+            assert.equal((await saves()).length, n + 1, `${id}: its field picks a colour`);
+            assert.equal((await saves()).at(-1).background.colors.length, 1);
+            // (Each part's appearance buttons carry Margin's label as their title.)
+            const look = await ev(() => { const b = document.querySelector('m-picker [role="radio"][title="Dark appearance"]'); if (!b) return null; const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+            assert.ok(look, `${id}: its dark appearance button`);
+            await page.mouse.click(look!.x, look!.y);
+            assert.equal((await saves()).at(-1).background.appearance, 'dark', `${id}: its appearance button saves`);
+            const done = await ev(() => T.rtBoxText('m-picker button', 'Done'));
+            assert.ok(done, `${id}: its Done`);
+            await page.mouse.click(done!.x, done!.y);
+            assert.equal((await ev(() => T.rtPanel())).open, false, `${id}: Done closes it`);
+            await ev(() => T.rtDispatch('space.editBackground', 'personal'));
+          }
           await page.keyboard.press('Escape');
           assert.equal((await ev(() => T.rtPanel())).open, false, `${id}: closed`);
         }
