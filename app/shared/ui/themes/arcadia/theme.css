@@ -49,11 +49,13 @@
   --drop: var(--accent);
   --danger: #d70015;
   --ease: cubic-bezier(0.2, 0, 0, 1);
-  /* Where the page card is: inside the frame (8 px), right of the sidebar
-     when it's docked. */
+  /* Where the page card is: inside the frame, right of the sidebar when it's
+     docked. Arc's (docs/ARC-SIDEBAR.md, measured): 10 pt from the window's
+     edges, the corner 6 pt (Arc's continuous corner, matched by a plain 6 px
+     radius to a fifth of a pixel). */
   --card-left: var(--width);
-  --card-inset: 8px;
-  --card-radius: 10px;
+  --card-inset: 10px;
+  --card-radius: 6px;
 
   position: relative;
   width: 100%;
@@ -133,12 +135,12 @@
 .arcadia ul { list-style: none; margin: 0; padding: 0; }
 .arcadia .spacer { flex: 1; }
 
-/* Hidden: the page in the frame (8 px all round), or, with the frame off,
-   the whole window. */
-.arcadia:is([data-sidebar="hidden"], [data-sidebar="peek"]) { --card-left: 8px; }
+/* Hidden: the page in the frame (10 px all round, as Arc's), or, with the
+   frame off, the whole window. */
+.arcadia:is([data-sidebar="hidden"], [data-sidebar="peek"]) { --card-left: 10px; }
 .arcadia:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]) { --card-left: 0px; --card-inset: 0px; --card-radius: 0px; }
 /* The new-tab page: the sidebar always beside the launcher. */
-.arcadia.newtab { --card-left: var(--width); --card-inset: 8px; --card-radius: 10px; }
+.arcadia.newtab { --card-left: var(--width); --card-inset: 10px; --card-radius: 6px; }
 
 /* ---- The frame and the page card ------------------------------------------- */
 
@@ -155,8 +157,11 @@
 .page { box-shadow: 0 0 0 100vmax var(--frame); }
 .arcadia[m-background] .page { box-shadow: none; }
 .arcadia:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .page { box-shadow: none; }
-/* The card's hairline and very soft shadow, above the sidebar so it also falls on its edge. */
-.card-edge { pointer-events: none; box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.14), 0 1px 3px rgba(0, 0, 0, 0.08); }
+/* The card's depth, above the sidebar so it also falls on its edge: Arc's one shadow, no hairline (docs/ARC-SIDEBAR.md:
+   measured on a white page, a Gaussian of black at 25%, 1 pt down, σ 3 pt; WebKit's blur is a little tighter, so
+   7 px here: rendered at 2×, its darkening outside the card's left, top and bottom edges is within 0.5% of Arc's at
+   every pixel). */
+.card-edge { pointer-events: none; box-shadow: 0 1px 7px rgba(0, 0, 0, 0.25); }
 .arcadia:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .card-edge { box-shadow: none; }
 
 /* The page card while an item opens (Margin.app: the root's m-page-state):
@@ -314,14 +319,17 @@
   -webkit-font-smoothing: antialiased;
 }
 /* Hidden or out over the page: a floating card inset from the edges, which
-   never moves the page. */
+   never moves the page. Arc's (docs/ARC-SIDEBAR.md, measured): 5 pt from the
+   window's edges, a 12 pt corner, a 1 pt rim of white at 30% just inside its
+   edge, and a soft shadow (black at about 17%, σ 4 pt: 9 px in WebKit, as the
+   page card's 3 pt is 7 px). */
 .arcadia:is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .margin-sidebar {
-  top: 8px;
-  left: 8px;
-  height: calc(100% - 16px);
-  border-radius: 10px; /* the page card's */
-  box-shadow: 0 0 0 0.5px var(--panel-edge), 0 12px 40px rgba(0, 0, 0, 0.22);
-  transform: translateX(calc(-100% - 16px));
+  top: 5px;
+  left: 5px;
+  height: calc(100% - 10px);
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3), 0 1px 9px rgba(0, 0, 0, 0.17);
+  transform: translateX(calc(-100% - 10px));
   visibility: hidden;
   transition: transform 180ms var(--ease), visibility 0s linear 180ms;
 }

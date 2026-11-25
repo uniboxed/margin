@@ -48,13 +48,20 @@ Part A is the study; Part B is the plan.
 - **No border.** On a white page the card's edge pixel is pure white and the shade outside it falls off smoothly: no
   hairline, inside or out. (Arcadia today draws a 0.5 px hairline, `0 0 0 0.5px rgba(0,0,0,.14)`.)
 - **The shadow**: one shadow fits the measured falloff on all four sides to within 0.002 (RMS of the darkening):
-  `box-shadow: 0 1px 6px rgba(0, 0, 0, 0.25)` (black at 25%, 1 pt down, a 6 pt blur: σ = 3 pt). At the card's edge
-  the background is 11% darker at the sides, 9% at the top, 15% at the bottom.
-- **The corner**: Apple's continuous corner (the curve eases into both edges), radius about 6 pt; a plain circular
-  CSS radius of 7 px is the closest match.
+  black at 25%, 1 pt down, a Gaussian of σ = 3 pt (`0 1px 6px` in CSS terms). At the card's edge the background is
+  11% darker at the sides, 9% at the top, 15% at the bottom. WebKit draws a CSS blur a little tighter than a Gaussian:
+  rendered at 2×, `box-shadow: 0 1px 7px rgba(0, 0, 0, 0.25)` matches Arc's falloff within 0.5% at every pixel (RMS
+  0.005, the measurement's own noise; 6 px gives 0.009).
+- **The corner**: 6 pt. The half-coverage contour of the bottom-left corner on a white page, row by row, fits a plain
+  circle of radius 12 px (6 pt) within 0.2 px except its last two rows (Arc's continuous corner eases in a hair
+  longer): `border-radius: 6px`.
 - **The sidebar is translucent**: the window's colour is the desktop behind it, blurred, under the space's colour and a
   grain image (the AX tree has an image named `grain` over the window). Margin draws the space's own colour and
   texture (M2.9), so the sidebar's colour is Margin's, not measured here.
+- **The sidebar out over the page (the peek)**: a floating panel 5 pt from the window's left, top and bottom, the
+  sidebar's width; its corner about 12 pt (its inner contour fits a 23–24 px circle); a 1 pt rim just inside its edge,
+  white at 30% (luma 188 over 160); a soft shadow over the page, black at about 16.5%, σ ≈ 4 pt (read on its right
+  side, over a white page).
 - **The window out of focus** pales the sidebar (to about `#ECEBE5` over a light desktop) and greys the traffic lights.
 
 ## The sidebar, top to bottom (259 pt wide)
