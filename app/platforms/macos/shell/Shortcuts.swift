@@ -264,6 +264,17 @@ final class AppShortcuts {
     private let registrar: HotKeyRegistrar
     private let keyRepeat: KeyRepeat
     private var cancelTick: (() -> Void)?
+    // A held key's repeat as it went (development diagnostics, 2026-11-25: a hold stopped repeating; Margin's log
+    // couldn't say why, its repeats are never said one by one): its repeats, when each came, and why it ended, in one
+    // line when it ends (`holdEnded`). A press with no repeat says nothing here.
+    private var hold: (name: String, at: TimeInterval, repeats: Int, last: TimeInterval, gap: TimeInterval)?
+    private func holdEnded(_ why: String) {
+        guard let h = hold else { return }
+        hold = nil
+        guard h.repeats > 0 else { return }
+        let ms = { (s: TimeInterval) in Int((s * 1000).rounded()) }
+        Diagnostics.note("held \(h.name): \(h.repeats) repeat\(h.repeats == 1 ? "" : "s") in \(ms(h.last - h.at)) ms (the longest between two \(ms(h.gap)) ms), ended: \(why)")
+    }
     // The core's holder, and the box its register and unregister reach the registrar through (kept as long as it).
     private var core: OpaquePointer?
     private let box: RegistrarBox
@@ -289,7 +300,7 @@ final class AppShortcuts {
         registrar.onRelease = { [weak self] id in
             guard let self else { return }
             margin_keys_release(self.core, id)
-            if margin_keys_next_tick(self.core) < 0 { self.cancelTick?(); self.cancelTick = nil }
+            if margin_keys_next_tick(self.core) < 0 { self.cancelTick?(); self.cancelTick = nil; self.holdEnded("its key released") }
         }
     }
 
@@ -342,7 +353,7 @@ final class AppShortcuts {
         guard active != isActive else { return }
         isActive = active
         let answer = KeysCore.answer { margin_keys_set_active(core, active, $0) } as? [String: Any]
-        if active { taken(answer?["taken"], fresh: true) } else { cancelTick?(); cancelTick = nil }
+        if active { taken(answer?["taken"], fresh: true) } else { cancelTick?(); cancelTick = nil; holdEnded("Margin's keys let go") }
     }
 
     // The ones another app holds, just found so (a hold or a rebind while held), said once each.
@@ -362,9 +373,12 @@ final class AppShortcuts {
         let t = keyRepeat.now()
         let h = margin_keys_press(core, id, t, max(0, keyRepeat.delay()), max(0, keyRepeat.interval()))
         // (One of Margin's keys: any repeat before it is over; the guards' keys leave it running.)
-        if h.kind == 1 { cancelTick?(); cancelTick = nil }
+        if h.kind == 1 { cancelTick?(); cancelTick = nil; holdEnded("another press") }
         run(h)
         if h.kind == 1 { scheduleTick(from: t) }
+        if h.kind == 1, margin_keys_next_tick(core) >= 0, KeysCore.commands.indices.contains(Int(h.index)) {
+            hold = (KeysCore.commands[Int(h.index)], t, 0, t, 0)
+        }
     }
 
     private func run(_ h: MarginKeyHit) {
@@ -391,7 +405,14 @@ final class AppShortcuts {
     private func tick(_ due: TimeInterval) {
         cancelTick = nil
         let t = max(due, keyRepeat.now())
-        run(margin_keys_tick(core, t, keyRepeat.modifiers()))
+        let mods = keyRepeat.modifiers()
+        let h = margin_keys_tick(core, t, mods)
+        if h.kind == 1, let held = hold { hold = (held.name, held.at, held.repeats + 1, t, max(held.gap, t - held.last)) }
+        run(h)
         scheduleTick(from: t)
+        if margin_keys_next_tick(core) < 0 {
+            let down = [(cmdKey, "⌘"), (optionKey, "⌥"), (controlKey, "⌃"), (shiftKey, "⇧")].filter { mods & UInt32($0.0) != 0 }.map(\.1).joined()
+            holdEnded("its modifiers no longer down, or Margin's keys not held (down now: \(down.isEmpty ? "none" : down))")
+        }
     }
 }
