@@ -122,7 +122,7 @@ export type Rt = {
  * pill and notice); `onSwitchRun`: each chain of switches as it ends, with a
  * host whose UI stays on screen (shared/switching.ts SwitchRun: Margin.app's log)
  */
-export function createRuntime({ host, theme, container, ui: start = {}, onWarn, log, onSwitchSlow, onSwitchFailed, onPalette, onSwitching, onSwitchRun, onGround, onPanel }: {
+export function createRuntime({ host, theme, container, ui: start = {}, onWarn, log, onSwitchSlow, onSwitchFailed, onPalette, onSwitching, onSwitchRun, onGround, onPanel, materials }: {
   host: Host,
   theme: LoadedTheme,
   container: ShadowRoot | Document,
@@ -138,6 +138,12 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   onGround?: () => void,
   /** Margin's own panel (Edit Theme Color) opened or closed: while it's open it takes the keys and the pointer where it is (`panelOpen`, `panelRect`). */
   onPanel?: () => void,
+  /**
+   * The system's materials for Margin's own panel (Edit Theme Color's glass), asked for as it opens (true) and given
+   * back as it closes (false); resolves once the page has the answer. Margin.app's (app/shared/host/overlay.ts); none
+   * elsewhere: the panel is drawn solid.
+   */
+  materials?: (on: boolean) => Promise<unknown>,
 }) {
   // (Always with a palette: closed, or as it's open.)
   let ui: Ui = { sidebar: null, palette: CLOSED_PALETTE, menu: null, editing: null, editor: null, notice: null, prompt: null, toast: null, focused: true, switchingTo: null, newTabPending: false, opening: null, ...start };
@@ -1035,7 +1041,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     scroll: installScroll(rt),
     swipe: installSwipe(rt),
     settings: installSettings(rt),
-    backgroundPicker: installBackgroundPicker(rt),
+    backgroundPicker: installBackgroundPicker(rt, { materials }),
   });
   const list = Object.values(behaviors);
 

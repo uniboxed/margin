@@ -2323,11 +2323,23 @@ On the real screen, with the kit's TestPane (a full-screen member), Calculator (
 8. **Kept.** Quit Margin and open it again: the sidebar as wide as it was left (`defaults read com.unibox.margin MarginWindowThemeSettings`).
 9. **Fast and odd drags.** A fast flick; a drag past the theme's minimum and maximum; ⌘-Tab away mid-drag; a drag while an app is still opening (its loading bar): the sidebar never sticks, Margin's window always ends right below the hosted one (the app takes clicks again), one placing at most per drag.
 
+## Edit Theme Color's glass (M2.9 step 5, 2026-11-24)
+
+Margin.app on macOS 26 or later, Arcadia. Off screen it was measured (`DECISIONS.md` "M2.9 step 5 spike") and photographed (`tools/glass-shots/run.sh <dir> arcadia`, the `picker` pictures); none of this was seen on the real screen. Stop at the first thing that's wrong and note which step.
+
+1. **The glass.** Right-click the space's chip › Edit Theme Color…. The log says `overlay system appearance (system materials: a theme's, or Edit Theme Color's glass): on`. The panel is real glass: the sidebar and the space's colours blur through it, with a bright rim, and no shadow ring round it. Done: the log says `… off`, and nothing else in the window changed while it was open or as it closed.
+2. **Light and dark.** Give the space a dark appearance (☾) while the Mac is light, and the other way round: the glass follows the space (smoky with ☾, milky with ☀), every label readable on it.
+3. **Over the page.** With a Safari tab hosted beside it, open the picker so that it lies over the page area: what shows through is what's under it in Margin's window.
+4. **Settings.** Open Margin's Settings tab, then the picker from the space's menu: the panel is solid (no `on` in the log). Open the picker first and then Settings (⌘,): the picker closes, the log says `off`. With Neubrutalism in Dark Mode and Settings shown, the number fields keep their ⌃⌄ steppers throughout.
+5. **Accessibility.** Increase Contrast on: the panel is solid. Reduce Transparency on: the glass turns solid by macOS's own doing; text readable.
+6. **Liquid Glass.** The picker there is glass too (its switch is on throughout: no `on`/`off` lines as it opens and closes).
+7. **Off.** `defaults write com.unibox.margin MarginSystemAppearance -bool NO`, restart: the picker is solid. `defaults delete` it again.
+
 ## Liquid Glass (2026-11-17)
 
 Margin.app on macOS 26 or later, Settings › Theme › Liquid Glass. Nothing of this was seen on the real screen; off screen it's `tools/glass-shots/run.sh` (pictures and each glass layer's box). Stop at the first thing that's wrong and note which step.
 
-1. **The switch.** Choose Liquid Glass. The log says `overlay system appearance (a theme's system materials): on` once. The sidebar is real glass: it bends and blurs the ground's colors at its edges, with a bright rim. Choose Arcadia: the log says `… off`, Arcadia looks exactly as before. Back to Liquid Glass: glass again, at once, with no flash of the plain look.
+1. **The switch.** Choose Liquid Glass. The log says `overlay system appearance (system materials: a theme's, or Edit Theme Color's glass): on` once. The sidebar is real glass: it bends and blurs the ground's colors at its edges, with a bright rim. Choose Arcadia: the log says `… off`, Arcadia looks exactly as before. Back to Liquid Glass: glass again, at once, with no flash of the plain look.
 2. **Other themes untouched.** With Neubrutalism in Dark Mode, open Settings: the number fields' steppers and the page's scroll bars are light, as before this change (they'd be dark if the switch leaked).
 3. **The shapes.** The panel is 8 pt in from the window's left, top and bottom edges and stops 8 pt short of the page card; its glass is exactly that box (no glass under the gap or past the window's edge). The address pill, the back/forward/reload capsule and the space switcher are quieter glass inside it; the tab in front is a lit capsule; no other row has glass.
 4. **Light and dark, each space.** Switch spaces: the ground's colors change, the glass picks them up. Labels readable over every space color in both modes (dark text on the milky light glass, white on the smoky dark one), secondary text too.

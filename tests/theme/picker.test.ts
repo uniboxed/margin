@@ -39,9 +39,9 @@ for (const [engineName, engine] of ENGINES) {
       await page.addScriptTag({ content: script });
       await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' });
       const ev = <A, R>(fn: (a: A) => R, a?: A) => page.evaluate(fn as any, a) as Promise<Awaited<R>>;
-      const mount = async (pkgDir: string, id: string, fonts: string[] = []) => {
+      const mount = async (pkgDir: string, id: string, fonts: string[] = [], extra: { materials?: number } = {}) => {
         assert.equal((await page.evaluate(([p, i, f]) => T.loadBuiltin(p, i, f), [themeForPage(pkgDir), id, fonts] as const)).ok, true);
-        await ev(() => T.mountRuntime({ width: 1280, height: 800, container: 'document', mode: 'fullscreen' }));
+        await ev((x) => T.mountRuntime({ width: 1280, height: 800, container: 'document', mode: 'fullscreen', ...x }), extra);
         await page.waitForFunction(() => T.rtLayouts().length > 0);
       };
       const saves = async () => (await ev(() => T.rtSent())).filter(([type]) => type === 'renameSpace').map(([, p]) => p);
@@ -257,6 +257,7 @@ for (const [engineName, engine] of ENGINES) {
         await ev(() => T.rtFrames(2));
         assert.equal((await ev(() => T.rtPanel())).open, false, 'another space shown');
         assert.equal((await saves()).length, n, 'nothing sent');
+        assert.deepEqual(await ev(() => T.rtMaterials()), [], 'a host without the system\'s materials: none asked for, made at once');
       });
 
       await t.test('each built-in theme (in scope): the menu has it, and it opens', async () => {
@@ -270,6 +271,90 @@ for (const [engineName, engine] of ENGINES) {
           await page.keyboard.press('Escape');
           assert.equal((await ev(() => T.rtPanel())).open, false, `${id}: closed`);
         }
+      });
+
+      // Its glass (M2.9 step 5): a host with the system's materials (Margin.app's), answering after 250 ms.
+      const asked = () => ev(() => T.rtMaterials());
+      const isOpen = async () => (await ev(() => T.rtPanel())).open;
+
+      await t.test('glass: the materials asked for as it opens, the panel made once they\'re answered, given back as it closes', async () => {
+        await mount(ARCADIA, 'arcadia', [], { materials: 250 });
+        await ev(() => T.rtDispatch('space.editBackground', 'personal'));
+        assert.deepEqual(await asked(), [true]);
+        assert.equal(await isOpen(), false, 'not made before the answer (its sheet read with them on)');
+        await page.waitForFunction(() => T.rtPanel().open);
+        const n = (await saves()).length;
+        const p = (await parts())!;
+        await page.mouse.click(p.field.x + p.field.width * 0.7, p.field.y + p.field.height / 2);
+        assert.equal((await saves()).length, n + 1, 'it works as ever: a click on the field saved');
+        await ev(() => T.rtDispatch('space.editBackground', 'personal'));
+        assert.equal(await isOpen(), true, 'opened again while open: made at once');
+        assert.deepEqual(await asked(), [true], 'held already: not asked again');
+        await click((await parts())!.done);
+        assert.equal(await isOpen(), false);
+        assert.deepEqual(await asked(), [true, false], 'given back as it closes');
+      });
+
+      await t.test('glass: opened again before the answer: that same answer waited for, asked once', async () => {
+        const before = (await asked()).length;
+        await ev(() => { T.rtDispatch('space.editBackground', 'personal'); T.rtDispatch('space.editBackground', 'personal'); });
+        assert.deepEqual((await asked()).slice(before), [true], 'asked once');
+        assert.equal(await isOpen(), false, 'not made before the answer');
+        await page.waitForFunction(() => T.rtPanel().open);
+        await page.keyboard.press('Escape');
+        assert.deepEqual((await asked()).slice(before), [true, false]);
+      });
+
+      await t.test('glass: an open still waiting ends at a press outside, or another space shown, and gives them back', async () => {
+        await ev(() => T.rtDispatch('space.editBackground', 'personal'));
+        await page.mouse.click(700, 400); // (the page's place)
+        assert.deepEqual((await asked()).slice(-2), [true, false]);
+        await page.waitForTimeout(400);
+        assert.equal(await isOpen(), false, 'a press outside: never made');
+        await ev(() => T.rtDispatch('space.editBackground', 'personal'));
+        await ev(() => T.rtChange('switchSpace', 'work'));
+        await ev(() => T.rtFrames(2));
+        assert.deepEqual((await asked()).slice(-2), [true, false]);
+        await page.waitForTimeout(400);
+        assert.equal(await isOpen(), false, 'another space shown: never made');
+        await ev(() => T.rtChange('switchSpace', 'personal'));
+        await ev(() => T.rtFrames(2));
+      });
+
+      await t.test('glass: not asked for while Settings is on screen (drawn solid); Settings come while it holds them closes it', async () => {
+        const before = (await asked()).length;
+        await ev(() => T.rtSetUi({ settingsPage: true }));
+        await ev(() => T.rtDispatch('space.editBackground', 'personal'));
+        assert.equal(await isOpen(), true, 'made at once');
+        assert.equal((await asked()).length, before, 'not asked for');
+        await page.keyboard.press('Escape');
+        assert.equal(await isOpen(), false);
+        assert.equal((await asked()).length, before, 'nothing to give back');
+        await ev(() => T.rtSetUi({ settingsPage: false }));
+        await ev(() => T.rtDispatch('space.editBackground', 'personal'));
+        await page.waitForFunction(() => T.rtPanel().open);
+        await ev(() => T.rtSetUi({ settingsPage: true }));
+        await ev(() => T.rtFrames(2));
+        assert.equal(await isOpen(), false, 'Settings come: closed');
+        assert.deepEqual((await asked()).slice(-2), [true, false]);
+        await ev(() => T.rtSetUi({ settingsPage: false }));
+      });
+
+      await t.test('glass: not asked for with more contrast asked for (drawn solid)', async () => {
+        await page.emulateMedia({ contrast: 'more' });
+        const before = (await asked()).length;
+        await ev(() => T.rtDispatch('space.editBackground', 'personal'));
+        assert.equal(await isOpen(), true, 'made at once');
+        assert.equal((await asked()).length, before, 'not asked for');
+        await page.keyboard.press('Escape');
+        await page.emulateMedia({ contrast: 'no-preference' });
+      });
+
+      await t.test('glass: the runtime gone while it holds them gives them back', async () => {
+        await ev(() => T.rtDispatch('space.editBackground', 'personal'));
+        await page.waitForFunction(() => T.rtPanel().open);
+        await ev(() => (T as Harness & { unmountRuntime(): void }).unmountRuntime());
+        assert.deepEqual((await asked()).slice(-2), [true, false]);
       });
 
       assert.deepEqual(errors, []);

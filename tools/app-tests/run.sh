@@ -51,6 +51,16 @@ JOBS=(-j"$(sysctl -n hw.ncpu 2>/dev/null || echo 4)")
 NODE="${NODE:-$(command -v node || echo /opt/homebrew/bin/node)}"
 WHAT="${1:-all}"
 
+# dist/app (scripts/build.ts), the page the checks load and read (the built-in themes' packages): built when missing or
+# older than any of its sources (the code, and the themes' CSS, HTML and JSON), before the unit checks and before the
+# end-to-end checks, either of which may run alone.
+app_page() {
+  local page="$PWD/../../dist/app/overlay.js"
+  if [ ! -f "$page" ] || [ -n "$(find ../../app/shared ../../extension \( -name '*.ts' -o -name '*.css' -o -name '*.html' -o -name '*.json' \) -newer "$page" 2>/dev/null | head -1)" ]; then
+    "$NODE" ../../scripts/build.ts >/dev/null || exit 1
+  fi
+}
+
 build() { # name sources...
   local name="$1"; shift
   if [ ! -x "$BUILD/$name" ] || [ -n "$(find "$@" -newer "$BUILD/$name" 2>/dev/null)" ]; then
@@ -92,17 +102,12 @@ if [ "$WHAT" = unit ] || [ "$WHAT" = all ]; then
   CARGO="${CARGO:-$(command -v cargo || echo "$HOME/.cargo/bin/cargo")}"
   "$CARGO" build -q --release -p margin-connector --manifest-path ../../Cargo.toml || exit 1
   CONNECTOR="$(cd ../.. && pwd)/target/release/margin-connector"
-  # dist/app (scripts/build.ts) for the checks that read it (the built-in themes' packages): built when missing or
-  # older than its sources.
-  APP_PAGE="$PWD/../../dist/app/overlay.js"
-  if [ ! -f "$APP_PAGE" ] || [ -n "$(find ../../app/shared ../../extension -name '*.ts' -newer "$APP_PAGE" 2>/dev/null | head -1)" ]; then
-    "$NODE" ../../scripts/build.ts >/dev/null || exit 1
-  fi
+  app_page
   build tests "${UNIT_TESTS[@]}" "$CHAMELEON_SWITCHES" "${SHELL_SOURCES[@]}"
   MARGIN_DATA_VECTORS="$PWD/../../tests/fixtures/data-merge" MARGIN_LIBRARY_VECTORS="$PWD/../../tests/fixtures/library" MARGIN_CONNECTOR_BIN="$CONNECTOR" "$BUILD/tests" || status=1
 fi
 if [ "$WHAT" = e2e ] || [ "$WHAT" = all ]; then
-  [ -f ../../dist/app/overlay.js ] || { echo "dist/app/ is missing: run npm run build" >&2; exit 1; }
+  app_page
   build e2e e2e.swift e2e-data.swift e2e-hosted.swift e2e-glue.swift e2e-split.swift "$FAKE_SAFARI" "${SHELL_SOURCES[@]}"
   MARGIN_APP_ROOT="$PWD/../../dist/app" MARGIN_FAKE_EXTENSION="$PWD/fake-extension.mts" MARGIN_NODE="$NODE" "$BUILD/e2e" || status=1
 fi

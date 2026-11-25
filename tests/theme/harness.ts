@@ -323,7 +323,7 @@ const T = {
 
 // `host`, `mock`, `target` and `warnings` are set by mountRuntime and `theme` by loadBuiltin or loadPackage,
 // before any step that reads them (null until then); `runtime` is null again once unmounted.
-const rt: { runtime: Runtime | null, host: MockHost, mock: MockState, el: HTMLElement | null, target: Target, theme: ThemeResult, warnings?: string[], resizing: [boolean, number | null][], notes: string[] } = { runtime: null, host: null!, mock: null!, el: null, target: null!, theme: null!, resizing: [], notes: [] };
+const rt: { runtime: Runtime | null, host: MockHost, mock: MockState, el: HTMLElement | null, target: Target, theme: ThemeResult, warnings?: string[], resizing: [boolean, number | null][], notes: string[], materials: boolean[] } = { runtime: null, host: null!, mock: null!, el: null, target: null!, theme: null!, resizing: [], notes: [], materials: [] };
 
 const starting = () => rt.runtime!.view.rootElement()?.hasAttribute('m-starting') ?? false;
 function startEmpty(pageState: 'empty' | 'loading' | 'shown', name: string | null) {
@@ -360,7 +360,7 @@ const withRuntime = Object.assign(T, {
 
   // `replies`: what the host answers a request of each type with (values);
   // `settings`: the stored settings changed first.
-  mountRuntime({ width = 1440, height = 900, container = 'shadow', closed = true, platform = { browser: 'chrome', os: 'linux', marginFullscreen: true }, replies = {}, settings = null, mode = 'fullscreen', inNewTab = false, focusLauncherAtMount = undefined, warnings = null, staysOnScreen = false, appWindow = false, hosted = false }: {
+  mountRuntime({ width = 1440, height = 900, container = 'shadow', closed = true, platform = { browser: 'chrome', os: 'linux', marginFullscreen: true }, replies = {}, settings = null, mode = 'fullscreen', inNewTab = false, focusLauncherAtMount = undefined, warnings = null, staysOnScreen = false, appWindow = false, hosted = false, materials = null }: {
     width?: number, height?: number, container?: 'shadow' | 'document', closed?: boolean,
     platform?: { browser: string, os: string, marginFullscreen?: boolean }, replies?: Record<string, unknown>,
     settings?: Record<string, unknown> | null, mode?: 'fullscreen' | 'windowed' | 'inpage', inNewTab?: boolean,
@@ -372,6 +372,9 @@ const withRuntime = Object.assign(T, {
     // launcher, the theme's root marked as the app's page marks it (app/shared/host/overlay.ts followOutside), the
     // page card `shown` (ui/host-app.ts pageState: `rtPageState` changes it).
     hosted?: boolean,
+    // A host with the system's materials (Margin.app's, for Edit Theme Color's glass): it answers each ask after this
+    // many ms (no glass here: Playwright's browsers don't know the property); the asks, in order: `rtMaterials`.
+    materials?: number | null,
   } = {}) {
     (T as typeof T & { unmountRuntime(): void }).unmountRuntime(); // (added with these steps)
     const mock = new MockState();
@@ -399,7 +402,11 @@ const withRuntime = Object.assign(T, {
     }
     rt.warnings = [];
     // (A theme that loaded: the tests check that first.)
-    const runtime = createRuntime({ host, theme: rt.theme as LoadedTheme, container: target, onWarn: (m) => rt.warnings!.push(m) });
+    rt.materials = [];
+    const runtime = createRuntime({
+      host, theme: rt.theme as LoadedTheme, container: target, onWarn: (m) => rt.warnings!.push(m),
+      ...(materials == null ? {} : { materials: (on: boolean) => { rt.materials.push(on); return new Promise<void>((done) => setTimeout(done, materials)); } }),
+    });
     Object.assign(rt, { runtime, host, mock, el, target });
     if (hosted) runtime.view.rootElement()?.toggleAttribute('m-sidebar-fixed', sidebarFixed(host as { pageOutside?: boolean }));
     w.__rt = rt;
@@ -491,6 +498,8 @@ const withRuntime = Object.assign(T, {
   rtBackgroundAt(x: number, y: number) { return rt.runtime!.backgroundAt(x, y); },
   // Edit Theme Color (M2.9 step 4): its parts (boxes and states: its content is closed), whether it's open and where.
   rtPicker() { return rt.runtime!.pickerParts(); },
+  // … and what it asked of a host with the system's materials (mountRuntime's `materials`): true on, false off, in order.
+  rtMaterials() { return [...rt.materials]; },
   rtPanel() { return { open: rt.runtime!.panelOpen, rect: rt.runtime!.panelRect() }; },
   rtVars(names: string[]) {
     const root = rt.runtime!.view.rootElement();

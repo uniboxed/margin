@@ -34,6 +34,7 @@ import { createAppNotices, createGestureFeedback } from '../ui/app-feedback.ts';
 import { backgroundSwitches, describeSwitchRun, OVERLAY_SWITCH_PREFIX, pickNavTab } from '../../../extension/shared/switching.ts';
 import { cycleSpace, cycleTab } from '../../../extension/shared/view.ts';
 import { pickBridge } from '../ui/overlay-bridge.ts';
+import { createMaterials } from './materials.ts';
 import { numberedAction, numberedRows, togglePin } from '../ui/shortcut-targets.ts';
 import { nextSplitPane } from '../ui/behaviors/split.ts';
 
@@ -490,24 +491,10 @@ async function fallBack(id: string, why: string) {
   return false;
 }
 
-// The system's materials (macOS's Liquid Glass: `-apple-visual-effect` in a theme's CSS). WebKit knows the property
-// only in a web view with its system appearance on, which Margin.app turns on for a theme that asks (theme.json
-// `systemMaterials`) and off again for every other (`appearance`: app/platforms/macos/shell/OverlayWebView.swift
-// OverlaySystemAppearance; it also changes links' colours and what `color-scheme: light` means in Dark Mode, so no
-// other theme gets it). Asked before a theme's style sheet is made: the browser keeps or drops the property as it
-// reads the sheet. Without the app's answer (Windows, an older Margin.app) the theme draws its plain fills.
-let systemMaterials: boolean | null = null; // as last asked (null: not yet, by this page)
-async function askSystemMaterials(on: boolean) {
-  if (on === systemMaterials) return;
-  systemMaterials = on;
-  let answer: unknown = null;
-  try { answer = await post('appearance', { system: on }); } catch { return; }
-  if (!on || answer !== true) return;
-  // On, as the app says: this page knows it by the time the answer comes (seen every time, off screen); if a
-  // WebKit ever tells the page later, wait for that, 160 ms at most.
-  const known = () => typeof CSS !== 'undefined' && CSS.supports('-apple-visual-effect', '-apple-system-glass-material');
-  for (let i = 0; i < 10 && !known(); i++) await new Promise((resolve) => setTimeout(resolve, 16));
-}
+// The system's materials (macOS's Liquid Glass: `-apple-visual-effect`): on while the theme drawn or Edit Theme
+// Color's panel asks for them, each before its sheet is read (app/shared/host/materials.ts says why and how).
+const materials = createMaterials((on) => post('appearance', { system: on }),
+  () => typeof CSS !== 'undefined' && CSS.supports('-apple-visual-effect', '-apple-system-glass-material'));
 
 /**
  * @param pkg the theme package (background/theme-package.ts ThemeMessage)
@@ -523,8 +510,9 @@ async function mount(pkg: any, { fallback = false, preview: previewing = false }
     let files: { [k: string]: Uint8Array<ArrayBuffer>; } | null = null;
     try { files = Object.fromEntries(Object.entries(pkg.files ?? {}).map(([p, b64]) => [p, decode(String(b64))])); } catch { why = 'its files aren\'t readable'; }
     if (files) {
-      await askSystemMaterials(wantsSystemMaterials(pkg.manifest));
-      loaded = await loadTheme({ manifest: pkg.manifest, html: pkg.html, css: pkg.css, files }, { document, settings: host.getState()?.settings?.themes?.[pkg.id] ?? null });
+      const read = files, settings = host.getState()?.settings?.themes?.[pkg.id] ?? null;
+      loaded = await materials.readTheme(wantsSystemMaterials(pkg.manifest),
+        () => loadTheme({ manifest: pkg.manifest, html: pkg.html, css: pkg.css, files: read }, { document, settings }));
       if (!loaded.ok) why = `refused: ${(loaded as any).report.errors.length} problem(s) in ${reasonKinds((loaded as any).report.errors)}`;
     }
   }
@@ -554,6 +542,8 @@ async function mount(pkg: any, { fallback = false, preview: previewing = false }
     onGround: () => measureNow(),
     // (Edit Theme Color opened or closed: the keys taken or given back with it, and what takes the pointer told again.)
     onPanel: () => { hitsSoon(); queueMicrotask(followPopup); },
+    // (Edit Theme Color's glass: the system's materials while its panel is open.)
+    materials: (on) => materials.panel(on),
   });
   // (The page's own hover: the theme's sheets and Margin's own, every :hover also [m-hover]; the marks start again.)
   for (const sheet of runtime.view.sheets ?? []) { try { withHoverAttr(sheet.cssRules); } catch { /* a sheet not readable: its :hover only */ } }

@@ -614,6 +614,9 @@ glass. Liquid Glass (`liquid-glass/`) is the example.
 
 1. Say so in `theme.json`: `"systemMaterials": true`. Margin.app then turns
    WebKit's system appearance on for its page while your theme is drawn.
+   (It also turns it on for Margin's own Edit Theme Color panel while
+   that's open, its glass; your theme's sheet is never read then, so
+   without `systemMaterials` your theme never gets the materials.)
    That also changes two things in your theme: unstyled links take macOS's
    link colours, and in Dark Mode `color-scheme: light` is no longer
    honoured (use `light dark`, or `dark`).

@@ -9713,3 +9713,47 @@ visible effect, Settings' native controls in a dark appearance, is avoided by a 
 solid (no switch) while Margin's Settings page is on screen. It's solid too where the system has no glass (Windows, the
 extension, the switch's selectors missing, `MarginSystemAppearance` NO) and with more contrast asked for, as Liquid
 Glass's own panels are.
+
+## M2.9 step 5: Margin's default picker on real glass (`feat/space-backgrounds`, 2026-11-24)
+
+- **What it is**: Edit Theme Color's panel on macOS's real glass in Margin.app (macOS 26 and later), in every theme
+  without a picker of its own (all of them until step 5b; Arcadia's stays the default), in the space's own light or
+  dark. Approach A from the spike: WebKit's system appearance turned on for Margin's page while the panel is open.
+- **The switch, in one place** (`app/shared/host/materials.ts`, out of `overlay.ts`, where the theme's ask was): on
+  while the theme drawn says `systemMaterials` or the panel is open. Three rules, each with a Node test:
+  - an ask the same way as one still on its way waits for its answer (before, a second ask returned at once, before
+    the switch was on; only the theme asked then, so it never mattered);
+  - **a theme is never read with the switch on for the panel**: the sanitizer lets `-apple-visual-effect` through in
+    any theme, and only the switch being off as a sheet is read keeps it out of a theme that doesn't say
+    `systemMaterials`. So reading a theme drops the panel's want first (that panel goes with the runtime the theme
+    replaces), and a want the panel says while a theme is being read waits (that panel is drawn solid). Found while
+    building: `mount` asks before it reads the new theme and destroys the old runtime (and its open picker) after.
+  - no app (Windows, the extension, an older Margin.app): nothing turns on, every ask resolves.
+- **The picker** (`ui/behaviors/background-picker.ts`, the runtime's new `materials` option): asks and waits for the
+  answer before it makes the panel (its sheet must be read with the switch on), gives it back as it closes (after the
+  panel's gone), and doesn't ask while Margin's Settings page is shown or with more contrast asked for (drawn solid
+  then). Settings coming while it holds the switch closes it. Every way an open can end while it still waits (a press
+  outside, another space shown, the space gone, closed, opened again, the runtime gone) ends it and gives the switch
+  back; opened again while open it's made at once (the switch held and answered), and opened again before the answer
+  it waits for that same answer (found in review: it was made at once, its sheet read before the switch was on).
+- **The panel's CSS**: the spike's rule, in `@supports (-apple-visual-effect: …)` and `@media not (prefers-contrast:
+  more)`: no fill, no outer shadow (one would grow the glass past the box), `overflow: hidden`.
+- **Swift**: nothing but words (the `appearance` message was already the switch); the log line now says
+  `overlay system appearance (system materials: a theme's, or Edit Theme Color's glass): …` (TESTING.md updated).
+- **Tests**:
+  - Node, `tests/host-materials.test.ts`: the switch's rules (each broken on purpose and caught).
+  - Chromium and WebKit, `tests/theme/picker.test.ts`: the harness's host with the materials answering after 250 ms.
+    Asked before the panel is made and not before the answer; given back as it closes; opened again while open, and
+    before the answer; a press
+    outside or another space shown while it waits; Settings shown; Settings come; more contrast; the runtime gone. Four
+    deliberate breaks of the behaviour each caught.
+  - End to end in Margin.app, `e2e-glue.swift`: opened from the space's menu with a real press (a theme's action runs
+    for a trusted event only, so a script's `click()` doesn't open it), the switch on while it's open and the page
+    knowing the property, off when it's closed.
+  - `tools/glass-shots/run.sh <dir> <theme>` has a `picker` state: Arcadia and Liquid Glass photographed with the
+    picker's glass layer exactly the panel's box.
+- **Found on the way, fixed**: `tools/app-tests/run.sh e2e` alone didn't rebuild `dist/app` (only its unit part did),
+  so an e2e run after a page change used the old page (this step's e2e checks failed so, until rebuilt); and the
+  rebuild looked at `.ts` sources only, not the built-in themes' CSS, HTML and JSON it packages. Now one `app_page`
+  step, before either part, over all of them. (`npm run gate` runs unit first, so it was never fooled.)
+- **Not seen on the real screen**: TESTING.md "Edit Theme Color's glass".

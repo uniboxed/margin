@@ -266,7 +266,7 @@ it. The code: `app/shared/ui/background.ts` (the layer), `background-look.ts` (w
 - **While it's open**, Margin.app gives the page the keys and is told the panel takes the pointer (`overlay.ts`: `panelOpen`, `panelRect`), as for Margin's menus.
 - **Its glass:** see step 5. **Its ticks:** an `onTick` hook, step 6.
 
-### 5. The panel's glass: two candidates, settled by a spike
+### 5. The panel's glass: two candidates, settled by a spike (built: step 5)
 
 Neither has been tried. Each has a known cost.
 
@@ -292,6 +292,8 @@ The spike's measurements, which decide between them:
 **Lean: A if its side effect is invisible, else B.** The component from step 4 is the same either way.
 
 **Settled (spike, 2026-11-24): A.** Real glass on the picker in its closed shadow root and the top layer, the space's own light or dark, no measurable cost, and nothing visible changes in any theme's sidebar when the switch turns on. The one effect, Settings' native controls in a dark appearance (Neubrutalism's steppers, a sliver of Pixel's select), is avoided by drawing the picker solid while Margin's Settings page is on screen. B isn't built. The measurements: DECISIONS.md "M2.9 step 5 spike".
+
+**Built (step 5):** the switch's coordination is `app/shared/host/materials.ts` (on while the theme or the open panel wants it; a theme's sheet never read with it on for the panel; an ask waits for one on its way). The runtime's `materials` option carries it to the picker's behaviour, which asks before it makes the panel and gives it back as it closes, asks nothing while Settings is shown or with more contrast, and closes if Settings comes while it holds it. The panel's CSS: `@supports (-apple-visual-effect: …) { @media not (prefers-contrast: more) { .panel { background: none; box-shadow: none; overflow: hidden; -apple-visual-effect: -apple-system-glass-material } } }`. No Swift change but words: the `appearance` message was already the switch. DECISIONS.md "M2.9 step 5".
 
 ### 6. Feedback: haptics or sound
 
@@ -361,7 +363,7 @@ The spike's measurements, which decide between them:
 | 2 | `feat(m2.9)`: Margin's background layer and palette under every theme | `ui/background.ts`, `background-look.ts`, `color.ts`, `textures.ts` (new), `runtime.ts`, `render.ts`, `view-model.ts`, `host-app.ts` `cornerFill`, `overlay.ts`, the five themes' CSS, themes README | Theme tests: each theme with and without a background, light, dark, more contrast, every texture, a theme without the contract, `--m-fg` on `--m-bg` ≥ 4.5:1, corner fill sRGB, cross-fade, reduced motion |
 | 3 | `feat(m2.9)`: appearance per space | core `object.rs`, FFI `data.rs`, `Library.swift`, `HostedSession.swift`, `MarginWindowController.swift` (Windows later, with its library windows) | Core and FFI tests; a Swift unit test of WebKit's side; end-to-end: the window and its page follow the shown space |
 | 4 | `feat(m2.9)`: the Edit Theme Color picker (built) | `ui/picker/*`, `behaviors/background-picker.ts` (new), `extension/shared/space-background.ts` (the rule, out of `model.ts`), `menu-items.ts`, `menus.ts`, `actions.ts` (`space.editBackground`, `space.setBackground`), `runtime.ts`, `overlay.ts` | Behaviour tests in Chromium and WebKit: drag, wheel, −/+, presets, slider, dial (turn, drag, scroll, click, swipe), undo, Escape, save as one request, Use for all spaces, keyboard |
-| 5 | `feat(m2.9)`: Margin's default picker on system glass (A or B per spike) | Swift; DECISIONS.md (the glass exception) | Swift unit tests; e2e: opens, places, closes, keeps focus |
+| 5 | `feat(m2.9)`: Margin's default picker on system glass (built: A) | `host/materials.ts` (new), `overlay.ts`, `runtime.ts`, `behaviors/background-picker.ts`, `picker/panel.ts`; Swift words; `tools/glass-shots` (a `picker` state); `tools/app-tests/run.sh` (the page rebuilt for the e2e part too) | Node: the switch's rules; Chromium and WebKit: asked before the panel is made, given back, every way it ends, Settings, more contrast; e2e in Margin.app: on while open, the page knows the property, off when closed; the real glass photographed |
 | 5b | `feat(m2.9)`: a theme's own picker, the `background-picker` part | `ui/picker/panel.ts` (its elements as parts' slots: `<m-picker-field>`, `-appearance`, `-colors`, `-swatches`, `-intensity`, `-texture`, `-foot`), `render.ts`, `sanitize.ts`, themes README; Material's, Neubrutalism's and Pixel's parts | Theme tests: a part drawn and working in both engines, the default without one, an element left out, a part's bad CSS or markup refused; each built-in theme's picker opens, drags, saves |
 | 6 | `feat(m2.9)`: haptic or sound ticks | Swift device detection, `said.rs`/FFI/`PageCore.swift` (`haptic.level`), picker, settings (`model.ts` + core) | Unit tests of the choice table (kind × setting × platform); the rate limit; Swift tests of the classifier with synthesized events |
 | 7 | `feat(m2.9)`: pictures as backgrounds | core store (new), scheme route (Swift), `serve.rs`, picker button and drop, snapshot's average colour | Store tests (atomic, bad input, size cap, metadata stripped, cleanup); the route refuses everything but a stored id; security tests (a theme can't load it); e2e: add, show, remove |

@@ -154,8 +154,10 @@ final class OverlayBridge: NSObject, WKScriptMessageHandlerWithReply {
                 }
             }
         case "appearance":
-            // A theme that uses the system's materials (theme.json `systemMaterials`: Liquid Glass) asks for WebKit's
-            // system appearance before its style sheet is made; every other theme turns it off again. The answer: on.
+            // The page asks for WebKit's system appearance while something it draws uses the system's materials (a
+            // theme whose theme.json says `systemMaterials`: Liquid Glass; Edit Theme Color's panel while it's open),
+            // before that one's style sheet is made, and turns it off again (app/shared/host/materials.ts). The
+            // answer: on.
             let said = OverlaySystemAppearance.set(body["system"] as? Bool == true, for: webView)
             OverlaySystemAppearance.note(said)
             replyHandler(said.hasPrefix("on"), nil)
@@ -301,15 +303,17 @@ enum OverlayFrameRate {
     """#
 }
 
-// The system's own materials in a theme (Liquid Glass: `-apple-visual-effect` in its CSS, theme.json
-// `systemMaterials`). WebKit only knows that property in a web view with "system appearance" on, a private switch
-// (docs/PRIVATE-APIS.md): `-[WKWebView _setUseSystemAppearance:]`, per view and live. It's on only while the theme
-// drawn asks for it, since it changes more than the property: links take AppKit's colours, and in Dark Mode
-// `color-scheme: light` is no longer honoured (a light-only theme's own controls, scroll bars and `light-dark()` would
-// turn dark: Neubrutalism's; DECISIONS.md "Liquid Glass"). The page asks before it makes a theme's style sheet
-// (app/shared/host/overlay.ts mount, `appearance`). Each step is checked, and anything missing leaves the switch
-// off: the theme then draws its plain fills (`@supports (-apple-visual-effect: …)` is false).
-// `defaults write com.unibox.margin MarginSystemAppearance -bool NO` keeps it off for every theme.
+// The system's own materials in Margin's page (Liquid Glass's: `-apple-visual-effect` in its CSS, theme.json
+// `systemMaterials`; Edit Theme Color's glass). WebKit only knows that property in a web view with "system
+// appearance" on, a private switch (docs/PRIVATE-APIS.md): `-[WKWebView _setUseSystemAppearance:]`, per view and
+// live. It's on only while the page asks for it (the theme drawn says `systemMaterials`, or Edit Theme Color's panel
+// is open: its glass, M2.9 step 5), since it changes more than the property: links take AppKit's colours, and in Dark
+// Mode `color-scheme: light` is no longer honoured (a light-only theme's own controls, scroll bars and `light-dark()`
+// would turn dark: Neubrutalism's Settings; DECISIONS.md "Liquid Glass", "M2.9 step 5 spike"). The page asks before it
+// makes a style sheet that uses them (app/shared/host/materials.ts, the `appearance` message). Each step is checked,
+// and anything missing leaves the switch off: the theme then draws its plain fills and the picker its solid panel
+// (`@supports (-apple-visual-effect: …)` is false). `defaults write com.unibox.margin MarginSystemAppearance -bool NO`
+// keeps it off for everything.
 enum OverlaySystemAppearance {
     static let setter = "_setUseSystemAppearance:"
     static let getter = "_useSystemAppearance"
@@ -342,6 +346,6 @@ enum OverlaySystemAppearance {
     @MainActor static func note(_ now: String) {
         guard now != said else { return }
         said = now
-        Diagnostics.note("overlay system appearance (a theme's system materials): \(now)")
+        Diagnostics.note("overlay system appearance (system materials: a theme's, or Edit Theme Color's glass): \(now)")
     }
 }

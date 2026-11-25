@@ -1649,4 +1649,44 @@ func glueResumeScenario() async {
     _ = library.perform("deleteSpace", ["spaceId": night])
     check("a space's appearance: no background, none of its own", await until(3) { c.webView.appearance == nil })
   }
+
+  // ---- Edit Theme Color's glass (M2.9 step 5): the system's materials on while its panel is open ----
+  do {
+    let switched = { (c.webView.value(forKey: "_useSystemAppearance") as? Bool) == true }
+    // (Where the switch exists and isn't kept off: macOS 26 and later.)
+    let glass = ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26 && OverlaySystemAppearance.allowed
+    let panelUp = "return !!document.querySelector('margin-background-picker')"
+    let arcadia = await waitJS(c.webView, "return !!document.querySelector('.arcadia')")
+    check("edit theme color's glass: Arcadia drawn, the switch off", arcadia && !switched())
+    // Opened from the space's menu: the menu up (its `contextmenu` on the space's chip), its item really pressed (a
+    // theme's action runs for a person's press only, a trusted event: ui/render.ts), as the + menu's check presses.
+    let at = await js(c.webView, """
+      const chip = document.querySelector('.chip.active'); if (!chip) return null;
+      const r = chip.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+      for (const type of ['mousedown', 'contextmenu']) chip.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, button: 2, clientX: x, clientY: y }));
+      const item = [...document.querySelectorAll('.menu-item')].find((e) => e.textContent.includes('Edit Theme Color'));
+      if (!item) return null;
+      const b = item.getBoundingClientRect();
+      return [b.left + b.width / 2, b.top + b.height / 2];
+      """) as? [Double]
+    if let at, at.count == 2 {
+      let inWindow = c.webView.convert(NSPoint(x: at[0], y: at[1]), to: nil)
+      for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+        if let e = NSEvent.mouseEvent(with: type, location: inWindow, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: c.webView.window?.windowNumber ?? 0,
+                                      context: nil, eventNumber: 0, clickCount: 1, pressure: type == .leftMouseDown ? 1 : 0) {
+          if type == .leftMouseDown { c.webView.mouseDown(with: e) } else { c.webView.mouseUp(with: e) }
+        }
+      }
+    }
+    let up = await waitJS(c.webView, panelUp)
+    check("edit theme color's glass: opened from the space's menu (its item pressed)", at?.count == 2 && up, "item \(String(describing: at)) up \(up)")
+    check("edit theme color's glass: the system's materials on while it's open (\(glass ? "macOS 26+" : "off here"))", switched() == glass, "switched \(switched())")
+    let known = await js(c.webView, "return CSS.supports('-apple-visual-effect', '-apple-system-glass-material')") as? Bool == true
+    check("edit theme color's glass: the page knows the property (its panel read with it)", known == glass, "known \(known)")
+    // A press outside closes it: the materials given back.
+    _ = await js(c.webView, "document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 9, isPrimary: true })); return true")
+    let gone = await waitJS(c.webView, "return !document.querySelector('margin-background-picker')")
+    let off = await until(3) { !switched() }
+    check("edit theme color's glass: closed, the switch off again (Arcadia as before)", gone && off, "gone \(gone) off \(off)")
+  }
 }

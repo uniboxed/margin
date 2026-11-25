@@ -6,8 +6,11 @@
 //
 // What it is, as ui/theme-preview.ts's bar: content in a closed shadow root (no theme rule reaches it), its host in the
 // top layer (`popover="manual"`), the host's own style pinned (`all: initial !important`) and its place set from
-// inside (a shadow tree's !important beats the host's attribute: ui/background.ts found it). Opaque, in the page's
-// light or dark (`light-dark()`; Margin.app's window takes the space's: M2.9 step 3); its glass is step 5's.
+// inside (a shadow tree's !important beats the host's attribute: ui/background.ts found it). In the page's light or
+// dark (`light-dark()`; Margin.app's window takes the space's: M2.9 step 3). Glass where the page has the system's
+// materials as its sheet is read (M2.9 step 5: Margin.app turns them on for it, ui/behaviors/background-picker.ts):
+// the real glass behind it, no fill and no outer shadow (one would grow the glass past the box: DECISIONS.md "Liquid
+// Glass"), solid still with more contrast asked for. Opaque everywhere else.
 //
 // It edits a picker state (ui/picker/model.ts) and says what happens: `preview` while a gesture runs (a drag, a burst
 // of scrolling, held keys), `commit` when it ends (or at once for a click), `undo` (⌘Z), `escape`, `done`, `all`,
@@ -112,6 +115,7 @@ box-shadow:0 2px 8px rgba(0,0,0,.3),0 0 0 .5px rgba(0,0,0,.2);transition:transfo
 .foot .done{font-weight:600;background:var(--ctl)}
 .foot .done:hover{background:var(--ctl-hover)}
 @media (prefers-reduced-motion:reduce){.knob,.face{transition:none}}
+@supports (-apple-visual-effect: -apple-system-glass-material){@media not (prefers-contrast:more){.panel{background:none;box-shadow:none;overflow:hidden;-apple-visual-effect:-apple-system-glass-material}}}
 @media (prefers-contrast:more){.panel{--fg2:light-dark(rgba(29,29,31,.85),rgba(245,245,247,.88));--dot:light-dark(rgba(0,0,0,.3),rgba(255,255,255,.3))}}`;
 
 // The icons (Margin's own drawings).
