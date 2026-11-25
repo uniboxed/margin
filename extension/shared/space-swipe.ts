@@ -272,4 +272,25 @@ function springKeyframes(spring: ReturnType<typeof springArc>, from: number, to:
   return points;
 }
 
-export { createSpaceSwipe, settle, rubberBand, settleArc, rubberBandArc, rubberBandArcInverse, springArc, springKeyframes, ARC, FEELS, DEFAULTS };
+// Arc's switch to a space by a click or a key, no fingers (M2.10, docs/ARC-SIDEBAR.md "Motion": measured in Arc 1.174.2
+// frame by frame, the incoming page's place at 60 Hz): the pages side by side sliding together on an overdamped spring
+// (response 130 ms, damping ratio 1.35) that starts at 72 widths a second, which fits every frame within 2.5 pt (RMS)
+// over a 259 pt sidebar; done to within 0.2% in about 251 ms (the last 0.2% a jump nobody sees).
+const ARC_SWITCH = Object.freeze({ response: 0.13, damping: 1.35, velocity: 72, rest: 0.002, steps: 60 });
+
+/** Arc's switch's easing: the spring's progress (0 to 1) at `steps` even times, and how long it takes (ms). */
+function switchEasing({ response, damping, velocity, rest, steps } = ARC_SWITCH) {
+  const w = (2 * Math.PI) / response;
+  const s = Math.sqrt(damping * damping - 1);
+  const r1 = -w * (damping - s), r2 = -w * (damping + s);
+  // (The distance left, from 1 at the start, falling at `velocity` widths a second.)
+  const c2 = (-velocity - r1) / (r2 - r1), c1 = 1 - c2;
+  const left = (t: number) => c1 * Math.exp(r1 * t) + c2 * Math.exp(r2 * t);
+  let t = 0;
+  while (left(t) > rest && t < 2) t += 0.001;
+  const duration = Math.round(t * 1000);
+  const points = Array.from({ length: steps + 1 }, (_, i) => (i === 0 ? 0 : i === steps ? 1 : Math.round((1 - left((t * i) / steps)) * 10000) / 10000));
+  return { duration, points };
+}
+
+export { createSpaceSwipe, settle, rubberBand, settleArc, rubberBandArc, rubberBandArcInverse, springArc, springKeyframes, switchEasing, ARC, ARC_SWITCH, FEELS, DEFAULTS };

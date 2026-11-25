@@ -96,7 +96,7 @@ pub fn order_spaces(s: &LibState, ids: &[&str]) -> LibState {
 }
 
 /// M:1135 `updateSpace(state, spaceId, patch)`: its name, emoji and colour each when given as a string that isn't
-/// blank (trimmed); its theme when given as a theme's id, none when given as null, else as it was; its background
+/// blank (trimmed), its emoji removed (stored as `""`: M2.10, Arc's space with no icon) when given as null; its theme when given as a theme's id, none when given as null, else as it was; its background
 /// when given as an object (as [`background_of`] reads it: none when that's none), none when given as null, else as it
 /// was. A new list of spaces always (M's `map`), the space itself made anew.
 pub fn update_space(
@@ -109,7 +109,9 @@ pub fn update_space(
     background: Arg<'_>,
 ) -> LibState {
     let given = |v: Arg<'_>| v.as_str().map(js::trim).filter(|t| !t.is_empty()).map(Str::from);
-    let (name, emoji, color) = (given(name), given(emoji), given(color));
+    // (`emoji: null`: `allowed.emoji = ''`, the icon removed.)
+    let emoji = if emoji.is_null() { Some(Str::from("")) } else { given(emoji) };
+    let (name, color) = (given(name), given(color));
     // `themeIdOk(t) ? t : t === null ? null : undefined`: Some(Some) set, Some(None) none, None unchanged.
     let theme: Option<Option<Str>> = match theme.as_str() {
         Some(t) if theme_id_ok(t) => Some(Some(t.into())),

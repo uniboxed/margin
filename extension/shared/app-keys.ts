@@ -78,3 +78,12 @@ export function appKeyBindings(settings: any): Record<string, string[]> {
   }
   return out;
 }
+
+/** The space keys' modifiers as their symbols, one a cap (⌃1–9's `['⌃']`), for Arc's tooltip over a space's dot (M2.10);
+ *  null when they're off. */
+export function spaceKeyCaps(settings: any): string[] | null {
+  const combo = appKeysFor(settings).spaceDigits;
+  if (!combo) return null;
+  const caps = [...format(combo).replace(/[0-9]$/, '')];
+  return caps.length ? caps : null;
+}

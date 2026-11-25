@@ -82,6 +82,22 @@ test('library: a space\'s background: read, set, kept, none for a new space, cle
   assert.equal('background' in lib.values.spaces.b, false, 'null: none, the theme\'s own');
 });
 
+// A space's icon removed (M2.10, Arc's: the space then shows as a dot): `emoji: null` stores none (''); a blank, missing
+// or non-string emoji leaves it; a new emoji gives it back; the name and colour stay.
+test('library: a space\'s icon removed with emoji null, kept by a blank one, given back', () => {
+  const lib = library({ spaces: { a: { name: 'A', emoji: '🏠', color: '#111111', order: 0 }, b: { name: 'B', emoji: '🍄', order: 1 } } });
+  lib.act('renameSpace', { spaceId: 'b', emoji: null });
+  assert.equal(lib.values.spaces.b.emoji, '', 'none');
+  assert.deepEqual([lib.values.spaces.b.name, lib.values.spaces.a.emoji], ['B', '🏠'], 'nothing else');
+  assert.equal(L.snapshot(lib.values).spaces.find((x: any) => x.id === 'b')!.emoji, '', 'drawn with none');
+  lib.act('renameSpace', { spaceId: 'a', name: 'Home', emoji: '  ' });
+  assert.deepEqual([lib.values.spaces.a.name, lib.values.spaces.a.emoji], ['Home', '🏠'], 'a blank one: kept');
+  lib.act('renameSpace', { spaceId: 'a', emoji: 5 });
+  assert.equal(lib.values.spaces.a.emoji, '🏠', 'not a string: kept');
+  lib.act('renameSpace', { spaceId: 'b', emoji: '🌵', color: '#00aa00' });
+  assert.deepEqual([lib.values.spaces.b.emoji, lib.values.spaces.b.color], ['🌵', '#00aa00'], 'given back');
+});
+
 // A theme per space (2026-11-20, Tirth): asked as it's made, the theme of the space it was made from by default; changed
 // in its editor (renameSpace), its menu or Settings (setSpaceTheme); none (spaces from before) is the profile's.
 test('library: a space\'s theme: the one it was made from by default, as asked, changed, cleared, kept in the set', () => {

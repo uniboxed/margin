@@ -433,6 +433,8 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   (platform.features as any).spaceThemes = appWindow;
   // Haptics (Edit Theme Color's ticks, M2.9 step 6): Margin.app's own window on the Mac plays them (`haptic.*`).
   (platform.features as any).haptics = appWindow && platform.os === 'mac';
+  // A new Split View from a menu (Arc's "+" New Split, M2.10): the overlay makes it as ⌃⇧= does (`split.new`).
+  (platform.features as any).newSplit = true;
   // The window's tabs loading, as the copy last said (`push` `loading`).
   let loading: Set<number> = new Set();
   let failure: { type: string, error: string, at: number } | null = null;
@@ -767,6 +769,15 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           if (next === pagePicture) return;
           pagePicture = next;
           return pageState === 'elsewhere' ? emit() : undefined;
+        }
+        case 'profiles': {
+          // The profiles' names (MarginWindowController.tellProfiles, M2.10): a space's tooltip shows its profile's, as
+          // Arc's does (ui/view-model.ts). `{ names: { browser: { id: name } }, fallback: { browser: id } }`.
+          const p = msg.profiles;
+          if (!p || typeof p !== 'object' || !p.names || typeof p.names !== 'object') return;
+          (platform.features as any).profileNames = { names: p.names, fallback: p.fallback && typeof p.fallback === 'object' ? p.fallback : {} };
+          rebuild();
+          return emit();
         }
         case 'themes':
           // Margin.app's index of imported themes changed (Settings lists them).

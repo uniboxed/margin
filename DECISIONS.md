@@ -10710,3 +10710,235 @@ What Tirth saw (a screen recording, and Margin's log):
   - Attaching the panel before the ask. macOS's zoom then drew the panel's fill, so the slide went white.
   - The click-to-slide time stays about 2 s: the app's start and its page's first draw come first. Making those faster
     is the way to an earlier slide.
+
+## M2.10 steps 2–3: Arcadia's page card and sidebar at Arc's sizes (`feat/arc-sidebar`, 2026-11-25)
+
+Arc's sidebar in Arcadia (docs/ARC-SIDEBAR.md: the study, measured in the running Arc 1.174.2, and the plan).
+
+- **The page card** (step 2): 10 pt from the window's edges (8 before), a 6 pt corner (10 before: Arc's continuous
+  corner fits a plain 6 px circle to a fifth of a pixel; CSS `corner-shape` stays out, the earlier decision), Arc's one
+  shadow and no hairline (`0 1px 7px rgba(0,0,0,.25)`: Arc's is a Gaussian of σ 3 pt, WebKit draws a CSS blur
+  tighter, and 7 px rendered at 2× lands within 0.5% of Arc's falloff at every pixel; 6 px was 0.9%). The peek panel:
+  5 pt in, a 12 pt corner, a 1 pt rim of white at 30%, a softer shadow (`0 1px 9px rgba(0,0,0,.17)`). Its motion is
+  step 7's.
+- **The sidebar** (step 3), compared element by element with Arc's accessibility frames (Tirth's Work space rebuilt in
+  the harness, 1710 × 980, WebKit at 2×): every frame within half a point but the 1 pt the sidebar's width rounds to
+  (Arcadia's widths go by 10). 8 pt sides; 32 pt top buttons 7.5 pt down, the window's buttons from 12 pt (Margin.app
+  centres them in `<m-window-controls>`: 62 × 16), the nav 6 pt from the edge; the address pill and the title row 36 pt;
+  rows 41 pt apart with 36 pt fills and an 11.5 px corner; titles 13.5 px at weight 450 on a 19 px line (fitted in
+  WebKit against Arc's ink widths and cap heights), folders' names 600; a folder's 22 × 16 glyph in the space's colour
+  (Margin's own drawing, as every icon here: none of Arc's); the Today line a 0.5 pt hairline in a 30 pt gap; the
+  bottom bar 50 pt under a 1 pt edge, its buttons 32 pt.
+- **Colours** (light): a row's hover and the address pill darken by 5% (black at 5%, as Arc's, measured: × 0.949 on
+  every channel), at once, in place of Arcadia's lighter fill, also over a light space background (the palette's
+  white fill stays for every other theme, and for dark, which Arc wasn't measured in); the tab shown 78% white over the
+  ground, a crisp shadow and a brighter top edge. A row's × now has no fill of its own (the fills are translucent): the
+  title fades out under it.
+- **Under the pointer, as Arc's**: the space's name gets a pill, a chevron in its icon's place and `•••`; the address
+  pill its tools (Copy URL, site controls); "↓ Clear" shows while the pointer is anywhere in the sidebar.
+- **`menu.open` takes `space`** (the space in front's own menu, under the button: Arc's `•••`). Runtime and README.
+- **Inert, as Tirth chose** (drawn as Arc's, doing nothing, `aria-disabled`, their tooltips saying "coming soon"): the
+  title's chevron (collapsing the pinned tabs) and the address pill's site controls. Arc's latest download over its
+  Home button isn't drawn: Margin has no downloads to show, and a made-up one would be a lie.
+- **Not yet**: Arc's back and forward greyed with no history (the view model has no such state for a tab); a pinned
+  tab off its URL drawn with Arc's `/` (Arcadia keeps its reset button); the space switcher (step 4); dark mode's
+  colours (Arc's dark wasn't measured).
+- **Tests**: tests/theme/arcadia.test.ts, "Arcadia as Arc's sidebar": the card, every measured size, the hover, what
+  shows under the pointer, the inert controls doing nothing, `•••`'s menu; ui-actions (`menu.open` `space`).
+
+## M2.10 step 4: Arc's space switcher in Arcadia, and Margin's `m-fit` (`feat/arc-sidebar`, 2026-11-25)
+
+- **What Arc does** (docs/ARC-SIDEBAR.md, measured by dragging its sidebar from 500 to 260 pt with 10 spaces and reading
+  every item's frame): the spaces share the room between Home and "+" as slots of at most 36 pt overlapping by 2;
+  every icon while each slot can be 24 pt (`n × 22 + 2 ≤ room`), else only the front space's (24 pt) and dots for the
+  others (sharing the rest); a dot under the pointer grows into its icon as the front one's shrinks (≈ 230 ms).
+- **What decides it, and where**: CSS can't count a list against its width, and themes run no script, so it's Margin's:
+  a behavior, `m-fit="items"` (ui/behaviors/fit.ts; the sanitizer's BEHAVIORS; the themes README), sets `m-crowded`
+  on the bar while its items, laid out by the theme's rules without it, overflow its width; read after every render and
+  as the bar's size changes (a ResizeObserver), with the attribute taken off and put back in the same task (nothing
+  painted roomy in between). Arcadia's roomy rules are Arc's slots (`flex: 1 1 0`, 24–36 pt, −2 pt each), so the
+  overflow is Arc's rule exactly; any theme can use it.
+- **Arcadia** (theme.css "The space switcher"): Arc's slots; the icons at Arc's ink (12 px: 14 × 15 pt), the others
+  greyed at 65%, in colour on a 28 pt rounded square under the pointer; crowded, the dots (4 pt, the ink at 30%: Arc's
+  measured 26% darkening) and the swap under the pointer, the slots at once and only the icon and dot animated (scale
+  and opacity, the compositor's). The space title's icon at Arc's ink too (16 px).
+- **Checked against Arc**: Arcadia's slots at 260–500 pt within half a point of Arc's at every width measured, dots
+  between 300 and 310 as Arc's; side-by-side screenshots of both modes and their hovers. tests/theme/arcadia.test.ts
+  "the space switcher" (fails with `m-fit` taken off: checked), tests/ui-behaviors.test.ts (`overflows`).
+- **Not yet**: a space with no icon as a dot (step 5), the tooltip (step 6).
+
+## M2.10 step 5: a space without an icon, a dot (`feat/arc-sidebar`, 2026-11-25)
+
+- **Tirth's ask**: Arc lets a space's icon be removed, and such a space shows as a dot in the switcher.
+- **The rule** (both copies, the same commit, the vectors re-recorded: tests/fixtures/library/README.md): a space's
+  update with `emoji: null` removes its icon, stored as `''`; a blank, missing or non-string emoji leaves it as it was
+  (as before: the editor and every caller that sends one unchanged keep their meaning). extension/state/model.ts
+  `updateSpace` (the reference, through library.ts `renameSpace`) and margin-core `library/model/spaces.rs`
+  `update_space`; tests/library.test.ts's new case recorded into `recorded-library.json`, and one generated sequence
+  (`generated-08.json`) that happened to send `emoji: null` now removes it. margin-core answers every vector
+  (`actions_tests.rs`, and the Swift suite through the FFI). A new space still gets ✨.
+- **The UI**: `space.update` takes `emoji: null` (`emoji?`); the space editor sends null when its icon field is left
+  empty; the space's menu has "Remove Icon" while it has one (its name, colour and theme sent as they are: the action
+  takes them all; its theme as the editor keeps it); shown at once, as a rename is. The view model's chips and space
+  have `iconless` (the README).
+- **Arcadia**: an iconless space's chip is a dot, roomy or crowded, and stays one under the pointer (nothing else to
+  show); the title row shows a dot in the icon's place (Arc's title row for such a space wasn't measured: to check in the
+  second session).
+- **Tests**: tests/library.test.ts (removed, kept by a blank one, given back), tests/ui-view-model.test.ts
+  (`iconless`), tests/ui-behaviors.test.ts (the menu's item and its action passing the checks),
+  tests/theme/arcadia.test.ts (the dot with the icons roomy; "Remove Icon" sends `renameSpace` with `emoji: null`).
+
+## M2.10 step 6: Arc's tooltip over a space's dot (`feat/arc-sidebar`, 2026-11-25)
+
+- **Arc's** (measured, docs/ARC-SIDEBAR.md): over a dot (the crowded switcher), 470 ms after the pointer comes, at once
+  (no fade), gone at once; none over the icons (1.2 s waited). Over the bar, 7 pt in: a dark pill in the space's
+  colour holding its name (white, semibold), its profile as a chip, its key as caps (`⌃` `2`).
+- **Arcadia**: the same, drawn in each chip and placed by the bar (a chip's face holds the icon, the hover's square and
+  the dot now, so the tooltip isn't clipped or placed by the slot); shown by CSS alone (`visibility` after a 470 ms
+  delay, only under `m-crowded`). No `title` on the chips any more: Arc shows nothing over its icons, and a native
+  tooltip would come up under Arc's (the name stays the chip's `aria-label`).
+- **The keys**: the view model's chips have `keys` (a cap each: the space keys' modifiers as Settings has them,
+  `appKeys.spaceDigits`, then the digit) and `hasKeys`, for Margin.app's first nine spaces; none past nine, with the
+  keys off, or outside Margin.app (`platform.app`); extension/shared/app-keys.ts `spaceKeyCaps`.
+- **Not yet: the profile's chip.** The page knows a space's profile's id, not its name (Margin.app's
+  BrowserProfiles.swift keeps the names: Safari's own, or "Default" / "Profile N"); giving the page the names is
+  Margin.app's (a push of `{ id: name }` to the page, the view model's chip naming its profile) and is left for its own
+  step with its end-to-end check.
+- **Tests**: tests/theme/arcadia.test.ts (not at 300 ms, shown at 560, over the bar 7 pt in, its name, gone at once,
+  none over the icons, no `title`), tests/ui-view-model.test.ts (the caps: Margin.app's nine, none past nine, off, or
+  outside it; a moved key's modifiers).
+
+## M2.10 step 7: Arc's motion in Arcadia (`feat/arc-sidebar`, 2026-11-25)
+
+- **Switching space by a click or a key slides, as Arc's** (measured frame by frame, docs/ARC-SIDEBAR.md "Motion": its
+  page beside this one, both sliding together; an overdamped spring, response 130 ms, damping ratio 1.35, starting at
+  72 widths a second: every frame within 2.5 pt RMS, 251 ms to within 0.2%). Margin switched at once before. Built on
+  the swipe's own machinery (ui/behaviors/swipe.ts `slideTo`): the space it goes to drawn beside this one on the side it
+  lies in the list (however far: Arc's), its tab asked for at once and the space drawn as it lands (as a swipe's
+  settle), the settle given Arc's switch curve as one `linear()` easing (extension/shared/space-swipe.ts `ARC_SWITCH`,
+  `switchEasing`: 61 samples). Only where the theme moves its space (a `--m-swipe-feel`: Arcadia), the sidebar docked,
+  nothing under way, motion allowed; else at once, as before. The runtime's `space.switch` tries it first.
+- **A switch while a settle comes in wins** (found while testing: without it, the slide's end switched back to its
+  space): `cancelSettle` drops the settle's own switch at its end (not the settle's own switches: they're marked,
+  `switchOwn`); the new one is drawn at once. A click during a finger swipe's settle gets the same.
+- **The peek's slide out over the page**: Arc's spring (response 205 ms, damping 0.79: 4.5 pt past its place and
+  back), sampled into a `linear()` (279 ms); going back in, Arcadia's own (not measured).
+- **The dock's swap** (step 4): 230 ms, the icon and dot only. **A row's hover**: at once (step 3).
+- **Left as they are**: the space swipe's settle keeps Dia's feel (Tirth's choice, 2026-11-20: faster, with its haptic;
+  Arc's own is 0.4 s and silent; asked again with this branch); the sidebar's hide and show in Margin.app (the hosted
+  window's place changes: Arc's ≈ 70 ms isn't the theme's to set).
+- **Tests**: tests/space-swipe.test.ts (the curve: 251 ms, rising, within 3 pt RMS of Arc's frames),
+  tests/theme/arcadia.test.ts (a switch slides: its classes, the curve, the copy beside, its tab asked at once, drawn as
+  it lands; one asked mid-slide wins: fails without `cancelSettle`, checked; reduced motion: at once);
+  tests/theme/space-settle.test.ts runs with reduced motion (it checks the switch's own state, which a slide lands
+  through). The app's end-to-end run, all 373: its check that the frame is painted outside the card's rounded corners
+  sampled 1 pt in along the diagonal, which assumed a 10 pt corner (Arc's 6 pt left it 1.1 pt outside the curve, its
+  antialiasing at 252): 0.5 pt in now, 1.8 pt outside it (tools/app-tests/e2e-glue.swift).
+
+## M2.10 step 8, part 1: Arc's folders opening and closing, and its "+" (`feat/arc-sidebar`, 2026-11-25)
+
+The second session in the running Arc (Tirth away, Arc driven). A permission prompt came up on the way ("Visual Studio
+Code wants access to control Arc", from an AppleScript call): answered Don't Allow (nothing needed it; Arc is driven
+through accessibility), so no access to Arc's data was given.
+
+- **A folder** (measured frame by frame, folding and unfolding one of three): unfolding, the rows after it make room
+  on `cubic-bezier(0.5, 0.8, 0.75, 1)` over 210 ms (every frame within 0.31 pt RMS) and its rows come out from under it
+  as they go down; folding, the rows close up on `cubic-bezier(0.25, 0, 0.25, 1)` over 250 ms (0.27 pt; one frame the
+  recording held three frames, dropped). Margin's row motion stays its own (200 ms, Tirth's) for every theme; a theme
+  asks for Arc's with `--m-rows-feel: arc` (ui/row-motion.ts `ARC_ROWS`, the README's Motion): its two curves, and new
+  rows coming out from under the edge above them (each slid down the room with the rest and clipped at that edge,
+  keyframes in the curve's progress so it stays exact), not faded in. Arcadia asks for it. Not copied: Arc's folding
+  rows slide up behind the folder (Margin's leave at once and the rows after close up over them).
+- **"+"** (read from Arc's popover: its accessibility frames and pixels): a dark panel over the button (its right edge
+  on the button's, an arrow down to it), New Space, New Folder · New Easel, New Boost · New Split ⌃⇧=, New Tab ⌘T, a
+  glyph by each, the row under the pointer in a dimmed space colour; the "+" turns into ×. The menu part is guarded (only
+  Margin's words show there), so the items are Margin's: a theme asks for Arc's "+" with `--m-add-menu: arc`
+  (ui/behaviors/menus.ts reads it as it opens: the menu's `look`); menu-items.ts gives Arc's list then, and every row has
+  `inert`, `hint`, `keys` and `icon` (the README). Easel and Boost are inert (Tirth's choice: drawn, doing nothing,
+  `aria-disabled`, their hint "… aren't in Margin yet: coming soon"; `menu.run` refuses them, the menu stays); Arc's
+  ⌃⇧E by Easel isn't shown (no such key in Margin: a key that does nothing would mislead). New Split is Margin.app's
+  ⌃⇧= (a new local action, `split.new`, running the overlay's `addSplitPane` through the runtime's new `addSplit`
+  option; only where the host has it: `features.newSplit`, Margin.app's page), its key as Settings has it
+  (`appKeys.addSplit`). Every other theme's "+" is as it was. The glyphs are Margin's own drawings (inline SVG in the menu part, the
+  row's `icon` choosing one: Arcadia's package loads nothing, no `url()`, tests/manifest.test.ts), not Arc's.
+- **Tests**: tests/theme/arcadia.test.ts (folding: Arc's closing curve; unfolding: its opening curve, the rows out from
+  under, clipped, not faded; "+": Arc's items and order, its keys, its place over the button, the × , Easel doing
+  nothing and keeping the menu, New Tab running and closing it, no New Split where the host has none).
+
+## M2.10 step 8, part 2: a tab closed, its ×, Arc's dark (`feat/arc-sidebar`, 2026-11-25)
+
+- **Measured in Arc** (a throwaway tab, example.com, opened, hovered and closed; nothing of Tirth's closed): the × is
+  26 pt, centred on the row, 4.5 pt in from its fill's right; under the pointer the title ends before it with an
+  ellipsis (177 pt for 199). Closing, the row stays where it was and fades while the rows after it slide up over it.
+- **Arcadia**: Arc's × and the title ending before it (it faded under the button before). For a theme with Arc's rows
+  (`--m-rows-feel: arc`), Margin's row motion keeps a copy of a closed tab's or pin's row where it was, inert and
+  under the rest, and fades it on Arc's closing curve as the rows after it close up (a folder's rows folding: none:
+  in Arc they're covered, not faded); ui/row-motion.ts `copyLeaving`, `ghosts`.
+- **Dark**: four of Tirth's test spaces are dark in Arc: a row's hover there lightens by white at 10% (every channel).
+  Arcadia's dark hover and address pill: white at 10% (a 7% mix before), over a dark space background too.
+- **Tried and left**: favorites (Arc adds them only by a drag to the top; the drop landed in the pinned list instead,
+  removed again with Remove Pin, Tirth's list as it was: checked), the media player (it needs something playing), an
+  iconless space's title row (it would mean making and deleting a space in Tirth's Arc).
+- **Tests**: tests/theme/arcadia.test.ts (the ×; dark's hover; a closed tab's copy where it was, inert, under the rest,
+  fading on Arc's curve, gone after; none for a folder folding).
+
+## M2.10 step 6b: the tooltip's profile chip (`feat/arc-sidebar`, 2026-11-25)
+
+- **Tirth's call** (2026-11-25): yes, the profile as Arc shows it; and the swipe keeps Dia's feel (decided, not Arc's).
+- **The names are Margin.app's** (BrowserProfiles.swift: Safari's own names with the folder grant or Full Disk Access,
+  else "Default" / "Profile N"); the page knew a space's profile's id only. Margin.app tells each window's page
+  `{"type":"profiles","profiles":{ names: { browser: { id: name } }, fallback: { browser: id } }}` as it's drawn and
+  again when they change (Safari's names read or dropped, the profiles refreshed: ShellProfiles.swift `profilesJSON`,
+  MarginWindows `profiles` and `tellProfiles`; the controller tells only a change). `fallback`: the profile a space with
+  none of its own opens in (HostedSession `resolve(nil)`).
+- **The page**: the app host keeps them as the platform's `profileNames` and draws again; the view model's chips have
+  `profile` (its profile's name, 40 characters at most; a space with none: the fallback's; unknown: '') and
+  `hasProfile`; the README. Arcadia's tooltip shows it as Arc's light chip between the name and the key (no icon:
+  Margin's profiles have none). A browser's extension has no names to tell: no chip.
+- **Tests**: tests/ui-view-model.test.ts (named, the fallback for none, unknown: nothing), tests/ui-host-app.test.ts
+  (kept, drawn again, not-names ignored), tests/theme/arcadia.test.ts (the chip and the key in the tooltip), the app's
+  end-to-end run (told to a drawn page once, the page has them: 375 checks, all passed); `marginApp.stats()` has them.
+
+## M2.10: the gate's findings, fixed (`feat/arc-sidebar`, 2026-11-25)
+
+- **A closed row's copy counted as a row**: the browser's end-to-end run read the sidebar's rows by class (`a.tab`)
+  and found the fading copy (`m-row-ghost`) of a row that had just gone (a new tab turned into Margin's new-tab page),
+  first with its id, then as a row with none. The copy now keeps none of the row's ids (`data-*`, `id`: only a picture
+  of it), and the run's harness skips `.m-row-ghost` (tests/e2e/harness/ui.ts); the README names the class, for a
+  theme's own tests. tests/theme/arcadia.test.ts checks the copy has no ids.
+- **A space clicked in a second window**: tests/e2e/spaces.test.ts read the sidebar's space the moment the copy's state
+  had it; Arcadia slides it in as Arc does (its tab asked at once, the space drawn as it lands), so the test now waits
+  for it to be drawn.
+- **Not this branch's**: tests/link.test.ts's "an older app's tick" failed once under the gate's load and passed alone
+  five times out of five (nothing of the link's is changed here), as the Swift loop guard's timing check before it.
+- **Run**: every stage of `npm run gate` passed: unit, Rust, theme, security and the app's (2260 Swift checks, 375
+  end-to-end) in the second run; the browser's end-to-end (109) and the WebKit host after these fixes.
+
+## M2.10: the review's speed fixes (`fix/arc-sidebar-review` on `feat/arc-sidebar`, 2026-11-25)
+
+Tirth felt the branch made a few things slow; measured in Playwright's WebKit and Chromium against its base (2ffe0327),
+Arcadia with 170 tabs:
+- **The switcher measured after every drawing** (ui/behaviors/fit.ts): with its spaces crowded (dots: ten spaces at
+  260 pt), each drawing took `m-crowded` off, laid the sidebar out to read its width, and put it back: a drawing of a
+  changed tab 1 → 3 ms, one that changed nothing 0.8 → 4.4 ms (WebKit; Chromium alike), on every change Safari sends.
+  And it took the theme's hover rules off and on: the dot's tooltip went under the pointer at each drawing and came
+  back 470 ms later. Now read only when the bar is first drawn, when its items change (a MutationObserver on the bar:
+  spaces came, went, were renamed or switched; never its own `m-crowded`) and when its size changes (the
+  ResizeObserver, as before); the same numbers as the base, the tooltip kept.
+- **A slid switch asked for its space twice** (ui/behaviors/swipe.ts, ui/runtime.ts): the settle sends `setSpace` as
+  it starts (its tab coming while it slides), and its own switch as it lands sent another; in Margin.app each one has
+  the session show the space's front item again (session/requests.rs `show`: no shortcut for the item already shown),
+  so every click's and key's switch (now slid, Arc's) showed the same Safari tab twice, the second a slide later. A
+  swipe did the same before this branch. The settle keeps its request (`asked`) and the landing's switch takes it
+  (`askedFor`, switchSpace's `asked`): one ask per switch, its failure still rolling the switch back.
+- **Kept, by design**: a click's or key's switch now settles the sidebar in about 270–300 ms (Arc's slide, 251 ms, plus
+  the copy drawn first) where it was drawn at once; the tab is asked for at once as before. Rows' opening and closing
+  (210/250 ms, Arc's) cost the same as before; the six `:has()` rules cost nothing measurable (a tab opened or closed:
+  the same as the base).
+- **Tests** (failing first on the branch, in both engines): tests/theme/arcadia.test.ts: a swipe and a click's slide
+  ask for the space once; five drawings that leave the bar as it was take nothing off, the tooltip stays; the bar read
+  again when only its spaces change.
+- **Run**: `npm run gate` on this branch merged with `refactor/hosted-only` (9d7bc7bc; only DECISIONS.md conflicts, both
+  kept): unit 1163, Rust 716, theme 995, security 248+37, Swift 2265, app end-to-end 375, browser end-to-end 109, all
+  passed; the WebKit host's `update` ("selecting it cancels the hidden cleanup reload") failed once under the gate's
+  load and passed alone three times out of three (the background's, nothing this branch changes).

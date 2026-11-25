@@ -382,7 +382,7 @@ host. Immutable: rows that didn't change are the same objects.
 
 - `window`: `id`, `mode`, `focused`, `sidebar` (`open`, `hidden`, `peek`),
   `sidebarOpen`, `peek`, `pinnedOpen` (Keep open), `frameWhenHidden`.
-- `space`: `id`, `name`, `emoji`, `color`, `abbr`, `index` (from 0),
+- `space`: `id`, `name`, `emoji` (`''` with its icon removed: `iconless`), `color`, `abbr`, `index` (from 0),
   `number` (its place counted from 1: Pixel's "WORLD 2-1"), `tabCount`,
   `pinned` (top-level folders and loose pins in order; `isFolder` tells them apart),
   `pinnedFlat` (pre-order flattened list of all visible folders up to depth 4 and pins, each with `depth`),
@@ -422,7 +422,9 @@ host. Immutable: rows that didn't change are the same objects.
   as an open tab's. It's never `active`, `audible`, `asleep` or `loading`.
 - `space.tabCount` counts the space's tabs open in this window and its tabs
   that aren't open.
-- `spaces[]` (chips: `active` and `number` too; `label`, the name).
+- `spaces[]` (chips: `active` and `number` too; `label`, the name; `iconless`, its icon removed: Arc draws it as a dot;
+  for Arc's tooltip, in Margin.app: `keys` (its key, a cap each: `⌃`, `2`) and `hasKeys`, `profile` (its profile's
+  name) and `hasProfile`).
 - `tab` (the one in front), `archive[]`
   (`ago` too), `palette` (`open`, `query`, `rows[]`: `title`, `subtitle`,
   `badge`, `spaceColor` (the badge's space's color, `''` for Archived,
@@ -488,12 +490,16 @@ else is ignored and logged.
 - Split View: `split.focus` (a pane's tab: the split shown with it focused), `split.add` (also `split.addPane`: a tab into the
   split of the item in front, or split with it), `split.open` (a split's id: shown), `split.remove` (a pane out, the rest
   shown), `split.breakOut` (a pane out, shown alone), `split.closePane` (its tab closed: the split goes on), `split.swap`
-  and `split.toggleAxis` (a split's id). `split.resize` is Margin's own (its dividers), never a button's.
+  and `split.toggleAxis` (a split's id). `split.resize` is Margin's own (its dividers), never a button's. `split.new` (a new Split View as Margin.app's ⌃⇧= makes one: only where the host can).
 - Spaces: `space.switch`, `space.new`, `space.edit`, `space.rename`, `space.editBackground` (Edit Theme Color,
   Margin's own panel for the space's background, opened beside the button; the space's menu has it too),
   `today.clear`.
 - The palette: `palette.open`, `palette.close`, `palette.run` (a row).
-- Menus: `menu.open` (`add`), `menu.run` (an item), `menu.close`.
+- Menus: `menu.open` (`add`: New Folder and New Space; `space`: the space in front's menu, as its name's right-click
+  opens it), `menu.run` (an item), `menu.close`. Set `--m-add-menu: arc` on your root for Arc's "+" instead: New
+  Space, New Folder, New Easel and New Boost (drawn, doing nothing: `menu.items[].inert`, their `hint` saying so), New
+  Split (where the host can make one), New Tab; each row's `keys` (`⌘T`) and `icon` (a glyph's name), and the menu's
+  `arc`.
 - Edit Theme Color drawn by your theme: `picker.run` (one of `picker`'s items, by its `id`: below).
 - The space editor: `editor.save`, `editor.cancel`, `editor.delete` (asks
   first), `editor.color` (a swatch), `editor.theme` (one of `editor.themes`'
@@ -526,6 +532,7 @@ Opt in with attributes; they stay on the element, so CSS can select them.
 | `m-rename` | `space`, `folder`, `tab` | double-click edits the name in place |
 | `m-scroll` | `tabs`, `palette`, `archive` | the list's scroll is remembered per window |
 | `m-swipe` | `spaces` | a sideways swipe moves between spaces |
+| `m-fit` | `items` | Margin sets `m-crowded` on the bar while its items, laid out by your rules without it, would overflow its width (read again whenever the bar's size or its items change, before anything is painted): draw the crowded bar another way (Arcadia, as Arc: the space in front's icon, the others as dots) |
 | `m-empty` | `never` | a double-click here never opens the palette (see below) |
 
 Right-clicking a row with `m-drag` (or an action's row, or the space's
@@ -560,6 +567,9 @@ Classes and variables Margin sets for you to style:
   `m-drop-after`, `m-drop-into`, `m-drop-end` (where it lands), `m-landing`
   (a dropped row while its copy glides in);
 - `m-resizing` (the handle, and the root);
+- `m-crowded` (an `m-fit` bar while its items don't fit at their roomy size);
+- `m-row-ghost` (with `--m-rows-feel: arc`: a closed row's copy fading where it was, inert, none of its ids; a
+  test that counts your rows skips it);
 - `m-swiping`, `m-settling` and `--m-swipe-offset` (the `m-swipe` element). By default
   the offset jumps to its end under `m-settling`, for your own transition. Set
   `--m-swipe-feel: arc` or `dia` on the `m-swipe` element for Arc's or Dia's own feel
@@ -672,6 +682,11 @@ Material (`material/`), Neubrutalism and Pixel have their own, each a short exam
 sliders and chips; a chunky bar and tiles; cells, blocks and a stepper); Arcadia and Liquid Glass use Margin's.
 
 ## Motion
+
+Margin slides the sidebar's rows as they come and go (ui/row-motion.ts: the rows after a new one make its room and it
+fades in; after one that went they close up). Set `--m-rows-feel: arc` on your root for Arc's own instead (Arcadia
+does): its measured curves for opening and closing, and new rows coming out from under the row above them, as a folder's
+do in Arc.
 
 Animate `transform`, `translate`, `scale`, `rotate` and `opacity`: the browser moves those on its compositor, and
 they stay smooth even on a busy machine. Animating `left`, `width`, `height`, `margin`, `padding` and the like (or

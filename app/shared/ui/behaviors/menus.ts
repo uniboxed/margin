@@ -47,8 +47,15 @@ export function installMenus(rt: Rt) {
     return null;
   }
 
+  // The theme's way of drawing "+" (`--m-add-menu` on its root: `arc`, Arc's popover and items; M2.10).
+  const lookOf = (kind: string) => {
+    if (kind !== 'add') return null;
+    const root = rt.view.rootElement?.();
+    const look = root ? (rt.win as Window).getComputedStyle(root).getPropertyValue('--m-add-menu').trim() : '';
+    return look === 'arc' ? 'arc' : null;
+  };
   function show(target: { kind: any; id: any; } | { kind: string; id?: any; }, point: { x: number; y: number; }, { above = false } = {}) {
-    rt.setUi({ menu: { kind: target.kind, id: target.id ?? null, x: point.x, y: point.y, above, confirming: null } });
+    rt.setUi({ menu: { kind: target.kind, id: target.id ?? null, x: point.x, y: point.y, above, confirming: null, look: lookOf(target.kind) } });
     if (!rt.vm?.menu) { rt.setUi({ menu: null }); return false; }
     return true;
   }
@@ -111,6 +118,8 @@ export function installMenus(rt: Rt) {
       if (!menu) return false;
       const item = menuItems(menu, { state: rt.viewState(), space: rt.vm?.space, favorites: rt.vm?.favorites, features: (rt.host.platform as any)?.features ?? null }).find((i) => i.id === itemId && !i.separator);
       if (!item) return false;
+      // (Drawn, doing nothing: Arc's Easel and Boost. The menu stays.)
+      if (item.inert) return false;
       if (item.confirm && menu.confirming !== item.id) {
         rt.setUi({ menu: { ...menu, confirming: item.id } });
         return true;

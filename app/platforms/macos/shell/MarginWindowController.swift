@@ -1746,6 +1746,14 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         if pointersSaid.count > 20 { pointersSaid.removeFirst(pointersSaid.count - 20) }
         push(message)
     }
+    // The profiles' names told to its page (MarginWindows.profiles), once drawn and when they change; the tests read
+    // the last told.
+    private(set) var profilesSaid: String?
+    func tellProfiles() {
+        guard isReady, let json = owner?.profiles(), json != "null", json != profilesSaid else { return }
+        profilesSaid = json
+        push(#"{"type":"profiles","profiles":"# + json + "}")
+    }
     private(set) var wheelPhasesSaid: [String] = [] // (the tests read them; the last 20)
     func wheelPhase(_ name: String) {
         wheelPhasesSaid.append(name)
@@ -1782,6 +1790,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             Diagnostics.note("Margin's window \(id): its page drawn")
             show()
             owner?.onReady?(self)
+            tellProfiles()
         case .layout(let taken, let panesChanged):
             guard taken else { return }
             // (Not each frame of a drag of the sidebar's edge: its last layout, once it's let go.)
@@ -1891,6 +1900,10 @@ final class MarginWindows {
     // `spaceTheme`, nil: none of its own), nil for Arcadia; the imported themes' index (JSON).
     var theme: (Int, String?) -> String? = { _, _ in nil }
     var themes: () -> String = { "[]" }
+    // The profiles' names (JSON: `{ names: { browser: { id: name } }, fallback: { browser: id } }`; "null": none known),
+    // for a space's tooltip (M2.10, Arc's: its profile's chip; ui/view-model.ts): told to each page as it's drawn and
+    // again as they change (`tellProfiles`).
+    var profiles: () -> String = { "null" }
     var apps: () -> String = { "null" } // the installed apps (ShellApps.swift), null with none read
     // A space's picture (M2.9 step 7, ShellBackgrounds.swift): `backgroundChoose` (the file picker) or `backgroundAdd`
     // (a dropped picture's bytes), answered `{ ok, result: { id } }`, `{ ok, result: null }` (cancelled) or `{ ok: false,
@@ -1917,6 +1930,8 @@ final class MarginWindows {
     var onCounts: ((MarginWindowController) -> Void)? // its sidebar's spaces or numbered rows changed in number (its rowCounts)
     var onNarrowed: ((MarginWindowController) -> Void)? // in full screen while hosting and narrower than its screen (a tile change in its Space)
     var browser = "safari" // the engine hosted pages are in (Settings offers its features)
+    /// The profiles' names told again to every window's page (they changed: MarginWindows.profiles).
+    func tellProfiles() { for c in controllers { c.tellProfiles() } }
     private(set) var controllers: [MarginWindowController] = []
     private var lastKey: MarginWindowController?
     private var nextId = 1
