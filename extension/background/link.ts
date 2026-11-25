@@ -1101,7 +1101,9 @@ export function createLink({
   // ---- the app's requests (docs/LINK-RESILIENCE.md §1 rules 11–14) ----
   // This epoch's requests by id, the last SEEN_REQUESTS: held (read after a pause, not started), running, answered
   // (its reply's text, unless it was too big to keep), or cancelled. `stop`: cancelled while it ran.
-  type Seen = { state: 'held' | 'running' | 'answered' | 'cancelled', reply?: string | null, stop?: boolean };
+  // (`read`: when it was read, for its reply's `took`: the copy's own time on it, which the app's log says beside a slow
+  // request's ack, development diagnostics.)
+  type Seen = { state: 'held' | 'running' | 'answered' | 'cancelled', reply?: string | null, stop?: boolean, read?: number };
   let seen: Map<number, Seen> = new Map();
   // Requests read while the copy knows it was just paused, started one turn later (`release`).
   let heldReqs: Said[] = [];
@@ -1128,7 +1130,7 @@ export function createLink({
       else send({ k: 'reply', id: m.id, ok: false, error: 'answered before; that answer is no longer kept' });
       return;
     }
-    remember(m.id, { state: 'held' });
+    remember(m.id, { state: 'held', read: Date.now() });
     if (holding) heldReqs.push(m);
     else void request(m);
   }
@@ -1161,7 +1163,8 @@ export function createLink({
   }
   // A request's reply, sent and kept for a repeated id (unless it's over KEPT_REPLY).
   function answer(id: number, body: Said) {
-    const text = JSON.stringify({ k: 'reply', id, ...body });
+    const read = seen.get(id)?.read;
+    const text = JSON.stringify({ k: 'reply', id, ...body, ...(read != null ? { took: Date.now() - read } : {}) });
     const entry = seen.get(id) ?? remember(id, { state: 'answered' });
     entry.state = 'answered';
     entry.reply = text.length <= KEPT_REPLY ? text : null;

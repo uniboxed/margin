@@ -26,6 +26,9 @@ function frame(text: string, opcode = 1) {
  */
 export async function startFakeApp({ token = randomUUID(), key = randomUUID(), welcome = (k) => ({ k: 'welcome', v: 2, key: k }), onMessage = () => {}, onOpen = () => {}, onClose = () => {} }: { token?: string, key?: string, welcome?: (key: string) => Said, onMessage?: (message: Said) => void, onOpen?: () => void, onClose?: () => void } = {}) {
   const received: Said[] = [];
+  // (Each reply's `took`, the copy's own time on it in ms (development diagnostics): checked a whole number, kept
+  // here and taken off the reply, so what's compared is the reply.)
+  const tooks: number[] = [];
   const sockets: Set<Duplex> = new Set();
   const waiters: Set<() => void> = new Set();
   let refused = 0;
@@ -71,6 +74,11 @@ export async function startFakeApp({ token = randomUUID(), key = randomUUID(), w
         const text = (opcode === 0 ? Buffer.concat(pieces!) : body).toString('utf8');
         if (opcode === 0) pieces = null;
         const message: Said = JSON.parse(text);
+        if (message.k === 'reply' && 'took' in message) {
+          if (!Number.isInteger(message.took) || message.took < 0) throw new Error(`a reply's took isn't a time in ms: ${text}`);
+          tooks.push(message.took);
+          delete message.took;
+        }
         received.push(message);
         onMessage(message);
         for (const w of [...waiters]) w();
@@ -80,7 +88,7 @@ export async function startFakeApp({ token = randomUUID(), key = randomUUID(), w
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const port = (server.address() as AddressInfo).port; // (a TCP server's address is always one)
   return {
-    port, token, key, received,
+    port, token, key, received, tooks,
     get open() { return sockets.size; },
     get refused() { return refused; },
     /** What the app answers into the extension for `nonce` (ExtensionLink.swift answer). */

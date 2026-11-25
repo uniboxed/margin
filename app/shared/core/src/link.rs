@@ -331,6 +331,11 @@ impl Link {
                         let ms = |s: Secs| (s * 1000.0).round() as i64;
                         let read =
                             w.acked_at.map_or("not acked".to_string(), |a| format!("acked at {} ms", ms(a - w.asked)));
+                        // (The copy's own time on it, read to reply, when it says: the rest is the way there and back.)
+                        let read = match crate::json::num(body.get("took")) {
+                            Some(took) => format!("{read}, the copy's own {} ms", took.round() as i64),
+                            None => read,
+                        };
                         note(
                             &mut out,
                             format!("{key}: request {id} ({}) answered in {} ms ({read})", w.kind, ms(now - w.asked)),
@@ -994,6 +999,15 @@ mod tests {
             "{said:?}"
         );
         assert_eq!(answers(&out).len(), 1);
+        // The copy's own time said too, when its reply has it (`took`): the rest is the way there and back.
+        let id = link.request(1, "hostShow", Object::new(), None, 4.0).map(|r| r.0).unwrap_or(0);
+        link.on_text(1, &format!(r#"{{"k":"ack","id":{id}}}"#), 4.02);
+        let out = link.on_text(1, &format!(r#"{{"k":"reply","id":{id},"ok":true,"took":61}}"#), 4.2);
+        assert!(
+            lines(&out)[0].ends_with("answered in 200 ms (acked at 20 ms, the copy's own 61 ms)"),
+            "{:?}",
+            lines(&out)
+        );
         // A quick one: nothing said.
         let id = link.request(1, "hostShow", Object::new(), None, 2.0).map(|r| r.0).unwrap_or(0);
         link.on_text(1, &format!(r#"{{"k":"ack","id":{id}}}"#), 2.01);

@@ -1120,6 +1120,7 @@ test('link: a req is acked before its handler resolves; a repeated id runs once,
     release();
     assert.ok(await until(() => replies(app, from, 1).length === 1));
     assert.deepEqual(replies(app, from, 1)[0], { k: 'reply', id: 1, ok: true, result: { shown: 'a' } });
+    assert.ok(app.tooks.length > 0, 'its reply says the copy\'s own time on it (`took`, ms)');
     app.send(show);
     assert.ok(await until(() => replies(app, from, 1).length === 2), 'answered already: its reply again');
     assert.deepEqual(replies(app, from, 1)[1], replies(app, from, 1)[0]);
