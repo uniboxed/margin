@@ -10683,3 +10683,30 @@ What Tirth saw (a screen recording, and Margin's log):
 - hosted-tests.swift: restored windows and their full-screen Space are closed and gone before linked; with no such
   Space, the sweep closes them as before.
 - e2e-glue.swift: another app in front gives `left`; Escape gives a `cancel`.
+
+## Margin's window into full screen with nothing on the Desktop first (2026-11-25)
+
+- **What Tirth saw:** opening Margin, it first showed up in Stage Manager, then slid to full screen. The slide is fine;
+  the Stage Manager step isn't.
+- **Cause.** Margin's first entry into full screen ordered its window in see-through, made Margin the active app, and
+  asked for full screen 50 ms later. Activating an app with a window on the Desktop has Stage Manager move the other
+  apps' windows aside into its strip. A recording showed the Finder window sliding aside before the slide; the see-through
+  window didn't help.
+- **Measured** (a test app recorded on screen with Stage Manager on): asked into full screen before its window is ever
+  ordered in, AppKit takes the ask even before the app is active. This held for an agent app made regular, as Margin
+  is (will-enter 11-25 ms after), and the Desktop is left as it was: no Stage Manager step, straight into the slide.
+  Margin itself, recorded twice: the Desktop as it was, the black slide, then its page, with no white frame (checked
+  frame by frame at 30 fps).
+- **The rule** (app/platforms/macos/shell/MarginWindowController.swift `show`, the Mac's mechanism):
+  - The first entry is asked before the window is ever ordered in.
+  - It's left to arrive: nothing is brought forward or ordered in meanwhile (`askedUnseen`).
+  - Only on evidence it wasn't taken (macOS fails it, or it's not on its way in at the retries' first look,
+    `unseenAskNotTaken`) is the window ordered in see-through and asked as before. The case that needs this: opened
+    while another app's full-screen Space is current.
+- **Tried, not kept:**
+  - Asking as the window is made, before its page is drawn. The slide came about a second sooner, but the page's first
+    frame at its full-screen size showed plain white for 66-100 ms after it. Waiting for WebKit's next presentation
+    update (`_doAfterNextPresentationUpdate:`, once or twice) didn't remove it.
+  - Attaching the panel before the ask. macOS's zoom then drew the panel's fill, so the slide went white.
+  - The click-to-slide time stays about 2 s: the app's start and its page's first draw come first. Making those faster
+    is the way to an earlier slide.
