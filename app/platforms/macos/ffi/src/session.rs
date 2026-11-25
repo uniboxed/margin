@@ -29,6 +29,7 @@ use std::ffi::c_void;
 use margin_core::geometry::Rect;
 use margin_core::host::layout::{Placement, Size};
 use margin_core::json;
+use margin_core::page::Pace;
 use margin_core::session::state::rect_read;
 use margin_core::session::{Field, Frame, LibraryEdit, LibraryView, Out, Performed, Ports, Row, Session};
 use serde_json::{Map, Value, json};
@@ -384,12 +385,15 @@ impl Ports for SwiftPorts {
         }
         json::num(self.ask(json!({ "port": "wall" })).get("now")).unwrap_or(0.0)
     }
-    fn set_showing(&self, window: i64, label: Option<&str>, app: Option<&str>, slow: bool) {
+    fn set_showing(&self, window: i64, label: Option<&str>, app: Option<&str>, pace: Pace) {
+        // (The pace in the typed port: `flag` slow, `c` "quick" for a quick switch; nothing: as usual.)
+        let slow = pace == Pace::Slow;
+        let quick = (pace == Pace::Quick).then_some("quick");
         if let Some(c) = self.call {
-            self.number(c, PortKind::SetShowing, Some(window), slow, [label, app, None]);
+            self.number(c, PortKind::SetShowing, Some(window), slow, [label, app, quick]);
             return;
         }
-        self.ask(json!({ "port": "setShowing", "window": window, "label": label, "app": app, "slow": slow }));
+        self.ask(json!({ "port": "setShowing", "window": window, "label": label, "app": app, "slow": slow, "quick": quick.is_some() }));
     }
     fn set_margin_page(&self, window: i64, page: Option<&str>) {
         if let Some(c) = self.call {

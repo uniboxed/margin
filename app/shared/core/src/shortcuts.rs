@@ -849,12 +849,14 @@ struct Repeating {
 #[derive(Debug)]
 pub struct AppShortcuts {
     bindings: Vec<(Combo, AppCommand)>,
+    /// Each binding's hot key id (`ids[i]` is `bindings[i]`'s). A rebind keeps it for the same combination and
+    /// command, so a key held through a rebind is never let go and its repeat runs on (the keys held change with the
+    /// app in front: 2026-11-25, a held ⌥⌘↓ stopped as the run went from a Safari tab to an app).
+    ids: Vec<u32>,
     active: bool,
     /// The quit guard and the hosted app's keys, held apart from Margin's keys by their own rules.
     guards_quit: bool,
     guards_app_keys: bool,
-    /// Ids registered, so a rebind lets go of all of them.
-    held: usize,
     /// The ones another app holds (tried again each time they're taken).
     unavailable: Vec<Combo>,
     key_repeat: KeyRepeat,
@@ -870,12 +872,13 @@ impl AppShortcuts {
     pub const APP_KEY_ID_BASE: u32 = 920;
 
     pub fn new(bindings: Bindings, key_repeat: KeyRepeat) -> Self {
+        let bindings = Self::ordered(bindings);
         Self {
-            bindings: Self::ordered(bindings),
+            ids: (0..bindings.len()).map(|i| u32::try_from(i).unwrap_or(u32::MAX)).collect(),
+            bindings,
             active: false,
             guards_quit: false,
             guards_app_keys: false,
-            held: 0,
             unavailable: Vec::new(),
             key_repeat,
             repeating: None,
@@ -957,17 +960,59 @@ impl AppShortcuts {
         v
     }
 
-    /// New combinations (the copy's `keys`): held at once if the keys are held now. Returns the ones another app
-    /// holds, as [`AppShortcuts::set_active`] (none when nothing changed).
+    /// New combinations (the copy's `keys`, or the ones held for the app in front): while the keys are held, only
+    /// those dropped are let go and only those added taken (a kept one another app held is tried again); each kept one
+    /// keeps its id, so a key held through it stays held and its repeat goes on. Returns the ones another app holds,
+    /// as [`AppShortcuts::set_active`] (none when nothing changed).
     pub fn rebind(&mut self, registrar: &mut dyn HotKeyRegistrar, next: Bindings) -> Vec<(Combo, AppCommand)> {
         let ordered = Self::ordered(next);
         if ordered == self.bindings {
             return Vec::new();
         }
-        let was = self.active;
-        self.set_active(registrar, false);
+        // (A kept binding keeps its id; an added one has the lowest id no binding has.)
+        let kept: Vec<Option<u32>> =
+            ordered.iter().map(|b| self.bindings.iter().position(|o| o == b).map(|i| self.ids[i])).collect();
+        let mut used: HashSet<u32> = kept.iter().flatten().copied().collect();
+        let mut free = 0u32;
+        let ids: Vec<u32> = kept
+            .iter()
+            .map(|id| {
+                id.unwrap_or_else(|| {
+                    while used.contains(&free) {
+                        free += 1;
+                    }
+                    used.insert(free);
+                    free
+                })
+            })
+            .collect();
+        let mut taken = Vec::new();
+        if self.active {
+            for (i, id) in self.ids.iter().enumerate() {
+                if !ordered.contains(&self.bindings[i]) {
+                    registrar.unregister(*id);
+                }
+            }
+            let mut unavailable = Vec::new();
+            for (i, (combo, command)) in ordered.iter().enumerate() {
+                if kept[i].is_some() && !self.unavailable.contains(combo) {
+                    continue;
+                }
+                if !registrar.register(combo, ids[i]) {
+                    unavailable.push(*combo);
+                    taken.push((*combo, *command));
+                }
+            }
+            self.unavailable = unavailable;
+        }
+        if let Some(r) = self.repeating
+            && !ordered.contains(&(r.combo, r.command))
+        {
+            self.repeating = None;
+        }
         self.bindings = ordered;
-        self.set_active(registrar, was)
+        self.ids = ids;
+        taken
     }
 
     /// Held or let go. Returns the combinations another app holds that were just found so (for the log:
@@ -980,9 +1025,7 @@ impl AppShortcuts {
         let mut taken = Vec::new();
         if active {
             self.unavailable.clear();
-            self.held = self.bindings.len();
-            for (i, (combo, command)) in self.bindings.iter().enumerate() {
-                let id = u32::try_from(i).unwrap_or(u32::MAX);
+            for (&id, (combo, command)) in self.ids.iter().zip(&self.bindings) {
                 if !registrar.register(combo, id) {
                     self.unavailable.push(*combo);
                     taken.push((*combo, *command));
@@ -990,8 +1033,8 @@ impl AppShortcuts {
             }
         } else {
             self.repeating = None;
-            for i in 0..self.bindings.len().max(self.held) {
-                registrar.unregister(u32::try_from(i).unwrap_or(u32::MAX));
+            for &id in &self.ids {
+                registrar.unregister(id);
             }
         }
         taken
@@ -1001,7 +1044,7 @@ impl AppShortcuts {
         if !self.active {
             return None;
         }
-        self.bindings.get(usize::try_from(id).ok()?).copied()
+        self.ids.iter().position(|&i| i == id).map(|i| self.bindings[i])
     }
 
     /// A hot key pressed: its command, if the keys are held and it's one of them; a repeating one starts its
@@ -1494,6 +1537,58 @@ mod tests {
         assert!(fake.held.is_empty(), "let go after a rebind: none held");
         keys_.rebind(&mut fake, default_bindings(Os::MacOs));
         assert!(fake.held.is_empty() && !keys_.is_active(), "new keys while let go: none held");
+    }
+
+    #[test]
+    fn a_rebind_keeps_the_keys_it_still_holds_and_a_held_keys_repeat() {
+        // (Tirth, 2026-11-25: holding ⌥⌘↓ stopped as the run went from a Safari tab to an app. The keys Margin holds
+        // change with the app in front, a browser's ⌘L and ⌘D or not: each such rebind let go of every key and took
+        // them again, which ended the held key's repeat and let go of the very key being held. Now a rebind lets go
+        // only of the keys it drops and takes only those it adds; a key kept keeps its id, held throughout.)
+        let rep = KeyRepeat { delay: 0.4, interval: 0.05 };
+        let mut fake = FakeRegistrar::default();
+        let with_browser = default_bindings(Os::MacOs);
+        let without: Bindings = with_browser.iter().filter(|(_, a)| !a.browser_only()).map(|(c, a)| (*c, *a)).collect();
+        assert!(without.len() < with_browser.len(), "the browser's keys are some of them");
+        let mut keys_ = AppShortcuts::new(with_browser.clone(), rep);
+        keys_.set_active(&mut fake, true);
+        let down = fake.id("Alt+Meta+ArrowDown");
+        assert_eq!(keys_.hit(down, 0.0).map(|r| r.is_repeat), Some(false));
+        assert!(keys_.tick(0.4, |_| true).is_some_and(|r| r.is_repeat), "repeating");
+        // An app in front now: the browser's keys go, the rest are kept.
+        let registered = fake.registrations;
+        keys_.rebind(&mut fake, without.clone());
+        assert_eq!(fake.registrations, registered, "nothing taken again: every key kept is held as it was");
+        assert_eq!(fake.id("Alt+Meta+ArrowDown"), down, "the held key: the same id, never let go");
+        let held: HashSet<Combo> = fake.held.values().copied().collect();
+        assert_eq!(held, without.keys().copied().collect(), "the browser's keys let go");
+        assert!(keys_.tick(0.45, |_| true).is_some_and(|r| r.is_repeat), "its repeat goes on through the rebind");
+        // Safari in front again: the browser's keys taken again, nothing else.
+        keys_.rebind(&mut fake, with_browser.clone());
+        assert_eq!(fake.registrations, registered + (with_browser.len() - without.len()), "only the added keys taken");
+        assert_eq!(fake.id("Alt+Meta+ArrowDown"), down);
+        assert!(keys_.tick(0.5, |_| true).is_some_and(|r| r.is_repeat), "still repeating");
+        let copy = fake.id("Meta+KeyL");
+        assert!(keys_.hit(copy, 0.6).is_some(), "an added key: its command");
+        // A rebind that drops the held key itself: its repeat ends.
+        let mut keys_ = AppShortcuts::new(with_browser.clone(), rep);
+        let mut fake = FakeRegistrar::default();
+        keys_.set_active(&mut fake, true);
+        let down = fake.id("Alt+Meta+ArrowDown");
+        keys_.hit(down, 0.0);
+        let no_next: Bindings =
+            with_browser.iter().filter(|(_, a)| **a != AppCommand::NextTab).map(|(c, a)| (*c, *a)).collect();
+        keys_.rebind(&mut fake, no_next);
+        assert_eq!(keys_.tick(0.4, |_| true), None, "its key dropped: no repeat");
+        assert_eq!(keys_.next_tick(), None);
+        // A kept key another app held is tried again at a rebind (as each time the keys are taken).
+        let mut keys_ = AppShortcuts::new(with_browser.clone(), rep);
+        let mut fake = FakeRegistrar { taken: vec![c("Meta+KeyT")], ..FakeRegistrar::default() };
+        keys_.set_active(&mut fake, true);
+        assert_eq!(keys_.unavailable(), [c("Meta+KeyT")]);
+        fake.taken.clear();
+        keys_.rebind(&mut fake, without);
+        assert!(keys_.unavailable().is_empty() && fake.id("Meta+KeyT") != u32::MAX, "taken again once free");
     }
 
     #[test]

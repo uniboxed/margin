@@ -333,9 +333,9 @@ fn a_placing_out_of_full_screen_shown_again_once_after_its_pause() {
         named(&a, "setShowing"),
         // (The last the hosting settled: nothing shown, its launcher.)
         [
-            json!(["setShowing", 1, "B", "com.b", false]),
-            json!(["setShowing", 1, null, null, false]),
-            json!(["setShowing", 1, null, null, false])
+            json!(["setShowing", 1, "B", "com.b", "usual"]),
+            json!(["setShowing", 1, null, null, "usual"]),
+            json!(["setShowing", 1, null, null, "usual"])
         ]
     );
     assert_eq!(named(&a, "clearCover").len(), 1, "the hosting settled once");

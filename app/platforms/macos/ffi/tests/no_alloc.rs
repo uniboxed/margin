@@ -540,7 +540,7 @@ fn world_page(w: &PointerWorld) -> *mut MarginPage {
     let mut settled = MarginSettled::default();
     // SAFETY: a live page, valid buffers.
     unsafe {
-        margin_page_configure(page, 0.12, label.as_ptr(), label.len(), false, 1, 0);
+        margin_page_configure(page, 0.12, 0.4, label.as_ptr(), label.len(), false, 1, 0);
         margin_page_set_full_screen(page, true);
         margin_page_set_layout(page, layout.as_ptr(), layout.len());
         margin_page_set_hits(page, w.hits.as_ptr(), 3, false);

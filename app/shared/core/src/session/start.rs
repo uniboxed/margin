@@ -18,6 +18,7 @@ use super::{Core, Field, SAFARI_BUNDLE, choice};
 use crate::data::profiles::DEFAULT_PROFILE;
 use crate::hosted_browser::Role;
 use crate::json;
+use crate::page::Pace;
 
 /// The start screen's words (HostedSession `startupLabel`, `startupSlow`, `startupNoLink`).
 pub const STARTUP_LABEL: &str = "Getting you started";
@@ -340,12 +341,12 @@ impl Core {
                 st.waiting = true;
                 st.shown = true;
             });
-            self.ports.set_showing(w, Some(STARTUP_LABEL), Some(SAFARI_BUNDLE), true);
+            self.ports.set_showing(w, Some(STARTUP_LABEL), Some(SAFARI_BUNDLE), Pace::Slow);
             let then =
                 last.as_ref().map(|(i, _, _)| format!(", then the item it showed last ({i})")).unwrap_or_default();
             self.note(format!("Margin's window {w}: \"{STARTUP_LABEL}\" while the default browser starts{then}"));
         } else if let Some((item, target, name)) = &last {
-            self.ports.set_showing(w, Some(name), loader_app(target), true);
+            self.ports.set_showing(w, Some(name), loader_app(target), Pace::Slow);
             self.note(format!(
                 "Margin's window {w}: the item it showed last ({item}) shown again, behind the loader from its first frame"
             ));
@@ -378,12 +379,12 @@ impl Core {
             if last.is_none() {
                 self.settle_hosting();
             } else {
-                self.ports.set_showing(w, None, None, false);
+                self.ports.set_showing(w, None, None, Pace::Usual);
             }
             return;
         };
         if gate {
-            self.ports.set_showing(w, Some(&name), loader_app(&target), true);
+            self.ports.set_showing(w, Some(&name), loader_app(&target), Pace::Slow);
         }
         self.resume_show(w, item, target);
     }
@@ -394,7 +395,7 @@ impl Core {
         self.exec.enqueue(async move {
             c.resume_show_in(w, &item, target).await;
             c.set_resuming(None);
-            c.ports.set_showing(w, None, None, false);
+            c.ports.set_showing(w, None, None, Pace::Usual);
             // (Something else asked for meanwhile: its own show decides; else nothing shown is the launcher.)
             let asked = c.requested_in(w);
             if asked.is_none() || asked.as_deref() == Some(item.as_str()) {
@@ -479,7 +480,7 @@ impl Core {
             self.ports.set_loading(id, None, None);
         }
         if there() {
-            self.ports.set_showing(id, None, None, false);
+            self.ports.set_showing(id, None, None, Pace::Usual);
         }
         self.refresh_loading();
         self.ports.changed();

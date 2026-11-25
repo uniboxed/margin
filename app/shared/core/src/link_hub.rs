@@ -783,7 +783,10 @@ mod tests {
         let (id, _) = h.request(1, "updateSettings", Object::new(), None, 1.0);
         assert_eq!(id, Ok(1));
         let out = h.tcp_bytes(1, &frame(json!({"k":"reply","id":1,"ok":true,"result":{}})), 2.0);
-        assert!(matches!(&out[..], [HubOut::Answer { conn: 1, id: 1, answer: Ok(_) }]));
+        let answers: Vec<&HubOut> = out.iter().filter(|o| matches!(o, HubOut::Answer { .. })).collect();
+        assert!(matches!(&answers[..], [HubOut::Answer { conn: 1, id: 1, answer: Ok(_) }]));
+        // (1 s after its ask: said in the log, the link's slow reply line.)
+        assert!(logged(&out, "request 1 (updateSettings) answered in 1000 ms (not acked)"), "{out:?}");
         let (id, _) = h.request(1, "x", Object::new(), None, 3.0);
         assert_eq!(id, Ok(2));
         let out = h.tick(18.0);

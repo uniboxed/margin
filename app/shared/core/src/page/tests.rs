@@ -24,8 +24,8 @@ fn hosting() -> Page {
 fn the_states_and_the_grace() {
     let mut p = hosting();
     // Hosting, nothing hosted yet, a show not known to be slow: the grace (from empty), its deadline.
-    assert!(p.set_showing(Some("Notes"), Some("com.apple.Notes"), false));
-    assert!(!p.set_showing(Some("Notes"), Some("com.apple.Notes"), false), "the same: nothing new");
+    assert!(p.set_showing(Some("Notes"), Some("com.apple.Notes"), Pace::Usual));
+    assert!(!p.set_showing(Some("Notes"), Some("com.apple.Notes"), Pace::Usual), "the same: nothing new");
     assert_eq!(p.settle(5.0), Settled::Grace { hole_again: false });
     assert_eq!(p.grace_until(), Some(5.12));
     assert_eq!(p.state(), PageState::Empty, "what's drawn stays meanwhile");
@@ -35,11 +35,11 @@ fn the_states_and_the_grace() {
     // Its window hosted and the show over: shown.
     assert_eq!(p.set_hosted(Some(42)), HostedSaid::Changed);
     assert_eq!(p.set_hosted(Some(42)), HostedSaid::Moved);
-    assert!(p.set_showing(None, None, false));
+    assert!(p.set_showing(None, None, Pace::Usual));
     assert_eq!(p.settle(6.0), Settled::Applied(Applied { changed: true, shown: true }));
     assert_eq!((p.state(), p.loader()), (PageState::Shown, None));
     // From shown, another show: the grace, the hole placed again meanwhile.
-    p.set_showing(Some("Mail"), None, false);
+    p.set_showing(Some("Mail"), None, Pace::Usual);
     assert_eq!(p.settle(7.0), Settled::Grace { hole_again: true });
     // The engine's slow step: loading at once (the grace dropped).
     p.set_loading(Some("Mail"), Some("com.apple.mail"));
@@ -47,7 +47,7 @@ fn the_states_and_the_grace() {
     assert_eq!((p.grace_until(), p.loader_app()), (None, Some("com.apple.mail")));
     // A slow show (the last item at launch): the loader at once, its start's look.
     let mut q = hosting();
-    q.set_showing(Some("Getting you started"), None, true);
+    q.set_showing(Some("Getting you started"), None, Pace::Slow);
     assert!(matches!(q.settle(1.0), Settled::Applied(Applied { changed: true, .. })));
     assert!(q.starting());
     // Not hosting: elsewhere's card, or the launcher.
@@ -57,7 +57,7 @@ fn the_states_and_the_grace() {
     assert_eq!(e.state(), PageState::Elsewhere);
     // ...and from elsewhere back hosting: the loader at once, no grace.
     e.set_hosting(true);
-    e.set_showing(Some("Notes"), None, false);
+    e.set_showing(Some("Notes"), None, Pace::Usual);
     assert!(matches!(e.settle(2.0), Settled::Applied(_)));
     assert_eq!(e.state(), PageState::Loading);
     // No grace configured: at once.
@@ -67,15 +67,74 @@ fn the_states_and_the_grace() {
 }
 
 #[test]
+fn a_quick_switch_keeps_what_is_drawn_for_the_switch_grace() {
+    // (Tirth, 2026-11-25: a switch from Safari to Mail "blinks", the loader's 120 ms flash; a switch to an item whose
+    // host is open already keeps the page drawn for the switch grace, 0.4 s, before any loader.)
+    assert_eq!((LOADER_GRACE, SWITCH_GRACE), (0.12, 0.4));
+    let shown = || {
+        let mut p = hosting();
+        p.set_showing(Some("Notes"), Some("com.apple.Notes"), Pace::Usual);
+        p.settle(1.0);
+        p.set_hosted(Some(7));
+        p.set_showing(None, None, Pace::Usual);
+        p.settle(1.05);
+        assert_eq!(p.state(), PageState::Shown);
+        p
+    };
+    // A quick switch: its grace the switch grace, from shown (the hole placed again meanwhile).
+    let mut p = shown();
+    p.set_showing(Some("Mail"), Some("com.apple.mail"), Pace::Quick);
+    assert_eq!(p.settle(5.0), Settled::Grace { hole_again: true });
+    assert_eq!(p.grace_until(), Some(5.0 + SWITCH_GRACE));
+    // Shown within it: the loader never drawn.
+    p.set_hosted(Some(8));
+    p.set_showing(None, None, Pace::Usual);
+    p.settle(5.2);
+    assert_eq!((p.state(), p.loader()), (PageState::Shown, None));
+    // Not within it: the loader then, as for any show.
+    let mut p = shown();
+    p.set_showing(Some("Mail"), Some("com.apple.mail"), Pace::Quick);
+    p.settle(5.0);
+    p.set_hosted(None);
+    p.grace_over();
+    assert_eq!((p.state(), p.loader()), (PageState::Loading, Some("Mail")));
+    // A first open as before: the loader's grace.
+    let mut p = shown();
+    p.set_showing(Some("Maps"), Some("com.apple.Maps"), Pace::Usual);
+    p.settle(5.0);
+    assert_eq!(p.grace_until(), Some(5.0 + LOADER_GRACE));
+    // The same item, slow now: no grace, the loader at once.
+    let mut p = shown();
+    p.set_showing(Some("Mail"), Some("com.apple.mail"), Pace::Quick);
+    p.settle(5.0);
+    assert!(p.set_showing(Some("Mail"), Some("com.apple.mail"), Pace::Slow), "slow now: new");
+    assert!(matches!(p.settle(5.1), Settled::Applied(_)));
+    assert_eq!(p.state(), PageState::Loading);
+    // Configured: each grace as given (0: none); negative, the core's own.
+    let mut p = shown();
+    p.configure(0.12, 0.0, "", Mechanism::Order, 1, 0);
+    p.set_showing(Some("Mail"), None, Pace::Quick);
+    assert!(matches!(p.settle(5.0), Settled::Applied(_)), "no switch grace configured: at once");
+    let mut p = shown();
+    p.configure(-1.0, -1.0, "", Mechanism::Order, 1, 0);
+    p.set_showing(Some("Mail"), None, Pace::Quick);
+    p.settle(5.0);
+    assert_eq!(p.grace_until(), Some(5.0 + SWITCH_GRACE));
+    p.set_showing(Some("Maps"), None, Pace::Usual);
+    p.settle(6.0);
+    assert_eq!(p.grace_until(), Some(6.0 + LOADER_GRACE), "the loader's grace: the core's own");
+}
+
+#[test]
 fn the_copy_slow_and_slow_alone_are_new_states() {
     // (docs/LINK-RESILIENCE.md §1 rule 8: the loader while a show waits for a slow copy.)
     let mut p = hosting();
     p.set_hosted(Some(42));
-    p.set_showing(None, None, false);
+    p.set_showing(None, None, Pace::Usual);
     p.settle(1.0);
     assert!(!p.set_copy_slow(true), "nothing being shown: not slow");
     // A quick tab switch: the grace, the hole as it was.
-    assert!(p.set_showing(Some("Docs"), Some("com.apple.Safari"), false));
+    assert!(p.set_showing(Some("Docs"), Some("com.apple.Safari"), Pace::Usual));
     assert_eq!(p.settle(2.0), Settled::Grace { hole_again: true });
     // Its copy slow: new, the grace over at once, the loader, saying so.
     assert!(p.set_copy_slow(true));
@@ -86,20 +145,20 @@ fn the_copy_slow_and_slow_alone_are_new_states() {
     assert!(p.set_copy_slow(false));
     assert!(!p.copy_slow());
     p.set_copy_slow(true);
-    assert!(p.set_showing(Some("Other"), Some("com.apple.Safari"), false));
+    assert!(p.set_showing(Some("Other"), Some("com.apple.Safari"), Pace::Usual));
     assert!(!p.copy_slow(), "another item: the slowness said for the one before goes");
     p.set_copy_slow(true);
-    p.set_showing(None, None, false);
+    p.set_showing(None, None, Pace::Usual);
     p.settle(3.0);
     assert!(!p.copy_slow() && p.state() == PageState::Shown);
     // `slow` alone changed for the same item: a change (known slow now: no grace).
-    assert!(p.set_showing(Some("Docs"), Some("com.apple.Safari"), false));
-    assert!(p.set_showing(Some("Docs"), Some("com.apple.Safari"), true), "slow alone: new");
-    assert!(!p.set_showing(Some("Docs"), Some("com.apple.Safari"), true));
+    assert!(p.set_showing(Some("Docs"), Some("com.apple.Safari"), Pace::Usual));
+    assert!(p.set_showing(Some("Docs"), Some("com.apple.Safari"), Pace::Slow), "slow alone: new");
+    assert!(!p.set_showing(Some("Docs"), Some("com.apple.Safari"), Pace::Slow));
     assert!(matches!(p.settle(4.0), Settled::Applied(_)), "no grace once it's known slow");
     // The engine's slow step or the start: never said as the copy's.
     let mut q = hosting();
-    q.set_showing(Some("Getting you started"), None, true);
+    q.set_showing(Some("Getting you started"), None, Pace::Slow);
     q.set_copy_slow(true);
     q.settle(1.0);
     assert!(q.starting() && !q.copy_slow());
@@ -237,7 +296,7 @@ fn the_page_area_and_its_placements() {
 #[test]
 fn kept_in_front_by_its_page() {
     let mut p = hosting();
-    p.configure(0.12, "", Mechanism::Order, 1, 0);
+    p.configure(0.12, 0.4, "", Mechanism::Order, 1, 0);
     p.set_hosted(Some(42));
     let t = 1.0;
     let k = p.keep_front(0, &mut || t);

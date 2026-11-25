@@ -14,6 +14,7 @@ use super::{Core, Field, host_id, layout};
 use crate::geometry::Rect;
 use crate::host::layout::Placement;
 use crate::json;
+use crate::page::Pace;
 use crate::page::Page;
 
 /// Where a frame's page area and its split's panes are read from: the window's page in the core (Margin's own window:
@@ -327,10 +328,10 @@ impl Core {
             return;
         }
         let label = self.label(&id).unwrap_or_else(|| host_id::logged(&id));
-        self.ports.set_showing(w, Some(&label), Some(super::loading::icon_app(&id)), false);
+        self.ports.set_showing(w, Some(&label), Some(super::loading::icon_app(&id)), Pace::Usual);
         self.place_again_retry(w, &id).await;
         // (Its defer: the loader's words cleared, the hosting settled.)
-        self.ports.set_showing(w, None, None, false);
+        self.ports.set_showing(w, None, None, Pace::Usual);
         self.settle_hosting();
     }
 

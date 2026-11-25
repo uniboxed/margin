@@ -2,7 +2,8 @@
 // app's library items, against a stand-in for the tabs API.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createHostedTabs } from '../extension/background/hosted.ts';
+import { createHostedTabs, SLOW_SHOW_MS } from '../extension/background/hosted.ts';
+import { switchLogTo } from '../extension/background/switch-log.ts';
 
 const NEW_TAB = 'safari-web-extension://abc/newtab/newtab.html';
 type T = { id: number, windowId: number, url: string, active: boolean };
@@ -244,3 +245,25 @@ test('isHosted: a window made for the app, one an item or the card was shown in;
   for (const id of [9, 4, 5]) h.windowRemoved(id);
   assert.deepEqual([9, 4, 5].map((id) => h.isHosted(id)), [false, false, false]);
 });
+
+// (Development diagnostics, 2026-11-25: a show from an app to a Safari tab took 150-310 ms with Safari in the
+// background, 33-60 ms with it in front. A slow show says in Margin.app's log how long each of its Safari calls took.)
+test('hostShow: a slow show says each Safari call\'s time in the app\'s log; a quick one says nothing', async () => {
+  const lines: string[] = [];
+  switchLogTo((l) => lines.push(l));
+  try {
+    const f = fakeTabs([{ id: 1, windowId: 9, url: 'https://a.example/', active: false }, { id: 2, windowId: 9, url: 'https://b.example/', active: true }]);
+    const h = createHostedTabs(() => f.api);
+    await h.show({ windowId: 9, itemId: 't-aaaa', url: 'https://a.example/' });
+    assert.deepEqual(lines, [], 'a quick show: nothing said');
+    const update = f.api.update;
+    f.api.update = async (id, props) => { await new Promise((r) => setTimeout(r, SLOW_SHOW_MS + 20)); return update(id, props); };
+    await h.show({ windowId: 9, itemId: 't-bbbb', url: 'https://b.example/' });
+    assert.equal(lines.length, 1, `${lines}`);
+    assert.match(lines[0], /^hostShow took \d+ ms: .*update (1[2-9]\d|[2-9]\d\d)\b/, lines[0]);
+    assert.ok(Number(/took (\d+)/.exec(lines[0])![1]) >= SLOW_SHOW_MS, lines[0]);
+  } finally {
+    switchLogTo(null);
+  }
+});
+

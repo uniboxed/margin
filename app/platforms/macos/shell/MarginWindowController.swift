@@ -94,9 +94,10 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         // macOS would take one now (Margin active, its window on the current Space); nil: yes.
         var harnessEnters: (() -> Bool)?
         var harnessReady: (() -> Bool)?
-        // An item not known to be slow keeps what's drawn this long before the loader shows (a switch between prepared
-        // windows is tens of ms: no loader flash).
-        var loaderGrace: TimeInterval = 0.12
+        // An item not known to be slow keeps what's drawn this long before the loader shows, a quick switch (its host
+        // open already) `switchGrace`; nil: the core's own (core/page/mod.rs LOADER_GRACE, SWITCH_GRACE).
+        var loaderGrace: TimeInterval?
+        var switchGrace: TimeInterval?
         // Closed while it hosts: held at most this long for the one shown to be parked first (`windowShouldClose`).
         var closeWait: TimeInterval = 1.5
         var front = FrontMechanism.level // how it's kept in front of what it hosts (MarginWindows reads `MarginFront`)
@@ -258,7 +259,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         self.pages = pages
         self.options = options
         core = PageCore(pointerEvery: options.pointerEvery)
-        core.configure(grace: options.loaderGrace, startupLabel: HostedSession.startupLabel, order: options.front == .order,
+        core.configure(grace: options.loaderGrace, switchGrace: options.switchGrace, startupLabel: HostedSession.startupLabel, order: options.front == .order,
                        raised: FrontMechanism.raised.rawValue, normal: NSWindow.Level.normal.rawValue)
         let frame = options.harness ? (options.frame ?? Self.harnessFrame) : (options.frame ?? Self.centred())
         window = MarginWindow(frame: frame, harness: options.harness)
@@ -518,12 +519,13 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         settlePage()
     }
 
-    // An item being shown by the session and not ready yet (its name; nil: it is, or it failed): not known to be slow
-    // (a switch between prepared windows is tens of ms), so what's drawn stays for `loaderGrace` and the loader comes
-    // only if it isn't ready by then. `slow`: known to take a while (the item the window showed last, at launch,
-    // before its window is even in full screen): the loader at once, from the page's first frame (its hello has it).
-    func setShowing(_ label: String?, app: String?, slow: Bool) {
-        guard core.setShowing(label, app: app, slow: slow) else { return }
+    // An item being shown by the session and not ready yet (its name; nil: it is, or it failed), at the pace the session
+    // says (the core's page decides the grace from it): usual, what's drawn stays for the loader's grace and the loader
+    // comes only if it isn't ready by then; quick (a switch to an item whose host is open), the switch grace; slow
+    // (known to take a while: the item the window showed last, at launch), the loader at once, from the page's first
+    // frame (its hello has it).
+    func setShowing(_ label: String?, app: String?, pace: ShowPace) {
+        guard core.setShowing(label, app: app, pace: pace) else { return }
         if label == nil { readHosted() }
         settlePage()
     }

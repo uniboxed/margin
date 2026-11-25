@@ -17,7 +17,7 @@ use margin_core::page::fill::{self, Rgba};
 use margin_core::page::front::{FrontCounts, FrontOp, Mechanism};
 use margin_core::page::holes::{self, Piece};
 use margin_core::page::press::{self, PressWay};
-use margin_core::page::{Ground, GroundHole, HostedSaid, Page, PageState, Settled, Shown, area};
+use margin_core::page::{Ground, GroundHole, HostedSaid, Pace, Page, PageState, Settled, Shown, area};
 use margin_core::passthrough::{
     CatchBuf, CatchRef, Cg, Cut, Edges, PassThrough, Push, SlotInsets, SlotRef, Want, WantMode,
 };
@@ -834,15 +834,17 @@ fn mechanism(m: Mechanism) -> u8 {
     }
 }
 
-/// The loader's grace (seconds; 0: none), the start's loader label, the mechanism asked for (`order`: the order's way,
-/// kept) and the OS's raised and normal window levels.
+/// The loader's grace and a quick switch's (seconds; 0: none; negative: the core's own), the start's loader label, the
+/// mechanism asked for (`order`: the order's way, kept) and the OS's raised and normal window levels.
 ///
 /// # Safety
 /// `page` null or a live page (one thread at a time); `label` null or `len` readable bytes.
 #[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
 pub unsafe extern "C" fn margin_page_configure(
     page: *mut MarginPage,
     grace: f64,
+    switch_grace: f64,
     label: *const u8,
     len: usize,
     order: bool,
@@ -854,7 +856,7 @@ pub unsafe extern "C" fn margin_page_configure(
     // SAFETY: the contract above.
     let label = unsafe { opt_text(label, len, true) }.unwrap_or("");
     let asked = if order { Mechanism::Order } else { Mechanism::Level };
-    p.page.configure(grace, label, asked, raised, normal);
+    p.page.configure(grace, switch_grace, label, asked, raised, normal);
 }
 
 /// The page's layout report: its JSON (the `geometry` object, as the page sent it) parsed and kept. Bits: 1 it was
@@ -1082,7 +1084,8 @@ pub unsafe extern "C" fn margin_page_set_loading(
     p.page.set_loading(label, app)
 }
 
-/// An item being shown and not ready yet (`slow`: known to take a while). False: nothing new.
+/// An item being shown and not ready yet, and how long that's expected to take (`pace`: 0 as usual, 1 a quick switch,
+/// 2 known to take a while; anything else as usual). False: nothing new.
 ///
 /// # Safety
 /// As `margin_page_set_loading`.
@@ -1096,13 +1099,18 @@ pub unsafe extern "C" fn margin_page_set_showing(
     app: *const u8,
     app_len: usize,
     has_app: bool,
-    slow: bool,
+    pace: u8,
 ) -> bool {
     // SAFETY: the contract above.
     let Some(p) = (unsafe { page.as_mut() }) else { return false };
     // SAFETY: the contract above.
     let (label, app) = unsafe { (opt_text(label, label_len, has_label), opt_text(app, app_len, has_app)) };
-    p.page.set_showing(label, app, slow)
+    let pace = match pace {
+        1 => Pace::Quick,
+        2 => Pace::Slow,
+        _ => Pace::Usual,
+    };
+    p.page.set_showing(label, app, pace)
 }
 
 /// The browser's copy asked for the item being shown is slow, or no longer (only while one is shown). False: nothing

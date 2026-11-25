@@ -62,6 +62,7 @@ use crate::geometry::Rect;
 use crate::host::layout::{Placement, Size};
 use crate::hosted_browser::Role;
 use crate::json::{self, Object};
+use crate::page::Pace;
 use exec::Exec;
 pub use hosting::HostTarget;
 pub use items::Split;
@@ -113,9 +114,10 @@ pub trait Ports {
     fn window_ids_of(&self, profile: &str) -> Vec<i64>;
     /// The wall clock, seconds since 1970 (a request's `notAfter`).
     fn wall(&self) -> f64;
-    /// A Margin window told an item is being shown and not ready yet (`HostedWindow.setShowing`; None: it is).
-    /// The window as the flow had it: one closed since is still told (Swift's flows held the window).
-    fn set_showing(&self, window: i64, label: Option<&str>, app: Option<&str>, slow: bool);
+    /// A Margin window told an item is being shown and not ready yet (`HostedWindow.setShowing`; None: it is), and how
+    /// long that's expected to take (`pace`: its page's grace, page/mod.rs). The window as the flow had it: one closed
+    /// since is still told (Swift's flows held the window).
+    fn set_showing(&self, window: i64, label: Option<&str>, app: Option<&str>, pace: Pace);
     /// The browser's copy asked to show a Margin window's item is slow, or no longer (`HostedWindow.setCopySlow`: its
     /// loader says so; the window forgets it with the item). Feedback only.
     fn set_copy_slow(&self, window: i64, on: bool);

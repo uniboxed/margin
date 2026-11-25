@@ -22,6 +22,7 @@ use super::target::Target;
 use super::{Core, Field, OpenItem, SAFARI_BUNDLE, Until, object, swift_int};
 use crate::hosted_browser::Role;
 use crate::json::{self, Object};
+use crate::page::Pace;
 
 /// The requests whose item is drawn in front at once (HostedSession `showRequests`).
 pub const SHOW_REQUESTS: &[&str] =
@@ -443,7 +444,7 @@ impl Core {
                 // asked for meanwhile, whose show may be under way while this one waited outside the queue: its loader
                 // and its host's marker are that show's, left as they are.)
                 if !self.superseded(w, item) {
-                    self.ports.set_showing(w, None, None, false);
+                    self.ports.set_showing(w, None, None, Pace::Usual);
                 }
                 if self.read(|s| s.showing.get(&id).map(String::as_str) == Some(item)) {
                     self.set_showing_item(&id, None);
@@ -482,15 +483,17 @@ impl Core {
         self.card_returning(w, item);
     }
 
-    /// An app item's show, between its loader's words and their clearing.
+    /// An app item's show, between its loader's words and their clearing: a switch to an app hosted already (parked)
+    /// quick (the page's switch grace), a first open as usual.
     async fn show_app(&self, w: i64, item: &str, bundle: &str, id: &str) -> Go {
         if self.ports.engine_shown().as_deref() != Some(id) || self.hosting() != Some(w) {
-            self.ports.set_showing(w, self.label(id).as_deref(), Some(bundle), false);
+            let pace = if self.ports.is_hosted(id) { Pace::Quick } else { Pace::Usual };
+            self.ports.set_showing(w, self.label(id).as_deref(), Some(bundle), pace);
         }
         let go = self.show_app_in(w, item, bundle, id).await;
         // (Another item asked for meanwhile: the loader stays for it, never a frame without it in between.)
         if !self.superseded(w, item) {
-            self.ports.set_showing(w, None, None, false);
+            self.ports.set_showing(w, None, None, Pace::Usual);
         }
         go
     }
@@ -526,8 +529,10 @@ impl Core {
         let there = self.safari_window(p, Role::Main).is_some() && self.ports.is_hosted(id);
         let target = HostTarget::Safari(p.to_string(), Role::Main);
         let label = self.title_of(item).unwrap_or_else(|| "Safari".into());
+        // (Its window there already: a switch, quick (the page's switch grace); made first: as usual.)
+        let pace = if !comes || there { Pace::Quick } else { Pace::Usual };
         if comes {
-            self.ports.set_showing(w, Some(&label), Some(SAFARI_BUNDLE), false);
+            self.ports.set_showing(w, Some(&label), Some(SAFARI_BUNDLE), pace);
             if !there && !self.host(&target, w, item).await {
                 return Go::Stop;
             }
@@ -539,11 +544,11 @@ impl Core {
         let url = if address.is_empty() { "about:blank" } else { address };
         let pinned = self.pinned_or_favorite(item);
         let payload = object(json!({ "windowId": window_id, "itemId": item, "url": url, "pinned": pinned }));
-        // (A tab switch alone: its loader from the ask too, the page's grace keeping a quick one unseen.)
+        // (A tab switch alone: its loader from the ask too, the page's switch grace keeping a quick one unseen.)
         if !comes {
-            self.ports.set_showing(w, Some(&label), Some(SAFARI_BUNDLE), false);
+            self.ports.set_showing(w, Some(&label), Some(SAFARI_BUNDLE), pace);
         }
-        let result = match self.ask_show(w, item, p, payload, &label).await {
+        let result = match self.ask_show(w, item, p, payload, &label, pace).await {
             Asked::Tab(result) => result,
             Asked::Not => return Go::Stop,
             Asked::Moved(result) => {
@@ -578,10 +583,10 @@ impl Core {
     /// and nothing after the answer runs until it's back in turn); a pick in its own window cancels it first (its
     /// `cancel` goes before the newer `hostShow` on the same socket); and a show of another window that took the engine
     /// meanwhile, a later pick, keeps it (`Moved`).
-    async fn ask_show(&self, w: i64, item: &str, p: &str, payload: Object, label: &str) -> Asked {
+    async fn ask_show(&self, w: i64, item: &str, p: &str, payload: Object, label: &str, pace: Pace) -> Asked {
         let hosts = self.hosts_asked.get();
         let left = self.exec.leave_turn();
-        let shown = self.ask_show_out(w, item, p, payload, label).await;
+        let shown = self.ask_show_out(w, item, p, payload, label, pace).await;
         if left {
             self.exec.rejoin().await;
         }
@@ -601,16 +606,27 @@ impl Core {
     /// (a next item with the same name and app, whose loader is drawn the same, never finds them there). Its link down
     /// meanwhile while it's still the pick: asked again on the profile's next link (only a show is: showing a tab that
     /// may be shown already is safe to repeat). None: not shown, said.
-    async fn ask_show_out(&self, w: i64, item: &str, p: &str, payload: Object, label: &str) -> Option<Object> {
+    async fn ask_show_out(
+        &self,
+        w: i64,
+        item: &str,
+        p: &str,
+        payload: Object,
+        label: &str,
+        pace: Pace,
+    ) -> Option<Object> {
         let slowed = Cell::new(false);
-        let shown = self.ask_show_tries(w, item, p, payload, label, &slowed).await;
-        if slowed.get() {
+        let shown = self.ask_show_tries(w, item, p, payload, label, pace, &slowed).await;
+        // (Left to its copy and overtaken, it ends after the newer pick's loader may say the copy is slow: those words
+        // are the newer pick's, left as they are.)
+        if slowed.get() && (self.show_overtaken(w, item).is_none() || !self.paced_by_copy(w, item, p)) {
             // (Only the words: the loader's name and app are a newer pick's by now, if one overtook this.)
             self.ports.set_copy_slow(w, false);
         }
         shown
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn ask_show_tries(
         &self,
         w: i64,
@@ -618,6 +634,7 @@ impl Core {
         p: &str,
         payload: Object,
         label: &str,
+        pace: Pace,
         slowed: &Cell<bool>,
     ) -> Option<Object> {
         let mut epoch = self.ports.link_epoch(p);
@@ -627,10 +644,19 @@ impl Core {
                     p,
                     "hostShow",
                     payload.clone(),
-                    || self.show_overtaken(w, item).is_some(),
+                    || self.show_overtaken(w, item).is_some() && !self.paced_by_copy(w, item, p),
                     |slow| {
-                        // (Slow: its loader at once, no grace, saying the copy is slow.)
-                        self.ports.set_showing(w, Some(label), Some(SAFARI_BUNDLE), slow);
+                        // (Overtaken, its copy's answer waited for: the loader is the newer pick's, left as it is.)
+                        if self.show_overtaken(w, item).is_some() {
+                            return;
+                        }
+                        // (Slow: its loader at once, no grace, saying the copy is slow; no longer: its own pace.)
+                        self.ports.set_showing(
+                            w,
+                            Some(label),
+                            Some(SAFARI_BUNDLE),
+                            if slow { Pace::Slow } else { pace },
+                        );
                         self.ports.set_copy_slow(w, slow);
                         slowed.set(slow);
                     },
@@ -654,6 +680,14 @@ impl Core {
                 return Some(result);
             }
             let error = shown.error.unwrap_or_else(|| "no answer".into());
+            if error == "overtaken"
+                && let Some(why) = self.show_overtaken(w, item)
+            {
+                self.note(format!(
+                    "{item}: overtaken while its copy was asked for its tab ({why}): its copy showed the newer"
+                ));
+                return None;
+            }
             if !link_went_down(&error) {
                 self.note(format!("{item}: its tab wasn't shown ({error})"));
                 return None;
@@ -712,7 +746,7 @@ impl Core {
             .await;
             if looked {
                 look = None;
-                self.ports.set_showing(w, Some(label), Some(SAFARI_BUNDLE), true);
+                self.ports.set_showing(w, Some(label), Some(SAFARI_BUNDLE), Pace::Slow);
                 self.ports.set_copy_slow(w, true);
                 slowed.set(true);
             }
@@ -730,6 +764,21 @@ impl Core {
             return false;
         }
         true
+    }
+
+    /// Whether a tab show of `item` (profile `p`) overtaken in Margin window `w` is left to its copy rather than
+    /// cancelled: the item asked for since is a web item of the same profile, not a split's, and the window is still
+    /// there. Its show goes to the same copy for the same Safari window, where shows run one at a time (link.ts: a newer
+    /// one waits for the running one, one overtaken while it waits is answered `overtaken` with no Safari call), so the
+    /// tab under way is drawn as Safari can and none overlaps another (2026-11-25: cancelled every 110 ms of a held key,
+    /// none was drawn until the run ended). Its answer, when it comes, changes nothing of the newer pick's.
+    fn paced_by_copy(&self, w: i64, item: &str, p: &str) -> bool {
+        let Some(next) = self.requested_in(w).filter(|n| n != item) else { return false };
+        if self.ports.window(Some(w)).is_none() || self.split_of_item(&next).is_some() {
+            return false;
+        }
+        matches!(self.target_of(&next), Some(Target::Web { browser, profile })
+            if browser == "safari" && self.resolve(profile.as_deref()) == p)
     }
 
     /// Why a show of `item` in Margin window `w` is overtaken: another item asked for there since, or the window gone

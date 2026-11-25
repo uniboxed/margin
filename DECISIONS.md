@@ -10516,3 +10516,74 @@ failing first (the old code in a copy of the tree):
   from `brand/margin-logo/web/favicon.ico` or the PNGs); the Chrome Web Store listing's images (uploaded by hand); the
   Liquid Glass layers (`macos/icon-composer-layers/`, for Icon Composer, untested by the pack's own note).
 
+## A switch keeps the page drawn longer: no loader flash between open items (2026-11-25)
+
+- **What Tirth saw** (his real use, read in Margin's log of 04:51-04:56): a switch from Safari to Mail "blinks" most
+  times, and between Safari tabs the loader shows for a split second now and then. The blink is the page card's loader:
+  it comes when a show takes longer than the loader's grace, 0.12 s, then is gone 20-60 ms later. Switches to an app
+  whose window is open took 30-190 ms, most of it macOS making that app active (the engine makes it active before its
+  window is revealed, ec13b210, so it's never seen drawn inactive): Notes 30-38 ms, Maps 125-143, Mail 15-142. A tab
+  shown by Safari's copy took 33-60 ms with Safari in front, 150-310 ms (once 1.2 s) with Safari in the background.
+- **The rule** (margin-core, page/mod.rs and the session): a show has a pace, `Pace::Quick` (a switch to an item whose
+  host is open already: an app hosted, parked or shown; a web item whose profile's Safari window is there; a tab
+  switch in the window shown), `Usual` (a first open: its loader soon is the feedback it needs) or `Slow` (no grace, as
+  before). A quick show keeps what's drawn for the switch grace, `SWITCH_GRACE` 0.4 s, before the loader; the others
+  as before (`LOADER_GRACE` 0.12 s). Past the switch grace the loader comes as for any show. The session says the pace
+  (requests.rs `show_app`, `show_web`, the copy's slow words back to the show's own pace); the page decides the grace.
+- **Where it is:** the constants and the rule in margin-core once (page/mod.rs); the session's port `set_showing`
+  carries the pace (typed port: `flag` slow, `c` "quick"); Swift carries it to the page (`ShowPace`, never decided
+  there); `margin_page_configure` takes both graces, negative the core's own (Swift's options `loaderGrace` and
+  `switchGrace` are nil unless a test sets them).
+- **The sidebar's highlight** moves at the press already: the session's live rows mark the requested item active
+  before its show is done (ui.rs `live_plan`, routing_tests.rs), and the press tells the window at once (`changed`).
+- **Tests**, failing when broken on purpose: page/tests.rs (a quick switch's grace the switch grace, shown within it no
+  loader drawn, past it the loader, a first open the loader's grace, slow at once, configured and negative graces);
+  requests_tests.rs (an open app quick, an app not open usual, a web item with its window there quick, without usual).
+- **Still to do** (Tirth asked to consider): a press from an app to a Safari tab that seems not to work: the copy's
+  answer while Safari is in the background (150-310 ms, once 1.2 s) is the wait; the next press overtakes it. Being
+  measured (why the copy is slower with Safari in the background) before its fix.
+
+## A held tab key keeps repeating through a switch between Safari and an app (2026-11-25)
+
+- **What Tirth saw:** holding ⌥⌘↓ (or ↑) flew through the items at first; later holds stopped after a step or two.
+- **Found** (a line per hold in Margin's log, Shortcuts.swift: its repeats and why its repeat ended): the holds that
+  stopped all stopped as the run went from a Safari tab to an app or back, with ⌘⌥ still down and no release. The keys
+  Margin holds depend on the app in front (a browser's ⌘L, ⌘D… only for Safari: shortcuts.rs `held`), so each such
+  switch rebound them (ShellHostedGlue `updateHostedKeys` → `rebind`), and `rebind` let go of every key and took them
+  all again: the held key's repeat ended (`set_active(false)`) and the very key being held was unregistered and
+  registered again under a new id. Holds within Safari's tabs alone ran on (72 and 81 repeats).
+- **The rule** (margin-core shortcuts.rs, `AppShortcuts::rebind`, Mac and Windows alike): each binding keeps its hot
+  key's id across a rebind for the same combination and command; a rebind while held lets go only of the keys it drops
+  and takes only those it adds (a kept one another app held is tried again, as each time the keys are taken); a
+  running repeat goes on if its key is still bound, ends if it's dropped.
+- **Tests** (shortcuts.rs, failing first: 49 registrations, not 31): through a rebind that drops the browser's keys
+  and one that adds them back, nothing kept is registered again, the held key keeps its id and repeats on; a rebind
+  dropping the held key ends its repeat; a kept key another app held is taken again once free.
+- **Diagnostics kept** (development, quiet): one line per hold with repeats (`held next-tab: 72 repeats in 6486 ms
+  (the longest between two 502 ms), ended: its key released`), and the slow lines of 2026-11-25 (a request's ack and
+  answer, a slow tab show's Safari calls).
+
+## Tab switches in a fast run: one at a time in Safari's window, so each is drawn as Safari can (2026-11-25)
+
+- **What Tirth saw:** holding ⌥⌘↓ through Safari's tabs, the page didn't change until he let go ("the tab content
+  section stays where it is").
+- **Measured on the real Mac** (the dev hook's picks every ~110 ms, Margin's log with the copy's own times): every
+  tab show of the run was overtaken by the next pick and cancelled, yet its `tabs.update` was already under way in
+  Safari (a cancel stops a show only before its next Safari call). With switches overlapping in one window, each
+  `tabs.update` took Safari ~210 ms and none was drawn until the run ended; quiet, one at a time, the same tabs took
+  25-40 ms. (A tab not open in the window is made: `create` 200-280 ms; one Safari unloaded is reloaded: `update`
+  ~210 ms. Those are Safari's own.)
+- **The rule:** a window's tab shows run one at a time.
+  - The copy (extension/background/link.ts, its own rule): a newer `hostShow` for a window waits for the one running
+    there to finish; one overtaken while it waits is answered `overtaken`, with no Safari call; a running one is
+    stopped only by the app's cancel (docs/LINK-RESILIENCE.md §1 rule 13).
+  - margin-core (session/requests.rs `paced_by_copy`): a tab show overtaken by another web item of the same profile in
+    the same Margin window is left to its copy, not cancelled; one overtaken by anything else (an app, another
+    profile, a split, its window gone) is cancelled as before. Its answer changes nothing of the newer pick's (its
+    loader's words, its slow words, the item shown); the copy's `overtaken` is said as such in the log.
+- **Tests, failing first:** link.test.ts (the running show finishes, one overtaken while waiting never reaches Safari,
+  the newest runs after it); requests_tests.rs (overtaken by a tab of its profile: not cancelled, the newer asked, the
+  older's answer changes nothing, the copy's `overtaken` said; overtaken by an app: cancelled, as before).
+- **Diagnostics added** (development, quiet unless slow): a reply carries the copy's own time on it (`took`); the
+  link's line for a request over 100 ms says when it was acked and that time.
+

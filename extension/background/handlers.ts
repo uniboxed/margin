@@ -1018,8 +1018,8 @@ export const handlers = {
   },
   // Margin.app hosting Safari in its page area (docs/MARGIN-APP.md, background/hosted.ts): an item of its library
   // shown as a tab of the window it hosts for this profile, and closed. The app's word only.
-  // (`stopped`, the link's: the app cancelled this show or a newer one for its window started; it then makes no more
-  // Safari calls: background/link.ts, docs/LINK-RESILIENCE.md §1 rules 12–13.)
+  // (`stopped`, the link's: the app cancelled this show; it then makes no more Safari calls. A newer show for its window
+  // waits for it: background/link.ts, docs/LINK-RESILIENCE.md §1 rules 12–13.)
   async hostShow(message: { windowId?: number, itemId?: string, url?: string }, sender: BrowserMessageSender & { stopped?: () => boolean }) {
     if (!sender?.app) throw new Error('the app\'s request only');
     return hostedTabs.show(message, sender.stopped);
