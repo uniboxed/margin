@@ -3,7 +3,7 @@
 // (app/shared/core/src/data/backgrounds.rs, the one copy, the Windows shell's too), through margin-ffi's backgrounds
 // object: a picture kept by its bytes' SHA-256, checked again there (a JPEG or a PNG by its signature, its size and
 // sides), served to Margin's page by id alone (OverlayWebView.swift's `/background/<id>`), and the ones no space names
-// removed as the library opens. This keeps the Mac's side:
+// removed as the library opens (the library's rule: margin-core `Library::prune_pictures`). This keeps the Mac's side:
 // - what the person chose, read within MAX_INPUT_BYTES, and made a picture Margin keeps by ImageIO (`prepare`):
 //   decoded (JPEG, PNG, HEIC, WebP, TIFF), turned upright by its orientation, at most MAX_SIDE on its long side (never
 //   made larger), and encoded again (JPEG; PNG when it has transparency), none of its metadata (EXIF, GPS) copied;
@@ -51,42 +51,76 @@ final class BackgroundStore {
     /// Every picture's id kept here.
     func ids() -> [String] { call(["type": "ids"])["ids"] as? [String] ?? [] }
 
-    /// Removes the pictures no space names (as the library opens): how many files went.
-    @discardableResult func prune(keep: Set<String>) -> Int { int(call(["type": "prune", "keep": Array(keep)])["removed"]) ?? 0 }
+    /// The cleanup as Margin opens, by the library's rule (margin-core `Library::prune_pictures`, which pictures its
+    /// spaces name): how many files went, or why none did (`left`: the library can't say which; `refused`: the folder
+    /// couldn't be cleaned).
+    @discardableResult func pruneUnused(by library: Library) -> (removed: Int, left: String?, refused: String?) {
+        guard let core else { return (0, "no store", nil) }
+        let answer = KeysCore.answer { margin_backgrounds_prune_unused(core, library.corePointer, $0) } as? JSONObject ?? [:]
+        return (int(answer["removed"]) ?? 0, answer["left"] as? String, (answer["refused"] ?? answer["error"]) as? String)
+    }
 
-    /// What the person chose, made a picture and kept: `{ id }`, or `{ refused }` with the words for the page.
-    func keep(_ data: Data) -> JSONObject {
-        guard data.count <= maxInputBytes else { return ["refused": "That picture is too large (over \(maxInputBytes / 1_048_576) MB)."] }
-        guard let made = Self.prepare(data, maxSide: maxSide, maxBytes: maxBytes) else { return ["refused": "Margin couldn’t read that picture."] }
+    /// What the person chose, made a picture and kept: `{ id }`, or `{ refused }` with the words for the page. Decoded
+    /// and encoded again here, on the caller's thread (the tests'); Margin's requests take `kept`, which does that off
+    /// the main thread.
+    func keep(_ data: Data) -> JSONObject { add(Self.made(data, maxSide: maxSide, maxBytes: maxBytes, maxInputBytes: maxInputBytes)) }
+
+    /// A file the person chose, read within its cap and kept (on the caller's thread, as `keep(_:)`).
+    func keep(file url: URL) -> JSONObject { add(Self.made(file: url, maxSide: maxSide, maxBytes: maxBytes, maxInputBytes: maxInputBytes)) }
+
+    /// A picture dropped (`data`) or chosen (`file`), read, decoded and encoded again off the main thread (a large photo
+    /// takes ImageIO a while: Margin's window keeps drawing), then kept by the core here: `{ id }` or `{ refused }`.
+    func kept(_ data: Data? = nil, file url: URL? = nil) async -> JSONObject {
+        let (side, bytes, input) = (maxSide, maxBytes, maxInputBytes)
+        let made = await Task.detached(priority: .userInitiated) { () -> Made in
+            if let url { return Self.made(file: url, maxSide: side, maxBytes: bytes, maxInputBytes: input) }
+            return Self.made(data ?? Data(), maxSide: side, maxBytes: bytes, maxInputBytes: input)
+        }.value
+        return add(made)
+    }
+
+    /// A picture made to keep, or the words for the page.
+    enum Made: Sendable { case picture(Data), refused(String) }
+
+    private func add(_ made: Made) -> JSONObject {
+        guard case .picture(let picture) = made else {
+            if case .refused(let words) = made { return ["refused": words] }
+            return [:]
+        }
         guard let core else { return ["refused": "Margin couldn’t keep that picture."] }
-        let answer = made.withUnsafeBytes { raw in
+        let answer = picture.withUnsafeBytes { raw in
             KeysCore.answer { margin_backgrounds_add(core, raw.bindMemory(to: UInt8.self).baseAddress, raw.count, $0) } as? JSONObject ?? [:]
         }
         if let id = answer["id"] as? String { return ["id": id] }
         return ["refused": "Margin couldn’t keep that picture."]
     }
 
-    /// A file the person chose, read within its cap and kept.
-    func keep(file url: URL) -> JSONObject {
+    nonisolated static func made(_ data: Data, maxSide: Int, maxBytes: Int, maxInputBytes: Int) -> Made {
+        guard data.count <= maxInputBytes else { return .refused("That picture is too large (over \(maxInputBytes / 1_048_576) MB).") }
+        guard let made = prepare(data, maxSide: maxSide, maxBytes: maxBytes) else { return .refused("Margin couldn’t read that picture.") }
+        return .picture(made)
+    }
+
+    nonisolated static func made(file url: URL, maxSide: Int, maxBytes: Int, maxInputBytes: Int) -> Made {
         let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
-        guard size > 0 else { return ["refused": "Margin couldn’t read that picture."] }
-        guard size <= maxInputBytes else { return ["refused": "That picture is too large (over \(maxInputBytes / 1_048_576) MB)."] }
-        guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return ["refused": "Margin couldn’t read that picture."] }
-        return keep(data)
+        guard size > 0 else { return .refused("Margin couldn’t read that picture.") }
+        guard size <= maxInputBytes else { return .refused("That picture is too large (over \(maxInputBytes / 1_048_576) MB).") }
+        guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return .refused("Margin couldn’t read that picture.") }
+        return made(data, maxSide: maxSide, maxBytes: maxBytes, maxInputBytes: maxInputBytes)
     }
 
     // ImageIO's kinds read (what a camera, a phone or the web gives); anything else refused before it's decoded.
-    static let readable: Set<String> = [UTType.jpeg, .png, .heic, .heif, .webP, .tiff].map(\.identifier).reduce(into: []) { $0.insert($1) }
+    nonisolated static let readable: Set<String> = [UTType.jpeg, .png, .heic, .heif, .webP, .tiff].map(\.identifier).reduce(into: []) { $0.insert($1) }
 
     /// A picture Margin keeps from what the person chose (nil: not one ImageIO reads, or nothing made of it): upright,
     /// at most `maxSide` on its long side (smaller ones as they are), encoded again with nothing of the original's
     /// metadata; smaller sides, or a lower quality, until it fits `maxBytes`.
-    static func prepare(_ data: Data, maxSide: Int, maxBytes: Int) -> Data? {
+    nonisolated static func prepare(_ data: Data, maxSide: Int, maxBytes: Int) -> Data? {
         let options = [kCGImageSourceShouldCache: false] as CFDictionary
         guard let source = CGImageSourceCreateWithData(data as CFData, options), CGImageSourceGetCount(source) > 0,
               let type = CGImageSourceGetType(source) as String?, readable.contains(type),
               let props = CGImageSourceCopyPropertiesAtIndex(source, 0, options) as? [CFString: Any],
-              let w = int(props[kCGImagePropertyPixelWidth]), let h = int(props[kCGImagePropertyPixelHeight]),
+              let w = (props[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue, let h = (props[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue,
               w > 0, h > 0, w <= 65_535, h <= 65_535, w * h <= 200_000_000 else { return nil }
         let long = max(w, h)
         for (side, quality) in [(maxSide, 0.9), (maxSide, 0.8), (2560, 0.85), (1920, 0.85)] {

@@ -10412,3 +10412,31 @@ Arc's Edit Theme Color in Margin (docs/SPACE-BACKGROUNDS.md, the study and the p
 - **Merging**: `refactor/hosted-only` has moved on since `71e11707` (link resilience), and 13 files changed on both
   sides (`MarginWindowController.swift`, `host-app.ts`, `runtime.ts`, `harness.ts`, `tests.swift`, `DECISIONS.md`
   among them). The branch merges into it, its conflicts resolved, then `npm run gate` runs there before `main`.
+
+## M2.9 merged into `refactor/hosted-only`: the pictures' cleanup by the core's rule, decoding off the main thread (2026-11-25)
+
+- **The merge**: `feat/space-backgrounds` (72dc22f3) into `refactor/hosted-only` after link resilience and the
+  sidebar press. Seven files conflicted, each both sides adding beside each other (both kept): `DECISIONS.md`, the FFI
+  header's `Said` words (focus's `flag2` and haptic's level), `overlay.ts`'s runtime options (`openPalette` and
+  `onGround`, `onPanel`, `materials`), `runtime.ts` (the same options and their imports), the theme harness's runtime
+  (both its records), `ci-plan.test.ts` (both sides' looped theme tests) and `run.sh` (`app_page` and the link e2e
+  sources). Edit Theme Color takes the keys as Margin's menus do (`popupOpen`), so the sidebar press's `keys_stay`
+  turns off while it's open and its panel becomes key.
+- **Found in review, fixed**:
+  - **The cleanup at launch could remove every picture.** Swift built the list of pictures in use from the spaces it
+    read, and pruned the rest. A library the store leaves alone (a later format's data: an older Margin over a newer
+    one's) or whose spaces' file and backup are both unreadable shows no spaces of it, so the list was empty and every
+    picture went, for good. Now margin-core decides (`Library::prune_pictures`, library/object.rs): only when the
+    library's set loaded and its spaces were read, each picture read as the state reads its background
+    (`background_of`); otherwise nothing goes (`PicturesPruned::LeftAlone`, said in the log). The FFI's
+    `margin_backgrounds_prune_unused(store, library)` replaces the JSON `prune { keep }` call (no list made by a
+    caller any more), and Swift only calls it (`BackgroundStore.pruneUnused`). Tests: core (named one kept and the
+    other removed; a later format's set, no set, the spaces' file unreadable: every picture kept), the FFI (the old
+    call refused, no library, no data), Swift (through the library).
+  - **A picture decoded on the main thread.** A dropped or chosen picture is read, decoded and encoded again
+    (ImageIO) in a detached task (`BackgroundStore.kept`); only the core's keep (its hash and write) is on the main
+    thread. The tests' `keep` stays synchronous over the same code.
+- **Left as they are**: the cross-fade's old layer removed after the fade's own time (`background.ts`: cleanup only,
+  and `transitionend` doesn't come in a window that draws no frames); the picture id's check written in the UI twice
+  besides the core's (the transition's TypeScript twin); the light/dark rule's TypeScript copy for the extension.
+

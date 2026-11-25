@@ -343,6 +343,11 @@ requests (`send`), not `perform`. Windows' `serve.rs` route comes with its libra
   - The id must be 64 hex characters and present in the store. The content type comes from the stored extension. Nothing else is served, and no path is built from input.
   - Themes can't reach it: `sanitizeCss` refuses non-bundled URLs.
 - **Cleaning up:** a file no space references is removed at launch, not at save, so ⌘Z and Escape can always bring one back.
+  Which pictures the spaces name is the library's rule (margin-core `Library::prune_pictures`, each background read
+  as the state reads it), and it removes nothing unless the library's set loaded with its spaces: a later format's
+  data, none yet, or a spaces file and its backup both unreadable leave every picture (found in the merge review,
+  2026-11-25: the Swift side had built the list itself and would have removed them all). The FFI's one call is
+  `margin_backgrounds_prune_unused(store, library)`. A picture is decoded and encoded again off the main thread.
 - **The palette from a picture:** its average colour, computed at ingest, stored beside the file and sent with the snapshot.
 
 ### 8. Arc import

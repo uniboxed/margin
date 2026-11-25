@@ -92,7 +92,15 @@ private func read(_ data: Data) -> (type: String, w: Int, h: Int, props: [CFStri
     // Removed as the library opens when no space names it.
     let other = store.keep(picture(64, 64, type: .png))["id"] as? String ?? ""
     check("pictures: two kept", Set(store.ids()) == [id, other])
-    check("pictures: the one no space names removed", store.prune(keep: [id]) == 1 && store.ids() == [id] && store.file(id: other) == nil)
+    // (By the library's rule, through the core: a library with no data yet can't say which, so none goes; then a space
+    // naming `id`.)
+    let library = Library(root: root.appendingPathComponent("library", isDirectory: true), background: false)
+    let unread = store.pruneUnused(by: library)
+    check("pictures: a library with nothing read yet: none removed", unread.removed == 0 && unread.left != nil && Set(store.ids()) == [id, other], "\(unread)")
+    let space = (library.perform("createSpace", ["name": "A"]).result as? JSONObject)?["spaceId"] as? String ?? ""
+    library.perform("renameSpace", ["spaceId": space, "background": ["colors": [], "image": ["id": id, "fit": "cover", "focus": [0.5, 0.5]]]])
+    let pruned = store.pruneUnused(by: library)
+    check("pictures: the one no space names removed", pruned.removed == 1 && pruned.left == nil && store.ids() == [id] && store.file(id: other) == nil, "\(pruned)")
 
     // Served to Margin's page at `margin-app://app/background/<id>` as the page draws it (an image: the page's policy
     // lets images come from its own place, nothing else), nothing else.

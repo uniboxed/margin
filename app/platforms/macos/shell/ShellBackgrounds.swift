@@ -14,9 +14,11 @@ import AppKit
 extension Shell {
     static func openBackgrounds(dataRoot: URL, library: Library) -> BackgroundStore {
         let store = BackgroundStore(root: BackgroundStore.folder(in: dataRoot))
-        let named = Set(library.spaces().compactMap { (($0.value["background"] as? JSONObject)?["image"] as? JSONObject)?["id"] as? String })
-        let removed = store.prune(keep: named)
-        if removed > 0 { Diagnostics.note("backgrounds: \(removed) picture file(s) no space names removed") }
+        // (Which pictures the spaces name, and whether the library can say: the core's, Library::prune_pictures.)
+        let pruned = store.pruneUnused(by: library)
+        if pruned.removed > 0 { Diagnostics.note("backgrounds: \(pruned.removed) picture file(s) no space names removed") }
+        if let why = pruned.left { Diagnostics.note("backgrounds: no picture removed: \(why)") }
+        if let why = pruned.refused { Diagnostics.warn("backgrounds: the cleanup failed: \(why)") }
         return store
     }
 
@@ -31,14 +33,14 @@ extension Shell {
                 Diagnostics.note("backgrounds: the picker closed with nothing chosen")
                 return ["ok": true, "result": NSNull()]
             }
-            answer = backgrounds.keep(file: url)
+            answer = await backgrounds.kept(file: url)
         case "backgroundAdd":
             // (base64 of at most the input cap: checked before it's decoded.)
             guard let text = payload["bytes"] as? String, text.utf8.count <= (backgrounds.maxInputBytes / 3 + 1) * 4,
                   let data = Data(base64Encoded: text) else {
                 return ["ok": false, "error": "Margin couldn’t read that picture."]
             }
-            answer = backgrounds.keep(data)
+            answer = await backgrounds.kept(data)
         default:
             return ["ok": false, "error": "no such request"]
         }

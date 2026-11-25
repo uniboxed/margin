@@ -2,19 +2,20 @@
 //! (BackgroundStore.swift):
 //!
 //! - one object over its folder (`margin_backgrounds_*`): the picture the platform made kept (`add`: its bytes typed,
-//!   never wrapped in JSON: up to 10 MB), and one JSON call for the rest (`path`, `ids`, `prune`, `constants`).
+//!   never wrapped in JSON: up to 10 MB), and one JSON call for the rest (`path`, `ids`, `constants`), and the cleanup as Margin opens
+//!   (`prune_unused`: the library's rule, `Library::prune_pictures`, over this store).
 //!
 //! The Swift side decodes what the person chose (ImageIO), keeps the folder's place, and serves a picture to Margin's
 //! page by id. Nothing here panics on what it's given: a bad request is `{"error": …}`.
 
-use std::collections::HashSet;
 use std::path::PathBuf;
 
 use margin_core::data::backgrounds::{self, BackgroundError, BackgroundStore};
 use margin_core::json;
+use margin_core::library::PicturesPruned;
 use serde_json::{Value, json};
 
-use crate::data::{answer, text};
+use crate::data::{MarginLibrary, answer, library, text};
 
 pub struct MarginBackgrounds {
     store: BackgroundStore,
@@ -38,16 +39,6 @@ impl MarginBackgrounds {
                 None => json!({ "path": null }),
             },
             "ids" => json!({ "ids": self.store.ids() }),
-            "prune" => {
-                let Some(keep) = o.get("keep").and_then(Value::as_array) else {
-                    return json!({ "error": "bad request: prune needs keep: [ids]" });
-                };
-                let keep: HashSet<String> = keep.iter().filter_map(Value::as_str).map(str::to_owned).collect();
-                match self.store.prune(&keep) {
-                    Ok(n) => json!({ "removed": n }),
-                    Err(e) => json!({ "refused": e.to_string(), "io": true }),
-                }
-            }
             other => json!({ "error": format!("bad request: no call {other:?}") }),
         }
     }
@@ -103,7 +94,7 @@ pub unsafe extern "C" fn margin_backgrounds_add(
 }
 
 /// One request → its answer: `constants` → `{ maxBytes, maxSide, maxInputBytes }`; `path` (id) → `{ path, mime }` or
-/// `{ path: null }` (no such picture, or not an id); `ids` → `{ ids }`; `prune` (keep: [ids]) → `{ removed }`.
+/// `{ path: null }` (no such picture, or not an id); `ids` → `{ ids }`.
 ///
 /// # Safety
 /// `store` from [`margin_backgrounds_new`], not freed; `request` points to `len` readable bytes.
@@ -123,6 +114,31 @@ pub unsafe extern "C" fn margin_backgrounds_call(
     };
     let Some(o) = req.as_object() else { return answer(&json!({ "error": "bad request: not an object" }), out_len) };
     answer(&s.call(o), out_len)
+}
+
+/// The cleanup as Margin opens, by the library's rule (`Library::prune_pictures`): `{ removed }` (the files no space
+/// names, gone), `{ left }` (nothing removed: why, the library can't say which its spaces name) or `{ refused, io }`.
+///
+/// # Safety
+/// `store` from [`margin_backgrounds_new`] and `library` from [`crate::data::margin_library_new`], neither freed (or
+/// null); on their thread.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn margin_backgrounds_prune_unused(
+    store: *mut MarginBackgrounds,
+    library: *const MarginLibrary,
+    out_len: *mut usize,
+) -> *mut u8 {
+    // SAFETY: from margin_backgrounds_new and not freed (the caller's contract).
+    let Some(s) = (!store.is_null()).then(|| unsafe { &*store }) else {
+        return answer(&json!({ "error": "no backgrounds object" }), out_len);
+    };
+    let Some(lib) = self::library(library) else { return answer(&json!({ "error": "no library" }), out_len) };
+    let out = match lib.prune_pictures(&s.store) {
+        Ok(PicturesPruned::Removed(n)) => json!({ "removed": n }),
+        Ok(PicturesPruned::LeftAlone(why)) => json!({ "left": why }),
+        Err(e) => json!({ "refused": e.to_string(), "io": true }),
+    };
+    answer(&out, out_len)
 }
 
 #[cfg(test)]
@@ -173,9 +189,37 @@ mod tests {
         assert!(add(store, &[])["refused"].is_string());
         assert_eq!(call(store, r#"{"type":"ids"}"#)["ids"], json!([id]));
         assert_eq!(call(store, r#"{"type":"constants"}"#)["maxSide"], 3840);
-        assert!(call(store, r#"{"type":"prune"}"#)["error"].is_string(), "prune names what it keeps");
-        assert_eq!(call(store, &format!(r#"{{"type":"prune","keep":["{id}"]}}"#))["removed"], 0);
-        assert_eq!(call(store, r#"{"type":"prune","keep":[]}"#)["removed"], 1);
+        assert!(
+            call(store, r#"{"type":"prune","keep":[]}"#)["error"].is_string(),
+            "no prune by a list the caller made"
+        );
+        let pruned = |library: *const MarginLibrary| {
+            let mut n = 0;
+            // SAFETY: a live store and a live library (or null); the answer freed below.
+            let out = unsafe { margin_backgrounds_prune_unused(store, library, &mut n) };
+            let v: Value = serde_json::from_slice(unsafe { std::slice::from_raw_parts(out, n) }).unwrap();
+            drop(unsafe { Box::from_raw(std::ptr::slice_from_raw_parts_mut(out, n)) });
+            v
+        };
+        assert!(pruned(std::ptr::null())["error"].is_string(), "no library: nothing removed");
+        let lib_root = dir.path().join("library").to_string_lossy().into_owned();
+        // SAFETY: the root's bytes, no callbacks; freed below.
+        let lib = unsafe {
+            crate::data::margin_library_new(
+                lib_root.as_ptr(),
+                lib_root.len(),
+                false,
+                std::ptr::null_mut(),
+                None,
+                None,
+                None,
+                None,
+            )
+        };
+        assert!(pruned(lib)["left"].is_string(), "a library with no data yet: nothing removed");
+        assert_eq!(call(store, r#"{"type":"ids"}"#)["ids"], json!([id]));
+        // SAFETY: from margin_library_new, freed once.
+        unsafe { crate::data::margin_library_free(lib) };
         assert!(call(store, "nope")["error"].is_string());
         assert!(call(store, r#"{"type":"open"}"#)["error"].is_string());
         // SAFETY: from margin_backgrounds_new, freed once.

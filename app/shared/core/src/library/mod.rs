@@ -20,7 +20,7 @@ pub mod snapshot;
 pub mod state;
 pub mod values;
 
-pub use object::{Library, LibraryHost, Performed, RequestSink};
+pub use object::{Library, LibraryHost, Performed, PicturesPruned, RequestSink};
 // The shared vectors (tests/fixtures/library/), for every part's tests and the platforms' (margin-ffi's, with the
 // system's sorter: the `vectors` feature, a dev-dependency's only).
 #[cfg(any(test, feature = "vectors"))]

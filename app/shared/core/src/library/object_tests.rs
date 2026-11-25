@@ -531,3 +531,77 @@ fn object_costs() {
         );
     }
 }
+
+// ---- the cleanup of spaces' pictures at launch (M2.9 step 7) -----------------------------------------------------
+
+/// Two picture files beside a library (`pictures/`): `a` named by a space, `b` by none.
+fn with_pictures(root: &std::path::Path) -> (crate::data::backgrounds::BackgroundStore, String, String) {
+    let pictures = crate::data::backgrounds::BackgroundStore::new(root.join("pictures"));
+    let (a, b) = ("a".repeat(64), "b".repeat(64));
+    std::fs::create_dir_all(pictures.root()).unwrap();
+    for id in [&a, &b] {
+        std::fs::write(pictures.root().join(format!("{id}.png")), b"a picture's bytes").unwrap();
+    }
+    (pictures, a, b)
+}
+
+#[test]
+fn the_pictures_no_space_names_are_removed_by_the_cores_reading() {
+    let dir = temp();
+    let (lib, _, _) = library(&dir.path().join("library"), false);
+    let made = lib.perform("createSpace", &json!({ "name": "A" }));
+    let id = made.outcome.result["spaceId"].as_str().unwrap().to_string();
+    let (pictures, a, b) = with_pictures(dir.path());
+    let background = json!({ "colors": [], "image": { "id": a, "fit": "cover", "focus": [0.5, 0.5] } });
+    assert!(lib.perform("renameSpace", &json!({ "spaceId": id, "background": background })).outcome.ok);
+    // (A second space whose stored picture id isn't one: the core's reading drops it, so it names nothing.)
+    lib.perform("createSpace", &json!({ "name": "B" }));
+    assert_eq!(lib.prune_pictures(&pictures).unwrap(), PicturesPruned::Removed(1));
+    assert_eq!(pictures.ids(), vec![a.clone()], "the one a space names kept, the other gone");
+    assert!(pictures.path(&b).is_none());
+}
+
+#[test]
+fn a_library_that_didnt_load_removes_no_picture() {
+    // A later format's set (a newer Margin's): the store leaves it alone, so the library shows no spaces of it.
+    let dir = temp();
+    let root = dir.path().join("library");
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(root.join("set.json"), r#"{"format": 999, "rev": "r1"}"#).unwrap();
+    let (lib, _, _) = library(&root, false);
+    let (pictures, a, b) = with_pictures(dir.path());
+    assert!(matches!(lib.prune_pictures(&pictures).unwrap(), PicturesPruned::LeftAlone(_)));
+    assert_eq!(pictures.ids(), vec![a, b], "every picture kept");
+
+    // No set at all yet: nothing to say which pictures are named, so none removed.
+    let dir = temp();
+    let (lib, _, _) = library(&dir.path().join("library"), false);
+    let (pictures, a, b) = with_pictures(dir.path());
+    assert!(matches!(lib.prune_pictures(&pictures).unwrap(), PicturesPruned::LeftAlone(_)));
+    assert_eq!(pictures.ids(), vec![a, b]);
+}
+
+#[test]
+fn a_library_whose_spaces_couldnt_be_read_removes_no_picture() {
+    let dir = temp();
+    let root = dir.path().join("library");
+    {
+        let (lib, _, _) = library(&root, false);
+        lib.perform("createSpace", &json!({ "name": "A" }));
+    }
+    // The spaces' file and its backup both unreadable: the store skips them, the set has no spaces.
+    let items = root.join("items");
+    let spaces = std::fs::read_dir(&items)
+        .unwrap()
+        .flatten()
+        .map(|e| e.path())
+        .find(|p| std::fs::read_to_string(p).is_ok_and(|t| t.contains("\"spaces\"")))
+        .expect("the spaces' file");
+    std::fs::write(&spaces, "not JSON").unwrap();
+    let _ = std::fs::remove_file(spaces.with_extension("json.bak"));
+    let (lib, _, _) = library(&root, false);
+    assert!(lib.state().spaces.is_empty(), "the spaces aren't read");
+    let (pictures, a, b) = with_pictures(dir.path());
+    assert!(matches!(lib.prune_pictures(&pictures).unwrap(), PicturesPruned::LeftAlone(_)));
+    assert_eq!(pictures.ids(), vec![a, b], "every picture kept");
+}
