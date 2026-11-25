@@ -66,7 +66,7 @@ off `refactor/hosted-only` (e5650a99). File and line references are to that comm
    - with another button held: as before;
    - `press_way` for the panel whose content holds the point: anything but `ui` (keys staying): as before;
    - another window over the panel at the point (`cover`): as before;
-   - else delivered to the panel as an event made afresh (`PanelEvents.post` to Margin's own pid: the panel's number, its
+   - else delivered to the panel as an event made afresh (`PanelEvents.queue`, AppKit's own queue in Margin: the panel's number, its
      point in the panel), the event swallowed; its number kept for `pressEnded`; said to the main thread.
 3. While a press it took is under way: every mouse button's drag and release goes to the same panel the same way, and
    another button's press there too; the last button up ends it. Moves, scrolls, the trackpad's swipes and every key
@@ -169,5 +169,16 @@ the field. No record is posted for the panel any more, and the panel part no lon
 The first press's record had 0x3a = 0, so the record wasn't it: a press made afresh and posted through the window server
 keyed the panel too, on the real screen only (off every display, the lab and the e2e never did). The tap now puts
 Margin's own presses in AppKit's queue in Margin (`PanelEvents.queue`), the window server never told of them;
-`MarginSidebarDelivery post` keeps the other way for comparison. Temporary `DIAG` lines (MarginWindow.swift's
-MarginPanel, MarginWindowController.swift) log who keys the panel and who activates AppKit, with their callers.
+Temporary `DIAG` lines (MarginWindow.swift's MarginPanel, MarginWindowController.swift) log who keys the panel and
+who activates AppKit, with their callers.
+
+## The third screen run (2026-11-25): who keyed the panel
+
+cut-panes passed with the queue. k1 still failed, and the DIAG lines named the caller: AppKit's own left-mouse-down
+handling of a non-activating panel (`-[NSWindow _handleLeftMouseDownEvent:isDelayedEvent:]` →
+`_NSShowNonActivatingKeyWindow` → `-[MarginPanel becomeKey]`), before it asked `canBecomeKey`; a key non-activating
+panel then makes AppKit say the app is active. The panel becomes key only if needed (`becomesKeyOnlyIfNeeded`, set
+since 2026-11-17), and what's "needed" is the hit view's `needsPanelToBecomeKey`: Margin's web view, which WebKit
+answers yes. OverlayWebView now answers from its window (`needsKeyForPress`): no while the core's `keys_stay` holds (an
+app shown, no field of Margin's), yes otherwise, as before. A field the press focuses takes the keys by the page's
+`focus` (`takeKeys`, an explicit `makeKey`), as the palette's does. The `postToPid` way is gone.

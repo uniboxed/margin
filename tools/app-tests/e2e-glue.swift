@@ -841,11 +841,32 @@ func glueScenario() async {
         check("the page area's double-click (what's hosted): never the palette", closed && none >= 0 && byNow == byBefore + 1, "closed \(closed) by a double-click \(byNow - byBefore)")
       } else { check("the page area to double-click", false) }
     }
-    // ---- the press tap's own delivery (PaneClickTap.swift `PanelEvents`), both ways it has: a double-click on the empty
-    // spot made afresh, put in AppKit's own queue (`queue`, the default) or posted to this process through the window
-    // server (`post`): the page's dblclick, the palette; AppKit never keys the panel nor takes the process for active for
-    // it (here, off every display: the screen runs of 2026-11-24 and -25 are what tell the two ways apart) ----
-    for way in [PanelEvents.Way.queue, .post] {
+    // ---- what AppKit asks before it keys the panel for a press (the screen run of 2026-11-25, its DIAG lines: AppKit's own
+    // left-mouse-down handling of a non-activating panel, `_NSShowNonActivatingKeyWindow`, keyed it whatever its
+    // `canBecomeKey`, Margin having been the active app at launch). The panel becomes key on a click only if needed
+    // (`becomesKeyOnlyIfNeeded`): the view the press hits says whether (`needsPanelToBecomeKey`). That view, at the empty
+    // spot, is Margin's web view; it says no while the keys stay with the app shown, yes while a field of Margin's wants
+    // them (the core's `keys_stay`, one rule). Not reproduced here (this process was never active): the question AppKit
+    // asks is. ----
+    do {
+      _ = await until(3) { !c.pageWantsKeyboard }
+      let local = NSPoint(x: spot.x, y: c.panel.frame.height - spot.y)
+      let hit = c.panel.contentView?.hitTest(local)
+      check("a press at the empty spot hits Margin's web view (the view AppKit asks), in a panel that becomes key only if needed",
+            hit === c.webView && c.panel.becomesKeyOnlyIfNeeded, "\(String(describing: hit.map { type(of: $0) }))")
+      check("…while the keys stay with the app shown (an app shown, no field of Margin's): it doesn't need the panel to become key",
+            c.webView.needsPanelToBecomeKey == false && hit?.needsPanelToBecomeKey == false, "\(c.webView.needsPanelToBecomeKey)")
+      c.run(.newTab)
+      let fieldWants = await until(5) { c.pageWantsKeyboard }
+      check("…a field of Margin's wanting the keys (the palette): it does, as before", fieldWants && c.webView.needsPanelToBecomeKey, "\(fieldWants) \(c.webView.needsPanelToBecomeKey)")
+      c.push(#"{"type":"pressOutside"}"#)
+      _ = await waitJS(c.webView, "return !marginApp.appWindow().palette")
+      _ = await until(3) { !c.pageWantsKeyboard }
+    }
+    // ---- the press tap's own delivery (PaneClickTap.swift `PanelEvents`): a double-click on the empty spot made afresh,
+    // put in AppKit's own queue in this process: the page's dblclick, the palette; AppKit never keys the panel nor takes the
+    // process for active for it (here, off every display) ----
+    do {
       _ = await until(3) { !c.pageWantsKeyboard }
       let content = MarginWindowGeometry.content(of: c.panel.frame)
       let at = CGPoint(x: content.minX + spot.x, y: content.minY + spot.y)
@@ -863,14 +884,13 @@ func glueScenario() async {
         guard let e = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: at, mouseButton: .left) else { posted = false; continue }
         e.setIntegerValueField(.mouseEventClickState, value: Int64(count))
         e.setIntegerValueField(.mouseEventNumber, value: 7200 + Int64(count))
-        posted = (way == .queue ? PanelEvents.queue(e, window: c.panel.windowNumber, content: content)
-          : PanelEvents.post(e, pid: ProcessInfo.processInfo.processIdentifier, window: c.panel.windowNumber, content: content)) && posted
+        posted = PanelEvents.queue(e, window: c.panel.windowNumber, content: content) && posted
       }
       let reached = await until(3) { c.panel.presses == pressesBefore + 2 }
       let said = await waitJS(c.webView, "return marginApp.stats().palette.filter((p) => p.by === 'a double-click on the sidebar').length === \(byBefore + 1)")
-      check("the press tap's delivery (\(way.rawValue)): a double-click made afresh reaches the panel (both presses) and its page (the palette, as a double-click's)",
+      check("the press tap's delivery: a double-click made afresh reaches the panel (both presses) and its page (the palette, as a double-click's)",
             posted && reached && said, "posted \(posted) presses \(c.panel.presses - pressesBefore) said \(said)")
-      check("the press tap's delivery (\(way.rawValue)): AppKit never took Margin for active for it (as before the presses: \(activeBefore)), never said it became active, never keyed the panel for it",
+      check("the press tap's delivery: AppKit never took Margin for active for it (as before the presses: \(activeBefore)), never said it became active, never keyed the panel for it",
             NSApp.isActive == activeBefore && heard.active == 0 && heard.key == 0 && !c.panel.isKeyWindow,
             "active \(NSApp.isActive) (before \(activeBefore)), became active \(heard.active), panel key \(heard.key) \(c.panel.isKeyWindow)")
       c.push(#"{"type":"pressOutside"}"#)

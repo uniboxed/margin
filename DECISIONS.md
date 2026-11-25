@@ -9907,3 +9907,23 @@ Both parts merged (`fix/link-resilience-link` into the session's part): one canc
   asked with its caller and each page op (its name; a focus op's flag); every `allowKey` change, the panel's
   `becomeKey` and `makeKey`, Margin's windows becoming key or main and AppKit's will/did become active, each with its
   caller (25 frames). Lines start `DIAG `; nothing at rest, no text, title or address.
+
+## The panel keyed by AppKit's own click handling: the web view now answers whether a click needs the panel key (2026-11-25)
+
+- **Found** (dac51c93's DIAG lines, the core run at 00:35): the press reached the panel as a queued event (`AppKit
+  hands a press … for window 6554 (MarginPanel), appkit active false, key window none`), then AppKit's own
+  left-mouse-down handling of a non-activating panel keyed it (`MarginPanel.becomeKey` ← `_NSShowNonActivatingKeyWindow`
+  ← `-[NSWindow _handleLeftMouseDownEvent:isDelayedEvent:]` ← `_reallySendEvent:` ← `MarginPanel.sendEvent`), and only
+  after that asked `canBecomeKey` (false); a key non-activating panel makes AppKit report the app active. The delivery
+  was never the cause; cut-panes passed with the queue (14/0).
+- **Fix, public API only**: the panel already becomes key only if needed (`becomesKeyOnlyIfNeeded`); "needed" is the hit
+  view's `needsPanelToBecomeKey`, and the hit view at the sidebar is Margin's web view, which WebKit answers yes.
+  OverlayWebView now answers from its window (`needsKeyForPress`): the core's `keys_stay` (an app shown, no field of
+  Margin's) says no; anything else says yes, as before (a field wanting the keys, the launcher, an item loading). A field
+  the press focuses still takes the keys by the page's `focus` (`takeKeys`'s explicit `makeKey`, as k2's palette did).
+- **Removed**: the `postToPid` way and `MarginSidebarDelivery` (the queue stays). The DIAG lines stay for one more run.
+- **Tests, failing first**: e2e-glue.swift, what AppKit asks: the press at the empty spot hits Margin's web view in a
+  panel that becomes key only if needed; while the keys stay, that view doesn't need the panel key (failed before the
+  fix: WebKit's own answer, true); with the palette's field wanting the keys, it does. `_NSShowNonActivatingKeyWindow`
+  itself isn't reproduced in the e2e: it needs a process that was the active app, and making the e2e process active
+  would take the front from the person's own app, which these runs never do.

@@ -116,7 +116,7 @@ Notes on the rows:
   raised (2026-11-22, 26B131, Chameleon test copies in Margin's Space). Refused: the press routed as before.
 - **Row 41 is read once for a press on Margin's own panel (docs/SIDEBAR-PRESS.md, GitHub #29), only to be said.** The
   press is delivered to Margin's panel as an event made afresh with public calls (`NSEvent.mouseEvent` for the panel,
-  `CGEvent.postToPid` to Margin's own process: PaneClickTap.swift `PanelEvents`), never as its own record: posted as
+  `NSApp.postEvent` in Margin's own queue: PaneClickTap.swift `PanelEvents`), never as its own record: posted as
   its record (row 40, the first build), the press keyed the panel inside AppKit and took Margin for active (the real
   screen, 2026-11-24). The first press's record (row 41, `PaneActivator.record`, when the records' layout passed) gives
   its bytes 0x38-0x3b to the log line `sidebar presses: delivered …`. Nothing is posted with it; no record to any app.

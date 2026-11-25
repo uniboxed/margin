@@ -41,7 +41,7 @@
 // (`pressSettle`, 185-193 ms on the real screen). Now a press of any button on Margin's UI in a Margin window that shows
 // an app with no field of Margin's wanting the keys (the core's way, core/page/press.rs `press_way`, over the scene's
 // copy of its slot: `PanelPress`) is taken here and delivered to Margin's panel as an event made afresh from it, at the
-// panel's own point, posted to Margin's own process (`PanelEvents`: public calls only; never the window server's own
+// panel's own point, put in AppKit's own queue in Margin (`PanelEvents`: public calls only; never the window server's own
 // record of the press, which carries its word that the click keys the panel), with its drags and release after it, and
 // any other button's press until the last is up; so the window server never routes it and never moves the keyboard,
 // and AppKit in Margin neither keys the panel nor takes Margin for active. The panel's web view gets the click, the
@@ -226,15 +226,13 @@ extension PaneFocusing {
 
 // A press on Margin's own panel, and its drags and release, as the press tap delivers them (docs/SIDEBAR-PRESS.md):
 // made afresh for the panel, with the press's own public fields (its type, its point in the panel, its modifiers, its
-// event number, its click count, its pressure, its button, its movement), and posted to Margin's own process
-// (`postToPid`: the window server hands it on, in order with every other event of Margin's, without routing it). Never
-// the window server's own record of the press: delivered as it came (the real screen, 2026-11-24, k1), that record made
-// AppKit key the panel (its `canBecomeKey` false) and take Margin for active while the hosted app stayed the window
-// server's front one, and the next key went to Margin; the same delivery of a press made afresh, to an off-screen
-// non-activating panel with a web view in a process of its own, left both as they were (the lab, 2026-11-24), so it's the
-// real press's own record: most likely its window server's word on a click (a click on a window that isn't key makes it
-// key: yabai's and AltTab's make-key flag, 0x3a = 0x10), which a press made afresh doesn't carry. The first press's
-// record is said in the log (its bytes 0x38-0x3b), never posted. All public API.
+// event number, its click count, its pressure, its button, its movement), and put in AppKit's own queue in Margin
+// (`queue`), the window server never told: through it (the press's own record, the first build; a press made afresh
+// and `postToPid`, the second), a cut pane's click right after two arrow presses never reached its app (the screen run
+// of 2026-11-25). Whether the panel then becomes key is AppKit's own question to the view the press hits
+// (OverlayWebView `needsPanelToBecomeKey`: its left-mouse-down handling of a non-activating panel,
+// `_NSShowNonActivatingKeyWindow`, keyed it on WebKit's yes whatever its `canBecomeKey`, the same run's DIAG lines). The
+// first press's record is said in the log (its bytes 0x38-0x3b), never posted. All public API.
 nonisolated enum PanelEvents {
     // The event made for the panel `window` whose content is at `content` (top left); nil: not a mouse button's event.
     static func make(from e: CGEvent, window: Int, content: CGRect) -> CGEvent? {
@@ -252,13 +250,6 @@ nonisolated enum PanelEvents {
         return made
     }
 
-    // Made and posted to `pid` (Margin's own) through the window server. True: posted.
-    static func post(_ e: CGEvent, pid: pid_t, window: Int, content: CGRect) -> Bool {
-        guard pid > 0, let made = make(from: e, window: window, content: content) else { return false }
-        made.postToPid(pid)
-        return true
-    }
-
     // Made and put in AppKit's own queue in this process, the window server never told (the screen run of 2026-11-25:
     // posted to the process through the window server, a press made afresh still keyed the panel and took Margin for
     // active; the off-screen lab never showed it, its window being off every display). From any thread: the event put
@@ -272,11 +263,6 @@ nonisolated enum PanelEvents {
         CFRunLoopWakeUp(main)
         return true
     }
-
-    // How the tap hands a press on the panel on (`MarginSidebarDelivery`: `queue`, the default, or `post`; read when the
-    // tap is made). DIAG: the choice is there for the screen runs that tell the two apart; one stays.
-    enum Way: String, Sendable { case queue, post }
-    static func way(_ setting: String?) -> Way { setting.flatMap(Way.init(rawValue:)) ?? .queue }
 }
 
 // The hold, apart from the event tap (the tests drive it with a stand-in focuser and a pipe of presses). A press comes in

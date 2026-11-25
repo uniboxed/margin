@@ -82,16 +82,10 @@ private func panelEventTests() {
     check("panel event: another button's press keeps its button (a mouse's fourth), a drag its movement",
           madeOther?.getIntegerValueField(.mouseEventButtonNumber) == 3 && madeOther?.type == .otherMouseDown
             && madeDrag?.getIntegerValueField(.mouseEventDeltaX) == 7 && madeDrag?.getIntegerValueField(.mouseEventDeltaY) == -4 && madeDrag?.type == .leftMouseDragged)
-    // (The screen run of 2026-11-25: a press made afresh and posted to Margin through the window server still keyed the
-    // panel, and a cut pane's click after two such presses never reached its app; put in AppKit's own queue, the window
-    // server never hears of Margin's own presses at all. The default, and the system focuser's.)
-    check("panel event: handed on through AppKit's own queue by default (`MarginSidebarDelivery` unset or unknown), through the window server only when asked (`post`)",
-          PanelEvents.way(nil) == .queue && PanelEvents.way("queue") == .queue && PanelEvents.way("post") == .post && PanelEvents.way("records") == .queue
-            && AXPaneFocus().panelWay == .queue)
     let key = CGEvent(keyboardEventSource: nil, virtualKey: 7, keyDown: true)!
     check("panel event: never a key, a move or a scroll; never for no window", PanelEvents.make(from: key, window: 6, content: content) == nil
           && PanelEvents.make(from: ev(.mouseMoved, inSidebar), window: 6, content: content) == nil && PanelEvents.make(from: down, window: 0, content: content) == nil
-          && !PanelEvents.post(down, pid: 0, window: 6, content: content))
+          && !PanelEvents.queue(key, window: 6, content: content))
 }
 
 private func panelPressDecisionTests() {

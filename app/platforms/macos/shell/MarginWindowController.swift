@@ -271,6 +271,8 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         panel.base = window
         panel.pressEnded = { [weak self] at, number in self?.pressEnded(at: at, number: number) }
         webView.takesEditKeys = { [weak self] in self.map { $0.hasKeys && $0.pageWantsKeyboard && !$0.appActive() } ?? false }
+        // (A click makes the panel key only when the keys shouldn't stay with the app shown: the core's one rule.)
+        webView.needsKeyForPress = { [weak self] in self.map { !$0.core.keysStay } ?? true }
         let content = NSView(frame: NSRect(origin: .zero, size: frame.size))
         content.wantsLayer = true
         content.layer?.backgroundColor = .clear
@@ -2073,10 +2075,7 @@ final class MarginWindows {
     // it held comes back on the main thread (`onPaneClick`), its own lines into the log.
     lazy var makePaneTap: (_ report: @escaping @Sendable (PaneClickResult) -> Void, _ said: @escaping @Sendable (String) -> Void) -> PaneClickTapping? = { [weak self] report, said in
         guard !PrivateCalls.inTests else { return nil }
-        let focus = AXPaneFocus(fronting: self?.paneFronting(), delivery: self?.paneDelivery())
-        focus.panelWay = PanelEvents.way(UserDefaults.standard.string(forKey: "MarginSidebarDelivery"))
-        MarginPanel.diag("the press tap hands a press on the panel on by \(focus.panelWay.rawValue) (MarginSidebarDelivery)") // DIAG
-        let core = PaneClickCore(focuser: focus, report: report)
+        let core = PaneClickCore(focuser: AXPaneFocus(fronting: self?.paneFronting(), delivery: self?.paneDelivery()), report: report)
         core.said = said
         return PaneClickTap(core: core, said: said)
     }
