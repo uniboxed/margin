@@ -44,6 +44,24 @@ func click(_ p: CGPoint) {
   for type in [CGEventType.leftMouseDown, .leftMouseUp] { post { CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: p, mouseButton: .left) }; spin(0.06) }
   spin(0.5)
 }
+// A double-click at `p`: the pointer there first (as `click`), then two presses and releases, the second pair with its
+// click count 2 (as the window server's own double-click).
+func doubleClick(_ p: CGPoint) {
+  post { CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: p, mouseButton: .left) }
+  spin(0.25)
+  for count: Int64 in [1, 2] {
+    for type in [CGEventType.leftMouseDown, .leftMouseUp] {
+      post {
+        let e = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: p, mouseButton: .left)
+        e?.setIntegerValueField(.mouseEventClickState, value: count)
+        return e
+      }
+      spin(0.04)
+    }
+    spin(0.06)
+  }
+  spin(0.5)
+}
 // A plain key, no modifier: down and up (only ever to its own copy or Margin's own field: checked first).
 func plainKey(_ code: UInt16) {
   for down in [true, false] { post { let e = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: down); e?.flags = []; return e }; spin(0.06) }

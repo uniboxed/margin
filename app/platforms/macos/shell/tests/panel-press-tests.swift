@@ -140,4 +140,27 @@ private func panelPressPipeTests() {
     check("panel press: a split up: a press on its divider (Margin's) delivered to the panel; one in the pane without the keys still held while its window is made key, then let go",
           onDivider && !inOther && k.log.first == "focus 20 frontmost", "\(k.log)")
     _ = core3.event(.leftMouseUp, ev(.leftMouseUp, CGPoint(x: 1200, y: 500)))
+    // What the tap's own work costs per event (the stand-in's delivery and window list: the record posted and the window
+    // server's list are the OS's, timed apart): a click on the sidebar (its press and release, taken), a click through
+    // the hole (passed), and a drag of a press it took.
+    do {
+        let s = FakePaneFocus()
+        let c = PaneClickCore(focuser: s, report: { _ in })
+        c.buttonHeld = { _ in true }
+        c.update(panelScene())
+        let n = 50_000
+        let down = ev(.leftMouseDown, inSidebar, number: 5), up = ev(.leftMouseUp, inSidebar, number: 5), drag = ev(.leftMouseDragged, inSidebar)
+        let through = ev(.leftMouseDown, inPage), throughUp = ev(.leftMouseUp, inPage)
+        func per(_ body: () -> Void) -> Double {
+            let t0 = Date()
+            for _ in 0..<n { body() }
+            return Date().timeIntervalSince(t0) / Double(n) * 1e6
+        }
+        let click = per { _ = c.event(.leftMouseDown, down); _ = c.event(.leftMouseUp, up); s.log.removeAll(keepingCapacity: true) }
+        let pass = per { _ = c.event(.leftMouseDown, through); _ = c.event(.leftMouseUp, throughUp) }
+        _ = c.event(.leftMouseDown, down)
+        let drags = per { _ = c.event(.leftMouseDragged, drag); s.log.removeAll(keepingCapacity: true) }
+        _ = c.event(.leftMouseUp, up)
+        print("  (panel press: the tap's own work on the stand-in: a sidebar click (press and release taken) \(String(format: "%.2f", click)) µs, a click through the hole (passed) \(String(format: "%.2f", pass)) µs, a drag of a press it took \(String(format: "%.2f", drags)) µs per event; \(n) each)")
+    }
 }

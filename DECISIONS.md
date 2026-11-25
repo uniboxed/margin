@@ -9830,3 +9830,20 @@ Both parts merged (`fix/link-resilience-link` into the session's part): one canc
   checks and the marked-root checks failed; with a rule that took everything but the page as empty, 72 failed.
   tests/theme-sanitize.test.ts (`m-empty` values). e2e-glue.swift: two presses with click counts 1 and 2 on the real
   page open the palette, its field taking the keys; on the page area nothing (both failed with the behaviour off).
+
+## The screen suite's k1 tightened back, k2 and k3 added (2026-11-24; not run here: Tirth runs it)
+
+- **k1** (tools/screen-tests/suite/Core.swift): a click on an empty spot of the sidebar with the pane active now passes
+  only if the pane's window never resigned key (no `resignedKey` line at all; 2026-11-22's "key again within 0.5 s" is
+  gone), the dev hook says the press was delivered by the tap (`delivered` +1) and nothing was handed back (`keys
+  back` unchanged), AppKit never took Margin for active (`appkit active false`), and as before the pane the front app,
+  the panel's press counted, Margin never made active, a plain key after it reaching the pane.
+- **k2**: a double-click on that spot (two presses, the second with click count 2, Person.swift `doubleClick`): the
+  palette opened by it (Margin's log: "palette opened (a double-click on the sidebar)"), the panel key with its field,
+  the pane still the front app, Margin never made active, the pane's window resigning key once at most (for the
+  palette's field); then Escape, as c2.
+- **k3**: a double-click in the pane's own content: its two clicks (counts 1 and 2) the pane's, no palette.
+- The dev hook's `say: spot` now finds its spot by the double-click's own rule (app/shared/ui/empty.ts), so k1's spot
+  and k2's are the same kind of point. The suite type-checks (`swiftc -typecheck`); it was not run.
+- The tap's own work per event, on the unit checks' stand-in, is printed by panel-press-tests.swift (a sidebar click,
+  a click through the hole, a drag of a press it took).

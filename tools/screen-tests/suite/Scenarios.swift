@@ -48,7 +48,7 @@ enum Step: Equatable {
   case openMargin                                 // L, 0
   case firstHost(Int)                             // d1 d2 a1 m1
   case activateAbove(Int)                         // a2
-  case clicks(Int)                                // b1 a3 b2 k1
+  case clicks(Int)                                // b1 a3 b2 k1 k2 k3
   case palette(Int)                               // c1 c1b c2
   case secondHost(Int)                            // d3 a4
   case switchBack(Int)                            // d4 m2
@@ -107,7 +107,7 @@ enum Step: Equatable {
     case .openMargin: return "open the built Margin (MarginDevHooks YES, MarginPrepareBrowser NO, MarginResumeLast NO), bring it to the front: L Margin in full screen; 0 the page card empty and painted"
     case .firstHost(let n): return "host Chameleon \(n) (dev hook `app`): d1 the card opaque while loading, see-through once shown; d2 the hole is its window; a1 Margin's panel above it; m1 on screen in Margin's Space only a second later"
     case .activateAbove(let n): return "activate Chameleon \(n): a2 Margin's panel still above it"
-    case .clicks(let n): return "click in Chameleon \(n)'s content, on Margin's frame, on an empty spot of the sidebar (only where the window list says it's theirs): b1 b2 a3 k1"
+    case .clicks(let n): return "click in Chameleon \(n)'s content, on Margin's frame, on an empty spot of the sidebar (only where the window list says it's theirs), a double-click on that spot and in the pane: b1 b2 a3 k1 k2 k3"
     case .palette(let n): return "Margin's palette key over Chameleon \(n), three plain letters, Escape, a plain key: c1 c1b c2"
     case .secondHost(let n): return "host Chameleon \(n) as a second app: d3 the card opaque all through its opening; a4 Margin's panel above it"
     case .switchBack(let n): return "switch back to Chameleon \(n), prepared: d4 no loader; m2 on screen in Margin's Space only"
