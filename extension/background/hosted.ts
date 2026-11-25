@@ -23,6 +23,7 @@
 // The tags (item → tab) are this copy's memory only: a copy restarted finds an item's tab again by its address.
 // Nothing here touches the copy's own spaces: its usual tab tracking goes on as for any tab.
 import { isNewTabPage } from '../shared/view.ts';
+import { appLog } from './switch-log.ts';
 
 type Tab = { id?: number, windowId?: number, url?: string, pendingUrl?: string, active?: boolean, mutedInfo?: { muted: boolean } };
 /** The mini player's buttons on a hosted item's page (`hostMedia`; content/media.ts). */
@@ -40,6 +41,26 @@ export type HostedTabsApi = {
 };
 /** A picture made smaller (background/picture.ts; a test's stand-in), or as it was when it can't be. */
 export type Shrink = (data: string, width: number, quality: number) => Promise<string>;
+
+/** A show this slow says where its time went (development diagnostics, Margin.app's log). */
+export const SLOW_SHOW_MS = 100;
+/** The tabs API with each call's time put in `steps` ("update 212"), for a slow show's line. */
+function timedTabs(api: HostedTabsApi, steps: string[]): HostedTabsApi {
+  const timed = <A extends unknown[], R>(name: string, f: (...a: A) => Promise<R>) => async (...a: A): Promise<R> => {
+    const at = Date.now();
+    try { return await f.apply(api, a); } finally { steps.push(`${name} ${Date.now() - at}`); }
+  };
+  return {
+    get: timed('get', api.get),
+    query: timed('query', api.query),
+    create: timed('create', api.create),
+    update: timed('update', api.update),
+    move: api.move && timed('move', api.move),
+    remove: timed('remove', api.remove),
+    sendMessage: api.sendMessage && timed('sendMessage', api.sendMessage),
+    captureVisibleTab: api.captureVisibleTab && timed('captureVisibleTab', api.captureVisibleTab),
+  };
+}
 
 export const PICTURE = { width: 1600, quality: 60 } as const;
 const PICTURE_URL = /^data:image\/(jpeg|png);base64,/;
@@ -145,10 +166,22 @@ export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = asy
     // `fresh` (the card's only): a new preview's page: the card's tab sent there if it shows another one.
     // `stopped` (the link's: docs/LINK-RESILIENCE.md §1 rules 12–13): the app cancelled it, or a newer show for its
     // window started. Checked before each of its Safari calls: an overtaken show makes no more of them (`overtaken`).
-    async show({ windowId, itemId, url, role, fresh, pinned }: { windowId?: unknown, itemId?: unknown, url?: unknown, role?: unknown, fresh?: unknown, pinned?: unknown }, stopped: () => boolean = () => false) {
+    // A show over SLOW_SHOW_MS says in Margin.app's log how long each of its Safari calls took (development
+    // diagnostics: with the link's line for its request, read late or worked on long; nothing is decided by it).
+    async show(args: { windowId?: unknown, itemId?: unknown, url?: unknown, role?: unknown, fresh?: unknown, pinned?: unknown }, stopped: () => boolean = () => false) {
+      const steps: string[] = [];
+      const started = Date.now();
+      try {
+        return await this.showTimed(args, stopped, steps);
+      } finally {
+        const ms = Date.now() - started;
+        if (ms >= SLOW_SHOW_MS) appLog(`hostShow took ${ms} ms: ${steps.join(', ') || 'no Safari call'}`);
+      }
+    },
+    async showTimed({ windowId, itemId, url, role, fresh, pinned }: { windowId?: unknown, itemId?: unknown, url?: unknown, role?: unknown, fresh?: unknown, pinned?: unknown }, stopped: () => boolean, steps: string[]) {
       const tabsNow = () => {
         if (stopped()) throw new Error('overtaken');
-        return tabs();
+        return timedTabs(tabs(), steps);
       };
       if (!Number.isInteger(windowId)) throw new Error('no window');
       if (typeof itemId !== 'string' || !ITEM.test(itemId)) throw new Error('no item');

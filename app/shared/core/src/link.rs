@@ -131,6 +131,8 @@ struct Waiting {
     /// read past it.
     after_tick: i64,
     acked: bool,
+    /// When its ack came (said with a slow reply: read late, or worked on long).
+    acked_at: Option<Secs>,
     /// Sent a second time already.
     again: bool,
     /// Its text, to send again.
@@ -167,6 +169,10 @@ impl Connection {
         self.last_heard
     }
 }
+
+/// A reply this late is said in the log with when its request was acked (feedback for the app's log only: nothing is
+/// decided by it).
+const SLOW_REPLY: Secs = 0.1;
 
 /// `SocketLink`, without the socket.
 #[derive(Clone, Debug)]
@@ -318,14 +324,25 @@ impl Link {
         };
         match message {
             LinkMessage::Reply { id, body } => {
-                let waited = self.links.get_mut(&key).is_some_and(|l| l.waiting.remove(&id).is_some());
-                if waited {
+                let waited = self.links.get_mut(&key).and_then(|l| l.waiting.remove(&id));
+                if let Some(w) = waited {
+                    // (A slow one said, where its time went: the copy reading it late, or working on it long.)
+                    if now - w.asked >= SLOW_REPLY {
+                        let ms = |s: Secs| (s * 1000.0).round() as i64;
+                        let read =
+                            w.acked_at.map_or("not acked".to_string(), |a| format!("acked at {} ms", ms(a - w.asked)));
+                        note(
+                            &mut out,
+                            format!("{key}: request {id} ({}) answered in {} ms ({read})", w.kind, ms(now - w.asked)),
+                        );
+                    }
                     out.push(Action::Answer { conn, key, id, answer: Ok(body) });
                 }
             }
             LinkMessage::Ack { id } => {
                 if let Some(w) = self.links.get_mut(&key).and_then(|l| l.waiting.get_mut(&id)) {
                     w.acked = true;
+                    w.acked_at.get_or_insert(now);
                 }
             }
             LinkMessage::Tock { seq: Some(seq) } => self.read_past(&key, seq, &mut out),
@@ -531,6 +548,7 @@ impl Link {
             asked: now,
             after_tick: link.tick_seq,
             acked: false,
+            acked_at: None,
             again: false,
             text: text.clone(),
         };
@@ -955,6 +973,36 @@ mod tests {
         assert!(sends(&out).iter().all(|(_, m)| m["k"] == "tick"), "never sent again");
         let out = link.on_text(1, &format!(r#"{{"k":"reply","id":{id},"ok":true}}"#), 21.0);
         assert_eq!(answers(&out).len(), 1);
+    }
+
+    #[test]
+    fn a_slow_reply_is_said_with_when_it_was_acked() {
+        // (Where a slow request's time went, for the app's log: read late (acked late), or worked on long.)
+        let lines = |out: &[Action]| -> Vec<String> {
+            out.iter()
+                .filter_map(|a| if let Action::Log { text, .. } = a { Some(text.clone()) } else { None })
+                .collect()
+        };
+        let mut link = linked();
+        let id = link.request(1, "hostShow", Object::new(), None, 1.0).map(|r| r.0).unwrap_or(0);
+        link.on_text(1, &format!(r#"{{"k":"ack","id":{id}}}"#), 1.25);
+        let out = link.on_text(1, &format!(r#"{{"k":"reply","id":{id},"ok":true}}"#), 1.3);
+        let said = lines(&out);
+        assert_eq!(said.len(), 1, "{said:?}");
+        assert!(
+            said[0].ends_with(&format!("request {id} (hostShow) answered in 300 ms (acked at 250 ms)")),
+            "{said:?}"
+        );
+        assert_eq!(answers(&out).len(), 1);
+        // A quick one: nothing said.
+        let id = link.request(1, "hostShow", Object::new(), None, 2.0).map(|r| r.0).unwrap_or(0);
+        link.on_text(1, &format!(r#"{{"k":"ack","id":{id}}}"#), 2.01);
+        let out = link.on_text(1, &format!(r#"{{"k":"reply","id":{id},"ok":true}}"#), 2.05);
+        assert!(lines(&out).is_empty());
+        // An older copy's (no ack): said so.
+        let id = link.request(1, "x", Object::new(), None, 3.0).map(|r| r.0).unwrap_or(0);
+        let out = link.on_text(1, &format!(r#"{{"k":"reply","id":{id},"ok":true}}"#), 3.2);
+        assert!(lines(&out)[0].ends_with("answered in 200 ms (not acked)"), "{:?}", lines(&out));
     }
 
     #[test]
