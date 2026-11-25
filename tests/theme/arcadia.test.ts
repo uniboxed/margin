@@ -196,6 +196,9 @@ for (const [name, engine] of ENGINES) {
         await page.evaluate(() => T.rtTrackpadRun('.space-title .title', [20, 20, 20, 20, 20, 20]));
         const held = await page.evaluate(() => T.rtSwipeTrace('.margin-sidebar', 400)); // the fingers resting, still down
         assert.ok(held.length > 5 && held.every((f) => f.swiping && !f.settling && f.offset === -60), `half of 120 px, held while they rest: ${JSON.stringify(held.slice(-2))}`);
+        // The next space's colour mixed in as far as it's drawn while the fingers hold it (Arc: the colour with the swipe).
+        const mixed = await page.evaluate(() => { const r = (window as any).__rt.runtime.view.rootElement() as HTMLElement; return { blend: r.style.getPropertyValue('--m-space-blend'), color: r.style.getPropertyValue('--m-space-blend-color'), work: (window as any).__rt.mock.state.spaces.find((s: any) => s.id === 'work').color }; });
+        assert.ok(Math.abs(parseFloat(mixed.blend) - 60 / width) < 0.002 && mixed.color === mixed.work, `the next space's colour 60 px of ${width} in: ${JSON.stringify(mixed)}`);
         assert.deepEqual(await page.evaluate(() => T.rtPerformed().filter((n) => n === 'haptic.alignment')), [], 'no tick short of halfway');
         // On past halfway, still moving as they lift: the next space.
         const more = Math.ceil(width / 20) + 2;
@@ -770,6 +773,94 @@ for (const [engineName, engine] of ENGINES) {
         await ev((id) => T.rtDispatch('space.switch', id), front);
         assert.equal(await ev(() => document.querySelector('.margin-sidebar')!.classList.contains('m-swiping')), false, 'no slide');
         await page.waitForFunction((id) => (window as any).__rt.runtime.vm.space.id === id, front, { timeout: 2000 });
+      });
+
+      await t.test('the space\'s colour in a slide: the one coming in mixed in as far as it\'s drawn, frame by frame; its own as it lands; its copy in its own; its background too', async () => {
+        await ev(() => T.mountRuntime({ width: 1280, height: 800, container: 'document', mode: 'windowed', replies: { setSpace: { shown: null } } }));
+        await page.waitForFunction(() => T.rtLayouts().length > 0);
+        await away();
+        await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'no-preference' });
+        const ids = await ev(() => [...document.querySelectorAll('.spaces .chip')].map((c) => c.getAttribute('data-space-id')!));
+        const front = (await ev(() => T.rtVmFull())).space;
+        const next = ids[ids.indexOf(front) + 1] ?? ids[ids.indexOf(front) - 1];
+        const colorOf = (id: string) => ev((s) => (window as any).__rt.mock.state.spaces.find((x: any) => x.id === s).color as string, id);
+        const [fromColor, toColor] = [await colorOf(front), await colorOf(next)];
+        assert.notEqual(fromColor, toColor, 'two spaces of different colours');
+        // The ground as painted (the page card's spread, --frame), as sRGB bytes (each engine writes color-mix its own way).
+        const ground = () => ev(() => {
+          const shadow = getComputedStyle(document.querySelector('.page')!).boxShadow;
+          const c = document.createElement('canvas'); c.width = c.height = 1;
+          const g = c.getContext('2d')!; g.fillStyle = /(rgba?|color|oklab|oklch|lab|lch)\([^)]*\)/.exec(shadow)?.[0] ?? ''; g.fillRect(0, 0, 1, 1);
+          return [...g.getImageData(0, 0, 1, 1).data].slice(0, 3);
+        });
+        const before = await ground();
+        // Each frame of the slide: the blend on the root, where the space is drawn, the ground, the copy's colour.
+        const frames = await ev((id) => new Promise<{ blend: string, color: string, x: number, width: number, ground: number[], copy: string }[]>((done) => {
+          const out: any[] = [];
+          const el = document.querySelector('.margin-sidebar') as HTMLElement;
+          const root = (window as any).__rt.runtime.view.rootElement() as HTMLElement;
+          const c = document.createElement('canvas'); c.width = c.height = 1;
+          const g = c.getContext('2d', { willReadFrequently: true })!;
+          T.rtDispatch('space.switch', id);
+          const tick = () => {
+            if (!el.classList.contains('m-swiping')) return done(out);
+            const m = /matrix\(([^)]+)\)/.exec(getComputedStyle(el.querySelector('.space-pane:not(.m-swipe-ghost)') ?? el).transform);
+            const shadow = getComputedStyle(document.querySelector('.page')!).boxShadow;
+            g.fillStyle = /(rgba?|color|oklab|oklch|lab|lch)\([^)]*\)/.exec(shadow)?.[0] ?? ''; g.fillRect(0, 0, 1, 1);
+            out.push({ blend: root.style.getPropertyValue('--m-space-blend'), color: root.style.getPropertyValue('--m-space-blend-color'), x: m ? parseFloat(m[1].split(',')[4]) : NaN, width: el.getBoundingClientRect().width, ground: [...g.getImageData(0, 0, 1, 1).data].slice(0, 3), copy: (el.querySelector('.m-swipe-ghost') as HTMLElement | null)?.style.getPropertyValue('--space-color') ?? '' });
+            requestAnimationFrame(tick);
+          };
+          requestAnimationFrame(tick);
+        }), next);
+        assert.ok(frames.length >= 8, `drawn over the slide's frames (${frames.length})`);
+        const blends = frames.filter((f) => f.blend !== '').map((f) => parseFloat(f.blend));
+        assert.ok(blends.length >= frames.length - 2, `the blend given while it slides (${blends.length} of ${frames.length})`);
+        assert.ok(blends.every((b, i) => b >= 0 && b <= 1 && (i === 0 || b >= blends[i - 1] - 0.001)), `0 to 1, never back: ${blends.join(' ')}`);
+        assert.ok(blends.some((b) => b > 0.15 && b < 0.85), `part of the way, some frames (${blends.join(' ')})`);
+        // As far as the space is drawn (the colour keeps to the slide's own curve, not one of its own): this frame's place
+        // or the one before (a loaded machine can read the blend a frame behind the transform).
+        const drawnAt = frames.map((f) => (Number.isFinite(f.x) ? Math.min(1, Math.abs(f.x) / f.width) : NaN));
+        frames.forEach((f, i) => {
+          if (f.blend === '' || !Number.isFinite(drawnAt[i])) return;
+          const lo = Math.min(drawnAt[i], drawnAt[i - 1] ?? 0) - 0.03, hi = Math.max(drawnAt[i], drawnAt[i - 1] ?? 0) + 0.03;
+          assert.ok(parseFloat(f.blend) >= lo && parseFloat(f.blend) <= hi, `the blend where it's drawn: ${f.blend} at ${f.x} of ${f.width} (a frame before ${drawnAt[i - 1]})`);
+        });
+        assert.ok(frames.every((f) => f.blend === '' || f.color === toColor), 'the colour of the space coming in');
+        assert.ok(frames.some((f) => f.copy === toColor), 'its copy drawn in its own colour');
+        await page.waitForFunction((id) => (window as any).__rt.runtime.vm.space.id === id, next, { timeout: 2000 });
+        const after = await ground();
+        // The ground between the two along the way: neither the first's nor the last's.
+        const between = frames.find((f) => parseFloat(f.blend) > 0.3 && parseFloat(f.blend) < 0.7) ?? frames[Math.floor(frames.length / 3)];
+        const off = (a: number[], b: number[]) => Math.max(...a.map((v, i) => Math.abs(v - b[i])));
+        assert.ok(off(before, after) > 6, `two grounds (${before} → ${after})`);
+        assert.ok(off(between.ground, before) > 2 && off(between.ground, after) > 2, `between them mid-slide (${before} · ${between.ground} · ${after})`);
+        // Landed: the space's own colour, nothing of the blend left.
+        assert.deepEqual(await ev(() => { const r = (window as any).__rt.runtime.view.rootElement() as HTMLElement; return [r.style.getPropertyValue('--m-space-blend'), r.style.getPropertyValue('--m-space-blend-color')]; }), ['', ''], 'gone as it lands');
+        assert.ok(off(frames.at(-1)!.ground, after) <= 3, `its last frame the landed ground (${frames.at(-1)!.ground} → ${after})`);
+
+        // Both spaces with a background: the next one's drawn over this one's as far as it's come, and it's the one
+        // shown as it lands (no cross-fade after the slide).
+        await ev(([a, b]) => { T.rtChange('setBackground', a, { colors: ['#f7c7d3'], intensity: 0.6, appearance: 'light' }); T.rtChange('setBackground', b, { colors: ['#6c5ce7'], intensity: 0.6, appearance: 'light' }); }, [front, next] as const);
+        await page.waitForTimeout(450);
+        assert.equal((await ev(() => T.rtBackground())).sets.length, 1);
+        const sets = await ev((id) => new Promise<{ n: number, sliding: string | null }[]>((done) => {
+          const out: any[] = [];
+          const el = document.querySelector('.margin-sidebar') as HTMLElement;
+          T.rtDispatch('space.switch', id);
+          const tick = () => {
+            const d = T.rtBackground() as any;
+            out.push({ n: d.sets.length, sliding: d.sets.find((s: any) => s.sliding)?.setOpacity ?? null });
+            if (!el.classList.contains('m-swiping')) return done(out);
+            requestAnimationFrame(tick);
+          };
+          requestAnimationFrame(tick);
+        }), front);
+        const opacities = sets.map((s) => s.sliding).filter((o): o is string => o !== null).map(Number);
+        assert.ok(opacities.some((o) => o > 0.15 && o < 0.85), `its background part of the way (${opacities.join(' ')})`);
+        assert.ok(opacities.every((o, i) => i === 0 || o >= opacities[i - 1] - 0.001), `never back (${opacities.join(' ')})`);
+        assert.deepEqual(sets.at(-1), { n: 1, sliding: null }, 'landed: its set the one shown, at once');
+        await ev(() => T.rtFrames(2));
+        assert.equal((await ev(() => T.rtBackground())).sets.length, 1, 'no cross-fade after it');
       });
 
       await t.test('a folder folded and unfolded: Arc\'s curves, its pins out from under it (not faded)', async () => {

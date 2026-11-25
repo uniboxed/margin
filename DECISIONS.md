@@ -10976,3 +10976,50 @@ Tirth's four asks, on main after the Arc sidebar:
   tests/settings-form.test.ts (the launcher follows Keep open), tests/manifest.test.ts (the shared corner).
   tests/theme/background-picture.test.ts reads the frame's last row (the 8 pt frame's middle is under Arc's card
   shadow). `npm run test:quick` (unit and theme) and the app's end-to-end run.
+
+## The space's colour changes with the slide, as Arc's (`feat/space-color-blend`, 2026-11-25)
+
+Tirth: Arc changes its colour slowly as you swipe to the next space; Margin didn't (the colour jumped as the space
+landed, a background cross-faded 0.3 s after it).
+- **Measured** (docs/ARC-SIDEBAR.md "The space's colour in a switch"): in Arc the colour starts in the slide's first
+  frame and keeps to its curve, both ways (two recordings of a dock click).
+- **The runtime blends what's drawn as far as the space coming in is drawn** (ui/runtime.ts `blendSpace`): the swipe
+  behaviour gives it while the fingers move and, as it settles, each frame from where the moving part is drawn (its
+  transform as the browser has it), so the colour keeps to the slide's own curve (Dia's spring after a swipe, Arc's
+  switch spring after a click or a key) and to a caught settle; cleared as the space lands (the landing's render first,
+  then the behaviour's `afterRender`: nothing jumps). Not a CSS transition of the theme's colours (every element that
+  paints the colour would need one, and a caught settle would have to stop them all) nor a registered custom property
+  (`CSS.registerProperty` is the page's in the extension's overlay; `@property` is ignored in a shadow root).
+- **Themes**: `--m-space-blend` (0 to 1) and `--m-space-blend-color` on the root, only for a theme whose style sheet
+  names them (each write restyles the whole theme). Arcadia mixes them into `--space-shown` (oklab: no muddy middle)
+  and its ground (`--frame`, and all mixed from it) from that; what belongs to a space's own page (folder icons, its
+  tooltip) keeps `--space-color`. The copy of the space coming in carries the custom properties its own root is
+  drawn with (its `--space-color`: its folder icons in its own colour as it slides in, as Arc's).
+- **A space's background** (ui/background.ts `blend`): the one coming in drawn over the one shown, its opacity the
+  slide's progress, and it's the set shown as it lands (no cross-fade after). Between a space with one and one
+  without: as it lands, as before (the theme's own ground is above the layer).
+- **Tests** (tests/theme/arcadia.test.ts, both engines): a click's slide frame by frame: the blend 0 → 1, never back,
+  where the space is drawn (within 0.06), the colour the next space's, the copy in its own colour, the ground between
+  the two mid-slide and the landed one after, nothing left; with backgrounds the next one's set part of the way and the
+  only set as it lands; a swipe held 60 px in: the blend 60 / width. The slide's test fails with the settle's
+  following taken out.
+- **On screen** (Margin.app, Tirth's four spaces, each a background with its own colours and texture; ⌃2 and ⌃3,
+  recorded at 60 fps): the list slides and the sidebar's colour and texture change with it, the next space's mixed in
+  mid-slide; the colour 29%, 95%, then 96 → 100% over the next six frames, done as the slide lands (Arc: about 90% in
+  its first frames, the rest by ≈ 200 ms), where it used to start a 0.3 s cross-fade once the slide was in. (A
+  synthetic click on the switcher never reached Margin's page with a hosted Safari in front; the app's keys did.)
+
+## M2.10: the colour with the slide, merged with the sidebar on every page (2026-11-25)
+
+`feat/space-color-blend` (the other Mac's) and `fix/sidebar-every-page` both changed ui/background.ts; merged into main
+together, reviewed:
+- **One blend for every surface**: the slide's background (`blend`) was drawn on the window's layer only; the sidebar
+  out over the page now has its own copy of the layer (`float`), so the space sliding in is drawn over both, the same
+  progress, and each keeps its slid-in set as it lands (`preview.sets`, one per surface; a surface gone mid-slide takes
+  its set with it). tests/theme/background.test.ts: a swipe held part of the way over the panel, the next space's
+  background the same way along in the panel as in the window; nothing of it left once it has settled.
+- **Its cost, measured** (Arcadia, 170 tabs, Playwright's WebKit / Chromium): the theme's `--m-space-blend` on the root
+  restyles the whole theme each frame, 6 ms / 2.3 ms a frame, the same as the swipe's own `--m-swipe-offset` each frame
+  already costs, and both together the same as either (one style pass a frame): a finger swipe costs nothing more; a
+  click's or key's slide (until now no work of the page's per frame) takes it for its 251 ms.
+- **Run**: `npm run test:quick` (unit, theme, Swift) and the app's end-to-end run (375), all passed.

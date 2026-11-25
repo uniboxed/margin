@@ -21,6 +21,12 @@
 // space redrawn (an edit, a drag in the picker) changes in place. To or from none it's at once (the theme's own ground
 // is above this layer: nothing to fade under).
 //
+// While a space slides in (a swipe, or a click's or key's switch with Arc's feel: ui/behaviors/swipe.ts), its background
+// is drawn over the one shown as far as it has come (`blend`: its opacity the slide's progress, frame by frame), as Arc
+// changes its colour with the slide (docs/ARC-SIDEBAR.md "The space's colour in a switch"); when it lands that set is
+// the one shown (no cross-fade after it). Only between two spaces that both have one (to or from none: at once, as
+// above).
+//
 // A picture (M2.9 step 7): drawn where the host serves it (`picture`: Margin.app's `margin-app://app/background/<id>`;
 // none in a browser's extension, which draws the background without it), as its fit and focus say (cover, contain,
 // tile; `background-position` at the focus). It's loaded once per address, and a small copy of it laid out over the
@@ -33,7 +39,8 @@
 // layer is drawn inside it: the same parts, as large as the window and placed so they line up with the window's (its
 // place in the window as laid out, its slide's translation taken off), under the panel's content (`z-index: -1`, the
 // panel isolated), clipped to its corners, hidden with it. It moves with the panel, so its slide costs nothing more;
-// it's placed again at each layout.
+// it's placed again at each layout. A space sliding in (`blend`) is drawn over it as over the window's, the same
+// progress, so the panel's colour changes with the slide too.
 import { SAMPLES, appearanceOf, groundAt, lookOf, underlayOf } from './background-look.ts';
 import type { Appearance, Look, PictureSamples } from './background-look.ts';
 import { rgbCss, rgbToHex } from './color.ts';
@@ -197,8 +204,9 @@ export function createBackground({ doc, container, onChange }: {
   // The pictures loaded (or loading, or failed), by address; the one drawn now.
   const pictures = new Map<string, { img: HTMLImageElement, state: 'loading' | 'ready' | 'failed' }>();
   let pictureUrl: string | null = null;
-  // The samples read last, and what they were read from (a drag of the intensity or the colours leaves them as they are).
-  let sampled: { key: string, samples: PictureSamples | null } | null = null;
+  // The samples read last, and what they were read from (a drag of the intensity or the colours leaves them as they are);
+  // a few kept (the space shown's and the one sliding in).
+  const sampled = new Map<string, PictureSamples | null>();
   let gone = false;
   function picture(url: string) {
     let p = pictures.get(url);
@@ -215,6 +223,40 @@ export function createBackground({ doc, container, onChange }: {
     // (A few kept: the spaces' pictures switched between.)
     if (pictures.size > 8) { const first = pictures.keys().next().value; if (first !== undefined && first !== url) pictures.delete(first); }
     return p;
+  }
+
+  /** A space's look as it's drawn now (its picture's samples once it's loaded), its picture's CSS and its appearance. */
+  function lookFor(input: BackgroundInput, bg: SpaceBackground) {
+    const appearance = appearanceOf(bg, input.systemDark);
+    // The picture: where the host serves it, once it's loaded (its samples read as it lies over the window now).
+    const url = bg.image && typeof input.picture === 'string' && PICTURE_URL.test(input.picture) ? input.picture : null;
+    const pic = url ? picture(url) : null;
+    const key = JSON.stringify([input.spaceId, bg, appearance, input.moreContrast, win.innerWidth, win.innerHeight, url, pic?.state ?? null]);
+    return {
+      appearance, url, pic, key,
+      draw() {
+        size = { width: win.innerWidth, height: win.innerHeight };
+        let samples: PictureSamples | null = null;
+        if (pic?.state === 'ready' && bg.image) {
+          const underlay = rgbToHex(underlayOf(bg, appearance));
+          const at = JSON.stringify([url, bg.image.fit, bg.image.focus, size.width, size.height, underlay]);
+          if (!sampled.has(at)) {
+            sampled.set(at, pictureSamples(doc, pic.img, bg.image, size.width, size.height, underlay));
+            if (sampled.size > 4) sampled.delete(sampled.keys().next().value!);
+          }
+          samples = sampled.get(at) ?? null;
+        }
+        return { look: lookOf(bg, appearance, { moreContrast: input.moreContrast, size, picture: samples }), pictureBg: url && bg.image ? pictureCss(url, bg.image) : 'none' };
+      },
+    };
+  }
+
+  // The space sliding in, drawn over the one shown (`blend`): its set, and what it was drawn from.
+  // (One set on each surface: the window's, and the panel's copy while the sidebar floats.)
+  let preview: { spaceId: string, sets: Map<object, HTMLElement>, key: string } | null = null;
+  function dropPreview() {
+    if (preview) for (const set of preview.sets.values()) set.remove();
+    preview = null;
   }
 
   function makeSet() {
@@ -322,6 +364,7 @@ export function createBackground({ doc, container, onChange }: {
       const bg = input.background ?? null;
       if (!bg) {
         if (look) revision++;
+        dropPreview();
         clearLeaving();
         for (const sf of surfaces()) { sf.current?.remove(); sf.current = null; }
         look = null;
@@ -331,29 +374,34 @@ export function createBackground({ doc, container, onChange }: {
         if (css) { css = ''; sheet.replaceSync(''); }
         return null;
       }
-      const appearance = appearanceOf(bg, input.systemDark);
-      // The picture: where the host serves it, once it's loaded (its samples read as it lies over the window now).
-      const url = bg.image && typeof input.picture === 'string' && PICTURE_URL.test(input.picture) ? input.picture : null;
-      const pic = url ? picture(url) : null;
+      const at = lookFor(input, bg);
+      const { appearance, url } = at;
       pictureUrl = url;
       // (Called after every render: drawn again only when something it's drawn from changed.)
-      const key = JSON.stringify([input.spaceId, bg, appearance, input.moreContrast, win.innerWidth, win.innerHeight, url, pic?.state ?? null]);
-      if (look && key === lastKey) return appearance;
-      lastKey = key;
-      size = { width: win.innerWidth, height: win.innerHeight };
-      let samples: PictureSamples | null = null;
-      if (pic?.state === 'ready' && bg.image) {
-        const underlay = rgbToHex(underlayOf(bg, appearance));
-        const at = JSON.stringify([url, bg.image.fit, bg.image.focus, size.width, size.height, underlay]);
-        if (sampled?.key !== at) sampled = { key: at, samples: pictureSamples(doc, pic.img, bg.image, size.width, size.height, underlay) };
-        samples = sampled.samples;
+      if (look && at.key === lastKey) return appearance;
+      lastKey = at.key;
+      const { look: next, pictureBg } = at.draw();
+      // The space that slid in, its sets drawn over this one already (`blend`): those are the ones shown now, at once.
+      const landed = !!main.current && !!preview && preview.spaceId === input.spaceId && shownId !== input.spaceId;
+      if (preview && !landed) dropPreview();
+      const fade = !landed && !!main.current && shownId !== null && shownId !== input.spaceId && !input.reducedMotion;
+      if (landed) {
+        clearLeaving();
+        for (const sf of surfaces()) {
+          const set = preview!.sets.get(sf);
+          if (!set) { drawInto(sf, next, pictureBg, false); continue; }
+          sf.current?.remove();
+          sf.current = set;
+          set.style.opacity = '';
+          set.style.transition = '';
+          paint(set, next, pictureBg);
+        }
+        preview = null;
+      } else {
+        // (Another space shown at once: what was still fading out goes; the same space redrawn lets a fade finish.)
+        if (!fade && shownId !== input.spaceId) clearLeaving();
+        for (const sf of surfaces()) drawInto(sf, next, pictureBg, fade);
       }
-      const next = lookOf(bg, appearance, { moreContrast: input.moreContrast, size, picture: samples });
-      const pictureBg = url && bg.image ? pictureCss(url, bg.image) : 'none';
-      const fade = !!main.current && shownId !== null && shownId !== input.spaceId && !input.reducedMotion;
-      // (Another space shown at once: what was still fading out goes; the same space redrawn lets a fade finish.)
-      if (!fade && shownId !== input.spaceId) clearLeaving();
-      for (const sf of surfaces()) drawInto(sf, next, pictureBg, fade);
       pictureBgNow = pictureBg;
       look = next;
       revision++;
@@ -363,6 +411,43 @@ export function createBackground({ doc, container, onChange }: {
       clip();
       show(true);
       return appearance;
+    },
+    /**
+     * The space sliding in (null: none) drawn over the one shown, `progress` (0 to 1) of the way: its background's
+     * opacity. Only between two spaces with one (else nothing drawn: false). The space it lands on takes that set
+     * (`update`); one that doesn't land goes with `blend(null)`.
+     */
+    blend(input: BackgroundInput | null, progress: number): boolean {
+      const bg = input?.background ?? null;
+      if (!input || !bg || !look || !main.current || input.spaceId === shownId) { dropPreview(); return false; }
+      const at = lookFor(input, bg);
+      if (!preview || preview.spaceId !== input.spaceId) {
+        dropPreview();
+        preview = { spaceId: input.spaceId, sets: new Map(), key: '' };
+      }
+      const on = surfaces();
+      // (A surface gone since (the sidebar docked mid-slide): its set went with it.)
+      for (const [sf, set] of preview.sets) if (!on.includes(sf as Surface)) { set.remove(); preview.sets.delete(sf); }
+      let drawn: ReturnType<typeof at.draw> | null = null;
+      for (const sf of on) {
+        let set = preview.sets.get(sf);
+        const fresh = !set;
+        if (!set) {
+          set = makeSet();
+          // (Its opacity is the slide's, frame by frame: never a transition of its own.)
+          set.style.transition = 'none';
+          sf.holder.append(set);
+          preview.sets.set(sf, set);
+        }
+        if (fresh || preview.key !== at.key) {
+          drawn ??= at.draw();
+          paint(set, drawn.look, drawn.pictureBg);
+        }
+      }
+      preview.key = at.key;
+      const p = Math.round(Math.min(1, Math.max(0, Number.isFinite(progress) ? progress : 0)) * 1000) / 1000;
+      for (const set of preview.sets.values()) if (set.style.opacity !== String(p)) set.style.opacity = String(p);
+      return true;
     },
     /** Where the page card is (null: no page area: nothing cut out). */
     place(page: PageBox | null) {
@@ -380,6 +465,7 @@ export function createBackground({ doc, container, onChange }: {
       if (float) {
         float.host.remove();
         float.el.style.isolation = float.isolation;
+        preview?.sets.delete(float);
         float = null;
       }
       if (!el || !el.isConnected) return;
@@ -414,7 +500,7 @@ export function createBackground({ doc, container, onChange }: {
       const read = (root: ParentNode) => [...root.querySelectorAll('.set')].map((set) => {
         const [underlay, pic, wash, colors, texture] = [...set.children] as HTMLElement[];
         return {
-          entering: set.classList.contains('entering'),
+          entering: set.classList.contains('entering'), sliding: !!preview && [...preview.sets.values()].includes(set as HTMLElement), setOpacity: (set as HTMLElement).style.opacity,
           underlay: underlay.style.background, picture: pic.style.background, wash: wash.style.opacity,
           colors: colors.style.background, opacity: colors.style.opacity,
           texture: texture.style.background, textureOpacity: texture.style.opacity,
@@ -430,7 +516,8 @@ export function createBackground({ doc, container, onChange }: {
     destroy() {
       gone = true;
       pictures.clear();
-      sampled = null;
+      sampled.clear();
+      dropPreview();
       clearLeaving();
       host.remove();
       if (float) { float.host.remove(); float.el.style.isolation = float.isolation; float = null; }

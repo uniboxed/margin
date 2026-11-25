@@ -24,6 +24,12 @@
 // resting mid-swipe keep it held, as in Arc. With Arc's or Dia's feel, fingers
 // touching while it settles catch it where it's drawn (`catchSettle`, as both
 // do), the space nearest that place the one swiped from.
+//
+// The space coming in changes the colour as far as it's drawn (Arc: docs/ARC-SIDEBAR.md "The space's colour in a
+// switch"): while the fingers move, and frame by frame as it settles (where the moving part is drawn, so the colour
+// keeps to the slide's own curve), the runtime's `blendSpace` (its background over this one's, its colour on the
+// theme's root); gone as it lands, the space's own then. Its copy beside this one is drawn in its own colours (the
+// custom properties its own theme root is drawn with).
 import type { Rt } from '../runtime.ts';
 import type { ViewModel } from '../view-model.ts';
 import { canScrollX } from '../../../../extension/shared/gestures.ts';
@@ -46,7 +52,7 @@ export function installSwipe(rt: Rt) {
   // (its own switch as it lands takes it, never asking again: ui/runtime.ts switchSpace); `spring` and
   // `settledAt`: the settle under way (its curve, when it began, its `token`: a caught one's end never comes).
   let swiping: { el: HTMLElement, neighbours: Record<string, string | undefined>, width: number, base: { offset: number, events: number }, settling: boolean, frame: number, offset: number, panes: HTMLElement[], bases: { left: number, top: number, width: number, height: number }[], ghosts: Record<string, HTMLElement[] | null>, position: string, overflow: string, target: string | null, dispatched: boolean, arc: boolean, scale: number, response: number, haptics: boolean, shown: number, detent: number,
-    anchor: string | null, origin: number, rebase: boolean, caught: boolean, requested: string | null, asked: Promise<unknown> | null, spring: ReturnType<typeof springArc> | null, settledAt: number, token: number } | null = null;
+    anchor: string | null, origin: number, rebase: boolean, caught: boolean, requested: string | null, asked: Promise<unknown> | null, spring: ReturnType<typeof springArc> | null, settledAt: number, token: number, blendFrame: number } | null = null;
   // The trackpad's phases (Margin.app tells them: `m-wheel-phase`): known at all, the fingers down, the momentum after a
   // lift under way, and a touch since the last wheel event (the next one starts a new gesture).
   const phases = { known: false, fingers: false, momentum: false, touched: false };
@@ -65,11 +71,15 @@ export function installSwipe(rt: Rt) {
     const model = rt.spaceView?.(id);
     if (!model) return;
     let sources: HTMLElement[] = [];
+    let props: [string, string][] = [];
     try {
       const holder = doc.createElement('div');
       const root = holder.attachShadow({ mode: 'open' });
       const v = new View(root, rt.theme.template, {});
       v.update(model);
+      // (Its theme root's custom properties as drawn for that space, its colour among them: the copy carries them.)
+      const top = v.rootElement() as HTMLElement | null;
+      props = top ? [...top.style].filter((name) => name.startsWith('--')).map((name) => [name, top.style.getPropertyValue(name)] as [string, string]) : [];
       sources = panesOf(root).map((n) => (n.cloneNode(true) as HTMLElement));
       v.destroy?.();
     } catch { sources = []; }
@@ -82,6 +92,7 @@ export function installSwipe(rt: Rt) {
       copy.setAttribute('aria-hidden', 'true');
       copy.setAttribute('inert', '');
       copy.classList.add('m-swipe-ghost');
+      for (const [name, value] of props) copy.style.setProperty(name, value);
       const b = s.bases[i];
       Object.assign(copy.style, { position: 'absolute', top: `${b.top}px`, left: `${b.left + Number(dir) * s.width}px`, width: `${b.width}px`, height: `${b.height}px`, margin: '0', pointerEvents: 'none' });
       s.el.append(copy);
@@ -114,11 +125,33 @@ export function installSwipe(rt: Rt) {
     return false;
   };
 
-  function draw(s: NonNullable<typeof swiping>, shown: number) {
+  // `blend`: the colour follows it now (false for a settle's end, which the colour reaches with the slide: followBlend).
+  function draw(s: NonNullable<typeof swiping>, shown: number, blend = true) {
     s.shown = shown;
     s.el.style.setProperty('--m-swipe-offset', `${Math.round(shown * 10) / 10}px`);
-    // How far toward the neighbour (0 to 1), for a theme that blends the two spaces' colours.
+    // How far toward the neighbour (0 to 1).
     s.el.style.setProperty('--m-swipe-progress', `${Math.round(Math.min(1, Math.abs(shown) / s.width) * 1000) / 1000}`);
+    if (blend) blendAt(s, shown);
+  }
+  // The space that way coming in, as far as it's drawn at `x` (none past the first or last space).
+  function blendAt(s: NonNullable<typeof swiping>, x: number) {
+    if (!rt.blendsSpaces?.()) return;
+    const toward = x > 0 ? -1 : x < 0 ? 1 : 0;
+    const to = toward ? s.neighbours[toward] : undefined;
+    rt.blendSpace(to ?? null, to ? Math.abs(x) / s.width : 0);
+  }
+  // As it settles: the colour where the moving part is drawn, each frame, till it lands or is caught.
+  function followBlend(s: NonNullable<typeof swiping>, token: number) {
+    cancelAnimationFrame(s.blendFrame);
+    s.blendFrame = 0;
+    if (!rt.blendsSpaces?.()) return;
+    const step = () => {
+      s.blendFrame = 0;
+      if (swiping !== s || s.token !== token || !s.settling) return;
+      blendAt(s, drawnNow(s));
+      s.blendFrame = requestAnimationFrame(step);
+    };
+    step();
   }
   // Where the offset is drawn: as far as the neighbour that way, past the first or last space the rubber band.
   function shownFor(s: NonNullable<typeof swiping>, offset: number) {
@@ -161,7 +194,7 @@ export function installSwipe(rt: Rt) {
     const arc = !!feel;
     swiping = { el, neighbours: { [-1]: spaces[at - 1]?.id, [1]: spaces[at + 1]?.id }, width: er.width || 1, base: { offset: 0, events: 0 }, settling: false, frame: 0, offset: 0,
       panes, bases, ghosts: {}, overflow: el.style.overflow, position, target: null, dispatched: false, arc, scale: arc ? ARC.SCALE : 1, response: feel?.response ?? ARC.RESPONSE, haptics: feel?.haptics ?? false, shown: 0, detent: 0,
-      anchor: typeof rt.vm?.space?.id === 'string' ? rt.vm.space.id : null, origin: 0, rebase: false, caught: false, requested: null, asked: null, spring: null, settledAt: 0, token: 0 };
+      anchor: typeof rt.vm?.space?.id === 'string' ? rt.vm.space.id : null, origin: 0, rebase: false, caught: false, requested: null, asked: null, spring: null, settledAt: 0, token: 0, blendFrame: 0 };
     el.style.overflow = 'clip'; // the neighbours sit outside it until they slide in
     el.classList.add('m-swiping');
   }
@@ -174,6 +207,8 @@ export function installSwipe(rt: Rt) {
     swiping = null;
     if (s.dispatched) holdUntil = Date.now() + SETTLE_MS;
     cancelAnimationFrame(s.frame);
+    cancelAnimationFrame(s.blendFrame);
+    rt.blendSpace?.(null, 0);
     s.el.classList.remove('m-swiping', 'm-settling');
     s.el.style.removeProperty('--m-swipe-offset');
     s.el.style.removeProperty('--m-swipe-progress');
@@ -213,7 +248,7 @@ export function installSwipe(rt: Rt) {
       s.el.style.setProperty('--m-swipe-transition', `transform ${duration}ms linear(${curve.points.join(', ')})`);
       s.settling = true;
       s.el.classList.add('m-settling');
-      draw(s, dir ? -dir * s.width : 0);
+      draw(s, dir ? -dir * s.width : 0, false);
       s.el.style.setProperty('--m-swipe-progress', dir ? '1' : '0');
     } else if (s.arc) {
       // From where it's drawn (rubber band and all), at the lift's speed only when that heads where it goes (Arc).
@@ -230,7 +265,7 @@ export function installSwipe(rt: Rt) {
       if (points) s.el.style.setProperty('--m-swipe-transition', `transform ${duration}ms linear(${points.join(', ')})`);
       s.settling = true;
       s.el.classList.add('m-settling');
-      draw(s, to);
+      draw(s, to, false);
       s.el.style.setProperty('--m-swipe-progress', dir ? '1' : '0');
     } else {
       s.settling = true;
@@ -239,6 +274,7 @@ export function installSwipe(rt: Rt) {
       s.el.style.setProperty('--m-swipe-progress', dir ? '1' : '0');
     }
     s.target = dir ? s.neighbours[dir] ?? null : null;
+    followBlend(s, token);
     // Asked for as it settles, not once the slide is in (reported 2026-11-07: "it takes a while for me to see that space
     // is switching"): its tab asked of the copy now, Safari bringing it while the slide comes in; drawn here as before,
     // in the frame the slide ends (the space left kept shown till then, holdSpace), so nothing jumps. One asked for

@@ -581,6 +581,13 @@ Classes and variables Margin sets for you to style:
   Margin.app past halfway): under `m-settling` Margin then gives the settle as
   `--m-swipe-transition` (the spring sampled into a `linear()` easing), so use it on the
   moving part: `transition: var(--m-swipe-transition, none)` (Arcadia does this);
+- `--m-space-blend` and `--m-space-blend-color` (the root, while another space slides in: a swipe, or a click's or
+  key's slide with Arc's feel): how far it has come as drawn (0 to 1, every frame, on the slide's own curve) and its
+  colour, for a ground that changes with the slide as Arc's does. Mix your space's colour with it, e.g.
+  `color-mix(in oklab, var(--space-color), var(--m-space-blend-color, var(--space-color)) calc(var(--m-space-blend, 0) * 100%))`
+  (Arcadia's `--space-shown`). Both are gone as the space lands (its own colour is then yours). Only a theme whose
+  style sheet names `--m-space-blend` is given them. The copy of the space coming in carries the custom properties
+  its own root is drawn with (its `--space-color`), so it's drawn in its own colours;
 - `--m-menu-x`, `--m-menu-y` (`<m-menu>`), `--m-reveal-zone` (`m-peek`), `--m-page-left`, `--m-page-top`,
   `--m-page-right`, `--m-page-bottom`, `--m-page-radius` (on the root while the preview card is up: the page's place),
   `--m-<setting>` (your settings);
@@ -593,6 +600,10 @@ A space can have a background (Edit Theme Color: colours, intensity, a texture, 
 the theme: one layer under everything the theme draws, over the whole window except the page card, which it is cut
 out of exactly as `<m-page>` is drawn (its border box, its rounded corners). Your theme decides where it shows, by
 letting it through.
+
+When another space with one slides in (a swipe, or a click's or key's slide), Margin draws its background over this
+one as far as it has come, and it's the one shown as it lands: nothing for your theme to do. Between a space with one
+and a space without, it changes as the space lands.
 
 While the space shown has one, Margin sets:
 

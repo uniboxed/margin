@@ -216,6 +216,25 @@ for (const [engineName, engine] of ENGINES) {
               assert.deepEqual([d.float!.left, d.float!.top, d.float!.width, d.float!.height], [`${-box.left}px`, `${-box.top}px`, `${W}px`, `${H}px`], 'the window\'s size, at the window\'s place');
               assert.deepEqual(d.float!.sets, d.sets, 'the window\'s parts, texture and all');
               assert.match(d.sets[0].texture, /^url\(/, 'the grain');
+              // Another space with one swiped in over the panel (the fingers held part of the way): its background over
+              // this one's in the panel as in the window, the same way along (ui/background.ts blend).
+              await ev(() => T.rtChange('setBackground', 'work', { colors: ['#6c5ce7'], intensity: 0.6, appearance: 'light' }));
+              await ev(() => T.rtWheelPhase('began'));
+              await ev(() => T.rtTrackpadRun('.space-title .title', [20, 20, 20, 20, 20, 20]));
+              const mid = await ev(() => T.rtBackground());
+              const slidingIn = (sets: { sliding: boolean, setOpacity: string }[]) => sets.filter((x) => x.sliding).map((x) => x.setOpacity);
+              const inWindow = slidingIn(mid.sets), inPanel = slidingIn(mid.float!.sets);
+              assert.ok(inWindow.length === 1 && Number(inWindow[0]) > 0 && Number(inWindow[0]) < 1, `the next space's part of the way in the window (${inWindow})`);
+              assert.deepEqual(inPanel, inWindow, 'and in the panel, the same way along');
+              await ev((sel) => T.rtSwipeTrace(sel, 400), floatGround); // (the fingers resting before they lift: it goes back)
+              await ev(() => T.rtWheelPhase('ended'));
+              // (Let go: wherever it settles (Arcadia's goes back; Material's plain feel goes on, the test's host refusing the
+              // switch, so it comes back with a cross-fade), once it has, nothing of the slide's left in either.)
+              await page.waitForFunction(() => !document.querySelector('.m-swiping') && (T.rtBackground() as any).sets.length === 1 && (T.rtBackground() as any).float?.sets.length === 1, null, { timeout: 3000 }).catch(() => {});
+              await settled();
+              const back = await ev(() => T.rtBackground());
+              assert.deepEqual([back.sets.length, back.float!.sets.length, back.sets.some((x) => x.sliding), await ev(() => (window as any).__rt.runtime.vm.space.id)], [1, 1, false, 'personal'], 'settled: each its own set only, this space\'s');
+              await ev(() => T.rtChange('setBackground', 'work', null));
               // Its pixels the window's ground's: the panel's content hidden, the same place drawn with the sidebar docked
               // (clear, the window's background under it).
               await page.addStyleTag({ content: `${floatGround} > :not(margin-background) { visibility: hidden !important; } ${floatGround} { outline: none !important; box-shadow: none !important; } .card-edge { box-shadow: none !important; }` });
