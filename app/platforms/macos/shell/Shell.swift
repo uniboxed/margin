@@ -280,13 +280,6 @@ final class Shell: ExtensionLinkDelegate {
         }
     }
 
-    // While Margin quits: each read of a Safari copy's link (an ack, a tock) told to the session, which judges then
-    // whether a request it waits for there is unread (docs/LINK-RESILIENCE.md: evidence, never a timer).
-    func linkHeard(_ connection: LinkConnection) {
-        guard hostQuitting, connection.hello.browser == "safari", links[connection.key]?.connection === connection else { return }
-        hosted?.linkChanged(profile: connection.hello.profile)
-    }
-
     func linkDown(_ connection: LinkConnection, _ why: String) {
         guard links[connection.key]?.connection === connection else { return }
         links[connection.key] = nil

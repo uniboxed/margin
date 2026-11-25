@@ -46,7 +46,7 @@ extension Shell {
     func stopHost(_ then: @escaping () -> Void) {
         guard let host else { return then() }
         hostQuitting = true
-        hosted?.marginQuits() // (the core's waits for a copy that isn't reading end now: docs/LINK-RESILIENCE.md)
+        hosted?.marginQuits() // (the core's waits for its copies bounded by quitWait from now: docs/LINK-RESILIENCE.md)
         Task {
             await host.quitAll()
             then()

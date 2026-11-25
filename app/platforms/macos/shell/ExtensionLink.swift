@@ -27,12 +27,6 @@ protocol ExtensionLinkDelegate: AnyObject {
     // Everything after hello but replies and tocks (a goodbye just before the link goes down).
     func linkReceived(_ link: LinkConnection, _ message: LinkMessage)
     func linkDown(_ link: LinkConnection, _ why: String)
-    // Its copy's bytes read and taken by the core (an ack, a tock, a reply among them): told after each read.
-    func linkHeard(_ link: LinkConnection)
-}
-
-extension ExtensionLinkDelegate {
-    func linkHeard(_ link: LinkConnection) {}
 }
 
 // Why a request got no answer (the core's, but `cancelled`: this side's own call to `cancel`).
@@ -631,7 +625,6 @@ final class SocketLink {
             LinkCore.answer { margin_link_bytes(core, 0, socket.id, raw.bindMemory(to: UInt8.self).baseAddress, raw.count, Diagnostics.now(), Date().timeIntervalSince1970, $0) }
         }
         perform(answer as? JSONObject)
-        if let link = byConn[socket.id] { delegate?.linkHeard(link) }
     }
 
     fileprivate func ended(_ socket: Socket, _ error: String?) {
@@ -651,7 +644,6 @@ final class SocketLink {
             LinkCore.answer { margin_link_bytes(core, 1, id, raw.bindMemory(to: UInt8.self).baseAddress, raw.count, Diagnostics.now(), Date().timeIntervalSince1970, $0) }
         }
         perform(answer as? JSONObject)
-        if let link = byConn[id] { delegate?.linkHeard(link) }
     }
 
     func relayEnded(_ id: UInt64) {

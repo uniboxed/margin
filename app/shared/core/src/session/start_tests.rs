@@ -768,6 +768,44 @@ fn a_web_item_shown_last_its_own_profile_made_ready_and_waited_for_not_the_space
 }
 
 #[test]
+fn an_app_shown_first_then_a_show_making_its_profiles_window_the_start_makes_none_again() {
+    // (The merge review, 2026-11-25: the preparation left for when nothing is shown ran after a web item of its
+    // profile had made the window, found it hosted and said the preparation over a second time.)
+    let (s, world, lib) = session();
+    world.out_of_sight.set(true);
+    world.profiles.borrow_mut().push("s-default".into());
+    selected(&lib, "n", notes(), "");
+    let out = input(&s, json!({ "type": "windowOpened", "window": 1 }));
+    pump(&s, &world, out, 100, &mut shows(&world));
+    pump(&s, &world, prepare(&s, Value::Null), 10, &mut usual);
+    assert!(
+        s.done()
+            .contains(&"browser: something is shown in Margin's window: its window made ready once nothing is".into()),
+        "{:?}",
+        s.done()
+    );
+    // A show of a web item of its profile makes its main window (the engine's open asks for it).
+    let out = s
+        .input(&json!({ "type": "call", "id": 7, "flow": "requestWindow", "args": { "profile": "s-default", "role": "main" } }));
+    let seen = pump(&s, &world, out, 10, &mut |c| match c {
+        Command::Ask { kind, .. } if kind == "newWindow" => json!({ "result": { "windowId": 90, "state": "normal" } }),
+        c => usual(c),
+    });
+    assert!(kinds(&seen).contains(&"ask newWindow".to_string()), "{seen:?}");
+    assert!(
+        s.done().contains(&"browser: s-default's window made by a show: not made ready again".into()),
+        "{:?}",
+        s.done()
+    );
+    // Nothing shown any more: no second preparation, no second "over".
+    *world.shown.borrow_mut() = None;
+    let out = s.settle();
+    let seen = pump(&s, &world, out, 10, &mut usual);
+    assert!(!kinds(&seen).contains(&"engine prepare".to_string()), "{seen:?}");
+    assert!(!s.done().iter().any(|l| l.contains("hosted already")), "{:?}", s.done());
+}
+
+#[test]
 fn an_app_shown_first_the_browser_still_made_ready_its_window_once_nothing_is_shown() {
     let (s, world, lib) = session();
     world.out_of_sight.set(true);

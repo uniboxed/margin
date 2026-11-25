@@ -617,6 +617,16 @@ impl Core {
         self.exec.enqueue(async move { c.prepare_window(w, p, started).await });
     }
 
+    /// A profile's main window made (a show's, hosting.rs `request_window`): the start's preparation of it, left for
+    /// when nothing is shown in Margin's window (`later`), isn't needed any more (it would find the window hosted and
+    /// say its preparation over a second time: the merge review, 2026-11-25).
+    pub(crate) fn window_made(&self, p: &str) {
+        if self.start(|st| st.later.as_ref().is_some_and(|(_, later, _)| later == p)) {
+            self.set_start(|st| st.later = None);
+            self.note(format!("browser: {p}'s window made by a show: not made ready again"));
+        }
+    }
+
     /// Step 4: its window made ready over Margin's window `w`, parked out of sight.
     async fn prepare_window(&self, w: i64, p: String, started: f64) {
         let target = HostTarget::Safari(p.clone(), Role::Main);
