@@ -797,6 +797,11 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   function sent(name: string, arg: any, type: string, payload: Record<string, any>) {
     switch (name) {
       case 'space.switch':
+        // A click's or a key's switch slides the space in as Arc's does, where the theme moves its space (its swipe's
+        // feel): the slide asks for the space and switches as it lands (ui/behaviors/swipe.ts slideTo). Else at once.
+        if (behaviors.swipe?.slideTo?.(arg)) return true;
+        // (A switch while a settle is still coming in: its own switch at the end dropped, this one drawn at once.)
+        behaviors.swipe?.cancelSettle?.();
         switchSpace(arg, payload);
         return true;
       case 'space.new': {

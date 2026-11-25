@@ -656,6 +656,45 @@ for (const [engineName, engine] of ENGINES) {
         await ev(() => { const rt = (window as any).__rt; rt.mock.state = { ...rt.mock.state, settings: { ...rt.mock.state.settings, themes: { arcadia: { sidebarWidth: 260 } } } }; rt.host.setState(rt.mock.state); });
       });
 
+      await t.test('a click\'s or a key\'s switch slides the space in as Arc\'s (its spring, 251 ms); a switch mid-slide wins; none with reduced motion', async () => {
+        // (A host that answers a space's switch, as the swipe's test's does.)
+        await ev(() => T.mountRuntime({ width: 1280, height: 800, container: 'document', mode: 'windowed', replies: { setSpace: { shown: null } } }));
+        await page.waitForFunction(() => T.rtLayouts().length > 0);
+        await away();
+        const ids = await ev(() => [...document.querySelectorAll('.spaces .chip')].map((c) => c.getAttribute('data-space-id')!));
+        const front = (await ev(() => T.rtVmFull())).space;
+        const next = ids[ids.indexOf(front) + 1] ?? ids[ids.indexOf(front) - 1];
+        await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'no-preference' });
+        const sentBefore = (await ev(() => T.rtSent())).length;
+        await ev((id) => T.rtDispatch('space.switch', id), next);
+        const during = await ev(() => { const el = document.querySelector('.margin-sidebar') as HTMLElement; return { classes: [...el.classList].filter((c) => c.startsWith('m-')), transition: el.style.getPropertyValue('--m-swipe-transition'), ghosts: el.querySelectorAll('.m-swipe-ghost').length, offset: el.style.getPropertyValue('--m-swipe-offset') }; });
+        assert.deepEqual(during.classes.sort(), ['m-settling', 'm-swiping'], 'sliding');
+        assert.match(during.transition, /^transform 251ms linear\(0, 0\.\d+, /, `Arc's switch spring (${during.transition.slice(0, 60)})`);
+        assert.equal(during.transition.split(',').length, 61, 'its 61 samples');
+        assert.ok(during.ghosts >= 1, 'the space it goes to drawn beside this one');
+        assert.ok(parseFloat(during.offset) < -200, `sliding toward it (${during.offset})`);
+        assert.equal((await ev(() => T.rtSent())).slice(sentBefore).filter(([k]) => k === 'setSpace').at(0)?.[1].spaceId, next, 'its tab asked for at once');
+        assert.equal((await ev(() => T.rtVmFull())).space, front, 'still drawn while it slides in');
+        await page.waitForFunction((id) => (window as any).__rt.runtime.vm.space.id === id, next, { timeout: 2000 });
+        await page.waitForFunction(() => !document.querySelector('.margin-sidebar')!.classList.contains('m-swiping'), null, { timeout: 2000 });
+        // A second switch while one slides in: drawn at once, never undone by the first one's end (from a fresh start, as
+        // the slide's end would otherwise switch back to its own).
+        await ev(() => T.mountRuntime({ width: 1280, height: 800, container: 'document', mode: 'windowed', replies: { setSpace: { shown: null } } }));
+        await page.waitForFunction(() => T.rtLayouts().length > 0);
+        const third = ids.find((id) => id !== front && id !== next)!;
+        await ev((id) => T.rtDispatch('space.switch', id), next);
+        assert.equal(await ev(() => document.querySelector('.margin-sidebar')!.classList.contains('m-swiping')), true, 'the first slides');
+        await page.waitForTimeout(60);
+        await ev((id) => T.rtDispatch('space.switch', id), third);
+        await page.waitForTimeout(500);
+        assert.equal(await ev(() => (window as any).__rt.runtime.vm.space.id), third, 'the last one asked for, not the slide\'s');
+        // Reduced motion: at once.
+        await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' });
+        await ev((id) => T.rtDispatch('space.switch', id), front);
+        assert.equal(await ev(() => document.querySelector('.margin-sidebar')!.classList.contains('m-swiping')), false, 'no slide');
+        await page.waitForFunction((id) => (window as any).__rt.runtime.vm.space.id === id, front, { timeout: 2000 });
+      });
+
       await t.test('the inert controls do nothing; the space\'s ••• opens its menu under it', async () => {
         const before = [await ev(() => T.rtSent().length), await ev(() => T.rtPerformed().length)];
         const title = (await rect('.space-title'))!;

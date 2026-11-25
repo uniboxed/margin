@@ -534,7 +534,9 @@ func glueScenario() async {
   let holePoints = [CGPoint(x: local.midX, y: local.midY), CGPoint(x: local.minX + 16, y: local.midY), CGPoint(x: local.maxX - 3, y: local.midY), CGPoint(x: local.midX, y: local.minY + 3),
                     CGPoint(x: local.midX, y: local.maxY - 3), CGPoint(x: local.minX + radius - r2 + 3, y: local.minY + radius - r2 + 3), CGPoint(x: local.maxX - radius + r2 - 3, y: local.maxY - radius + r2 - 3)]
   let solidPoints = [CGPoint(x: 60, y: local.midY), CGPoint(x: local.minX - 4, y: local.midY), CGPoint(x: local.midX, y: local.minY - 4), CGPoint(x: local.maxX + 4, y: local.midY),
-                     CGPoint(x: local.midX, y: local.maxY + 4), CGPoint(x: local.minX + 1, y: local.minY + 1), CGPoint(x: local.maxX - 1, y: local.maxY - 1)]
+                     CGPoint(x: local.midX, y: local.maxY + 4), CGPoint(x: local.minX + 0.5, y: local.minY + 0.5), CGPoint(x: local.maxX - 0.5, y: local.maxY - 0.5)]
+  // (The corners' points: 0.5 pt in along the diagonal, well outside the curve for any card's corner (Arcadia's is Arc's
+  // 6 pt since M2.10: 1.8 pt outside it; 1 pt in was 1.1 pt outside, its edge's antialiasing showing).)
   _ = await until(3) { windowAlpha(c.panel, at: holePoints)?.allSatisfy { $0 == 0 } == true }
   let holeAlpha = windowAlpha(c.panel, at: holePoints), solidAlpha = windowAlpha(c.panel, at: solidPoints)
   check("shown, as the window server pictures Margin's window: see-through (alpha 0) across the page area, up to its edges and inside its corners' curves",

@@ -345,10 +345,13 @@
   visibility: hidden;
   transition: transform 180ms var(--ease), visibility 0s linear 180ms;
 }
+/* Out over the page: Arc's spring (measured frame by frame: response 205 ms, damping 0.79, a 1.7% overshoot: 4.5 pt
+   past its place and back), sampled into one linear() easing the browser runs. (Going back in: Arcadia's own; Arc's
+   wasn't measured.) */
 .arcadia[data-sidebar="peek"]:not(.newtab) .margin-sidebar {
   transform: none;
   visibility: visible;
-  transition: transform 180ms var(--ease);
+  transition: transform 279ms linear(0, 0.0525, 0.1735, 0.3217, 0.4713, 0.6073, 0.7225, 0.8147, 0.8851, 0.9362, 0.9714, 0.9942, 1.0078, 1.0147, 1.0173, 1.0171, 1.0153, 1.0128, 1.0102, 1.0077, 1.0056, 1.0038, 1.0024, 1.0014, 1);
 }
 .arcadia.m-resizing .margin-sidebar, .arcadia.m-resizing .margin-sidebar * { transition: none !important; }
 @media (prefers-reduced-motion: reduce) { .margin-sidebar { transition: none !important; } }

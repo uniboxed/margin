@@ -27,7 +27,7 @@
 import type { Rt } from '../runtime.ts';
 import type { ViewModel } from '../view-model.ts';
 import { canScrollX } from '../../../../extension/shared/gestures.ts';
-import { createSpaceSwipe, settle, rubberBand, settleArc, rubberBandArc, rubberBandArcInverse, springArc, springKeyframes, ARC, FEELS, DEFAULTS as SWIPE } from '../../../../extension/shared/space-swipe.ts';
+import { createSpaceSwipe, settle, rubberBand, settleArc, rubberBandArc, rubberBandArcInverse, springArc, springKeyframes, switchEasing, ARC, FEELS, DEFAULTS as SWIPE } from '../../../../extension/shared/space-swipe.ts';
 import { View } from '../render.ts';
 
 export const SETTLE_MS = 220;
@@ -89,6 +89,13 @@ export function installSwipe(rt: Rt) {
     s.ghosts[dir] = copies;
   }
   let endTimer: Timer | null = null;
+  // The swipe's own switches (a settle's end, back to the space swiped from, a caught settle's): never taken as another
+  // switch coming while it settles (`cancelSettle`).
+  let own = false;
+  function switchOwn(spaceId: string) {
+    own = true;
+    try { rt.dispatch('space.switch', spaceId, 'behavior'); } finally { own = false; }
+  }
 
   // A mouse wheel, not a trackpad (sidebar.js mouseWheel): WebKit and
   // Chromium report a wheel's notches as multiples of 120 in the old
@@ -191,13 +198,23 @@ export function installSwipe(rt: Rt) {
     settleTo(s, settle({ offset: offset - s.base.offset, speed, events: events - s.base.events, width: s.width, has: (d) => !!s.neighbours[d] }) as -1 | 0 | 1, 0);
   }
 
-  // The settle toward the space `dir` that way (0: back), at `velocity` (px/s) for Arc's and Dia's spring.
-  function settleTo(s: NonNullable<typeof swiping>, dir: -1 | 0 | 1, velocity: number) {
+  // The settle toward the space `dir` that way (0: back), at `velocity` (px/s) for Arc's and Dia's spring; `curve`, a
+  // fixed easing instead (a click's or a key's switch: Arc's own, `slideTo`).
+  function settleTo(s: NonNullable<typeof swiping>, dir: -1 | 0 | 1, velocity: number, curve: { duration: number, points: number[] } | null = null) {
     let duration = SETTLE_MS;
     s.caught = false;
     s.token++;
     const token = s.token;
-    if (s.arc) {
+    if (s.arc && curve) {
+      duration = curve.duration;
+      s.spring = null;
+      s.settledAt = performance.now();
+      s.el.style.setProperty('--m-swipe-transition', `transform ${duration}ms linear(${curve.points.join(', ')})`);
+      s.settling = true;
+      s.el.classList.add('m-settling');
+      draw(s, dir ? -dir * s.width : 0);
+      s.el.style.setProperty('--m-swipe-progress', dir ? '1' : '0');
+    } else if (s.arc) {
       // From where it's drawn (rubber band and all), at the lift's speed only when that heads where it goes (Arc).
       const to = dir ? -dir * s.width : 0;
       const v0 = Math.sign(velocity) === Math.sign(to - s.shown) ? velocity : 0;
@@ -234,7 +251,7 @@ export function installSwipe(rt: Rt) {
       }
     } else if (!s.target && s.requested && s.anchor) {
       s.requested = null;
-      rt.dispatch('space.switch', s.anchor, 'behavior');
+      switchOwn(s.anchor);
     }
     // The neighbour slides fully in first; then the space is switched to, and the copy goes in the same frame the
     // real sidebar shows it (afterRender), so nothing jumps.
@@ -242,7 +259,7 @@ export function installSwipe(rt: Rt) {
       if (swiping !== s || s.token !== token) return;
       if (!s.target) return finish();
       s.dispatched = true;
-      rt.dispatch('space.switch', s.target, 'behavior');
+      switchOwn(s.target);
       if (swiping === s && rt.vm?.space?.id === s.target) finish();
       rt.later(() => { if (swiping === s && s.token === token) finish(); }, 1500);
     }, duration);
@@ -279,7 +296,7 @@ export function installSwipe(rt: Rt) {
     const dir = near > 0 ? 1 : near < 0 ? -1 : 0;
     const to = dir ? s.neighbours[dir] : undefined;
     if (to) {
-      rt.dispatch('space.switch', to, 'behavior');
+      switchOwn(to);
       if (rt.vm?.space?.id === to) {
         const el = s.el;
         finish();
@@ -400,7 +417,42 @@ export function installSwipe(rt: Rt) {
     finish();
   });
 
+  // A space switched to by a click or a key, slid in as Arc does (M2.10, docs/ARC-SIDEBAR.md "Motion", measured: its page
+  // beside this one, on the side it lies in the list, both sliding together on Arc's switch spring, about 251 ms;
+  // its tab asked for at once and the space drawn as it lands, as a swipe's settle does): for a theme that moves its
+  // space with a feel (`--m-swipe-feel`: Arcadia), the sidebar docked, nothing under way, motion allowed. False:
+  // nothing slid (the caller switches at once, as before).
+  function slideTo(target: string) {
+    const vm = rt.vm;
+    const from = vm?.space?.id;
+    if (swiping || !vm?.ready || !from || target === from || vm.window.sidebar !== 'open' || rt.busy(api)) return false;
+    const el = view.marked('m-swipe', 'spaces')[0] as HTMLElement | undefined;
+    if (!el || !FEELS[getComputedStyle(el).getPropertyValue('--m-swipe-feel').trim()]) return false;
+    if (doc.defaultView?.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return false;
+    const ids = vm.spaces.map((sp) => sp.id);
+    const a = ids.indexOf(from), b = ids.indexOf(target);
+    if (a < 0 || b < 0) return false;
+    const dir = b > a ? 1 : -1;
+    begin(el);
+    const s = swiping!;
+    s.neighbours[dir] = target; // (Arc: the space it goes to beside this one, however far it is in the list)
+    ghost(s, String(dir));
+    if (!s.ghosts[String(dir)]) { finish(); return false; }
+    settleTo(s, dir, 0, switchEasing());
+    return true;
+  }
+
   const api = {
+    slideTo,
+    /** Another switch while a settle (a swipe's or a slide's) is still coming in: its own switch at the end dropped
+     *  and the copy beside it gone (the new switch is drawn at once). Its own end's switch is never dropped. */
+    cancelSettle() {
+      const s = swiping;
+      if (own || !s || !s.settling || s.dispatched) return false;
+      s.token++;
+      finish();
+      return true;
+    },
     busy: () => swiping != null && !swiping.settling,
     /** Moving or settling (or just switched space by a swipe). */
     active: () => swiping != null || Date.now() < holdUntil,

@@ -10684,3 +10684,30 @@ Arc's sidebar in Arcadia (docs/ARC-SIDEBAR.md: the study, measured in the runnin
 - **Tests**: tests/theme/arcadia.test.ts (not at 300 ms, shown at 560, over the bar 7 pt in, its name, gone at once,
   none over the icons, no `title`), tests/ui-view-model.test.ts (the caps: Margin.app's nine, none past nine, off, or
   outside it; a moved key's modifiers).
+
+## M2.10 step 7: Arc's motion in Arcadia (`feat/arc-sidebar`, 2026-11-25)
+
+- **Switching space by a click or a key slides, as Arc's** (measured frame by frame, docs/ARC-SIDEBAR.md "Motion": its
+  page beside this one, both sliding together; an overdamped spring, response 130 ms, damping ratio 1.35, starting at
+  72 widths a second: every frame within 2.5 pt RMS, 251 ms to within 0.2%). Margin switched at once before. Built on
+  the swipe's own machinery (ui/behaviors/swipe.ts `slideTo`): the space it goes to drawn beside this one on the side it
+  lies in the list (however far: Arc's), its tab asked for at once and the space drawn as it lands (as a swipe's
+  settle), the settle given Arc's switch curve as one `linear()` easing (extension/shared/space-swipe.ts `ARC_SWITCH`,
+  `switchEasing`: 61 samples). Only where the theme moves its space (a `--m-swipe-feel`: Arcadia), the sidebar docked,
+  nothing under way, motion allowed; else at once, as before. The runtime's `space.switch` tries it first.
+- **A switch while a settle comes in wins** (found while testing: without it, the slide's end switched back to its
+  space): `cancelSettle` drops the settle's own switch at its end (not the settle's own switches: they're marked,
+  `switchOwn`); the new one is drawn at once. A click during a finger swipe's settle gets the same.
+- **The peek's slide out over the page**: Arc's spring (response 205 ms, damping 0.79: 4.5 pt past its place and
+  back), sampled into a `linear()` (279 ms); going back in, Arcadia's own (not measured).
+- **The dock's swap** (step 4): 230 ms, the icon and dot only. **A row's hover**: at once (step 3).
+- **Left as they are**: the space swipe's settle keeps Dia's feel (Tirth's choice, 2026-11-20: faster, with its haptic;
+  Arc's own is 0.4 s and silent; asked again with this branch); the sidebar's hide and show in Margin.app (the hosted
+  window's place changes: Arc's ≈ 70 ms isn't the theme's to set).
+- **Tests**: tests/space-swipe.test.ts (the curve: 251 ms, rising, within 3 pt RMS of Arc's frames),
+  tests/theme/arcadia.test.ts (a switch slides: its classes, the curve, the copy beside, its tab asked at once, drawn as
+  it lands; one asked mid-slide wins: fails without `cancelSettle`, checked; reduced motion: at once);
+  tests/theme/space-settle.test.ts runs with reduced motion (it checks the switch's own state, which a slide lands
+  through). The app's end-to-end run, all 373: its check that the frame is painted outside the card's rounded corners
+  sampled 1 pt in along the diagonal, which assumed a 10 pt corner (Arc's 6 pt left it 1.1 pt outside the curve, its
+  antialiasing at 252): 0.5 pt in now, 1.8 pt outside it (tools/app-tests/e2e-glue.swift).
