@@ -97,29 +97,38 @@ is the front app; both unchanged. Its comment says so.
 
 ## The double-click's rule (`ui/empty.ts`)
 
-A point of the theme is empty when the element under it, and every element up to the theme's root:
+A point of the theme is empty when, walking up from the element under it to the theme's root:
 
-- is none of Margin's slots or parts (`m-page`, `m-page-loader`, `m-palette`, `m-menu`, `m-editor`, `m-notice`,
-  `m-prompt`, `m-toast`, `m-preview`, `m-launcher`, `m-settings`, `m-window-controls`, `m-drag-region`);
-- runs no action (`m-action`), and has none of the handles `m-drag`, `m-resize`, `m-rename`, `m-input`, `m-peek`;
-- is no control: `a`, `button`, `input`, `textarea`, `select`, `label`, `[contenteditable]`, `[tabindex]`,
-  `[draggable]`, an interactive ARIA role (`button`, `link`, `menuitem`, `option`, `radio`, `checkbox`, `switch`,
-  `tab`, `slider`, `textbox`, `combobox`, `searchbox`, `spinbutton`, `treeitem`, `gridcell`, `scrollbar`);
-- is no row of any of the theme's lists (an `<m-for>`'s item: a tab, a pin, a folder, a favourite, a space's chip);
-- is no bar: an element two or more of whose children hold a control side by side (their boxes share a line), as a
-  space switcher, a header of buttons, a favourites grid or a mini player is: the gaps between its controls are
-  the bar's, not the sidebar's;
-- isn't marked `m-empty="never"` by the theme.
+- nothing on the way is one of Margin's slots or parts (`m-page`, `m-page-loader`, `m-palette`, `m-menu`, `m-editor`,
+  `m-notice`, `m-prompt`, `m-toast`, `m-preview`, `m-launcher`, `m-settings`, `m-window-controls`, `m-drag-region`),
+  nor marked `m-empty="never"` by the theme;
+- up to the nearest element that holds a control or a row, nothing:
+  - runs an action, or has one of the handles `m-drag`, `m-resize`, `m-rename`, `m-input`, `m-peek`;
+  - is a control: `a`, `button`, `input`, `textarea`, `select`, `label`, `[contenteditable]`, `[tabindex]` (0 or
+    more), `[draggable="true"]`, an interactive ARIA role (`button`, `link`, `menuitem`, `option`, `radio`,
+    `checkbox`, `switch`, `tab`, `slider`, `textbox`, `combobox`, `searchbox`, `spinbutton`, `treeitem`, `gridcell`,
+    `scrollbar`);
+  - is a row of one of the theme's lists (an `<m-for>`'s item: a tab, a pin, a folder, a favourite, a space's chip);
+  - is a bar: an element two or more of whose children are controls or rows side by side (their boxes on one line),
+    as a space switcher, a header of buttons, a favourites grid or a mini player's buttons are; the edge handles
+    (`m-resize`, `m-peek`) and drag regions never count, as they lie beside everything;
+- and that nearest holder is one of the sidebar's own surfaces: its column (the space's part a swipe moves,
+  `m-swipe`) or a list (`m-scroll`, `m-drop`: the room below its last row). A widget's background (the mini
+  player's, the space's title beside its name), the frame around the page card and anything else holding controls
+  aren't.
 
 The double-click opens the palette only when both its clicks were on empty points, with the main button and no
-modifier, nothing of Margin's open (the palette, a menu, the space editor, a name being edited, a prompt, the preview
-card) and nothing under way (a drag, a resize, a swipe). It opens it as the palette's key does (`openPaletteAsKey`:
-in Margin's own window the new-tab palette), and never closes it.
+modifier, a real press (`isTrusted`, as the theme's actions take), nothing of Margin's open (the palette, a menu, the
+space editor, a name being edited, a prompt, the preview card) and nothing under way (a drag, a resize, a swipe). It
+opens it as the palette's key does (`openPaletteAsKey`: in Margin's own window the new-tab palette), said in Margin's
+log as the key's is ("palette opened (a double-click on the sidebar)"), and never closes it.
 
 A theme can't break it by accident: anything it draws that does something is one of the above (Margin's own actions,
-handles and fields are the only ways a theme's element does anything), a row is a row wherever its parts are drawn,
-and a gap between two controls on one line is a bar's. What's left is decoration. A theme that wants a decoration
-left alone (a heading drawn as a button would be) marks it `m-empty="never"`.
+handles and fields are the only ways a theme's element does anything: themes run no script), a row is a row wherever
+its parts are drawn, a gap between two controls on one line is a bar's, and a widget's background belongs to the
+widget. What's left is decoration and the sidebar's own background. A theme that wants a decoration left alone (a
+heading drawn as a button would be) marks it `m-empty="never"`, the attribute's only value: nothing can be made empty.
+A theme with no `m-swipe` column has only its lists' empty room (`m-scroll`, `m-drop`).
 
 ## Tests, each failing first
 
@@ -129,10 +138,11 @@ left alone (a heading drawn as a button would be) marks it `m-empty="never"`.
   through the hole, a field's, nothing shown, another button held: as before; delivery refused: as before.
 - app e2e (tools/app-tests): the scene carries the panel while an app is shown; a press the tap delivered: no
   hand-back; one it didn't: the hand-back as today; a real double-click (clickCount 2) on an empty spot of the real
-  page opens the palette, on a row it doesn't.
+  page opens the palette, on the page area it doesn't.
 - UI and theme (tests/theme, every built-in theme, WebKit and Chromium): an empty spot's double-click opens the palette
-  as its key does; a row's, a folder's, a button's, the address field's, the space switcher's (a chip and the gap
-  between chips), a drag region's, a field's, a handle's don't; one click of the two on a row doesn't; nothing while
-  a menu is open; `m-empty="never"` honoured, any other value refused by the sanitizer.
+  as its key does; a row's, a folder's, a pin's, the space's name's, the address field's, the space switcher's (a chip
+  and the gap between chips), a drag region's, the resize handle's, the mini player's, the decoration beside the
+  space's name, the frame's, a field's don't; one click of the two on a row doesn't; nothing while a menu is open;
+  `m-empty="never"` honoured, any other value refused by the sanitizer.
 - Screen suite (run by Tirth): k1 tightened back to "the pane's window never resigned key"; k2, a double-click on an
   empty spot opens the palette with the pane still the front app; k3, a double-click in the pane's content doesn't.

@@ -240,6 +240,8 @@ func key(_ window: NSWindow, _ characters: String, code: UInt16) {
 @MainActor
 func emptySidebarSpot(_ web: WKWebView) async -> CGPoint? {
   let found = await js(web, """
+    // (The double-click's own rule, as the dev hook's `say: spot`: app/shared/ui/empty.ts.)
+    if (window.marginApp && marginApp.devEmptySpot) { const s = marginApp.devEmptySpot(); return s === 'none' ? null : s.split(',').map(Number); }
     const page = document.querySelector('m-page')?.getBoundingClientRect();
     if (!page || page.left < 40) return null;
     const busy = 'a, button, input, textarea, select, [contenteditable], [m-action], [m-input], [m-drag], [m-resize], [m-drag-region], [m-rename], [m-editor], [m-menu], [m-notice], [m-prompt], [m-window-controls], [draggable="true"], [role="button"], [tabindex]';
@@ -810,6 +812,35 @@ func glueScenario() async {
           "\(String(describing: taps.last?.scenes.last)) \(taps.last?.stopped ?? -1)")
     made.makePaneTap = { _, _ in nil }
     made.sidebarTap = { false }
+    // ---- a double-click on the sidebar's empty part opens the palette (docs/SIDEBAR-PRESS.md), the real page's own ----
+    // (Two presses at the spot, the second with its click count 2, as the press tap delivers the window server's own: the
+    // page's dblclick. The palette as Margin's key opens it, its field taking the keys; on the page area: nothing.)
+    do {
+      let byBefore = await js(c.webView, "return marginApp.stats().palette.filter((p) => p.by === 'a double-click on the sidebar').length") as? Int ?? -1
+      press(c.panel, at: spot, number: 7101, clicks: 1)
+      press(c.panel, at: spot, number: 7102, clicks: 2)
+      let opened = await waitJS(c.webView, "return marginApp.appWindow().palette")
+      // (Said by the page once it's drawn: its timing's entry, `by` what opened it.)
+      let said = await waitJS(c.webView, "return marginApp.stats().palette.filter((p) => p.by === 'a double-click on the sidebar').length === \(byBefore + 1)")
+      let field = await until(3) { c.pageWantsKeyboard }
+      check("a double-click on the sidebar's empty part (the page's own dblclick): the palette open as Margin's key opens it, said as a double-click's, its field taking the keys",
+            opened && said && field, "opened \(opened) said \(said) field \(field)")
+      c.push(#"{"type":"pressOutside"}"#)
+      let closed = await waitJS(c.webView, "return !marginApp.appWindow().palette")
+      // The page area's double-click (`<m-page>`: what's hosted, never Margin's empty part): never the palette. (The rows,
+      // the folders, the switcher, the address field and the rest: tests/theme/empty-dblclick.test.ts, every theme, both
+      // engines; a press on them here would switch or rename what the rest of this run reads.)
+      let row = await js(c.webView, "const r = document.querySelector('m-page')?.getBoundingClientRect(); return r ? [r.left + r.width / 2, r.top + r.height / 2] : null") as? [Double]
+      if let row, row.count == 2 {
+        let at = CGPoint(x: row[0], y: row[1])
+        press(c.panel, at: at, number: 7103, clicks: 1)
+        press(c.panel, at: at, number: 7104, clicks: 2)
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        let none = await js(c.webView, "return !marginApp.appWindow().palette && marginApp.stats().palette.length") as? Int ?? -1
+        let byNow = await js(c.webView, "return marginApp.stats().palette.filter((p) => p.by === 'a double-click on the sidebar').length") as? Int ?? -1
+        check("the page area's double-click (what's hosted): never the palette", closed && none >= 0 && byNow == byBefore + 1, "closed \(closed) by a double-click \(byNow - byBefore)")
+      } else { check("the page area to double-click", false) }
+    }
   } else { check("an empty spot of the sidebar", false) }
   // (The engine asks Margin's window's page to measure at every look while it waits for a layout at its whole width:
   // a size the window took isn't measured until a frame is drawn, which can be seconds late. The page measures at once.)

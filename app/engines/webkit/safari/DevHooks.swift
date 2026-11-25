@@ -25,7 +25,9 @@
 //   long, summed up by page state in one line at the end. For Margin's UI that never makes the hosted app inactive
 //   (2026-11-17): `host { say: field }`: whether a field of Margin's page has the focus and how many characters it
 //   holds (its length only, never its text); `host { say: spot }`: a point of the front window's sidebar where a
-//   press does nothing (no row, button, field, handle or drag region under it), in the window server's coordinates.
+//   press does nothing (no row, button, field, handle or drag region under it), in the window server's coordinates:
+//   the sidebar's empty part by the double-click's own rule (app/shared/ui/empty.ts, the page's `devEmptySpot`),
+//   where a double-click opens the palette (docs/SIDEBAR-PRESS.md).
 // - Each notification is one log line, honoured or refused: the kind, ids and the sender's pid (as it says it). The
 //   address itself is never logged.
 
@@ -277,6 +279,8 @@ extension Shell: DevHookWorld {
             const a = document.activeElement, field = !!a && (a.matches('input, textarea') || a.isContentEditable);
             return 'focused ' + field + ', length ' + (field ? String((a.value ?? a.textContent ?? '').length) : '-1') + ', palette ' + (!!document.querySelector('[m-input="palette"]'));
             """ : """
+            // (The double-click's own rule, ui/empty.ts: where a press does nothing and a double-click opens the palette.)
+            if (window.marginApp && window.marginApp.devEmptySpot) return window.marginApp.devEmptySpot();
             const page = document.querySelector('m-page')?.getBoundingClientRect();
             if (!page || page.left < 40) return 'none';
             const busy = 'a, button, input, textarea, select, [contenteditable], [m-action], [m-input], [m-drag], [m-resize], [m-drag-region], [m-rename], [m-editor], [m-menu], [m-notice], [m-prompt], [m-window-controls], [draggable="true"], [role="button"], [tabindex]';

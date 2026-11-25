@@ -9801,3 +9801,32 @@ Both parts merged (`fix/link-resilience-link` into the session's part): one canc
   FFI's no-allocation run of `margin_press_way`; panel-press-tests.swift (12 of its checks failed with the panel branch
   off); e2e-glue.swift's press tap block (a delivered press: no hand-back; a routed one: as before; a field's keys told;
   the part off; 2 failed with the claim off). The screen suite's k1 is tightened back (see the screen-suite entry).
+
+## A double-click on the sidebar's empty part opens the palette, as Arc's does (2026-11-24)
+
+- **Where**: the shared UI, for every theme and host (Windows' web view too): the rule in app/shared/ui/empty.ts, the
+  behaviour in app/shared/ui/behaviors/empty.ts, the palette key's rule in the runtime (`paletteKeyOptions`,
+  `openPaletteAsKey`), which Margin.app's overlay's own `command palette` now reads too: one rule for the key and the
+  double-click (in Margin's own window the new-tab palette). Nothing in Swift, nothing per theme. In Margin.app the
+  press reaches the page through the press tap as the window server's own record, so it's the page's own `dblclick`.
+- **Empty**, walking up from the element under the pointer: no Margin slot or `m-empty="never"` on the way; up to the
+  nearest element holding a control or a row, no control (a link, a button, a field, an action, a handle, focusable,
+  draggable, an interactive role), no `<m-for>` row, no bar (two or more controls or rows side by side: the space
+  switcher's gaps, a header's, a favourites grid's); and that nearest holder is the sidebar's own surface, its column
+  (`m-swipe`) or a list (`m-scroll`, `m-drop`). A first version without that last rule found its empty point on the
+  mini player's background in every theme (the theme tests' diagnostic said so): a widget's background isn't the
+  sidebar's, and neither is the decoration beside the space's name or the frame around the page card.
+- **When**: both clicks on empty points, the main button, no modifier, a real press, nothing of Margin's open at the
+  first press (the palette, a menu, the editor, a rename, a prompt, the preview card) nor under way (a drag, a resize,
+  a swipe). It never closes the palette.
+- **The contract**: `m-empty="never"` (its only value; anything else is removed and reported by the sanitizer) marks a
+  decoration as never empty. No theme can make anything empty. themes/README.md says what's empty and why.
+- **The dev hook** `say: spot` and the app's e2e use the same rule (`marginApp.devEmptySpot`, DEV-HOOK).
+- **Tests, each failing first**: tests/theme/empty-dblclick.test.ts (5 themes × WebKit and Chromium, 190 checks: an
+  empty point's double-click opens the palette as the key does; a tab's, a folder's, a pin's, the space's name's, the
+  active chip's, the gap between chips, the address field's, a drag region's, the resize handle's, the mini player's,
+  the decoration beside the space's name, the frame's, the editor's field don't; one click of two on a row doesn't; a
+  menu open at the first click: nothing; the root marked never: nothing). With the behaviour off its 10 opening
+  checks and the marked-root checks failed; with a rule that took everything but the page as empty, 72 failed.
+  tests/theme-sanitize.test.ts (`m-empty` values). e2e-glue.swift: two presses with click counts 1 and 2 on the real
+  page open the palette, its field taking the keys; on the page area nothing (both failed with the behaviour off).

@@ -69,6 +69,19 @@ test('the sanitizer reports each removal with what, why and where', () => {
   assert.match(r.removed.find((x) => x.name === '<img> onerror')!.reason, /event handlers/); // listed just above
 });
 
+// A theme marks a decoration as never empty (a double-click there doesn't open the palette: ui/empty.ts); it can't
+// make anything empty, so `never` is the attribute's only value.
+test('m-empty: "never" kept on any element, every other value removed and reported', () => {
+  const kept = sanitizeTemplate(wrap('<div class="title" m-empty="never">Pinned</div><span m-empty="never"></span>'));
+  assert.deepEqual(kept.removed, []);
+  assert.equal(JSON.stringify(kept.tree).match(/"m-empty","never"|"m-empty":"never"/g)?.length, 2, JSON.stringify(kept.tree).slice(0, 400));
+  for (const value of ['always', 'yes', '', 'true', 'NEVER']) {
+    const r = sanitizeTemplate(wrap(`<div m-empty="${value}">x</div>`));
+    assert.deepEqual(r.removed.map((x) => [x.kind, x.name]), [['attribute', '<div> m-empty']], value);
+    assert.match(r.removed[0].reason, /unknown m-empty value/, value);
+  }
+});
+
 test('entity-encoded and obfuscated javascript: links are removed, # links kept', () => {
   for (const href of ['&#106;avascript:x', 'java&#x09;script:x', 'JAVASCRIPT:x', ' #x', 'https://evil.test', '//evil.test', '#x y']) {
     const r = sanitizeTemplate(wrap(`<a href="${href}">x</a>`));

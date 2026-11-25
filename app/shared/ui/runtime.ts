@@ -40,6 +40,8 @@ import { installScroll } from './behaviors/scroll.ts';
 import { installSwipe } from './behaviors/swipe.ts';
 import { installPress } from './behaviors/press.ts';
 import { installSettings } from './behaviors/settings.ts';
+import { installEmpty } from './behaviors/empty.ts';
+import { emptySpot } from './empty.ts';
 import { createIntents } from './intents.ts';
 import type { Front } from './intents.ts';
 import { createRowMotion } from './row-motion.ts';
@@ -100,6 +102,9 @@ export type Rt = {
   spaceView(id: string): ViewModel | null,
   /** A short note at the top of the window (the `toast` part, or Margin's own). */
   showToast(text: string, ms?: number): void,
+  /** The palette as the host's palette key opens it (`paletteKeyOptions`), unless it's open: true, opened. `by`: what
+   *  opened it, for the host's log (behaviors/empty.ts: a double-click on the sidebar). */
+  openPaletteAsKey(by: string): boolean,
   // Each behavior's own (createRuntime: set before any is installed).
   behaviors: Record<string, any>,
 };
@@ -115,7 +120,7 @@ export type Rt = {
  * pill and notice); `onSwitchRun`: each chain of switches as it ends, with a
  * host whose UI stays on screen (shared/switching.ts SwitchRun: Margin.app's log)
  */
-export function createRuntime({ host, theme, container, ui: start = {}, onWarn, log, onSwitchSlow, onSwitchFailed, onPalette, onSwitching, onSwitchRun }: {
+export function createRuntime({ host, theme, container, ui: start = {}, onWarn, log, onSwitchSlow, onSwitchFailed, onPalette, onSwitching, onSwitchRun, openPalette }: {
   host: Host,
   theme: LoadedTheme,
   container: ShadowRoot | Document,
@@ -127,6 +132,9 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   onPalette?: (what: 'run' | 'close', request?: any) => void,
   onSwitching?: (tabId: number | string | null) => void,
   onSwitchRun?: (run: import('../../../extension/shared/switching.ts').SwitchRun) => void,
+  /** How the host opens the palette for its own key and what the UI opens as that key does (Margin.app's overlay: timed
+   *  and logged, app/shared/host/overlay.ts openPaletteTimed); left out, the runtime's own `palette.open`. */
+  openPalette?: (options: { newTab: boolean }, by: string) => void,
 }) {
   // (Always with a palette: closed, or as it's open.)
   let ui: Ui = { sidebar: null, palette: CLOSED_PALETTE, menu: null, editing: null, editor: null, notice: null, prompt: null, toast: null, focused: true, switchingTo: null, newTabPending: false, opening: null, ...start };
@@ -912,6 +920,19 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     dispatch(name, arg, 'theme', info);
   }
 
+  // The palette's key (Margin.app's ⌘T and the palette's own key, app/shared/host/overlay.ts `command palette`): in
+  // Margin's own window, and in a page that isn't Margin's launcher, the palette to choose a new tab; on the launcher,
+  // the palette over it. One rule for the key and what opens as it does (behaviors/empty.ts).
+  function paletteKeyOptions() {
+    return { newTab: !!host.appWindow || !host.launcher };
+  }
+  function openPaletteAsKey(by: string) {
+    if (destroyed || ui.palette.open) return false;
+    if (openPalette) openPalette(paletteKeyOptions(), by);
+    else local('palette.open', paletteKeyOptions(), null);
+    return !!ui.palette.open;
+  }
+
   // ---- the behaviors ------------------------------------------------------------
 
   // Margin's own pixels per pixel of the page: the page's zoom (⌘+ / ⌘−)
@@ -932,7 +953,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     get ui() { return ui; },
     get state() { return host.getState(); },
     viewState: () => viewState(host.getState()),
-    setUi, render, dispatch, send, refuse, warn, runQuery, showToast,
+    setUi, render, dispatch, send, refuse, warn, runQuery, showToast, openPaletteAsKey,
     windowId, ownTab, frontTab, recentTabOf, switchSpace,
     /** Space `spaceId` kept shown for `ms`, whatever the state says meanwhile (a swipe's slide coming in). */
     holdSpace(spaceId: string, ms: number) {
@@ -988,6 +1009,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     drag: installDrag(rt),
     scroll: installScroll(rt),
     swipe: installSwipe(rt),
+    empty: installEmpty(rt),
     settings: installSettings(rt),
   });
   const list = Object.values(behaviors);
@@ -1056,6 +1078,10 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     openPalette: ({ newTab = false, query = '', selectAll = false }: { newTab?: boolean, query?: string, selectAll?: boolean } = {}) => local('palette.open', { newTab, query, selectAll }, null),
     closePalette: () => { if (ui.palette.open) local('palette.close', undefined, null); },
     get paletteOpen() { return !!ui.palette.open; },
+    /** The palette's key's choice (a new tab or not: `openPaletteAsKey`'s), for the host's own key. */
+    paletteKeyOptions,
+    /** An empty point of the sidebar (ui/empty.ts `emptySpot`), in the container's coordinates; null: none. */
+    emptySpot: () => emptySpot(view, container as unknown as { elementFromPoint(x: number, y: number): Element | null }, win.innerHeight),
     showToast,
     /** The preview card (behaviors/card.ts): the app's word on it (null: gone), Quick Tab opened by the app's key. */
     card: {

@@ -386,6 +386,8 @@ const BEHAVIORS: Record<string, string[]> = {
   'm-rename': ['space', 'folder', 'tab', 'pin', 'favorite'],
   'm-scroll': ['tabs', 'palette', 'archive'],
   'm-swipe': ['spaces'],
+  // (Never empty: a double-click there doesn't open the palette, ui/empty.ts. Only ever less of a theme empty: no other value.)
+  'm-empty': ['never'],
   'm-input': ['palette', 'space-name', 'space-emoji', 'launcher', 'preview', ...['number', 'toggle', 'choice', 'list', 'shortcut', 'color'].map((k) => `setting-${k}`)],
 };
 // Which element each of Margin's inputs is: a Settings list is a <textarea>,
