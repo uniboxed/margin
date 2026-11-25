@@ -435,6 +435,14 @@ final class FakeRegistrar: HotKeyRegistrar {
         view?.buttons.first { $0.title == "Cancel" }?.press()
         view?.buttons.first { $0.title == "Quit" }?.press()
         check("quit prompt: one choice, once; then it's down", chose == [.cancel] && !prompt.isUp, "\(chose)")
+        // Its keys taken by something else (another app's window, a Space swiped to): taken down as `left`, so nothing is
+        // given back (2026-11-25: the hand-back brought Margin's Space back over the one swiped to).
+        let other = QuitPrompt(note: "n", harness: true)
+        var left: [QuitChoice] = []
+        other.onChoice = { left.append($0) }
+        other.show(over: CGRect(x: 0, y: 33, width: 1512, height: 949))
+        other.resignKey()
+        check("quit prompt: its keys taken by something else: `left` (cancelled, nothing given back), once", left == [.left] && !other.isUp, "\(left)")
     }
     var quits: [Bool] = []
     keys.onQuit = { quits.append($0) }

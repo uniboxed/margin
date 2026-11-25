@@ -113,6 +113,7 @@ final class Shell: ExtensionLinkDelegate {
     var browserPrepared = false // (the default browser made ready once per launch: prepareBrowserOnce)
     var hostedKeysRun: [String] = [] // Margin's keys run while hosting, newest last (the tests read it)
     var quitPrompt: QuitPrompt? // Margin's quit prompt, while it's up (ShellQuit.swift)
+    var quitChoices: [QuitChoice] = [] // how each prompt was taken down, the last few (the tests read them)
     var quitsAsked = 0 // Margin's quit asked of the app (Options.quit) by the prompt's Quit or Always quit (the tests read it)
     var devHooks: DevHooks? // DEV-HOOK: the dev-only test hook (DevHooks.swift), only with Options.devHooksOn
     // ---- user themes (ShellThemes.swift) ----

@@ -7,8 +7,11 @@
 // window, above whatever is hosted there:
 //   Quit (Return, or ⌘Q again): Margin quits as it always does (Options.quit: the app's terminate, which comes back to
 //     Shell.stop: every hosted app given back at once, DECISIONS.md "Margin's quit gives every host back at once").
-//   Cancel (Escape, a click anywhere else, another app coming to the front): nothing happens; the keys are back where
-//     they were (the hosted app never stopped being the active app: the prompt takes the keys without activating Margin).
+//   Cancel (Escape, its button, a click in a window of Margin's): nothing happens; the keys are back where they were (the
+//     hosted app never stopped being the active app: the prompt takes the keys without activating Margin). Taken down the
+//     same when something else takes the keys or the front (a click in another app, a swipe to another Space, another
+//     app in front: QuitChoice `left`), but then nothing is given back: the hosted app activated would bring Margin's
+//     Space back over the one the person went to (2026-11-25, a swipe with the prompt up came back to Margin).
 //   Always quit: quits, and stops asking (`MarginAskBeforeQuit` NO in the app's defaults, the key it always had).
 // With asking off the guard isn't held at all: ⌘Q is the front app's own, as in any app Margin doesn't host (Margin's
 // own menu item when Margin is in front). To ask again: `defaults delete com.unibox.margin MarginAskBeforeQuit`.
@@ -76,12 +79,16 @@ extension Shell {
         prompt.onChoice = { [weak self] choice in
             guard let self else { return }
             self.quitPrompt = nil
-            Diagnostics.note("quit prompt: \(choice == .cancel ? "cancelled" : choice == .always ? "always quit" : "quit")")
+            self.quitChoices.append(choice)
+            if self.quitChoices.count > 20 { self.quitChoices.removeFirst(self.quitChoices.count - 20) }
+            Diagnostics.note("quit prompt: \(choice == .cancel ? "cancelled" : choice == .left ? "cancelled, the keys or the front taken by something else: nothing given back" : choice == .always ? "always quit" : "quit")")
             switch choice {
             case .cancel:
                 if !self.options.harness, NSApp.isActive, let hadKeys, hadKeys.isVisible { hadKeys.makeKey() }
                 // (Margin not the active app: the prompt had the keys without it, so they go back to the app shown.)
                 if !self.options.harness, !NSApp.isActive { self.keysBackToShown("the quit prompt cancelled") }
+            case .left:
+                break // (whatever took the keys or the front has them)
             case .always:
                 self.options.setAskBeforeQuit(false)
                 self.quitNow("always quit")
