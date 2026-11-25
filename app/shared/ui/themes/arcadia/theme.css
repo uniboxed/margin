@@ -11,10 +11,14 @@
 
 .arcadia {
   --space-color: #6c5ce7;
+  /* The space's colour as drawn: while another space slides in, mixed toward
+     its colour as far as it's come (Margin's --m-space-blend, frame by frame:
+     Arc changes the colour with the slide); the space's own otherwise. */
+  --space-shown: color-mix(in oklab, var(--space-color), var(--m-space-blend-color, var(--space-color)) calc(var(--m-space-blend, 0) * 100%));
   /* The ground: the space's colour, soft, over a near-white (near-black in
      Dark Mode). One colour, so the frame (the page card's spread shadow) and
      the corners Margin.app draws over a hosted window are the sidebar's. */
-  --frame: color-mix(in srgb, var(--space-color) 30%, #f1f0f3);
+  --frame: color-mix(in srgb, var(--space-shown) 30%, #f1f0f3);
   /* The sidebar's width: the sidebarWidth setting (px), 160–500, step 10. */
   --width: calc(var(--m-sidebar-width, 260) * 1px);
   /* Arc's (docs/ARC-SIDEBAR.md, measured): the sidebar's rows, pills and bars 8 pt from its edges. */
@@ -83,7 +87,7 @@
 }
 @media (prefers-color-scheme: dark) {
   .arcadia {
-    --frame: color-mix(in srgb, var(--space-color) 30%, #1c1c20);
+    --frame: color-mix(in srgb, var(--space-shown) 30%, #1c1c20);
     --fg: #f4f3f7;
     --muted: rgba(255, 255, 255, 0.55);
     --ink: #fff;

@@ -21,7 +21,7 @@ import type { UiState, ViewModel } from './view-model.ts';
 import type { SpaceBackground, State } from '../../../types/margin';
 import { View } from './render.ts';
 import { createBackground } from './background.ts';
-import { checkIconUrl } from './sanitize.ts';
+import { checkCssValue, checkIconUrl } from './sanitize.ts';
 import { buildViewModel, paletteItems } from './view-model.ts';
 import { BEHAVIOR_ONLY, checkAction, contextFromState, requestFor } from './actions.ts';
 import { resolveSettings } from './theme-loader.ts';
@@ -105,6 +105,11 @@ export type Rt = {
   cancel(id: ReturnType<typeof setTimeout> | null | undefined): void,
   readonly destroyed: boolean,
   spaceView(id: string): ViewModel | null,
+  /** The space `to` sliding in, `progress` (0 to 1) of the way as drawn (null: none): its background drawn over this
+   *  one's, its colour on the theme's root for a theme that mixes it in. True while something is blended. */
+  blendSpace(to: string | null, progress: number): boolean,
+  /** Whether a space sliding in changes anything drawn (the theme mixes its colour, or a background shows). */
+  blendsSpaces(): boolean,
   /** A short note at the top of the window (the `toast` part, or Margin's own). */
   showToast(text: string, ms?: number): void,
   /** The palette as the host's palette key opens it (`paletteKeyOptions`), unless it's open: true, opened. `by`: what
@@ -375,6 +380,59 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     const changed = () => { if (!destroyed) followBackground(); };
     mq.addEventListener('change', changed);
     offs.push(() => mq.removeEventListener('change', changed));
+  }
+
+  /** The model with space `id` shown in this window (one of vm.spaces), for a swipe drawing it beside the current one;
+   *  null if it isn't one. */
+  function spaceView(id: string) {
+    const entry = vm?.spaces?.find((s) => s.id === id);
+    if (!entry) return null;
+    let state = viewState(host.getState());
+    if (!state) return null;
+    const w = fullUi().windowId;
+    state = { ...state, activeSpaceByWindow: { ...state.activeSpaceByWindow, [w as number]: id } };
+    const out = buildViewModel({ state, ui: { ...fullUi(), palette: {}, editing: null, notice: null, prompt: null, gesture: null }, platform: host.platform, settings });
+    return out.space?.id === id ? out : null;
+  }
+
+  // A space sliding in (a swipe's, or a click's or key's slide: behaviors/swipe.ts), as far as it's drawn: Arc changes the
+  // space's colour with the slide, frame by frame (docs/ARC-SIDEBAR.md "The space's colour in a switch"). Its background
+  // over the one shown (ui/background.ts blend), and on the theme's root `--m-space-blend` (0 to 1) and
+  // `--m-space-blend-color` (its colour) for a theme that mixes it in (themes README, "A space sliding in"); only a
+  // theme whose style sheet names them is given them (each one a style change of the whole theme, every frame).
+  const themeBlends = (() => {
+    try { return [...(theme.sheet?.cssRules ?? [])].some((r) => r.cssText.includes('--m-space-blend')); } catch { return false; }
+  })();
+  // (The space sliding in, its model built once for the whole slide.)
+  let blending: { id: string, space: ViewModel['space'] | null } | null = null;
+  function blendSpace(to: string | null, progress: number): boolean {
+    if (destroyed) return false;
+    const root = view.rootElement() as HTMLElement | null;
+    if (!to) {
+      blending = null;
+      background.blend(null, 0);
+      if (root && (root.style.getPropertyValue('--m-space-blend') || root.style.getPropertyValue('--m-space-blend-color'))) {
+        root.style.removeProperty('--m-space-blend');
+        root.style.removeProperty('--m-space-blend-color');
+      }
+      return false;
+    }
+    if (blending?.id !== to) blending = { id: to, space: spaceView(to)?.space ?? null };
+    const space = blending.space;
+    if (!space) return blendSpace(null, 0);
+    const p = Math.round(Math.min(1, Math.max(0, Number.isFinite(progress) ? progress : 0)) * 1000) / 1000;
+    const shown = backgroundShown(space);
+    let any = background.blend({
+      spaceId: space.id, background: shown,
+      systemDark: media('(prefers-color-scheme: dark)'), moreContrast: media('(prefers-contrast: more)'), reducedMotion: media('(prefers-reduced-motion: reduce)'),
+      picture: shown?.image ? host.pictureUrl?.(shown.image.id) ?? null : null,
+    }, p);
+    if (root && themeBlends && typeof space.color === 'string' && space.color && checkCssValue(space.color)) {
+      if (root.style.getPropertyValue('--m-space-blend-color') !== space.color) root.style.setProperty('--m-space-blend-color', space.color);
+      if (root.style.getPropertyValue('--m-space-blend') !== String(p)) root.style.setProperty('--m-space-blend', String(p));
+      any = true;
+    }
+    return any;
   }
 
   function render() {
@@ -1100,16 +1158,9 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     panelChanged() { onPanel?.(); },
     /** The model with space `id` shown in this window (one of vm.spaces), for a swipe drawing it beside the current
      *  one; null if it isn't one. */
-    spaceView(id: string) {
-      const entry = vm?.spaces?.find((s) => s.id === id);
-      if (!entry) return null;
-      let state = viewState(host.getState());
-      if (!state) return null;
-      const w = fullUi().windowId;
-      state = { ...state, activeSpaceByWindow: { ...state.activeSpaceByWindow, [w as number]: id } };
-      const out = buildViewModel({ state, ui: { ...fullUi(), palette: {}, editing: null, notice: null, prompt: null, gesture: null }, platform: host.platform, settings });
-      return out.space?.id === id ? out : null;
-    },
+    spaceView,
+    blendSpace,
+    blendsSpaces: () => themeBlends || background.active(),
   } satisfies Omit<Rt, 'behaviors'> as Rt;
   const behaviors: Record<string, any> = {};
   rt.behaviors = behaviors;

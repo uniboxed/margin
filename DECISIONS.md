@@ -10942,3 +10942,30 @@ Arcadia with 170 tabs:
   kept): unit 1163, Rust 716, theme 995, security 248+37, Swift 2265, app end-to-end 375, browser end-to-end 109, all
   passed; the WebKit host's `update` ("selecting it cancels the hidden cleanup reload") failed once under the gate's
   load and passed alone three times out of three (the background's, nothing this branch changes).
+
+## The space's colour changes with the slide, as Arc's (`feat/space-color-blend`, 2026-11-25)
+
+Tirth: Arc changes its colour slowly as you swipe to the next space; Margin didn't (the colour jumped as the space
+landed, a background cross-faded 0.3 s after it).
+- **Measured** (docs/ARC-SIDEBAR.md "The space's colour in a switch"): in Arc the colour starts in the slide's first
+  frame and keeps to its curve, both ways (two recordings of a dock click).
+- **The runtime blends what's drawn as far as the space coming in is drawn** (ui/runtime.ts `blendSpace`): the swipe
+  behaviour gives it while the fingers move and, as it settles, each frame from where the moving part is drawn (its
+  transform as the browser has it), so the colour keeps to the slide's own curve (Dia's spring after a swipe, Arc's
+  switch spring after a click or a key) and to a caught settle; cleared as the space lands (the landing's render first,
+  then the behaviour's `afterRender`: nothing jumps). Not a CSS transition of the theme's colours (every element that
+  paints the colour would need one, and a caught settle would have to stop them all) nor a registered custom property
+  (`CSS.registerProperty` is the page's in the extension's overlay; `@property` is ignored in a shadow root).
+- **Themes**: `--m-space-blend` (0 to 1) and `--m-space-blend-color` on the root, only for a theme whose style sheet
+  names them (each write restyles the whole theme). Arcadia mixes them into `--space-shown` (oklab: no muddy middle)
+  and its ground (`--frame`, and all mixed from it) from that; what belongs to a space's own page (folder icons, its
+  tooltip) keeps `--space-color`. The copy of the space coming in carries the custom properties its own root is
+  drawn with (its `--space-color`: its folder icons in its own colour as it slides in, as Arc's).
+- **A space's background** (ui/background.ts `blend`): the one coming in drawn over the one shown, its opacity the
+  slide's progress, and it's the set shown as it lands (no cross-fade after). Between a space with one and one
+  without: as it lands, as before (the theme's own ground is above the layer).
+- **Tests** (tests/theme/arcadia.test.ts, both engines): a click's slide frame by frame: the blend 0 → 1, never back,
+  where the space is drawn (within 0.06), the colour the next space's, the copy in its own colour, the ground between
+  the two mid-slide and the landed one after, nothing left; with backgrounds the next one's set part of the way and the
+  only set as it lands; a swipe held 60 px in: the blend 60 / width. The slide's test fails with the settle's
+  following taken out.

@@ -159,6 +159,21 @@ Measured by dragging the sidebar from 500 to 260 pt with 10 spaces, reading ever
 The pages of a space switch: the outgoing one moves out as the incoming one comes in, both at the same speed; the space's
 colour changes with it (M2.9 draws that).
 
+## The space's colour in a switch (measured 2026-11-25, `feat/space-color-blend`)
+
+Read from the first session's two recordings of a dock click (Work → Personal and back, 60 fps, lossless; the mean
+colour of two empty parts of the sidebar, the top bar right of its buttons and a strip at its left edge, each frame;
+the list's offset with `shift`):
+- **It starts in the slide's first frame**, both ways: the frame the list first moves is the first that changes colour.
+- **On the slide's curve**: about 90% of the way 100 ms in (six frames), all but a trace when the slide lands (≈ 200
+  ms), the last of it by ≈ 280 ms. Arc's sidebar is translucent (the desktop blurred under the space's colour), so a
+  channel's path isn't a straight line between the two (a dip, a slight overshoot); the average of the channels keeps
+  to the list's progress within a frame or two.
+- **So in Margin**: the colour follows where the space is drawn, frame by frame (a swipe's fingers, the settle's
+  spring, a click's slide), not a curve or a fade of its own. The space's background (Margin's layer, M2.9) the same:
+  the one coming in drawn over as far as it's come, the one shown as it lands, where it used to cross-fade 0.3 s after
+  the slide.
+
 ## Measured in the second session (2026-11-25)
 
 - **A folder**: unfolding, the rows after it on `cubic-bezier(0.5, 0.8, 0.75, 1)` over 210 ms (0.31 pt RMS), its rows
